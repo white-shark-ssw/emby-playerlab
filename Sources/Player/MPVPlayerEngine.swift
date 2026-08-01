@@ -72,7 +72,8 @@ final class MPVPlayerEngine: PlayerEngine {
         let target = min(max(0, seconds), duration > 0 ? duration : seconds)
         let bufferHit = snapshot.bufferedRanges.contains(where: { $0.contains(target) })
         pendingSeek = PendingSeek(requestedAt: CACurrentMediaTime(), target: target, bufferHit: bufferHit)
-        snapshot.position = target
+        // Never overwrite time-pos with the requested target. MPV may land on an
+        // earlier keyframe, especially for malformed remote MP4 files.
         snapshot.didReachEnd = false
         snapshot.isBuffering = true
         snapshot.waitingReason = "MPV seek"
@@ -178,6 +179,7 @@ final class MPVPlayerEngine: PlayerEngine {
         check(mpv_set_option_string(handle, "hwdec-software-fallback", "yes"), operation: "set hw fallback")
         check(mpv_set_option_string(handle, "cache", "yes"), operation: "enable cache")
         check(mpv_set_option_string(handle, "demuxer-seekable-cache", "yes"), operation: "seekable cache")
+        check(mpv_set_option_string(handle, "hr-seek", "no"), operation: "disable precise seek")
         check(mpv_set_option_string(handle, "network-timeout", "30"), operation: "network timeout")
         check(mpv_set_option_string(handle, "sub-auto", "fuzzy"), operation: "subtitle auto")
 
@@ -260,13 +262,27 @@ final class MPVPlayerEngine: PlayerEngine {
         case MPV_EVENT_PLAYBACK_RESTART:
             snapshot.isBuffering = false
             snapshot.waitingReason = nil
+
+            var actualPosition = snapshot.position
+            var queriedPosition = Double(0)
+            if getProperty(handle: handle, name: "time-pos", format: MPV_FORMAT_DOUBLE, value: &queriedPosition) >= 0,
+               queriedPosition.isFinite {
+                actualPosition = queriedPosition
+                snapshot.position = queriedPosition
+            }
+
             if let pending = pendingSeek {
                 pendingSeek = nil
                 let latency = (CACurrentMediaTime() - pending.requestedAt) * 1000
+                DiagnosticsLogger.shared.log(
+                    "MPVSeekLanding",
+                    "target=\(pending.target) actual=\(actualPosition) delta=\(actualPosition - pending.target)"
+                )
                 DispatchQueue.main.async { [weak self] in
                     self?.onSeekCompleted?(SeekResult(
                         requestedAt: pending.requestedAt,
                         target: pending.target,
+                        actualPosition: actualPosition,
                         bufferHit: pending.bufferHit,
                         completionLatencyMs: latency,
                         measurement: "MPV 恢复播放"

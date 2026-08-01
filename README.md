@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.2.5
+## 当前版本：0.2.6
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.2.5-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.2.6-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -111,3 +111,14 @@
 - 连续双击的 UI 目标保持到实际播放位置追上，不再出现中途回弹。
 - 退出 MPV 页面时先拆除画面和回调，再排空事件并销毁 libmpv。
 - 当前诊断日志持续保存；发生闪退后重新打开 App 仍可导出上一轮日志。
+
+
+## 0.2.6 302 会话刷新与异常区域硬恢复
+
+`63368` 的 v0.2.5 日志确认：实际播放位置持续停在 30 秒附近，旧代码却在
+发出 Seek 时先把 UI 位置写成 35/40 秒；随后旧连接出现 TLS 解码错误、partial
+file 和提前 EOF。
+
+本版不再把请求目标当作真实落点。MPV 持续停滞时会重新请求 PlaybackInfo，
+获取新的 PlaySessionId，销毁旧 MPV 和缓存，再以新的 MPV 实例重新经过 Emby
+入口与 302 链路。重复卡在同一异常区域时会逐步向后跨过该区域。

@@ -56,6 +56,7 @@ struct PlayerSnapshot: Equatable {
 struct SeekResult {
     let requestedAt: TimeInterval
     let target: Double
+    let actualPosition: Double?
     let bufferHit: Bool
     let completionLatencyMs: Double
     let measurement: String

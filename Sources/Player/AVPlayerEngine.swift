@@ -146,6 +146,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             self.onSeekCompleted?(SeekResult(
                 requestedAt: pending.requestedAt,
                 target: pending.target,
+                actualPosition: self.player.currentTime().seconds.isFinite ? self.player.currentTime().seconds : nil,
                 bufferHit: pending.bufferHit,
                 completionLatencyMs: (CACurrentMediaTime() - pending.requestedAt) * 1000,
                 measurement: "AV 首帧等待超时"
@@ -189,6 +190,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         onSeekCompleted?(SeekResult(
             requestedAt: pending.requestedAt,
             target: pending.target,
+            actualPosition: seconds,
             bufferHit: pending.bufferHit,
             completionLatencyMs: (CACurrentMediaTime() - pending.requestedAt) * 1000,
             measurement: "AV 新画面"
