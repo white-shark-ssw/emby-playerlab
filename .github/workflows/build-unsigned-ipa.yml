@@ -14,6 +14,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Initialize diagnostic logs
+        run: |
+          : > build.log
+          : > package-resolution.log
+          : > mpv-module-maps.log
+
       - name: Select Xcode 16.4
         run: |
           set -euo pipefail
@@ -31,15 +37,7 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Inspect MPV module maps
-        run: |
-          set -euo pipefail
-          find .spm-cache -path '*/Modules/module.modulemap' -o -path '*/module.modulemap' | sort | while read -r file; do
-            echo "===== $file ====="
-            sed -n '1,80p' "$file"
-          done | tee mpv-module-maps.log
-
-      - name: Cache Swift packages
+      - name: Restore Swift package cache
         uses: actions/cache@v4
         with:
           path: .spm-cache
@@ -48,11 +46,39 @@ jobs:
       - name: Resolve MPVKit 1.0.0
         run: |
           set -euo pipefail
+          set -o pipefail
           xcodebuild \
             -resolvePackageDependencies \
             -project EmbyPlayerLab.xcodeproj \
             -scheme EmbyPlayerLab \
             -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Inspect MPV module maps
+        if: always()
+        run: |
+          set -u
+          if [[ ! -d .spm-cache ]]; then
+            echo ".spm-cache does not exist after package resolution." | tee mpv-module-maps.log
+            exit 0
+          fi
+
+          MODULE_MAP_LIST="$(mktemp)"
+          find .spm-cache \( -path '*/Modules/module.modulemap' -o -path '*/module.modulemap' \) -type f | sort > "$MODULE_MAP_LIST"
+
+          if [[ ! -s "$MODULE_MAP_LIST" ]]; then
+            echo "No module.modulemap files found under .spm-cache." | tee mpv-module-maps.log
+            rm -f "$MODULE_MAP_LIST"
+            exit 0
+          fi
+
+          {
+            while IFS= read -r file; do
+              echo "===== $file ====="
+              sed -n '1,120p' "$file"
+            done < "$MODULE_MAP_LIST"
+          } | tee mpv-module-maps.log
+
+          rm -f "$MODULE_MAP_LIST"
 
       - name: Build unsigned app
         run: |
@@ -80,7 +106,8 @@ jobs:
           {
             echo "## First compiler errors"
             echo '```text'
-            grep -nE '(^|[[:space:]])(error:|fatal error:)' build.log package-resolution.log | head -60 || true
+            grep -nE '(^|[[:space:]])(error:|fatal error:)' \
+              build.log package-resolution.log mpv-module-maps.log | head -80 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -108,7 +135,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="EmbyPlayerLab-0.2.1-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="EmbyPlayerLab-0.2.2-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
@@ -132,5 +159,6 @@ jobs:
           path: |
             build.log
             package-resolution.log
-          if-no-files-found: warn
+            mpv-module-maps.log
+          if-no-files-found: error
           retention-days: 14

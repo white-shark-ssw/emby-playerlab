@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.2.1
+## 当前版本：0.2.2
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.2.1-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.2.2-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -71,3 +71,10 @@
 - Swift Package 产品名是 `MPVKit`，但实际 C target 模块为 `_MPVKit`；libmpv API 位于 `Libmpv` 二进制模块。
 - `MPVPlayerEngine.swift` 改为导入 `_MPVKit` 与 `Libmpv`。
 - Actions 额外导出 MPV module map，便于后续定位二进制模块问题。
+
+
+## 0.2.2 CI 修复
+
+- 先恢复缓存并解析 MPVKit，再检查 module maps。
+- 首次运行没有 `.spm-cache` 时不再提前失败。
+- 所有诊断日志在工作流开始时创建，因此失败后一定有 Artifact 可下载。

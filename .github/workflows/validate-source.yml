@@ -14,6 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Initialize diagnostic logs
+        run: |
+          : > validate-build.log
+          : > build-settings.log
+          : > package-resolution.log
+          : > mpv-module-maps.log
+
       - name: Select Xcode 16.4
         run: |
           set -euo pipefail
@@ -27,15 +34,7 @@ jobs:
       - name: Generate project
         run: xcodegen generate
 
-      - name: Inspect MPV module maps
-        run: |
-          set -euo pipefail
-          find .spm-cache -path '*/Modules/module.modulemap' -o -path '*/module.modulemap' | sort | while read -r file; do
-            echo "===== $file ====="
-            sed -n '1,80p' "$file"
-          done | tee mpv-module-maps.log
-
-      - name: Cache Swift packages
+      - name: Restore Swift package cache
         uses: actions/cache@v4
         with:
           path: .spm-cache
@@ -44,20 +43,52 @@ jobs:
       - name: Resolve MPVKit 1.0.0
         run: |
           set -euo pipefail
+          set -o pipefail
           xcodebuild \
             -resolvePackageDependencies \
             -project EmbyPlayerLab.xcodeproj \
             -scheme EmbyPlayerLab \
             -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
 
+      - name: Inspect MPV module maps
+        if: always()
+        run: |
+          set -u
+          if [[ ! -d .spm-cache ]]; then
+            echo ".spm-cache does not exist after package resolution." | tee mpv-module-maps.log
+            exit 0
+          fi
+
+          MODULE_MAP_LIST="$(mktemp)"
+          find .spm-cache \( -path '*/Modules/module.modulemap' -o -path '*/module.modulemap' \) -type f | sort > "$MODULE_MAP_LIST"
+
+          if [[ ! -s "$MODULE_MAP_LIST" ]]; then
+            echo "No module.modulemap files found under .spm-cache." | tee mpv-module-maps.log
+            rm -f "$MODULE_MAP_LIST"
+            exit 0
+          fi
+
+          {
+            while IFS= read -r file; do
+              echo "===== $file ====="
+              sed -n '1,120p' "$file"
+            done < "$MODULE_MAP_LIST"
+          } | tee mpv-module-maps.log
+
+          rm -f "$MODULE_MAP_LIST"
+
       - name: Check project settings
         run: |
           set -euo pipefail
-          SETTINGS="$(xcodebuild -project EmbyPlayerLab.xcodeproj -scheme EmbyPlayerLab -showBuildSettings -clonedSourcePackagesDirPath .spm-cache)"
-          echo "$SETTINGS" | tee build-settings.log
-          echo "$SETTINGS" | grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 15.0'
-          echo "$SETTINGS" | grep -q 'SWIFT_VERSION = 5.0'
-          echo "$SETTINGS" | grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.embyplayerlab.app'
+          set -o pipefail
+          xcodebuild \
+            -project EmbyPlayerLab.xcodeproj \
+            -scheme EmbyPlayerLab \
+            -showBuildSettings \
+            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee build-settings.log
+          grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 15.0' build-settings.log
+          grep -q 'SWIFT_VERSION = 5.0' build-settings.log
+          grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.embyplayerlab.app' build-settings.log
 
       - name: Compile for generic iOS device
         run: |
@@ -83,7 +114,8 @@ jobs:
           {
             echo "## First compiler errors"
             echo '```text'
-            grep -nE '(^|[[:space:]])(error:|fatal error:)' validate-build.log package-resolution.log | head -60 || true
+            grep -nE '(^|[[:space:]])(error:|fatal error:)' \
+              validate-build.log build-settings.log package-resolution.log mpv-module-maps.log | head -80 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -97,5 +129,5 @@ jobs:
             build-settings.log
             package-resolution.log
             mpv-module-maps.log
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
