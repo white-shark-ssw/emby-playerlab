@@ -22,6 +22,7 @@ final class PlayerController: ObservableObject {
     private var progressTask: Task<Void, Never>?
     private var feedbackTask: Task<Void, Never>?
     private var seekReportTask: Task<Void, Never>?
+    private var seekAnchorReleaseTask: Task<Void, Never>?
     private var watchdogTask: Task<Void, Never>?
     private var started = false
     private var userIsScrubbing = false
@@ -103,6 +104,8 @@ final class PlayerController: ObservableObject {
         watchdogTask = nil
         seekReportTask?.cancel()
         seekReportTask = nil
+        seekAnchorReleaseTask?.cancel()
+        seekAnchorReleaseTask = nil
         let position = snapshot.position
         engine.stop()
         Task {
@@ -123,17 +126,27 @@ final class PlayerController: ObservableObject {
     }
 
     func seek(by offset: Double) {
+        seekAnchorReleaseTask?.cancel()
+        seekAnchorReleaseTask = nil
+
         let base = pendingSeekTarget ?? snapshot.position
         let target = clampPosition(base + offset)
         pendingSeekTarget = target
         displayedPosition = target
 
+        DiagnosticsLogger.shared.log(
+            "SeekAnchor",
+            "offset=\(offset) base=\(base) target=\(target) enginePosition=\(snapshot.position)"
+        )
         engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)
         showSeekFeedback(offset: offset)
         scheduleSeekReport(position: target)
     }
 
     func beginScrubbing() {
+        seekAnchorReleaseTask?.cancel()
+        seekAnchorReleaseTask = nil
+        pendingSeekTarget = nil
         userIsScrubbing = true
         screenScrubStartPosition = nil
     }
@@ -147,6 +160,9 @@ final class PlayerController: ObservableObject {
     }
 
     func beginScreenScrubbing() {
+        seekAnchorReleaseTask?.cancel()
+        seekAnchorReleaseTask = nil
+        pendingSeekTarget = nil
         userIsScrubbing = true
         let start = pendingSeekTarget ?? snapshot.position
         screenScrubStartPosition = start
@@ -253,8 +269,8 @@ final class PlayerController: ObservableObject {
             Task { @MainActor in
                 guard generation == self.engineGeneration else { return }
                 if let pending = self.pendingSeekTarget, abs(pending - result.target) < 0.01 {
-                    self.pendingSeekTarget = nil
-                    self.displayedPosition = result.target
+                    self.displayedPosition = pending
+                    self.scheduleSeekAnchorRelease(expectedTarget: pending)
                 }
                 self.lastSeekSummary = String(
                     format: "%.0fms · %@ · %@ · 目标 %.2fs",
@@ -282,6 +298,23 @@ final class PlayerController: ObservableObject {
                 position: target,
                 paused: !snapshot.isPlaying,
                 eventName: "TimeUpdate"
+            )
+        }
+    }
+
+    private func scheduleSeekAnchorRelease(expectedTarget: Double) {
+        seekAnchorReleaseTask?.cancel()
+        seekAnchorReleaseTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 850_000_000)
+            guard let self, !Task.isCancelled,
+                  let pending = self.pendingSeekTarget,
+                  abs(pending - expectedTarget) < 0.01 else { return }
+
+            self.pendingSeekTarget = nil
+            self.displayedPosition = self.snapshot.position
+            DiagnosticsLogger.shared.log(
+                "SeekAnchor",
+                "released target=\(expectedTarget) actual=\(self.snapshot.position)"
             )
         }
     }

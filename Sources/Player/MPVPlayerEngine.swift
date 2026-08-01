@@ -78,7 +78,12 @@ final class MPVPlayerEngine: PlayerEngine {
 
         queue.async { [weak self] in
             guard let self, let handle = self.mpv else { return }
-            self.command(handle, ["seek", String(format: "%.3f", target), "absolute+keyframes"])
+            let mode = bufferHit ? "absolute+exact" : "absolute+keyframes"
+            DiagnosticsLogger.shared.log(
+                "MPVSeekRequest",
+                "target=\(target) mode=\(mode) bufferHit=\(bufferHit) enginePosition=\(self.snapshot.position)"
+            )
+            self.command(handle, ["seek", String(format: "%.3f", target), mode])
         }
     }
 
@@ -126,7 +131,8 @@ final class MPVPlayerEngine: PlayerEngine {
         var wid = Int64(layerAddress)
         try require(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &wid), operation: "set AVSampleBufferDisplayLayer")
         try require(mpv_set_option_string(handle, "vo", "avfoundation"), operation: "enable vo_avfoundation")
-        check(mpv_set_option_string(handle, "ao", "avfoundation"), operation: "set ao")
+        // Do not force ao=avfoundation: this fork provides vo_avfoundation, not ao_avfoundation.
+        // Let mpv select the compiled iOS audio backend automatically.
         #if targetEnvironment(simulator)
         check(mpv_set_option_string(handle, "avfoundation-composite-osd", "no"), operation: "set composite osd")
         #else
@@ -137,7 +143,6 @@ final class MPVPlayerEngine: PlayerEngine {
         check(mpv_set_option_string(handle, "hwdec-software-fallback", "yes"), operation: "set hw fallback")
         check(mpv_set_option_string(handle, "cache", "yes"), operation: "enable cache")
         check(mpv_set_option_string(handle, "demuxer-seekable-cache", "yes"), operation: "seekable cache")
-        check(mpv_set_option_string(handle, "hr-seek", "no"), operation: "fast seek")
         check(mpv_set_option_string(handle, "network-timeout", "30"), operation: "network timeout")
         check(mpv_set_option_string(handle, "sub-auto", "fuzzy"), operation: "subtitle auto")
 
@@ -184,7 +189,10 @@ final class MPVPlayerEngine: PlayerEngine {
             ("time-pos", MPV_FORMAT_DOUBLE),
             ("pause", MPV_FORMAT_FLAG),
             ("paused-for-cache", MPV_FORMAT_FLAG),
-            ("demuxer-cache-duration", MPV_FORMAT_DOUBLE)
+            ("demuxer-cache-duration", MPV_FORMAT_DOUBLE),
+            ("current-ao", MPV_FORMAT_STRING),
+            ("aid", MPV_FORMAT_STRING),
+            ("audio-params", MPV_FORMAT_STRING)
         ]
         for (name, format) in properties {
             mpv_observe_property(handle, 0, name, format)
@@ -208,6 +216,7 @@ final class MPVPlayerEngine: PlayerEngine {
         case MPV_EVENT_FILE_LOADED:
             snapshot.isBuffering = false
             snapshot.waitingReason = nil
+            logAudioState(handle: handle, reason: "file-loaded")
             emitOnMain()
         case MPV_EVENT_SEEK:
             snapshot.isBuffering = true
@@ -295,6 +304,9 @@ final class MPVPlayerEngine: PlayerEngine {
                 snapshot.bufferedRanges = [snapshot.position...end]
                 emitOnMain()
             }
+        case "current-ao", "aid", "audio-params":
+            let value = getStringProperty(handle: handle, name: name) ?? "nil"
+            DiagnosticsLogger.shared.log("MPVAudio", "\(name)=\(value)")
         default:
             break
         }
@@ -304,6 +316,22 @@ final class MPVPlayerEngine: PlayerEngine {
         guard let current = snapshot.bufferedRanges.first else { return }
         let length = max(0, current.upperBound - current.lowerBound)
         snapshot.bufferedRanges = [snapshot.position...(snapshot.position + length)]
+    }
+
+    private func getStringProperty(handle: OpaquePointer, name: String) -> String? {
+        guard let pointer = mpv_get_property_string(handle, name) else { return nil }
+        defer { mpv_free(pointer) }
+        return String(cString: pointer)
+    }
+
+    private func logAudioState(handle: OpaquePointer, reason: String) {
+        let currentAO = getStringProperty(handle: handle, name: "current-ao") ?? "nil"
+        let aid = getStringProperty(handle: handle, name: "aid") ?? "nil"
+        let audioParams = getStringProperty(handle: handle, name: "audio-params") ?? "nil"
+        DiagnosticsLogger.shared.log(
+            "MPVAudio",
+            "reason=\(reason) currentAO=\(currentAO) aid=\(aid) audioParams=\(audioParams)"
+        )
     }
 
     private func updateHTTPHeaders(handle: OpaquePointer, headers: [String: String]) {

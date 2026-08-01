@@ -2,7 +2,7 @@
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
     "bytes": 4956,
-    "sha256": "27c3db67393b4b7fa1ed63b8804a9a6e8e96fbc7163a22cbf14af94758507153"
+    "sha256": "5103b4fda8cc87d9c83b31adaa79a3cd98b035ccfbdda78d7f97114a15ba40fb"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -17,7 +17,7 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1683,
-    "sha256": "bcde10244e9d2afb709938b8620740c357e6aabbac3cc0bf5e601826e54db0b0"
+    "sha256": "bf08c4a3d754af12490fd06d36a12fc913bba3c0a107f37a7842c8b1d2c47058"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -31,8 +31,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 4015,
-    "sha256": "bf0f2661dfe1501aeecbc3c0c0c2b413f359c6e03ad64a3f2d93daa95a06ea90"
+    "bytes": 4404,
+    "sha256": "e492c3e3891fa0dae2c257a2fcfedf45f810cf9b86dc5e869b93b16fd0f97f44"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -157,7 +157,7 @@
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1023,
-    "sha256": "3b96845540570a57f5ce958234efb34b60a923a1ad371cdca871e6ac23a1a922"
+    "sha256": "8bc15a7bf60fd2bb0a4aba2d2b14a2b2d1d6d5d5b09a26a0085629487f4403f0"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -196,13 +196,13 @@
   },
   {
     "path": "Sources/Player/MPVPlayerEngine.swift",
-    "bytes": 16308,
-    "sha256": "37b0a3d00d595ae79591182f7aa7a13ffbba93f44c13f9b702ed96ce810d7398"
+    "bytes": 17717,
+    "sha256": "c5c8dc722997211908b523d03675a6a5a2a90e9f604a549f10e568d99b025f0a"
   },
   {
     "path": "Sources/Player/PlayerController.swift",
-    "bytes": 15073,
-    "sha256": "3f059cf575ec0eb09525212dc16011e01c513a36b43af76c21487b2027ad0e32"
+    "bytes": 16379,
+    "sha256": "bc6e3f5b5d52525017838ea6a7141aaa356d99855c3ee3e0e3edc867048bf083"
   },
   {
     "path": "Sources/Player/PlayerEngine.swift",
@@ -308,6 +308,11 @@
     "path": "docs/CHANGELOG_0.2.3.md",
     "bytes": 529,
     "sha256": "99d2450385bbd22d1aa5402820c08778ebd6b9bea1078b160ded8dba5520d505"
+  },
+  {
+    "path": "docs/CHANGELOG_0.2.4.md",
+    "bytes": 697,
+    "sha256": "3cc60798cb82a1d8f953c226d8ed29a5384e78ae13250ff332a9197ef4db2272"
   },
   {
     "path": "docs/RESEARCH_NOTES.md",

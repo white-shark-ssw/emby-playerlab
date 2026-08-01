@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.2.3
+## 当前版本：0.2.4
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.2.3-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.2.4-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -95,3 +95,11 @@
 
 该预编译产品标记为 GPL-3.0。项目目前仅用于用户本人通过 TrollStore
 安装。公开或向他人分发 IPA 前必须重新检查 GPL 合规。
+
+
+## 0.2.4 音频与中段回弹修复
+
+- 不再错误指定 `ao=avfoundation`，让 MPV 自动选择 iOS 音频后端。
+- 增加音频输出、音轨和音频参数日志。
+- 连续双击保持一个稳定累计目标，避免关键帧实际落点反向覆盖下一次快进基准。
+- 缓冲命中的 MPV 双击使用精确绝对 Seek；缓存未命中仍优先快速关键帧 Seek。
