@@ -2,37 +2,39 @@
 
 ## 当前基线
 
-- App 版本：0.2.3
+- App 版本：0.3.0（15）
 - Deployment Target：iOS 15.0
 - 目标真机：iPhone 15 Pro Max / iOS 17.0
 - CI Runner：macOS 15
 - 固定 Xcode：16.4
 - Swift Language Mode：5.0
-- 播放器：AVPlayer + Streamyfin MPVKit AV 0.40.0-av
-- MPVKit 产品：MPVKit-GPL（AVFoundation fork）
+- 播放器：Transport AVPlayer + 原生 AVPlayer + Streamyfin MPVKit AV 0.40.0-av
 - TrollStore：输出未签名 IPA
 
-## MPVKit 依赖边界
+## 0.3.0 新增系统能力
 
-MPVKit 1.0.0 的 Swift Package 声明最低 iOS 15.0。该版本包含 mpv 0.41.0、FFmpeg n8.1.2 及相关二进制依赖。GitHub Actions 会在构建后递归检查 App 内所有 Framework 和 dylib 的 `LC_BUILD_VERSION`。
+- Foundation URLSession：302、HTTP Range、并发下载。
+- AVFoundation AVAssetResourceLoader：把自定义字节缓存提供给 AVPlayer。
+- CryptoKit SHA256：生成稳定且不暴露媒体信息的磁盘缓存目录名。
+- Network NWPathMonitor：区分 Wi-Fi 与蜂窝预加载上限。
 
-## 低系统兼容策略
+以上 API 均可在 iOS 15.0 使用，没有提高 Deployment Target。
 
-- 导航继续使用 NavigationView。
-- 复杂播放手势使用 UIKit UIGestureRecognizer。
-- 播放器画面使用 UIViewRepresentable。
-- iOS 17 的扩展动态范围属性通过 `if #available` 启用。
-- 核心播放器、缓存状态和 Emby 上报不依赖 SwiftUI 生命周期。
+## 第三方依赖
 
-## 尚待 CI 验证
+- 继续固定 `https://github.com/streamyfin/MPVKit.git` 版本 `0.40.0-av`。
+- 0.3.0 Transport 模块没有新增第三方依赖。
+- MPVKit 产品仍为 `MPVKit-GPL`，当前用途限定为用户个人自用。
 
-当前环境无法运行 Xcode，因此 MPVKit 的完整 Swift 类型检查、链接、Framework 嵌入和 TrollStore 真机启动必须以 GitHub Actions 与用户实机结果为准。若 MPVKit 1.0.0 的任何二进制最低系统版本高于 iOS 15.0，不得直接提升 Deployment Target；先记录具体 Framework 并评估替代构建。
+## CI 必须验证
 
+- 使用 iOS 15.0 Deployment Target 完整编译。
+- 检查所有嵌入 Framework 的 LC_BUILD_VERSION。
+- 确认 `URLSession.data(for:delegate:)`、AVAssetResourceLoader、CryptoKit 和 Network 链接成功。
+- 生成 TrollStore 未签名 IPA。
 
-## 0.2.3 依赖更正
+## 当前环境验证结果
 
-真机确认官方 MPVKit 1.0.0 的 iOS Libmpv 不包含 `vo_avfoundation`。
-现改用 Streamyfin/MPVKit 的 `0.40.0-av` 精确版本。该包声明最低 iOS 13，
-所以不需要提高项目 iOS 15.0 Deployment Target。
-
-该二进制产品标记为 GPL-3.0。当前用途限定为用户个人自用。
+- 所有 Swift 源文件已通过 `swiftc -parse`。
+- project.yml 与 GitHub Actions YAML 已通过语法解析。
+- 当前环境没有 Xcode/iPhoneOS SDK，完整类型检查、链接和真机行为必须以 GitHub Actions 与 iPhone 测试为准。

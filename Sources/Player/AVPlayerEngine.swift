@@ -4,7 +4,7 @@ import Foundation
 import QuartzCore
 
 final class AVPlayerEngine: NSObject, PlayerEngine {
-    let kind: PlayerEngineKind = .avPlayer
+    let kind: PlayerEngineKind
     var onSnapshot: ((PlayerSnapshot) -> Void)?
     var onSeekCompleted: ((SeekResult) -> Void)?
 
@@ -19,6 +19,11 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private var videoOutput: AVPlayerItemVideoOutput?
     private var pendingFrameMeasurement: FrameMeasurement?
     private var lastConfiguration: Configuration?
+    private let transportSource: ResolvedPlaybackSource?
+    private let transportClient: EmbyAPIClient?
+    private let transportConfiguration: MediaTransportConfiguration?
+    private var transportLoader: TransportResourceLoader?
+    private var shouldPlayWhenReady = false
 
     private struct Configuration {
         let url: URL
@@ -32,9 +37,18 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         let bufferHit: Bool
     }
 
-    override init() {
+    init(
+        kind: PlayerEngineKind = .avPlayer,
+        transportSource: ResolvedPlaybackSource? = nil,
+        transportClient: EmbyAPIClient? = nil,
+        transportConfiguration: MediaTransportConfiguration? = nil
+    ) {
+        self.kind = kind
+        self.transportSource = transportSource
+        self.transportClient = transportClient
+        self.transportConfiguration = transportConfiguration
         super.init()
-        player.automaticallyWaitsToMinimizeStalling = false
+        player.automaticallyWaitsToMinimizeStalling = kind == .transportAVPlayer
         displayLink = CADisplayLink(target: self, selector: #selector(displayLinkTick))
         displayLink?.add(to: .main, forMode: .common)
     }
@@ -47,9 +61,27 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
         lastConfiguration = Configuration(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer)
         stopObservers()
+        transportLoader?.invalidate()
+        transportLoader = nil
 
         let asset: AVURLAsset
-        if headers.isEmpty {
+        if kind == .transportAVPlayer,
+           let transportSource,
+           let transportClient,
+           let transportConfiguration {
+            let session = MediaTransportSession(
+                source: transportSource,
+                client: transportClient,
+                configuration: transportConfiguration
+            )
+            let loader = TransportResourceLoader(session: session)
+            transportLoader = loader
+            asset = loader.makeAsset(fileExtension: transportSource.mediaSource.normalizedContainer)
+            DiagnosticsLogger.shared.log(
+                "TransportPlayer",
+                "prepare item=\(transportSource.itemId) mode=\(transportConfiguration.cacheMode.rawValue) memory=\(transportConfiguration.memoryLimitBytes) disk=\(transportConfiguration.diskLimitBytes) wifiPreload=\(transportConfiguration.wifiPreloadBytes) cellularPreload=\(transportConfiguration.cellularPreloadBytes)"
+            )
+        } else if headers.isEmpty {
             asset = AVURLAsset(url: url)
         } else {
             asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
@@ -80,12 +112,14 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     }
 
     func play() {
+        shouldPlayWhenReady = true
         snapshot.isPlaying = true
         emit()
         player.playImmediately(atRate: 1)
     }
 
     func pause() {
+        shouldPlayWhenReady = false
         player.pause()
         snapshot.isPlaying = false
         emit()
@@ -167,12 +201,20 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     }
 
     func stop() {
+        shouldPlayWhenReady = false
         player.pause()
         player.replaceCurrentItem(with: nil)
         stopObservers()
+        transportLoader?.invalidate()
+        transportLoader = nil
         videoOutput = nil
         pendingFrameMeasurement = nil
         snapshot = PlayerSnapshot()
+    }
+
+    func transportMetrics() async -> TransportMetricsSnapshot? {
+        guard let transportLoader else { return nil }
+        return await transportLoader.metrics()
     }
 
     @objc private func displayLinkTick() {
@@ -204,6 +246,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
                 if item.status == .failed {
                     self.snapshot.errorMessage = item.error?.localizedDescription ?? "AVPlayerItem failed"
                     self.emit()
+                } else if item.status == .readyToPlay, self.shouldPlayWhenReady {
+                    self.player.playImmediately(atRate: 1)
                 }
             }
         })

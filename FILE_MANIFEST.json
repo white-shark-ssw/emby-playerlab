@@ -1,8 +1,8 @@
 [
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
-    "bytes": 4957,
-    "sha256": "d15e5b60b5540ddad8d27df7a5b02b940121ca552fb6c020e7215b5c21db7d3f"
+    "bytes": 4956,
+    "sha256": "a8816bb24c68a28008aa3305372b75cee2486a16482e668f6ce67f67ed3b0f13"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -16,8 +16,8 @@
   },
   {
     "path": "Config/Info.plist",
-    "bytes": 1685,
-    "sha256": "de7bf05a6ebb0189da584c4c40d946d4202250910beb7748e63c998f27b53647"
+    "bytes": 1684,
+    "sha256": "6f0ca76a0ceea8657c1541e443abf9488c9f1f288b6cd58668fbdbeb684a21a2"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -156,8 +156,8 @@
   },
   {
     "path": "Sources/Core/AppIdentity.swift",
-    "bytes": 1064,
-    "sha256": "1c1c37dca6e0a5183ae33184cb2aca89763a829623bbe4cd719375908326e0c9"
+    "bytes": 1062,
+    "sha256": "0da56428d3d933519a8945f10672ff8cc955cf8a6273411c6eeb566012678e00"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -191,8 +191,8 @@
   },
   {
     "path": "Sources/Player/AVPlayerEngine.swift",
-    "bytes": 10904,
-    "sha256": "18f92de2737a4628a18c9907c8ea161dabdfa4b354d26e0cd394e188f08fdb1a"
+    "bytes": 13102,
+    "sha256": "818e21eae1628c00a8c587d6e691be85f8c8ead1a8393af1f0ed7574606e655b"
   },
   {
     "path": "Sources/Player/MPVPlayerEngine.swift",
@@ -201,13 +201,13 @@
   },
   {
     "path": "Sources/Player/PlayerController.swift",
-    "bytes": 26594,
-    "sha256": "c0e3a1c45d329b2fa0ecf45ca995914d0f662ed1be5928e2ff1165335c5dbf4f"
+    "bytes": 28535,
+    "sha256": "b2742e31e82660b58312637f92188593b6ef840cf0b9c5225859ecdb0a36e1ce"
   },
   {
     "path": "Sources/Player/PlayerEngine.swift",
-    "bytes": 2056,
-    "sha256": "25d104ef743ddfac15c392da2ed903ac3173d29dbd215dde9972c7e9751a059b"
+    "bytes": 2547,
+    "sha256": "1ef2d0ffb4c8f1fb6732ee2df34ef01c6961abf9ee2f311d20274d7ff0302e0f"
   },
   {
     "path": "Sources/Player/PrematureEOFGuard.swift",
@@ -218,6 +218,46 @@
     "path": "Sources/Session/SessionStore.swift",
     "bytes": 3677,
     "sha256": "32b9f8730b5755a802448e24c2f415a908f8fd0442afae5635fd5d14a8e7dafd"
+  },
+  {
+    "path": "Sources/Transport/MediaTransportSession.swift",
+    "bytes": 12588,
+    "sha256": "008358f1075e746943cc28c50119bd68ed1bb3549ed7df56632975c1e3ee7753"
+  },
+  {
+    "path": "Sources/Transport/NetworkPathMonitor.swift",
+    "bytes": 710,
+    "sha256": "1d1eb10a2d15f795f7b8d611332ba10a3a491276e731317dc1bad0a0580cc31c"
+  },
+  {
+    "path": "Sources/Transport/RangeHTTPClient.swift",
+    "bytes": 2531,
+    "sha256": "5e0993b35c614ecb52ed932385a224892e48c850fecb3ea3c92b85e6db6b4c7c"
+  },
+  {
+    "path": "Sources/Transport/RedirectResolver.swift",
+    "bytes": 6214,
+    "sha256": "12ee71dca43f51fc60e99feee0e381d2f84361108b3cfc5760aa733c07cd3ab2"
+  },
+  {
+    "path": "Sources/Transport/TransportDiskCache.swift",
+    "bytes": 5103,
+    "sha256": "a121620007393f8dc6c682e5d4f9e147c17d0ca0962a5036af1be5f52160336f"
+  },
+  {
+    "path": "Sources/Transport/TransportResourceLoader.swift",
+    "bytes": 4550,
+    "sha256": "63e008a2b02190a8485ad9e22016624d0918cdd5174f49c8e297cc00cda54e90"
+  },
+  {
+    "path": "Sources/Transport/TransportSettings.swift",
+    "bytes": 3709,
+    "sha256": "22f9909bd82553c8650e0f9b240613b3b4b7129a1d0ffac43f19e5dbf714f179"
+  },
+  {
+    "path": "Sources/Transport/TransportTypes.swift",
+    "bytes": 2499,
+    "sha256": "8544757c1370c9bdd970a04a227d7190b76cab24304c67a8f746cd1c34555eab"
   },
   {
     "path": "Sources/UI/AVPlayerSurface.swift",
@@ -256,8 +296,8 @@
   },
   {
     "path": "Sources/UI/PlayerScreen.swift",
-    "bytes": 9269,
-    "sha256": "ff98fefe35eedf78ecbefb954a13c94a92c979bde081b9cc768b2816432912df"
+    "bytes": 9579,
+    "sha256": "18865f692cfd88e3bfa7d8cb6b53ff84221124722b4751632e9063236bc6df21"
   },
   {
     "path": "Sources/UI/PlayerSettings.swift",
@@ -266,13 +306,13 @@
   },
   {
     "path": "Sources/UI/PlayerSettingsView.swift",
-    "bytes": 2628,
-    "sha256": "cfb2843b1cd71d5c714a60fac589016f3eee0bc4dc55a91be61ef3f19a3e0783"
+    "bytes": 5797,
+    "sha256": "aa531872791dac1bc14ee7f8928be475cc88418b0c0fa438a261037551eec3bc"
   },
   {
     "path": "docs/BUILD_REPORT.md",
-    "bytes": 1624,
-    "sha256": "6538a6bbe0165aee8f119bdea5ed0b103e7a3bb90e0805fa963300facc980290"
+    "bytes": 1528,
+    "sha256": "207822855c7aa0aab925e4566490dd9892735e9e97ca371956f556374c24d17a"
   },
   {
     "path": "docs/CHANGELOG_0.1.0.md",
@@ -345,6 +385,11 @@
     "sha256": "94b81cfbd512d5edea1d817a9385e108d5342953c7e07a49e37bf82886495567"
   },
   {
+    "path": "docs/CHANGELOG_0.3.0.md",
+    "bytes": 2075,
+    "sha256": "3280846ecb73a64a492defc8aa704032b19e594e344359ee5a2cbe5e5b8b9b1e"
+  },
+  {
     "path": "docs/RESEARCH_NOTES.md",
     "bytes": 1218,
     "sha256": "d26bf7e9b7c43c9137d2431b1d578b2ce4f175a965a14d94cc7b3f2f863a2909"
@@ -360,9 +405,19 @@
     "sha256": "c8d5423e19faf55a43cc4fc12da56db4a6db63ca0ce2ffad5c0d28e2e054632a"
   },
   {
+    "path": "docs/TEST_CHECKLIST_0.3.0.md",
+    "bytes": 1299,
+    "sha256": "6afcaf57046837f2b0f80b3e83c08bccdcd823a8be4eacb9c93024c8d1ebe13d"
+  },
+  {
+    "path": "docs/TRANSPORT_ARCHITECTURE_0.3.0.md",
+    "bytes": 1502,
+    "sha256": "77c2d1bf45c18c20a4f6b38fde4bd94beb73fa14a81eb20203c2d9ce9d2e8ab8"
+  },
+  {
     "path": "project.yml",
-    "bytes": 1328,
-    "sha256": "3fd2b1a5837237fb9ff38f7b1f757177c4e892d79cb8cfefb1ac429b65abb34f"
+    "bytes": 1326,
+    "sha256": "e0990023c9cb84211a41d34c15e85c6efc9cb3151a1c150c3769826f26df6394"
   },
   {
     "path": "scripts/check_min_os.sh",

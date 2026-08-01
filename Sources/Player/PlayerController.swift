@@ -13,6 +13,7 @@ final class PlayerController: ObservableObject {
     @Published private(set) var prematureEOFMessage: String?
     @Published private(set) var stallMessage: String?
     @Published private(set) var engineKind: PlayerEngineKind
+    @Published private(set) var transportSummary: String?
 
     @Published private(set) var source: ResolvedPlaybackSource
 
@@ -24,6 +25,7 @@ final class PlayerController: ObservableObject {
     private var seekReportTask: Task<Void, Never>?
     private var seekAnchorReleaseTask: Task<Void, Never>?
     private var watchdogTask: Task<Void, Never>?
+    private var transportMetricsTask: Task<Void, Never>?
     private var compatibilityRecoveryTask: Task<Void, Never>?
     private var compatibilitySeekFallbackTask: Task<Void, Never>?
     private var started = false
@@ -54,7 +56,7 @@ final class PlayerController: ObservableObject {
         self.client = client
         let initialKind = preference.resolved(for: source.mediaSource)
         self.engineKind = initialKind
-        self.engine = PlayerController.makeEngine(kind: initialKind)
+        self.engine = PlayerController.makeEngine(kind: initialKind, source: source, client: client)
         bindEngine()
     }
 
@@ -99,6 +101,7 @@ final class PlayerController: ObservableObject {
                 self.evaluatePlaybackStall()
             }
         }
+        startTransportMetricsPolling()
     }
 
     func stop() {
@@ -110,6 +113,9 @@ final class PlayerController: ObservableObject {
         progressTask = nil
         watchdogTask?.cancel()
         watchdogTask = nil
+        transportMetricsTask?.cancel()
+        transportMetricsTask = nil
+        transportSummary = nil
         compatibilityRecoveryTask?.cancel()
         compatibilityRecoveryTask = nil
         compatibilitySeekFallbackTask?.cancel()
@@ -250,7 +256,7 @@ final class PlayerController: ObservableObject {
         seekAnchorReleaseTask = nil
         engine.stop()
         engineKind = kind
-        engine = Self.makeEngine(kind: kind)
+        engine = Self.makeEngine(kind: kind, source: source, client: client)
         bindEngine()
         resetWatchdog()
         prematureEOFMessage = nil
@@ -263,10 +269,17 @@ final class PlayerController: ObservableObject {
             startPosition: resumePosition
         )
         if shouldPlay { engine.play() }
+        startTransportMetricsPolling()
     }
 
     func toggleEngine() {
-        switchEngine(to: engineKind == .avPlayer ? .mpv : .avPlayer)
+        let next: PlayerEngineKind
+        switch engineKind {
+        case .transportAVPlayer: next = .avPlayer
+        case .avPlayer: next = .mpv
+        case .mpv: next = .transportAVPlayer
+        }
+        switchEngine(to: next)
     }
 
     var effectiveDuration: Double {
@@ -280,10 +293,19 @@ final class PlayerController: ObservableObject {
             .max() ?? 0
     }
 
-    private static func makeEngine(kind: PlayerEngineKind) -> PlayerEngine {
+    private static func makeEngine(kind: PlayerEngineKind, source: ResolvedPlaybackSource, client: EmbyAPIClient) -> PlayerEngine {
         switch kind {
-        case .avPlayer: return AVPlayerEngine()
-        case .mpv: return MPVPlayerEngine()
+        case .transportAVPlayer:
+            return AVPlayerEngine(
+                kind: .transportAVPlayer,
+                transportSource: source,
+                transportClient: client,
+                transportConfiguration: MediaTransportConfiguration.current()
+            )
+        case .avPlayer:
+            return AVPlayerEngine()
+        case .mpv:
+            return MPVPlayerEngine()
         }
     }
 
@@ -298,7 +320,7 @@ final class PlayerController: ObservableObject {
                 let wasEnd = self.snapshot.didReachEnd
                 self.snapshot = value
 
-                if self.engineKind == .avPlayer,
+                if self.engineKind != .mpv,
                    !self.userIsScrubbing,
                    let pending = self.pendingSeekTarget,
                    self.hasReachedPendingTarget(actual: value.position, target: pending) {
@@ -434,7 +456,7 @@ final class PlayerController: ObservableObject {
             "engine=\(engineKind.title) premature=\(decision.isPremature) reason=\(decision.reason) current=\(snapshot.position) engineDuration=\(snapshot.duration) embyDuration=\(source.mediaSource.durationSeconds ?? 0)"
         )
 
-        if decision.isPremature, engineKind == .avPlayer {
+        if decision.isPremature, engineKind != .mpv {
             prematureEOFMessage = "\(decision.reason)；自动切换 MPV。"
             switchEngine(to: .mpv, reason: "AVPlayer 疑似提前结束")
         } else if decision.isPremature, eofRetryCount < 2 {
@@ -489,8 +511,17 @@ final class PlayerController: ObservableObject {
             "engine=\(engineKind.title) recovery=\(stallRecoveryCount) position=\(snapshot.position) bufferedEnd=\(bufferedEnd) duration=\(effectiveDuration) waiting=\(snapshot.waitingReason ?? "none")"
         )
 
+        if engineKind == .transportAVPlayer {
+            if stallRecoveryCount >= 4 {
+                switchEngine(to: .mpv, reason: "Transport AVPlayer 长时间无数据")
+            } else {
+                stallMessage = "传输层正在补齐 Range 分片；当前不会重载播放器。"
+            }
+            return
+        }
+
         if engineKind == .avPlayer, stallRecoveryCount >= 2 {
-            switchEngine(to: .mpv, reason: "AVPlayer 连续停滞且缓冲不增长")
+            switchEngine(to: .mpv, reason: "原生 AVPlayer 连续停滞且缓冲不增长")
             return
         }
 
@@ -525,6 +556,23 @@ final class PlayerController: ObservableObject {
         stallMessage = "检测到播放停滞，正在重新加载当前媒体。"
         engine.reload(at: snapshot.position)
         engine.play()
+    }
+
+    private func startTransportMetricsPolling() {
+        transportMetricsTask?.cancel()
+        transportMetricsTask = nil
+        transportSummary = nil
+
+        guard engineKind == .transportAVPlayer, let avEngine = engine as? AVPlayerEngine else { return }
+        transportMetricsTask = Task { [weak self, weak avEngine] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self, let avEngine, self.started, self.engine === avEngine else { return }
+                if let metrics = await avEngine.transportMetrics() {
+                    self.transportSummary = metrics.summary
+                }
+            }
+        }
     }
 
     private func scheduleCompatibilitySeekFallback(target: Double, reason: String) {

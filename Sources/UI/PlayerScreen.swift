@@ -109,7 +109,7 @@ struct PlayerScreen: View {
                 Button {
                     controller.toggleEngine()
                 } label: {
-                    Text(controller.engineKind == .mpv ? "MPV" : "AV")
+                    Text(engineBadge)
                         .font(.headline.monospaced())
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
@@ -187,6 +187,9 @@ struct PlayerScreen: View {
         VStack(alignment: .leading, spacing: 3) {
             Text("引擎：\(controller.engineKind.title) · \(controller.lastSeekSummary)")
             Text("缓冲到 \(formatTime(controller.bufferedEnd)) · \(controller.snapshot.isBuffering ? "等待数据" : "可播放")")
+            if let transportSummary = controller.transportSummary {
+                Text("传输：\(transportSummary)")
+            }
             if let reason = controller.snapshot.waitingReason {
                 Text("等待原因：\(reason)")
             }
@@ -235,6 +238,14 @@ struct PlayerScreen: View {
         .background(color.opacity(0.88))
         .foregroundColor(.white)
         .cornerRadius(12)
+    }
+
+    private var engineBadge: String {
+        switch controller.engineKind {
+        case .transportAVPlayer: return "TAV"
+        case .avPlayer: return "AV"
+        case .mpv: return "MPV"
+        }
     }
 
     private func supportedSymbolSeconds(_ value: Int) -> Int {

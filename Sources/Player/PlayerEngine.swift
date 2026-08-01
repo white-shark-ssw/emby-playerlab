@@ -1,6 +1,7 @@
 import Foundation
 
 enum PlayerEngineKind: String, CaseIterable, Identifiable {
+    case transportAVPlayer
     case avPlayer
     case mpv
 
@@ -8,6 +9,7 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .transportAVPlayer: return "Transport AVPlayer"
         case .avPlayer: return "AVPlayer"
         case .mpv: return "MPV"
         }
@@ -16,6 +18,7 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
 
 enum PlayerEnginePreference: String, CaseIterable, Identifiable {
     case automatic
+    case transportAVPlayer
     case avPlayer
     case mpv
 
@@ -23,21 +26,28 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .automatic: return "自动"
-        case .avPlayer: return "强制 AVPlayer"
+        case .automatic: return "自动（MP4 使用传输层）"
+        case .transportAVPlayer: return "强制 Transport AVPlayer"
+        case .avPlayer: return "强制原生 AVPlayer"
         case .mpv: return "强制 MPV"
         }
     }
 
     func resolved(for source: MediaSource) -> PlayerEngineKind {
         switch self {
+        case .transportAVPlayer:
+            return .transportAVPlayer
         case .avPlayer:
             return .avPlayer
         case .mpv:
             return .mpv
         case .automatic:
+            let nativeContainers: Set<String> = ["mp4", "mov", "m4v"]
+            if nativeContainers.contains(source.normalizedContainer) {
+                return .transportAVPlayer
+            }
             let mpvContainers: Set<String> = ["mkv", "webm", "avi", "flv", "ts", "m2ts", "wmv"]
-            return mpvContainers.contains(source.normalizedContainer) ? .mpv : .avPlayer
+            return mpvContainers.contains(source.normalizedContainer) ? .mpv : .transportAVPlayer
         }
     }
 }
