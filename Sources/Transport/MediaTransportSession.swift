@@ -11,6 +11,21 @@ actor MediaTransportSession {
         var preloadOnly: Bool
     }
 
+    private struct SegmentValue {
+        let data: Data
+        let cacheHit: Bool
+    }
+
+    private struct RefreshResult {
+        let source: ResolvedPlaybackSource
+        let resource: TransportResolvedResource
+    }
+
+    private struct SpeedSample {
+        let date: Date
+        let bytes: Int64
+    }
+
     private var source: ResolvedPlaybackSource
     private let client: EmbyAPIClient
     private let configuration: MediaTransportConfiguration
@@ -19,13 +34,18 @@ actor MediaTransportSession {
     private let diskCache: TransportDiskCache
 
     private var resource: TransportResolvedResource?
+    private var resolveTask: Task<TransportResolvedResource, Error>?
+    private var refreshTask: Task<RefreshResult, Error>?
     private var memoryEntries: [Int64: MemoryEntry] = [:]
     private var memoryBytes: Int64 = 0
     private var inFlight: [Int64: InFlightEntry] = [:]
     private var preloadTask: Task<Void, Never>?
     private var initialPreloadTask: Task<Void, Never>?
+    private var initialPreloadScheduled = false
     private var preloadAnchor: Int64?
+    private var preloadWindow: Range<Int64>?
     private var metricsValue = TransportMetricsSnapshot()
+    private var speedSamples: [SpeedSample] = []
     private let createdAt = Date()
     private var lastLoggedMegabytes: Int64 = 0
     private var stopped = false
@@ -44,22 +64,38 @@ actor MediaTransportSession {
 
     func resolve() async throws -> TransportResolvedResource {
         if let resource { return resource }
-        let resolved = try await resolver.resolve(source: source)
-        guard resolved.supportsByteRanges else {
-            throw MediaTransportError.rangeUnsupported(statusCode: 200)
+        if let resolveTask { return try await resolveTask.value }
+
+        let sourceSnapshot = source
+        let resolver = resolver
+        let task = Task<TransportResolvedResource, Error> {
+            try await resolver.resolve(source: sourceSnapshot)
         }
-        resource = resolved
-        await diskCache.validate(
-            contentLength: resolved.contentLength,
-            etag: resolved.etag,
-            lastModified: resolved.lastModified
-        )
-        DiagnosticsLogger.shared.log(
-            "TransportSession",
-            "ready item=\(source.itemId) bytes=\(resolved.contentLength) segment=\(configuration.segmentSizeBytes) concurrent=\(configuration.maximumConcurrentRequests) mode=\(configuration.cacheMode.rawValue)"
-        )
-        scheduleInitialPreload(resource: resolved)
-        return resolved
+        resolveTask = task
+
+        do {
+            let resolved = try await task.value
+            resolveTask = nil
+            guard resolved.supportsByteRanges else {
+                throw MediaTransportError.rangeUnsupported(statusCode: 200)
+            }
+            if resource == nil {
+                resource = resolved
+                await diskCache.validate(
+                    contentLength: resolved.contentLength,
+                    etag: resolved.etag,
+                    lastModified: resolved.lastModified
+                )
+                DiagnosticsLogger.shared.log(
+                    "TransportSession",
+                    "ready item=\(source.itemId) bytes=\(resolved.contentLength) segment=\(configuration.segmentSizeBytes) concurrent=\(configuration.maximumConcurrentRequests) mode=\(configuration.cacheMode.rawValue)"
+                )
+            }
+            return resource ?? resolved
+        } catch {
+            resolveTask = nil
+            throw error
+        }
     }
 
     func read(offset: Int64, length: Int) async throws -> Data {
@@ -79,55 +115,102 @@ actor MediaTransportSession {
             current += segmentSize
         }
 
-        var segments: [Int64: Data] = [:]
-        try await withThrowingTaskGroup(of: (Int64, Data).self) { group in
+        var segments: [Int64: SegmentValue] = [:]
+        try await withThrowingTaskGroup(of: (Int64, SegmentValue).self) { group in
             for start in starts {
                 group.addTask { [weak self] in
                     guard let self else { throw MediaTransportError.cancelled }
                     return (start, try await self.segment(start: start, preload: false))
                 }
             }
-            for try await (start, data) in group {
-                segments[start] = data
+            for try await (start, value) in group {
+                segments[start] = value
             }
         }
 
         var output = Data(capacity: Int(upperBound - offset))
+        var cacheHitBytes: Int64 = 0
         var cursor = offset
         while cursor < upperBound {
             let start = (cursor / segmentSize) * segmentSize
-            guard let data = segments[start] else { throw MediaTransportError.invalidResponse }
+            guard let segment = segments[start] else { throw MediaTransportError.invalidResponse }
             let lower = Int(cursor - start)
-            let available = min(data.count - lower, Int(upperBound - cursor))
+            let available = min(segment.data.count - lower, Int(upperBound - cursor))
             guard available > 0 else { throw MediaTransportError.invalidResponse }
-            output.append(data.subdata(in: lower..<(lower + available)))
+            output.append(segment.data.subdata(in: lower..<(lower + available)))
+            if segment.cacheHit { cacheHitBytes += Int64(available) }
             cursor += Int64(available)
         }
 
         metricsValue.bytesServed += Int64(output.count)
+        metricsValue.cacheHitBytes += cacheHitBytes
         metricsValue.elapsedSeconds = Date().timeIntervalSince(createdAt)
+
         if output.count >= 64 * 1024 {
-            schedulePreload(after: upperBound)
+            scheduleInitialPreload(resource: resource)
+            schedulePreload(after: upperBound, resource: resource)
         }
         return output
     }
 
+    func prioritizeSeek(position: Double, duration: Double) async {
+        guard !stopped, position.isFinite, duration.isFinite, duration > 0 else { return }
+        guard let resource = try? await resolve() else { return }
+
+        let ratio = min(max(position / duration, 0), 1)
+        let approximateOffset = Int64(Double(resource.contentLength) * ratio)
+        let segmentSize = max(1, configuration.segmentSizeBytes)
+        let alignedOffset = min(
+            max(0, (approximateOffset / segmentSize) * segmentSize),
+            max(0, resource.contentLength - segmentSize)
+        )
+
+        preloadTask?.cancel()
+        preloadTask = nil
+        initialPreloadTask?.cancel()
+        initialPreloadTask = nil
+        cancelPreloadNetworkTasks()
+        preloadAnchor = nil
+        preloadWindow = nil
+
+        DiagnosticsLogger.shared.log(
+            "TransportPriority",
+            "seek position=\(position) duration=\(duration) approximateOffset=\(alignedOffset)"
+        )
+        schedulePreload(after: alignedOffset, resource: resource)
+    }
+
     func metrics() async -> TransportMetricsSnapshot {
         var value = metricsValue
-        value.elapsedSeconds = Date().timeIntervalSince(createdAt)
+        let now = Date()
+        value.elapsedSeconds = now.timeIntervalSince(createdAt)
+        updateCurrentSpeed(now: now)
+        value.currentDownloadBytesPerSecond = metricsValue.currentDownloadBytesPerSecond
+
         let diskBytes = await diskCache.size()
-        value.cacheBytes = memoryBytes + diskBytes
+        value.memoryCacheBytes = memoryBytes
+        value.diskCacheBytes = diskBytes
+        if configuration.usesDiskCache {
+            value.cacheBytes = max(memoryBytes, diskBytes)
+        } else {
+            value.cacheBytes = memoryBytes
+        }
         return value
     }
 
     func stop() async {
         guard !stopped else { return }
         stopped = true
+        resolveTask?.cancel()
+        resolveTask = nil
+        refreshTask?.cancel()
+        refreshTask = nil
         preloadTask?.cancel()
         preloadTask = nil
         initialPreloadTask?.cancel()
         initialPreloadTask = nil
         preloadAnchor = nil
+        preloadWindow = nil
         inFlight.values.forEach { $0.task.cancel() }
         inFlight.removeAll()
         let finalMetrics = await metrics()
@@ -137,17 +220,15 @@ actor MediaTransportSession {
         await diskCache.close()
     }
 
-    private func segment(start: Int64, preload: Bool) async throws -> Data {
+    private func segment(start: Int64, preload: Bool) async throws -> SegmentValue {
         if let memory = memoryEntries[start] {
             memoryEntries[start] = MemoryEntry(data: memory.data, lastAccess: Date())
-            metricsValue.memoryHitBytes += Int64(memory.data.count)
-            return memory.data
+            return SegmentValue(data: memory.data, cacheHit: true)
         }
 
         if configuration.usesDiskCache, let diskData = await diskCache.read(start: start) {
-            metricsValue.diskHitBytes += Int64(diskData.count)
             insertMemory(diskData, start: start)
-            return diskData
+            return SegmentValue(data: diskData, cacheHit: true)
         }
 
         if var entry = inFlight[start] {
@@ -155,7 +236,7 @@ actor MediaTransportSession {
                 entry.preloadOnly = false
                 inFlight[start] = entry
             }
-            return try await entry.task.value
+            return SegmentValue(data: try await entry.task.value, cacheHit: false)
         }
 
         let task = Task<Data, Error> { [weak self] in
@@ -171,7 +252,7 @@ actor MediaTransportSession {
             if configuration.usesDiskCache {
                 await diskCache.write(data, start: start)
             }
-            return data
+            return SegmentValue(data: data, cacheHit: false)
         } catch {
             inFlight[start] = nil
             metricsValue.rangeFailureCount += 1
@@ -180,46 +261,98 @@ actor MediaTransportSession {
     }
 
     private func downloadSegment(start: Int64, allowRefresh: Bool) async throws -> Data {
-        let resource = try await resolve()
-        let end = min(resource.contentLength, start + configuration.segmentSizeBytes)
+        let failedResource = try await resolve()
+        let end = min(failedResource.contentLength, start + configuration.segmentSizeBytes)
         guard end > start else { return Data() }
 
+        do {
+            return try await fetch(resource: failedResource, range: start..<end)
+        } catch MediaTransportError.expiredURL(_) where allowRefresh {
+            DiagnosticsLogger.shared.log(
+                "TransportRetry",
+                "status=403/410 start=\(start) retrying current 115 URL before refresh"
+            )
+            try? await Task.sleep(nanoseconds: 250_000_000)
+
+            if let current = resource, current.finalURL != failedResource.finalURL {
+                return try await fetch(resource: current, range: start..<end)
+            }
+
+            do {
+                return try await fetch(resource: failedResource, range: start..<end)
+            } catch MediaTransportError.expiredURL(_) {
+                let refreshed = try await refreshPlaybackResource(failedResource: failedResource)
+                return try await fetch(resource: refreshed, range: start..<end)
+            }
+        }
+    }
+
+    private func fetch(resource: TransportResolvedResource, range: Range<Int64>) async throws -> Data {
         metricsValue.activeRequestCount += 1
         metricsValue.networkRequestCount += 1
         defer { metricsValue.activeRequestCount = max(0, metricsValue.activeRequestCount - 1) }
 
-        do {
-            let data = try await httpClient.fetch(resource: resource, range: start..<end)
-            metricsValue.bytesDownloaded += Int64(data.count)
-            metricsValue.elapsedSeconds = Date().timeIntervalSince(createdAt)
-            logProgressIfNeeded()
-            return data
-        } catch MediaTransportError.expiredURL(_) where allowRefresh {
-            DiagnosticsLogger.shared.log("TransportRefresh", "temporary URL expired; refreshing PlaybackInfo")
-            try await refreshPlaybackResource()
-            return try await downloadSegment(start: start, allowRefresh: false)
-        }
+        let data = try await httpClient.fetch(resource: resource, range: range)
+        metricsValue.bytesDownloaded += Int64(data.count)
+        metricsValue.elapsedSeconds = Date().timeIntervalSince(createdAt)
+        recordDownload(bytes: Int64(data.count))
+        logProgressIfNeeded()
+        return data
     }
 
-    private func refreshPlaybackResource() async throws {
-        let playback = try await client.playbackInfo(itemId: source.itemId)
-        guard let mediaSource = playback.mediaSources.first(where: { $0.id == source.mediaSource.id })
-                ?? playback.mediaSources.first else {
-            throw MediaTransportError.invalidResponse
+    private func refreshPlaybackResource(failedResource: TransportResolvedResource) async throws -> TransportResolvedResource {
+        if let current = resource, current.finalURL != failedResource.finalURL {
+            DiagnosticsLogger.shared.log("TransportRefresh", "using newer resolved URL; duplicate refresh skipped")
+            return current
         }
-        source = try client.resolvePlaybackSource(
-            itemId: source.itemId,
-            itemName: source.itemName,
-            mediaSource: mediaSource,
-            playSessionId: playback.playSessionId
-        )
-        let refreshed = try await resolver.resolve(source: source)
-        resource = refreshed
-        await diskCache.validate(
-            contentLength: refreshed.contentLength,
-            etag: refreshed.etag,
-            lastModified: refreshed.lastModified
-        )
+
+        if let refreshTask {
+            DiagnosticsLogger.shared.log("TransportRefresh", "joining in-flight PlaybackInfo refresh")
+            return (try await refreshTask.value).resource
+        }
+
+        let sourceSnapshot = source
+        let client = client
+        let resolver = resolver
+        let task = Task<RefreshResult, Error> {
+            let playback = try await client.playbackInfo(itemId: sourceSnapshot.itemId)
+            guard let mediaSource = playback.mediaSources.first(where: { $0.id == sourceSnapshot.mediaSource.id })
+                    ?? playback.mediaSources.first else {
+                throw MediaTransportError.invalidResponse
+            }
+            let refreshedSource = try client.resolvePlaybackSource(
+                itemId: sourceSnapshot.itemId,
+                itemName: sourceSnapshot.itemName,
+                mediaSource: mediaSource,
+                playSessionId: playback.playSessionId
+            )
+            let refreshedResource = try await resolver.resolve(source: refreshedSource)
+            guard refreshedResource.supportsByteRanges else {
+                throw MediaTransportError.rangeUnsupported(statusCode: 200)
+            }
+            return RefreshResult(source: refreshedSource, resource: refreshedResource)
+        }
+        refreshTask = task
+        DiagnosticsLogger.shared.log("TransportRefresh", "single-flight PlaybackInfo refresh started")
+
+        do {
+            let result = try await task.value
+            refreshTask = nil
+            if resource == nil || resource?.finalURL == failedResource.finalURL {
+                source = result.source
+                resource = result.resource
+                await diskCache.validate(
+                    contentLength: result.resource.contentLength,
+                    etag: result.resource.etag,
+                    lastModified: result.resource.lastModified
+                )
+            }
+            DiagnosticsLogger.shared.log("TransportRefresh", "single-flight PlaybackInfo refresh completed")
+            return resource ?? result.resource
+        } catch {
+            refreshTask = nil
+            throw error
+        }
     }
 
     private func insertMemory(_ data: Data, start: Int64) {
@@ -242,71 +375,60 @@ actor MediaTransportSession {
     }
 
     private func scheduleInitialPreload(resource: TransportResolvedResource) {
-        guard initialPreloadTask == nil, configuration.cacheMode != .disabled else { return }
-        let preloadLimit = NetworkPathMonitor.shared.isCellular
-            ? configuration.cellularPreloadBytes
-            : configuration.wifiPreloadBytes
-        guard preloadLimit > 0 else { return }
+        guard !initialPreloadScheduled, configuration.cacheMode != .disabled else { return }
+        initialPreloadScheduled = true
 
-        let headBudget = min(preloadLimit, 64 * 1_048_576)
         let segmentSize = max(1, configuration.segmentSizeBytes)
         let tailStart = ((max(0, resource.contentLength - 1)) / segmentSize) * segmentSize
+        guard tailStart > 0 else { return }
 
-        DiagnosticsLogger.shared.log(
-            "TransportPrime",
-            "begin headBytes=\(headBudget) tailStart=\(tailStart) concurrent=\(configuration.maximumConcurrentRequests)"
-        )
-
+        DiagnosticsLogger.shared.log("TransportPrime", "tail metadata preload start=\(tailStart)")
         initialPreloadTask = Task { [weak self] in
             guard let self else { return }
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { [weak self] in
-                    guard let self else { return }
-                    await self.preload(from: 0, maximumBytes: headBudget)
-                }
-                if tailStart > 0 {
-                    group.addTask { [weak self] in
-                        guard let self else { return }
-                        _ = try? await self.segment(start: tailStart, preload: true)
-                    }
-                }
-            }
+            _ = try? await self.segment(start: tailStart, preload: true)
             await self.finishInitialPreload()
         }
     }
 
     private func finishInitialPreload() {
         initialPreloadTask = nil
-        DiagnosticsLogger.shared.log("TransportPrime", "initial preload finished")
+        DiagnosticsLogger.shared.log("TransportPrime", "tail metadata preload finished")
     }
 
-    private func schedulePreload(after offset: Int64) {
+    private func schedulePreload(after offset: Int64, resource: TransportResolvedResource) {
         guard configuration.cacheMode != .disabled else { return }
         let preloadLimit = NetworkPathMonitor.shared.isCellular
             ? configuration.cellularPreloadBytes
             : configuration.wifiPreloadBytes
         guard preloadLimit > 0 else { return }
 
-        if let preloadAnchor,
-           preloadTask != nil,
-           abs(preloadAnchor - offset) <= configuration.segmentSizeBytes * 4 {
+        if let preloadWindow, preloadWindow.contains(offset) {
             return
         }
 
         preloadTask?.cancel()
         cancelPreloadNetworkTasks()
-        preloadAnchor = offset
+
+        let start = min(max(0, offset), resource.contentLength)
+        let end = min(resource.contentLength, start + preloadLimit)
+        guard end > start else { return }
+
+        preloadAnchor = start
+        preloadWindow = start..<end
+        DiagnosticsLogger.shared.log(
+            "TransportPreload",
+            "window start=\(start) end=\(end) backgroundConcurrent=\(max(1, configuration.maximumConcurrentRequests - 1))"
+        )
         preloadTask = Task { [weak self] in
             guard let self else { return }
-            await self.preload(from: offset, maximumBytes: preloadLimit)
-            await self.finishPreload(anchor: offset)
+            await self.preload(from: start, maximumBytes: end - start)
+            await self.finishPreload(anchor: start)
         }
     }
 
     private func finishPreload(anchor: Int64) {
         guard preloadAnchor == anchor else { return }
         preloadTask = nil
-        preloadAnchor = nil
     }
 
     private func preload(from offset: Int64, maximumBytes: Int64) async {
@@ -345,15 +467,32 @@ actor MediaTransportSession {
         }
     }
 
+    private func recordDownload(bytes: Int64) {
+        let now = Date()
+        speedSamples.append(SpeedSample(date: now, bytes: bytes))
+        updateCurrentSpeed(now: now)
+    }
+
+    private func updateCurrentSpeed(now: Date) {
+        speedSamples.removeAll { now.timeIntervalSince($0.date) > 5 }
+        guard let first = speedSamples.first else {
+            metricsValue.currentDownloadBytesPerSecond = 0
+            return
+        }
+        let total = speedSamples.reduce(Int64(0)) { $0 + $1.bytes }
+        let elapsed = max(now.timeIntervalSince(first.date), 0.5)
+        metricsValue.currentDownloadBytesPerSecond = Double(total) / elapsed
+    }
+
     private func logProgressIfNeeded() {
         let downloadedMB = metricsValue.bytesDownloaded / 1_048_576
         guard downloadedMB >= lastLoggedMegabytes + 16 else { return }
         lastLoggedMegabytes = downloadedMB
         let elapsed = max(Date().timeIntervalSince(createdAt), 0.001)
-        let speed = Double(metricsValue.bytesDownloaded) / elapsed
+        let average = Double(metricsValue.bytesDownloaded) / elapsed
         DiagnosticsLogger.shared.log(
             "TransportSpeed",
-            "downloaded=\(metricsValue.bytesDownloaded) elapsed=\(elapsed) averageBps=\(Int(speed)) requests=\(metricsValue.networkRequestCount)"
+            "downloaded=\(metricsValue.bytesDownloaded) elapsed=\(elapsed) currentBps=\(Int(metricsValue.currentDownloadBytesPerSecond)) averageBps=\(Int(average)) requests=\(metricsValue.networkRequestCount)"
         )
     }
 }

@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.3.3
+## 当前版本：0.3.4
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.3.3-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.3.4-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -182,3 +182,19 @@ STOP、QUIT、REDIRECT 等文件切换事件只记录日志，不改变播放结
 - `TransportHTTPServer.send` 明确使用 `CheckedContinuation<Void, Error>`。
 - 不改变本机 HTTP Range 服务、TAV 缓存、302 解析和播放器路由逻辑。
 - Deployment Target 继续保持 iOS 15.0。
+
+
+## 0.3.4 115 Range 调度修复
+
+根据 0.3.3 真机日志，本版集中处理三项实际瓶颈：
+
+- 115 返回单次 403/410 时先重试当前直链，不再立即刷新 PlaybackInfo。
+- 多个并发请求同时确认直链失效时，共用一个 single-flight 刷新任务，避免刷新风暴。
+- 正常顺序播放时不再每前进约 4 MB 就取消并重建整个预加载窗口。
+- 用户 Seek 时取消低优先级预加载，并在目标对应的近似字节位置建立新预加载窗口。
+- 后台预加载最多使用 `并发数 - 2` 路，给当前播放和 Seek 保留连接。
+- TAV 本机 HTTP 监听器先启动，302 解析与 AVPlayer 初始化并行进行。
+- Range 分片继续允许选择 1/2/4/8/16 MB；默认保持 1 MB，避免拉长首块等待。
+- 缓存显示改为有效唯一缓存，不再把同一分片的内存副本与磁盘副本重复相加。
+- 缓存命中率按实际返回给播放器的字节计算，不再按整块分片重复累计。
+- 传输栏同时显示 5 秒实时速度与全会话平均速度。

@@ -16,12 +16,14 @@ struct TransportResolvedResource: Equatable {
 struct TransportMetricsSnapshot: Equatable {
     var bytesDownloaded: Int64 = 0
     var bytesServed: Int64 = 0
-    var memoryHitBytes: Int64 = 0
-    var diskHitBytes: Int64 = 0
+    var cacheHitBytes: Int64 = 0
     var networkRequestCount: Int = 0
     var rangeFailureCount: Int = 0
     var activeRequestCount: Int = 0
     var cacheBytes: Int64 = 0
+    var memoryCacheBytes: Int64 = 0
+    var diskCacheBytes: Int64 = 0
+    var currentDownloadBytesPerSecond: Double = 0
     var elapsedSeconds: Double = 0
 
     var averageDownloadBytesPerSecond: Double {
@@ -30,13 +32,14 @@ struct TransportMetricsSnapshot: Equatable {
 
     var cacheHitRatio: Double {
         guard bytesServed > 0 else { return 0 }
-        return min(1, Double(memoryHitBytes + diskHitBytes) / Double(bytesServed))
+        return min(1, Double(cacheHitBytes) / Double(bytesServed))
     }
 
     var summary: String {
-        let speed = ByteCountFormatter.string(fromByteCount: Int64(averageDownloadBytesPerSecond), countStyle: .file)
+        let currentSpeed = ByteCountFormatter.string(fromByteCount: Int64(currentDownloadBytesPerSecond), countStyle: .file)
+        let averageSpeed = ByteCountFormatter.string(fromByteCount: Int64(averageDownloadBytesPerSecond), countStyle: .file)
         let cached = ByteCountFormatter.string(fromByteCount: cacheBytes, countStyle: .file)
-        return "下载 \(speed)/s · 缓存 \(cached) · 命中 \(Int(cacheHitRatio * 100))% · 并发 \(activeRequestCount)"
+        return "实时 \(currentSpeed)/s · 平均 \(averageSpeed)/s · 有效缓存 \(cached) · 命中 \(Int(cacheHitRatio * 100))% · 并发 \(activeRequestCount)"
     }
 }
 

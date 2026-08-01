@@ -2,7 +2,7 @@
 
 ## 当前基线
 
-- App 版本：0.3.0（15）
+- App 版本：0.3.4（19）
 - Deployment Target：iOS 15.0
 - 目标真机：iPhone 15 Pro Max / iOS 17.0
 - CI Runner：macOS 15
@@ -11,7 +11,7 @@
 - 播放器：Transport AVPlayer + 原生 AVPlayer + Streamyfin MPVKit AV 0.40.0-av
 - TrollStore：输出未签名 IPA
 
-## 0.3.0 新增系统能力
+## 0.3.x 系统能力
 
 - Foundation URLSession：302、HTTP Range、并发下载。
 - AVFoundation AVAssetResourceLoader：把自定义字节缓存提供给 AVPlayer。
@@ -23,7 +23,7 @@
 ## 第三方依赖
 
 - 继续固定 `https://github.com/streamyfin/MPVKit.git` 版本 `0.40.0-av`。
-- 0.3.0 Transport 模块没有新增第三方依赖。
+- 0.3.4 Transport 模块没有新增第三方依赖。
 - MPVKit 产品仍为 `MPVKit-GPL`，当前用途限定为用户个人自用。
 
 ## CI 必须验证

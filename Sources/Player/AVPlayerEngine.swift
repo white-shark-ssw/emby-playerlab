@@ -50,7 +50,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         self.transportClient = transportClient
         self.transportConfiguration = transportConfiguration
         super.init()
-        player.automaticallyWaitsToMinimizeStalling = kind != .transportAVPlayer
+        player.automaticallyWaitsToMinimizeStalling = true
         displayLink = CADisplayLink(target: self, selector: #selector(displayLinkTick))
         displayLink?.add(to: .main, forMode: .common)
     }
@@ -163,6 +163,12 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         let bufferHit = snapshot.bufferedRanges.contains(where: { $0.contains(target) })
         let requestedAt = CACurrentMediaTime()
         let wasPlaying = player.rate > 0 || snapshot.isPlaying
+
+        if kind == .transportAVPlayer, let transportServer {
+            Task { [transportServer] in
+                await transportServer.prioritizeSeek(position: target, duration: duration)
+            }
+        }
 
         item.cancelPendingSeeks()
         snapshot.position = target

@@ -48,8 +48,11 @@ final class TransportHTTPServer {
     }
 
     func start() async throws -> URL {
-        _ = try await session.resolve()
         if let url = currentLocalURL() { return url }
+
+        Task { [session] in
+            _ = try? await session.resolve()
+        }
 
         return try await withCheckedThrowingContinuation { continuation in
             queue.async { [weak self] in
@@ -115,6 +118,10 @@ final class TransportHTTPServer {
         await session.metrics()
     }
 
+    func prioritizeSeek(position: Double, duration: Double) async {
+        await session.prioritizeSeek(position: position, duration: duration)
+    }
+
     func stop() {
         let state = takeServerStateForStop()
         state.listener?.cancel()
@@ -135,7 +142,9 @@ final class TransportHTTPServer {
             guard let self else { return }
             switch state {
             case .failed(let error):
-                DiagnosticsLogger.shared.log("TransportHTTP", "connection failed: \(error.localizedDescription)")
+                if !self.isClientDisconnect(error) {
+                    DiagnosticsLogger.shared.log("TransportHTTP", "connection failed: \(error.localizedDescription)")
+                }
                 self.removeConnection(identifier)?.cancel()
             case .cancelled:
                 self.removeConnection(identifier)?.cancel()
@@ -201,6 +210,7 @@ final class TransportHTTPServer {
             return
         }
 
+        var responseStarted = false
         do {
             let resource = try await session.resolve()
             let requestedRange = try parseRange(request.headers["range"], contentLength: resource.contentLength)
@@ -226,6 +236,7 @@ final class TransportHTTPServer {
             )
 
             try await send(Data(headers.utf8), on: connection)
+            responseStarted = true
             guard request.method == "GET" else { return }
 
             var cursor = responseRange.lowerBound
@@ -245,8 +256,13 @@ final class TransportHTTPServer {
         } catch is CancellationError {
             DiagnosticsLogger.shared.log("TransportHTTP", "response cancelled")
         } catch {
+            if isClientDisconnect(error) {
+                return
+            }
             DiagnosticsLogger.shared.log("TransportHTTP", "response failed: \(error.localizedDescription)")
-            await sendError(status: 502, reason: "Bad Gateway", on: connection)
+            if !responseStarted {
+                await sendError(status: 502, reason: "Bad Gateway", on: connection)
+            }
         }
     }
 
@@ -331,6 +347,16 @@ final class TransportHTTPServer {
 
         guard upper >= lower else { throw ServerError.invalidRange }
         return ByteRange(lowerBound: lower, upperBound: upper)
+    }
+
+    private func isClientDisconnect(_ error: Error) -> Bool {
+        guard let networkError = error as? NWError else { return false }
+        switch networkError {
+        case .posix(let code):
+            return code == .ECONNRESET || code == .EPIPE || code == .ENOTCONN || code == .ECANCELED
+        default:
+            return false
+        }
     }
 
     private func currentLocalURL() -> URL? {

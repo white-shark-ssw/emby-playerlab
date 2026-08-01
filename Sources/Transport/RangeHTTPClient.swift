@@ -23,7 +23,10 @@ final class RangeHTTPClient {
 
         var request = URLRequest(url: resource.finalURL)
         request.httpMethod = "GET"
-        request.timeoutInterval = 45
+        request.timeoutInterval = 60
+        request.networkServiceType = .video
+        request.allowsConstrainedNetworkAccess = true
+        request.allowsExpensiveNetworkAccess = true
         request.setValue("bytes=\(range.lowerBound)-\(range.upperBound - 1)", forHTTPHeaderField: "Range")
         request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         request.setValue("EmbyPlayerLab/\(AppIdentity.sourceVersion)", forHTTPHeaderField: "User-Agent")
@@ -35,6 +38,10 @@ final class RangeHTTPClient {
         guard let http = response as? HTTPURLResponse else { throw MediaTransportError.invalidResponse }
 
         if http.statusCode == 403 || http.statusCode == 410 {
+            DiagnosticsLogger.shared.log(
+                "TransportRange",
+                "start=\(range.lowerBound) length=\(range.count) status=\(http.statusCode) expired=true redirects=\(delegate.redirects.count)"
+            )
             throw MediaTransportError.expiredURL(statusCode: http.statusCode)
         }
         guard http.statusCode == 206 else {
