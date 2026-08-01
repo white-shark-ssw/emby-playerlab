@@ -512,11 +512,9 @@ final class PlayerController: ObservableObject {
         )
 
         if engineKind == .transportAVPlayer {
-            if stallRecoveryCount >= 4 {
-                switchEngine(to: .mpv, reason: "Transport AVPlayer 长时间无数据")
-            } else {
-                stallMessage = "传输层正在补齐 Range 分片；当前不会重载播放器。"
-            }
+            stallMessage = snapshot.errorMessage == nil
+                ? "本地 HTTP Range 传输正在补齐数据；不会自动切回已知会卡顿的 MPV。"
+                : "本地 HTTP Range 传输失败：\(snapshot.errorMessage ?? "未知错误")"
             return
         }
 

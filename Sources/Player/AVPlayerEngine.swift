@@ -22,7 +22,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private let transportSource: ResolvedPlaybackSource?
     private let transportClient: EmbyAPIClient?
     private let transportConfiguration: MediaTransportConfiguration?
-    private var transportLoader: TransportResourceLoader?
+    private var transportServer: TransportHTTPServer?
+    private var transportPrepareTask: Task<Void, Never>?
+    private var prepareGeneration = 0
     private var shouldPlayWhenReady = false
 
     private struct Configuration {
@@ -48,7 +50,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         self.transportClient = transportClient
         self.transportConfiguration = transportConfiguration
         super.init()
-        player.automaticallyWaitsToMinimizeStalling = kind == .transportAVPlayer
+        player.automaticallyWaitsToMinimizeStalling = kind != .transportAVPlayer
         displayLink = CADisplayLink(target: self, selector: #selector(displayLinkTick))
         displayLink?.add(to: .main, forMode: .common)
     }
@@ -60,11 +62,26 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
         lastConfiguration = Configuration(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer)
-        stopObservers()
-        transportLoader?.invalidate()
-        transportLoader = nil
+        prepareGeneration += 1
+        let generation = prepareGeneration
 
-        let asset: AVURLAsset
+        stopObservers()
+        transportPrepareTask?.cancel()
+        transportPrepareTask = nil
+        transportServer?.stop()
+        transportServer = nil
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        videoOutput = nil
+        pendingFrameMeasurement = nil
+
+        snapshot = PlayerSnapshot(
+            position: max(0, startPosition),
+            isBuffering: kind == .transportAVPlayer,
+            waitingReason: kind == .transportAVPlayer ? "Transport HTTP preparing" : nil
+        )
+        emit()
+
         if kind == .transportAVPlayer,
            let transportSource,
            let transportClient,
@@ -74,42 +91,55 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
                 client: transportClient,
                 configuration: transportConfiguration
             )
-            let loader = TransportResourceLoader(session: session)
-            transportLoader = loader
-            asset = loader.makeAsset(fileExtension: transportSource.mediaSource.normalizedContainer)
+            let server = TransportHTTPServer(
+                session: session,
+                fileExtension: transportSource.mediaSource.normalizedContainer
+            )
+            transportServer = server
+
             DiagnosticsLogger.shared.log(
                 "TransportPlayer",
-                "prepare item=\(transportSource.itemId) mode=\(transportConfiguration.cacheMode.rawValue) memory=\(transportConfiguration.memoryLimitBytes) disk=\(transportConfiguration.diskLimitBytes) wifiPreload=\(transportConfiguration.wifiPreloadBytes) cellularPreload=\(transportConfiguration.cellularPreloadBytes)"
+                "prepare-local-http item=\(transportSource.itemId) mode=\(transportConfiguration.cacheMode.rawValue) memory=\(transportConfiguration.memoryLimitBytes) disk=\(transportConfiguration.diskLimitBytes) wifiPreload=\(transportConfiguration.wifiPreloadBytes) cellularPreload=\(transportConfiguration.cellularPreloadBytes)"
             )
-        } else if headers.isEmpty {
+
+            transportPrepareTask = Task { [weak self, weak server] in
+                guard let self, let server else { return }
+                do {
+                    let localURL = try await server.start()
+                    guard !Task.isCancelled else { return }
+                    DispatchQueue.main.async { [weak self, weak server] in
+                        guard let self, let server,
+                              generation == self.prepareGeneration,
+                              self.transportServer === server else { return }
+                        DiagnosticsLogger.shared.log("TransportPlayer", "local HTTP asset ready")
+                        self.installAsset(
+                            AVURLAsset(url: localURL),
+                            preferredForwardBuffer: min(max(2, preferredForwardBuffer), 8),
+                            startPosition: startPosition
+                        )
+                    }
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, generation == self.prepareGeneration else { return }
+                        self.snapshot.isBuffering = false
+                        self.snapshot.errorMessage = error.localizedDescription
+                        self.snapshot.waitingReason = "Transport HTTP failed"
+                        DiagnosticsLogger.shared.log("TransportPlayer", "prepare failed: \(error.localizedDescription)")
+                        self.emit()
+                    }
+                }
+            }
+            return
+        }
+
+        let asset: AVURLAsset
+        if headers.isEmpty {
             asset = AVURLAsset(url: url)
         } else {
             asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         }
-
-        let item = AVPlayerItem(asset: asset)
-        item.preferredForwardBufferDuration = preferredForwardBuffer
-        item.canUseNetworkResourcesForLiveStreamingWhilePaused = false
-
-        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
-        ])
-        item.add(output)
-        videoOutput = output
-
-        player.replaceCurrentItem(with: item)
-        snapshot = PlayerSnapshot(position: max(0, startPosition))
-        emit()
-        observe(item: item)
-
-        if startPosition > 0 {
-            item.seek(
-                to: CMTime(seconds: startPosition, preferredTimescale: 600),
-                toleranceBefore: CMTime(seconds: 0.5, preferredTimescale: 600),
-                toleranceAfter: CMTime(seconds: 0.5, preferredTimescale: 600),
-                completionHandler: { _ in }
-            )
-        }
+        installAsset(asset, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition)
     }
 
     func play() {
@@ -203,19 +233,22 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     func stop() {
         shouldPlayWhenReady = false
+        prepareGeneration += 1
+        transportPrepareTask?.cancel()
+        transportPrepareTask = nil
+        transportServer?.stop()
+        transportServer = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
         stopObservers()
-        transportLoader?.invalidate()
-        transportLoader = nil
         videoOutput = nil
         pendingFrameMeasurement = nil
         snapshot = PlayerSnapshot()
     }
 
     func transportMetrics() async -> TransportMetricsSnapshot? {
-        guard let transportLoader else { return nil }
-        return await transportLoader.metrics()
+        guard let transportServer else { return nil }
+        return await transportServer.metrics()
     }
 
     @objc private func displayLinkTick() {
@@ -240,12 +273,51 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         ))
     }
 
+    private func installAsset(_ asset: AVURLAsset, preferredForwardBuffer: Double, startPosition: Double) {
+        stopObservers()
+        let item = AVPlayerItem(asset: asset)
+        item.preferredForwardBufferDuration = preferredForwardBuffer
+        item.canUseNetworkResourcesForLiveStreamingWhilePaused = false
+
+        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+        ])
+        item.add(output)
+        videoOutput = output
+
+        player.replaceCurrentItem(with: item)
+        snapshot.position = max(0, startPosition)
+        snapshot.isBuffering = true
+        snapshot.waitingReason = kind == .transportAVPlayer ? "Transport HTTP loading" : snapshot.waitingReason
+        snapshot.errorMessage = nil
+        emit()
+        observe(item: item)
+
+        if startPosition > 0 {
+            item.seek(
+                to: CMTime(seconds: startPosition, preferredTimescale: 600),
+                toleranceBefore: CMTime(seconds: 0.5, preferredTimescale: 600),
+                toleranceAfter: CMTime(seconds: 0.5, preferredTimescale: 600),
+                completionHandler: { [weak self] finished in
+                    guard let self, finished, self.shouldPlayWhenReady else { return }
+                    self.player.playImmediately(atRate: 1)
+                }
+            )
+        } else if shouldPlayWhenReady {
+            player.playImmediately(atRate: 1)
+        }
+    }
+
     private func observe(item: AVPlayerItem) {
         observations.append(item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
             DispatchQueue.main.async {
                 guard let self else { return }
                 if item.status == .failed {
                     self.snapshot.errorMessage = item.error?.localizedDescription ?? "AVPlayerItem failed"
+                    DiagnosticsLogger.shared.log(
+                        "AVPlayer",
+                        "item failed engine=\(self.kind.title) error=\(self.snapshot.errorMessage ?? "unknown")"
+                    )
                     self.emit()
                 } else if item.status == .readyToPlay, self.shouldPlayWhenReady {
                     self.player.playImmediately(atRate: 1)

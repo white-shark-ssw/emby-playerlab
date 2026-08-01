@@ -2,7 +2,7 @@
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
     "bytes": 4956,
-    "sha256": "915e865ee46d596e8c5ca708ba3d054685b16cc14c3f04a68e727484482fea9c"
+    "sha256": "57996426555e0c4beb1b3ed8b75ed7366675df1d0d23fae2fe8122e58d426d40"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -16,8 +16,8 @@
   },
   {
     "path": "Config/Info.plist",
-    "bytes": 1684,
-    "sha256": "1b423c2f05a5181d0664663672cc2b11349ec547c680fd8a7db47fa516a92807"
+    "bytes": 1783,
+    "sha256": "2c2f9fcb59a27a4c439947e03dc4330869adc284d5a2a5d16aecb03eab07a16a"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -31,8 +31,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 7908,
-    "sha256": "92a7b25e32600de53c49ae278ac61d5a4ac0fc3513af0a434a7fce6b51e2ada9"
+    "bytes": 8454,
+    "sha256": "481b8cea644da397444c203960421e0537fcb6cc6abd4043402457fc7d83c1c5"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -157,7 +157,7 @@
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1062,
-    "sha256": "dcab50604b152324778d0f060cf65a2b5b27552e5983b3a4bda69e6a7d111f79"
+    "sha256": "2dadcdb214634f59ad0e327257ff9c40c53476569135b05a1ba85ceb435920a3"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -191,8 +191,8 @@
   },
   {
     "path": "Sources/Player/AVPlayerEngine.swift",
-    "bytes": 13147,
-    "sha256": "811f95f76b267c0e6a9ab10a4b54edf77f0c425674ea9e9a9f91c666a0854fc3"
+    "bytes": 16404,
+    "sha256": "5f9383ab69c1e42894ec19b857d89f568857ab155248bd683d6fcb77765464db"
   },
   {
     "path": "Sources/Player/MPVPlayerEngine.swift",
@@ -201,8 +201,8 @@
   },
   {
     "path": "Sources/Player/PlayerController.swift",
-    "bytes": 28535,
-    "sha256": "b2742e31e82660b58312637f92188593b6ef840cf0b9c5225859ecdb0a36e1ce"
+    "bytes": 28531,
+    "sha256": "8d637b5ed8c9f2dec10bfb33f3eccff7b87a4d33d433d178ec89cb3ed5686e8b"
   },
   {
     "path": "Sources/Player/PlayerEngine.swift",
@@ -221,8 +221,8 @@
   },
   {
     "path": "Sources/Transport/MediaTransportSession.swift",
-    "bytes": 12622,
-    "sha256": "00b93cb62d5a45232f41ca4db5bf87fe5fdafaad4cde1447e0934e7c1f10215e"
+    "bytes": 14443,
+    "sha256": "f920d0c3a03d69485ff240a080a692c452587236504c1f71155cccb122dc08f9"
   },
   {
     "path": "Sources/Transport/NetworkPathMonitor.swift",
@@ -245,14 +245,19 @@
     "sha256": "a121620007393f8dc6c682e5d4f9e147c17d0ca0962a5036af1be5f52160336f"
   },
   {
+    "path": "Sources/Transport/TransportHTTPServer.swift",
+    "bytes": 16200,
+    "sha256": "582d3d8c3d8d7bf85aca0e16dc437a2285aa55eb08653cc56380b5871a82cbe1"
+  },
+  {
     "path": "Sources/Transport/TransportResourceLoader.swift",
-    "bytes": 4996,
-    "sha256": "88a4256da87b62652d86875ee2296d3783ac92c877cf41f35b3ee0ef4abb52ba"
+    "bytes": 5280,
+    "sha256": "14ee6a2f2159229cd1ab2885447473a490de82add381c69b149b499573ac8ffd"
   },
   {
     "path": "Sources/Transport/TransportSettings.swift",
     "bytes": 3709,
-    "sha256": "22f9909bd82553c8650e0f9b240613b3b4b7129a1d0ffac43f19e5dbf714f179"
+    "sha256": "4f9f97541787e5a16144d1fc67b938c6bb69fa2a0fad52db0ca4bf3a66695139"
   },
   {
     "path": "Sources/Transport/TransportTypes.swift",
@@ -307,7 +312,7 @@
   {
     "path": "Sources/UI/PlayerSettingsView.swift",
     "bytes": 5797,
-    "sha256": "aa531872791dac1bc14ee7f8928be475cc88418b0c0fa438a261037551eec3bc"
+    "sha256": "0d00ada2bc0ed51a830fd5149009729d05f05bf2653d3dca06c0f80506d7dcfb"
   },
   {
     "path": "docs/BUILD_REPORT.md",
@@ -395,6 +400,11 @@
     "sha256": "9d8ba227eacbd17e7aa47a0030ce9dcb3a6e4614eb4adc033eefad709e023109"
   },
   {
+    "path": "docs/CHANGELOG_0.3.2.md",
+    "bytes": 942,
+    "sha256": "442e27f19aaf96c03c9ef0983d8d106c225989336d0813d78526fe46ed63da2b"
+  },
+  {
     "path": "docs/RESEARCH_NOTES.md",
     "bytes": 1218,
     "sha256": "d26bf7e9b7c43c9137d2431b1d578b2ce4f175a965a14d94cc7b3f2f863a2909"
@@ -422,7 +432,7 @@
   {
     "path": "project.yml",
     "bytes": 1326,
-    "sha256": "032b127a587aa6cb727183e13e20fb6995af1f4b01d9810aa53485cf182801b9"
+    "sha256": "a2dd886f04bc727964c8bf3db0a57600af1591934d09dab5a10cb7521b9aee36"
   },
   {
     "path": "scripts/check_min_os.sh",

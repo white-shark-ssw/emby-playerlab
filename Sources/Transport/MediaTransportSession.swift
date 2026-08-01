@@ -23,6 +23,7 @@ actor MediaTransportSession {
     private var memoryBytes: Int64 = 0
     private var inFlight: [Int64: InFlightEntry] = [:]
     private var preloadTask: Task<Void, Never>?
+    private var initialPreloadTask: Task<Void, Never>?
     private var preloadAnchor: Int64?
     private var metricsValue = TransportMetricsSnapshot()
     private let createdAt = Date()
@@ -57,6 +58,7 @@ actor MediaTransportSession {
             "TransportSession",
             "ready item=\(source.itemId) bytes=\(resolved.contentLength) segment=\(configuration.segmentSizeBytes) concurrent=\(configuration.maximumConcurrentRequests) mode=\(configuration.cacheMode.rawValue)"
         )
+        scheduleInitialPreload(resource: resolved)
         return resolved
     }
 
@@ -123,14 +125,16 @@ actor MediaTransportSession {
         stopped = true
         preloadTask?.cancel()
         preloadTask = nil
+        initialPreloadTask?.cancel()
+        initialPreloadTask = nil
         preloadAnchor = nil
         inFlight.values.forEach { $0.task.cancel() }
         inFlight.removeAll()
+        let finalMetrics = await metrics()
+        DiagnosticsLogger.shared.log("TransportSession", "stopped \(finalMetrics.summary)")
         memoryEntries.removeAll()
         memoryBytes = 0
         await diskCache.close()
-        let finalMetrics = await metrics()
-        DiagnosticsLogger.shared.log("TransportSession", "stopped \(finalMetrics.summary)")
     }
 
     private func segment(start: Int64, preload: Bool) async throws -> Data {
@@ -235,6 +239,45 @@ actor MediaTransportSession {
             memoryEntries[start] = nil
             memoryBytes = max(0, memoryBytes - Int64(entry.data.count))
         }
+    }
+
+    private func scheduleInitialPreload(resource: TransportResolvedResource) {
+        guard initialPreloadTask == nil, configuration.cacheMode != .disabled else { return }
+        let preloadLimit = NetworkPathMonitor.shared.isCellular
+            ? configuration.cellularPreloadBytes
+            : configuration.wifiPreloadBytes
+        guard preloadLimit > 0 else { return }
+
+        let headBudget = min(preloadLimit, 64 * 1_048_576)
+        let segmentSize = max(1, configuration.segmentSizeBytes)
+        let tailStart = ((max(0, resource.contentLength - 1)) / segmentSize) * segmentSize
+
+        DiagnosticsLogger.shared.log(
+            "TransportPrime",
+            "begin headBytes=\(headBudget) tailStart=\(tailStart) concurrent=\(configuration.maximumConcurrentRequests)"
+        )
+
+        initialPreloadTask = Task { [weak self] in
+            guard let self else { return }
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { [weak self] in
+                    guard let self else { return }
+                    await self.preload(from: 0, maximumBytes: headBudget)
+                }
+                if tailStart > 0 {
+                    group.addTask { [weak self] in
+                        guard let self else { return }
+                        _ = try? await self.segment(start: tailStart, preload: true)
+                    }
+                }
+            }
+            await self.finishInitialPreload()
+        }
+    }
+
+    private func finishInitialPreload() {
+        initialPreloadTask = nil
+        DiagnosticsLogger.shared.log("TransportPrime", "initial preload finished")
     }
 
     private func schedulePreload(after offset: Int64) {

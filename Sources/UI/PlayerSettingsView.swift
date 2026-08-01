@@ -12,7 +12,7 @@ struct PlayerSettingsView: View {
     @AppStorage(TransportSettingsKey.diskCacheGB) private var diskCacheGB = 2
     @AppStorage(TransportSettingsKey.wifiPreloadMB) private var wifiPreloadMB = 1024
     @AppStorage(TransportSettingsKey.cellularPreloadMB) private var cellularPreloadMB = 128
-    @AppStorage(TransportSettingsKey.segmentSizeMB) private var segmentSizeMB = 4
+    @AppStorage(TransportSettingsKey.segmentSizeMB) private var segmentSizeMB = 1
     @AppStorage(TransportSettingsKey.concurrentRequests) private var concurrentRequests = 4
     @AppStorage(TransportSettingsKey.keepLastCache) private var keepLastCache = false
 

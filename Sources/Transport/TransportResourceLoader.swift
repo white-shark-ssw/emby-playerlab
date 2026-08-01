@@ -39,8 +39,8 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         guard !isInvalidated() else { return false }
 
         let identifier = ObjectIdentifier(loadingRequest)
-        let task = Task { [weak self, weak loadingRequest] in
-            guard let self, let loadingRequest else { return }
+        let task = Task { [weak self, loadingRequest] in
+            guard let self else { return }
             do {
                 try await self.fulfill(loadingRequest)
             } catch is CancellationError {
@@ -52,6 +52,10 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
             _ = self.removeTask(for: identifier)
         }
 
+        DiagnosticsLogger.shared.log(
+            "TransportLoader",
+            "request accepted offset=\(loadingRequest.dataRequest?.requestedOffset ?? -1) length=\(loadingRequest.dataRequest?.requestedLength ?? 0) allToEnd=\(loadingRequest.dataRequest?.requestsAllDataToEndOfResource ?? false)"
+        )
         storeTask(task, for: identifier)
         return true
     }
