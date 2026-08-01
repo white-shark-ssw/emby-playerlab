@@ -2,7 +2,7 @@
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
     "bytes": 4956,
-    "sha256": "a8816bb24c68a28008aa3305372b75cee2486a16482e668f6ce67f67ed3b0f13"
+    "sha256": "915e865ee46d596e8c5ca708ba3d054685b16cc14c3f04a68e727484482fea9c"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -17,7 +17,7 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1684,
-    "sha256": "6f0ca76a0ceea8657c1541e443abf9488c9f1f288b6cd58668fbdbeb684a21a2"
+    "sha256": "1b423c2f05a5181d0664663672cc2b11349ec547c680fd8a7db47fa516a92807"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -31,8 +31,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 7435,
-    "sha256": "20f414beaf9fed77bfc6db6b8819b93f55b2fd26e246810fe039fd1f5307ed2e"
+    "bytes": 7908,
+    "sha256": "92a7b25e32600de53c49ae278ac61d5a4ac0fc3513af0a434a7fce6b51e2ada9"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -157,7 +157,7 @@
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1062,
-    "sha256": "0da56428d3d933519a8945f10672ff8cc955cf8a6273411c6eeb566012678e00"
+    "sha256": "dcab50604b152324778d0f060cf65a2b5b27552e5983b3a4bda69e6a7d111f79"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -191,8 +191,8 @@
   },
   {
     "path": "Sources/Player/AVPlayerEngine.swift",
-    "bytes": 13102,
-    "sha256": "818e21eae1628c00a8c587d6e691be85f8c8ead1a8393af1f0ed7574606e655b"
+    "bytes": 13147,
+    "sha256": "811f95f76b267c0e6a9ab10a4b54edf77f0c425674ea9e9a9f91c666a0854fc3"
   },
   {
     "path": "Sources/Player/MPVPlayerEngine.swift",
@@ -221,8 +221,8 @@
   },
   {
     "path": "Sources/Transport/MediaTransportSession.swift",
-    "bytes": 12588,
-    "sha256": "008358f1075e746943cc28c50119bd68ed1bb3549ed7df56632975c1e3ee7753"
+    "bytes": 12622,
+    "sha256": "00b93cb62d5a45232f41ca4db5bf87fe5fdafaad4cde1447e0934e7c1f10215e"
   },
   {
     "path": "Sources/Transport/NetworkPathMonitor.swift",
@@ -246,8 +246,8 @@
   },
   {
     "path": "Sources/Transport/TransportResourceLoader.swift",
-    "bytes": 4550,
-    "sha256": "63e008a2b02190a8485ad9e22016624d0918cdd5174f49c8e297cc00cda54e90"
+    "bytes": 4996,
+    "sha256": "88a4256da87b62652d86875ee2296d3783ac92c877cf41f35b3ee0ef4abb52ba"
   },
   {
     "path": "Sources/Transport/TransportSettings.swift",
@@ -390,6 +390,11 @@
     "sha256": "3280846ecb73a64a492defc8aa704032b19e594e344359ee5a2cbe5e5b8b9b1e"
   },
   {
+    "path": "docs/CHANGELOG_0.3.1.md",
+    "bytes": 516,
+    "sha256": "9d8ba227eacbd17e7aa47a0030ce9dcb3a6e4614eb4adc033eefad709e023109"
+  },
+  {
     "path": "docs/RESEARCH_NOTES.md",
     "bytes": 1218,
     "sha256": "d26bf7e9b7c43c9137d2431b1d578b2ce4f175a965a14d94cc7b3f2f863a2909"
@@ -417,7 +422,7 @@
   {
     "path": "project.yml",
     "bytes": 1326,
-    "sha256": "e0990023c9cb84211a41d34c15e85c6efc9cb3151a1c150c3769826f26df6394"
+    "sha256": "032b127a587aa6cb727183e13e20fb6995af1f4b01d9810aa53485cf182801b9"
   },
   {
     "path": "scripts/check_min_os.sh",

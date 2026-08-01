@@ -106,7 +106,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             item.seek(
                 to: CMTime(seconds: startPosition, preferredTimescale: 600),
                 toleranceBefore: CMTime(seconds: 0.5, preferredTimescale: 600),
-                toleranceAfter: CMTime(seconds: 0.5, preferredTimescale: 600)
+                toleranceAfter: CMTime(seconds: 0.5, preferredTimescale: 600),
+                completionHandler: { _ in }
             )
         }
     }

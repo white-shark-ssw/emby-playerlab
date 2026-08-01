@@ -113,7 +113,8 @@ actor MediaTransportSession {
     func metrics() async -> TransportMetricsSnapshot {
         var value = metricsValue
         value.elapsedSeconds = Date().timeIntervalSince(createdAt)
-        value.cacheBytes = memoryBytes + await diskCache.size()
+        let diskBytes = await diskCache.size()
+        value.cacheBytes = memoryBytes + diskBytes
         return value
     }
 

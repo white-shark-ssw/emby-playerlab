@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.2.10
+## 当前版本：0.3.1
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.2.10-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.3.1-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -165,3 +165,12 @@ STOP、QUIT、REDIRECT 等文件切换事件只记录日志，不改变播放结
 兼容模式先立即执行普通 Seek；2.5 秒内没有真实 PLAYBACK_RESTART 时，才在
 同一个 MPV handle 中使用 loadfile replace 从目标位置重新打开。time-pos 提前
 变化不再被当成 Seek 已完成。
+
+
+## 0.3.1 构建修复
+
+- 修复 `MediaTransportSession.metrics()` 中 `await` 位于加法表达式右侧导致的 Xcode 编译失败。
+- 磁盘缓存大小先异步读取到局部变量，再与内存缓存大小相加。
+- 将 `TransportResourceLoader` 的锁操作移入同步辅助方法，避免 Swift 6 并发检查警告。
+- AVPlayer 初始位置 Seek 改用带 completionHandler 的兼容重载。
+- 不改变 Transport/Range 缓存架构和默认缓存参数。

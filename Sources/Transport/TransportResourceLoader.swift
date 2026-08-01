@@ -23,11 +23,7 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
     }
 
     func invalidate() {
-        lock.lock()
-        invalidated = true
-        let runningTasks = Array(tasks.values)
-        tasks.removeAll()
-        lock.unlock()
+        let runningTasks = invalidateAndTakeTasks()
         runningTasks.forEach { $0.cancel() }
         Task { await session.stop() }
     }
@@ -40,10 +36,7 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         _ resourceLoader: AVAssetResourceLoader,
         shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest
     ) -> Bool {
-        lock.lock()
-        let shouldReject = invalidated
-        lock.unlock()
-        guard !shouldReject else { return false }
+        guard !isInvalidated() else { return false }
 
         let identifier = ObjectIdentifier(loadingRequest)
         let task = Task { [weak self, weak loadingRequest] in
@@ -56,14 +49,10 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
                 DiagnosticsLogger.shared.log("TransportLoader", "request failed: \(error.localizedDescription)")
                 self.finish(loadingRequest, error: error)
             }
-            self.lock.lock()
-            self.tasks[identifier] = nil
-            self.lock.unlock()
+            _ = self.removeTask(for: identifier)
         }
 
-        lock.lock()
-        tasks[identifier] = task
-        lock.unlock()
+        storeTask(task, for: identifier)
         return true
     }
 
@@ -72,10 +61,35 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         didCancel loadingRequest: AVAssetResourceLoadingRequest
     ) {
         let identifier = ObjectIdentifier(loadingRequest)
+        removeTask(for: identifier)?.cancel()
+    }
+
+    private func isInvalidated() -> Bool {
         lock.lock()
-        let task = tasks.removeValue(forKey: identifier)
+        defer { lock.unlock() }
+        return invalidated
+    }
+
+    private func storeTask(_ task: Task<Void, Never>, for identifier: ObjectIdentifier) {
+        lock.lock()
+        tasks[identifier] = task
         lock.unlock()
-        task?.cancel()
+    }
+
+    @discardableResult
+    private func removeTask(for identifier: ObjectIdentifier) -> Task<Void, Never>? {
+        lock.lock()
+        defer { lock.unlock() }
+        return tasks.removeValue(forKey: identifier)
+    }
+
+    private func invalidateAndTakeTasks() -> [Task<Void, Never>] {
+        lock.lock()
+        defer { lock.unlock() }
+        invalidated = true
+        let runningTasks = Array(tasks.values)
+        tasks.removeAll()
+        return runningTasks
     }
 
     private func fulfill(_ loadingRequest: AVAssetResourceLoadingRequest) async throws {
