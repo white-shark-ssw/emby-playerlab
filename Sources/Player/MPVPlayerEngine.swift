@@ -220,6 +220,7 @@ final class MPVPlayerEngine: PlayerEngine {
         check(mpv_set_option_string(handle, "demuxer-seekable-cache", "yes"), operation: "seekable cache")
         check(mpv_set_option_string(handle, "hr-seek", "no"), operation: "disable precise seek")
         check(mpv_set_option_string(handle, "network-timeout", "30"), operation: "network timeout")
+        check(mpv_set_option_string(handle, "demuxer-termination-timeout", "2"), operation: "demuxer termination timeout")
         check(mpv_set_option_string(handle, "sub-auto", "fuzzy"), operation: "subtitle auto")
 
         let status = mpv_initialize(handle)
@@ -249,7 +250,13 @@ final class MPVPlayerEngine: PlayerEngine {
             isBuffering: true,
             waitingReason: compatibilityMode ? "MPV compatibility loading" : "MPV loading"
         )
-        pendingSeek = nil
+        pendingSeek = startPosition > 0
+            ? PendingSeek(
+                requestedAt: CACurrentMediaTime(),
+                target: startPosition,
+                bufferHit: false
+            )
+            : nil
         emitOnMain()
 
         queue.async { [weak self] in

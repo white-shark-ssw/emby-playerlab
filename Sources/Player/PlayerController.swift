@@ -25,6 +25,7 @@ final class PlayerController: ObservableObject {
     private var seekAnchorReleaseTask: Task<Void, Never>?
     private var watchdogTask: Task<Void, Never>?
     private var compatibilityRecoveryTask: Task<Void, Never>?
+    private var compatibilitySeekFallbackTask: Task<Void, Never>?
     private var started = false
     private var userIsScrubbing = false
     private var pendingSeekTarget: Double?
@@ -111,6 +112,8 @@ final class PlayerController: ObservableObject {
         watchdogTask = nil
         compatibilityRecoveryTask?.cancel()
         compatibilityRecoveryTask = nil
+        compatibilitySeekFallbackTask?.cancel()
+        compatibilitySeekFallbackTask = nil
         seekReportTask?.cancel()
         seekReportTask = nil
         seekAnchorReleaseTask?.cancel()
@@ -160,14 +163,11 @@ final class PlayerController: ObservableObject {
             "SeekAnchor",
             "offset=\(offset) base=\(base) target=\(target) enginePosition=\(snapshot.position)"
         )
-        if shouldReloadMPVCompatibility, offset > 0 {
-            startMPVCompatibilityReload(
-                at: target,
-                reason: "用户在 MPV 停滞时双击快进"
-            )
-        } else {
-            engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)
-        }
+        engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)
+        scheduleCompatibilitySeekFallback(
+            target: target,
+            reason: "兼容模式双击 Seek 未收到 PLAYBACK_RESTART"
+        )
         showSeekFeedback(offset: offset)
         scheduleSeekReport(position: pendingSeekTarget ?? target)
     }
@@ -241,6 +241,8 @@ final class PlayerController: ObservableObject {
         pendingSeekDirection = nil
         compatibilityRecoveryTask?.cancel()
         compatibilityRecoveryTask = nil
+        compatibilitySeekFallbackTask?.cancel()
+        compatibilitySeekFallbackTask = nil
         mpvCompatibilityMode = false
         mpvCompatibilityReloadCount = 0
         mpvCompatibilityLoadInProgress = false
@@ -296,7 +298,9 @@ final class PlayerController: ObservableObject {
                 let wasEnd = self.snapshot.didReachEnd
                 self.snapshot = value
 
-                if !self.userIsScrubbing, let pending = self.pendingSeekTarget,
+                if self.engineKind == .avPlayer,
+                   !self.userIsScrubbing,
+                   let pending = self.pendingSeekTarget,
                    self.hasReachedPendingTarget(actual: value.position, target: pending) {
                     self.seekAnchorReleaseTask?.cancel()
                     self.seekAnchorReleaseTask = nil
@@ -322,8 +326,17 @@ final class PlayerController: ObservableObject {
             Task { @MainActor in
                 guard generation == self.engineGeneration else { return }
                 if let pending = self.pendingSeekTarget, abs(pending - result.target) < 0.01 {
-                    self.displayedPosition = pending
-                    self.scheduleSeekAnchorRelease(expectedTarget: pending)
+                    self.compatibilitySeekFallbackTask?.cancel()
+                    self.compatibilitySeekFallbackTask = nil
+                    self.seekAnchorReleaseTask?.cancel()
+                    self.seekAnchorReleaseTask = nil
+                    self.pendingSeekTarget = nil
+                    self.pendingSeekDirection = nil
+                    self.displayedPosition = result.actualPosition ?? pending
+                    DiagnosticsLogger.shared.log(
+                        "SeekAnchor",
+                        "completed target=\(pending) actual=\(result.actualPosition ?? pending)"
+                    )
                 }
                 let actualText = result.actualPosition.map { String(format: "%.2f", $0) } ?? "unknown"
                 self.lastSeekSummary = String(
@@ -348,14 +361,11 @@ final class PlayerController: ObservableObject {
         pendingSeekTarget = target
         pendingSeekDirection = .absolute
 
-        if shouldReloadMPVCompatibility, target > snapshot.position {
-            startMPVCompatibilityReload(
-                at: target,
-                reason: "用户在 MPV 停滞时拖动进度"
-            )
-        } else {
-            engine.seek(to: target, direction: .absolute)
-        }
+        engine.seek(to: target, direction: .absolute)
+        scheduleCompatibilitySeekFallback(
+            target: target,
+            reason: "兼容模式拖动 Seek 未收到 PLAYBACK_RESTART"
+        )
         Task {
             await client.reportProgress(
                 source: source,
@@ -517,13 +527,32 @@ final class PlayerController: ObservableObject {
         engine.play()
     }
 
-    private var shouldReloadMPVCompatibility: Bool {
-        guard engineKind == .mpv,
-              source.mediaSource.normalizedContainer == "mp4" else { return false }
-        return snapshot.waitingReason == "MPV paused-for-cache"
-            || snapshot.waitingReason == "MPV compatibility loading"
-            || stagnantWatchdogIntervals >= 2
-            || stallRecoveryCount > 0
+    private func scheduleCompatibilitySeekFallback(target: Double, reason: String) {
+        compatibilitySeekFallbackTask?.cancel()
+        compatibilitySeekFallbackTask = nil
+
+        guard started,
+              engineKind == .mpv,
+              mpvCompatibilityMode,
+              source.mediaSource.normalizedContainer == "mp4" else { return }
+
+        compatibilitySeekFallbackTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard let self,
+                  !Task.isCancelled,
+                  self.started,
+                  self.engineKind == .mpv,
+                  self.mpvCompatibilityMode,
+                  let pending = self.pendingSeekTarget,
+                  abs(pending - target) < 0.01 else { return }
+
+            DiagnosticsLogger.shared.log(
+                "MPVSeekFallback",
+                "target=\(target) position=\(self.snapshot.position) reason=\(reason)"
+            )
+            self.compatibilitySeekFallbackTask = nil
+            self.startMPVCompatibilityReload(at: target, reason: reason)
+        }
     }
 
     private func startMPVCompatibilityReload(at requestedPosition: Double, reason: String) {
@@ -539,9 +568,12 @@ final class PlayerController: ObservableObject {
         pendingSeekTarget = startPosition
         pendingSeekDirection = .absolute
         displayedPosition = startPosition
+        compatibilitySeekFallbackTask?.cancel()
+        compatibilitySeekFallbackTask = nil
         mpvCompatibilityMode = true
         mpvCompatibilityLoadInProgress = true
         mpvCompatibilityReloadCount += 1
+        resetWatchdog()
 
         DiagnosticsLogger.shared.log(
             "MPVCompatibility",
