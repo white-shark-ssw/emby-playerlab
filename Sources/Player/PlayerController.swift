@@ -27,6 +27,7 @@ final class PlayerController: ObservableObject {
     private var started = false
     private var userIsScrubbing = false
     private var pendingSeekTarget: Double?
+    private var pendingSeekDirection: SeekDirection?
     private var screenScrubStartPosition: Double?
     private var engineGeneration = 0
     private var eofRetryCount = 0
@@ -98,6 +99,8 @@ final class PlayerController: ObservableObject {
     func stop() {
         guard started else { return }
         started = false
+        DiagnosticsLogger.shared.log("Lifecycle", "player close requested engine=\(engineKind.title) position=\(snapshot.position)")
+
         progressTask?.cancel()
         progressTask = nil
         watchdogTask?.cancel()
@@ -106,13 +109,25 @@ final class PlayerController: ObservableObject {
         seekReportTask = nil
         seekAnchorReleaseTask?.cancel()
         seekAnchorReleaseTask = nil
+        feedbackTask?.cancel()
+        feedbackTask = nil
+
+        // Invalidate callbacks before libmpv teardown so stale events cannot mutate a disappearing view.
+        engineGeneration += 1
+        engine.onSnapshot = nil
+        engine.onSeekCompleted = nil
+
         let position = snapshot.position
         engine.stop()
+
         Task {
             await client.reportStopped(source: source, position: position)
         }
+
         pendingSeekTarget = nil
+        pendingSeekDirection = nil
         screenScrubStartPosition = nil
+        DiagnosticsLogger.shared.log("Lifecycle", "player close detached")
     }
 
     func togglePlayPause() {
@@ -132,6 +147,7 @@ final class PlayerController: ObservableObject {
         let base = pendingSeekTarget ?? snapshot.position
         let target = clampPosition(base + offset)
         pendingSeekTarget = target
+        pendingSeekDirection = offset >= 0 ? .forward : .backward
         displayedPosition = target
 
         DiagnosticsLogger.shared.log(
@@ -147,6 +163,7 @@ final class PlayerController: ObservableObject {
         seekAnchorReleaseTask?.cancel()
         seekAnchorReleaseTask = nil
         pendingSeekTarget = nil
+        pendingSeekDirection = nil
         userIsScrubbing = true
         screenScrubStartPosition = nil
     }
@@ -163,6 +180,7 @@ final class PlayerController: ObservableObject {
         seekAnchorReleaseTask?.cancel()
         seekAnchorReleaseTask = nil
         pendingSeekTarget = nil
+        pendingSeekDirection = nil
         userIsScrubbing = true
         let start = pendingSeekTarget ?? snapshot.position
         screenScrubStartPosition = start
@@ -206,6 +224,10 @@ final class PlayerController: ObservableObject {
             "Switch \(engineKind.title) -> \(kind.title) reason=\(reason) position=\(resumePosition)"
         )
 
+        pendingSeekTarget = nil
+        pendingSeekDirection = nil
+        seekAnchorReleaseTask?.cancel()
+        seekAnchorReleaseTask = nil
         engine.stop()
         engineKind = kind
         engine = Self.makeEngine(kind: kind)
@@ -255,9 +277,22 @@ final class PlayerController: ObservableObject {
                 guard generation == self.engineGeneration else { return }
                 let wasEnd = self.snapshot.didReachEnd
                 self.snapshot = value
-                if !self.userIsScrubbing, self.pendingSeekTarget == nil {
+
+                if !self.userIsScrubbing, let pending = self.pendingSeekTarget,
+                   self.hasReachedPendingTarget(actual: value.position, target: pending) {
+                    self.seekAnchorReleaseTask?.cancel()
+                    self.seekAnchorReleaseTask = nil
+                    self.pendingSeekTarget = nil
+                    self.pendingSeekDirection = nil
+                    self.displayedPosition = value.position
+                    DiagnosticsLogger.shared.log(
+                        "SeekAnchor",
+                        "reached target=\(pending) actual=\(value.position)"
+                    )
+                } else if !self.userIsScrubbing, self.pendingSeekTarget == nil {
                     self.displayedPosition = value.position
                 }
+
                 if value.didReachEnd && !wasEnd {
                     self.handleEndEvent()
                 }
@@ -291,6 +326,7 @@ final class PlayerController: ObservableObject {
         userIsScrubbing = false
         let target = clampPosition(displayedPosition)
         pendingSeekTarget = target
+        pendingSeekDirection = .absolute
         engine.seek(to: target, direction: .absolute)
         Task {
             await client.reportProgress(
@@ -305,17 +341,32 @@ final class PlayerController: ObservableObject {
     private func scheduleSeekAnchorRelease(expectedTarget: Double) {
         seekAnchorReleaseTask?.cancel()
         seekAnchorReleaseTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 850_000_000)
+            // Failsafe only. Normal release happens when time-pos reaches the target.
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
             guard let self, !Task.isCancelled,
                   let pending = self.pendingSeekTarget,
                   abs(pending - expectedTarget) < 0.01 else { return }
 
             self.pendingSeekTarget = nil
+            self.pendingSeekDirection = nil
             self.displayedPosition = self.snapshot.position
             DiagnosticsLogger.shared.log(
                 "SeekAnchor",
-                "released target=\(expectedTarget) actual=\(self.snapshot.position)"
+                "timeout target=\(expectedTarget) actual=\(self.snapshot.position)"
             )
+        }
+    }
+
+    private func hasReachedPendingTarget(actual: Double, target: Double) -> Bool {
+        switch pendingSeekDirection {
+        case .forward:
+            return actual >= target - 0.25
+        case .backward:
+            return actual <= target + 0.25
+        case .absolute:
+            return abs(actual - target) <= 0.40
+        case .none:
+            return false
         }
     }
 

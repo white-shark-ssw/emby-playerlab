@@ -22,8 +22,15 @@ final class MPVSurfaceUIView: UIView {
         setNeedsLayout()
     }
 
-    deinit {
+    func detach() {
         statusObservation?.invalidate()
+        statusObservation = nil
+        displayLayer?.removeFromSuperlayer()
+        displayLayer = nil
+    }
+
+    deinit {
+        detach()
     }
 
     override func layoutSubviews() {
@@ -47,5 +54,9 @@ struct MPVPlayerSurface: UIViewRepresentable {
 
     func updateUIView(_ uiView: MPVSurfaceUIView, context: Context) {
         uiView.attach(displayLayer)
+    }
+
+    static func dismantleUIView(_ uiView: MPVSurfaceUIView, coordinator: ()) {
+        uiView.detach()
     }
 }

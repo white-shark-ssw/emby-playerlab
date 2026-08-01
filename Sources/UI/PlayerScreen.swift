@@ -8,6 +8,7 @@ struct PlayerScreen: View {
     @AppStorage("seek.screenPanEnabled") private var screenPanEnabled = true
     @AppStorage("buffer.preset") private var bufferPresetRaw = BufferPreset.balanced.rawValue
     @State private var showSettings = false
+    @State private var isClosing = false
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
         _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: preference))
@@ -17,8 +18,10 @@ struct PlayerScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            playerSurface
-                .ignoresSafeArea()
+            if !isClosing {
+                playerSurface
+                    .ignoresSafeArea()
+            }
 
             PlaybackGestureOverlay(
                 onLeftDoubleTap: { controller.seek(by: -Double(backwardSeconds)) },
@@ -82,7 +85,15 @@ struct PlayerScreen: View {
         VStack {
             HStack(spacing: 8) {
                 Button {
-                    presentationMode.wrappedValue.dismiss()
+                    guard !isClosing else { return }
+                    isClosing = true
+                    DiagnosticsLogger.shared.log("Lifecycle", "close button tapped")
+
+                    // Give SwiftUI one frame to dismantle the MPV surface/KVO before libmpv teardown.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        controller.stop()
+                        presentationMode.wrappedValue.dismiss()
+                    }
                 } label: {
                     Image(systemName: "xmark")
                         .font(.title2)

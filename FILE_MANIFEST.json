@@ -2,7 +2,7 @@
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
     "bytes": 4956,
-    "sha256": "5103b4fda8cc87d9c83b31adaa79a3cd98b035ccfbdda78d7f97114a15ba40fb"
+    "sha256": "08af646bfe1cd4b9c8ac90e86a5c8ecc8da0aab2bdbd83ed349a2eb8ae0c6642"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -17,7 +17,7 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1683,
-    "sha256": "bf08c4a3d754af12490fd06d36a12fc913bba3c0a107f37a7842c8b1d2c47058"
+    "sha256": "0a7231345255e301aa9a02a7bce8a687d8cb8e01c23987b15762ef663d34a0cf"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -31,8 +31,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 4404,
-    "sha256": "e492c3e3891fa0dae2c257a2fcfedf45f810cf9b86dc5e869b93b16fd0f97f44"
+    "bytes": 4808,
+    "sha256": "8f8a6b3f84b36d665467b11c71fb01f725e189ff3a7a18ed9f810442d25f4a20"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -157,7 +157,7 @@
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1023,
-    "sha256": "8bc15a7bf60fd2bb0a4aba2d2b14a2b2d1d6d5d5b09a26a0085629487f4403f0"
+    "sha256": "0d2186fab126f59828d5983515dfb453e6894eaeb245f677b35fec44a01c3548"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -171,8 +171,8 @@
   },
   {
     "path": "Sources/Diagnostics/DiagnosticsLogger.swift",
-    "bytes": 1293,
-    "sha256": "fea1423409bba6db6b13c3972b030572e17fb44d164ae8a05bf409e26eb3be82"
+    "bytes": 3068,
+    "sha256": "c567fc63fcd8099940bb1b672c8a1e3aebcdcc62e0883b674d90bda90dc0ea39"
   },
   {
     "path": "Sources/Models/EmbyModels.swift",
@@ -196,13 +196,13 @@
   },
   {
     "path": "Sources/Player/MPVPlayerEngine.swift",
-    "bytes": 17717,
-    "sha256": "c5c8dc722997211908b523d03675a6a5a2a90e9f604a549f10e568d99b025f0a"
+    "bytes": 19219,
+    "sha256": "2585dd432e4a0914ce20b0712bda9649b7c7608aeaf4fee032e5b6f2a0ab9bbf"
   },
   {
     "path": "Sources/Player/PlayerController.swift",
-    "bytes": 16379,
-    "sha256": "bc6e3f5b5d52525017838ea6a7141aaa356d99855c3ee3e0e3edc867048bf083"
+    "bytes": 18421,
+    "sha256": "f01b4224f26fa9347884494502c514dcfd67a9e567e98a3f2b98100e34b86312"
   },
   {
     "path": "Sources/Player/PlayerEngine.swift",
@@ -236,8 +236,8 @@
   },
   {
     "path": "Sources/UI/MPVPlayerSurface.swift",
-    "bytes": 1575,
-    "sha256": "f4439b8b5de875bd50bff6922000a929aa213a21693bf03bc96e51b05a4cd469"
+    "bytes": 1833,
+    "sha256": "daf065cc79172dcb34dfcdb952d84a1e127ef378dcef03beeccddf43370aaf3e"
   },
   {
     "path": "Sources/UI/PlaybackGestureOverlay.swift",
@@ -256,8 +256,8 @@
   },
   {
     "path": "Sources/UI/PlayerScreen.swift",
-    "bytes": 8736,
-    "sha256": "e5bfbac267c29168cce2f5afadde56dda5378973f7faadeac759f6adf87a413f"
+    "bytes": 9251,
+    "sha256": "34c622c6b33fbb7b42dd4fcea02908bc069c5298dbc7d0e76140b95e8e20d2fe"
   },
   {
     "path": "Sources/UI/PlayerSettings.swift",
@@ -313,6 +313,11 @@
     "path": "docs/CHANGELOG_0.2.4.md",
     "bytes": 697,
     "sha256": "3cc60798cb82a1d8f953c226d8ed29a5384e78ae13250ff332a9197ef4db2272"
+  },
+  {
+    "path": "docs/CHANGELOG_0.2.5.md",
+    "bytes": 855,
+    "sha256": "102b86218665520d04d981f2203fef1a79182bcfa25a9c25802c10d31fcf120c"
   },
   {
     "path": "docs/RESEARCH_NOTES.md",

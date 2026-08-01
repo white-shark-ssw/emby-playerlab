@@ -12,6 +12,7 @@ final class MPVPlayerEngine: PlayerEngine {
     let displayLayer = AVSampleBufferDisplayLayer()
 
     private let queue = DispatchQueue(label: "com.embyplayerlab.mpv", qos: .userInitiated)
+    private let queueKey = DispatchSpecificKey<UInt8>()
     private var mpv: OpaquePointer?
     private var snapshot = PlayerSnapshot()
     private var pendingSeek: PendingSeek?
@@ -32,6 +33,7 @@ final class MPVPlayerEngine: PlayerEngine {
     }
 
     init() {
+        queue.setSpecific(key: queueKey, value: 1)
         displayLayer.backgroundColor = UIColor.black.cgColor
         displayLayer.videoGravity = .resizeAspect
         if #available(iOS 17.0, *) {
@@ -78,7 +80,9 @@ final class MPVPlayerEngine: PlayerEngine {
 
         queue.async { [weak self] in
             guard let self, let handle = self.mpv else { return }
-            let mode = bufferHit ? "absolute+exact" : "absolute+keyframes"
+            // Always use keyframe seek for remote media. Exact seek can decode through
+            // malformed timestamp regions and caused item 63368 to stall again.
+            let mode = "absolute+keyframes"
             DiagnosticsLogger.shared.log(
                 "MPVSeekRequest",
                 "target=\(target) mode=\(mode) bufferHit=\(bufferHit) enginePosition=\(self.snapshot.position)"
@@ -98,24 +102,55 @@ final class MPVPlayerEngine: PlayerEngine {
     }
 
     func stop() {
-        guard let handle = mpv, !isStopping else { return }
+        guard !isStopping else { return }
+        guard let handle = mpv else { return }
         isStopping = true
-        mpv_set_wakeup_callback(handle, nil, nil)
+        DiagnosticsLogger.shared.log("MPVLifecycle", "stop begin")
 
-        queue.sync {
-            self.commandSync(handle, ["quit"])
+        // Prevent new callbacks before touching the handle.
+        mpv_set_wakeup_callback(handle, nil, nil)
+        pendingSeek = nil
+
+        let shutdown = { [self] in
+            _ = commandSync(handle, ["quit"])
+
+            // Drain events already produced by quit before destroying the handle.
+            var drainCount = 0
+            while drainCount < 100, let event = mpv_wait_event(handle, 0.02)?.pointee {
+                if event.event_id == MPV_EVENT_NONE || event.event_id == MPV_EVENT_SHUTDOWN {
+                    break
+                }
+                drainCount += 1
+            }
+            DiagnosticsLogger.shared.log("MPVLifecycle", "events drained=\(drainCount)")
         }
 
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
+            shutdown()
+        } else {
+            queue.sync(execute: shutdown)
+        }
+
+        // Clear the shared handle before asynchronous destruction so no queued work can reuse it.
         mpv = nil
-        pendingSeek = nil
+        snapshot = PlayerSnapshot()
+
+        let flushLayer = { [displayLayer] in
+            displayLayer.flushAndRemoveImage()
+        }
+        if Thread.isMainThread {
+            flushLayer()
+        } else {
+            DispatchQueue.main.sync(execute: flushLayer)
+        }
+
         DispatchQueue.global(qos: .userInitiated).async {
             mpv_terminate_destroy(handle)
+            DiagnosticsLogger.shared.log("MPVLifecycle", "terminate_destroy finished")
         }
-        DispatchQueue.main.async { [weak self] in
-            self?.displayLayer.flushAndRemoveImage()
-        }
-        snapshot = PlayerSnapshot()
-        isStopping = false
+
+        // Keep isStopping true. createMPV() resets it for a fresh handle.
+        DiagnosticsLogger.shared.log("MPVLifecycle", "stop detached")
     }
 
     private func createMPV() throws {
@@ -202,7 +237,7 @@ final class MPVPlayerEngine: PlayerEngine {
     private func processEvents() {
         queue.async { [weak self] in
             guard let self, !self.isStopping else { return }
-            while let handle = self.mpv, let eventPointer = mpv_wait_event(handle, 0) {
+            while !self.isStopping, let handle = self.mpv, let eventPointer = mpv_wait_event(handle, 0) {
                 let event = eventPointer.pointee
                 if event.event_id == MPV_EVENT_NONE { break }
                 self.handle(event: event, handle: handle)
