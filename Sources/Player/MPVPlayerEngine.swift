@@ -92,6 +92,31 @@ final class MPVPlayerEngine: PlayerEngine {
         }
     }
 
+    func recoverFromStall(to seconds: Double, reason: String) {
+        let duration = max(0, snapshot.duration)
+        let target = min(max(0, seconds), duration > 0 ? duration : seconds)
+        let bufferHit = snapshot.bufferedRanges.contains(where: { $0.contains(target) })
+        pendingSeek = PendingSeek(requestedAt: CACurrentMediaTime(), target: target, bufferHit: bufferHit)
+        snapshot.didReachEnd = false
+        snapshot.isBuffering = true
+        snapshot.waitingReason = "MPV stall bypass"
+        emitOnMain()
+
+        queue.async { [weak self] in
+            guard let self, let handle = self.mpv, !self.isStopping else { return }
+            let dropStatus = self.commandSync(handle, ["drop-buffers"])
+            if dropStatus < 0 {
+                self.check(dropStatus, operation: "drop buffers before stall bypass")
+            }
+            DiagnosticsLogger.shared.log(
+                "MPVStallBypass",
+                "reason=\(reason) target=\(target) current=\(self.snapshot.position) bufferHit=\(bufferHit)"
+            )
+            self.command(handle, ["seek", String(format: "%.3f", target), "absolute+keyframes"])
+            self.setProperty(handle: handle, name: "pause", value: "no")
+        }
+    }
+
     func reload(at seconds: Double) {
         guard let configuration = lastConfiguration else { return }
         load(
@@ -292,6 +317,16 @@ final class MPVPlayerEngine: PlayerEngine {
             emitOnMain()
         case MPV_EVENT_END_FILE:
             if !isStopping {
+                var reasonValue: Int32 = -1
+                var errorValue: Int32 = 0
+                if let data = event.data?.assumingMemoryBound(to: mpv_event_end_file.self) {
+                    reasonValue = Int32(data.pointee.reason.rawValue)
+                    errorValue = data.pointee.error
+                }
+                DiagnosticsLogger.shared.log(
+                    "MPVEndFile",
+                    "reason=\(reasonValue) error=\(errorValue) position=\(snapshot.position) duration=\(snapshot.duration)"
+                )
                 snapshot.didReachEnd = true
                 snapshot.isPlaying = false
                 emitOnMain()

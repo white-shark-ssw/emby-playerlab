@@ -24,7 +24,6 @@ final class PlayerController: ObservableObject {
     private var seekReportTask: Task<Void, Never>?
     private var seekAnchorReleaseTask: Task<Void, Never>?
     private var watchdogTask: Task<Void, Never>?
-    private var hardRecoveryTask: Task<Void, Never>?
     private var started = false
     private var userIsScrubbing = false
     private var pendingSeekTarget: Double?
@@ -36,7 +35,6 @@ final class PlayerController: ObservableObject {
     private var lastWatchdogPosition: Double = 0
     private var lastWatchdogBufferEnd: Double = 0
     private var stagnantWatchdogIntervals = 0
-    private var lastHardRecoveryOrigin: Double?
 
     var avPlayer: AVPlayer? {
         (engine as? AVPlayerEngine)?.player
@@ -107,8 +105,6 @@ final class PlayerController: ObservableObject {
         progressTask = nil
         watchdogTask?.cancel()
         watchdogTask = nil
-        hardRecoveryTask?.cancel()
-        hardRecoveryTask = nil
         seekReportTask?.cancel()
         seekReportTask = nil
         seekAnchorReleaseTask?.cancel()
@@ -158,14 +154,13 @@ final class PlayerController: ObservableObject {
             "SeekAnchor",
             "offset=\(offset) base=\(base) target=\(target) enginePosition=\(snapshot.position)"
         )
-        if shouldUseHardMPVRecovery, offset > 0 {
-            let recoveryTarget = clampPosition(target + 5)
-            pendingSeekTarget = recoveryTarget
-            displayedPosition = recoveryTarget
-            startHardMPVRecovery(
-                at: recoveryTarget,
-                reason: "用户从停滞点快进，刷新播放会话并越过异常区"
-            )
+        if shouldBypassMPVStall, offset > 0, let mpvEngine = engine as? MPVPlayerEngine {
+            let bypassTarget = clampPosition(max(target, snapshot.position + 30))
+            pendingSeekTarget = bypassTarget
+            pendingSeekDirection = .forward
+            displayedPosition = bypassTarget
+            stallMessage = "MPV 已停滞，本次快进将跨过异常区域到 \(formatTime(bypassTarget))。"
+            mpvEngine.recoverFromStall(to: bypassTarget, reason: "用户双击跨过异常区域")
         } else {
             engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)
         }
@@ -344,14 +339,9 @@ final class PlayerController: ObservableObject {
         pendingSeekTarget = target
         pendingSeekDirection = .absolute
 
-        if shouldUseHardMPVRecovery, target > snapshot.position {
-            let recoveryTarget = clampPosition(target + 5)
-            pendingSeekTarget = recoveryTarget
-            displayedPosition = recoveryTarget
-            startHardMPVRecovery(
-                at: recoveryTarget,
-                reason: "用户拖动到停滞点之后，刷新播放会话并重建 MPV"
-            )
+        if shouldBypassMPVStall, target > snapshot.position, let mpvEngine = engine as? MPVPlayerEngine {
+            stallMessage = "MPV 已停滞，正在直接跳到 \(formatTime(target))。"
+            mpvEngine.recoverFromStall(to: target, reason: "用户拖动跨过异常区域")
         } else {
             engine.seek(to: target, direction: .absolute)
         }
@@ -428,10 +418,15 @@ final class PlayerController: ObservableObject {
             switchEngine(to: .mpv, reason: "AVPlayer 疑似提前结束")
         } else if decision.isPremature, eofRetryCount < 2 {
             eofRetryCount += 1
-            let skip = eofRetryCount == 1 ? 5.0 : 20.0
+            let skip = eofRetryCount == 1 ? 30.0 : 60.0
             let target = clampPosition(snapshot.position + skip)
-            prematureEOFMessage = "\(decision.reason)；刷新播放会话并从 \(formatTime(target)) 恢复 \(eofRetryCount)/2"
-            startHardMPVRecovery(at: target, reason: "MPV 提前 EOF，刷新 302/PlaySession 并跳过异常数据")
+            prematureEOFMessage = "\(decision.reason)；正在跨过异常区域到 \(formatTime(target))（\(eofRetryCount)/2）"
+            if let mpvEngine = engine as? MPVPlayerEngine {
+                pendingSeekTarget = target
+                pendingSeekDirection = .forward
+                displayedPosition = target
+                mpvEngine.recoverFromStall(to: target, reason: "MPV 提前 EOF 跨区恢复")
+            }
         } else if decision.isPremature {
             prematureEOFMessage = "\(decision.reason)；自动恢复已达上限，请导出日志。"
         } else {
@@ -473,14 +468,17 @@ final class PlayerController: ObservableObject {
             return
         }
 
-        if engineKind == .mpv {
-            let skip = stallRecoveryCount == 1 ? 2.0 : 20.0
+        if engineKind == .mpv, let mpvEngine = engine as? MPVPlayerEngine {
+            let skip = stallRecoveryCount == 1 ? 30.0 : 60.0
             let target = clampPosition(snapshot.position + skip)
             let action = stallRecoveryCount == 1
-                ? "刷新 PlaybackInfo、PlaySessionId 和 302 链路后重新打开当前区域"
-                : "重复卡在同一点，刷新播放链路并向后跨过 20 秒"
+                ? "清理解码缓冲并向后跨过 30 秒"
+                : "再次停滞，向后跨过 60 秒"
             stallMessage = "检测到 MPV 停滞：\(action)。"
-            startHardMPVRecovery(at: target, reason: action)
+            pendingSeekTarget = target
+            pendingSeekDirection = .forward
+            displayedPosition = target
+            mpvEngine.recoverFromStall(to: target, reason: action)
             return
         }
 
@@ -489,116 +487,12 @@ final class PlayerController: ObservableObject {
         engine.play()
     }
 
-    private var shouldUseHardMPVRecovery: Bool {
+    private var shouldBypassMPVStall: Bool {
         guard engineKind == .mpv else { return false }
         return stallRecoveryCount > 0
             || snapshot.waitingReason == "MPV paused-for-cache"
+            || snapshot.waitingReason == "MPV stall bypass"
             || (snapshot.isBuffering && stagnantWatchdogIntervals >= 2)
-    }
-
-    private func startHardMPVRecovery(at requestedPosition: Double, reason: String) {
-        guard started, engineKind == .mpv, hardRecoveryTask == nil else { return }
-
-        let position = clampPosition(requestedPosition)
-        let oldSource = source
-        lastHardRecoveryOrigin = snapshot.position
-        pendingSeekTarget = position
-        pendingSeekDirection = .absolute
-        displayedPosition = position
-
-        DiagnosticsLogger.shared.log(
-            "HardRecovery",
-            "begin reason=\(reason) from=\(snapshot.position) target=\(position) oldPlaySession=\(oldSource.playSessionId ?? "nil")"
-        )
-
-        hardRecoveryTask = Task { [weak self] in
-            guard let self else { return }
-
-            var refreshedSource = oldSource
-            do {
-                let playback = try await self.client.playbackInfo(itemId: oldSource.itemId)
-                guard !Task.isCancelled, self.started else {
-                    self.hardRecoveryTask = nil
-                    return
-                }
-
-                guard let mediaSource = playback.mediaSources.first(where: { $0.id == oldSource.mediaSource.id })
-                        ?? playback.mediaSources.first else {
-                    throw PlaybackRecoveryError.noMediaSource
-                }
-
-                refreshedSource = try self.client.resolvePlaybackSource(
-                    itemId: oldSource.itemId,
-                    itemName: oldSource.itemName,
-                    mediaSource: mediaSource,
-                    playSessionId: playback.playSessionId
-                )
-            } catch {
-                DiagnosticsLogger.shared.log(
-                    "HardRecovery",
-                    "PlaybackInfo refresh failed: \(error.localizedDescription); rebuilding MPV with current source"
-                )
-            }
-
-            guard !Task.isCancelled, self.started else {
-                self.hardRecoveryTask = nil
-                return
-            }
-
-            self.replaceMPVEngine(
-                with: refreshedSource,
-                startPosition: position,
-                reason: reason,
-                previousSource: oldSource
-            )
-            self.hardRecoveryTask = nil
-        }
-    }
-
-    private func replaceMPVEngine(
-        with refreshedSource: ResolvedPlaybackSource,
-        startPosition: Double,
-        reason: String,
-        previousSource: ResolvedPlaybackSource
-    ) {
-        let oldPosition = snapshot.position
-        let oldEngine = engine
-
-        engineGeneration += 1
-        oldEngine.onSnapshot = nil
-        oldEngine.onSeekCompleted = nil
-        oldEngine.stop()
-
-        source = refreshedSource
-        engine = Self.makeEngine(kind: .mpv)
-        bindEngine()
-        resetWatchdogSamples()
-        snapshot = PlayerSnapshot(
-            position: startPosition,
-            duration: refreshedSource.mediaSource.durationSeconds ?? 0,
-            isPlaying: true,
-            isBuffering: true,
-            waitingReason: "MPV hard recovery"
-        )
-        displayedPosition = startPosition
-
-        DiagnosticsLogger.shared.log(
-            "HardRecovery",
-            "rebuild reason=\(reason) oldPosition=\(oldPosition) start=\(startPosition) newPlaySession=\(refreshedSource.playSessionId ?? "nil") url=\(refreshedSource.url.absoluteString)"
-        )
-
-        engine.prepare(
-            url: refreshedSource.url,
-            headers: refreshedSource.headers,
-            preferredForwardBuffer: preferredForwardBuffer,
-            startPosition: startPosition
-        )
-        engine.play()
-
-        Task {
-            await client.reportStopped(source: previousSource, position: oldPosition)
-            await client.reportStart(source: refreshedSource, position: startPosition, paused: false)
-        }
     }
 
     private func resetWatchdog() {
@@ -640,14 +534,3 @@ final class PlayerController: ObservableObject {
     }
 }
 
-
-enum PlaybackRecoveryError: LocalizedError {
-    case noMediaSource
-
-    var errorDescription: String? {
-        switch self {
-        case .noMediaSource:
-            return "刷新 PlaybackInfo 后没有可用媒体源。"
-        }
-    }
-}

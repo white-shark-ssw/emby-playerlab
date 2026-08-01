@@ -72,7 +72,7 @@ struct PlayerScreen: View {
     private var playerSurface: some View {
         if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {
             MPVPlayerSurface(displayLayer: layer)
-                .id("mpv")
+                .id(ObjectIdentifier(layer))
         } else if let player = controller.avPlayer {
             AVPlayerSurface(player: player)
                 .id("avplayer")
