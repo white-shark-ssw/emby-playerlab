@@ -13,6 +13,7 @@ struct PlayerSettingsView: View {
     @AppStorage(TransportSettingsKey.wifiPreloadMB) private var wifiPreloadMB = 1024
     @AppStorage(TransportSettingsKey.cellularPreloadMB) private var cellularPreloadMB = 128
     @AppStorage(TransportSettingsKey.segmentSizeMB) private var segmentSizeMB = 1
+    @AppStorage(TransportSettingsKey.upstreamBlockSizeMB) private var upstreamBlockSizeMB = 16
     @AppStorage(TransportSettingsKey.concurrentRequests) private var concurrentRequests = 4
     @AppStorage(TransportSettingsKey.keepLastCache) private var keepLastCache = false
 
@@ -21,6 +22,7 @@ struct PlayerSettingsView: View {
 
     private let intervals = [5, 10, 15, 20, 30, 60]
     private let segmentSizes = [1, 2, 4, 8, 16]
+    private let upstreamBlockSizes = [4, 8, 16, 32, 64]
 
     var body: some View {
         NavigationView {
@@ -58,13 +60,22 @@ struct PlayerSettingsView: View {
                     Stepper("Wi-Fi 预加载：\(wifiPreloadMB) MB", value: $wifiPreloadMB, in: 0...8192, step: 128)
                     Stepper("蜂窝预加载：\(cellularPreloadMB) MB", value: $cellularPreloadMB, in: 0...2048, step: 64)
 
-                    Picker("Range 分片大小", selection: $segmentSizeMB) {
+                    Picker("本地缓存分片", selection: $segmentSizeMB) {
                         ForEach(segmentSizes, id: \.self) { size in
                             Text("\(size) MB").tag(size)
                         }
                     }
 
-                    Stepper("并发 Range：\(concurrentRequests)", value: $concurrentRequests, in: 1...8)
+                    Picker("115 持续预取块", selection: $upstreamBlockSizeMB) {
+                        ForEach(upstreamBlockSizes, id: \.self) { size in
+                            Text("\(size) MB").tag(size)
+                        }
+                    }
+
+                    Stepper("并行下载通道：\(concurrentRequests)", value: $concurrentRequests, in: 2...8)
+                    Text("本地分片保持 1 MB 可加快起播和 Seek；后台会用多条独立连接持续下载较大的 115 Range，并边下载边拆分写入缓存。")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
                     Toggle("退出后保留磁盘缓存", isOn: $keepLastCache)
 
                     Button("清空已保留的传输缓存", role: .destructive) {
@@ -83,7 +94,7 @@ struct PlayerSettingsView: View {
                 }
 
                 Section {
-                    Text("传输层会缓存 Emby 302 解析出的 115 临时直链，并通过 URLSession 并发请求 HTTP Range。播放器只从分片缓存读取；临时直链返回 403/410 时会重新请求 PlaybackInfo。")
+                    Text("传输层会缓存 Emby 302 解析出的 115 临时直链。播放请求使用小分片保证响应速度，后台预加载使用独立长连接和大 Range 提升吞吐；临时直链连续返回 403/410 时才重新请求 PlaybackInfo。")
                         .font(.footnote)
                         .foregroundColor(.secondary)
                 }
@@ -102,6 +113,9 @@ struct PlayerSettingsView: View {
                 }
             }
             .navigationTitle("播放设置")
+            .onAppear {
+                if concurrentRequests < 2 { concurrentRequests = 2 }
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { presentationMode.wrappedValue.dismiss() }

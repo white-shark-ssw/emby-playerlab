@@ -49,6 +49,11 @@ actor TransportDiskCache {
         }
     }
 
+    func contains(start: Int64) -> Bool {
+        guard limitBytes > 0 else { return false }
+        return FileManager.default.fileExists(atPath: fileURL(start: start).path)
+    }
+
     func read(start: Int64) -> Data? {
         guard limitBytes > 0 else { return nil }
         let url = fileURL(start: start)

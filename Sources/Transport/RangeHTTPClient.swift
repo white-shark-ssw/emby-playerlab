@@ -1,36 +1,68 @@
 import Foundation
 
+private func applyTransportHeaders(resource: TransportResolvedResource, to request: inout URLRequest) {
+    let blocked = Set([
+        "range", "host", "content-length", "authorization", "x-emby-token",
+        "x-mediabrowser-token", "cookie", "set-cookie",
+    ])
+    for (key, value) in resource.requestHeaders where !blocked.contains(key.lowercased()) {
+        request.setValue(value, forHTTPHeaderField: key)
+    }
+
+    let sharedCookie: String? = {
+        guard let cookies = HTTPCookieStorage.shared.cookies(for: resource.finalURL), !cookies.isEmpty else {
+            return nil
+        }
+        return HTTPCookie.requestHeaderFields(with: cookies)["Cookie"]
+    }()
+    let capturedCookie = resource.requestHeaders.first { $0.key.caseInsensitiveCompare("Cookie") == .orderedSame }?.value
+    if let cookie = sharedCookie ?? capturedCookie, !cookie.isEmpty {
+        request.setValue(cookie, forHTTPHeaderField: "Cookie")
+    }
+}
+
+enum RangeRequestLane: Equatable {
+    case playback
+    case preload(worker: Int)
+
+    var label: String {
+        switch self {
+        case .playback: return "playback"
+        case .preload(let worker): return "preload-\(worker)"
+        }
+    }
+}
+
 final class RangeHTTPClient {
-    private let session: URLSession
+    private let sessions: [URLSession]
 
     init(maximumConnections: Int) {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 90
-        configuration.waitsForConnectivity = true
-        configuration.httpMaximumConnectionsPerHost = min(max(1, maximumConnections), 8)
-        configuration.urlCache = nil
-        session = URLSession(configuration: configuration)
+        let count = min(max(2, maximumConnections), 8)
+        sessions = (0..<count).map { _ in
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+            configuration.timeoutIntervalForRequest = 30
+            configuration.timeoutIntervalForResource = 120
+            configuration.waitsForConnectivity = true
+            configuration.httpMaximumConnectionsPerHost = 1
+            configuration.httpShouldUsePipelining = true
+            configuration.httpCookieStorage = HTTPCookieStorage.shared
+            configuration.httpShouldSetCookies = true
+            configuration.urlCache = nil
+            return URLSession(configuration: configuration)
+        }
     }
 
     deinit {
-        session.invalidateAndCancel()
+        sessions.forEach { $0.invalidateAndCancel() }
     }
 
-    func fetch(resource: TransportResolvedResource, range: Range<Int64>) async throws -> Data {
+    func fetch(resource: TransportResolvedResource, range: Range<Int64>, lane: RangeRequestLane) async throws -> Data {
         guard !range.isEmpty else { return Data() }
 
-        var request = URLRequest(url: resource.finalURL)
-        request.httpMethod = "GET"
+        let session = sessions[sessionIndex(for: lane)]
+        var request = makeRequest(resource: resource, range: range)
         request.timeoutInterval = 60
-        request.networkServiceType = .video
-        request.allowsConstrainedNetworkAccess = true
-        request.allowsExpensiveNetworkAccess = true
-        request.setValue("bytes=\(range.lowerBound)-\(range.upperBound - 1)", forHTTPHeaderField: "Range")
-        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
-        request.setValue("EmbyPlayerLab/\(AppIdentity.sourceVersion)", forHTTPHeaderField: "User-Agent")
-        resource.requestHeaders.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
 
         let startedAt = Date()
         let delegate = RedirectCaptureDelegate(initialOrigin: resource.finalURL)
@@ -40,7 +72,7 @@ final class RangeHTTPClient {
         if http.statusCode == 403 || http.statusCode == 410 {
             DiagnosticsLogger.shared.log(
                 "TransportRange",
-                "start=\(range.lowerBound) length=\(range.count) status=\(http.statusCode) expired=true redirects=\(delegate.redirects.count)"
+                "lane=\(lane.label) start=\(range.lowerBound) length=\(range.count) status=\(http.statusCode) expired=true redirects=\(delegate.redirects.count)"
             )
             throw MediaTransportError.expiredURL(statusCode: http.statusCode)
         }
@@ -57,8 +89,289 @@ final class RangeHTTPClient {
         let speed = Double(data.count) / elapsed
         DiagnosticsLogger.shared.log(
             "TransportRange",
-            "start=\(range.lowerBound) length=\(data.count) status=\(http.statusCode) ms=\(Int(elapsed * 1000)) speedBps=\(Int(speed)) redirects=\(delegate.redirects.count)"
+            "lane=\(lane.label) start=\(range.lowerBound) length=\(data.count) status=\(http.statusCode) ms=\(Int(elapsed * 1000)) speedBps=\(Int(speed)) redirects=\(delegate.redirects.count)"
         )
         return data
+    }
+
+    func stream(resource: TransportResolvedResource, range: Range<Int64>, worker: Int) -> AsyncThrowingStream<Data, Error> {
+        let loader = RangeStreamLoader(
+            resource: resource,
+            range: range,
+            lane: .preload(worker: worker)
+        )
+        return loader.makeStream()
+    }
+
+    private func makeRequest(resource: TransportResolvedResource, range: Range<Int64>) -> URLRequest {
+        var request = URLRequest(url: resource.finalURL)
+        request.httpMethod = "GET"
+        request.networkServiceType = .video
+        request.allowsConstrainedNetworkAccess = true
+        request.allowsExpensiveNetworkAccess = true
+        request.setValue("bytes=\(range.lowerBound)-\(range.upperBound - 1)", forHTTPHeaderField: "Range")
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        request.setValue("EmbyPlayerLab/\(AppIdentity.sourceVersion)", forHTTPHeaderField: "User-Agent")
+        applyTransportHeaders(resource: resource, to: &request)
+        return request
+    }
+
+    private func sessionIndex(for lane: RangeRequestLane) -> Int {
+        switch lane {
+        case .playback:
+            return 0
+        case .preload(let worker):
+            guard sessions.count > 1 else { return 0 }
+            return 1 + abs(worker) % (sessions.count - 1)
+        }
+    }
+}
+
+private final class RangeStreamLoader: NSObject, URLSessionDataDelegate, URLSessionTaskDelegate, @unchecked Sendable {
+    private let resource: TransportResolvedResource
+    private let range: Range<Int64>
+    private let lane: RangeRequestLane
+    private let yieldSize = 256 * 1024
+    private let lock = NSLock()
+
+    private var continuation: AsyncThrowingStream<Data, Error>.Continuation?
+    private var session: URLSession?
+    private var task: URLSessionDataTask?
+    private var pending = Data()
+    private var receivedBytes = 0
+    private var redirectCount = 0
+    private var acceptedResponse = false
+    private var finished = false
+
+    init(resource: TransportResolvedResource, range: Range<Int64>, lane: RangeRequestLane) {
+        self.resource = resource
+        self.range = range
+        self.lane = lane
+    }
+
+    func makeStream() -> AsyncThrowingStream<Data, Error> {
+        AsyncThrowingStream { continuation in
+            lock.lock()
+            self.continuation = continuation
+            lock.unlock()
+
+            continuation.onTermination = { [weak self] _ in
+                self?.cancel()
+            }
+            start()
+        }
+    }
+
+    private func start() {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 180
+        configuration.waitsForConnectivity = true
+        configuration.httpMaximumConnectionsPerHost = 1
+        configuration.httpShouldUsePipelining = true
+        configuration.httpCookieStorage = HTTPCookieStorage.shared
+        configuration.httpShouldSetCookies = true
+        configuration.urlCache = nil
+
+        let delegateQueue = OperationQueue()
+        delegateQueue.maxConcurrentOperationCount = 1
+        delegateQueue.qualityOfService = .userInitiated
+
+        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: delegateQueue)
+        self.session = session
+
+        var request = URLRequest(url: resource.finalURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 180
+        request.networkServiceType = .video
+        request.allowsConstrainedNetworkAccess = true
+        request.allowsExpensiveNetworkAccess = true
+        request.setValue("bytes=\(range.lowerBound)-\(range.upperBound - 1)", forHTTPHeaderField: "Range")
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        request.setValue("EmbyPlayerLab/\(AppIdentity.sourceVersion)", forHTTPHeaderField: "User-Agent")
+        applyTransportHeaders(resource: resource, to: &request)
+
+        let task = session.dataTask(with: request)
+        task.priority = URLSessionTask.highPriority
+        self.task = task
+        task.resume()
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        guard let target = request.url else {
+            completionHandler(request)
+            return
+        }
+
+        var sanitized = request
+        let sourceURL = response.url ?? resource.finalURL
+        if !Self.sameOrigin(sourceURL, target) && !Self.same115Family(sourceURL, target) {
+            ["Authorization", "X-Emby-Token", "X-MediaBrowser-Token", "Cookie", "Set-Cookie"].forEach {
+                sanitized.setValue(nil, forHTTPHeaderField: $0)
+            }
+        }
+        sanitized.setValue("bytes=\(range.lowerBound)-\(range.upperBound - 1)", forHTTPHeaderField: "Range")
+        sanitized.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        if Self.same115Family(sourceURL, target),
+           let cookies = HTTPCookieStorage.shared.cookies(for: target),
+           !cookies.isEmpty,
+           let cookie = HTTPCookie.requestHeaderFields(with: cookies)["Cookie"] {
+            sanitized.setValue(cookie, forHTTPHeaderField: "Cookie")
+        }
+
+        lock.lock()
+        redirectCount += 1
+        lock.unlock()
+        completionHandler(sanitized)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let http = response as? HTTPURLResponse else {
+            completionHandler(.cancel)
+            finish(throwing: MediaTransportError.invalidResponse)
+            return
+        }
+
+        if http.statusCode == 403 || http.statusCode == 410 {
+            completionHandler(.cancel)
+            DiagnosticsLogger.shared.log(
+                "TransportBulk",
+                "lane=\(lane.label) start=\(range.lowerBound) length=\(range.count) status=\(http.statusCode) expired=true redirects=\(redirectCount)"
+            )
+            finish(throwing: MediaTransportError.expiredURL(statusCode: http.statusCode))
+            return
+        }
+
+        guard http.statusCode == 206 else {
+            completionHandler(.cancel)
+            finish(throwing: MediaTransportError.rangeUnsupported(statusCode: http.statusCode))
+            return
+        }
+
+        lock.lock()
+        acceptedResponse = true
+        lock.unlock()
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        var chunks: [Data] = []
+
+        lock.lock()
+        guard !finished else {
+            lock.unlock()
+            return
+        }
+        receivedBytes += data.count
+        pending.append(data)
+        while pending.count >= yieldSize {
+            chunks.append(Data(pending.prefix(yieldSize)))
+            pending.removeFirst(yieldSize)
+        }
+        let continuation = self.continuation
+        lock.unlock()
+
+        chunks.forEach { continuation?.yield($0) }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error {
+            finish(throwing: error)
+            return
+        }
+
+        lock.lock()
+        let accepted = acceptedResponse
+        let received = receivedBytes
+        let remainder = pending
+        pending.removeAll(keepingCapacity: false)
+        lock.unlock()
+
+        guard accepted else {
+            finish(throwing: MediaTransportError.invalidResponse)
+            return
+        }
+
+        let expected = Int(range.count)
+        guard received == expected else {
+            finish(throwing: MediaTransportError.shortRead(expected: expected, actual: received))
+            return
+        }
+
+        if !remainder.isEmpty {
+            lock.lock()
+            let continuation = self.continuation
+            lock.unlock()
+            continuation?.yield(remainder)
+        }
+        finish(throwing: nil)
+    }
+
+    private func finish(throwing error: Error?) {
+        lock.lock()
+        guard !finished else {
+            lock.unlock()
+            return
+        }
+        finished = true
+        let continuation = self.continuation
+        self.continuation = nil
+        let session = self.session
+        self.session = nil
+        self.task = nil
+        lock.unlock()
+
+        if let error {
+            continuation?.finish(throwing: error)
+            session?.invalidateAndCancel()
+        } else {
+            continuation?.finish()
+            session?.finishTasksAndInvalidate()
+        }
+    }
+
+    private func cancel() {
+        lock.lock()
+        guard !finished else {
+            lock.unlock()
+            return
+        }
+        finished = true
+        let session = self.session
+        let task = self.task
+        self.session = nil
+        self.task = nil
+        self.continuation = nil
+        lock.unlock()
+
+        task?.cancel()
+        session?.invalidateAndCancel()
+    }
+
+    private static func sameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
+        lhs.scheme?.lowercased() == rhs.scheme?.lowercased()
+            && lhs.host?.lowercased() == rhs.host?.lowercased()
+            && lhs.port == rhs.port
+    }
+
+    private static func same115Family(_ lhs: URL, _ rhs: URL) -> Bool {
+        is115Host(lhs.host) && is115Host(rhs.host)
+    }
+
+    private static func is115Host(_ host: String?) -> Bool {
+        let value = host?.lowercased() ?? ""
+        return value == "115.com" || value.hasSuffix(".115.com") || value.contains("115cdn")
     }
 }

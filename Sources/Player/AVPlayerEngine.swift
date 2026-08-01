@@ -99,7 +99,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
             DiagnosticsLogger.shared.log(
                 "TransportPlayer",
-                "prepare-local-http item=\(transportSource.itemId) mode=\(transportConfiguration.cacheMode.rawValue) memory=\(transportConfiguration.memoryLimitBytes) disk=\(transportConfiguration.diskLimitBytes) wifiPreload=\(transportConfiguration.wifiPreloadBytes) cellularPreload=\(transportConfiguration.cellularPreloadBytes)"
+                "prepare-local-http item=\(transportSource.itemId) mode=\(transportConfiguration.cacheMode.rawValue) memory=\(transportConfiguration.memoryLimitBytes) disk=\(transportConfiguration.diskLimitBytes) wifiPreload=\(transportConfiguration.wifiPreloadBytes) cellularPreload=\(transportConfiguration.cellularPreloadBytes) segment=\(transportConfiguration.segmentSizeBytes) upstreamBlock=\(transportConfiguration.upstreamBlockSizeBytes) concurrent=\(transportConfiguration.maximumConcurrentRequests)"
             )
 
             transportPrepareTask = Task { [weak self, weak server] in

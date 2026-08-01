@@ -40,6 +40,8 @@ final class TransportHTTPServer {
     private var localURL: URL?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var connectionTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
+    private var lastLoggedRequestStart: Int64?
+    private var lastLoggedRequestAt = Date.distantPast
     private var stopped = false
 
     init(session: MediaTransportSession, fileExtension: String) {
@@ -230,10 +232,13 @@ final class TransportHTTPServer {
             }
             headers += "\r\n"
 
-            DiagnosticsLogger.shared.log(
-                "TransportHTTP",
-                "request method=\(request.method) status=\(status) start=\(responseRange.lowerBound) length=\(responseRange.length)"
-            )
+            let logRequest = shouldLogRequest(method: request.method, range: responseRange)
+            if logRequest {
+                DiagnosticsLogger.shared.log(
+                    "TransportHTTP",
+                    "request method=\(request.method) status=\(status) start=\(responseRange.lowerBound) length=\(responseRange.length)"
+                )
+            }
 
             try await send(Data(headers.utf8), on: connection)
             responseStarted = true
@@ -249,10 +254,13 @@ final class TransportHTTPServer {
                 cursor += Int64(data.count)
             }
 
-            DiagnosticsLogger.shared.log(
-                "TransportHTTP",
-                "response finished start=\(responseRange.lowerBound) sent=\(max(0, cursor - responseRange.lowerBound))"
-            )
+            let sentBytes = max(0, cursor - responseRange.lowerBound)
+            if logRequest || sentBytes >= 8 * 1_048_576 {
+                DiagnosticsLogger.shared.log(
+                    "TransportHTTP",
+                    "response finished start=\(responseRange.lowerBound) sent=\(sentBytes)"
+                )
+            }
         } catch is CancellationError {
             DiagnosticsLogger.shared.log("TransportHTTP", "response cancelled")
         } catch {
@@ -264,6 +272,25 @@ final class TransportHTTPServer {
                 await sendError(status: 502, reason: "Bad Gateway", on: connection)
             }
         }
+    }
+
+    private func shouldLogRequest(method: String, range: ByteRange) -> Bool {
+        if method == "HEAD" || range.length <= 2 { return true }
+
+        lock.lock()
+        defer { lock.unlock() }
+        let now = Date()
+        let movedEnough: Bool
+        if let lastLoggedRequestStart {
+            movedEnough = abs(range.lowerBound - lastLoggedRequestStart) >= 8 * 1_048_576
+        } else {
+            movedEnough = true
+        }
+        let timedOut = now.timeIntervalSince(lastLoggedRequestAt) >= 5
+        guard movedEnough || timedOut else { return false }
+        lastLoggedRequestStart = range.lowerBound
+        lastLoggedRequestAt = now
+        return true
     }
 
     private func send(_ data: Data, on connection: NWConnection) async throws {

@@ -3,11 +3,17 @@ import Foundation
 final class DiagnosticsLogger {
     static let shared = DiagnosticsLogger()
 
-    private let queue = DispatchQueue(label: "com.embyplayerlab.diagnostics")
+    private let queue = DispatchQueue(label: "com.embyplayerlab.diagnostics", qos: .utility)
     private var entries: [String] = []
     private let formatter: ISO8601DateFormatter
     private let persistentURL: URL
     private let maximumPersistentBytes: UInt64 = 8 * 1024 * 1024
+    private let flushThresholdBytes = 64 * 1024
+    private let flushDelay: TimeInterval = 0.35
+
+    private var persistentHandle: FileHandle?
+    private var pendingPersistentData = Data()
+    private var flushWorkItem: DispatchWorkItem?
 
     private init() {
         formatter = ISO8601DateFormatter()
@@ -21,6 +27,8 @@ final class DiagnosticsLogger {
         if !FileManager.default.fileExists(atPath: persistentURL.path) {
             FileManager.default.createFile(atPath: persistentURL.path, contents: nil)
         }
+        persistentHandle = try? FileHandle(forWritingTo: persistentURL)
+        try? persistentHandle?.seekToEnd()
 
         log("Lifecycle", "logger initialized bundle=\(AppIdentity.version) source=\(AppIdentity.sourceVersion)")
     }
@@ -32,7 +40,16 @@ final class DiagnosticsLogger {
             if self.entries.count > 10_000 {
                 self.entries.removeFirst(self.entries.count - 10_000)
             }
-            self.appendPersisted(line + "\n")
+
+            if let data = (line + "\n").data(using: .utf8) {
+                self.pendingPersistentData.append(data)
+            }
+            if self.pendingPersistentData.count >= self.flushThresholdBytes {
+                self.flushPersisted()
+            } else {
+                self.scheduleFlush()
+            }
+
             #if DEBUG
             print(line)
             #endif
@@ -41,6 +58,11 @@ final class DiagnosticsLogger {
 
     func export() throws -> URL {
         try queue.sync {
+            flushWorkItem?.cancel()
+            flushWorkItem = nil
+            flushPersisted()
+            try? persistentHandle?.synchronize()
+
             let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             let name = "EmbyPlayerLab-\(Int(Date().timeIntervalSince1970)).log"
             let destination = directory.appendingPathComponent(name)
@@ -56,21 +78,50 @@ final class DiagnosticsLogger {
         }
     }
 
-    private func appendPersisted(_ text: String) {
-        if let attributes = try? FileManager.default.attributesOfItem(atPath: persistentURL.path),
-           let size = attributes[.size] as? NSNumber,
-           size.uint64Value > maximumPersistentBytes {
-            try? Data().write(to: persistentURL, options: .atomic)
+    private func scheduleFlush() {
+        guard flushWorkItem == nil else { return }
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.flushWorkItem = nil
+            self.flushPersisted()
+        }
+        flushWorkItem = workItem
+        queue.asyncAfter(deadline: .now() + flushDelay, execute: workItem)
+    }
+
+    private func flushPersisted() {
+        guard !pendingPersistentData.isEmpty else { return }
+        rotateIfNeeded(additionalBytes: UInt64(pendingPersistentData.count))
+
+        if persistentHandle == nil {
+            persistentHandle = try? FileHandle(forWritingTo: persistentURL)
+            try? persistentHandle?.seekToEnd()
         }
 
-        guard let data = text.data(using: .utf8) else { return }
+        let data = pendingPersistentData
+        pendingPersistentData.removeAll(keepingCapacity: true)
         do {
-            let handle = try FileHandle(forWritingTo: persistentURL)
-            try handle.seekToEnd()
-            try handle.write(contentsOf: data)
-            try handle.close()
+            try persistentHandle?.write(contentsOf: data)
         } catch {
-            // Logging must never crash playback.
+            try? persistentHandle?.close()
+            persistentHandle = nil
         }
+    }
+
+    private func rotateIfNeeded(additionalBytes: UInt64) {
+        let currentBytes: UInt64
+        if let attributes = try? FileManager.default.attributesOfItem(atPath: persistentURL.path),
+           let size = attributes[.size] as? NSNumber {
+            currentBytes = size.uint64Value
+        } else {
+            currentBytes = 0
+        }
+
+        guard currentBytes + additionalBytes > maximumPersistentBytes else { return }
+        try? persistentHandle?.close()
+        persistentHandle = nil
+        try? Data().write(to: persistentURL, options: .atomic)
+        persistentHandle = try? FileHandle(forWritingTo: persistentURL)
+        try? persistentHandle?.seekToEnd()
     }
 }

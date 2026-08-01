@@ -25,6 +25,7 @@ enum TransportSettingsKey {
     static let wifiPreloadMB = "transport.wifiPreloadMB"
     static let cellularPreloadMB = "transport.cellularPreloadMB"
     static let segmentSizeMB = "transport.segmentSizeMB"
+    static let upstreamBlockSizeMB = "transport.upstreamBlockSizeMB"
     static let concurrentRequests = "transport.concurrentRequests"
     static let keepLastCache = "transport.keepLastCache"
 }
@@ -36,6 +37,7 @@ struct MediaTransportConfiguration: Equatable {
     let wifiPreloadBytes: Int64
     let cellularPreloadBytes: Int64
     let segmentSizeBytes: Int64
+    let upstreamBlockSizeBytes: Int64
     let maximumConcurrentRequests: Int
     let keepLastCache: Bool
 
@@ -55,6 +57,7 @@ struct MediaTransportConfiguration: Equatable {
             TransportSettingsKey.wifiPreloadMB: 1024,
             TransportSettingsKey.cellularPreloadMB: 128,
             TransportSettingsKey.segmentSizeMB: 1,
+            TransportSettingsKey.upstreamBlockSizeMB: 16,
             TransportSettingsKey.concurrentRequests: 4,
             TransportSettingsKey.keepLastCache: false,
         ])
@@ -67,7 +70,10 @@ struct MediaTransportConfiguration: Equatable {
         let segmentMB = [1, 2, 4, 8, 16].contains(defaults.integer(forKey: TransportSettingsKey.segmentSizeMB))
             ? defaults.integer(forKey: TransportSettingsKey.segmentSizeMB)
             : 1
-        let concurrent = min(max(1, defaults.integer(forKey: TransportSettingsKey.concurrentRequests)), 8)
+        let upstreamBlockMB = [4, 8, 16, 32, 64].contains(defaults.integer(forKey: TransportSettingsKey.upstreamBlockSizeMB))
+            ? defaults.integer(forKey: TransportSettingsKey.upstreamBlockSizeMB)
+            : 16
+        let concurrent = min(max(2, defaults.integer(forKey: TransportSettingsKey.concurrentRequests)), 8)
 
         return MediaTransportConfiguration(
             cacheMode: mode,
@@ -76,6 +82,7 @@ struct MediaTransportConfiguration: Equatable {
             wifiPreloadBytes: Int64(wifiMB) * 1_048_576,
             cellularPreloadBytes: Int64(cellularMB) * 1_048_576,
             segmentSizeBytes: Int64(segmentMB) * 1_048_576,
+            upstreamBlockSizeBytes: Int64(upstreamBlockMB) * 1_048_576,
             maximumConcurrentRequests: concurrent,
             keepLastCache: defaults.bool(forKey: TransportSettingsKey.keepLastCache)
         )
