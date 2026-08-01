@@ -43,6 +43,20 @@ struct EmbySession: Codable, Equatable {
     let tokenAccount: String
 }
 
+struct BaseItem: Decodable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let type: String?
+    let runTimeTicks: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case id = "Id"
+        case name = "Name"
+        case type = "Type"
+        case runTimeTicks = "RunTimeTicks"
+    }
+}
+
 struct PlaybackInfoResponse: Decodable {
     let mediaSources: [MediaSource]
     let playSessionId: String?
@@ -84,6 +98,18 @@ struct MediaSource: Decodable, Identifiable, Hashable {
         guard let runTimeTicks, runTimeTicks > 0 else { return nil }
         return Double(runTimeTicks) / AppIdentity.ticksPerSecond
     }
+
+    var normalizedContainer: String {
+        container?.lowercased() ?? ""
+    }
+
+    var videoCodec: String? {
+        mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Video") == .orderedSame })?.codec
+    }
+
+    var audioCodec: String? {
+        mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Audio") == .orderedSame })?.codec
+    }
 }
 
 struct MediaStream: Decodable, Hashable {
@@ -107,6 +133,7 @@ struct MediaStream: Decodable, Hashable {
 struct ResolvedPlaybackSource: Identifiable, Hashable {
     let id = UUID()
     let itemId: String
+    let itemName: String
     let mediaSource: MediaSource
     let playSessionId: String?
     let url: URL

@@ -5,6 +5,7 @@ struct PlaybackLabView: View {
     @StateObject private var model = PlaybackLabViewModel()
     @State private var client: EmbyAPIClient?
     @State private var shareURL: URL?
+    @AppStorage("player.enginePreference") private var enginePreferenceRaw = PlayerEnginePreference.automatic.rawValue
 
     var body: some View {
         NavigationView {
@@ -23,6 +24,12 @@ struct PlaybackLabView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 
+                    Picker("播放器路由", selection: $enginePreferenceRaw) {
+                        ForEach(PlayerEnginePreference.allCases) { preference in
+                            Text(preference.title).tag(preference.rawValue)
+                        }
+                    }
+
                     Button {
                         guard let client else { return }
                         Task { await model.load(client: client) }
@@ -30,10 +37,18 @@ struct PlaybackLabView: View {
                         if model.isLoading {
                             ProgressView()
                         } else {
-                            Text("加载 PlaybackInfo")
+                            Text("加载媒体信息")
                         }
                     }
                     .disabled(client == nil || model.itemId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+
+                if let item = model.item {
+                    Section(header: Text("媒体条目")) {
+                        LabeledValue(title: "标题", value: item.name)
+                        LabeledValue(title: "类型", value: item.type ?? "未知")
+                        LabeledValue(title: "ItemId", value: item.id)
+                    }
                 }
 
                 if let info = model.playbackInfo {
@@ -43,8 +58,14 @@ struct PlaybackLabView: View {
                                 guard let client else { return }
                                 model.resolve(client: client, mediaSource: source)
                             } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(source.name ?? source.id)
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(model.item?.name ?? "媒体")
+                                        .font(.headline)
+                                    if let sourceName = source.name, !sourceName.isEmpty {
+                                        Text("媒体源：\(sourceName)")
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                    }
                                     Text(sourceSummary(source))
                                         .font(.caption)
                                         .foregroundColor(.secondary)
@@ -85,7 +106,11 @@ struct PlaybackLabView: View {
             }
             .fullScreenCover(item: $model.selectedSource) { source in
                 if let client {
-                    PlayerScreen(source: source, client: client)
+                    PlayerScreen(
+                        source: source,
+                        client: client,
+                        preference: PlayerEnginePreference(rawValue: enginePreferenceRaw) ?? .automatic
+                    )
                 }
             }
             .sheet(
@@ -104,7 +129,9 @@ struct PlaybackLabView: View {
     private func sourceSummary(_ source: MediaSource) -> String {
         let duration = source.durationSeconds.map { formatTime($0) } ?? "未知时长"
         let size = source.size.map(ByteCountFormatter.string) ?? "未知大小"
-        return "\(source.container ?? "unknown") · \(duration) · \(size) · DirectPlay=\(source.supportsDirectPlay == true ? "是" : "否")"
+        let video = source.videoCodec?.uppercased() ?? "未知视频"
+        let audio = source.audioCodec?.uppercased() ?? "未知音频"
+        return "\(source.container?.uppercased() ?? "UNKNOWN") · \(video) / \(audio) · \(duration) · \(size)"
     }
 }
 

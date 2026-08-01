@@ -15,18 +15,24 @@ if [[ "$ACTUAL" != "$EXPECTED" ]]; then
   exit 1
 fi
 
-APP_NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$PLIST")
-BINARY="$APP_PATH/$APP_NAME"
-test -f "$BINARY"
+inspect_binary() {
+  local binary="$1"
+  local label="$2"
+  [[ -f "$binary" ]] || return 0
+  if file "$binary" | grep -q 'Mach-O'; then
+    echo "Mach-O: $label"
+    xcrun vtool -show-build "$binary"
+  fi
+}
 
-echo "Main executable build version:"
-xcrun vtool -show-build "$BINARY"
+APP_NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$PLIST")
+inspect_binary "$APP_PATH/$APP_NAME" "App/$APP_NAME"
 
 while IFS= read -r -d '' framework; do
   name="$(basename "$framework" .framework)"
-  binary="$framework/$name"
-  if [[ -f "$binary" ]]; then
-    echo "Framework: $name"
-    xcrun vtool -show-build "$binary"
-  fi
-done < <(find "$APP_PATH/Frameworks" -maxdepth 1 -name '*.framework' -print0 2>/dev/null || true)
+  inspect_binary "$framework/$name" "Framework/$name"
+done < <(find "$APP_PATH" -type d -name '*.framework' -print0)
+
+while IFS= read -r -d '' dylib; do
+  inspect_binary "$dylib" "Dylib/$(basename "$dylib")"
+done < <(find "$APP_PATH" -type f -name '*.dylib' -print0)

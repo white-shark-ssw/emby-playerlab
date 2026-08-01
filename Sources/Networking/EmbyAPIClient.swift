@@ -23,6 +23,11 @@ final class EmbyAPIClient {
         return try await send(path: "Users/AuthenticateByName", method: "POST", body: Body(Username: username, Pw: password), authenticated: false)
     }
 
+    func item(itemId: String) async throws -> BaseItem {
+        guard let userId else { throw EmbyAPIError.missingSession }
+        return try await send(path: "Users/\(userId)/Items/\(itemId)", method: "GET")
+    }
+
     func playbackInfo(itemId: String) async throws -> PlaybackInfoResponse {
         guard let userId else { throw EmbyAPIError.missingSession }
         let query = [
@@ -33,7 +38,7 @@ final class EmbyAPIClient {
         return try await send(path: "Items/\(itemId)/PlaybackInfo", method: "GET", query: query)
     }
 
-    func resolvePlaybackSource(itemId: String, mediaSource: MediaSource, playSessionId: String?) throws -> ResolvedPlaybackSource {
+    func resolvePlaybackSource(itemId: String, itemName: String, mediaSource: MediaSource, playSessionId: String?) throws -> ResolvedPlaybackSource {
         var url: URL?
 
         if let direct = mediaSource.directStreamURL, !direct.isEmpty {
@@ -73,6 +78,7 @@ final class EmbyAPIClient {
         guard let finalURL = components.url else { throw EmbyAPIError.invalidPlaybackURL }
         return ResolvedPlaybackSource(
             itemId: itemId,
+            itemName: itemName,
             mediaSource: mediaSource,
             playSessionId: playSessionId,
             url: finalURL,

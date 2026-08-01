@@ -9,7 +9,7 @@ on:
 jobs:
   validate:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -27,10 +27,25 @@ jobs:
       - name: Generate project
         run: xcodegen generate
 
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: .spm-cache
+          key: ${{ runner.os }}-mpvkit-1.0.0-${{ hashFiles('project.yml') }}
+
+      - name: Resolve MPVKit 1.0.0
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project EmbyPlayerLab.xcodeproj \
+            -scheme EmbyPlayerLab \
+            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
       - name: Check project settings
         run: |
           set -euo pipefail
-          SETTINGS="$(xcodebuild -project EmbyPlayerLab.xcodeproj -scheme EmbyPlayerLab -showBuildSettings)"
+          SETTINGS="$(xcodebuild -project EmbyPlayerLab.xcodeproj -scheme EmbyPlayerLab -showBuildSettings -clonedSourcePackagesDirPath .spm-cache)"
           echo "$SETTINGS" | tee build-settings.log
           echo "$SETTINGS" | grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 15.0'
           echo "$SETTINGS" | grep -q 'SWIFT_VERSION = 5.0'
@@ -47,6 +62,7 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
@@ -59,7 +75,7 @@ jobs:
           {
             echo "## First compiler errors"
             echo '```text'
-            grep -nE '(^|[[:space:]])(error:|fatal error:)' validate-build.log | head -40 || true
+            grep -nE '(^|[[:space:]])(error:|fatal error:)' validate-build.log package-resolution.log | head -60 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -71,5 +87,6 @@ jobs:
           path: |
             validate-build.log
             build-settings.log
+            package-resolution.log
           if-no-files-found: warn
           retention-days: 14

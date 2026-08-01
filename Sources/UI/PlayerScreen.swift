@@ -5,54 +5,52 @@ struct PlayerScreen: View {
     @StateObject private var controller: PlayerController
     @AppStorage("seek.backwardSeconds") private var backwardSeconds = 10
     @AppStorage("seek.forwardSeconds") private var forwardSeconds = 10
+    @AppStorage("seek.screenPanEnabled") private var screenPanEnabled = true
     @AppStorage("buffer.preset") private var bufferPresetRaw = BufferPreset.balanced.rawValue
     @State private var showSettings = false
 
-    init(source: ResolvedPlaybackSource, client: EmbyAPIClient) {
-        _controller = StateObject(wrappedValue: PlayerController(source: source, client: client))
+    init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
+        _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: preference))
     }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            AVPlayerSurface(player: controller.engine.player)
+            playerSurface
                 .ignoresSafeArea()
 
-            DoubleTapGestureOverlay(
+            PlaybackGestureOverlay(
                 onLeftDoubleTap: { controller.seek(by: -Double(backwardSeconds)) },
-                onRightDoubleTap: { controller.seek(by: Double(forwardSeconds)) }
+                onRightDoubleTap: { controller.seek(by: Double(forwardSeconds)) },
+                onHorizontalPanBegan: {
+                    if screenPanEnabled { controller.beginScreenScrubbing() }
+                },
+                onHorizontalPanChanged: { translation, width in
+                    if screenPanEnabled {
+                        controller.updateScreenScrubbing(translationX: translation, viewWidth: width)
+                    }
+                },
+                onHorizontalPanEnded: {
+                    if screenPanEnabled { controller.endScreenScrubbing() }
+                },
+                onHorizontalPanCancelled: {
+                    if screenPanEnabled { controller.cancelScreenScrubbing() }
+                }
             )
             .ignoresSafeArea()
 
             if let feedback = controller.seekFeedback {
-                Text(feedback)
-                    .font(.system(size: 34, weight: .bold))
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 18)
-                    .background(Color.black.opacity(0.65))
-                    .foregroundColor(.white)
-                    .clipShape(Capsule())
-                    .allowsHitTesting(false)
+                feedbackView(feedback)
+            }
+
+            if let feedback = controller.scrubFeedback {
+                feedbackView(feedback)
             }
 
             controls
 
-            if let message = controller.prematureEOFMessage {
-                VStack {
-                    Text("疑似提前结束")
-                        .font(.headline)
-                    Text(message)
-                        .font(.caption)
-                        .multilineTextAlignment(.center)
-                }
-                .padding()
-                .background(Color.red.opacity(0.85))
-                .foregroundColor(.white)
-                .cornerRadius(12)
-                .padding()
-                .frame(maxHeight: .infinity, alignment: .top)
-            }
+            statusMessages
         }
         .statusBar(hidden: true)
         .onAppear {
@@ -67,9 +65,22 @@ struct PlayerScreen: View {
         }
     }
 
+    @ViewBuilder
+    private var playerSurface: some View {
+        if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {
+            MPVPlayerSurface(displayLayer: layer)
+                .id("mpv")
+        } else if let player = controller.avPlayer {
+            AVPlayerSurface(player: player)
+                .id("avplayer")
+        } else {
+            Color.black
+        }
+    }
+
     private var controls: some View {
         VStack {
-            HStack {
+            HStack(spacing: 8) {
                 Button {
                     presentationMode.wrappedValue.dismiss()
                 } label: {
@@ -78,7 +89,22 @@ struct PlayerScreen: View {
                         .padding()
                 }
 
+                Text(controller.source.itemName)
+                    .lineLimit(1)
+                    .font(.headline)
+
                 Spacer()
+
+                Button {
+                    controller.toggleEngine()
+                } label: {
+                    Text(controller.engineKind == .mpv ? "MPV" : "AV")
+                        .font(.headline.monospaced())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color.white.opacity(0.18))
+                        .clipShape(Capsule())
+                }
 
                 Button {
                     showSettings = true
@@ -137,7 +163,7 @@ struct PlayerScreen: View {
             .padding()
             .background(
                 LinearGradient(
-                    colors: [Color.black.opacity(0), Color.black.opacity(0.8)],
+                    colors: [Color.black.opacity(0), Color.black.opacity(0.82)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -148,7 +174,7 @@ struct PlayerScreen: View {
 
     private var diagnosticsRow: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(controller.lastSeekSummary)
+            Text("引擎：\(controller.engineKind.title) · \(controller.lastSeekSummary)")
             Text("缓冲到 \(formatTime(controller.bufferedEnd)) · \(controller.snapshot.isBuffering ? "等待数据" : "可播放")")
             if let reason = controller.snapshot.waitingReason {
                 Text("等待原因：\(reason)")
@@ -159,6 +185,45 @@ struct PlayerScreen: View {
         }
         .font(.caption)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var statusMessages: some View {
+        VStack(spacing: 8) {
+            if let message = controller.prematureEOFMessage {
+                statusBanner(title: "疑似提前结束", message: message, color: .red)
+            }
+            if let message = controller.stallMessage {
+                statusBanner(title: "播放停滞恢复", message: message, color: .orange)
+            }
+            Spacer()
+        }
+        .padding()
+        .allowsHitTesting(false)
+    }
+
+    private func feedbackView(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 30, weight: .bold))
+            .multilineTextAlignment(.center)
+            .monospacedDigit()
+            .padding(.horizontal, 28)
+            .padding(.vertical, 18)
+            .background(Color.black.opacity(0.68))
+            .foregroundColor(.white)
+            .clipShape(Capsule())
+            .allowsHitTesting(false)
+    }
+
+    private func statusBanner(title: String, message: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(title).font(.headline)
+            Text(message).font(.caption).multilineTextAlignment(.center)
+        }
+        .padding()
+        .background(color.opacity(0.88))
+        .foregroundColor(.white)
+        .cornerRadius(12)
     }
 
     private func supportedSymbolSeconds(_ value: Int) -> Int {

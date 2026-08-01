@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -31,6 +31,21 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: .spm-cache
+          key: ${{ runner.os }}-mpvkit-1.0.0-${{ hashFiles('project.yml') }}
+
+      - name: Resolve MPVKit 1.0.0
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project EmbyPlayerLab.xcodeproj \
+            -scheme EmbyPlayerLab \
+            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
       - name: Build unsigned app
         run: |
           set -euo pipefail
@@ -43,6 +58,7 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
             IPHONEOS_DEPLOYMENT_TARGET=15.0 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -56,7 +72,7 @@ jobs:
           {
             echo "## First compiler errors"
             echo '```text'
-            grep -nE '(^|[[:space:]])(error:|fatal error:)' build.log | head -40 || true
+            grep -nE '(^|[[:space:]])(error:|fatal error:)' build.log package-resolution.log | head -60 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -84,10 +100,11 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="EmbyPlayerLab-0.1.2-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="EmbyPlayerLab-0.2.0-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          du -h "$IPA_NAME"
 
       - name: Upload IPA
         if: success()
@@ -104,6 +121,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: EmbyPlayerLab-build-logs-${{ github.sha }}
-          path: build.log
+          path: |
+            build.log
+            package-resolution.log
           if-no-files-found: warn
           retention-days: 14

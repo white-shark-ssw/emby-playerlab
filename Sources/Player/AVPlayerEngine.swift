@@ -1,46 +1,82 @@
 import AVFoundation
+import CoreVideo
 import Foundation
 import QuartzCore
 
 final class AVPlayerEngine: NSObject, PlayerEngine {
+    let kind: PlayerEngineKind = .avPlayer
     var onSnapshot: ((PlayerSnapshot) -> Void)?
     var onSeekCompleted: ((SeekResult) -> Void)?
 
     let player = AVPlayer()
+
     private var snapshot = PlayerSnapshot()
     private var observations: [NSKeyValueObservation] = []
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var failedObserver: NSObjectProtocol?
+    private var displayLink: CADisplayLink?
+    private var videoOutput: AVPlayerItemVideoOutput?
+    private var pendingFrameMeasurement: FrameMeasurement?
+    private var lastConfiguration: Configuration?
+
+    private struct Configuration {
+        let url: URL
+        let headers: [String: String]
+        let preferredForwardBuffer: Double
+    }
+
+    private struct FrameMeasurement {
+        let requestedAt: TimeInterval
+        let target: Double
+        let bufferHit: Bool
+    }
 
     override init() {
         super.init()
         player.automaticallyWaitsToMinimizeStalling = false
+        displayLink = CADisplayLink(target: self, selector: #selector(displayLinkTick))
+        displayLink?.add(to: .main, forMode: .common)
     }
 
     deinit {
+        displayLink?.invalidate()
         stop()
     }
 
-    func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double) {
+    func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
+        lastConfiguration = Configuration(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer)
         stopObservers()
 
         let asset: AVURLAsset
         if headers.isEmpty {
             asset = AVURLAsset(url: url)
         } else {
-            // AVURLAssetHTTPHeaderFieldsKey is broadly used by AVFoundation clients.
-            // It remains isolated here so a resource-loader implementation can replace it later.
             asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         }
 
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = preferredForwardBuffer
         item.canUseNetworkResourcesForLiveStreamingWhilePaused = false
+
+        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+        ])
+        item.add(output)
+        videoOutput = output
+
         player.replaceCurrentItem(with: item)
-        snapshot = PlayerSnapshot()
+        snapshot = PlayerSnapshot(position: max(0, startPosition))
         emit()
         observe(item: item)
+
+        if startPosition > 0 {
+            item.seek(
+                to: CMTime(seconds: startPosition, preferredTimescale: 600),
+                toleranceBefore: CMTime(seconds: 0.5, preferredTimescale: 600),
+                toleranceAfter: CMTime(seconds: 0.5, preferredTimescale: 600)
+            )
+        }
     }
 
     func play() {
@@ -82,27 +118,19 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             after = 0.5
         }
 
+        pendingFrameMeasurement = FrameMeasurement(requestedAt: requestedAt, target: target, bufferHit: bufferHit)
         let targetTime = CMTime(seconds: target, preferredTimescale: 600)
         item.seek(
             to: targetTime,
             toleranceBefore: CMTime(seconds: before, preferredTimescale: 600),
             toleranceAfter: CMTime(seconds: after, preferredTimescale: 600)
         ) { [weak self] finished in
-            guard let self else { return }
-            let latency = (CACurrentMediaTime() - requestedAt) * 1000
-            let result = SeekResult(
-                requestedAt: requestedAt,
-                target: target,
-                bufferHit: bufferHit,
-                completionLatencyMs: latency
-            )
+            guard let self, finished else { return }
             DispatchQueue.main.async {
-                guard finished else { return }
                 if wasPlaying {
                     self.player.playImmediately(atRate: 1)
                     self.snapshot.isPlaying = true
                 }
-                self.onSeekCompleted?(result)
                 self.emit()
             }
         }
@@ -110,13 +138,61 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         if wasPlaying {
             player.playImmediately(atRate: 1)
         }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, let pending = self.pendingFrameMeasurement,
+                  abs(pending.target - target) < 0.01 else { return }
+            self.pendingFrameMeasurement = nil
+            self.onSeekCompleted?(SeekResult(
+                requestedAt: pending.requestedAt,
+                target: pending.target,
+                bufferHit: pending.bufferHit,
+                completionLatencyMs: (CACurrentMediaTime() - pending.requestedAt) * 1000,
+                measurement: "AV 首帧等待超时"
+            ))
+        }
+    }
+
+    func reload(at seconds: Double) {
+        guard let configuration = lastConfiguration else { return }
+        let shouldResume = snapshot.isPlaying || player.rate > 0
+        prepare(
+            url: configuration.url,
+            headers: configuration.headers,
+            preferredForwardBuffer: configuration.preferredForwardBuffer,
+            startPosition: seconds
+        )
+        if shouldResume { play() }
     }
 
     func stop() {
         player.pause()
         player.replaceCurrentItem(with: nil)
         stopObservers()
+        videoOutput = nil
+        pendingFrameMeasurement = nil
         snapshot = PlayerSnapshot()
+    }
+
+    @objc private func displayLinkTick() {
+        guard let pending = pendingFrameMeasurement,
+              let output = videoOutput else { return }
+
+        let itemTime = output.itemTime(forHostTime: CACurrentMediaTime())
+        guard itemTime.isNumeric else { return }
+        let seconds = itemTime.seconds
+        guard seconds.isFinite, abs(seconds - pending.target) <= 2.0,
+              output.hasNewPixelBuffer(forItemTime: itemTime) else { return }
+
+        _ = output.copyPixelBuffer(forItemTime: itemTime, itemTimeForDisplay: nil)
+        pendingFrameMeasurement = nil
+        onSeekCompleted?(SeekResult(
+            requestedAt: pending.requestedAt,
+            target: pending.target,
+            bufferHit: pending.bufferHit,
+            completionLatencyMs: (CACurrentMediaTime() - pending.requestedAt) * 1000,
+            measurement: "AV 新画面"
+        ))
     }
 
     private func observe(item: AVPlayerItem) {
@@ -135,9 +211,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
                 guard let self else { return }
                 self.snapshot.isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
                 self.snapshot.isPlaying = player.timeControlStatus == .playing
-                if #available(iOS 15.0, *) {
-                    self.snapshot.waitingReason = player.reasonForWaitingToPlay?.rawValue
-                }
+                self.snapshot.waitingReason = player.reasonForWaitingToPlay?.rawValue
                 self.emit()
             }
         })

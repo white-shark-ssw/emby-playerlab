@@ -4,6 +4,7 @@ import Foundation
 @MainActor
 final class PlaybackLabViewModel: ObservableObject {
     @Published var itemId = ""
+    @Published private(set) var item: BaseItem?
     @Published private(set) var playbackInfo: PlaybackInfoResponse?
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
@@ -16,12 +17,20 @@ final class PlaybackLabViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         selectedSource = nil
+        item = nil
+        playbackInfo = nil
         defer { isLoading = false }
 
         do {
-            let info = try await client.playbackInfo(itemId: itemId)
+            async let itemRequest = client.item(itemId: itemId)
+            async let playbackRequest = client.playbackInfo(itemId: itemId)
+            let (loadedItem, info) = try await (itemRequest, playbackRequest)
+            item = loadedItem
             playbackInfo = info
-            DiagnosticsLogger.shared.log("PlaybackInfo", "item=\(itemId) sources=\(info.mediaSources.count)")
+            DiagnosticsLogger.shared.log(
+                "PlaybackInfo",
+                "item=\(itemId) title=\(loadedItem.name) sources=\(info.mediaSources.count)"
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -29,8 +38,10 @@ final class PlaybackLabViewModel: ObservableObject {
 
     func resolve(client: EmbyAPIClient, mediaSource: MediaSource) {
         do {
+            let id = itemId.trimmingCharacters(in: .whitespacesAndNewlines)
             selectedSource = try client.resolvePlaybackSource(
-                itemId: itemId.trimmingCharacters(in: .whitespacesAndNewlines),
+                itemId: id,
+                itemName: item?.name ?? id,
                 mediaSource: mediaSource,
                 playSessionId: playbackInfo?.playSessionId
             )

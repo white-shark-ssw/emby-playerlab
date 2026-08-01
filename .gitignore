@@ -7,3 +7,5 @@ build/
 *.ipa
 *.xcarchive
 .env
+
+.spm-cache/
