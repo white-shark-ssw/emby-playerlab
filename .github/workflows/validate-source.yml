@@ -1,0 +1,48 @@
+name: Validate Source
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  validate:
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode_16.4.app
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Check project settings
+        run: |
+          set -euo pipefail
+          SETTINGS="$(xcodebuild -project EmbyPlayerLab.xcodeproj -scheme EmbyPlayerLab -showBuildSettings)"
+          echo "$SETTINGS"
+          echo "$SETTINGS" | grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 15.0'
+          echo "$SETTINGS" | grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.embyplayerlab.app'
+
+      - name: Compile for generic iOS device
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project EmbyPlayerLab.xcodeproj \
+            -scheme EmbyPlayerLab \
+            -configuration Debug \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            build

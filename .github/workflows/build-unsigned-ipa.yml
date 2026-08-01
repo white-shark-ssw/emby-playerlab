@@ -1,0 +1,87 @@
+name: Build Unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install XcodeGen
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          xcodegen --version
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build unsigned app
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild \
+            -project EmbyPlayerLab.xcodeproj \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build | tee build.log
+
+      - name: Locate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          echo "Found $APP_PATH"
+
+      - name: Validate minimum OS
+        run: |
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0"
+
+      - name: Package TrollStore IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA_NAME="EmbyPlayerLab-0.1.0-${GITHUB_SHA::7}-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerLab-unsigned-${{ github.sha }}
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            build.log
+          retention-days: 30
