@@ -1,11 +1,20 @@
+import Darwin
 import Foundation
-import UIKit
 
 enum AppIdentity {
     static let clientName = "Emby Player Lab"
-    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
-    static let deviceName = UIDevice.current.model
+    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.1"
     static let ticksPerSecond: Double = 10_000_000
+
+    static var deviceName: String {
+        var systemInfo = utsname()
+        uname(&systemInfo)
+        let machine = Mirror(reflecting: systemInfo.machine).children.reduce(into: "") { result, element in
+            guard let value = element.value as? Int8, value != 0 else { return }
+            result.append(Character(UnicodeScalar(UInt8(value))))
+        }
+        return machine.isEmpty ? "iOS Device" : machine
+    }
 
     static var deviceId: String {
         let key = "EmbyPlayerLab.DeviceId"

@@ -1,13 +1,13 @@
 [
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
-    "bytes": 2502,
-    "sha256": "1fd9cdd389c0f45b2a1a061c9e9fc255c0bdcc2cdda3cc7d156ebe6e5252fbbc"
+    "bytes": 3151,
+    "sha256": "25847c186a311346a5cab870fbce43e1db4dd12673c3bf4e6df5a350bec618bb"
   },
   {
     "path": ".github/workflows/validate-source.yml",
-    "bytes": 1339,
-    "sha256": "2c5a1405ab6bd52420c49cbb36c6a00d7989edfe39bfa39a6157b397eb22ac9b"
+    "bytes": 2221,
+    "sha256": "0d190c0b88435b6fda337d9fa9e2d68bb9547b994133b40399c0201db4bde945"
   },
   {
     "path": ".gitignore",
@@ -17,7 +17,7 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1683,
-    "sha256": "6dd65df09519815756dfc1de49db0c2a82fdf45bddffc4ce9b35360390011b19"
+    "sha256": "45ee8c70fc8cadc2e29ffde758ad4b20c98d6c86db49fa08d6a548241c123bf9"
   },
   {
     "path": "Makefile",
@@ -26,8 +26,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 2544,
-    "sha256": "ffc996ccc3dec45c0b43d6d990f80352a7cd4acfc8b4196e6686c7b6a31376a5"
+    "bytes": 2746,
+    "sha256": "7e67e8eab4c8c86e603b9dd35e8064570b4e8e52cfb3b3c1d514b8afd965b8d2"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -146,8 +146,8 @@
   },
   {
     "path": "Sources/Core/AppIdentity.swift",
-    "bytes": 647,
-    "sha256": "f6302decfb4b349e053a9cd9420997a4d2f10c239e40ff84897cba7cda69bccc"
+    "bytes": 1023,
+    "sha256": "b86cf086fc5b9e6f4f99f29761148dd96c115461266b4afe9295381a5d566410"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -251,13 +251,18 @@
   },
   {
     "path": "docs/BUILD_REPORT.md",
-    "bytes": 1159,
-    "sha256": "b9c3baaefd323dfd5596fd5257ef0760fd227fb422a20782e961370fe51e45b1"
+    "bytes": 1202,
+    "sha256": "241ad43011f69622ed889f7d4ed333975ccb98b3d72e45bcf636d2d2528d9acc"
   },
   {
     "path": "docs/CHANGELOG_0.1.0.md",
     "bytes": 458,
     "sha256": "7858636bef09e46e319fa52181464d5e16d59b569fc80d86b18953ae28fc0e5e"
+  },
+  {
+    "path": "docs/CHANGELOG_0.1.1.md",
+    "bytes": 337,
+    "sha256": "4829c9d3bca5df9e4544d371dafe11d9f5c4e4e02f93cc8b719cb8a2160afdce"
   },
   {
     "path": "docs/RESEARCH_NOTES.md",
@@ -272,7 +277,7 @@
   {
     "path": "project.yml",
     "bytes": 1018,
-    "sha256": "256267d125473aa95a505351a1206e4807da2c9a5120a6718d14bf6b0ffa8348"
+    "sha256": "583471e813f9f5bc64920ffae9cc43db2f81e949ce99c19fce6d24f86691ed7a"
   },
   {
     "path": "scripts/check_min_os.sh",

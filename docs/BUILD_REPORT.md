@@ -2,12 +2,12 @@
 
 ## 当前基线
 
-- App 版本：0.1.0
+- App 版本：0.1.1
 - Deployment Target：iOS 15.0
 - 目标真机：iPhone 15 Pro Max / iOS 17.0
 - CI Runner：`macos-15`
 - 固定 Xcode：16.4
-- Swift Language Mode：5.9
+- Swift Language Mode：5.0（Xcode 16.4 使用 Swift 6.1 编译器）
 - 当前嵌入第三方 Framework：无
 - 当前播放器：AVPlayer
 - TrollStore：输出未签名 IPA

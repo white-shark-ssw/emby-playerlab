@@ -14,8 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -switch /Applications/Xcode_16.4.app
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          swift --version
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -27,13 +31,15 @@ jobs:
         run: |
           set -euo pipefail
           SETTINGS="$(xcodebuild -project EmbyPlayerLab.xcodeproj -scheme EmbyPlayerLab -showBuildSettings)"
-          echo "$SETTINGS"
+          echo "$SETTINGS" | tee build-settings.log
           echo "$SETTINGS" | grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 15.0'
+          echo "$SETTINGS" | grep -q 'SWIFT_VERSION = 5.0'
           echo "$SETTINGS" | grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.embyplayerlab.app'
 
       - name: Compile for generic iOS device
         run: |
           set -euo pipefail
+          set -o pipefail
           xcodebuild \
             -project EmbyPlayerLab.xcodeproj \
             -scheme EmbyPlayerLab \
@@ -45,4 +51,25 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
             DEVELOPMENT_TEAM='' \
-            build
+            build 2>&1 | tee validate-build.log
+
+      - name: Summarize compiler errors
+        if: failure()
+        run: |
+          {
+            echo "## First compiler errors"
+            echo '```text'
+            grep -nE '(^|[[:space:]])(error:|fatal error:)' validate-build.log | head -40 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerLab-validation-logs-${{ github.sha }}
+          path: |
+            validate-build.log
+            build-settings.log
+          if-no-files-found: warn
+          retention-days: 14

@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM/302 Emby 环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.1.0
+## 当前版本：0.1.1
 
 这一版只建立可验证的最小闭环：
 
@@ -61,3 +61,8 @@ CI 固定选择 `/Applications/Xcode_16.4.app`，使用 iPhoneOS SDK 构建，�
 - 普通日志会隐藏 `api_key`、token、签名、Cookie、Authorization。
 - 只有与 Emby 入口同源的播放 URL 才会附加 `api_key` 和 `PlaySessionId`；跨域绝对媒体 URL 永远不会追加这些参数。
 - 仍需真机确认你的 NAS 替换项目是否返回绝对 Location，以及最终网盘域名是否收到任何不应携带的参数。
+
+## 0.1.1 修复
+
+- 将无效的 `SWIFT_VERSION: 5.9` 修正为 Xcode 支持的 Swift 5 语言模式 `5.0`。
+- Actions 失败时也会上传 `build.log`，并在运行摘要中列出首批 `error:`。

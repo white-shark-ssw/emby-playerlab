@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main, master]
-  pull_request:
 
 jobs:
   build:
@@ -35,6 +34,7 @@ jobs:
       - name: Build unsigned app
         run: |
           set -euo pipefail
+          set -o pipefail
           rm -rf build
           xcodebuild \
             -project EmbyPlayerLab.xcodeproj \
@@ -48,9 +48,20 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
             DEVELOPMENT_TEAM='' \
-            clean build | tee build.log
+            clean build 2>&1 | tee build.log
+
+      - name: Summarize compiler errors
+        if: failure()
+        run: |
+          {
+            echo "## First compiler errors"
+            echo '```text'
+            grep -nE '(^|[[:space:]])(error:|fatal error:)' build.log | head -40 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Locate app
+        if: success()
         id: app
         run: |
           set -euo pipefail
@@ -61,27 +72,38 @@ jobs:
           echo "Found $APP_PATH"
 
       - name: Validate minimum OS
+        if: success()
         run: |
           chmod +x scripts/check_min_os.sh
           scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0"
 
       - name: Package TrollStore IPA
+        if: success()
         run: |
           set -euo pipefail
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="EmbyPlayerLab-0.1.0-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="EmbyPlayerLab-0.1.1-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
 
       - name: Upload IPA
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: EmbyPlayerLab-unsigned-${{ github.sha }}
           path: |
             ${{ env.IPA_NAME }}
             ${{ env.IPA_NAME }}.sha256
-            build.log
           retention-days: 30
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayerLab-build-logs-${{ github.sha }}
+          path: build.log
+          if-no-files-found: warn
+          retention-days: 14
