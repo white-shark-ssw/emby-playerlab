@@ -22,7 +22,7 @@ final class DiagnosticsLogger {
             FileManager.default.createFile(atPath: persistentURL.path, contents: nil)
         }
 
-        log("Lifecycle", "logger initialized app=\(AppIdentity.version)")
+        log("Lifecycle", "logger initialized bundle=\(AppIdentity.version) source=\(AppIdentity.sourceVersion)")
     }
 
     func log(_ category: String, _ message: String) {

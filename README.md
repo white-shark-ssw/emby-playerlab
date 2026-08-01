@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.2.8
+## 当前版本：0.2.9
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.2.8-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.2.9-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -148,3 +148,13 @@ v0.2.6 在检测到停滞后，会异步销毁旧 libmpv，同时立即创建新
 - `demuxer-max-back-bytes=0`
 
 重载前会刷新 Emby PlaybackInfo 和 PlaySessionId，但不会创建第二个 MPV 实例。
+
+
+## 0.2.9 MPV 文件切换事件修复
+
+v0.2.8 日志中的 `MPVEndFile reason=2` 不是提前 EOF。根据 libmpv API，
+reason 2 表示当前文件因为 stop 或 loadfile replace 被停止。旧代码把它当作真实
+EOF，导致一次兼容重载立即递归触发第二、第三次重载，并制造 partial file/TLS 错误。
+
+本版只把 reason 0（真实 EOF）和 reason 4（加载/播放错误）交给提前结束逻辑。
+STOP、QUIT、REDIRECT 等文件切换事件只记录日志，不改变播放结束状态。

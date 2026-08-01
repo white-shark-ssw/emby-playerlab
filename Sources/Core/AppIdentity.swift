@@ -3,7 +3,8 @@ import Foundation
 
 enum AppIdentity {
     static let clientName = "Emby Player Lab"
-    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.8"
+    static let sourceVersion = "0.2.9"
+    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.9"
     static let ticksPerSecond: Double = 10_000_000
 
     static var deviceName: String {

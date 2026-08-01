@@ -255,9 +255,9 @@ final class MPVPlayerEngine: PlayerEngine {
         queue.async { [weak self] in
             guard let self, let handle = self.mpv, !self.isStopping else { return }
 
-            // Keep one libmpv handle. Stop the current file synchronously, update
-            // per-file options, then use loadfile replace like Streamyfin.
-            _ = self.commandSync(handle, ["stop"])
+            // loadfile replace already stops the current item. Sending an explicit
+            // stop first produces an extra MPV_END_FILE_REASON_STOP event and can
+            // race with the next file load.
             self.updateHTTPHeaders(handle: handle, headers: headers)
 
             let cacheSeconds = max(30, Int(preferredForwardBuffer.rounded()))
@@ -275,7 +275,9 @@ final class MPVPlayerEngine: PlayerEngine {
                 self.setProperty(handle: handle, name: "cache-pause", value: "no")
                 self.setProperty(handle: handle, name: "cache-pause-wait", value: "0")
             } else {
-                self.clearProperty(handle: handle, name: "demuxer-lavf-o")
+                // Explicitly restore the normal MOV/MP4 demuxer behavior. MPV_FORMAT_NONE
+                // is not supported for this property in the bundled libmpv.
+                self.setProperty(handle: handle, name: "demuxer-lavf-o", value: "interleaved_read=1")
                 self.setProperty(handle: handle, name: "demuxer-seekable-cache", value: "auto")
                 self.setProperty(handle: handle, name: "demuxer-max-back-bytes", value: "128MiB")
                 self.setProperty(handle: handle, name: "cache-pause", value: "yes")
@@ -376,13 +378,28 @@ final class MPVPlayerEngine: PlayerEngine {
                     reasonValue = Int32(data.pointee.reason.rawValue)
                     errorValue = data.pointee.error
                 }
+
+                // libmpv reasons:
+                // 0 = EOF, 2 = STOP, 3 = QUIT, 4 = ERROR, 5 = REDIRECT.
+                // loadfile replace intentionally produces STOP for the previous file.
+                // Only a real EOF or ERROR belongs to the current playback-end path.
+                let isRealPlaybackEnd = reasonValue == 0 || reasonValue == 4
+
                 DiagnosticsLogger.shared.log(
                     "MPVEndFile",
-                    "reason=\(reasonValue) error=\(errorValue) position=\(snapshot.position) duration=\(snapshot.duration)"
+                    "reason=\(reasonValue) error=\(errorValue) realEnd=\(isRealPlaybackEnd) position=\(snapshot.position) duration=\(snapshot.duration)"
                 )
-                snapshot.didReachEnd = true
-                snapshot.isPlaying = false
-                emitOnMain()
+
+                if isRealPlaybackEnd {
+                    snapshot.didReachEnd = true
+                    snapshot.isPlaying = false
+                    emitOnMain()
+                } else {
+                    DiagnosticsLogger.shared.log(
+                        "MPVEndFile",
+                        "ignored transition event reason=\(reasonValue)"
+                    )
+                }
             }
         case MPV_EVENT_PROPERTY_CHANGE:
             if let namePointer = event.data?.assumingMemoryBound(to: mpv_event_property.self).pointee.name {
@@ -499,10 +516,6 @@ final class MPVPlayerEngine: PlayerEngine {
         check(status, operation: "set \(name)=\(value)")
     }
 
-    private func clearProperty(handle: OpaquePointer, name: String) {
-        let status = mpv_set_property(handle, name, MPV_FORMAT_NONE, nil)
-        check(status, operation: "clear \(name)")
-    }
 
     private func command(_ handle: OpaquePointer, _ arguments: [String]) {
         guard !arguments.isEmpty else { return }

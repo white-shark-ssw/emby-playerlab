@@ -38,6 +38,7 @@ final class PlayerController: ObservableObject {
     private var stagnantWatchdogIntervals = 0
     private var mpvCompatibilityMode = false
     private var mpvCompatibilityReloadCount = 0
+    private var mpvCompatibilityLoadInProgress = false
 
     var avPlayer: AVPlayer? {
         (engine as? AVPlayerEngine)?.player
@@ -242,6 +243,7 @@ final class PlayerController: ObservableObject {
         compatibilityRecoveryTask = nil
         mpvCompatibilityMode = false
         mpvCompatibilityReloadCount = 0
+        mpvCompatibilityLoadInProgress = false
         seekAnchorReleaseTask?.cancel()
         seekAnchorReleaseTask = nil
         engine.stop()
@@ -426,6 +428,13 @@ final class PlayerController: ObservableObject {
             prematureEOFMessage = "\(decision.reason)；自动切换 MPV。"
             switchEngine(to: .mpv, reason: "AVPlayer 疑似提前结束")
         } else if decision.isPremature, eofRetryCount < 2 {
+            guard !mpvCompatibilityLoadInProgress else {
+                DiagnosticsLogger.shared.log(
+                    "EOF",
+                    "ignored during MPV compatibility file transition"
+                )
+                return
+            }
             eofRetryCount += 1
             let skip = eofRetryCount == 1 ? 5.0 : 15.0
             let target = clampPosition(snapshot.position + skip)
@@ -522,6 +531,7 @@ final class PlayerController: ObservableObject {
               engineKind == .mpv,
               source.mediaSource.normalizedContainer == "mp4",
               compatibilityRecoveryTask == nil,
+              !mpvCompatibilityLoadInProgress,
               let mpvEngine = engine as? MPVPlayerEngine else { return }
 
         let startPosition = clampPosition(requestedPosition)
@@ -530,6 +540,7 @@ final class PlayerController: ObservableObject {
         pendingSeekDirection = .absolute
         displayedPosition = startPosition
         mpvCompatibilityMode = true
+        mpvCompatibilityLoadInProgress = true
         mpvCompatibilityReloadCount += 1
 
         DiagnosticsLogger.shared.log(
@@ -544,6 +555,7 @@ final class PlayerController: ObservableObject {
             do {
                 let playback = try await self.client.playbackInfo(itemId: previousSource.itemId)
                 guard !Task.isCancelled, self.started else {
+                    self.mpvCompatibilityLoadInProgress = false
                     self.compatibilityRecoveryTask = nil
                     return
                 }
@@ -565,6 +577,7 @@ final class PlayerController: ObservableObject {
             }
 
             guard !Task.isCancelled, self.started, self.engine === mpvEngine else {
+                self.mpvCompatibilityLoadInProgress = false
                 self.compatibilityRecoveryTask = nil
                 return
             }
@@ -592,6 +605,10 @@ final class PlayerController: ObservableObject {
                 )
             }
 
+            // The file replacement is now queued. STOP/REDIRECT transition events
+            // are ignored by MPVPlayerEngine; the next FILE_LOADED/time-pos events will
+            // drive normal state again.
+            self.mpvCompatibilityLoadInProgress = false
             self.compatibilityRecoveryTask = nil
         }
     }

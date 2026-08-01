@@ -2,7 +2,7 @@
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
     "bytes": 4956,
-    "sha256": "8496338170d2ed59978b8fa70e690182a0b3258594a6f9bcb7fae59d7694376a"
+    "sha256": "31368bfcce7626e30eaf65147e786e0068b17cbeabc9395809077b93e0b86206"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -16,8 +16,8 @@
   },
   {
     "path": "Config/Info.plist",
-    "bytes": 1723,
-    "sha256": "81cb033b498f8154fc8984566d288523f8c42603d364234f94b738ce0d91507d"
+    "bytes": 1684,
+    "sha256": "6ea461ca1ace1cebec409c1bd91b90b0ff87fdba6bf51773d9b0919b49819393"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -31,8 +31,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 5836,
-    "sha256": "7acf721286d41a02b87058cd3ab751d60eecbb4878505266c93a3e220ffcde3e"
+    "bytes": 7167,
+    "sha256": "f395292af7a663c74a88abc0f9704caf4efca0ed93a20fa80abee048808f92f1"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -156,8 +156,8 @@
   },
   {
     "path": "Sources/Core/AppIdentity.swift",
-    "bytes": 1023,
-    "sha256": "660670e1d1dfd1374063f813e885e1551de5339806411a011e6e5818155610df"
+    "bytes": 1062,
+    "sha256": "ea030f094c230027a51378e61dc0b626c5f8cc4aa3eebf024634bbb370743301"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -171,8 +171,8 @@
   },
   {
     "path": "Sources/Diagnostics/DiagnosticsLogger.swift",
-    "bytes": 3068,
-    "sha256": "c567fc63fcd8099940bb1b672c8a1e3aebcdcc62e0883b674d90bda90dc0ea39"
+    "bytes": 3107,
+    "sha256": "6858d48283f6249ae45127d1e092e1e8bcb03d480e5d844b1b557beb8cac7389"
   },
   {
     "path": "Sources/Models/EmbyModels.swift",
@@ -196,13 +196,13 @@
   },
   {
     "path": "Sources/Player/MPVPlayerEngine.swift",
-    "bytes": 21864,
-    "sha256": "62a3784f0f7f27f02f881aad2ad44b1e420883b8e802ded8dbec5d84bc01728c"
+    "bytes": 24710,
+    "sha256": "1bacdeb1363a7107f153fca6ba21d4ac414339674ccaa5a9bbec2495235cd8c2"
   },
   {
     "path": "Sources/Player/PlayerController.swift",
-    "bytes": 20639,
-    "sha256": "dcf9e26935a18e6b86e45585c30a05847282839dfac6b507da370556e07f0aae"
+    "bytes": 25130,
+    "sha256": "cd2b122cb981d62d7d8cceec5042b3149305465c25a57996a7650a67ad40b0d0"
   },
   {
     "path": "Sources/Player/PlayerEngine.swift",
@@ -330,6 +330,16 @@
     "sha256": "767187935be2645cd33fcc2e1904fc6a2f357b962e91cf1ca6a7abb0c7fe64e4"
   },
   {
+    "path": "docs/CHANGELOG_0.2.8.md",
+    "bytes": 1089,
+    "sha256": "66306ae283c5f73461434fab5aae13e9d04828503e93044f3c7686e179c8ce89"
+  },
+  {
+    "path": "docs/CHANGELOG_0.2.9.md",
+    "bytes": 741,
+    "sha256": "94b81cfbd512d5edea1d817a9385e108d5342953c7e07a49e37bf82886495567"
+  },
+  {
     "path": "docs/RESEARCH_NOTES.md",
     "bytes": 1218,
     "sha256": "d26bf7e9b7c43c9137d2431b1d578b2ce4f175a965a14d94cc7b3f2f863a2909"
@@ -347,7 +357,7 @@
   {
     "path": "project.yml",
     "bytes": 1326,
-    "sha256": "455e8f5ef147c25ecf98bfa503811bab854a9f4eef90668e56ebd0c2ceb3841c"
+    "sha256": "8f83beb73bfffac4e334fe3867396a905d84b25377fdfbde0f2c64e4ac21d81e"
   },
   {
     "path": "scripts/check_min_os.sh",
