@@ -12,7 +12,7 @@ struct PublicSystemInfo: Decodable {
     }
 }
 
-struct EmbyUser: Codable {
+struct EmbyUser: Codable, Equatable {
     let id: String
     let name: String
 

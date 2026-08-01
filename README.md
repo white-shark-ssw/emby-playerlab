@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM/302 Emby 环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.1.1
+## 当前版本：0.1.2
 
 这一版只建立可验证的最小闭环：
 
@@ -66,3 +66,8 @@ CI 固定选择 `/Applications/Xcode_16.4.app`，使用 iPhoneOS SDK 构建，�
 
 - 将无效的 `SWIFT_VERSION: 5.9` 修正为 Xcode 支持的 Swift 5 语言模式 `5.0`。
 - Actions 失败时也会上传 `build.log`，并在运行摘要中列出首批 `error:`。
+
+## 0.1.2 修复
+
+- `EmbyUser` 增加 `Equatable`，修复 `EmbySession` 无法自动合成 `Equatable` 的真机编译错误。
+- 该修复来自 Xcode 16.4 / iPhoneOS 18.5 Release 构建日志中的首条明确错误。
