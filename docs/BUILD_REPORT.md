@@ -2,7 +2,7 @@
 
 ## 当前基线
 
-- App 版本：0.2.0
+- App 版本：0.2.1
 - Deployment Target：iOS 15.0
 - 目标真机：iPhone 15 Pro Max / iOS 17.0
 - CI Runner：macOS 15

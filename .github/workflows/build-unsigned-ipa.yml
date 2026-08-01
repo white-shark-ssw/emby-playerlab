@@ -31,6 +31,14 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Inspect MPV module maps
+        run: |
+          set -euo pipefail
+          find .spm-cache -path '*/Modules/module.modulemap' -o -path '*/module.modulemap' | sort | while read -r file; do
+            echo "===== $file ====="
+            sed -n '1,80p' "$file"
+          done | tee mpv-module-maps.log
+
       - name: Cache Swift packages
         uses: actions/cache@v4
         with:
@@ -100,7 +108,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="EmbyPlayerLab-0.2.0-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="EmbyPlayerLab-0.2.1-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"

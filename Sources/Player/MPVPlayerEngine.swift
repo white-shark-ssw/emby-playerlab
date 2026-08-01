@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
-import MPVKit
+import _MPVKit
+import Libmpv
 import QuartzCore
 import UIKit
 

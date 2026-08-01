@@ -1,13 +1,13 @@
 [
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
-    "bytes": 3804,
-    "sha256": "49e2f17eb5af73d260235331d391bebb693db00a091c5bfa376660f556822061"
+    "bytes": 4122,
+    "sha256": "4a2e629d2e10423c416c00a45cd753f2e44333347eb9bb748e275eb4feba6801"
   },
   {
     "path": ".github/workflows/validate-source.yml",
-    "bytes": 2871,
-    "sha256": "bb82dab19711bb1436cf35508fc5d0f293f9a33223cbc17ad69084b67d8c5190"
+    "bytes": 3221,
+    "sha256": "85aa5664507bfd4eab8a796a300934cbd1910408ca5635e28b7efd7651e69c26"
   },
   {
     "path": ".gitignore",
@@ -17,7 +17,12 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1683,
-    "sha256": "4cee365d831bb5b80482fb2b91eecbad40b1cfcaaf5f14e17c4bd4961c62ee34"
+    "sha256": "6f55675bbca83c6fdd3f2e3b46b297407e039abc074e4648a6e47641f8c5832b"
+  },
+  {
+    "path": "DELETE_THESE_FILES.txt",
+    "bytes": 196,
+    "sha256": "1b2bfa34d50c2627791ebb63769866a41bcb736fbbce5d220bae3af4f018f0a2"
   },
   {
     "path": "Makefile",
@@ -26,8 +31,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 2696,
-    "sha256": "f67cae6503e2759b2a1a67675d88906feb1ff0b96a79eae199872aff7d9585bd"
+    "bytes": 3054,
+    "sha256": "3fd87208acc610791d3c37c004a6d77392146369356f5480f8aaad563127ec1b"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -152,7 +157,7 @@
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1023,
-    "sha256": "9218f2b3de8a2a2ea95d1c99bcf28f5f38cdb220d5ae802b53a740f5d759d2c1"
+    "sha256": "03b9392d533ca4a1a7e11ae1bd90623d7909a3cd53761c986a49994365154842"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -191,8 +196,8 @@
   },
   {
     "path": "Sources/Player/MPVPlayerEngine.swift",
-    "bytes": 15471,
-    "sha256": "ac7a54ad5d35e821bc7cd8c37df6dd12b472736e8a13541a0adb6abf12365c43"
+    "bytes": 15486,
+    "sha256": "55197093c759101b77bee2a2e28d464bd44cebf891a2f3fc1550bbe297ae4e04"
   },
   {
     "path": "Sources/Player/PlayerController.swift",
@@ -267,7 +272,7 @@
   {
     "path": "docs/BUILD_REPORT.md",
     "bytes": 1281,
-    "sha256": "1c90685c7f8cd6b982e9f76fd6a1717236151cc90a366998aceb85389f6cb274"
+    "sha256": "5765ea2478c792e736e18469e15ed2e184bcd35b4d54b6affff781088a69b74f"
   },
   {
     "path": "docs/CHANGELOG_0.1.0.md",
@@ -288,6 +293,11 @@
     "path": "docs/CHANGELOG_0.2.0.md",
     "bytes": 1872,
     "sha256": "b62d13c57a230b8b95f2db0c19316788fd0f070587783f2c75931c680a05fb03"
+  },
+  {
+    "path": "docs/CHANGELOG_0.2.1.md",
+    "bytes": 314,
+    "sha256": "4e291d4f4f905f09b4d4c24a26d9f4a63c2da241defab0f56bf94adfc81d5353"
   },
   {
     "path": "docs/RESEARCH_NOTES.md",
