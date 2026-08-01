@@ -24,6 +24,7 @@ final class PlayerController: ObservableObject {
     private var seekReportTask: Task<Void, Never>?
     private var seekAnchorReleaseTask: Task<Void, Never>?
     private var watchdogTask: Task<Void, Never>?
+    private var compatibilityRecoveryTask: Task<Void, Never>?
     private var started = false
     private var userIsScrubbing = false
     private var pendingSeekTarget: Double?
@@ -35,6 +36,8 @@ final class PlayerController: ObservableObject {
     private var lastWatchdogPosition: Double = 0
     private var lastWatchdogBufferEnd: Double = 0
     private var stagnantWatchdogIntervals = 0
+    private var mpvCompatibilityMode = false
+    private var mpvCompatibilityReloadCount = 0
 
     var avPlayer: AVPlayer? {
         (engine as? AVPlayerEngine)?.player
@@ -105,6 +108,8 @@ final class PlayerController: ObservableObject {
         progressTask = nil
         watchdogTask?.cancel()
         watchdogTask = nil
+        compatibilityRecoveryTask?.cancel()
+        compatibilityRecoveryTask = nil
         seekReportTask?.cancel()
         seekReportTask = nil
         seekAnchorReleaseTask?.cancel()
@@ -154,13 +159,11 @@ final class PlayerController: ObservableObject {
             "SeekAnchor",
             "offset=\(offset) base=\(base) target=\(target) enginePosition=\(snapshot.position)"
         )
-        if shouldBypassMPVStall, offset > 0, let mpvEngine = engine as? MPVPlayerEngine {
-            let bypassTarget = clampPosition(max(target, snapshot.position + 30))
-            pendingSeekTarget = bypassTarget
-            pendingSeekDirection = .forward
-            displayedPosition = bypassTarget
-            stallMessage = "MPV 已停滞，本次快进将跨过异常区域到 \(formatTime(bypassTarget))。"
-            mpvEngine.recoverFromStall(to: bypassTarget, reason: "用户双击跨过异常区域")
+        if shouldReloadMPVCompatibility, offset > 0 {
+            startMPVCompatibilityReload(
+                at: target,
+                reason: "用户在 MPV 停滞时双击快进"
+            )
         } else {
             engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)
         }
@@ -235,6 +238,10 @@ final class PlayerController: ObservableObject {
 
         pendingSeekTarget = nil
         pendingSeekDirection = nil
+        compatibilityRecoveryTask?.cancel()
+        compatibilityRecoveryTask = nil
+        mpvCompatibilityMode = false
+        mpvCompatibilityReloadCount = 0
         seekAnchorReleaseTask?.cancel()
         seekAnchorReleaseTask = nil
         engine.stop()
@@ -339,9 +346,11 @@ final class PlayerController: ObservableObject {
         pendingSeekTarget = target
         pendingSeekDirection = .absolute
 
-        if shouldBypassMPVStall, target > snapshot.position, let mpvEngine = engine as? MPVPlayerEngine {
-            stallMessage = "MPV 已停滞，正在直接跳到 \(formatTime(target))。"
-            mpvEngine.recoverFromStall(to: target, reason: "用户拖动跨过异常区域")
+        if shouldReloadMPVCompatibility, target > snapshot.position {
+            startMPVCompatibilityReload(
+                at: target,
+                reason: "用户在 MPV 停滞时拖动进度"
+            )
         } else {
             engine.seek(to: target, direction: .absolute)
         }
@@ -418,15 +427,13 @@ final class PlayerController: ObservableObject {
             switchEngine(to: .mpv, reason: "AVPlayer 疑似提前结束")
         } else if decision.isPremature, eofRetryCount < 2 {
             eofRetryCount += 1
-            let skip = eofRetryCount == 1 ? 30.0 : 60.0
+            let skip = eofRetryCount == 1 ? 5.0 : 15.0
             let target = clampPosition(snapshot.position + skip)
-            prematureEOFMessage = "\(decision.reason)；正在跨过异常区域到 \(formatTime(target))（\(eofRetryCount)/2）"
-            if let mpvEngine = engine as? MPVPlayerEngine {
-                pendingSeekTarget = target
-                pendingSeekDirection = .forward
-                displayedPosition = target
-                mpvEngine.recoverFromStall(to: target, reason: "MPV 提前 EOF 跨区恢复")
-            }
+            prematureEOFMessage = "\(decision.reason)；启用异常 MP4 兼容读取并从 \(formatTime(target)) 恢复（\(eofRetryCount)/2）"
+            startMPVCompatibilityReload(
+                at: target,
+                reason: "MPV 提前 EOF"
+            )
         } else if decision.isPremature {
             prematureEOFMessage = "\(decision.reason)；自动恢复已达上限，请导出日志。"
         } else {
@@ -468,17 +475,31 @@ final class PlayerController: ObservableObject {
             return
         }
 
-        if engineKind == .mpv, let mpvEngine = engine as? MPVPlayerEngine {
-            let skip = stallRecoveryCount == 1 ? 30.0 : 60.0
-            let target = clampPosition(snapshot.position + skip)
-            let action = stallRecoveryCount == 1
-                ? "清理解码缓冲并向后跨过 30 秒"
-                : "再次停滞，向后跨过 60 秒"
-            stallMessage = "检测到 MPV 停滞：\(action)。"
-            pendingSeekTarget = target
-            pendingSeekDirection = .forward
-            displayedPosition = target
-            mpvEngine.recoverFromStall(to: target, reason: action)
+        if engineKind == .mpv {
+            guard source.mediaSource.normalizedContainer == "mp4" else {
+                stallMessage = "检测到 MPV 停滞，正在使用同一实例重新载入当前位置。"
+                engine.reload(at: snapshot.position)
+                engine.play()
+                return
+            }
+
+            if !mpvCompatibilityMode {
+                let target = clampPosition(snapshot.position + 3)
+                stallMessage = "检测到远程 MP4 停滞，正在启用坏交错 MP4 兼容读取。"
+                startMPVCompatibilityReload(
+                    at: target,
+                    reason: "首次停滞：关闭 interleaved_read 和缓存内 Seek"
+                )
+            } else if mpvCompatibilityReloadCount < 2 {
+                let target = clampPosition(snapshot.position + 8)
+                stallMessage = "兼容读取仍停滞，正在刷新播放会话并从后方重新载入。"
+                startMPVCompatibilityReload(
+                    at: target,
+                    reason: "兼容模式再次停滞"
+                )
+            } else {
+                stallMessage = "异常 MP4 兼容读取仍无法继续，请拖动到更后方位置并导出日志。"
+            }
             return
         }
 
@@ -487,12 +508,92 @@ final class PlayerController: ObservableObject {
         engine.play()
     }
 
-    private var shouldBypassMPVStall: Bool {
-        guard engineKind == .mpv else { return false }
-        return stallRecoveryCount > 0
-            || snapshot.waitingReason == "MPV paused-for-cache"
-            || snapshot.waitingReason == "MPV stall bypass"
-            || (snapshot.isBuffering && stagnantWatchdogIntervals >= 2)
+    private var shouldReloadMPVCompatibility: Bool {
+        guard engineKind == .mpv,
+              source.mediaSource.normalizedContainer == "mp4" else { return false }
+        return snapshot.waitingReason == "MPV paused-for-cache"
+            || snapshot.waitingReason == "MPV compatibility loading"
+            || stagnantWatchdogIntervals >= 2
+            || stallRecoveryCount > 0
+    }
+
+    private func startMPVCompatibilityReload(at requestedPosition: Double, reason: String) {
+        guard started,
+              engineKind == .mpv,
+              source.mediaSource.normalizedContainer == "mp4",
+              compatibilityRecoveryTask == nil,
+              let mpvEngine = engine as? MPVPlayerEngine else { return }
+
+        let startPosition = clampPosition(requestedPosition)
+        let previousSource = source
+        pendingSeekTarget = startPosition
+        pendingSeekDirection = .absolute
+        displayedPosition = startPosition
+        mpvCompatibilityMode = true
+        mpvCompatibilityReloadCount += 1
+
+        DiagnosticsLogger.shared.log(
+            "MPVCompatibility",
+            "begin reason=\(reason) from=\(snapshot.position) start=\(startPosition) reload=\(mpvCompatibilityReloadCount)"
+        )
+
+        compatibilityRecoveryTask = Task { [weak self, weak mpvEngine] in
+            guard let self, let mpvEngine else { return }
+
+            var refreshedSource = previousSource
+            do {
+                let playback = try await self.client.playbackInfo(itemId: previousSource.itemId)
+                guard !Task.isCancelled, self.started else {
+                    self.compatibilityRecoveryTask = nil
+                    return
+                }
+
+                if let mediaSource = playback.mediaSources.first(where: { $0.id == previousSource.mediaSource.id })
+                    ?? playback.mediaSources.first {
+                    refreshedSource = try self.client.resolvePlaybackSource(
+                        itemId: previousSource.itemId,
+                        itemName: previousSource.itemName,
+                        mediaSource: mediaSource,
+                        playSessionId: playback.playSessionId
+                    )
+                }
+            } catch {
+                DiagnosticsLogger.shared.log(
+                    "MPVCompatibility",
+                    "PlaybackInfo refresh failed: \(error.localizedDescription); reusing current playback source"
+                )
+            }
+
+            guard !Task.isCancelled, self.started, self.engine === mpvEngine else {
+                self.compatibilityRecoveryTask = nil
+                return
+            }
+
+            self.source = refreshedSource
+            self.resetWatchdogSamples()
+            mpvEngine.reloadForBadInterleavedMP4(
+                url: refreshedSource.url,
+                headers: refreshedSource.headers,
+                preferredForwardBuffer: self.preferredForwardBuffer,
+                startPosition: startPosition,
+                reason: reason
+            )
+            mpvEngine.play()
+
+            Task {
+                await self.client.reportStopped(
+                    source: previousSource,
+                    position: self.snapshot.position
+                )
+                await self.client.reportStart(
+                    source: refreshedSource,
+                    position: startPosition,
+                    paused: false
+                )
+            }
+
+            self.compatibilityRecoveryTask = nil
+        }
     }
 
     private func resetWatchdog() {

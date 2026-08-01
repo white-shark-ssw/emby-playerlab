@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.2.7
+## 当前版本：0.2.8
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.2.7-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.2.8-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -129,3 +129,22 @@ file 和提前 EOF。
 v0.2.6 在检测到停滞后，会异步销毁旧 libmpv，同时立即创建新 libmpv。真机日志证明旧实例尚未完成 `terminate_destroy` 时新实例已经开始加载，随后发生闪退。
 
 本版不再自动更换 MPV 实例。检测到异常媒体停滞时，在当前 MPV 中清理解码缓冲，并进行 30 秒或 60 秒的大跨度关键帧跳转。停滞状态下拖动进度条则直接跳到用户目标。
+
+
+## 0.2.8 坏交错 MP4 兼容读取
+
+真机日志证明异常 MP4 能完成远距离 Seek，但每次落点只读取约 0.1 秒数据，
+随后再次进入 `paused-for-cache`。这不是目标点跳转失败，而是顺序取包失败。
+
+最早“可越过”的 MPV 版本同时没有可用音频输出。启用 AudioUnit 后，FFmpeg
+需要同时读取音频与视频轨道；对于坏交错 MP4，默认 `interleaved_read` 可能在
+两个轨道之间频繁进行远程 Range Seek。
+
+本版首次检测到 MP4 停滞时，在同一个 libmpv 实例中重新加载，并启用：
+
+- `demuxer-lavf-o=interleaved_read=0`
+- `demuxer-seekable-cache=no`
+- `cache-pause=no`
+- `demuxer-max-back-bytes=0`
+
+重载前会刷新 Emby PlaybackInfo 和 PlaySessionId，但不会创建第二个 MPV 实例。

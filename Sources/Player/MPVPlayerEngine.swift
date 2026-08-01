@@ -24,6 +24,7 @@ final class MPVPlayerEngine: PlayerEngine {
         let url: URL
         let headers: [String: String]
         let preferredForwardBuffer: Double
+        let compatibilityMode: Bool
     }
 
     private struct PendingSeek {
@@ -46,7 +47,12 @@ final class MPVPlayerEngine: PlayerEngine {
     }
 
     func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
-        lastConfiguration = Configuration(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer)
+        lastConfiguration = Configuration(
+            url: url,
+            headers: headers,
+            preferredForwardBuffer: preferredForwardBuffer,
+            compatibilityMode: false
+        )
         if mpv == nil {
             do {
                 try createMPV()
@@ -56,7 +62,39 @@ final class MPVPlayerEngine: PlayerEngine {
                 return
             }
         }
-        load(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition)
+        load(
+            url: url,
+            headers: headers,
+            preferredForwardBuffer: preferredForwardBuffer,
+            startPosition: startPosition,
+            compatibilityMode: false
+        )
+    }
+
+    func reloadForBadInterleavedMP4(
+        url: URL,
+        headers: [String: String],
+        preferredForwardBuffer: Double,
+        startPosition: Double,
+        reason: String
+    ) {
+        lastConfiguration = Configuration(
+            url: url,
+            headers: headers,
+            preferredForwardBuffer: preferredForwardBuffer,
+            compatibilityMode: true
+        )
+        DiagnosticsLogger.shared.log(
+            "MPVCompatibility",
+            "reload reason=\(reason) start=\(startPosition) mode=bad-interleaved-mp4"
+        )
+        load(
+            url: url,
+            headers: headers,
+            preferredForwardBuffer: preferredForwardBuffer,
+            startPosition: startPosition,
+            compatibilityMode: true
+        )
     }
 
     func play() {
@@ -92,38 +130,14 @@ final class MPVPlayerEngine: PlayerEngine {
         }
     }
 
-    func recoverFromStall(to seconds: Double, reason: String) {
-        let duration = max(0, snapshot.duration)
-        let target = min(max(0, seconds), duration > 0 ? duration : seconds)
-        let bufferHit = snapshot.bufferedRanges.contains(where: { $0.contains(target) })
-        pendingSeek = PendingSeek(requestedAt: CACurrentMediaTime(), target: target, bufferHit: bufferHit)
-        snapshot.didReachEnd = false
-        snapshot.isBuffering = true
-        snapshot.waitingReason = "MPV stall bypass"
-        emitOnMain()
-
-        queue.async { [weak self] in
-            guard let self, let handle = self.mpv, !self.isStopping else { return }
-            let dropStatus = self.commandSync(handle, ["drop-buffers"])
-            if dropStatus < 0 {
-                self.check(dropStatus, operation: "drop buffers before stall bypass")
-            }
-            DiagnosticsLogger.shared.log(
-                "MPVStallBypass",
-                "reason=\(reason) target=\(target) current=\(self.snapshot.position) bufferHit=\(bufferHit)"
-            )
-            self.command(handle, ["seek", String(format: "%.3f", target), "absolute+keyframes"])
-            self.setProperty(handle: handle, name: "pause", value: "no")
-        }
-    }
-
     func reload(at seconds: Double) {
         guard let configuration = lastConfiguration else { return }
         load(
             url: configuration.url,
             headers: configuration.headers,
             preferredForwardBuffer: configuration.preferredForwardBuffer,
-            startPosition: seconds
+            startPosition: seconds,
+            compatibilityMode: configuration.compatibilityMode
         )
     }
 
@@ -223,25 +237,60 @@ final class MPVPlayerEngine: PlayerEngine {
         }, Unmanaged.passUnretained(self).toOpaque())
     }
 
-    private func load(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
-        snapshot = PlayerSnapshot(position: max(0, startPosition), isBuffering: true, waitingReason: "MPV loading")
+    private func load(
+        url: URL,
+        headers: [String: String],
+        preferredForwardBuffer: Double,
+        startPosition: Double,
+        compatibilityMode: Bool
+    ) {
+        snapshot = PlayerSnapshot(
+            position: max(0, startPosition),
+            isBuffering: true,
+            waitingReason: compatibilityMode ? "MPV compatibility loading" : "MPV loading"
+        )
+        pendingSeek = nil
         emitOnMain()
 
         queue.async { [weak self] in
-            guard let self, let handle = self.mpv else { return }
-            self.command(handle, ["stop"])
+            guard let self, let handle = self.mpv, !self.isStopping else { return }
+
+            // Keep one libmpv handle. Stop the current file synchronously, update
+            // per-file options, then use loadfile replace like Streamyfin.
+            _ = self.commandSync(handle, ["stop"])
             self.updateHTTPHeaders(handle: handle, headers: headers)
 
             let cacheSeconds = max(30, Int(preferredForwardBuffer.rounded()))
             self.setProperty(handle: handle, name: "cache", value: "yes")
             self.setProperty(handle: handle, name: "cache-secs", value: String(cacheSeconds))
             self.setProperty(handle: handle, name: "demuxer-max-bytes", value: "512MiB")
-            self.setProperty(handle: handle, name: "demuxer-max-back-bytes", value: "128MiB")
-            self.setProperty(handle: handle, name: "demuxer-seekable-cache", value: "yes")
+
+            if compatibilityMode {
+                // FFmpeg MOV/MP4 workaround for badly interleaved audio/video tracks.
+                // Avoid cache-internal seeks and do not freeze playback merely because
+                // the demuxer has only a small amount of data queued.
+                self.setProperty(handle: handle, name: "demuxer-lavf-o", value: "interleaved_read=0")
+                self.setProperty(handle: handle, name: "demuxer-seekable-cache", value: "no")
+                self.setProperty(handle: handle, name: "demuxer-max-back-bytes", value: "0")
+                self.setProperty(handle: handle, name: "cache-pause", value: "no")
+                self.setProperty(handle: handle, name: "cache-pause-wait", value: "0")
+            } else {
+                self.clearProperty(handle: handle, name: "demuxer-lavf-o")
+                self.setProperty(handle: handle, name: "demuxer-seekable-cache", value: "auto")
+                self.setProperty(handle: handle, name: "demuxer-max-back-bytes", value: "128MiB")
+                self.setProperty(handle: handle, name: "cache-pause", value: "yes")
+                self.setProperty(handle: handle, name: "cache-pause-wait", value: "1")
+            }
+
             self.setProperty(handle: handle, name: "start", value: String(format: "%.3f", max(0, startPosition)))
 
+            DiagnosticsLogger.shared.log(
+                "MPVLoad",
+                "mode=\(compatibilityMode ? "bad-interleaved-mp4" : "normal") start=\(startPosition) cacheSecs=\(cacheSeconds)"
+            )
+
             let target = url.isFileURL ? url.path : url.absoluteString
-            self.command(handle, ["loadfile", target, "replace"])
+            _ = self.commandSync(handle, ["loadfile", target, "replace"])
         }
     }
 
@@ -254,7 +303,11 @@ final class MPVPlayerEngine: PlayerEngine {
             ("demuxer-cache-duration", MPV_FORMAT_DOUBLE),
             ("current-ao", MPV_FORMAT_STRING),
             ("aid", MPV_FORMAT_STRING),
-            ("audio-params", MPV_FORMAT_STRING)
+            ("audio-params", MPV_FORMAT_STRING),
+            ("demuxer-cache-idle", MPV_FORMAT_FLAG),
+            ("seekable", MPV_FORMAT_FLAG),
+            ("partially-seekable", MPV_FORMAT_FLAG),
+            ("demuxer-via-network", MPV_FORMAT_FLAG)
         ]
         for (name, format) in properties {
             mpv_observe_property(handle, 0, name, format)
@@ -393,6 +446,11 @@ final class MPVPlayerEngine: PlayerEngine {
         case "current-ao", "aid", "audio-params":
             let value = getStringProperty(handle: handle, name: name) ?? "nil"
             DiagnosticsLogger.shared.log("MPVAudio", "\(name)=\(value)")
+        case "demuxer-cache-idle", "seekable", "partially-seekable", "demuxer-via-network":
+            var flag = Int32(0)
+            if getProperty(handle: handle, name: name, format: MPV_FORMAT_FLAG, value: &flag) >= 0 {
+                DiagnosticsLogger.shared.log("MPVNetwork", "\(name)=\(flag != 0)")
+            }
         default:
             break
         }
@@ -438,7 +496,12 @@ final class MPVPlayerEngine: PlayerEngine {
 
     private func setProperty(handle: OpaquePointer, name: String, value: String) {
         let status = mpv_set_property_string(handle, name, value)
-        check(status, operation: "set \(name)")
+        check(status, operation: "set \(name)=\(value)")
+    }
+
+    private func clearProperty(handle: OpaquePointer, name: String) {
+        let status = mpv_set_property(handle, name, MPV_FORMAT_NONE, nil)
+        check(status, operation: "clear \(name)")
     }
 
     private func command(_ handle: OpaquePointer, _ arguments: [String]) {
