@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.3.2
+## 当前版本：0.3.3
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.3.2-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.3.3-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -176,12 +176,9 @@ STOP、QUIT、REDIRECT 等文件切换事件只记录日志，不改变播放结
 - 不改变 Transport/Range 缓存架构和默认缓存参数。
 
 
-## 0.3.2 本地 HTTP Range 传输
+## 0.3.3 Release 构建修复
 
-TAV 不再使用自定义 URL Scheme 的 `AVAssetResourceLoader` 作为主播放入口。
-新的链路为：115/302 → URLSession Range 缓存 → 127.0.0.1 HTTP 206 → AVPlayer。
-AVPlayer 因此可以使用原生 HTTP 行为主动请求文件头、文件尾和任意 Range。
-
-启动解析完成后会立即并发预取文件头和文件尾；默认网络分片从 4 MB 调整为
-1 MB，以缩短第一批数据返回时间。TAV 停滞时不再自动切回已知存在欠载和音画
-不同步的 MPV。
+- 修复 Xcode 16.4 Release 构建中 `withCheckedThrowingContinuation` 无法推断泛型返回类型的问题。
+- `TransportHTTPServer.send` 明确使用 `CheckedContinuation<Void, Error>`。
+- 不改变本机 HTTP Range 服务、TAV 缓存、302 解析和播放器路由逻辑。
+- Deployment Target 继续保持 iOS 15.0。

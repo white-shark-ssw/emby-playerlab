@@ -2,7 +2,7 @@
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
     "bytes": 4956,
-    "sha256": "57996426555e0c4beb1b3ed8b75ed7366675df1d0d23fae2fe8122e58d426d40"
+    "sha256": "1565ac8dbdcc844f85d8a8c45dfc5034e38078de0540efb51901427621cee09b"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -17,7 +17,7 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1783,
-    "sha256": "2c2f9fcb59a27a4c439947e03dc4330869adc284d5a2a5d16aecb03eab07a16a"
+    "sha256": "85cdf71ec9fa04b896ad72a0fbbf39b2c4c0a3347000002c23b82e08ebfd2cc8"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -31,8 +31,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 8454,
-    "sha256": "481b8cea644da397444c203960421e0537fcb6cc6abd4043402457fc7d83c1c5"
+    "bytes": 8270,
+    "sha256": "3db4c0bf234f1a00543d18d3d5d5ae8b38e4affa575bce64f6a7847e12d5853b"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -157,7 +157,7 @@
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1062,
-    "sha256": "2dadcdb214634f59ad0e327257ff9c40c53476569135b05a1ba85ceb435920a3"
+    "sha256": "cce99b0837e7791352618ddf1f297ae21f0fa79b4de7f6e90fcb5ae9c1f9b0a1"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -246,8 +246,8 @@
   },
   {
     "path": "Sources/Transport/TransportHTTPServer.swift",
-    "bytes": 16200,
-    "sha256": "582d3d8c3d8d7bf85aca0e16dc437a2285aa55eb08653cc56380b5871a82cbe1"
+    "bytes": 16236,
+    "sha256": "ca7a10fce85b2f806bac7d027e0304488776be18c1a723c6ac6bc44894c518e1"
   },
   {
     "path": "Sources/Transport/TransportResourceLoader.swift",
@@ -405,6 +405,11 @@
     "sha256": "442e27f19aaf96c03c9ef0983d8d106c225989336d0813d78526fe46ed63da2b"
   },
   {
+    "path": "docs/CHANGELOG_0.3.3.md",
+    "bytes": 461,
+    "sha256": "597f493e99061b3852c6e00dad080cc309b41763646e66d11876afb0d24de8ff"
+  },
+  {
     "path": "docs/RESEARCH_NOTES.md",
     "bytes": 1218,
     "sha256": "d26bf7e9b7c43c9137d2431b1d578b2ce4f175a965a14d94cc7b3f2f863a2909"
@@ -432,7 +437,7 @@
   {
     "path": "project.yml",
     "bytes": 1326,
-    "sha256": "a2dd886f04bc727964c8bf3db0a57600af1591934d09dab5a10cb7521b9aee36"
+    "sha256": "1fc9d2a2bae5deec47ddb48b8dbb14e816ed9504c994727ade6f6a240da3c213"
   },
   {
     "path": "scripts/check_min_os.sh",
