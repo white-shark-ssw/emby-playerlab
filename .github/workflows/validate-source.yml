@@ -38,9 +38,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .spm-cache
-          key: ${{ runner.os }}-mpvkit-1.0.0-${{ hashFiles('project.yml') }}
+          key: ${{ runner.os }}-mpvkit-av-0.40.0-${{ hashFiles('project.yml') }}
 
-      - name: Resolve MPVKit 1.0.0
+      - name: Resolve MPVKit AV 0.40.0
         run: |
           set -euo pipefail
           set -o pipefail

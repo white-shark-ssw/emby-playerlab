@@ -1,7 +1,18 @@
-Emby Player Lab uses MPVKit 1.0.0 (LGPL product only).
+Emby Player Lab uses the Streamyfin MPVKit AVFoundation fork 0.40.0-av.
 
-MPVKit source and its regular non-GPL bundles are licensed under LGPL v3.0.
-Project: https://github.com/mpvkit/MPVKit
-Release: 1.0.0
+Project:
+https://github.com/streamyfin/MPVKit
 
-This application does not link the MPVKit-GPL product.
+Pinned release:
+0.40.0-av
+
+This fork includes vo_avfoundation, VideoToolbox, AVSampleBufferDisplayLayer,
+FFmpeg, libass and other bundled components.
+
+The published MPVKit-GPL product and podspec identify this binary distribution
+as GPL-3.0. This app is currently intended for private, personal use through
+TrollStore. If the IPA is distributed to other people, the distributor must
+review and satisfy the applicable GPL source and notice obligations.
+
+The previous official LGPL MPVKit 1.0.0 dependency was removed because its
+prebuilt iOS Libmpv binary did not contain vo_avfoundation.

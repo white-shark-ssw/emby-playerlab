@@ -9,8 +9,8 @@ options:
 
 packages:
   MPVKit:
-    url: https://github.com/mpvkit/MPVKit.git
-    exactVersion: 1.0.0
+    url: https://github.com/streamyfin/MPVKit.git
+    exactVersion: 0.40.0-av
 
 settings:
   base:
@@ -31,7 +31,7 @@ targets:
         buildPhase: resources
     dependencies:
       - package: MPVKit
-        product: MPVKit
+        product: MPVKit-GPL
     info:
       path: Config/Info.plist
     settings:

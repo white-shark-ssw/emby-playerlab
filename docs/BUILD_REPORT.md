@@ -2,14 +2,14 @@
 
 ## 当前基线
 
-- App 版本：0.2.1
+- App 版本：0.2.3
 - Deployment Target：iOS 15.0
 - 目标真机：iPhone 15 Pro Max / iOS 17.0
 - CI Runner：macOS 15
 - 固定 Xcode：16.4
 - Swift Language Mode：5.0
-- 播放器：AVPlayer + MPVKit 1.0.0
-- MPVKit 产品：MPVKit（LGPL），不链接 MPVKit-GPL
+- 播放器：AVPlayer + Streamyfin MPVKit AV 0.40.0-av
+- MPVKit 产品：MPVKit-GPL（AVFoundation fork）
 - TrollStore：输出未签名 IPA
 
 ## MPVKit 依赖边界
@@ -27,3 +27,12 @@ MPVKit 1.0.0 的 Swift Package 声明最低 iOS 15.0。该版本包含 mpv 0.41.
 ## 尚待 CI 验证
 
 当前环境无法运行 Xcode，因此 MPVKit 的完整 Swift 类型检查、链接、Framework 嵌入和 TrollStore 真机启动必须以 GitHub Actions 与用户实机结果为准。若 MPVKit 1.0.0 的任何二进制最低系统版本高于 iOS 15.0，不得直接提升 Deployment Target；先记录具体 Framework 并评估替代构建。
+
+
+## 0.2.3 依赖更正
+
+真机确认官方 MPVKit 1.0.0 的 iOS Libmpv 不包含 `vo_avfoundation`。
+现改用 Streamyfin/MPVKit 的 `0.40.0-av` 精确版本。该包声明最低 iOS 13，
+所以不需要提高项目 iOS 15.0 Deployment Target。
+
+该二进制产品标记为 GPL-3.0。当前用途限定为用户个人自用。

@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.2.2
+## 当前版本：0.2.3
 
 ### 系统与构建
 
@@ -11,7 +11,7 @@
 - 本地环境：Windows
 - 云端编译：GitHub Actions macOS 15 / Xcode 16.4
 - 安装方式：未签名 IPA + TrollStore
-- MPVKit：固定 1.0.0，只链接 LGPL 产品
+- MPVKit：固定 Streamyfin AVFoundation fork 0.40.0-av（MPVKit-GPL）
 
 ### 已实现
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.2.2-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.2.3-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -78,3 +78,20 @@
 - 先恢复缓存并解析 MPVKit，再检查 module maps。
 - 首次运行没有 `.spm-cache` 时不再提前失败。
 - 所有诊断日志在工作流开始时创建，因此失败后一定有 Artifact 可下载。
+
+
+## 0.2.3 MPV 黑屏修复
+
+真机日志确认官方 MPVKit 1.0.0 的 iOS 预编译二进制不包含
+`vo_avfoundation`，导致 MPV 只运行解封装、音频和时间轴，却没有视频输出。
+
+0.2.3 改为固定 Streamyfin 实际使用的 `0.40.0-av` 分支：
+
+- 包含 `vo_avfoundation`
+- 直接输出到 `AVSampleBufferDisplayLayer`
+- 支持 VideoToolbox 硬件解码
+- 最低 iOS 13，项目 Deployment Target 仍保持 iOS 15
+- 视频输出初始化失败时直接显示明确错误，不再黑屏并伪报 Seek 成功
+
+该预编译产品标记为 GPL-3.0。项目目前仅用于用户本人通过 TrollStore
+安装。公开或向他人分发 IPA 前必须重新检查 GPL 合规。

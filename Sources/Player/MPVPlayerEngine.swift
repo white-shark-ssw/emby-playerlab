@@ -1,7 +1,6 @@
 import AVFoundation
 import Foundation
-import _MPVKit
-import Libmpv
+import MPVKit
 import QuartzCore
 import UIKit
 
@@ -125,10 +124,14 @@ final class MPVPlayerEngine: PlayerEngine {
 
         let layerAddress = Int(bitPattern: Unmanaged.passUnretained(displayLayer).toOpaque())
         var wid = Int64(layerAddress)
-        check(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &wid), operation: "set wid")
-        check(mpv_set_option_string(handle, "vo", "avfoundation"), operation: "set vo")
+        try require(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &wid), operation: "set AVSampleBufferDisplayLayer")
+        try require(mpv_set_option_string(handle, "vo", "avfoundation"), operation: "enable vo_avfoundation")
         check(mpv_set_option_string(handle, "ao", "avfoundation"), operation: "set ao")
+        #if targetEnvironment(simulator)
+        check(mpv_set_option_string(handle, "avfoundation-composite-osd", "no"), operation: "set composite osd")
+        #else
         check(mpv_set_option_string(handle, "avfoundation-composite-osd", "yes"), operation: "set composite osd")
+        #endif
         check(mpv_set_option_string(handle, "hwdec", "videotoolbox"), operation: "set hwdec")
         check(mpv_set_option_string(handle, "hwdec-codecs", "all"), operation: "set hwdec codecs")
         check(mpv_set_option_string(handle, "hwdec-software-fallback", "yes"), operation: "set hw fallback")
@@ -352,6 +355,13 @@ final class MPVPlayerEngine: PlayerEngine {
         DiagnosticsLogger.shared.log("MPV", "\(operation) failed: \(message) (\(status))")
     }
 
+    private func require(_ status: Int32, operation: String) throws {
+        guard status < 0 else { return }
+        let message = String(cString: mpv_error_string(status))
+        DiagnosticsLogger.shared.log("MPV", "\(operation) failed: \(message) (\(status))")
+        throw MPVEngineError.requiredVideoOutputUnavailable(operation, status, message)
+    }
+
     private func emitOnMain() {
         let value = snapshot
         DispatchQueue.main.async { [weak self] in
@@ -382,6 +392,7 @@ final class MPVPlayerEngine: PlayerEngine {
 enum MPVEngineError: LocalizedError {
     case creationFailed
     case initializationFailed(Int32)
+    case requiredVideoOutputUnavailable(String, Int32, String)
 
     var errorDescription: String? {
         switch self {
@@ -389,6 +400,8 @@ enum MPVEngineError: LocalizedError {
             return "无法创建 MPV 实例。"
         case .initializationFailed(let status):
             return "MPV 初始化失败：\(status)。"
+        case .requiredVideoOutputUnavailable(let operation, let status, let message):
+            return "MPV 视频输出不可用：\(operation)，\(message)（\(status)）。"
         }
     }
 }
