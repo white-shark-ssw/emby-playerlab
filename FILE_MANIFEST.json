@@ -1,8 +1,8 @@
 [
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
-    "bytes": 4956,
-    "sha256": "8712d2ad9db3f23baf7f69990eb144a3483dc265a85ba29c60a678526c91396e"
+    "bytes": 4971,
+    "sha256": "5a0ad61afb6184180c9e2c92d65e4ced3ceb3178f18c95a05efd2af37301d6e1"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -17,7 +17,7 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1783,
-    "sha256": "f43d81371dc62f6dc6ee62709e4774175553c4931749a69a6ed8744a36c07122"
+    "sha256": "f6569c3b5711a83f592acb606b654d3057f1081bf54af47e8bacc8632e290e90"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -31,8 +31,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 13590,
-    "sha256": "153d74b8c1cc0d71a094ba119113047fbe3e6599e4b2cff49a830295acc638c2"
+    "bytes": 14103,
+    "sha256": "d32a0a0c04d6c22d96b473d981d9f5e49d7b090786e8e6ecaebcaf6733cb72fe"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -141,8 +141,8 @@
   },
   {
     "path": "Resources/ThirdPartyNotices.txt",
-    "bytes": 708,
-    "sha256": "b83c399968338734c9dd1d8ec842c415e70371e4ee8d4ea2601d10f0078dd70c"
+    "bytes": 1158,
+    "sha256": "0df17e6b677df9c20de7442f3320c5d5673ccb5c4f8efd0909c3ca55fe8d8e03"
   },
   {
     "path": "Sources/AVIO/AVIOBenchmarkRunner.swift",
@@ -170,6 +170,21 @@
     "sha256": "2e37e255f3b536c5cdca8493835c78befa5a28d51af9224b13867d436cdf8299"
   },
   {
+    "path": "Sources/AVIO/KSAVIOOptions.swift",
+    "bytes": 535,
+    "sha256": "f04a9b6946166ed45b0672146ded7ac98f64a888d4925287821a64c757e6384c"
+  },
+  {
+    "path": "Sources/AVIO/KSPlayerSparseAVIOContext.swift",
+    "bytes": 1223,
+    "sha256": "ce4fb4abda5f96cc217f38e3225018e2ff441ec5cd93c60a5142107859a0185e"
+  },
+  {
+    "path": "Sources/AVIO/SparseAVIOReadCoordinator.swift",
+    "bytes": 4083,
+    "sha256": "8436ff816aa38725f2874dcbf72134c08f7d9ae80df42361981e4c3ce662a8df"
+  },
+  {
     "path": "Sources/App/EmbyPlayerLabApp.swift",
     "bytes": 252,
     "sha256": "6d1910c941dd2b63a3e64e8d21835a49a07855a3f924701de85979eb5398ad9e"
@@ -182,7 +197,7 @@
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1062,
-    "sha256": "fe718cce74a4150794d5da27391c0d58cebec0237451487606c630da908c580d"
+    "sha256": "3086f5f143a48fe521b0d5cb5ad732b576f01ebec183067a41de68b5f3096416"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -220,19 +235,24 @@
     "sha256": "2d5c1bf7996ee2daf9d307183768540b6d6b4ee1df53d4c4410a623175e19b16"
   },
   {
+    "path": "Sources/Player/KSAVIOPlayerEngine.swift",
+    "bytes": 7149,
+    "sha256": "4eb69065b6044ad75928a163e7738838e77851d3352fdf9b24591713791fbc92"
+  },
+  {
     "path": "Sources/Player/MPVPlayerEngine.swift",
     "bytes": 25029,
     "sha256": "aec708a87297ef06140a14ac01bc5cb88de17dbd7b9f0a785f85c0e2c03c378a"
   },
   {
     "path": "Sources/Player/PlayerController.swift",
-    "bytes": 28639,
-    "sha256": "c5970fb3471abac508168ee0fad80a16f1a1ec78108b656d5861c2851333b8ef"
+    "bytes": 29556,
+    "sha256": "38c13e48255e3809edf44631673a17c11f07e1018f8bb6d871e4b5933d89821b"
   },
   {
     "path": "Sources/Player/PlayerEngine.swift",
-    "bytes": 2696,
-    "sha256": "4c1b6a8582b040dc1f4315a5116ae47bf618e4dadbd585c7b38c26a95c7a98bd"
+    "bytes": 2893,
+    "sha256": "86a6e49cd48d0b2553e3229c38a2c9c01005fa9856fc3ac39d4b9b2ea2c87454"
   },
   {
     "path": "Sources/Player/PrematureEOFGuard.swift",
@@ -246,8 +266,8 @@
   },
   {
     "path": "Sources/Transport/DownloadFirstMediaSession.swift",
-    "bytes": 34894,
-    "sha256": "817e86d45033dd31269f591ecce54e23ad5f076680e2a54e29231b3d0abb8789"
+    "bytes": 35650,
+    "sha256": "55d89ff56cbdfe645a783474bf5936baffae175b7f1793c43b2dede21aeffc47"
   },
   {
     "path": "Sources/Transport/DownloadFirstSparseStore.swift",
@@ -335,6 +355,11 @@
     "sha256": "d0c0b088beb260015c6ab85e89a7b1d1f8177c9ffcaa73ae62153ef14b1a98a2"
   },
   {
+    "path": "Sources/UI/KSAVIOPlayerSurface.swift",
+    "bytes": 1091,
+    "sha256": "71882ca205e5d1a87aedd0b0aaeacf6b5fae118382491d7d6a8f31ed728cd9fb"
+  },
+  {
     "path": "Sources/UI/LoginView.swift",
     "bytes": 2180,
     "sha256": "19c9b8c6b3b292d7f20e14d54fd3246fbc106f6a0a54c837fbb38d34936119dc"
@@ -361,8 +386,8 @@
   },
   {
     "path": "Sources/UI/PlayerScreen.swift",
-    "bytes": 9579,
-    "sha256": "18865f692cfd88e3bfa7d8cb6b53ff84221124722b4751632e9063236bc6df21"
+    "bytes": 9795,
+    "sha256": "dcae265b76352bb75d5a5653306ab1f8ba835a328aceabf8dc9a154e2df8d7b9"
   },
   {
     "path": "Sources/UI/PlayerSettings.swift",
@@ -371,8 +396,8 @@
   },
   {
     "path": "Sources/UI/PlayerSettingsView.swift",
-    "bytes": 8255,
-    "sha256": "636cd86695dcb13270cce74dc91add34ed2c864849b7fc2c5fbca5474ba9164b"
+    "bytes": 8336,
+    "sha256": "4bbef4d880e38cb0f03b31f884b87181912dda80033577df6334867f83b83dc6"
   },
   {
     "path": "docs/115AVIO_RESEARCH_PHASE1.md",
@@ -386,8 +411,8 @@
   },
   {
     "path": "docs/BUILD_REPORT.md",
-    "bytes": 1144,
-    "sha256": "f9d80013522ddfda09153d1067dd4b38b509e681b7d85fbc6e51502d9cb55bb8"
+    "bytes": 416,
+    "sha256": "9e7cccad317e0a84240a009486e1e0682995f043ea535cf654db5a7aac41cc63"
   },
   {
     "path": "docs/CHANGELOG_0.1.0.md",
@@ -505,6 +530,11 @@
     "sha256": "beeeed71f46e88dc4ad5ad17f9c5aea7c1fdef10c02c78ba16298f7c851b6a6e"
   },
   {
+    "path": "docs/CHANGELOG_0.5.0.md",
+    "bytes": 616,
+    "sha256": "1303e767af30c705163bd844cafba7f7140289793d3e96989452e8d2f97578f6"
+  },
+  {
     "path": "docs/RESEARCH_NOTES.md",
     "bytes": 1218,
     "sha256": "d26bf7e9b7c43c9137d2431b1d578b2ce4f175a965a14d94cc7b3f2f863a2909"
@@ -540,14 +570,19 @@
     "sha256": "7318dc85ee57c6bcdf5ad3c4110da42fb77eef299259cc1d5039f4d6f6c67463"
   },
   {
+    "path": "docs/TEST_CHECKLIST_0.5.0.md",
+    "bytes": 604,
+    "sha256": "2e523aa8aa86c38fbcdd1473c52c48af830d231b03140ad2bd086f04e526a007"
+  },
+  {
     "path": "docs/TRANSPORT_ARCHITECTURE_0.3.0.md",
     "bytes": 1502,
     "sha256": "77c2d1bf45c18c20a4f6b38fde4bd94beb73fa14a81eb20203c2d9ce9d2e8ab8"
   },
   {
     "path": "project.yml",
-    "bytes": 1326,
-    "sha256": "ed14887a35eb485b141a9f11f525ee3169bf8cc6b7ad9b154055f7044dc477fd"
+    "bytes": 1464,
+    "sha256": "20ca7a51f8d416cba9b1a4fbe3e0221472e855ce013a7bb9fa2b44a579beb02a"
   },
   {
     "path": "scripts/check_min_os.sh",

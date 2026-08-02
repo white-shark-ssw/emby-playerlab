@@ -2,6 +2,7 @@ import Foundation
 
 enum PlayerEngineKind: String, CaseIterable, Identifiable {
     case transportAVPlayer
+    case ksAVIO
     case avPlayer
     case mpv
 
@@ -10,6 +11,7 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .transportAVPlayer: return "传输层 AVPlayer"
+        case .ksAVIO: return "KSPlayer AVIO 实验"
         case .avPlayer: return "AVPlayer"
         case .mpv: return "MPV"
         }
@@ -19,6 +21,7 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
 enum PlayerEnginePreference: String, CaseIterable, Identifiable {
     case automatic
     case transportAVPlayer
+    case ksAVIO
     case avPlayer
     case mpv
 
@@ -28,6 +31,7 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
         switch self {
         case .automatic: return "自动（MP4 使用下载优先）"
         case .transportAVPlayer: return "强制传输层 AVPlayer"
+        case .ksAVIO: return "强制 KSPlayer AVIO（实验）"
         case .avPlayer: return "强制原生 AVPlayer"
         case .mpv: return "强制 MPV"
         }
@@ -37,6 +41,8 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
         switch self {
         case .transportAVPlayer:
             return .transportAVPlayer
+        case .ksAVIO:
+            return .ksAVIO
         case .avPlayer:
             return .avPlayer
         case .mpv:

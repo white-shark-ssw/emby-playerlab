@@ -1,22 +1,11 @@
 # Build Report
 
-- Version: 0.4.2
-- Build: 23
+- Version: 0.5.0 (24)
 - Deployment Target: iOS 15.0
-- Target test device: iPhone 15 Pro Max, iOS 17.0
-- Project generator: XcodeGen
-- GitHub Actions runner: macOS 15
-- Requested Xcode: 16.4
-- Swift language mode: 5.0
-- Existing MPVKit: Streamyfin MPVKit `0.40.0-av`
-- New third-party dependencies in 0.4.2: none
-- Default MP4 transport: download-first single persistent Range + sparse local file
-- Main migration source: actual local HTTP Range / blocked reads; time ratio is warm-up only
-- Slow-lane recovery: temporary 8 MB candidate probe, promoted only by measured advantage
-- Auxiliary connections: at most one temporary metadata/Seek/gap connection, with queued real demands
-- Stall recovery: PlayerController watchdog forwards recovery to transport session
-- Legacy multi-Range transport: retained as a settings fallback
-- KSPlayer status: researched; not yet linked in 0.4.2
-- Local validation: Swift parse, isolated DownloadFirst type check, sparse-range tests, Plist, YAML and shell syntax
-- Full iPhoneOS type checking/linking: requires GitHub Actions
-- iOS 17.0 device behavior: requires physical-device test
+- Target device: iPhone 15 Pro Max / iOS 17.0
+- Expected CI: Xcode 16.4, arm64 iPhoneOS Release
+- MPVKit: 0.40.0-av
+- KSPlayer: 2.3.4
+- KSPlayer declared minimum iOS: 13.0
+- Local validation: Swift parse, plist/YAML and shell syntax.
+- Full Xcode package resolution, typecheck, link and embedded-framework MinimumOS checks: pending GitHub Actions.

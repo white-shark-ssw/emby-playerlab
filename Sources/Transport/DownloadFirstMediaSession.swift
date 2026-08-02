@@ -1,5 +1,10 @@
 import Foundation
 
+enum DownloadFirstDemandMode {
+    case localHTTP
+    case directAVIO
+}
+
 actor DownloadFirstMediaSession: TransportDataSession {
     private struct RefreshResult {
         let source: ResolvedPlaybackSource
@@ -21,6 +26,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
     private var source: ResolvedPlaybackSource
     private let client: EmbyAPIClient
     private let configuration: MediaTransportConfiguration
+    private let demandMode: DownloadFirstDemandMode
     private let resolver = RedirectResolver()
 
     private var resource: TransportResolvedResource?
@@ -59,10 +65,11 @@ actor DownloadFirstMediaSession: TransportDataSession {
     private var lastLoggedMegabytes: Int64 = 0
     private var stopped = false
 
-    init(source: ResolvedPlaybackSource, client: EmbyAPIClient, configuration: MediaTransportConfiguration) {
+    init(source: ResolvedPlaybackSource, client: EmbyAPIClient, configuration: MediaTransportConfiguration, demandMode: DownloadFirstDemandMode = .localHTTP) {
         self.source = source
         self.client = client
         self.configuration = configuration
+        self.demandMode = demandMode
     }
 
     func resolve() async throws -> TransportResolvedResource {
@@ -90,7 +97,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
             }
             DiagnosticsLogger.shared.log(
                 "DownloadFirst",
-                "ready item=\(source.itemId) bytes=\(resolved.contentLength) mainConnections=1 seekConnections=1 adaptiveLaneProbe=true realRangeMigration=true wifiPreload=\(configuration.wifiPreloadBytes) cellularPreload=\(configuration.cellularPreloadBytes) keep=\(configuration.keepLastCache)"
+                "ready item=\(source.itemId) bytes=\(resolved.contentLength) mainConnections=1 seekConnections=1 adaptiveLaneProbe=true demandMode=\(demandMode) wifiPreload=\(configuration.wifiPreloadBytes) cellularPreload=\(configuration.cellularPreloadBytes) keep=\(configuration.keepLastCache)"
             )
             startMainDownloader(anchor: 0, reason: "initial")
             return resolved
@@ -136,7 +143,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
             let mainShouldArriveSoon = mainRunning && mainGap >= 0 && mainGap <= 8 * 1_048_576
             if !mainShouldArriveSoon {
                 ensureUrgentDownload(offset: offset, resource: resource, replaceExisting: false, reason: "blocked-read")
-                scheduleMainMigrationFromActualDemand(to: offset, resource: resource, reason: "blocked-read")
+                if demandMode == .localHTTP { scheduleMainMigrationFromActualDemand(to: offset, resource: resource, reason: "blocked-read") }
             }
         }
 
@@ -179,7 +186,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
         guard !stopped, let resource = try? await resolve(), let store else { return }
         let fallbackRatio = duration > 0 ? min(max(position / duration, 0), 1) : 0
         let fallback = alignedOffset(Int64(Double(resource.contentLength) * fallbackRatio), contentLength: resource.contentLength)
-        let actual = lastDemandOffset ?? lastBlockedDemandOffset ?? fallback
+        let actual = lastBlockedDemandOffset ?? lastDemandOffset ?? fallback
         let contiguous = store.availableLength(from: actual, maximumLength: 32 * 1_048_576)
 
         DiagnosticsLogger.shared.log(
@@ -189,6 +196,17 @@ actor DownloadFirstMediaSession: TransportDataSession {
 
         guard contiguous < 4 * 1_048_576 else { return }
         forceDemandRecovery(offset: actual, resource: resource, reason: "stall-watchdog")
+    }
+
+    func migrateMainToAVIOOffset(_ offset: Int64, reason: String) async {
+        guard !stopped, let resource = try? await resolve(), let store else { return }
+        let target = alignedOffset(offset, contentLength: resource.contentLength)
+        let available = store.availableLength(from: target, maximumLength: 4 * 1_048_576)
+        ensureUrgentDownload(offset: target, resource: resource, replaceExisting: true, reason: "avio-\(reason)")
+        guard available < 4 * 1_048_576 else { return }
+        let previous = mainAnchor
+        startMainDownloader(anchor: target, reason: "avio-\(reason)")
+        DiagnosticsLogger.shared.log("DownloadFirstMain", "migrated-exact-avio from=\(previous) to=\(target) reason=\(reason)")
     }
 
     func metrics() async -> TransportMetricsSnapshot {
@@ -581,15 +599,11 @@ actor DownloadFirstMediaSession: TransportDataSession {
         guard generation == mainGeneration, mainRunning, laneProbeTask == nil else { return }
         let now = Date()
         guard now >= laneProbeCooldownUntil, now.timeIntervalSince(mainStartedAt) >= 5 else { return }
-        guard currentMainBytesPerSecond > 0, currentMainBytesPerSecond < 2.5 * 1_048_576 else { return }
+        guard currentMainBytesPerSecond > 0, currentMainBytesPerSecond < 6 * 1_048_576 else { return }
         guard let store else { return }
 
-        let demand = lastDemandOffset ?? lastBlockedDemandOffset ?? mainAnchor
-        let contiguous = store.availableLength(from: demand, maximumLength: 64 * 1_048_576)
-        guard contiguous < 24 * 1_048_576 else { return }
-
         let probeStart = store.firstMissingOffset(from: mainCursor, upperBound: upperBound) ?? mainCursor
-        let probeEnd = min(upperBound, probeStart + 8 * 1_048_576)
+        let probeEnd = min(upperBound, probeStart + 4 * 1_048_576)
         guard probeEnd > probeStart else { return }
         let baseline = currentMainBytesPerSecond
         laneProbeCooldownUntil = now.addingTimeInterval(15)
@@ -633,7 +647,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
         let candidate = Double(received) / elapsed
         guard !stopped, mainGeneration == self.mainGeneration, received >= 2 * 1_048_576 else { return }
 
-        let winningThreshold = max(4 * 1_048_576, baseline * 1.5)
+        let winningThreshold = max(6 * 1_048_576, baseline * 1.35)
         if candidate >= winningThreshold {
             DiagnosticsLogger.shared.log(
                 "DownloadFirstLane",

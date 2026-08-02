@@ -11,6 +11,9 @@ packages:
   MPVKit:
     url: https://github.com/streamyfin/MPVKit.git
     exactVersion: 0.40.0-av
+  KSPlayer:
+    url: https://github.com/kingslay/KSPlayer.git
+    exactVersion: 2.3.4
 
 settings:
   base:
@@ -18,8 +21,8 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "15.0"
     ENABLE_USER_SCRIPT_SANDBOXING: "YES"
     CLANG_ENABLE_MODULES: "YES"
-    MARKETING_VERSION: "0.4.2"
-    CURRENT_PROJECT_VERSION: "23"
+    MARKETING_VERSION: "0.5.0"
+    CURRENT_PROJECT_VERSION: "24"
 
 
 targets:
@@ -34,13 +37,15 @@ targets:
     dependencies:
       - package: MPVKit
         product: MPVKit-GPL
+      - package: KSPlayer
+        product: KSPlayer
     info:
       path: Config/Info.plist
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app
-        MARKETING_VERSION: "0.4.2"
-        CURRENT_PROJECT_VERSION: "23"
+        MARKETING_VERSION: "0.5.0"
+        CURRENT_PROJECT_VERSION: "24"
         PRODUCT_NAME: EmbyPlayerLab
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: "NO"

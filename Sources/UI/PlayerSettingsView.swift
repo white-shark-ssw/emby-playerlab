@@ -34,7 +34,7 @@ struct PlayerSettingsView: View {
                             Text(preference.title).tag(preference.rawValue)
                         }
                     }
-                    Text("自动模式下，MP4/MOV/M4V 优先使用下载优先传输层；其他容器暂时使用 MPV。播放页右上角按钮可循环切换。")
+                    Text("自动模式仍保持下载优先 TAV，便于对照。选择“强制 KSPlayer AVIO（实验）”后，FFmpeg 会直接读取稀疏缓存，不再经过 localhost 原始 MP4。播放页右上角按钮可循环切换。")
                         .font(.footnote)
                         .foregroundColor(.secondary)
                 }

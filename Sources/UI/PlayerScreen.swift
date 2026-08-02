@@ -73,6 +73,9 @@ struct PlayerScreen: View {
         if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {
             MPVPlayerSurface(displayLayer: layer)
                 .id(ObjectIdentifier(layer))
+        } else if controller.engineKind == .ksAVIO, let view = controller.ksAVIOView {
+            KSAVIOPlayerSurface(playerView: view)
+                .id(ObjectIdentifier(view))
         } else if let player = controller.avPlayer {
             AVPlayerSurface(player: player)
                 .id("avplayer")
@@ -243,6 +246,7 @@ struct PlayerScreen: View {
     private var engineBadge: String {
         switch controller.engineKind {
         case .transportAVPlayer: return "TAV"
+        case .ksAVIO: return "KSA"
         case .avPlayer: return "AV"
         case .mpv: return "MPV"
         }

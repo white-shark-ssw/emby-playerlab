@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.4.2
+## 当前版本：0.5.0
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.4.2-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.5.0-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -251,7 +251,7 @@ STOP、QUIT、REDIRECT 等文件切换事件只记录日志，不改变播放结
 - 尚未接入 KSPlayer；本版先验证下载器、稀疏文件和真实播放读取能否稳定协作。
 
 
-## 0.4.2：真实 Range 驱动与慢连接换线
+## 0.5.0：真实 Range 驱动与慢连接换线
 
 0.4.1 真机日志确认：下载优先启播和 Seek 明显改善，但时间比例估算会把主连接迁移到错误字节位置；主连接到达文件尾后，中间真实读取缺口仍可能导致永久等待。
 
@@ -266,3 +266,10 @@ STOP、QUIT、REDIRECT 等文件切换事件只记录日志，不改变播放结
 - 播放状态新增“总缓存”和“当前位置连续缓存”，避免离散缓存总量造成误判。
 
 Deployment Target 继续保持 iOS 15.0。
+
+
+## 0.5.0 KSPlayer AVIO Engine Lab
+
+设置页新增“强制 KSPlayer AVIO（实验）”。该路线使用 KSPlayer 2.3.4 的 `AbstractAVIOContext` 扩展点，将 FFmpeg 的同步 `read/seek/fileSize` 直接接到下载优先稀疏缓存。自动模式仍保持 TAV，便于同一媒体快速对照。
+
+实验引擎不启动 `TransportHTTPServer`，因此不会产生 AVPlayer 的多个超长 localhost Range。下载器保持单顺序主连接、临时 Seek 连接、403/410 刷新和慢连接竞速换线。

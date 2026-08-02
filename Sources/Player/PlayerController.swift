@@ -43,6 +43,10 @@ final class PlayerController: ObservableObject {
     private var mpvCompatibilityReloadCount = 0
     private var mpvCompatibilityLoadInProgress = false
 
+    var ksAVIOView: UIView? {
+        (engine as? KSAVIOPlayerEngine)?.playerView
+    }
+
     var avPlayer: AVPlayer? {
         (engine as? AVPlayerEngine)?.player
     }
@@ -275,7 +279,8 @@ final class PlayerController: ObservableObject {
     func toggleEngine() {
         let next: PlayerEngineKind
         switch engineKind {
-        case .transportAVPlayer: next = .avPlayer
+        case .transportAVPlayer: next = .ksAVIO
+        case .ksAVIO: next = .avPlayer
         case .avPlayer: next = .mpv
         case .mpv: next = .transportAVPlayer
         }
@@ -302,6 +307,8 @@ final class PlayerController: ObservableObject {
                 transportClient: client,
                 transportConfiguration: MediaTransportConfiguration.current()
             )
+        case .ksAVIO:
+            return KSAVIOPlayerEngine(source: source, client: client, configuration: MediaTransportConfiguration.current())
         case .avPlayer:
             return AVPlayerEngine()
         case .mpv:
@@ -511,10 +518,10 @@ final class PlayerController: ObservableObject {
             "engine=\(engineKind.title) recovery=\(stallRecoveryCount) position=\(snapshot.position) bufferedEnd=\(bufferedEnd) duration=\(effectiveDuration) waiting=\(snapshot.waitingReason ?? "none")"
         )
 
-        if engineKind == .transportAVPlayer {
+        if engineKind == .transportAVPlayer || engineKind == .ksAVIO {
             engine.recoverStall(position: snapshot.position, duration: effectiveDuration)
             stallMessage = snapshot.errorMessage == nil
-                ? "下载优先传输正在按播放器真实字节需求补齐缺口；不会自动切回已知会卡顿的 MPV。"
+                ? (engineKind == .ksAVIO ? "KSPlayer AVIO 正在等待精确字节数据；已绕过 localhost 原始 MP4。" : "下载优先传输正在按播放器真实字节需求补齐缺口；不会自动切回已知会卡顿的 MPV。")
                 : "下载优先传输失败：\(snapshot.errorMessage ?? "未知错误")"
             return
         }
@@ -562,13 +569,20 @@ final class PlayerController: ObservableObject {
         transportMetricsTask = nil
         transportSummary = nil
 
-        guard engineKind == .transportAVPlayer, let avEngine = engine as? AVPlayerEngine else { return }
-        transportMetricsTask = Task { [weak self, weak avEngine] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                guard let self, let avEngine, self.started, self.engine === avEngine else { return }
-                if let metrics = await avEngine.transportMetrics() {
-                    self.transportSummary = metrics.summary
+        if engineKind == .transportAVPlayer, let avEngine = engine as? AVPlayerEngine {
+            transportMetricsTask = Task { [weak self, weak avEngine] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    guard let self, let avEngine, self.started, self.engine === avEngine else { return }
+                    if let metrics = await avEngine.transportMetrics() { self.transportSummary = metrics.summary }
+                }
+            }
+        } else if engineKind == .ksAVIO, let ksEngine = engine as? KSAVIOPlayerEngine {
+            transportMetricsTask = Task { [weak self, weak ksEngine] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    guard let self, let ksEngine, self.started, self.engine === ksEngine else { return }
+                    if let metrics = await ksEngine.transportMetrics() { self.transportSummary = metrics.summary }
                 }
             }
         }

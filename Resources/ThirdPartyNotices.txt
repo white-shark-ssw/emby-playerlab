@@ -16,3 +16,18 @@ review and satisfy the applicable GPL source and notice obligations.
 
 The previous official LGPL MPVKit 1.0.0 dependency was removed because its
 prebuilt iOS Libmpv binary did not contain vo_avfoundation.
+
+
+Emby Player Lab 0.5.0 also uses KSPlayer 2.3.4.
+
+Project:
+https://github.com/kingslay/KSPlayer
+
+Pinned release:
+2.3.4
+
+KSPlayer is licensed under GPL-3.0 and uses FFmpegKit and other transitive
+components. The complete Emby Player Lab source package is distributed
+alongside the test build so the corresponding modifications and integration
+code remain available. Third-party copyright and license notices must be
+retained in redistributed copies.
