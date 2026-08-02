@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.5.0
+## 当前版本：0.5.1
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.5.0-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.5.1-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -59,7 +59,7 @@
 
 ## 当前仍未完成
 
-- KSPlayer `AbstractAVIOContext` 与下载优先稀疏文件的正式桥接。
+- KSPlayer AVIO 真机首帧、Seek、异常 EOF 与长时间播放验证。
 - 302 最终域名、状态码和 Content-Range 的统一代理诊断。
 - 外挂字幕 URL、音轨和字幕轨切换界面。
 - MPV 异常 PTS/DTS 的多级强制容错参数。
@@ -273,3 +273,11 @@ Deployment Target 继续保持 iOS 15.0。
 设置页新增“强制 KSPlayer AVIO（实验）”。该路线使用 KSPlayer 2.3.4 的 `AbstractAVIOContext` 扩展点，将 FFmpeg 的同步 `read/seek/fileSize` 直接接到下载优先稀疏缓存。自动模式仍保持 TAV，便于同一媒体快速对照。
 
 实验引擎不启动 `TransportHTTPServer`，因此不会产生 AVPlayer 的多个超长 localhost Range。下载器保持单顺序主连接、临时 Seek 连接、403/410 刷新和慢连接竞速换线。
+
+
+## 0.5.1 KSPlayer 2.3.4 构建修复
+
+- 修正 `KSPlayerSparseAVIOContext.read/write` 的覆写签名。
+- 严格匹配 KSPlayer 2.3.4：输入缓冲区为 `UnsafePointer<UInt8>?`，返回值为 `Int32`。
+- 读取时只在 FFmpeg 提供的缓冲区上创建临时可变视图并复制数据，不改变 AVIO 所有权。
+- Deployment Target 继续保持 iOS 15.0，依赖版本不变。

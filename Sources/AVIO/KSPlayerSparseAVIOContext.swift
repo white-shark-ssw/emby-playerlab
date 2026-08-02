@@ -10,20 +10,20 @@ final class KSPlayerSparseAVIOContext: AbstractAVIOContext {
         super.init(bufferSize: bufferSize)
     }
 
-    override func read(buffer: UnsafeMutablePointer<UInt8>?, size: Int32) -> Int {
+    override func read(buffer: UnsafePointer<UInt8>?, size: Int32) -> Int32 {
         guard let buffer, size > 0 else { return -5 }
         switch coordinator.read(maxLength: Int(size)) {
         case .success(let data):
-            guard !data.isEmpty else { return ffmpegEOF }
-            data.copyBytes(to: buffer, count: data.count)
-            return data.count
+            guard !data.isEmpty else { return Int32(ffmpegEOF) }
+            data.copyBytes(to: UnsafeMutablePointer(mutating: buffer), count: data.count)
+            return Int32(data.count)
         case .failure(let error):
             DiagnosticsLogger.shared.log("KSAVIO", "read failed: \(error.localizedDescription)")
             return -5
         }
     }
 
-    override func write(buffer: UnsafeMutablePointer<UInt8>?, size: Int32) -> Int { -5 }
+    override func write(buffer: UnsafePointer<UInt8>?, size: Int32) -> Int32 { -5 }
     override func seek(offset: Int64, whence: Int32) -> Int64 { coordinator.seek(offset: offset, whence: whence) }
     override func fileSize() -> Int64 { coordinator.fileSize }
     override func close() { coordinator.close() }
