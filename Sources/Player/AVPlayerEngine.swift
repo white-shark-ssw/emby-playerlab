@@ -86,20 +86,27 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
            let transportSource,
            let transportClient,
            let transportConfiguration {
-            let session = MediaTransportSession(
-                source: transportSource,
-                client: transportClient,
-                configuration: transportConfiguration
-            )
-            let server = TransportHTTPServer(
-                session: session,
-                fileExtension: transportSource.mediaSource.normalizedContainer
-            )
+            let session: TransportDataSession
+            switch transportConfiguration.strategy {
+            case .downloadFirst:
+                session = DownloadFirstMediaSession(
+                    source: transportSource,
+                    client: transportClient,
+                    configuration: transportConfiguration
+                )
+            case .legacyMultiRange:
+                session = MediaTransportSession(
+                    source: transportSource,
+                    client: transportClient,
+                    configuration: transportConfiguration
+                )
+            }
+            let server = TransportHTTPServer(session: session, fileExtension: transportSource.mediaSource.normalizedContainer)
             transportServer = server
 
             DiagnosticsLogger.shared.log(
                 "TransportPlayer",
-                "prepare-local-http item=\(transportSource.itemId) mode=\(transportConfiguration.cacheMode.rawValue) memory=\(transportConfiguration.memoryLimitBytes) disk=\(transportConfiguration.diskLimitBytes) wifiPreload=\(transportConfiguration.wifiPreloadBytes) cellularPreload=\(transportConfiguration.cellularPreloadBytes) segment=\(transportConfiguration.segmentSizeBytes) upstreamBlock=\(transportConfiguration.upstreamBlockSizeBytes) concurrent=\(transportConfiguration.maximumConcurrentRequests)"
+                "prepare-local-http item=\(transportSource.itemId) strategy=\(transportConfiguration.strategy.rawValue) mode=\(transportConfiguration.cacheMode.rawValue) memory=\(transportConfiguration.memoryLimitBytes) disk=\(transportConfiguration.diskLimitBytes) wifiPreload=\(transportConfiguration.wifiPreloadBytes) cellularPreload=\(transportConfiguration.cellularPreloadBytes) segment=\(transportConfiguration.segmentSizeBytes) upstreamBlock=\(transportConfiguration.upstreamBlockSizeBytes) concurrent=\(transportConfiguration.maximumConcurrentRequests)"
             )
 
             transportPrepareTask = Task { [weak self, weak server] in

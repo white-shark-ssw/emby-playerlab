@@ -1,5 +1,19 @@
 import Foundation
 
+enum TransportStrategy: String, CaseIterable, Identifiable {
+    case downloadFirst
+    case legacyMultiRange
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .downloadFirst: return "下载优先（推荐）"
+        case .legacyMultiRange: return "旧版多 Range"
+        }
+    }
+}
+
 enum TransportCacheMode: String, CaseIterable, Identifiable {
     case disabled
     case memory
@@ -19,6 +33,7 @@ enum TransportCacheMode: String, CaseIterable, Identifiable {
 }
 
 enum TransportSettingsKey {
+    static let strategy = "transport.strategy"
     static let cacheMode = "transport.cacheMode"
     static let memoryCacheMB = "transport.memoryCacheMB"
     static let diskCacheGB = "transport.diskCacheGB"
@@ -31,6 +46,7 @@ enum TransportSettingsKey {
 }
 
 struct MediaTransportConfiguration: Equatable {
+    let strategy: TransportStrategy
     let cacheMode: TransportCacheMode
     let memoryLimitBytes: Int64
     let diskLimitBytes: Int64
@@ -51,6 +67,7 @@ struct MediaTransportConfiguration: Equatable {
 
     static func current(defaults: UserDefaults = .standard) -> MediaTransportConfiguration {
         defaults.register(defaults: [
+            TransportSettingsKey.strategy: TransportStrategy.downloadFirst.rawValue,
             TransportSettingsKey.cacheMode: TransportCacheMode.automatic.rawValue,
             TransportSettingsKey.memoryCacheMB: 256,
             TransportSettingsKey.diskCacheGB: 2,
@@ -62,6 +79,7 @@ struct MediaTransportConfiguration: Equatable {
             TransportSettingsKey.keepLastCache: false,
         ])
 
+        let strategy = TransportStrategy(rawValue: defaults.string(forKey: TransportSettingsKey.strategy) ?? "") ?? .downloadFirst
         let mode = TransportCacheMode(rawValue: defaults.string(forKey: TransportSettingsKey.cacheMode) ?? "") ?? .automatic
         let memoryMB = max(0, defaults.integer(forKey: TransportSettingsKey.memoryCacheMB))
         let diskGB = max(0, defaults.integer(forKey: TransportSettingsKey.diskCacheGB))
@@ -76,6 +94,7 @@ struct MediaTransportConfiguration: Equatable {
         let concurrent = min(max(2, defaults.integer(forKey: TransportSettingsKey.concurrentRequests)), 8)
 
         return MediaTransportConfiguration(
+            strategy: strategy,
             cacheMode: mode,
             memoryLimitBytes: Int64(memoryMB) * 1_048_576,
             diskLimitBytes: Int64(diskGB) * 1_073_741_824,
@@ -91,10 +110,10 @@ struct MediaTransportConfiguration: Equatable {
 
 enum TransportCacheMaintenance {
     static func clearAll() throws {
-        let root = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("EmbyPlayerLabTransport", isDirectory: true)
-        if FileManager.default.fileExists(atPath: root.path) {
-            try FileManager.default.removeItem(at: root)
+        let cacheRoot = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        for name in ["EmbyPlayerLabTransport", "EmbyPlayerLabDownloadFirst"] {
+            let root = cacheRoot.appendingPathComponent(name, isDirectory: true)
+            if FileManager.default.fileExists(atPath: root.path) { try FileManager.default.removeItem(at: root) }
         }
     }
 }

@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.4.0
+## 当前版本：0.4.1
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.4.0-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.4.1-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -59,7 +59,7 @@
 
 ## 当前仍未完成
 
-- 会话级稀疏磁盘 Range 缓存。
+- KSPlayer `AbstractAVIOContext` 与下载优先稀疏文件的正式桥接。
 - 302 最终域名、状态码和 Content-Range 的统一代理诊断。
 - 外挂字幕 URL、音轨和字幕轨切换界面。
 - MPV 异常 PTS/DTS 的多级强制容错参数。
@@ -233,3 +233,19 @@ STOP、QUIT、REDIRECT 等文件切换事件只记录日志，不改变播放结
 - JSON 实验报告导出。
 
 0.4.0 不接入 KSPlayer，也不替换正式播放器。测试结果用于确定 115 的最佳连接池、Range 和请求头模式，再进入 KSPlayer `AbstractAVIOContext` 桥接。
+
+
+## 0.4.1：下载优先传输层
+
+0.4.0 真机实验确认，115 最佳模式是单连接边下载边写磁盘：30 秒平均约 6.36 MB/s，瞬时达到约 22.9 MB/s；共享会话双 Range 反而最慢。
+
+本版将该结果接入正式 MP4 播放路径：
+
+- 默认传输策略改为“下载优先”。
+- 解析 302 后立即启动 1 条浏览器式大 Range 顺序下载连接。
+- 网络数据每 256 KB 写入同一个稀疏媒体文件，AVPlayer 本机 HTTP 只读取已经到达的本地字节。
+- 文件尾元数据或未缓存 Seek 最多临时增加 1 条辅助连接，不再长期维持 3 个条带 worker。
+- 快速连续 Seek 立即响应；只有目标稳定约 0.9 秒后，主顺序下载连接才迁移到新位置。
+- 支持持久化稀疏区间索引；退出后保留缓存时，下次会话可以继续利用已下载区间。
+- 旧版多 Range 调度保留为设置页回退选项。
+- 尚未接入 KSPlayer；本版先验证下载器、稀疏文件和真实播放读取能否稳定协作。

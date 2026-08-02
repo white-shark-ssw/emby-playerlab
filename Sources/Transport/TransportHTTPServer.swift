@@ -31,7 +31,7 @@ final class TransportHTTPServer {
         var length: Int64 { upperBound - lowerBound + 1 }
     }
 
-    private let session: MediaTransportSession
+    private let session: TransportDataSession
     private let fileExtension: String
     private let token = UUID().uuidString.lowercased()
     private let queue = DispatchQueue(label: "com.embyplayerlab.transport.http-server", qos: .userInitiated)
@@ -44,7 +44,7 @@ final class TransportHTTPServer {
     private var lastLoggedRequestAt = Date.distantPast
     private var stopped = false
 
-    init(session: MediaTransportSession, fileExtension: String) {
+    init(session: TransportDataSession, fileExtension: String) {
         self.session = session
         self.fileExtension = fileExtension.isEmpty ? "mp4" : fileExtension
     }

@@ -9,7 +9,7 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .transportAVPlayer: return "Transport AVPlayer"
+        case .transportAVPlayer: return "传输层 AVPlayer"
         case .avPlayer: return "AVPlayer"
         case .mpv: return "MPV"
         }
@@ -26,8 +26,8 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .automatic: return "自动（MP4 使用传输层）"
-        case .transportAVPlayer: return "强制 Transport AVPlayer"
+        case .automatic: return "自动（MP4 使用下载优先）"
+        case .transportAVPlayer: return "强制传输层 AVPlayer"
         case .avPlayer: return "强制原生 AVPlayer"
         case .mpv: return "强制 MPV"
         }
