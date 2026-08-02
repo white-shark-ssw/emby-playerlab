@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.3.5
+## 当前版本：0.4.0
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.3.5-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.4.0-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -216,3 +216,20 @@ STOP、QUIT、REDIRECT 等文件切换事件只记录日志，不改变播放结
 - 115 会话 Cookie 在下载连接间共享，减少因连接上下文不同造成的临时拒绝。
 - 诊断日志改为 350 ms/64 KB 批量落盘，并对本机 HTTP 小 Range 日志采样，避免每个 64 KB 请求都打开文件写日志。
 - 新增“115 持续预取块”设置，默认 16 MB；本地缓存分片仍默认 1 MB。
+
+
+## 0.4.0：115AVIO Lab
+
+本版本冻结现有 TAV 主播放链，不继续修改播放器缓存参数。播放器实验室的每个媒体源新增“115AVIO 实验”入口，用于在不启动 AVPlayer、MPV 或 FFmpeg 的情况下测试 302 后 115 直链的真实网络模式。
+
+实验包含：
+
+- 共享 URLSession 单开放 Range 长连接；
+- 共享 URLSession 单有限 Range；
+- 同一共享会话的双连续 Range；
+- 两个独立 URLSession 的双连续 Range；
+- 单连接边下载边写临时文件；
+- 最小 `read / seek / fileSize` AVIO 语义自检；
+- JSON 实验报告导出。
+
+0.4.0 不接入 KSPlayer，也不替换正式播放器。测试结果用于确定 115 的最佳连接池、Range 和请求头模式，再进入 KSPlayer `AbstractAVIOContext` 桥接。

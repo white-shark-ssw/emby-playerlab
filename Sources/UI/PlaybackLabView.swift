@@ -54,23 +54,32 @@ struct PlaybackLabView: View {
                 if let info = model.playbackInfo {
                     Section(header: Text("媒体源（\(info.mediaSources.count)）")) {
                         ForEach(info.mediaSources) { source in
-                            Button {
-                                guard let client else { return }
-                                model.resolve(client: client, mediaSource: source)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text(model.item?.name ?? "媒体")
-                                        .font(.headline)
-                                    if let sourceName = source.name, !sourceName.isEmpty {
-                                        Text("媒体源：\(sourceName)")
-                                            .font(.subheadline)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    Text(sourceSummary(source))
-                                        .font(.caption)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(model.item?.name ?? "媒体")
+                                    .font(.headline)
+                                if let sourceName = source.name, !sourceName.isEmpty {
+                                    Text("媒体源：\(sourceName)")
+                                        .font(.subheadline)
                                         .foregroundColor(.secondary)
                                 }
+                                Text(sourceSummary(source))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                HStack {
+                                    Button("播放") {
+                                        guard let client else { return }
+                                        model.resolve(client: client, mediaSource: source)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+
+                                    Button("115AVIO 实验") {
+                                        guard let client else { return }
+                                        model.resolveAVIO(client: client, mediaSource: source)
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
                             }
+                            .padding(.vertical, 4)
                         }
                     }
                 }
@@ -112,6 +121,9 @@ struct PlaybackLabView: View {
                         preference: PlayerEnginePreference(rawValue: enginePreferenceRaw) ?? .automatic
                     )
                 }
+            }
+            .fullScreenCover(item: $model.selectedAVIOSource) { source in
+                AVIOBenchmarkView(source: source)
             }
             .sheet(
                 isPresented: Binding(

@@ -9,6 +9,7 @@ final class PlaybackLabViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
     @Published var selectedSource: ResolvedPlaybackSource?
+    @Published var selectedAVIOSource: ResolvedPlaybackSource?
 
     func load(client: EmbyAPIClient) async {
         let itemId = itemId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -17,6 +18,7 @@ final class PlaybackLabViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         selectedSource = nil
+        selectedAVIOSource = nil
         item = nil
         playbackInfo = nil
         defer { isLoading = false }
@@ -38,15 +40,27 @@ final class PlaybackLabViewModel: ObservableObject {
 
     func resolve(client: EmbyAPIClient, mediaSource: MediaSource) {
         do {
-            let id = itemId.trimmingCharacters(in: .whitespacesAndNewlines)
-            selectedSource = try client.resolvePlaybackSource(
-                itemId: id,
-                itemName: item?.name ?? id,
-                mediaSource: mediaSource,
-                playSessionId: playbackInfo?.playSessionId
-            )
+            selectedSource = try resolvedSource(client: client, mediaSource: mediaSource)
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func resolveAVIO(client: EmbyAPIClient, mediaSource: MediaSource) {
+        do {
+            selectedAVIOSource = try resolvedSource(client: client, mediaSource: mediaSource)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func resolvedSource(client: EmbyAPIClient, mediaSource: MediaSource) throws -> ResolvedPlaybackSource {
+        let id = itemId.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try client.resolvePlaybackSource(
+            itemId: id,
+            itemName: item?.name ?? id,
+            mediaSource: mediaSource,
+            playSessionId: playbackInfo?.playSessionId
+        )
     }
 }
