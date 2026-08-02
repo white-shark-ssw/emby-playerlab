@@ -512,9 +512,10 @@ final class PlayerController: ObservableObject {
         )
 
         if engineKind == .transportAVPlayer {
+            engine.recoverStall(position: snapshot.position, duration: effectiveDuration)
             stallMessage = snapshot.errorMessage == nil
-                ? "本地 HTTP Range 传输正在补齐数据；不会自动切回已知会卡顿的 MPV。"
-                : "本地 HTTP Range 传输失败：\(snapshot.errorMessage ?? "未知错误")"
+                ? "下载优先传输正在按播放器真实字节需求补齐缺口；不会自动切回已知会卡顿的 MPV。"
+                : "下载优先传输失败：\(snapshot.errorMessage ?? "未知错误")"
             return
         }
 

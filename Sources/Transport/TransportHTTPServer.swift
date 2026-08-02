@@ -124,6 +124,10 @@ final class TransportHTTPServer {
         await session.prioritizeSeek(position: position, duration: duration)
     }
 
+    func recoverStall(position: Double, duration: Double) async {
+        await session.recoverStall(position: position, duration: duration)
+    }
+
     func stop() {
         let state = takeServerStateForStop()
         state.listener?.cancel()
@@ -217,6 +221,7 @@ final class TransportHTTPServer {
             let resource = try await session.resolve()
             let requestedRange = try parseRange(request.headers["range"], contentLength: resource.contentLength)
             let responseRange = requestedRange ?? ByteRange(lowerBound: 0, upperBound: resource.contentLength - 1)
+            await session.noteDemand(range: responseRange.lowerBound..<(responseRange.upperBound + 1))
             let status = requestedRange == nil ? 200 : 206
             let reason = status == 206 ? "Partial Content" : "OK"
             let contentType = resource.contentType ?? "video/mp4"

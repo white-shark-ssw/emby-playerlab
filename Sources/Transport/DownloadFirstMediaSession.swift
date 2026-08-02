@@ -11,6 +11,13 @@ actor DownloadFirstMediaSession: TransportDataSession {
         let bytes: Int64
     }
 
+    private struct DemandSample {
+        let date: Date
+        let offset: Int64
+        let length: Int64
+        let blocked: Bool
+    }
+
     private var source: ResolvedPlaybackSource
     private let client: EmbyAPIClient
     private let configuration: MediaTransportConfiguration
@@ -20,17 +27,34 @@ actor DownloadFirstMediaSession: TransportDataSession {
     private var resolveTask: Task<TransportResolvedResource, Error>?
     private var refreshTask: Task<RefreshResult, Error>?
     private var store: DownloadFirstSparseStore?
+
     private var mainTask: Task<Void, Never>?
     private var urgentTask: Task<Void, Never>?
     private var urgentRange: Range<Int64>?
+    private var pendingUrgentOffsets: [Int64] = []
     private var migrationTask: Task<Void, Never>?
+    private var laneProbeTask: Task<Void, Never>?
+
     private var mainGeneration = 0
     private var seekGeneration = 0
+    private var demandGeneration = 0
     private var mainCursor: Int64 = 0
     private var mainRunning = false
     private var mainAnchor: Int64 = 0
+    private var mainUpperBound: Int64 = 0
+    private var mainStartedAt = Date.distantPast
+
+    private var demandSamples: [DemandSample] = []
+    private var lastDemandOffset: Int64?
+    private var lastBlockedDemandOffset: Int64?
+    private var lastDemandAt = Date.distantPast
+
     private var metricsValue = TransportMetricsSnapshot()
     private var speedSamples: [SpeedSample] = []
+    private var mainSpeedSamples: [SpeedSample] = []
+    private var currentMainBytesPerSecond: Double = 0
+    private var laneProbeCooldownUntil = Date.distantPast
+
     private let createdAt = Date()
     private var lastLoggedMegabytes: Int64 = 0
     private var stopped = false
@@ -66,7 +90,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
             }
             DiagnosticsLogger.shared.log(
                 "DownloadFirst",
-                "ready item=\(source.itemId) bytes=\(resolved.contentLength) mainConnections=1 seekConnections=1 wifiPreload=\(configuration.wifiPreloadBytes) cellularPreload=\(configuration.cellularPreloadBytes) keep=\(configuration.keepLastCache)"
+                "ready item=\(source.itemId) bytes=\(resolved.contentLength) mainConnections=1 seekConnections=1 adaptiveLaneProbe=true realRangeMigration=true wifiPreload=\(configuration.wifiPreloadBytes) cellularPreload=\(configuration.cellularPreloadBytes) keep=\(configuration.keepLastCache)"
             )
             startMainDownloader(anchor: 0, reason: "initial")
             return resolved
@@ -74,6 +98,25 @@ actor DownloadFirstMediaSession: TransportDataSession {
             resolveTask = nil
             throw error
         }
+    }
+
+    func noteDemand(range: Range<Int64>) async {
+        guard !stopped, !range.isEmpty, let resource = try? await resolve(), let store else { return }
+        let lower = min(max(0, range.lowerBound), max(0, resource.contentLength - 1))
+        let upper = min(max(lower + 1, range.upperBound), resource.contentLength)
+        let length = upper - lower
+
+        // Tiny tail/metadata probes must never become the primary demand anchor.
+        guard length >= 4 * 1_048_576 else { return }
+        let available = store.availableLength(from: lower, maximumLength: min(length, 1_048_576))
+        recordDemand(offset: lower, length: length, blocked: available == 0)
+        guard available == 0 else { return }
+
+        let mainGap = lower - mainCursor
+        let mainShouldArriveSoon = mainRunning && mainGap >= 0 && mainGap <= 8 * 1_048_576
+        guard !mainShouldArriveSoon else { return }
+        ensureUrgentDownload(offset: lower, resource: resource, replaceExisting: false, reason: "http-range")
+        scheduleMainMigrationFromActualDemand(to: lower, resource: resource, reason: "http-range")
     }
 
     func read(offset: Int64, length: Int) async throws -> Data {
@@ -85,15 +128,34 @@ actor DownloadFirstMediaSession: TransportDataSession {
 
         let requestedLength = min(length, Int(resource.contentLength - offset))
         let availableBeforeRead = store.availableLength(from: offset, maximumLength: Int64(requestedLength))
+        recordDemand(offset: offset, length: Int64(requestedLength), blocked: availableBeforeRead == 0)
+
         if availableBeforeRead == 0 {
+            lastBlockedDemandOffset = offset
             let mainGap = offset - mainCursor
             let mainShouldArriveSoon = mainRunning && mainGap >= 0 && mainGap <= 8 * 1_048_576
-            if !mainShouldArriveSoon { ensureUrgentDownload(offset: offset, resource: resource) }
+            if !mainShouldArriveSoon {
+                ensureUrgentDownload(offset: offset, resource: resource, replaceExisting: false, reason: "blocked-read")
+                scheduleMainMigrationFromActualDemand(to: offset, resource: resource, reason: "blocked-read")
+            }
         }
 
-        let data = try await store.readWhenAvailable(offset: offset, maximumLength: requestedLength, timeout: 30)
+        let data: Data
+        do {
+            data = try await store.readWhenAvailable(offset: offset, maximumLength: requestedLength, timeout: 5)
+        } catch let error as DownloadFirstSparseStore.StoreError {
+            guard case .timeout = error else { throw error }
+            DiagnosticsLogger.shared.log(
+                "DownloadFirstGap",
+                "read timeout offset=\(offset) length=\(requestedLength) mainCursor=\(mainCursor) mainRunning=\(mainRunning); forcing real-demand recovery"
+            )
+            forceDemandRecovery(offset: offset, resource: resource, reason: "read-timeout")
+            data = try await store.readWhenAvailable(offset: offset, maximumLength: requestedLength, timeout: 25)
+        }
+
         metricsValue.bytesServed += Int64(data.count)
         if availableBeforeRead > 0 { metricsValue.cacheHitBytes += Int64(data.count) }
+        if lastBlockedDemandOffset == offset, !data.isEmpty { lastBlockedDemandOffset = nil }
         metricsValue.elapsedSeconds = Date().timeIntervalSince(createdAt)
         return data
     }
@@ -106,10 +168,27 @@ actor DownloadFirstMediaSession: TransportDataSession {
         seekGeneration += 1
         DiagnosticsLogger.shared.log(
             "DownloadFirstPriority",
-            "seek position=\(position) duration=\(duration) approximateOffset=\(approximateOffset) generation=\(seekGeneration)"
+            "seek position=\(position) duration=\(duration) approximateOffset=\(approximateOffset) generation=\(seekGeneration) migration=await-real-range"
         )
-        ensureUrgentDownload(offset: approximateOffset, resource: resource)
-        scheduleMainMigration(to: approximateOffset, resource: resource)
+
+        // The time ratio is only a speculative warm-up hint. Main-lane migration is driven by actual local HTTP reads.
+        ensureUrgentDownload(offset: approximateOffset, resource: resource, replaceExisting: true, reason: "seek-hint")
+    }
+
+    func recoverStall(position: Double, duration: Double) async {
+        guard !stopped, let resource = try? await resolve(), let store else { return }
+        let fallbackRatio = duration > 0 ? min(max(position / duration, 0), 1) : 0
+        let fallback = alignedOffset(Int64(Double(resource.contentLength) * fallbackRatio), contentLength: resource.contentLength)
+        let actual = lastDemandOffset ?? lastBlockedDemandOffset ?? fallback
+        let contiguous = store.availableLength(from: actual, maximumLength: 32 * 1_048_576)
+
+        DiagnosticsLogger.shared.log(
+            "DownloadFirstRecovery",
+            "stall position=\(position) actualDemand=\(actual) fallback=\(fallback) contiguous=\(contiguous) mainCursor=\(mainCursor) mainRunning=\(mainRunning)"
+        )
+
+        guard contiguous < 4 * 1_048_576 else { return }
+        forceDemandRecovery(offset: actual, resource: resource, reason: "stall-watchdog")
     }
 
     func metrics() async -> TransportMetricsSnapshot {
@@ -122,6 +201,11 @@ actor DownloadFirstMediaSession: TransportDataSession {
         value.cacheBytes = uniqueBytes
         value.diskCacheBytes = uniqueBytes
         value.memoryCacheBytes = 0
+        if let store, let demandOffset = lastDemandOffset ?? lastBlockedDemandOffset {
+            value.contiguousCacheBytes = store.availableLength(from: demandOffset, maximumLength: resource?.contentLength ?? Int64.max)
+        } else {
+            value.contiguousCacheBytes = store?.availableLength(from: 0, maximumLength: resource?.contentLength ?? Int64.max) ?? 0
+        }
         return value
     }
 
@@ -134,12 +218,15 @@ actor DownloadFirstMediaSession: TransportDataSession {
         refreshTask = nil
         migrationTask?.cancel()
         migrationTask = nil
+        laneProbeTask?.cancel()
+        laneProbeTask = nil
         mainTask?.cancel()
         mainTask = nil
         mainRunning = false
         urgentTask?.cancel()
         urgentTask = nil
         urgentRange = nil
+        pendingUrgentOffsets.removeAll()
         let finalMetrics = await metrics()
         store?.close(removeFiles: !configuration.keepLastCache)
         store = nil
@@ -158,7 +245,13 @@ actor DownloadFirstMediaSession: TransportDataSession {
         mainGeneration += 1
         let generation = mainGeneration
         mainAnchor = alignedAnchor
+        mainUpperBound = upperBound
         mainRunning = true
+        mainStartedAt = Date()
+        mainSpeedSamples.removeAll(keepingCapacity: true)
+        currentMainBytesPerSecond = 0
+        laneProbeTask?.cancel()
+        laneProbeTask = nil
         mainTask?.cancel()
         mainTask = Task { [weak self] in
             guard let self else { return }
@@ -239,12 +332,12 @@ actor DownloadFirstMediaSession: TransportDataSession {
             mainCursor = cursor
         }
 
-        if generation == mainGeneration {
-            DiagnosticsLogger.shared.log("DownloadFirstMain", "finished anchor=\(anchor) cursor=\(cursor) end=\(upperBound)")
-        }
+        guard generation == mainGeneration else { return }
+        if restartMainForPendingDemand(reason: "post-main-finish") { return }
+        DiagnosticsLogger.shared.log("DownloadFirstMain", "finished anchor=\(anchor) cursor=\(cursor) end=\(upperBound)")
     }
 
-    private func ensureUrgentDownload(offset: Int64, resource: TransportResolvedResource) {
+    private func ensureUrgentDownload(offset: Int64, resource: TransportResolvedResource, replaceExisting: Bool, reason: String) {
         guard !stopped, let store else { return }
         let start = alignedOffset(offset, contentLength: resource.contentLength)
         let windowBytes = max(Int64(8 * 1_048_576), configuration.upstreamBlockSizeBytes)
@@ -252,21 +345,36 @@ actor DownloadFirstMediaSession: TransportDataSession {
         guard end > start else { return }
         let range = start..<end
         if store.contains(range) { return }
-        if let urgentRange, urgentRange.contains(offset), urgentTask != nil { return }
 
-        urgentTask?.cancel()
+        if let urgentRange, urgentTask != nil {
+            if urgentRange.contains(offset) { return }
+            if replaceExisting {
+                urgentTask?.cancel()
+                urgentTask = nil
+                self.urgentRange = nil
+                pendingUrgentOffsets.removeAll()
+            } else {
+                let aligned = alignedOffset(offset, contentLength: resource.contentLength)
+                if !pendingUrgentOffsets.contains(where: { abs($0 - aligned) < 1_048_576 }) {
+                    pendingUrgentOffsets.append(aligned)
+                    DiagnosticsLogger.shared.log("DownloadFirstSeek", "queued offset=\(aligned) activeRange=\(urgentRange.lowerBound)..<\(urgentRange.upperBound) reason=\(reason)")
+                }
+                return
+            }
+        }
+
         urgentRange = range
         let generation = seekGeneration
         urgentTask = Task { [weak self] in
             guard let self else { return }
-            await self.runUrgentDownload(range: range, generation: generation)
+            await self.runUrgentDownload(range: range, generation: generation, reason: reason)
         }
     }
 
-    private func runUrgentDownload(range: Range<Int64>, generation: Int) async {
+    private func runUrgentDownload(range: Range<Int64>, generation: Int, reason: String) async {
         guard let store else { return }
         var cursor = store.firstMissingOffset(from: range.lowerBound, upperBound: range.upperBound) ?? range.upperBound
-        DiagnosticsLogger.shared.log("DownloadFirstSeek", "start range=\(range.lowerBound)..<\(range.upperBound) cursor=\(cursor) generation=\(generation)")
+        DiagnosticsLogger.shared.log("DownloadFirstSeek", "start range=\(range.lowerBound)..<\(range.upperBound) cursor=\(cursor) generation=\(generation) reason=\(reason)")
 
         while !Task.isCancelled, !stopped, cursor < range.upperBound {
             let failedResource: TransportResolvedResource
@@ -274,7 +382,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
                 failedResource = try await resolve()
             } catch {
                 DiagnosticsLogger.shared.log("DownloadFirstSeek", "resolve failed: \(error.localizedDescription)")
-                return
+                break
             }
 
             do {
@@ -287,7 +395,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
                     enforceGeneration: false
                 )
             } catch is CancellationError {
-                return
+                break
             } catch MediaTransportError.expiredURL(_) {
                 metricsValue.rangeFailureCount += 1
                 do {
@@ -302,7 +410,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
                     )
                 } catch {
                     DiagnosticsLogger.shared.log("DownloadFirstSeek", "refresh failed cursor=\(cursor): \(error.localizedDescription)")
-                    return
+                    break
                 }
             } catch {
                 metricsValue.rangeFailureCount += 1
@@ -317,6 +425,13 @@ actor DownloadFirstMediaSession: TransportDataSession {
             urgentTask = nil
         }
         DiagnosticsLogger.shared.log("DownloadFirstSeek", "finished range=\(range.lowerBound)..<\(range.upperBound) cursor=\(cursor)")
+        startNextQueuedUrgentIfNeeded()
+    }
+
+    private func startNextQueuedUrgentIfNeeded() {
+        guard urgentTask == nil, !pendingUrgentOffsets.isEmpty, let resource else { return }
+        let next = pendingUrgentOffsets.removeFirst()
+        ensureUrgentDownload(offset: next, resource: resource, replaceExisting: false, reason: "queued-real-demand")
     }
 
     private func consumeStream(
@@ -351,8 +466,12 @@ actor DownloadFirstMediaSession: TransportDataSession {
                 metricsValue.bytesDownloaded += Int64(chunk.count)
                 metricsValue.elapsedSeconds = Date().timeIntervalSince(createdAt)
                 recordDownload(bytes: Int64(chunk.count))
+                if enforceGeneration {
+                    mainCursor = cursor
+                    recordMainDownload(bytes: Int64(chunk.count))
+                    evaluateMainConnectionHealth(resource: resource, upperBound: end, generation: generation)
+                }
                 logProgressIfNeeded()
-                if enforceGeneration { mainCursor = cursor }
             }
             return cursor
         } catch {
@@ -369,24 +488,164 @@ actor DownloadFirstMediaSession: TransportDataSession {
         throw error
     }
 
-    private func scheduleMainMigration(to offset: Int64, resource: TransportResolvedResource) {
+    private func recordDemand(offset: Int64, length: Int64, blocked: Bool) {
+        let now = Date()
+        lastDemandOffset = offset
+        lastDemandAt = now
+        if blocked { lastBlockedDemandOffset = offset }
+        demandSamples.append(DemandSample(date: now, offset: offset, length: length, blocked: blocked))
+        demandSamples.removeAll { now.timeIntervalSince($0.date) > 1.5 }
+    }
+
+    private func scheduleMainMigrationFromActualDemand(to offset: Int64, resource: TransportResolvedResource, reason: String) {
         let target = alignedOffset(offset, contentLength: resource.contentLength)
-        guard abs(target - mainCursor) > 32 * 1_048_576 else { return }
-        seekGeneration += 1
-        let generation = seekGeneration
+        let distance = abs(target - mainCursor)
+        guard !mainRunning || distance > 32 * 1_048_576 else { return }
+
+        demandGeneration += 1
+        let generation = demandGeneration
         migrationTask?.cancel()
         migrationTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 900_000_000)
+            try? await Task.sleep(nanoseconds: 300_000_000)
             guard let self, !Task.isCancelled else { return }
-            await self.commitMainMigration(target: target, generation: generation)
+            await self.commitActualDemandMigration(fallbackTarget: target, generation: generation, reason: reason)
         }
     }
 
-    private func commitMainMigration(target: Int64, generation: Int) {
-        guard !stopped, generation == seekGeneration, let resource else { return }
+    private func commitActualDemandMigration(fallbackTarget: Int64, generation: Int, reason: String) {
+        guard !stopped, generation == demandGeneration, let resource, let store else { return }
+        let now = Date()
+        let recentBlocked = demandSamples.filter { $0.blocked && now.timeIntervalSince($0.date) <= 0.75 }
+        let primaryRanges = recentBlocked.filter { $0.length >= 4 * 1_048_576 }
+        let selected = primaryRanges.last?.offset ?? recentBlocked.last?.offset ?? fallbackTarget
+        let target = alignedOffset(selected, contentLength: resource.contentLength)
+        let available = store.availableLength(from: target, maximumLength: 2 * 1_048_576)
+        guard available < 2 * 1_048_576 else { return }
+
         let previousAnchor = mainAnchor
-        startMainDownloader(anchor: target, reason: "settled-seek")
-        DiagnosticsLogger.shared.log("DownloadFirstMain", "migrated from=\(previousAnchor) to=\(target) generation=\(generation) bytes=\(resource.contentLength)")
+        startMainDownloader(anchor: target, reason: "real-demand-\(reason)")
+        DiagnosticsLogger.shared.log(
+            "DownloadFirstMain",
+            "migrated-real-range from=\(previousAnchor) to=\(target) selected=\(selected) generation=\(generation)"
+        )
+    }
+
+    private func forceDemandRecovery(offset: Int64, resource: TransportResolvedResource, reason: String) {
+        let target = alignedOffset(offset, contentLength: resource.contentLength)
+        ensureUrgentDownload(offset: target, resource: resource, replaceExisting: false, reason: reason)
+
+        let farFromMain = abs(target - mainCursor) > 32 * 1_048_576
+        let mainAtEnd = mainCursor >= mainUpperBound || mainCursor >= resource.contentLength
+        if !mainRunning || farFromMain || mainAtEnd {
+            let previous = mainAnchor
+            startMainDownloader(anchor: target, reason: reason)
+            DiagnosticsLogger.shared.log("DownloadFirstMain", "forced-demand-migration from=\(previous) to=\(target) reason=\(reason)")
+        }
+    }
+
+    private func restartMainForPendingDemand(reason: String) -> Bool {
+        guard let store, let resource else { return false }
+        let now = Date()
+        let candidates = demandSamples
+            .filter { $0.blocked && now.timeIntervalSince($0.date) <= 10 }
+            .map(\.offset)
+        let recentFallback: Int64? = now.timeIntervalSince(lastDemandAt) <= 10 ? (lastDemandOffset ?? lastBlockedDemandOffset) : nil
+        let preferred = candidates.min() ?? recentFallback
+        guard let preferred else { return false }
+
+        let lower = alignedOffset(preferred, contentLength: resource.contentLength)
+        let upper = min(resource.contentLength, lower + 64 * 1_048_576)
+        guard let missing = store.firstMissingOffset(from: lower, upperBound: upper) else { return false }
+
+        DiagnosticsLogger.shared.log(
+            "DownloadFirstGap",
+            "main reached end but demand gap remains demand=\(preferred) missing=\(missing) upper=\(upper); restarting"
+        )
+        startMainDownloader(anchor: missing, reason: reason)
+        return true
+    }
+
+    private func recordMainDownload(bytes: Int64) {
+        let now = Date()
+        mainSpeedSamples.append(SpeedSample(date: now, bytes: bytes))
+        mainSpeedSamples.removeAll { now.timeIntervalSince($0.date) > 4 }
+        guard let first = mainSpeedSamples.first else {
+            currentMainBytesPerSecond = 0
+            return
+        }
+        let total = mainSpeedSamples.reduce(Int64(0)) { $0 + $1.bytes }
+        currentMainBytesPerSecond = Double(total) / max(now.timeIntervalSince(first.date), 0.5)
+    }
+
+    private func evaluateMainConnectionHealth(resource: TransportResolvedResource, upperBound: Int64, generation: Int) {
+        guard generation == mainGeneration, mainRunning, laneProbeTask == nil else { return }
+        let now = Date()
+        guard now >= laneProbeCooldownUntil, now.timeIntervalSince(mainStartedAt) >= 5 else { return }
+        guard currentMainBytesPerSecond > 0, currentMainBytesPerSecond < 2.5 * 1_048_576 else { return }
+        guard let store else { return }
+
+        let demand = lastDemandOffset ?? lastBlockedDemandOffset ?? mainAnchor
+        let contiguous = store.availableLength(from: demand, maximumLength: 64 * 1_048_576)
+        guard contiguous < 24 * 1_048_576 else { return }
+
+        let probeStart = store.firstMissingOffset(from: mainCursor, upperBound: upperBound) ?? mainCursor
+        let probeEnd = min(upperBound, probeStart + 8 * 1_048_576)
+        guard probeEnd > probeStart else { return }
+        let baseline = currentMainBytesPerSecond
+        laneProbeCooldownUntil = now.addingTimeInterval(15)
+        laneProbeTask = Task { [weak self] in
+            guard let self else { return }
+            await self.runLaneProbe(resource: resource, range: probeStart..<probeEnd, baseline: baseline, mainGeneration: generation)
+        }
+    }
+
+    private func runLaneProbe(resource: TransportResolvedResource, range: Range<Int64>, baseline: Double, mainGeneration: Int) async {
+        guard let store else { return }
+        let started = Date()
+        let loader = DownloadFirstStreamLoader(
+            resource: resource,
+            rangeHeader: "bytes=\(range.lowerBound)-\(range.upperBound - 1)",
+            expectedLength: range.upperBound - range.lowerBound,
+            label: "lane-probe"
+        )
+        let stream = loader.makeStream()
+        var cursor = range.lowerBound
+        var received: Int64 = 0
+        metricsValue.activeRequestCount += 1
+        metricsValue.networkRequestCount += 1
+
+        do {
+            for try await chunk in stream {
+                try Task.checkCancellation()
+                try store.write(chunk, at: cursor)
+                cursor += Int64(chunk.count)
+                received += Int64(chunk.count)
+                metricsValue.bytesDownloaded += Int64(chunk.count)
+                recordDownload(bytes: Int64(chunk.count))
+            }
+        } catch {
+            DiagnosticsLogger.shared.log("DownloadFirstLane", "probe failed range=\(range.lowerBound)..<\(range.upperBound): \(error.localizedDescription)")
+        }
+
+        metricsValue.activeRequestCount = max(0, metricsValue.activeRequestCount - 1)
+        laneProbeTask = nil
+        let elapsed = max(Date().timeIntervalSince(started), 0.001)
+        let candidate = Double(received) / elapsed
+        guard !stopped, mainGeneration == self.mainGeneration, received >= 2 * 1_048_576 else { return }
+
+        let winningThreshold = max(4 * 1_048_576, baseline * 1.5)
+        if candidate >= winningThreshold {
+            DiagnosticsLogger.shared.log(
+                "DownloadFirstLane",
+                "switch slow lane baselineBps=\(Int(baseline)) candidateBps=\(Int(candidate)) probeBytes=\(received) range=\(range.lowerBound)..<\(range.upperBound)"
+            )
+            startMainDownloader(anchor: range.lowerBound, reason: "slow-lane-switch")
+        } else {
+            DiagnosticsLogger.shared.log(
+                "DownloadFirstLane",
+                "keep lane baselineBps=\(Int(baseline)) candidateBps=\(Int(candidate)) probeBytes=\(received)"
+            )
+        }
     }
 
     private func refreshPlaybackResource(failedResource: TransportResolvedResource) async throws -> TransportResolvedResource {
@@ -458,9 +717,11 @@ actor DownloadFirstMediaSession: TransportDataSession {
         let megabytes = metricsValue.bytesDownloaded / 1_048_576
         guard megabytes >= lastLoggedMegabytes + 64 else { return }
         lastLoggedMegabytes = megabytes
+        let demand = lastDemandOffset ?? lastBlockedDemandOffset ?? 0
+        let contiguous = store?.availableLength(from: demand, maximumLength: resource?.contentLength ?? Int64.max) ?? 0
         DiagnosticsLogger.shared.log(
             "DownloadFirstSpeed",
-            "downloaded=\(metricsValue.bytesDownloaded) currentBps=\(Int(metricsValue.currentDownloadBytesPerSecond)) averageBps=\(Int(metricsValue.averageDownloadBytesPerSecond)) active=\(metricsValue.activeRequestCount) unique=\(store?.uniqueBytes ?? 0) mainCursor=\(mainCursor)"
+            "downloaded=\(metricsValue.bytesDownloaded) currentBps=\(Int(metricsValue.currentDownloadBytesPerSecond)) mainBps=\(Int(currentMainBytesPerSecond)) averageBps=\(Int(metricsValue.averageDownloadBytesPerSecond)) active=\(metricsValue.activeRequestCount) unique=\(store?.uniqueBytes ?? 0) contiguous=\(contiguous) demand=\(demand) mainCursor=\(mainCursor)"
         )
     }
 }

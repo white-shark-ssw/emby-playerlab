@@ -82,7 +82,12 @@ protocol PlayerEngine: AnyObject {
     func pause()
     func seek(to seconds: Double, direction: SeekDirection)
     func reload(at seconds: Double)
+    func recoverStall(position: Double, duration: Double)
     func stop()
+}
+
+extension PlayerEngine {
+    func recoverStall(position: Double, duration: Double) {}
 }
 
 enum SeekDirection {

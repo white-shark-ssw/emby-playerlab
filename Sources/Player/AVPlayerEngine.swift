@@ -232,6 +232,13 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         }
     }
 
+    func recoverStall(position: Double, duration: Double) {
+        guard kind == .transportAVPlayer, let transportServer else { return }
+        Task { [transportServer] in
+            await transportServer.recoverStall(position: position, duration: duration)
+        }
+    }
+
     func reload(at seconds: Double) {
         guard let configuration = lastConfiguration else { return }
         let shouldResume = snapshot.isPlaying || player.rate > 0

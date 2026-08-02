@@ -23,6 +23,7 @@ struct TransportMetricsSnapshot: Equatable {
     var cacheBytes: Int64 = 0
     var memoryCacheBytes: Int64 = 0
     var diskCacheBytes: Int64 = 0
+    var contiguousCacheBytes: Int64 = 0
     var currentDownloadBytesPerSecond: Double = 0
     var elapsedSeconds: Double = 0
 
@@ -39,7 +40,9 @@ struct TransportMetricsSnapshot: Equatable {
         let currentSpeed = ByteCountFormatter.string(fromByteCount: Int64(currentDownloadBytesPerSecond), countStyle: .file)
         let averageSpeed = ByteCountFormatter.string(fromByteCount: Int64(averageDownloadBytesPerSecond), countStyle: .file)
         let cached = ByteCountFormatter.string(fromByteCount: cacheBytes, countStyle: .file)
-        return "实时 \(currentSpeed)/s · 平均 \(averageSpeed)/s · 有效缓存 \(cached) · 命中 \(Int(cacheHitRatio * 100))% · 并发 \(activeRequestCount)"
+        let contiguous = ByteCountFormatter.string(fromByteCount: contiguousCacheBytes, countStyle: .file)
+        let contiguousText = contiguousCacheBytes > 0 ? " · 连续 \(contiguous)" : ""
+        return "实时 \(currentSpeed)/s · 平均 \(averageSpeed)/s · 总缓存 \(cached)\(contiguousText) · 命中 \(Int(cacheHitRatio * 100))% · 并发 \(activeRequestCount)"
     }
 }
 
