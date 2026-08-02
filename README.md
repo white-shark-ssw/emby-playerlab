@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.5.3
+## 当前版本：0.5.4
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.5.3-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.5.4-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -300,4 +300,14 @@ Deployment Target 继续保持 iOS 15.0。
 - 播放按钮在缓冲和 Seek 期间保持“正在播放”的用户意图，不再错误变成需要手动点击的播放状态。
 - 传输层停滞检测从约 8 秒提前到约 4 秒，并继续使用立即播放与软重 Seek 恢复。
 - 115 主下载连接若从高带宽持续跌到低速，不增加第三条探测连接，而是在当前游标处单连接重建，最多尝试 4 次。
+- Deployment Target 继续保持 iOS 15.0。
+
+## 0.5.4 快速线路筛选与 AVPlayerItem 自愈
+
+- 115 主连接在播放开始后的前 45 秒进入启动线路筛选阶段；低于约 10–16 MB/s 的连接可在 4 秒后快速判定，并以 6 秒冷却连续更换最多两次。
+- 启动筛选结束后恢复保守的持续低速判定，避免长时间播放期间频繁重连。
+- 每次用户 Seek 前取消旧的 localhost Range 响应，只保留新位置重新发起的读取，避免连续快进后历史超大 Range 流堆积。
+- 传输层 AVPlayer 恢复 `automaticallyWaitsToMinimizeStalling`，防止数据短暂不足时直接停在 `.paused` 且不会自动续播。
+- 第一次停滞会清理旧 HTTP 流并立即续播；同一位置再次停滞时，不再只做软 Seek，而是复用同一缓存会话和 localhost 地址重建 `AVPlayerItem`。
+- 新日志增加 `TransportHTTP reset streams`、`AVPlayerState` 与 `AVPlayerRecovery rebind-item`，便于区分网络低速、旧响应阻塞和 AVFoundation 解码状态卡死。
 - Deployment Target 继续保持 iOS 15.0。

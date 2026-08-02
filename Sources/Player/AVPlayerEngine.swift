@@ -24,11 +24,14 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private let transportConfiguration: MediaTransportConfiguration?
     private var transportServer: TransportHTTPServer?
     private var transportPrepareTask: Task<Void, Never>?
+    private var transportLocalURL: URL?
+    private var transportForwardBufferDuration: Double = 4
     private var prepareGeneration = 0
     private var shouldPlayWhenReady = false
     private var seekRequestGeneration = 0
     private var lastStallPosition: Double = -1
     private var stallRecoveryAttempts = 0
+    private var lastTransportItemRebindAt = Date.distantPast
 
     private struct Configuration {
         let url: URL
@@ -53,7 +56,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         self.transportClient = transportClient
         self.transportConfiguration = transportConfiguration
         super.init()
-        player.automaticallyWaitsToMinimizeStalling = kind != .transportAVPlayer
+        player.automaticallyWaitsToMinimizeStalling = true
         displayLink = CADisplayLink(target: self, selector: #selector(displayLinkTick))
         displayLink?.add(to: .main, forMode: .common)
     }
@@ -74,6 +77,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         transportPrepareTask = nil
         transportServer?.stop()
         transportServer = nil
+        transportLocalURL = nil
+        lastTransportItemRebindAt = .distantPast
         player.pause()
         player.replaceCurrentItem(with: nil)
         videoOutput = nil
@@ -124,10 +129,13 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
                         guard let self, let server,
                               generation == self.prepareGeneration,
                               self.transportServer === server else { return }
+                        let forwardBuffer = min(max(2, preferredForwardBuffer), 8)
+                        self.transportLocalURL = localURL
+                        self.transportForwardBufferDuration = forwardBuffer
                         DiagnosticsLogger.shared.log("TransportPlayer", "local HTTP asset ready")
                         self.installAsset(
                             AVURLAsset(url: localURL),
-                            preferredForwardBuffer: min(max(2, preferredForwardBuffer), 8),
+                            preferredForwardBuffer: forwardBuffer,
                             startPosition: startPosition
                         )
                     }
@@ -181,6 +189,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
         if shouldResume { shouldPlayWhenReady = true }
         if kind == .transportAVPlayer, let transportServer {
+            transportServer.resetClientStreams(reason: "user-seek generation=\(generation)")
             Task { [transportServer] in
                 await transportServer.prioritizeSeek(position: target, duration: duration)
             }
@@ -215,12 +224,12 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             guard let self, finished else { return }
             DispatchQueue.main.async {
                 guard generation == self.seekRequestGeneration else { return }
-                if shouldResume { self.resumePlayback(reason: "seek-completed", generation: generation) }
+                if shouldResume { self.resumePlayback(reason: "seek-completed", generation: generation, immediate: true) }
                 self.emit()
             }
         }
 
-        if shouldResume { resumePlayback(reason: "seek-submitted", generation: generation) }
+        if shouldResume { resumePlayback(reason: "seek-submitted", generation: generation, immediate: true) }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
             guard let self, let pending = self.pendingFrameMeasurement,
@@ -246,30 +255,28 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             stallRecoveryAttempts = 1
         }
         let attempt = stallRecoveryAttempts
+        DiagnosticsLogger.shared.log(
+            "AVPlayerState",
+            "stall position=\(position) attempt=\(attempt) rate=\(player.rate) timeControl=\(player.timeControlStatus.rawValue) itemStatus=\(player.currentItem?.status.rawValue ?? -1) bufferEmpty=\(player.currentItem?.isPlaybackBufferEmpty ?? false) likelyToKeepUp=\(player.currentItem?.isPlaybackLikelyToKeepUp ?? false) waiting=\(player.reasonForWaitingToPlay?.rawValue ?? "none")"
+        )
         Task { [transportServer] in
             await transportServer.recoverStall(position: position, duration: duration)
         }
-        DispatchQueue.main.async { [weak self] in
-            guard let self, let item = self.player.currentItem else { return }
-            self.player.automaticallyWaitsToMinimizeStalling = false
+        DispatchQueue.main.async { [weak self, weak transportServer] in
+            guard let self, let transportServer, self.shouldPlayWhenReady else { return }
+            self.player.automaticallyWaitsToMinimizeStalling = true
             if attempt <= 1 {
-                DiagnosticsLogger.shared.log("AVPlayerRecovery", "play-immediately position=\(position) attempt=\(attempt)")
+                transportServer.resetClientStreams(reason: "stall-recovery attempt=1")
+                DiagnosticsLogger.shared.log("AVPlayerRecovery", "reset-streams-and-play position=\(position) attempt=\(attempt)")
                 self.resumePlayback(reason: "stall-recovery", generation: self.seekRequestGeneration)
                 return
             }
 
-            let target = CMTime(seconds: max(0, position + 0.05), preferredTimescale: 600)
-            item.cancelPendingSeeks()
-            DiagnosticsLogger.shared.log("AVPlayerRecovery", "soft-reseek position=\(position) attempt=\(attempt)")
-            item.seek(
-                to: target,
-                toleranceBefore: CMTime(seconds: 0.1, preferredTimescale: 600),
-                toleranceAfter: CMTime(seconds: 0.2, preferredTimescale: 600)
-            ) { [weak self] finished in
-                guard let self, finished else { return }
-                DispatchQueue.main.async {
-                    self.resumePlayback(reason: "stall-reseek", generation: self.seekRequestGeneration)
-                }
+            if Date().timeIntervalSince(self.lastTransportItemRebindAt) >= 2.5 {
+                self.rebindTransportItem(at: position, reason: "stall attempt=\(attempt)")
+            } else {
+                DiagnosticsLogger.shared.log("AVPlayerRecovery", "rebind-throttled position=\(position) attempt=\(attempt)")
+                self.resumePlayback(reason: "stall-rebind-throttled", generation: self.seekRequestGeneration)
             }
         }
     }
@@ -294,6 +301,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         transportPrepareTask = nil
         transportServer?.stop()
         transportServer = nil
+        transportLocalURL = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
         stopObservers()
@@ -333,6 +341,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     private func installAsset(_ asset: AVURLAsset, preferredForwardBuffer: Double, startPosition: Double) {
         stopObservers()
+        player.automaticallyWaitsToMinimizeStalling = true
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = preferredForwardBuffer
         item.canUseNetworkResourcesForLiveStreamingWhilePaused = false
@@ -459,9 +468,36 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         }
     }
 
-    private func resumePlayback(reason: String, generation: Int) {
+    private func rebindTransportItem(at position: Double, reason: String) {
+        guard kind == .transportAVPlayer, let localURL = transportLocalURL else {
+            resumePlayback(reason: "rebind-missing-local-url", generation: seekRequestGeneration)
+            return
+        }
+        lastTransportItemRebindAt = Date()
+        seekRequestGeneration += 1
+        let generation = seekRequestGeneration
+        pendingFrameMeasurement = nil
+        transportServer?.resetClientStreams(reason: "item-rebind \(reason)")
+        player.pause()
+        DiagnosticsLogger.shared.log(
+            "AVPlayerRecovery",
+            "rebind-item position=\(position) generation=\(generation) reason=\(reason)"
+        )
+        installAsset(
+            AVURLAsset(url: localURL),
+            preferredForwardBuffer: transportForwardBufferDuration,
+            startPosition: max(0, position)
+        )
+    }
+
+    private func resumePlayback(reason: String, generation: Int, immediate: Bool = false) {
         guard shouldPlayWhenReady, generation == seekRequestGeneration else { return }
-        player.playImmediately(atRate: 1)
+        player.automaticallyWaitsToMinimizeStalling = true
+        if immediate {
+            player.playImmediately(atRate: 1)
+        } else {
+            player.play()
+        }
         snapshot.isPlaying = true
         emit()
 
@@ -469,11 +505,16 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self, self.shouldPlayWhenReady, generation == self.seekRequestGeneration,
                       self.player.currentItem != nil, self.player.timeControlStatus != .playing else { return }
+                let retryImmediately = immediate && delay < 0.3
                 DiagnosticsLogger.shared.log(
                     "AVPlayerResume",
-                    "retry reason=\(reason) delay=\(delay) status=\(self.player.timeControlStatus.rawValue) waiting=\(self.player.reasonForWaitingToPlay?.rawValue ?? "none")"
+                    "retry reason=\(reason) delay=\(delay) mode=\(retryImmediately ? "immediate" : "automatic") status=\(self.player.timeControlStatus.rawValue) waiting=\(self.player.reasonForWaitingToPlay?.rawValue ?? "none")"
                 )
-                self.player.playImmediately(atRate: 1)
+                if retryImmediately {
+                    self.player.playImmediately(atRate: 1)
+                } else {
+                    self.player.play()
+                }
                 self.snapshot.isPlaying = true
                 self.emit()
             }

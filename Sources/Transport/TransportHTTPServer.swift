@@ -129,6 +129,17 @@ final class TransportHTTPServer {
         await session.recoverStall(position: position, duration: duration)
     }
 
+    func resetClientStreams(reason: String) {
+        let state = takeClientStateForReset()
+        state.tasks.forEach { $0.cancel() }
+        state.connections.forEach { $0.cancel() }
+        guard !state.connections.isEmpty || !state.tasks.isEmpty else { return }
+        DiagnosticsLogger.shared.log(
+            "TransportHTTP",
+            "server=\(logID) reset streams connections=\(state.connections.count) tasks=\(state.tasks.count) reason=\(reason)"
+        )
+    }
+
     func stop() {
         let state = takeServerStateForStop()
         state.listener?.cancel()
@@ -424,6 +435,17 @@ final class TransportHTTPServer {
         defer { lock.unlock() }
         connections[identifier] = nil
         return connectionTasks.removeValue(forKey: identifier)
+    }
+
+    private func takeClientStateForReset() -> (connections: [NWConnection], tasks: [Task<Void, Never>]) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !stopped else { return ([], []) }
+        let currentConnections = Array(connections.values)
+        connections.removeAll()
+        let currentTasks = Array(connectionTasks.values)
+        connectionTasks.removeAll()
+        return (currentConnections, currentTasks)
     }
 
     private func takeServerStateForStop() -> (listener: NWListener?, connections: [NWConnection], tasks: [Task<Void, Never>]) {
