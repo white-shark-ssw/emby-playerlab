@@ -63,6 +63,10 @@ actor DownloadFirstMediaSession: TransportDataSession {
     private var speedSamples: [SpeedSample] = []
     private var mainSpeedSamples: [SpeedSample] = []
     private var currentMainBytesPerSecond: Double = 0
+    private var peakMainBytesPerSecond: Double = 0
+    private var slowMainSince: Date?
+    private var last115ReconnectAt = Date.distantPast
+    private var mainReconnectCount = 0
     private var laneProbeCooldownUntil = Date.distantPast
 
     private let createdAt = Date()
@@ -101,7 +105,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
             }
             DiagnosticsLogger.shared.log(
                 "DownloadFirst",
-                "ready item=\(source.itemId) bytes=\(resolved.contentLength) mainConnections=1 seekConnections=1 adaptiveLaneProbe=\(!resolved.looksLike115CDN) demandMode=\(demandMode) wifiPreload=\(configuration.wifiPreloadBytes) cellularPreload=\(configuration.cellularPreloadBytes) keep=\(configuration.keepLastCache)"
+                "ready item=\(source.itemId) bytes=\(resolved.contentLength) mainConnections=1 seekConnections=1 adaptiveLaneProbe=\(!resolved.looksLike115CDN) slow115Reconnect=\(resolved.looksLike115CDN) demandMode=\(demandMode) wifiPreload=\(configuration.wifiPreloadBytes) cellularPreload=\(configuration.cellularPreloadBytes) keep=\(configuration.keepLastCache)"
             )
             startMainDownloader(anchor: 0, reason: "initial")
             return resolved
@@ -291,6 +295,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
         mainStartedAt = Date()
         mainSpeedSamples.removeAll(keepingCapacity: true)
         currentMainBytesPerSecond = 0
+        slowMainSince = nil
         laneProbeTask?.cancel()
         laneProbeTask = nil
         mainTask?.cancel()
@@ -630,11 +635,16 @@ actor DownloadFirstMediaSession: TransportDataSession {
         }
         let total = mainSpeedSamples.reduce(Int64(0)) { $0 + $1.bytes }
         currentMainBytesPerSecond = Double(total) / max(now.timeIntervalSince(first.date), 0.5)
+        peakMainBytesPerSecond = max(peakMainBytesPerSecond, currentMainBytesPerSecond)
     }
 
     private func evaluateMainConnectionHealth(resource: TransportResolvedResource, upperBound: Int64, generation: Int) {
         guard generation == mainGeneration, mainRunning, laneProbeTask == nil else { return }
-        guard !resource.looksLike115CDN, urgentTask == nil, metricsValue.activeRequestCount <= 1 else { return }
+        if resource.looksLike115CDN {
+            evaluate115MainConnectionHealth(resource: resource, upperBound: upperBound, generation: generation)
+            return
+        }
+        guard urgentTask == nil, metricsValue.activeRequestCount <= 1 else { return }
         let now = Date()
         guard now >= laneProbeCooldownUntil, now.timeIntervalSince(mainStartedAt) >= 5 else { return }
         guard currentMainBytesPerSecond > 0, currentMainBytesPerSecond < 6 * 1_048_576 else { return }
@@ -649,6 +659,38 @@ actor DownloadFirstMediaSession: TransportDataSession {
             guard let self else { return }
             await self.runLaneProbe(resource: resource, range: probeStart..<probeEnd, baseline: baseline, mainGeneration: generation)
         }
+    }
+
+    private func evaluate115MainConnectionHealth(resource: TransportResolvedResource, upperBound: Int64, generation: Int) {
+        guard generation == mainGeneration, urgentTask == nil, metricsValue.activeRequestCount <= 1 else { return }
+        let now = Date()
+        let remaining = upperBound - mainCursor
+        guard remaining > 64 * 1_048_576, now.timeIntervalSince(mainStartedAt) >= 8,
+              now.timeIntervalSince(last115ReconnectAt) >= 15, mainReconnectCount < 4 else { return }
+
+        let adaptiveThreshold = min(14 * 1_048_576, peakMainBytesPerSecond * 0.45)
+        let threshold = max(8 * 1_048_576, adaptiveThreshold)
+        guard currentMainBytesPerSecond > 0, currentMainBytesPerSecond < threshold else {
+            slowMainSince = nil
+            return
+        }
+
+        if slowMainSince == nil {
+            slowMainSince = now
+            return
+        }
+        guard let slowMainSince, now.timeIntervalSince(slowMainSince) >= 4 else { return }
+
+        let previousSpeed = currentMainBytesPerSecond
+        let reconnectOffset = mainCursor
+        mainReconnectCount += 1
+        last115ReconnectAt = now
+        self.slowMainSince = nil
+        DiagnosticsLogger.shared.log(
+            "DownloadFirstMain",
+            "reconnect-slow-115 offset=\(reconnectOffset) speedBps=\(Int(previousSpeed)) peakBps=\(Int(peakMainBytesPerSecond)) thresholdBps=\(Int(threshold)) attempt=\(mainReconnectCount)"
+        )
+        startMainDownloader(anchor: reconnectOffset, reason: "115-slow-reconnect")
     }
 
     private func runLaneProbe(resource: TransportResolvedResource, range: Range<Int64>, baseline: Double, mainGeneration: Int) async {

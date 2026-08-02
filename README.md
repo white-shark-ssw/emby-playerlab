@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.5.2
+## 当前版本：0.5.3
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.5.2-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.5.3-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -290,3 +290,14 @@ Deployment Target 继续保持 iOS 15.0。
 - 严格匹配 KSPlayer 2.3.4：输入缓冲区为 `UnsafePointer<UInt8>?`，返回值为 `Int32`。
 - 读取时只在 FFmpeg 提供的缓冲区上创建临时可变视图并复制数据，不改变 AVIO 所有权。
 - Deployment Target 继续保持 iOS 15.0，依赖版本不变。
+
+
+## 0.5.3 Seek 自动续播与 115 慢连接重建
+
+- AVPlayer 的“用户希望继续播放”与底层瞬时 `.paused/.waiting` 状态分离；Seek 不再因为 KVO 短暂状态而丢失续播意图。
+- 双击和拖动仍立即提交 Seek，提交后、完成后以及短延迟复查都会在用户未主动暂停时恢复播放。
+- Seek 提交时只更新界面目标，不再提前伪造引擎真实位置；Watchdog 会等真实时间或首帧到达后再解除 Seek 保护。
+- 播放按钮在缓冲和 Seek 期间保持“正在播放”的用户意图，不再错误变成需要手动点击的播放状态。
+- 传输层停滞检测从约 8 秒提前到约 4 秒，并继续使用立即播放与软重 Seek 恢复。
+- 115 主下载连接若从高带宽持续跌到低速，不增加第三条探测连接，而是在当前游标处单连接重建，最多尝试 4 次。
+- Deployment Target 继续保持 iOS 15.0。

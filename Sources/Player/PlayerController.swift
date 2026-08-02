@@ -509,7 +509,8 @@ final class PlayerController: ObservableObject {
         lastWatchdogPosition = snapshot.position
         lastWatchdogBufferEnd = bufferedEnd
 
-        guard stagnantWatchdogIntervals >= 4 else { return }
+        let recoveryThreshold = engineKind == .transportAVPlayer ? 2 : 4
+        guard stagnantWatchdogIntervals >= recoveryThreshold else { return }
         stagnantWatchdogIntervals = 0
         stallRecoveryCount += 1
 

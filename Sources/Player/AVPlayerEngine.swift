@@ -26,6 +26,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private var transportPrepareTask: Task<Void, Never>?
     private var prepareGeneration = 0
     private var shouldPlayWhenReady = false
+    private var seekRequestGeneration = 0
     private var lastStallPosition: Double = -1
     private var stallRecoveryAttempts = 0
 
@@ -65,6 +66,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
         lastConfiguration = Configuration(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer)
         prepareGeneration += 1
+        seekRequestGeneration += 1
         let generation = prepareGeneration
 
         stopObservers()
@@ -157,7 +159,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         shouldPlayWhenReady = true
         snapshot.isPlaying = true
         emit()
-        player.playImmediately(atRate: 1)
+        resumePlayback(reason: "user-play", generation: seekRequestGeneration)
     }
 
     func pause() {
@@ -173,8 +175,11 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         let target = min(max(0, seconds), duration > 0 ? duration : seconds)
         let bufferHit = snapshot.bufferedRanges.contains(where: { $0.contains(target) })
         let requestedAt = CACurrentMediaTime()
-        let wasPlaying = player.rate > 0 || snapshot.isPlaying
+        let shouldResume = shouldPlayWhenReady || player.rate > 0 || snapshot.isPlaying
+        seekRequestGeneration += 1
+        let generation = seekRequestGeneration
 
+        if shouldResume { shouldPlayWhenReady = true }
         if kind == .transportAVPlayer, let transportServer {
             Task { [transportServer] in
                 await transportServer.prioritizeSeek(position: target, duration: duration)
@@ -182,8 +187,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         }
 
         item.cancelPendingSeeks()
-        snapshot.position = target
         snapshot.didReachEnd = false
+        snapshot.isPlaying = shouldResume
         emit()
 
         let before: Double
@@ -209,17 +214,13 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         ) { [weak self] finished in
             guard let self, finished else { return }
             DispatchQueue.main.async {
-                if wasPlaying {
-                    self.player.playImmediately(atRate: 1)
-                    self.snapshot.isPlaying = true
-                }
+                guard generation == self.seekRequestGeneration else { return }
+                if shouldResume { self.resumePlayback(reason: "seek-completed", generation: generation) }
                 self.emit()
             }
         }
 
-        if wasPlaying {
-            player.playImmediately(atRate: 1)
-        }
+        if shouldResume { resumePlayback(reason: "seek-submitted", generation: generation) }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
             guard let self, let pending = self.pendingFrameMeasurement,
@@ -237,7 +238,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     }
 
     func recoverStall(position: Double, duration: Double) {
-        guard kind == .transportAVPlayer, let transportServer else { return }
+        guard kind == .transportAVPlayer, shouldPlayWhenReady, let transportServer else { return }
         if abs(position - lastStallPosition) < 0.5 {
             stallRecoveryAttempts += 1
         } else {
@@ -253,7 +254,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             self.player.automaticallyWaitsToMinimizeStalling = false
             if attempt <= 1 {
                 DiagnosticsLogger.shared.log("AVPlayerRecovery", "play-immediately position=\(position) attempt=\(attempt)")
-                self.player.playImmediately(atRate: 1)
+                self.resumePlayback(reason: "stall-recovery", generation: self.seekRequestGeneration)
                 return
             }
 
@@ -267,9 +268,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             ) { [weak self] finished in
                 guard let self, finished else { return }
                 DispatchQueue.main.async {
-                    self.player.playImmediately(atRate: 1)
-                    self.snapshot.isPlaying = true
-                    self.emit()
+                    self.resumePlayback(reason: "stall-reseek", generation: self.seekRequestGeneration)
                 }
             }
         }
@@ -277,7 +276,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     func reload(at seconds: Double) {
         guard let configuration = lastConfiguration else { return }
-        let shouldResume = snapshot.isPlaying || player.rate > 0
+        let shouldResume = shouldPlayWhenReady
         prepare(
             url: configuration.url,
             headers: configuration.headers,
@@ -289,6 +288,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     func stop() {
         shouldPlayWhenReady = false
+        seekRequestGeneration += 1
         prepareGeneration += 1
         transportPrepareTask?.cancel()
         transportPrepareTask = nil
@@ -358,11 +358,11 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
                 toleranceAfter: CMTime(seconds: 0.5, preferredTimescale: 600),
                 completionHandler: { [weak self] finished in
                     guard let self, finished, self.shouldPlayWhenReady else { return }
-                    self.player.playImmediately(atRate: 1)
+                    self.resumePlayback(reason: "initial-seek", generation: self.seekRequestGeneration)
                 }
             )
         } else if shouldPlayWhenReady {
-            player.playImmediately(atRate: 1)
+            resumePlayback(reason: "asset-installed", generation: seekRequestGeneration)
         }
     }
 
@@ -371,6 +371,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             DispatchQueue.main.async {
                 guard let self else { return }
                 if item.status == .failed {
+                    self.shouldPlayWhenReady = false
+                    self.snapshot.isPlaying = false
                     self.snapshot.errorMessage = item.error?.localizedDescription ?? "AVPlayerItem failed"
                     DiagnosticsLogger.shared.log(
                         "AVPlayer",
@@ -378,7 +380,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
                     )
                     self.emit()
                 } else if item.status == .readyToPlay, self.shouldPlayWhenReady {
-                    self.player.playImmediately(atRate: 1)
+                    self.resumePlayback(reason: "ready-to-play", generation: self.seekRequestGeneration)
                 }
             }
         })
@@ -387,7 +389,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.snapshot.isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
-                self.snapshot.isPlaying = player.timeControlStatus == .playing
+                self.snapshot.isPlaying = self.shouldPlayWhenReady
                 self.snapshot.waitingReason = player.reasonForWaitingToPlay?.rawValue
                 self.emit()
             }
@@ -437,6 +439,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
+            self.shouldPlayWhenReady = false
             self.snapshot.didReachEnd = true
             self.snapshot.isPlaying = false
             self.emit()
@@ -449,8 +452,31 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         ) { [weak self] note in
             guard let self else { return }
             let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+            self.shouldPlayWhenReady = false
+            self.snapshot.isPlaying = false
             self.snapshot.errorMessage = error?.localizedDescription ?? "Failed to play to end"
             self.emit()
+        }
+    }
+
+    private func resumePlayback(reason: String, generation: Int) {
+        guard shouldPlayWhenReady, generation == seekRequestGeneration else { return }
+        player.playImmediately(atRate: 1)
+        snapshot.isPlaying = true
+        emit()
+
+        for delay in [0.15, 0.45] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.shouldPlayWhenReady, generation == self.seekRequestGeneration,
+                      self.player.currentItem != nil, self.player.timeControlStatus != .playing else { return }
+                DiagnosticsLogger.shared.log(
+                    "AVPlayerResume",
+                    "retry reason=\(reason) delay=\(delay) status=\(self.player.timeControlStatus.rawValue) waiting=\(self.player.reasonForWaitingToPlay?.rawValue ?? "none")"
+                )
+                self.player.playImmediately(atRate: 1)
+                self.snapshot.isPlaying = true
+                self.emit()
+            }
         }
     }
 
