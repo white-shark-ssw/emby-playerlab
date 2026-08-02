@@ -26,6 +26,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private var transportPrepareTask: Task<Void, Never>?
     private var prepareGeneration = 0
     private var shouldPlayWhenReady = false
+    private var lastStallPosition: Double = -1
+    private var stallRecoveryAttempts = 0
 
     private struct Configuration {
         let url: URL
@@ -50,7 +52,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         self.transportClient = transportClient
         self.transportConfiguration = transportConfiguration
         super.init()
-        player.automaticallyWaitsToMinimizeStalling = true
+        player.automaticallyWaitsToMinimizeStalling = kind != .transportAVPlayer
         displayLink = CADisplayLink(target: self, selector: #selector(displayLinkTick))
         displayLink?.add(to: .main, forMode: .common)
     }
@@ -74,6 +76,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         player.replaceCurrentItem(with: nil)
         videoOutput = nil
         pendingFrameMeasurement = nil
+        lastStallPosition = -1
+        stallRecoveryAttempts = 0
 
         snapshot = PlayerSnapshot(
             position: max(0, startPosition),
@@ -234,8 +238,40 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     func recoverStall(position: Double, duration: Double) {
         guard kind == .transportAVPlayer, let transportServer else { return }
+        if abs(position - lastStallPosition) < 0.5 {
+            stallRecoveryAttempts += 1
+        } else {
+            lastStallPosition = position
+            stallRecoveryAttempts = 1
+        }
+        let attempt = stallRecoveryAttempts
         Task { [transportServer] in
             await transportServer.recoverStall(position: position, duration: duration)
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let item = self.player.currentItem else { return }
+            self.player.automaticallyWaitsToMinimizeStalling = false
+            if attempt <= 1 {
+                DiagnosticsLogger.shared.log("AVPlayerRecovery", "play-immediately position=\(position) attempt=\(attempt)")
+                self.player.playImmediately(atRate: 1)
+                return
+            }
+
+            let target = CMTime(seconds: max(0, position + 0.05), preferredTimescale: 600)
+            item.cancelPendingSeeks()
+            DiagnosticsLogger.shared.log("AVPlayerRecovery", "soft-reseek position=\(position) attempt=\(attempt)")
+            item.seek(
+                to: target,
+                toleranceBefore: CMTime(seconds: 0.1, preferredTimescale: 600),
+                toleranceAfter: CMTime(seconds: 0.2, preferredTimescale: 600)
+            ) { [weak self] finished in
+                guard let self, finished else { return }
+                DispatchQueue.main.async {
+                    self.player.playImmediately(atRate: 1)
+                    self.snapshot.isPlaying = true
+                    self.emit()
+                }
+            }
         }
     }
 
@@ -263,6 +299,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         stopObservers()
         videoOutput = nil
         pendingFrameMeasurement = nil
+        lastStallPosition = -1
+        stallRecoveryAttempts = 0
         snapshot = PlayerSnapshot()
     }
 
@@ -384,6 +422,10 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             guard let self else { return }
             let seconds = time.seconds
             if seconds.isFinite {
+                if self.lastStallPosition >= 0, seconds - self.lastStallPosition >= 0.75 {
+                    self.lastStallPosition = -1
+                    self.stallRecoveryAttempts = 0
+                }
                 self.snapshot.position = seconds
                 self.emit()
             }

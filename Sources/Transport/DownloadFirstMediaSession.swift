@@ -39,6 +39,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
     private var urgentRange: Range<Int64>?
     private var pendingUrgentOffsets: [Int64] = []
     private var migrationTask: Task<Void, Never>?
+    private var seekMigrationTask: Task<Void, Never>?
     private var laneProbeTask: Task<Void, Never>?
 
     private var mainGeneration = 0
@@ -54,6 +55,9 @@ actor DownloadFirstMediaSession: TransportDataSession {
     private var lastDemandOffset: Int64?
     private var lastBlockedDemandOffset: Int64?
     private var lastDemandAt = Date.distantPast
+    private var lastSeekHintOffset: Int64?
+    private var lastSeekHintAt = Date.distantPast
+    private var lastMainMigrationAt = Date.distantPast
 
     private var metricsValue = TransportMetricsSnapshot()
     private var speedSamples: [SpeedSample] = []
@@ -97,7 +101,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
             }
             DiagnosticsLogger.shared.log(
                 "DownloadFirst",
-                "ready item=\(source.itemId) bytes=\(resolved.contentLength) mainConnections=1 seekConnections=1 adaptiveLaneProbe=true demandMode=\(demandMode) wifiPreload=\(configuration.wifiPreloadBytes) cellularPreload=\(configuration.cellularPreloadBytes) keep=\(configuration.keepLastCache)"
+                "ready item=\(source.itemId) bytes=\(resolved.contentLength) mainConnections=1 seekConnections=1 adaptiveLaneProbe=\(!resolved.looksLike115CDN) demandMode=\(demandMode) wifiPreload=\(configuration.wifiPreloadBytes) cellularPreload=\(configuration.cellularPreloadBytes) keep=\(configuration.keepLastCache)"
             )
             startMainDownloader(anchor: 0, reason: "initial")
             return resolved
@@ -135,15 +139,20 @@ actor DownloadFirstMediaSession: TransportDataSession {
 
         let requestedLength = min(length, Int(resource.contentLength - offset))
         let availableBeforeRead = store.availableLength(from: offset, maximumLength: Int64(requestedLength))
-        recordDemand(offset: offset, length: Int64(requestedLength), blocked: availableBeforeRead == 0)
+        let metadataProbe = isMetadataProbe(offset: offset, length: requestedLength, contentLength: resource.contentLength)
+        if !metadataProbe {
+            recordDemand(offset: offset, length: Int64(requestedLength), blocked: availableBeforeRead == 0)
+        }
 
         if availableBeforeRead == 0 {
-            lastBlockedDemandOffset = offset
+            if !metadataProbe { lastBlockedDemandOffset = offset }
             let mainGap = offset - mainCursor
             let mainShouldArriveSoon = mainRunning && mainGap >= 0 && mainGap <= 8 * 1_048_576
             if !mainShouldArriveSoon {
                 ensureUrgentDownload(offset: offset, resource: resource, replaceExisting: false, reason: "blocked-read")
-                if demandMode == .localHTTP { scheduleMainMigrationFromActualDemand(to: offset, resource: resource, reason: "blocked-read") }
+                if demandMode == .localHTTP, !metadataProbe {
+                    scheduleMainMigrationFromActualDemand(to: offset, resource: resource, reason: "blocked-read")
+                }
             }
         }
 
@@ -152,6 +161,13 @@ actor DownloadFirstMediaSession: TransportDataSession {
             data = try await store.readWhenAvailable(offset: offset, maximumLength: requestedLength, timeout: 5)
         } catch let error as DownloadFirstSparseStore.StoreError {
             guard case .timeout = error else { throw error }
+            if demandMode == .localHTTP, isFarFromRecentSeek(offset: offset, resource: resource) {
+                DiagnosticsLogger.shared.log(
+                    "DownloadFirstGap",
+                    "cancel stale local HTTP demand offset=\(offset) seekHint=\(lastSeekHintOffset ?? -1)"
+                )
+                throw CancellationError()
+            }
             DiagnosticsLogger.shared.log(
                 "DownloadFirstGap",
                 "read timeout offset=\(offset) length=\(requestedLength) mainCursor=\(mainCursor) mainRunning=\(mainRunning); forcing real-demand recovery"
@@ -173,13 +189,18 @@ actor DownloadFirstMediaSession: TransportDataSession {
         let ratio = min(max(position / duration, 0), 1)
         let approximateOffset = alignedOffset(Int64(Double(resource.contentLength) * ratio), contentLength: resource.contentLength)
         seekGeneration += 1
+        lastSeekHintOffset = approximateOffset
+        lastSeekHintAt = Date()
+        migrationTask?.cancel()
+        migrationTask = nil
         DiagnosticsLogger.shared.log(
             "DownloadFirstPriority",
-            "seek position=\(position) duration=\(duration) approximateOffset=\(approximateOffset) generation=\(seekGeneration) migration=await-real-range"
+            "seek position=\(position) duration=\(duration) approximateOffset=\(approximateOffset) generation=\(seekGeneration) migration=stable-seek"
         )
 
-        // The time ratio is only a speculative warm-up hint. Main-lane migration is driven by actual local HTTP reads.
+        // The ratio hint fills the urgent window immediately. Only the final stable seek moves the sequential lane.
         ensureUrgentDownload(offset: approximateOffset, resource: resource, replaceExisting: true, reason: "seek-hint")
+        scheduleMainMigrationAfterStableSeek(hintOffset: approximateOffset, resource: resource, generation: seekGeneration)
     }
 
     func recoverStall(position: Double, duration: Double) async {
@@ -236,6 +257,8 @@ actor DownloadFirstMediaSession: TransportDataSession {
         refreshTask = nil
         migrationTask?.cancel()
         migrationTask = nil
+        seekMigrationTask?.cancel()
+        seekMigrationTask = nil
         laneProbeTask?.cancel()
         laneProbeTask = nil
         mainTask?.cancel()
@@ -358,6 +381,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
     private func ensureUrgentDownload(offset: Int64, resource: TransportResolvedResource, replaceExisting: Bool, reason: String) {
         guard !stopped, let store else { return }
         let start = alignedOffset(offset, contentLength: resource.contentLength)
+        if !replaceExisting, isFarFromRecentSeek(offset: start, resource: resource) { return }
         let windowBytes = max(Int64(8 * 1_048_576), configuration.upstreamBlockSizeBytes)
         let end = min(resource.contentLength, start + windowBytes)
         guard end > start else { return }
@@ -519,12 +543,19 @@ actor DownloadFirstMediaSession: TransportDataSession {
         let target = alignedOffset(offset, contentLength: resource.contentLength)
         let distance = abs(target - mainCursor)
         guard !mainRunning || distance > 32 * 1_048_576 else { return }
+        let now = Date()
+        let seekAge = now.timeIntervalSince(lastSeekHintAt)
+        guard seekAge >= 4 else { return }
+        if seekAge < 10, let lastSeekHintOffset {
+            guard abs(target - lastSeekHintOffset) <= 96 * 1_048_576 else { return }
+        }
+        guard !mainRunning || now.timeIntervalSince(lastMainMigrationAt) >= 2 else { return }
 
         demandGeneration += 1
         let generation = demandGeneration
         migrationTask?.cancel()
         migrationTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            try? await Task.sleep(nanoseconds: 700_000_000)
             guard let self, !Task.isCancelled else { return }
             await self.commitActualDemandMigration(fallbackTarget: target, generation: generation, reason: reason)
         }
@@ -537,11 +568,16 @@ actor DownloadFirstMediaSession: TransportDataSession {
         let primaryRanges = recentBlocked.filter { $0.length >= 4 * 1_048_576 }
         let selected = primaryRanges.last?.offset ?? recentBlocked.last?.offset ?? fallbackTarget
         let target = alignedOffset(selected, contentLength: resource.contentLength)
+        if now.timeIntervalSince(lastSeekHintAt) < 10, let lastSeekHintOffset {
+            guard abs(target - lastSeekHintOffset) <= 96 * 1_048_576 else { return }
+        }
         let available = store.availableLength(from: target, maximumLength: 2 * 1_048_576)
         guard available < 2 * 1_048_576 else { return }
+        guard !mainRunning || now.timeIntervalSince(lastMainMigrationAt) >= 2 else { return }
 
         let previousAnchor = mainAnchor
         startMainDownloader(anchor: target, reason: "real-demand-\(reason)")
+        lastMainMigrationAt = now
         DiagnosticsLogger.shared.log(
             "DownloadFirstMain",
             "migrated-real-range from=\(previousAnchor) to=\(target) selected=\(selected) generation=\(generation)"
@@ -550,6 +586,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
 
     private func forceDemandRecovery(offset: Int64, resource: TransportResolvedResource, reason: String) {
         let target = alignedOffset(offset, contentLength: resource.contentLength)
+        guard !isFarFromRecentSeek(offset: target, resource: resource) else { return }
         ensureUrgentDownload(offset: target, resource: resource, replaceExisting: false, reason: reason)
 
         let farFromMain = abs(target - mainCursor) > 32 * 1_048_576
@@ -568,7 +605,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
             .filter { $0.blocked && now.timeIntervalSince($0.date) <= 10 }
             .map(\.offset)
         let recentFallback: Int64? = now.timeIntervalSince(lastDemandAt) <= 10 ? (lastDemandOffset ?? lastBlockedDemandOffset) : nil
-        let preferred = candidates.min() ?? recentFallback
+        let preferred = candidates.last ?? recentFallback
         guard let preferred else { return false }
 
         let lower = alignedOffset(preferred, contentLength: resource.contentLength)
@@ -597,6 +634,7 @@ actor DownloadFirstMediaSession: TransportDataSession {
 
     private func evaluateMainConnectionHealth(resource: TransportResolvedResource, upperBound: Int64, generation: Int) {
         guard generation == mainGeneration, mainRunning, laneProbeTask == nil else { return }
+        guard !resource.looksLike115CDN, urgentTask == nil, metricsValue.activeRequestCount <= 1 else { return }
         let now = Date()
         guard now >= laneProbeCooldownUntil, now.timeIntervalSince(mainStartedAt) >= 5 else { return }
         guard currentMainBytesPerSecond > 0, currentMainBytesPerSecond < 6 * 1_048_576 else { return }
@@ -708,6 +746,46 @@ actor DownloadFirstMediaSession: TransportDataSession {
     private func alignedOffset(_ offset: Int64, contentLength: Int64) -> Int64 {
         let alignment = max(Int64(1_048_576), configuration.segmentSizeBytes)
         return min(max(0, (offset / alignment) * alignment), max(0, contentLength - 1))
+    }
+
+    private func scheduleMainMigrationAfterStableSeek(hintOffset: Int64, resource: TransportResolvedResource, generation: Int) {
+        seekMigrationTask?.cancel()
+        seekMigrationTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard let self, !Task.isCancelled else { return }
+            await self.commitStableSeekMigration(hintOffset: hintOffset, resource: resource, generation: generation)
+        }
+    }
+
+    private func commitStableSeekMigration(hintOffset: Int64, resource: TransportResolvedResource, generation: Int) {
+        seekMigrationTask = nil
+        guard !stopped, generation == seekGeneration, let store else { return }
+        let urgentWindow = max(Int64(8 * 1_048_576), configuration.upstreamBlockSizeBytes)
+        let continuationOffset = min(resource.contentLength - 1, hintOffset + urgentWindow)
+        let target = alignedOffset(continuationOffset, contentLength: resource.contentLength)
+        let available = store.availableLength(from: target, maximumLength: 4 * 1_048_576)
+        guard available < 4 * 1_048_576 else { return }
+        guard !mainRunning || abs(target - mainCursor) > 32 * 1_048_576 else { return }
+
+        let previous = mainAnchor
+        startMainDownloader(anchor: target, reason: "stable-seek")
+        lastMainMigrationAt = Date()
+        DiagnosticsLogger.shared.log(
+            "DownloadFirstMain",
+            "migrated-stable-seek from=\(previous) hint=\(hintOffset) to=\(target) generation=\(generation)"
+        )
+    }
+
+    private func isMetadataProbe(offset: Int64, length: Int, contentLength: Int64) -> Bool {
+        if length <= 128 * 1024 { return true }
+        guard length < 1_048_576 else { return false }
+        return offset < 4 * 1_048_576 || offset >= max(0, contentLength - 4 * 1_048_576)
+    }
+
+    private func isFarFromRecentSeek(offset: Int64, resource: TransportResolvedResource) -> Bool {
+        guard Date().timeIntervalSince(lastSeekHintAt) < 10, let lastSeekHintOffset else { return false }
+        let tolerance = min(Int64(256 * 1_048_576), max(Int64(96 * 1_048_576), resource.contentLength / 10))
+        return abs(offset - lastSeekHintOffset) > tolerance
     }
 
     private func recordDownload(bytes: Int64) {

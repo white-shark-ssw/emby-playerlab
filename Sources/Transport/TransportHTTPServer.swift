@@ -34,6 +34,7 @@ final class TransportHTTPServer {
     private let session: TransportDataSession
     private let fileExtension: String
     private let token = UUID().uuidString.lowercased()
+    private let logID = String(UUID().uuidString.lowercased().prefix(6))
     private let queue = DispatchQueue(label: "com.embyplayerlab.transport.http-server", qos: .userInitiated)
     private let lock = NSLock()
     private var listener: NWListener?
@@ -89,7 +90,7 @@ final class TransportHTTPServer {
                             self.setLocalURL(url)
                             DiagnosticsLogger.shared.log(
                                 "TransportHTTP",
-                                "ready port=\(port.rawValue) pathToken=redacted"
+                                "server=\(self.logID) ready port=\(port.rawValue) pathToken=redacted"
                             )
                             continuation.resume(returning: url)
                         case .failed(let error):
@@ -134,7 +135,7 @@ final class TransportHTTPServer {
         state.tasks.forEach { $0.cancel() }
         state.connections.forEach { $0.cancel() }
         Task { await session.stop() }
-        DiagnosticsLogger.shared.log("TransportHTTP", "stopped")
+        DiagnosticsLogger.shared.log("TransportHTTP", "server=\(logID) stopped")
     }
 
     private func accept(_ connection: NWConnection) {
@@ -149,7 +150,7 @@ final class TransportHTTPServer {
             switch state {
             case .failed(let error):
                 if !self.isClientDisconnect(error) {
-                    DiagnosticsLogger.shared.log("TransportHTTP", "connection failed: \(error.localizedDescription)")
+                    DiagnosticsLogger.shared.log("TransportHTTP", "server=\(self.logID) connection failed: \(error.localizedDescription)")
                 }
                 self.removeConnection(identifier)?.cancel()
             case .cancelled:
@@ -168,7 +169,7 @@ final class TransportHTTPServer {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self, weak connection] data, _, isComplete, error in
             guard let self, let connection else { return }
             if let error {
-                DiagnosticsLogger.shared.log("TransportHTTP", "receive failed: \(error.localizedDescription)")
+                DiagnosticsLogger.shared.log("TransportHTTP", "server=\(self.logID) receive failed: \(error.localizedDescription)")
                 connection.cancel()
                 return
             }
@@ -241,7 +242,7 @@ final class TransportHTTPServer {
             if logRequest {
                 DiagnosticsLogger.shared.log(
                     "TransportHTTP",
-                    "request method=\(request.method) status=\(status) start=\(responseRange.lowerBound) length=\(responseRange.length)"
+                    "server=\(logID) request method=\(request.method) status=\(status) start=\(responseRange.lowerBound) length=\(responseRange.length)"
                 )
             }
 
@@ -263,16 +264,16 @@ final class TransportHTTPServer {
             if logRequest || sentBytes >= 8 * 1_048_576 {
                 DiagnosticsLogger.shared.log(
                     "TransportHTTP",
-                    "response finished start=\(responseRange.lowerBound) sent=\(sentBytes)"
+                    "server=\(logID) response finished start=\(responseRange.lowerBound) sent=\(sentBytes)"
                 )
             }
         } catch is CancellationError {
-            DiagnosticsLogger.shared.log("TransportHTTP", "response cancelled")
+            DiagnosticsLogger.shared.log("TransportHTTP", "server=\(logID) response cancelled")
         } catch {
             if isClientDisconnect(error) {
                 return
             }
-            DiagnosticsLogger.shared.log("TransportHTTP", "response failed: \(error.localizedDescription)")
+            DiagnosticsLogger.shared.log("TransportHTTP", "server=\(logID) response failed: \(error.localizedDescription)")
             if !responseStarted {
                 await sendError(status: 502, reason: "Bad Gateway", on: connection)
             }

@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.5.1
+## 当前版本：0.5.2
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.5.1-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.5.2-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -274,6 +274,15 @@ Deployment Target 继续保持 iOS 15.0。
 
 实验引擎不启动 `TransportHTTPServer`，因此不会产生 AVPlayer 的多个超长 localhost Range。下载器保持单顺序主连接、临时 Seek 连接、403/410 刷新和慢连接竞速换线。
 
+
+
+## 0.5.2 下载线程稳定与 AVPlayer 停滞恢复
+
+- 115 CDN 禁用额外线路探测，避免第三连接触发 403。
+- 文件尾部小范围索引读取不再迁移主下载线程。
+- 连续 Seek 使用紧急通道即时补数据，主下载只跟随最后稳定目标，减少连接反复取消重建。
+- 传输层 AVPlayer 关闭主动等待，并在本地缓存充足但画面停住时执行立即播放与软重 Seek。
+- Deployment Target 继续保持 iOS 15.0。
 
 ## 0.5.1 KSPlayer 2.3.4 构建修复
 
