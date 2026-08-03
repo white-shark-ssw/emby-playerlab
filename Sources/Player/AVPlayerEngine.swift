@@ -32,6 +32,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private var lastStallPosition: Double = -1
     private var stallRecoveryAttempts = 0
     private var lastTransportItemRebindAt = Date.distantPast
+    private var transportAssetRevision = 0
+    private var lastTransportFailureReloadAt = Date.distantPast
 
     private struct Configuration {
         let url: URL
@@ -79,6 +81,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         transportServer = nil
         transportLocalURL = nil
         lastTransportItemRebindAt = .distantPast
+        transportAssetRevision = 0
         player.pause()
         player.replaceCurrentItem(with: nil)
         videoOutput = nil
@@ -265,7 +268,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         DispatchQueue.main.async { [weak self, weak transportServer] in
             guard let self, let transportServer, self.shouldPlayWhenReady else { return }
             self.player.automaticallyWaitsToMinimizeStalling = true
-            if attempt <= 1 {
+            let bufferedEnd = self.snapshot.bufferedRanges.map(\.upperBound).max() ?? 0
+            let timelineIsBehind = bufferedEnd + 1 < position
+            if attempt <= 1, !timelineIsBehind {
                 transportServer.resetClientStreams(reason: "stall-recovery attempt=1")
                 DiagnosticsLogger.shared.log("AVPlayerRecovery", "reset-streams-and-play position=\(position) attempt=\(attempt)")
                 self.resumePlayback(reason: "stall-recovery", generation: self.seekRequestGeneration)
@@ -273,7 +278,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             }
 
             if Date().timeIntervalSince(self.lastTransportItemRebindAt) >= 2.5 {
-                self.rebindTransportItem(at: position, reason: "stall attempt=\(attempt)")
+                let detail = timelineIsBehind ? "timeline-behind bufferedEnd=\(bufferedEnd)" : "stall"
+                self.rebindTransportItem(at: position, reason: "\(detail) attempt=\(attempt)")
             } else {
                 DiagnosticsLogger.shared.log("AVPlayerRecovery", "rebind-throttled position=\(position) attempt=\(attempt)")
                 self.resumePlayback(reason: "stall-rebind-throttled", generation: self.seekRequestGeneration)
@@ -309,6 +315,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         pendingFrameMeasurement = nil
         lastStallPosition = -1
         stallRecoveryAttempts = 0
+        lastTransportFailureReloadAt = .distantPast
         snapshot = PlayerSnapshot()
     }
 
@@ -380,9 +387,12 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             DispatchQueue.main.async {
                 guard let self else { return }
                 if item.status == .failed {
+                    let message = item.error?.localizedDescription ?? "AVPlayerItem failed"
+                    let position = max(0, self.player.currentTime().seconds.isFinite ? self.player.currentTime().seconds : self.snapshot.position)
+                    if self.scheduleTransportSessionReload(at: position, error: message) { return }
                     self.shouldPlayWhenReady = false
                     self.snapshot.isPlaying = false
-                    self.snapshot.errorMessage = item.error?.localizedDescription ?? "AVPlayerItem failed"
+                    self.snapshot.errorMessage = message
                     DiagnosticsLogger.shared.log(
                         "AVPlayer",
                         "item failed engine=\(self.kind.title) error=\(self.snapshot.errorMessage ?? "unknown")"
@@ -469,25 +479,79 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     }
 
     private func rebindTransportItem(at position: Double, reason: String) {
-        guard kind == .transportAVPlayer, let localURL = transportLocalURL else {
+        guard kind == .transportAVPlayer, let transportServer else {
             resumePlayback(reason: "rebind-missing-local-url", generation: seekRequestGeneration)
             return
         }
         lastTransportItemRebindAt = Date()
         seekRequestGeneration += 1
         let generation = seekRequestGeneration
+        transportAssetRevision += 1
+        let revision = transportAssetRevision
         pendingFrameMeasurement = nil
-        transportServer?.resetClientStreams(reason: "item-rebind \(reason)")
         player.pause()
+        snapshot.isBuffering = true
+        snapshot.waitingReason = "Transport HTTP rebuilding item"
+        emit()
         DiagnosticsLogger.shared.log(
             "AVPlayerRecovery",
-            "rebind-item position=\(position) generation=\(generation) reason=\(reason)"
+            "rebind-item position=\(position) generation=\(generation) revision=\(revision) reason=\(reason)"
         )
-        installAsset(
-            AVURLAsset(url: localURL),
-            preferredForwardBuffer: transportForwardBufferDuration,
-            startPosition: max(0, position)
+        Task { [weak self, weak transportServer] in
+            guard let self, let transportServer else { return }
+            do {
+                let localURL = try await transportServer.restartListener()
+                DispatchQueue.main.async { [weak self, weak transportServer] in
+                    guard let self, let transportServer, self.transportServer === transportServer,
+                          self.shouldPlayWhenReady, generation == self.seekRequestGeneration else { return }
+                    self.transportLocalURL = localURL
+                    let assetURL = self.versionedTransportURL(localURL, revision: revision)
+                    DiagnosticsLogger.shared.log(
+                        "AVPlayerRecovery",
+                        "rebind-listener-ready position=\(position) generation=\(generation) revision=\(revision)"
+                    )
+                    self.installAsset(
+                        AVURLAsset(url: assetURL),
+                        preferredForwardBuffer: self.transportForwardBufferDuration,
+                        startPosition: max(0, position)
+                    )
+                }
+            } catch {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, generation == self.seekRequestGeneration else { return }
+                    _ = self.scheduleTransportSessionReload(at: position, error: "listener restart failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func versionedTransportURL(_ url: URL, revision: Int) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        var queryItems = components.queryItems ?? []
+        queryItems.removeAll { $0.name == "transportRevision" }
+        queryItems.append(URLQueryItem(name: "transportRevision", value: String(revision)))
+        components.queryItems = queryItems
+        return components.url ?? url
+    }
+
+    @discardableResult
+    private func scheduleTransportSessionReload(at position: Double, error: String) -> Bool {
+        guard kind == .transportAVPlayer, shouldPlayWhenReady,
+              Date().timeIntervalSince(lastTransportFailureReloadAt) >= 15 else { return false }
+        lastTransportFailureReloadAt = Date()
+        snapshot.isBuffering = true
+        snapshot.errorMessage = nil
+        snapshot.waitingReason = "Transport HTTP item failed; rebuilding session"
+        DiagnosticsLogger.shared.log(
+            "AVPlayerRecovery",
+            "item-failure-reload position=\(position) error=\(error)"
         )
+        emit()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self, self.shouldPlayWhenReady else { return }
+            self.reload(at: position)
+        }
+        return true
     }
 
     private func resumePlayback(reason: String, generation: Int, immediate: Bool = false) {

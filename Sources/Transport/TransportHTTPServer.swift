@@ -52,6 +52,7 @@ final class TransportHTTPServer {
 
     func start() async throws -> URL {
         if let url = currentLocalURL() { return url }
+        guard !isStopped else { throw ServerError.failedToStart("服务已经停止") }
 
         Task { [session] in
             _ = try? await session.resolve()
@@ -73,7 +74,11 @@ final class TransportHTTPServer {
                     )
 
                     let listener = try NWListener(using: parameters, on: .any)
-                    self.listener = listener
+                    guard self.installListener(listener) else {
+                        listener.cancel()
+                        continuation.resume(throwing: ServerError.failedToStart("服务已经停止"))
+                        return
+                    }
                     var resumed = false
 
                     listener.stateUpdateHandler = { [weak self, weak listener] state in
@@ -129,6 +134,19 @@ final class TransportHTTPServer {
         await session.recoverStall(position: position, duration: duration)
     }
 
+    func restartListener() async throws -> URL {
+        let state = takeServerStateForRestart()
+        guard state.canRestart else { throw ServerError.failedToStart("服务已经停止") }
+        state.listener?.cancel()
+        state.tasks.forEach { $0.cancel() }
+        state.connections.forEach { $0.cancel() }
+        DiagnosticsLogger.shared.log(
+            "TransportHTTP",
+            "server=\(logID) restarting listener connections=\(state.connections.count) tasks=\(state.tasks.count)"
+        )
+        return try await start()
+    }
+
     func resetClientStreams(reason: String) {
         let state = takeClientStateForReset()
         state.tasks.forEach { $0.cancel() }
@@ -157,19 +175,18 @@ final class TransportHTTPServer {
 
         let identifier = ObjectIdentifier(connection)
         connection.stateUpdateHandler = { [weak self, weak connection] state in
-            guard let self else { return }
+            guard let self, let connection else { return }
             switch state {
             case .failed(let error):
                 if !self.isClientDisconnect(error) {
                     DiagnosticsLogger.shared.log("TransportHTTP", "server=\(self.logID) connection failed: \(error.localizedDescription)")
                 }
-                self.removeConnection(identifier)?.cancel()
+                self.removeConnection(identifier, matching: connection)?.cancel()
             case .cancelled:
-                self.removeConnection(identifier)?.cancel()
+                self.removeConnection(identifier, matching: connection)?.cancel()
             default:
                 break
             }
-            _ = connection
         }
 
         connection.start(queue: queue)
@@ -200,10 +217,10 @@ final class TransportHTTPServer {
                     let task = Task { [weak self, weak connection] in
                         guard let self, let connection else { return }
                         await self.serve(request, on: connection)
-                        self.removeConnection(identifier)?.cancel()
+                        self.removeConnection(identifier, matching: connection)?.cancel()
                         connection.cancel()
                     }
-                    self.storeTask(task, for: identifier)
+                    self.storeTask(task, for: identifier, matching: connection)
                 } catch {
                     self.sendSimpleError(status: 400, reason: "Bad Request", on: connection)
                 }
@@ -354,7 +371,9 @@ final class TransportHTTPServer {
             headers[key] = value
         }
 
-        return HTTPRequest(method: String(parts[0]).uppercased(), path: String(parts[1]), headers: headers)
+        let target = String(parts[1])
+        let path = target.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? target
+        return HTTPRequest(method: String(parts[0]).uppercased(), path: path, headers: headers)
     }
 
     private func parseRange(_ value: String?, contentLength: Int64) throws -> ByteRange? {
@@ -409,6 +428,20 @@ final class TransportHTTPServer {
         return localURL
     }
 
+    private var isStopped: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return stopped
+    }
+
+    private func installListener(_ listener: NWListener) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !stopped else { return false }
+        self.listener = listener
+        return true
+    }
+
     private func setLocalURL(_ url: URL) {
         lock.lock()
         localURL = url
@@ -423,16 +456,21 @@ final class TransportHTTPServer {
         return true
     }
 
-    private func storeTask(_ task: Task<Void, Never>, for identifier: ObjectIdentifier) {
+    private func storeTask(_ task: Task<Void, Never>, for identifier: ObjectIdentifier, matching connection: NWConnection) {
         lock.lock()
-        connectionTasks[identifier] = task
+        if connections[identifier] === connection {
+            connectionTasks[identifier] = task
+        } else {
+            task.cancel()
+        }
         lock.unlock()
     }
 
     @discardableResult
-    private func removeConnection(_ identifier: ObjectIdentifier) -> Task<Void, Never>? {
+    private func removeConnection(_ identifier: ObjectIdentifier, matching connection: NWConnection) -> Task<Void, Never>? {
         lock.lock()
         defer { lock.unlock() }
+        guard connections[identifier] === connection else { return nil }
         connections[identifier] = nil
         return connectionTasks.removeValue(forKey: identifier)
     }
@@ -461,5 +499,19 @@ final class TransportHTTPServer {
         let currentTasks = Array(connectionTasks.values)
         connectionTasks.removeAll()
         return (currentListener, currentConnections, currentTasks)
+    }
+
+    private func takeServerStateForRestart() -> (canRestart: Bool, listener: NWListener?, connections: [NWConnection], tasks: [Task<Void, Never>]) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !stopped else { return (false, nil, [], []) }
+        let currentListener = listener
+        listener = nil
+        localURL = nil
+        let currentConnections = Array(connections.values)
+        connections.removeAll()
+        let currentTasks = Array(connectionTasks.values)
+        connectionTasks.removeAll()
+        return (true, currentListener, currentConnections, currentTasks)
     }
 }

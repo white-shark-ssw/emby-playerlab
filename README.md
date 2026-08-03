@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.5.4
+## 当前版本：0.5.5
 
 ### 系统与构建
 
@@ -39,7 +39,7 @@
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
 5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.5.4-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+6. 解压获得 `EmbyPlayerLab-0.5.5-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 ## 建议测试顺序
 
@@ -310,4 +310,14 @@ Deployment Target 继续保持 iOS 15.0。
 - 传输层 AVPlayer 恢复 `automaticallyWaitsToMinimizeStalling`，防止数据短暂不足时直接停在 `.paused` 且不会自动续播。
 - 第一次停滞会清理旧 HTTP 流并立即续播；同一位置再次停滞时，不再只做软 Seek，而是复用同一缓存会话和 localhost 地址重建 `AVPlayerItem`。
 - 新日志增加 `TransportHTTP reset streams`、`AVPlayerState` 与 `AVPlayerRecovery rebind-item`，便于区分网络低速、旧响应阻塞和 AVFoundation 解码状态卡死。
+- Deployment Target 继续保持 iOS 15.0。
+
+## 0.5.5 localhost 重绑竞态与失败回退
+
+- 修复旧 NWConnection 的异步取消回调可能误删新连接的问题：连接清理现在同时校验 ObjectIdentifier 与连接实例。
+- AVPlayerItem 重建使用新的 `transportRevision` URL，强制 AVFoundation 放弃旧资产的失败和缓冲状态；localhost 服务会忽略查询参数并继续服务同一媒体。
+- 播放项重建时直接重启 localhost listener，保留同一个下载会话和稀疏缓存，但换用新的端口与资产 URL。
+- 当 loadedTimeRanges 明显落后于真实播放位置时，第一次停滞就直接重建播放项。
+- 重建播放项仍失败时自动重建完整传输会话并从当前位置恢复，避免播放器永久进入 failed。
+- 115 线路淘汰阈值放宽到启动期约 8–12 MB/s、稳定期约 6–10 MB/s，避免把可用连接换成更慢线路。
 - Deployment Target 继续保持 iOS 15.0。

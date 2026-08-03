@@ -677,11 +677,11 @@ actor DownloadFirstMediaSession: TransportDataSession {
 
         let threshold: Double
         if startupLaneHunt {
-            let connectionBased = min(16 * 1_048_576, connectionPeakMainBytesPerSecond * 0.55)
-            threshold = max(10 * 1_048_576, connectionBased)
+            let connectionBased = min(12 * 1_048_576, connectionPeakMainBytesPerSecond * 0.40)
+            threshold = max(8 * 1_048_576, connectionBased)
         } else {
-            let adaptiveThreshold = min(14 * 1_048_576, peakMainBytesPerSecond * 0.45)
-            threshold = max(8 * 1_048_576, adaptiveThreshold)
+            let adaptiveThreshold = min(10 * 1_048_576, peakMainBytesPerSecond * 0.30)
+            threshold = max(6 * 1_048_576, adaptiveThreshold)
         }
         guard currentMainBytesPerSecond > 0, currentMainBytesPerSecond < threshold else {
             slowMainSince = nil
