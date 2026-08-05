@@ -242,6 +242,28 @@ actor MediaTransportSession {
         return value
     }
 
+    func quiesceConsumers() async {
+        guard !stopped else { return }
+        demandGeneration &+= 1
+        priorityDemandUntil = Date.distantPast
+        preloadTask?.cancel()
+        preloadTask = nil
+        initialPreloadTask?.cancel()
+        initialPreloadTask = nil
+        preloadAnchor = nil
+        preloadWindow = nil
+
+        let segmentTasks = inFlight.values.map(\.task)
+        let blockTasks = preloadBlocks.values.map(\.task)
+        segmentTasks.forEach { $0.cancel() }
+        blockTasks.forEach { $0.cancel() }
+        inFlight.removeAll()
+        preloadBlocks.removeAll()
+        resumeAllSegmentWaiters()
+        DiagnosticsLogger.shared.log("TransportSession", "consumer quiesce segments=\(segmentTasks.count) blocks=\(blockTasks.count)")
+        try? await Task.sleep(nanoseconds: 200_000_000)
+    }
+
     func stop() async {
         guard !stopped else { return }
         stopped = true
@@ -298,7 +320,8 @@ actor MediaTransportSession {
 
         do {
             let data = try await task.value
-            if inFlight[start]?.token == token { inFlight[start] = nil }
+            guard inFlight[start]?.token == token else { throw CancellationError() }
+            inFlight[start] = nil
             await storeSegment(data, start: start)
             return SegmentValue(data: data, cacheHit: false)
         } catch {

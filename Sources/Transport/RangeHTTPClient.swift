@@ -131,7 +131,7 @@ private final class RangeStreamLoader: NSObject, URLSessionDataDelegate, URLSess
     private let resource: TransportResolvedResource
     private let range: Range<Int64>
     private let lane: RangeRequestLane
-    private let yieldSize = 256 * 1024
+    private let yieldSize = 1 * 1_048_576
     private let lock = NSLock()
 
     private var continuation: AsyncThrowingStream<Data, Error>.Continuation?

@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 → 115 直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.6.1
+## 当前版本：0.6.2
 
 ### 系统与构建
 
@@ -13,37 +13,18 @@
 - KSPlayer：2.3.4
 - MPVKit：0.40.0-av（MPVKit-GPL）
 
-### 0.6.1 自动播放器稳定化
+### 0.6.2 自动热切换与内存稳定化
 
+本版依据两次连续真机测试修复自动引擎热切换风险：第一次正常播放到可信结尾；第二次在传输健康、连续缓存充足时发生连续 Stall，日志在预期自动切到 KSPlayer 的看门狗周期附近突然中断。由于压缩包未包含 `.ips` 或 `JetsamEvent`，该结论属于高置信度时序推断，不冒充系统崩溃堆栈结论。
 
-本版在 0.6.0 自动播放器架构上修复以下稳定性问题：
+- 自动引擎切换改为两阶段流程：先断开旧引擎回调并停止旧引擎，再让共享传输会话取消旧消费者，短暂等待后创建新引擎。
+- 切换期间使用空载占位引擎，旧 AVPlayer/ResourceLoader 不再与 KSPlayer AVIO 同时读取共享会话。
+- 共享传输新增 `quiesceConsumers()`，取消旧播放段、预取块和等待者，但保留 302 解析结果、内存/磁盘缓存和播放窗口。
+- 引擎切换增加同步磁盘面包屑；若再次异常退出，重新打开 App 后日志会显示最后完成的切换阶段。
+- ResourceLoader 内存缓存最高限制为 128 MB，批量 Range 从 64 MB 调整为 32 MB，流式交付块调整为 1 MB，降低 AVFoundation、缓存和预取同时占用内存的峰值。
+- 被切换流程移除的旧分段任务即使稍后返回，也不能再写入新消费者使用的任务槽。
 
-- Seek 后旧 ResourceLoader 读取不能再把预取窗口拉回旧位置。
-- ResourceLoader 完成与取消在同一串行队列决胜，避免对已取消请求再次 `finishLoading`。
-- 下载段和预取块增加实例令牌，旧任务结束不能误删同位置的新任务。
-- 修复缺口 Range 重复加入列表的问题。
-- ResourceLoader 单次交付从 256 KB 提升到 1 MB，减少任务切换和数据复制。
-- 流式预取改为偏移式缓冲，避免每 256 KB 执行一次 `Data.removeFirst`。
-
-普通播放不再要求用户选择引擎。`PlaybackOrchestrator` 会根据容器、编码、传输健康和播放器状态自动执行单向路由：
-
-```text
-智能 AVPlayer（AVAssetResourceLoader）
-    ↓ 数据充足但连续停滞 / 播放项错误 / 提前 EOF
-KSPlayer FFmpeg（自定义 AVIO）
-    ↓ FFmpeg 仍无法稳定播放
-MPV 容错
-```
-
-智能 AVPlayer 与 KSPlayer FFmpeg 共用同一个 `MediaTransportSession`：
-
-- 共享 Emby 播放会话和 302 最终直链。
-- 共享内存缓存、磁盘分片和当前位置播放窗口。
-- 引擎切换不重新下载已缓存字节。
-- 移除自动路径中的 localhost HTTP listener。
-- AVPlayer 通过自定义 URL scheme 和 `AVAssetResourceLoaderDelegate` 读取缓存。
-- KSPlayer 通过 FFmpeg AVIO 直接读取同一个会话。
-- MPV 暂时仍使用自身网络栈，作为最后一级容错；后续再接共享 IO。
+普通用户仍不需要手动选择引擎，自动降级顺序保持不变。
 
 ### 115 播放窗口
 
@@ -51,7 +32,7 @@ MPV 容错
 
 - Wi-Fi 默认 128 MB，允许设置 32–128 MB。
 - 蜂窝默认 64 MB，允许设置 16–64 MB。
-- 115 后台连续预取固定为 1 条连接，稳定阶段使用 64 MB 长 Range。
+- 115 后台连续预取固定为 1 条连接，稳定阶段使用 32 MB 长 Range。
 - Seek 时取消旧窗口预取，立即在新位置建立窗口。
 - MP4 尾部元数据探测不会改变当前播放需求位置。
 - 诊断栏分别显示实时速度、平均速度、总缓存和当前位置连续缓存。
@@ -81,9 +62,9 @@ MPV 容错
 2. 等待 `Validate Source` 成功。
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-5. 解压获得 `EmbyPlayerLab-0.6.1-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+5. 解压获得 `EmbyPlayerLab-0.6.2-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
-## 0.6.1 建议测试
+## 0.6.2 建议测试
 
 1. 使用 ItemId `63368`，直接点击“播放”，不要选择引擎。
 2. 确认起始日志为 `engine=智能 AVPlayer` 和 `prepare-resource-loader`，且没有 `TransportHTTP ready port=`。

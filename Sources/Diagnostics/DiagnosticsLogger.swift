@@ -31,6 +31,9 @@ final class DiagnosticsLogger {
         try? persistentHandle?.seekToEnd()
 
         log("Lifecycle", "logger initialized bundle=\(AppIdentity.version) source=\(AppIdentity.sourceVersion)")
+        if let breadcrumb = EngineTransitionBreadcrumb.previousDescription() {
+            log("CrashBreadcrumb", "previous uncleared engine transition \(breadcrumb)")
+        }
     }
 
     func log(_ category: String, _ message: String) {

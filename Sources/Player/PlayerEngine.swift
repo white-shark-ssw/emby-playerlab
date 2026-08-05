@@ -119,6 +119,21 @@ extension PlayerEngine {
     func transportMetrics() async -> TransportMetricsSnapshot? { nil }
 }
 
+final class SuspendedPlayerEngine: PlayerEngine {
+    let kind: PlayerEngineKind
+    var onSnapshot: ((PlayerSnapshot) -> Void)?
+    var onSeekCompleted: ((SeekResult) -> Void)?
+
+    init(kind: PlayerEngineKind) { self.kind = kind }
+
+    func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {}
+    func play() {}
+    func pause() {}
+    func seek(to seconds: Double, direction: SeekDirection) {}
+    func reload(at seconds: Double) {}
+    func stop() {}
+}
+
 enum SeekDirection {
     case forward
     case backward

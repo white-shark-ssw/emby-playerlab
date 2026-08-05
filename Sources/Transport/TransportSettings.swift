@@ -68,15 +68,16 @@ struct MediaTransportConfiguration: Equatable {
     func resourceLoaderProfile() -> MediaTransportConfiguration {
         let wifiWindow = min(max(wifiPreloadBytes, Int64(32 * 1_048_576)), Int64(128 * 1_048_576))
         let cellularWindow = min(max(cellularPreloadBytes, Int64(16 * 1_048_576)), Int64(64 * 1_048_576))
+        let memoryCap = memoryLimitBytes > 0 ? min(memoryLimitBytes, Int64(128 * 1_048_576)) : 0
         return MediaTransportConfiguration(
             strategy: .legacyMultiRange,
             cacheMode: cacheMode,
-            memoryLimitBytes: memoryLimitBytes,
+            memoryLimitBytes: memoryCap,
             diskLimitBytes: diskLimitBytes,
             wifiPreloadBytes: wifiWindow,
             cellularPreloadBytes: cellularWindow,
             segmentSizeBytes: min(max(segmentSizeBytes, Int64(1_048_576)), Int64(4 * 1_048_576)),
-            upstreamBlockSizeBytes: Int64(64 * 1_048_576),
+            upstreamBlockSizeBytes: Int64(32 * 1_048_576),
             maximumConcurrentRequests: 2,
             keepLastCache: keepLastCache
         )

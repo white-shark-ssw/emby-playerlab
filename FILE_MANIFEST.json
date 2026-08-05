@@ -2,7 +2,7 @@
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
     "bytes": 4971,
-    "sha256": "5ae0d2fbe418181750dd75c954bf36b810e96fc5acab3eebccdd8d72c5978b28"
+    "sha256": "0467cfa4682052c712cea75f77e6ff26f4d837e6601428d8bf4ee68d7c585ec7"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -17,7 +17,7 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1783,
-    "sha256": "5965dfffc3d7c8f83357c2bb341cd29636253723916b99d2684ca7510dc021bf"
+    "sha256": "8320def6f4b264af489767381ce42c4056712ed4bad68bb538865493bb60c547"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -31,8 +31,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 19652,
-    "sha256": "794fbf9e63cc893cdc684941df158ff9770bb56e5cf73ab821fcdd99c260d25f"
+    "bytes": 19520,
+    "sha256": "917f2eb5f90f05ce938b3930006f7e0525f39da89183a1d732ea91d63f13711f"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -197,7 +197,7 @@
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1062,
-    "sha256": "1bcedfa10c495f1ab147da60ddf4b3f48bff1b9c24bdbfe894a906c0a3155876"
+    "sha256": "541a09d394bd30dd83465dd969a96ea4975af4cbee138da470d98a8c86ab85b8"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -211,8 +211,13 @@
   },
   {
     "path": "Sources/Diagnostics/DiagnosticsLogger.swift",
-    "bytes": 4920,
-    "sha256": "2588b08993471c47ad3da6570f5d4b023c14c19d1fbc7526823d49a02ce4b85b"
+    "bytes": 5098,
+    "sha256": "3e1572da38ad7e34f4a86f4110b2a44b573af447d455c880cdaf786cb8ceee0c"
+  },
+  {
+    "path": "Sources/Diagnostics/EngineTransitionBreadcrumb.swift",
+    "bytes": 1706,
+    "sha256": "c6a6cbd23aad228f94ad0f5a040485751b3a671a4d1e29d96b0e5a8d4479f4f7"
   },
   {
     "path": "Sources/Models/EmbyModels.swift",
@@ -251,13 +256,13 @@
   },
   {
     "path": "Sources/Player/PlayerController.swift",
-    "bytes": 30589,
-    "sha256": "28e1186d97daf3d6af1b0cb4d9b5a566a4b53784be37aa851f7dcb1af2e932d8"
+    "bytes": 34052,
+    "sha256": "ee268a8c3193949ca972811d72bd12c3d0dcf38c21f09cb437df41249c3acfcb"
   },
   {
     "path": "Sources/Player/PlayerEngine.swift",
-    "bytes": 3872,
-    "sha256": "af8a0617205e48bf348fd3a4adb467170b4a2079d64b6014e978feb14a36d6f5"
+    "bytes": 4381,
+    "sha256": "0df65fa70316981c67434d58adc258079af92aa6be338a9d3b85d7696a5992c3"
   },
   {
     "path": "Sources/Player/PrematureEOFGuard.swift",
@@ -286,8 +291,8 @@
   },
   {
     "path": "Sources/Transport/MediaTransportSession.swift",
-    "bytes": 32504,
-    "sha256": "58419759994e3a890bd96b95265f4e458091d6b88d720817a96a2e3145d5ad90"
+    "bytes": 33382,
+    "sha256": "70204dbf37d0f1e11b9c686e56246654d697acb7fd2307b7620db79ac0556fbd"
   },
   {
     "path": "Sources/Transport/NetworkPathMonitor.swift",
@@ -296,13 +301,13 @@
   },
   {
     "path": "Sources/Transport/PlaybackTransportContext.swift",
-    "bytes": 623,
-    "sha256": "4cc4820b2d3d5ea6bc5a2ee44122665738af242a3698f8b7eb9f95f74d3f1c49"
+    "bytes": 695,
+    "sha256": "267747b132e30d88521bd48e0c5cc90464cdd341a75d84b627c25d87794640b0"
   },
   {
     "path": "Sources/Transport/RangeHTTPClient.swift",
-    "bytes": 14252,
-    "sha256": "0731175bdf33de732f9185a41197445619d0e115e59815c1f29bccf4b6716dfa"
+    "bytes": 14255,
+    "sha256": "40decdcd70306f6f5b32076f0f88615c160994ea4d51a7055330f8ea659db9d6"
   },
   {
     "path": "Sources/Transport/RedirectResolver.swift",
@@ -336,8 +341,8 @@
   },
   {
     "path": "Sources/Transport/TransportSettings.swift",
-    "bytes": 5737,
-    "sha256": "560dc293dd98df3813db5d1c0d0ed8f88b649c1ebfb29efdc22e2c33768ba687"
+    "bytes": 5827,
+    "sha256": "ad51ed9e45d300e8152d2630d33f831e3b8be89ec9427f3f59a1e7899e69e4fb"
   },
   {
     "path": "Sources/Transport/TransportTypes.swift",
@@ -407,7 +412,7 @@
   {
     "path": "Sources/UI/PlayerSettingsView.swift",
     "bytes": 5772,
-    "sha256": "3be921f83a1b44e3f596d4b141e2f722f2a26551724539ffe3ae826384ffc353"
+    "sha256": "50bf3b45b52be59ea63f825749d27460df7af5d7ad0962e197b28dafb664579e"
   },
   {
     "path": "docs/115AVIO_RESEARCH_PHASE1.md",
@@ -426,8 +431,8 @@
   },
   {
     "path": "docs/BUILD_REPORT.md",
-    "bytes": 1014,
-    "sha256": "a17bea0086191a5d946d5ba12e82d364a5e3a837175acd5edaaff3b45a59363b"
+    "bytes": 1043,
+    "sha256": "1fef997df808f1459b19242126119364bf016a649d4a7a79965ba776b042e8b2"
   },
   {
     "path": "docs/CHANGELOG_0.1.0.md",
@@ -585,6 +590,11 @@
     "sha256": "051dd12440f67967d722276188ed60ee3e99f37502a0c065d7b4d905412a29ca"
   },
   {
+    "path": "docs/CHANGELOG_0.6.2.md",
+    "bytes": 1302,
+    "sha256": "b9996b28494f8b3ddb3394ea64c42d5a629d51b31d671bd9c24e75b2c7b2cccf"
+  },
+  {
     "path": "docs/GITHUB_BUILD_FIX_0.5.1.md",
     "bytes": 1701,
     "sha256": "516d1e1bb3e26c51bf0ce41c35ccc5ad31bde85e3afb6b1d92f23a2735f384e6"
@@ -613,6 +623,11 @@
     "path": "docs/LOG_ANALYSIS_0.6.1.md",
     "bytes": 1597,
     "sha256": "60cf12b1470932b3fb20b37a704145691671ffe4c707e164d315d72822b032f8"
+  },
+  {
+    "path": "docs/LOG_ANALYSIS_0.6.2.md",
+    "bytes": 1114,
+    "sha256": "258cd5e35cd5ef31c5d8abb259e096524eac270205dad775cf4679b464f14960"
   },
   {
     "path": "docs/RESEARCH_NOTES.md",
@@ -690,6 +705,11 @@
     "sha256": "31918e747992032a1279ea12af7e1c83da29095382464ce5f9ddac6e6a7f6f13"
   },
   {
+    "path": "docs/TEST_CHECKLIST_0.6.2.md",
+    "bytes": 847,
+    "sha256": "0e220dfe305a31f183fa7e074b9d2bb93e73cf7e58f000e2c121d3a3a8d8af46"
+  },
+  {
     "path": "docs/TRANSPORT_ARCHITECTURE_0.3.0.md",
     "bytes": 1502,
     "sha256": "77c2d1bf45c18c20a4f6b38fde4bd94beb73fa14a81eb20203c2d9ce9d2e8ab8"
@@ -697,7 +717,7 @@
   {
     "path": "project.yml",
     "bytes": 1464,
-    "sha256": "9e39985a1e725af2a57706024b145dc50a1d725650bb06c17f06ca5a45d63f33"
+    "sha256": "b442f6d5472828289e328366306d1c48f86421969b411278d06888e6c83af44e"
   },
   {
     "path": "scripts/check_min_os.sh",

@@ -53,7 +53,7 @@ struct PlayerSettingsView: View {
                         ForEach(segmentSizes, id: \.self) { size in Text("\(size) MB").tag(size) }
                     }
                     Toggle("退出后保留磁盘缓存", isOn: $keepLastCache)
-                    Text("播放窗口只覆盖当前播放位置前方的数据。Seek 后旧窗口立即降级，新位置先填充连续数据；不会再以尽快下载完整文件为播放目标。115 默认只使用一条连续预取连接，稳定阶段采用 64 MB 长 Range。")
+                    Text("播放窗口只覆盖当前播放位置前方的数据。Seek 后旧窗口立即降级，新位置先填充连续数据；不会再以尽快下载完整文件为播放目标。115 默认只使用一条连续预取连接，稳定阶段采用 32 MB 长 Range。")
                         .font(.footnote)
                         .foregroundColor(.secondary)
 

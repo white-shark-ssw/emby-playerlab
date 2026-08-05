@@ -30,6 +30,10 @@ final class PlayerController: ObservableObject {
     private var transportMetricsTask: Task<Void, Never>?
     private var compatibilityRecoveryTask: Task<Void, Never>?
     private var compatibilitySeekFallbackTask: Task<Void, Never>?
+    private var engineSwitchTask: Task<Void, Never>?
+    private var engineSwitchInProgress = false
+    private var engineTransitionAwaitingFirstSnapshot = false
+    private var engineSwitchSerial: UInt64 = 0
     private var started = false
     private var userWantsPlayback = false
     private var userIsScrubbing = false
@@ -144,6 +148,11 @@ final class PlayerController: ObservableObject {
         compatibilityRecoveryTask = nil
         compatibilitySeekFallbackTask?.cancel()
         compatibilitySeekFallbackTask = nil
+        engineSwitchTask?.cancel()
+        engineSwitchTask = nil
+        engineSwitchInProgress = false
+        engineTransitionAwaitingFirstSnapshot = false
+        EngineTransitionBreadcrumb.clear()
         seekReportTask?.cancel()
         seekReportTask = nil
         seekAnchorReleaseTask?.cancel()
@@ -261,14 +270,18 @@ final class PlayerController: ObservableObject {
     }
 
     func switchEngine(to kind: PlayerEngineKind, reason: String = "用户切换") {
-        guard kind != engineKind else { return }
+        guard kind != engineKind, !engineSwitchInProgress else { return }
         let resumePosition = clampPosition(pendingSeekTarget ?? snapshot.position)
         let shouldPlay = userWantsPlayback
+        let previousKind = engineKind
+        let previousEngine = engine
 
-        DiagnosticsLogger.shared.log(
-            "Engine",
-            "Switch \(engineKind.title) -> \(kind.title) reason=\(reason) position=\(resumePosition)"
-        )
+        engineSwitchInProgress = true
+        engineTransitionAwaitingFirstSnapshot = true
+        engineSwitchSerial &+= 1
+        let serial = engineSwitchSerial
+        EngineTransitionBreadcrumb.record(stage: "requested", from: previousKind, to: kind, position: resumePosition, reason: reason)
+        DiagnosticsLogger.shared.log("Engine", "Switch requested \(previousKind.title) -> \(kind.title) reason=\(reason) position=\(resumePosition) serial=\(serial)")
 
         pendingSeekTarget = nil
         pendingSeekDirection = nil
@@ -281,24 +294,49 @@ final class PlayerController: ObservableObject {
         mpvCompatibilityLoadInProgress = false
         seekAnchorReleaseTask?.cancel()
         seekAnchorReleaseTask = nil
-        engine.stop()
-        engineKind = kind
-        orchestrator.didSwitch(to: kind)
-        lastHandledEngineError = nil
-        engine = Self.makeEngine(kind: kind, source: source, client: client, transportContext: transportContext)
-        bindEngine()
-        resetWatchdog()
-        prematureEOFMessage = nil
-        stallMessage = "已切换到 \(kind.title)：\(reason)"
+        transportMetricsTask?.cancel()
+        transportMetricsTask = nil
+        lastTransportMetrics = nil
+        transportSummary = nil
 
-        engine.prepare(
-            url: source.url,
-            headers: source.headers,
-            preferredForwardBuffer: preferredForwardBuffer,
-            startPosition: resumePosition
-        )
-        if shouldPlay { engine.play() }
-        startTransportMetricsPolling()
+        engineGeneration += 1
+        previousEngine.onSnapshot = nil
+        previousEngine.onSeekCompleted = nil
+        engine = SuspendedPlayerEngine(kind: previousKind)
+        resetWatchdog()
+        stallMessage = "正在自动切换到 \(kind.title)：\(reason)"
+        EngineTransitionBreadcrumb.record(stage: "old-callbacks-detached", from: previousKind, to: kind, position: resumePosition, reason: reason)
+
+        previousEngine.stop()
+        EngineTransitionBreadcrumb.record(stage: "old-engine-stopped", from: previousKind, to: kind, position: resumePosition, reason: reason)
+
+        engineSwitchTask?.cancel()
+        engineSwitchTask = Task { [weak self] in
+            guard let self else { return }
+            if let transportContext = self.transportContext { await transportContext.quiesceConsumers() }
+            guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
+            EngineTransitionBreadcrumb.record(stage: "transport-quiesced", from: previousKind, to: kind, position: resumePosition, reason: reason)
+
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
+
+            let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext)
+            self.engine = nextEngine
+            self.engineKind = kind
+            self.orchestrator.didSwitch(to: kind)
+            self.lastHandledEngineError = nil
+            self.bindEngine()
+            self.prematureEOFMessage = nil
+            EngineTransitionBreadcrumb.record(stage: "new-engine-created", from: previousKind, to: kind, position: resumePosition, reason: reason)
+
+            nextEngine.prepare(url: self.source.url, headers: self.source.headers, preferredForwardBuffer: self.preferredForwardBuffer, startPosition: resumePosition)
+            if shouldPlay { nextEngine.play() }
+            EngineTransitionBreadcrumb.record(stage: "prepare-called", from: previousKind, to: kind, position: resumePosition, reason: reason)
+            DiagnosticsLogger.shared.log("Engine", "Switch prepare called \(previousKind.title) -> \(kind.title) serial=\(serial)")
+            self.engineSwitchInProgress = false
+            self.engineSwitchTask = nil
+            self.startTransportMetricsPolling()
+        }
     }
 
     func toggleEngine() {
@@ -372,6 +410,15 @@ final class PlayerController: ObservableObject {
                 guard generation == self.engineGeneration else { return }
                 let wasEnd = self.snapshot.didReachEnd
                 self.snapshot = value
+                if self.engineTransitionAwaitingFirstSnapshot {
+                    self.engineTransitionAwaitingFirstSnapshot = false
+                    if let error = value.errorMessage, !error.isEmpty {
+                        DiagnosticsLogger.shared.log("Engine", "Switch first snapshot error engine=\(self.engineKind.title) error=\(error)")
+                    } else {
+                        EngineTransitionBreadcrumb.clear()
+                        DiagnosticsLogger.shared.log("Engine", "Switch first snapshot engine=\(self.engineKind.title) position=\(value.position)")
+                    }
+                }
 
                 if self.engineKind != .mpv,
                    !self.userIsScrubbing,
@@ -540,7 +587,8 @@ final class PlayerController: ObservableObject {
     }
 
     private func handleEngineError(_ message: String) {
-        guard let action = orchestrator.actionForEngineError(kind: engineKind, message: message) else { return }
+        guard !engineSwitchInProgress, !engineTransitionAwaitingFirstSnapshot,
+              let action = orchestrator.actionForEngineError(kind: engineKind, message: message) else { return }
         if case .switchEngine(let next, let reason) = action {
             stallMessage = "\(engineKind.title) 发生错误，正在自动切换到 \(next.title)。"
             switchEngine(to: next, reason: reason)
@@ -548,7 +596,8 @@ final class PlayerController: ObservableObject {
     }
 
     private func evaluatePlaybackStall() {
-        guard !userIsScrubbing, pendingSeekTarget == nil,
+        guard !engineSwitchInProgress, !engineTransitionAwaitingFirstSnapshot,
+              !userIsScrubbing, pendingSeekTarget == nil,
               snapshot.isPlaying || snapshot.isBuffering,
               snapshot.position + 3 < effectiveDuration else {
             resetWatchdogSamples()
