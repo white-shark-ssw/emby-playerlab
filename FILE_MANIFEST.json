@@ -2,7 +2,7 @@
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
     "bytes": 4971,
-    "sha256": "e47475c5d8799a29272c0f1ea51c6003c54e7fa42d6c0a629aafe1da0f2b4386"
+    "sha256": "5ae0d2fbe418181750dd75c954bf36b810e96fc5acab3eebccdd8d72c5978b28"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -17,7 +17,7 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1783,
-    "sha256": "dee8367a90367aa408bdf1cb8546d79797546a737fb01eb7a107e3ba1b8b94a3"
+    "sha256": "5965dfffc3d7c8f83357c2bb341cd29636253723916b99d2684ca7510dc021bf"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -31,8 +31,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 19053,
-    "sha256": "3c191bce413704794f692d27061c8056b52a8a9d75a46f802dd4ce9edb22f899"
+    "bytes": 19652,
+    "sha256": "794fbf9e63cc893cdc684941df158ff9770bb56e5cf73ab821fcdd99c260d25f"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -197,7 +197,7 @@
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1062,
-    "sha256": "09c13cb93c22c9dbca12146cd706968149ea64f7725d955b73d6065e8b6fcb44"
+    "sha256": "1bcedfa10c495f1ab147da60ddf4b3f48bff1b9c24bdbfe894a906c0a3155876"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -286,8 +286,8 @@
   },
   {
     "path": "Sources/Transport/MediaTransportSession.swift",
-    "bytes": 31427,
-    "sha256": "9757574e94467c0ca4ad94606fbd4413a5241c7953626d8badf599f1aabac12c"
+    "bytes": 32504,
+    "sha256": "58419759994e3a890bd96b95265f4e458091d6b88d720817a96a2e3145d5ad90"
   },
   {
     "path": "Sources/Transport/NetworkPathMonitor.swift",
@@ -301,8 +301,8 @@
   },
   {
     "path": "Sources/Transport/RangeHTTPClient.swift",
-    "bytes": 13822,
-    "sha256": "b5a29c69ab1fa5a095925599a619e07f213baf6f6b6d1802765453152793c4e5"
+    "bytes": 14252,
+    "sha256": "0731175bdf33de732f9185a41197445619d0e115e59815c1f29bccf4b6716dfa"
   },
   {
     "path": "Sources/Transport/RedirectResolver.swift",
@@ -331,8 +331,8 @@
   },
   {
     "path": "Sources/Transport/TransportResourceLoader.swift",
-    "bytes": 7222,
-    "sha256": "fa80ca4ec8f1e46bb8d2fa633eafc1c1597b7b5f27cfa08d1e8e8afe9140cd6b"
+    "bytes": 8025,
+    "sha256": "025f89eec0a758706c50855a49f2a44d880797cfef9f6dccbea9f3838c0282ad"
   },
   {
     "path": "Sources/Transport/TransportSettings.swift",
@@ -426,8 +426,8 @@
   },
   {
     "path": "docs/BUILD_REPORT.md",
-    "bytes": 1029,
-    "sha256": "098f272f5b10b7825ea54b35d781eeba0f6082fd94c0f5f3672c241a84123a8d"
+    "bytes": 1014,
+    "sha256": "a17bea0086191a5d946d5ba12e82d364a5e3a837175acd5edaaff3b45a59363b"
   },
   {
     "path": "docs/CHANGELOG_0.1.0.md",
@@ -580,6 +580,11 @@
     "sha256": "142af73296a8bc7f3334c9dad532c026e26fcbf76e63430c4b0e24293ea5bc86"
   },
   {
+    "path": "docs/CHANGELOG_0.6.1.md",
+    "bytes": 1267,
+    "sha256": "051dd12440f67967d722276188ed60ee3e99f37502a0c065d7b4d905412a29ca"
+  },
+  {
     "path": "docs/GITHUB_BUILD_FIX_0.5.1.md",
     "bytes": 1701,
     "sha256": "516d1e1bb3e26c51bf0ce41c35ccc5ad31bde85e3afb6b1d92f23a2735f384e6"
@@ -603,6 +608,11 @@
     "path": "docs/LOG_ANALYSIS_0.5.5.md",
     "bytes": 1683,
     "sha256": "7d976b6bc19b6f360616bbd5e7983202a8030904399e8a2a34cca9c68f9a4b2a"
+  },
+  {
+    "path": "docs/LOG_ANALYSIS_0.6.1.md",
+    "bytes": 1597,
+    "sha256": "60cf12b1470932b3fb20b37a704145691671ffe4c707e164d315d72822b032f8"
   },
   {
     "path": "docs/RESEARCH_NOTES.md",
@@ -675,6 +685,11 @@
     "sha256": "c0ceb83d688ee162fa4059579f35c00fafe936d1fbd0ede6ec09c85fb91b930b"
   },
   {
+    "path": "docs/TEST_CHECKLIST_0.6.1.md",
+    "bytes": 1161,
+    "sha256": "31918e747992032a1279ea12af7e1c83da29095382464ce5f9ddac6e6a7f6f13"
+  },
+  {
     "path": "docs/TRANSPORT_ARCHITECTURE_0.3.0.md",
     "bytes": 1502,
     "sha256": "77c2d1bf45c18c20a4f6b38fde4bd94beb73fa14a81eb20203c2d9ce9d2e8ab8"
@@ -682,7 +697,7 @@
   {
     "path": "project.yml",
     "bytes": 1464,
-    "sha256": "a1e61a78542743615b774eae9cbf93955aaf46dcfb4af726f1ffcd0d818ff33f"
+    "sha256": "9e39985a1e725af2a57706024b145dc50a1d725650bb06c17f06ca5a45d63f33"
   },
   {
     "path": "scripts/check_min_os.sh",

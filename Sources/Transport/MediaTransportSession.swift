@@ -7,6 +7,7 @@ actor MediaTransportSession {
     }
 
     private struct InFlightEntry {
+        let token: UUID
         let task: Task<Data, Error>
         var preloadOnly: Bool
     }
@@ -27,6 +28,7 @@ actor MediaTransportSession {
     }
 
     private struct PreloadBlockEntry {
+        let token: UUID
         let range: Range<Int64>
         let task: Task<Void, Error>
     }
@@ -57,6 +59,7 @@ actor MediaTransportSession {
     private var lastLoggedMegabytes: Int64 = 0
     private var cachedRanges = SparseByteRangeSet()
     private var demandOffset: Int64 = 0
+    private var demandGeneration: UInt64 = 0
     private var priorityDemandUntil = Date.distantPast
     private var stopped = false
 
@@ -110,7 +113,12 @@ actor MediaTransportSession {
 
     func noteDemand(range: Range<Int64>) async {
         guard !stopped, !range.isEmpty else { return }
-        demandOffset = max(0, range.lowerBound)
+        guard let resource = try? await resolve() else { return }
+        let candidate = max(0, range.lowerBound)
+        let isTailMetadataProbe = candidate >= max(0, resource.contentLength - 4 * 1_048_576)
+            && range.count <= 1_048_576
+        guard !isTailMetadataProbe, acceptsReadDemand(candidate) else { return }
+        demandOffset = max(demandOffset, candidate)
     }
 
     func read(offset: Int64, length: Int) async throws -> Data {
@@ -118,10 +126,10 @@ actor MediaTransportSession {
         guard length > 0 else { return Data() }
         let resource = try await resolve()
         guard offset < resource.contentLength else { return Data() }
+        let readGeneration = demandGeneration
         let isTailMetadataProbe = offset >= max(0, resource.contentLength - 4 * 1_048_576) && length <= 1_048_576
-        let isStaleAfterPrioritySeek = Date() < priorityDemandUntil && abs(offset - demandOffset) > 32 * 1_048_576
-        let drivesPlaybackWindow = !isTailMetadataProbe && !isStaleAfterPrioritySeek
-        if drivesPlaybackWindow { await noteDemand(range: offset..<(offset + Int64(length))) }
+        let drivesPlaybackWindow = !isTailMetadataProbe && acceptsReadDemand(offset)
+        if drivesPlaybackWindow { demandOffset = max(demandOffset, offset) }
 
         let upperBound = min(resource.contentLength, offset + Int64(length))
         let segmentSize = max(1, configuration.segmentSizeBytes)
@@ -167,7 +175,8 @@ actor MediaTransportSession {
 
         if output.count >= 64 * 1024 {
             scheduleInitialPreload(resource: resource)
-            if drivesPlaybackWindow { schedulePreload(after: upperBound, resource: resource) }
+            let stillOwnsDemand = readGeneration == demandGeneration && acceptsReadDemand(offset)
+            if drivesPlaybackWindow, stillOwnsDemand { schedulePreload(after: upperBound, resource: resource) }
         }
         return output
     }
@@ -190,8 +199,9 @@ actor MediaTransportSession {
             max(0, (offset / segmentSize) * segmentSize),
             max(0, resource.contentLength - segmentSize)
         )
+        demandGeneration &+= 1
         demandOffset = alignedOffset
-        priorityDemandUntil = Date().addingTimeInterval(4)
+        priorityDemandUntil = Date().addingTimeInterval(6)
         preloadTask?.cancel()
         preloadTask = nil
         initialPreloadTask?.cancel()
@@ -279,20 +289,21 @@ actor MediaTransportSession {
         }
 
         let lane: RangeRequestLane = preload ? .preload(worker: 0) : .playback
+        let token = UUID()
         let task = Task<Data, Error> { [weak self] in
             guard let self else { throw MediaTransportError.cancelled }
             return try await self.downloadSegment(start: start, allowRefresh: true, lane: lane)
         }
-        inFlight[start] = InFlightEntry(task: task, preloadOnly: preload)
+        inFlight[start] = InFlightEntry(token: token, task: task, preloadOnly: preload)
 
         do {
             let data = try await task.value
-            inFlight[start] = nil
+            if inFlight[start]?.token == token { inFlight[start] = nil }
             await storeSegment(data, start: start)
             return SegmentValue(data: data, cacheHit: false)
         } catch {
-            inFlight[start] = nil
-            metricsValue.rangeFailureCount += 1
+            if inFlight[start]?.token == token { inFlight[start] = nil }
+            if !(error is CancellationError) { metricsValue.rangeFailureCount += 1 }
             throw error
         }
     }
@@ -570,11 +581,12 @@ actor MediaTransportSession {
             return
         }
 
+        let token = UUID()
         let task = Task<Void, Error> { [weak self] in
             guard let self else { throw MediaTransportError.cancelled }
             try await self.downloadPreloadBlock(range: range, worker: worker)
         }
-        preloadBlocks[range.lowerBound] = PreloadBlockEntry(range: range, task: task)
+        preloadBlocks[range.lowerBound] = PreloadBlockEntry(token: token, range: range, task: task)
 
         do {
             try await task.value
@@ -587,7 +599,7 @@ actor MediaTransportSession {
             )
         }
 
-        preloadBlocks[range.lowerBound] = nil
+        if preloadBlocks[range.lowerBound]?.token == token { preloadBlocks[range.lowerBound] = nil }
         resumeSegmentWaiters(in: range)
     }
 
@@ -689,6 +701,7 @@ actor MediaTransportSession {
             }
         }
 
+        if Task.isCancelled || stopped { throw CancellationError() }
         guard received == Int64(range.count), buffer.isEmpty, segmentStart == range.upperBound else {
             throw MediaTransportError.shortRead(expected: Int(range.count), actual: Int(received))
         }
@@ -713,6 +726,12 @@ actor MediaTransportSession {
         blocks.forEach { $0.task.cancel() }
         preloadBlocks.removeAll()
         blocks.forEach { resumeSegmentWaiters(in: $0.range) }
+    }
+
+    private func acceptsReadDemand(_ offset: Int64) -> Bool {
+        let candidate = max(0, offset)
+        if Date() < priorityDemandUntil, abs(candidate - demandOffset) > 32 * 1_048_576 { return false }
+        return candidate + 4 * 1_048_576 >= demandOffset
     }
 
     private func recordDownload(bytes: Int64) {

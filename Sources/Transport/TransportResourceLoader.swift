@@ -6,11 +6,17 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
     let session: TransportDataSession
     private let stopSessionOnInvalidate: Bool
 
-    private struct ActiveRequest {
+    private final class ActiveRequest {
         let token: UUID
         let request: AVAssetResourceLoadingRequest
-        let task: Task<Void, Never>
         let range: Range<Int64>?
+        var task: Task<Void, Never>?
+
+        init(token: UUID, request: AVAssetResourceLoadingRequest, range: Range<Int64>?) {
+            self.token = token
+            self.request = request
+            self.range = range
+        }
     }
 
     private let queue = DispatchQueue(label: "com.embyplayerlab.transport.resource-loader", qos: .userInitiated)
@@ -41,7 +47,7 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
 
     func invalidate() {
         let running = invalidateAndTakeRequests()
-        running.forEach { $0.task.cancel() }
+        running.forEach { $0.task?.cancel() }
         if stopSessionOnInvalidate { Task { [session] in await session.stop() } }
     }
 
@@ -55,21 +61,26 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
 
         let identifier = ObjectIdentifier(loadingRequest)
         let token = UUID()
-        let range = requestedRange(for: loadingRequest)
+        let active = ActiveRequest(token: token, request: loadingRequest, range: requestedRange(for: loadingRequest))
+        guard storeRequest(active, for: identifier) else { return false }
+
         let task = Task { [weak self, weak loadingRequest] in
             guard let self, let loadingRequest else { return }
             do {
                 try await self.fulfill(loadingRequest)
+                self.completeRequest(identifier: identifier, token: token, error: nil)
             } catch is CancellationError {
-                // AVFoundation cancelled the request; didCancel owns its lifecycle.
+                self.removeRequest(for: identifier, matching: token)
             } catch {
                 DiagnosticsLogger.shared.log("ResourceLoader", "request failed: \(error.localizedDescription)")
-                self.finish(loadingRequest, error: error)
+                self.completeRequest(identifier: identifier, token: token, error: error)
             }
-            _ = self.removeRequest(for: identifier, matching: token)
+        }
+        guard attachTask(task, identifier: identifier, token: token) else {
+            task.cancel()
+            return true
         }
 
-        storeRequest(ActiveRequest(token: token, request: loadingRequest, task: task, range: range), for: identifier)
         DiagnosticsLogger.shared.log(
             "ResourceLoader",
             "accepted offset=\(loadingRequest.dataRequest?.requestedOffset ?? -1) length=\(loadingRequest.dataRequest?.requestedLength ?? 0) allToEnd=\(loadingRequest.dataRequest?.requestsAllDataToEndOfResource ?? false) active=\(requestCount())"
@@ -82,7 +93,7 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         didCancel loadingRequest: AVAssetResourceLoadingRequest
     ) {
         let identifier = ObjectIdentifier(loadingRequest)
-        removeRequest(for: identifier)?.task.cancel()
+        removeRequest(for: identifier)?.task?.cancel()
         DiagnosticsLogger.shared.log("ResourceLoader", "cancelled active=\(requestCount())")
     }
 
@@ -99,10 +110,7 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
             }
         }
 
-        guard let dataRequest = loadingRequest.dataRequest else {
-            finish(loadingRequest, error: nil)
-            return
-        }
+        guard let dataRequest = loadingRequest.dataRequest else { return }
 
         var cursor = max(dataRequest.requestedOffset, dataRequest.currentOffset)
         let requestedEnd: Int64
@@ -111,13 +119,10 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         } else {
             requestedEnd = min(resource.contentLength, dataRequest.requestedOffset + Int64(dataRequest.requestedLength))
         }
-        guard cursor < requestedEnd else {
-            finish(loadingRequest, error: nil)
-            return
-        }
+        guard cursor < requestedEnd else { return }
 
         await session.noteDemand(range: cursor..<requestedEnd)
-        let deliveryChunk = 256 * 1024
+        let deliveryChunk = 1 * 1_048_576
         while cursor < requestedEnd {
             try Task.checkCancellation()
             let length = min(deliveryChunk, Int(requestedEnd - cursor))
@@ -126,7 +131,14 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
             queue.sync { dataRequest.respond(with: data) }
             cursor += Int64(data.count)
         }
-        finish(loadingRequest, error: nil)
+    }
+
+    private func completeRequest(identifier: ObjectIdentifier, token: UUID, error: Error?) {
+        queue.async { [weak self] in
+            guard let self, let active = self.removeRequest(for: identifier, matching: token) else { return }
+            if let error { active.request.finishLoading(with: error) }
+            else { active.request.finishLoading() }
+        }
     }
 
     private func requestedRange(for request: AVAssetResourceLoadingRequest) -> Range<Int64>? {
@@ -141,8 +153,19 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         return invalidated
     }
 
-    private func storeRequest(_ request: ActiveRequest, for identifier: ObjectIdentifier) {
-        lock.lock(); requests[identifier] = request; lock.unlock()
+    @discardableResult
+    private func storeRequest(_ request: ActiveRequest, for identifier: ObjectIdentifier) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !invalidated else { return false }
+        requests[identifier] = request
+        return true
+    }
+
+    private func attachTask(_ task: Task<Void, Never>, identifier: ObjectIdentifier, token: UUID) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let request = requests[identifier], request.token == token, !invalidated else { return false }
+        request.task = task
+        return true
     }
 
     @discardableResult
@@ -169,12 +192,5 @@ final class TransportResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         let running = Array(requests.values)
         requests.removeAll()
         return running
-    }
-
-    private func finish(_ request: AVAssetResourceLoadingRequest, error: Error?) {
-        queue.async {
-            if let error { request.finishLoading(with: error) }
-            else { request.finishLoading() }
-        }
     }
 }

@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → 302 → 115 直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.6.0
+## 当前版本：0.6.1
 
 ### 系统与构建
 
@@ -13,7 +13,17 @@
 - KSPlayer：2.3.4
 - MPVKit：0.40.0-av（MPVKit-GPL）
 
-### 0.6.0 自动播放器架构
+### 0.6.1 自动播放器稳定化
+
+
+本版在 0.6.0 自动播放器架构上修复以下稳定性问题：
+
+- Seek 后旧 ResourceLoader 读取不能再把预取窗口拉回旧位置。
+- ResourceLoader 完成与取消在同一串行队列决胜，避免对已取消请求再次 `finishLoading`。
+- 下载段和预取块增加实例令牌，旧任务结束不能误删同位置的新任务。
+- 修复缺口 Range 重复加入列表的问题。
+- ResourceLoader 单次交付从 256 KB 提升到 1 MB，减少任务切换和数据复制。
+- 流式预取改为偏移式缓冲，避免每 256 KB 执行一次 `Data.removeFirst`。
 
 普通播放不再要求用户选择引擎。`PlaybackOrchestrator` 会根据容器、编码、传输健康和播放器状态自动执行单向路由：
 
@@ -71,9 +81,9 @@ MPV 容错
 2. 等待 `Validate Source` 成功。
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-5. 解压获得 `EmbyPlayerLab-0.6.0-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+5. 解压获得 `EmbyPlayerLab-0.6.1-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
-## 0.6.0 建议测试
+## 0.6.1 建议测试
 
 1. 使用 ItemId `63368`，直接点击“播放”，不要选择引擎。
 2. 确认起始日志为 `engine=智能 AVPlayer` 和 `prepare-resource-loader`，且没有 `TransportHTTP ready port=`。

@@ -138,6 +138,7 @@ private final class RangeStreamLoader: NSObject, URLSessionDataDelegate, URLSess
     private var session: URLSession?
     private var task: URLSessionDataTask?
     private var pending = Data()
+    private var pendingReadOffset = 0
     private var receivedBytes = 0
     private var redirectCount = 0
     private var acceptedResponse = false
@@ -276,9 +277,14 @@ private final class RangeStreamLoader: NSObject, URLSessionDataDelegate, URLSess
         }
         receivedBytes += data.count
         pending.append(data)
-        while pending.count >= yieldSize {
-            chunks.append(Data(pending.prefix(yieldSize)))
-            pending.removeFirst(yieldSize)
+        while pending.count - pendingReadOffset >= yieldSize {
+            let end = pendingReadOffset + yieldSize
+            chunks.append(pending.subdata(in: pendingReadOffset..<end))
+            pendingReadOffset = end
+        }
+        if pendingReadOffset >= 4 * 1_048_576 || pendingReadOffset * 2 >= pending.count {
+            pending.removeSubrange(0..<pendingReadOffset)
+            pendingReadOffset = 0
         }
         let continuation = self.continuation
         lock.unlock()
@@ -295,8 +301,9 @@ private final class RangeStreamLoader: NSObject, URLSessionDataDelegate, URLSess
         lock.lock()
         let accepted = acceptedResponse
         let received = receivedBytes
-        let remainder = pending
+        let remainder = pendingReadOffset < pending.count ? pending.subdata(in: pendingReadOffset..<pending.count) : Data()
         pending.removeAll(keepingCapacity: false)
+        pendingReadOffset = 0
         lock.unlock()
 
         guard accepted else {

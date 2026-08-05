@@ -1,6 +1,6 @@
 # Build Report
 
-- Version: 0.6.0 (30)
+- Version: 0.6.1 (31)
 - Deployment Target: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Expected CI: Xcode 16.4, arm64 iPhoneOS Release
@@ -15,5 +15,5 @@
 - Automatic path localhost HTTP: disabled
 - Deployment Target changed: no; remains iOS 15.0
 - Full iOS 17.0 compatibility claim: pending GitHub Actions build and real-device test
-- Local validation: Swift parser for all sources; targeted Swift typechecks for orchestrator, MediaTransportSession and AVIO coordinator; plist/YAML/JSON/shell validation; manifest and archive verification.
+- Local validation: Swift parser for all sources; targeted Swift 5 typecheck for MediaTransportSession; plist/YAML/JSON/shell validation; manifest, patch-application and archive verification.
 - Full iPhoneOS typecheck, link, embedded-framework MinimumOS validation and unsigned IPA packaging: pending GitHub Actions.
