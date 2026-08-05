@@ -50,9 +50,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .spm-cache
-          key: ${{ runner.os }}-mpvkit-av-0.40.0-ksplayer-2.3.4-ktv-3.1.0-${{ hashFiles('project.yml', 'Podfile') }}
+          key: ${{ runner.os }}-ksplayer-2.3.4-ktv-3.1.0-${{ hashFiles('project.yml', 'Podfile') }}
 
-      - name: Resolve MPVKit and KSPlayer
+      - name: Resolve KSPlayer
         run: |
           set -euo pipefail
           set -o pipefail
@@ -62,7 +62,7 @@ jobs:
             -scheme EmbyPlayerLab \
             -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
 
-      - name: Inspect MPV module maps
+      - name: Inspect package module maps
         if: always()
         run: |
           set -u

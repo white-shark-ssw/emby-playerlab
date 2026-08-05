@@ -23,7 +23,7 @@ struct PlaybackLabView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 
-                    Text("播放引擎由 App 自动选择，并在必要时按 AVPlayer → FFmpeg → MPV 单向降级。")
+                    Text("播放引擎由 App 在会话开始前自动选择；播放过程中保持当前引擎，不再热切换。")
                         .font(.footnote)
                         .foregroundColor(.secondary)
 

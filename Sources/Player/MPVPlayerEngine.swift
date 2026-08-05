@@ -1,9 +1,12 @@
 import AVFoundation
 import Foundation
+#if canImport(MPVKit)
 import MPVKit
+#endif
 import QuartzCore
 import UIKit
 
+#if canImport(MPVKit)
 final class MPVPlayerEngine: PlayerEngine {
     let kind: PlayerEngineKind = .mpv
     var onSnapshot: ((PlayerSnapshot) -> Void)?
@@ -602,3 +605,54 @@ enum MPVEngineError: LocalizedError {
         }
     }
 }
+
+#else
+final class MPVPlayerEngine: PlayerEngine {
+    let kind: PlayerEngineKind = .mpv
+    var onSnapshot: ((PlayerSnapshot) -> Void)?
+    var onSeekCompleted: ((SeekResult) -> Void)?
+    let displayLayer = AVSampleBufferDisplayLayer()
+
+    private var snapshot = PlayerSnapshot(errorMessage: "当前 KTV 缓存实验构建未链接 MPVKit；请使用自动模式或 KSPlayer FFmpeg。")
+
+    init() {
+        displayLayer.backgroundColor = UIColor.black.cgColor
+        displayLayer.videoGravity = .resizeAspect
+    }
+
+    func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
+        snapshot.position = max(0, startPosition)
+        snapshot.errorMessage = "当前 KTV 缓存实验构建未链接 MPVKit；请使用自动模式或 KSPlayer FFmpeg。"
+        emit()
+    }
+
+    func reloadForBadInterleavedMP4(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double, reason: String) {
+        prepare(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition)
+    }
+
+    func play() {}
+    func pause() {}
+
+    func seek(to seconds: Double, direction: SeekDirection) {
+        let requestedAt = CACurrentMediaTime()
+        snapshot.position = max(0, seconds)
+        onSeekCompleted?(SeekResult(requestedAt: requestedAt, target: seconds, actualPosition: nil, bufferHit: false, completionLatencyMs: 0, measurement: "MPV unavailable in this build"))
+        emit()
+    }
+
+    func reload(at seconds: Double) {
+        snapshot.position = max(0, seconds)
+        emit()
+    }
+
+    func stop() {
+        displayLayer.flushAndRemoveImage()
+        snapshot = PlayerSnapshot()
+    }
+
+    private func emit() {
+        let value = snapshot
+        DispatchQueue.main.async { [weak self] in self?.onSnapshot?(value) }
+    }
+}
+#endif

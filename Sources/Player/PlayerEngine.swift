@@ -52,7 +52,7 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
         case .transportAVPlayer: return "诊断：旧版本机 HTTP"
         case .ksAVIO: return "诊断：KSPlayer FFmpeg"
         case .avPlayer: return "诊断：直连 AVPlayer"
-        case .mpv: return "诊断：MPV"
+        case .mpv: return "诊断：MPV（本构建未链接）"
         }
     }
 

@@ -347,7 +347,7 @@ final class PlayerController: ObservableObject {
         case .ktvAVPlayer: next = .resourceLoaderAVPlayer
         case .resourceLoaderAVPlayer: next = .ksAVIO
         case .transportAVPlayer: next = .resourceLoaderAVPlayer
-        case .ksAVIO: next = .mpv
+        case .ksAVIO: next = .ktvAVPlayer
         case .avPlayer: next = .resourceLoaderAVPlayer
         case .mpv: next = .ktvAVPlayer
         }
