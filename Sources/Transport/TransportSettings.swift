@@ -65,17 +65,34 @@ struct MediaTransportConfiguration: Equatable {
         cacheMode == .disk || cacheMode == .automatic
     }
 
+    func resourceLoaderProfile() -> MediaTransportConfiguration {
+        let wifiWindow = min(max(wifiPreloadBytes, Int64(32 * 1_048_576)), Int64(128 * 1_048_576))
+        let cellularWindow = min(max(cellularPreloadBytes, Int64(16 * 1_048_576)), Int64(64 * 1_048_576))
+        return MediaTransportConfiguration(
+            strategy: .legacyMultiRange,
+            cacheMode: cacheMode,
+            memoryLimitBytes: memoryLimitBytes,
+            diskLimitBytes: diskLimitBytes,
+            wifiPreloadBytes: wifiWindow,
+            cellularPreloadBytes: cellularWindow,
+            segmentSizeBytes: min(max(segmentSizeBytes, Int64(1_048_576)), Int64(4 * 1_048_576)),
+            upstreamBlockSizeBytes: Int64(64 * 1_048_576),
+            maximumConcurrentRequests: 2,
+            keepLastCache: keepLastCache
+        )
+    }
+
     static func current(defaults: UserDefaults = .standard) -> MediaTransportConfiguration {
         defaults.register(defaults: [
             TransportSettingsKey.strategy: TransportStrategy.downloadFirst.rawValue,
             TransportSettingsKey.cacheMode: TransportCacheMode.automatic.rawValue,
             TransportSettingsKey.memoryCacheMB: 256,
             TransportSettingsKey.diskCacheGB: 2,
-            TransportSettingsKey.wifiPreloadMB: 1024,
-            TransportSettingsKey.cellularPreloadMB: 128,
+            TransportSettingsKey.wifiPreloadMB: 128,
+            TransportSettingsKey.cellularPreloadMB: 64,
             TransportSettingsKey.segmentSizeMB: 1,
             TransportSettingsKey.upstreamBlockSizeMB: 16,
-            TransportSettingsKey.concurrentRequests: 4,
+            TransportSettingsKey.concurrentRequests: 2,
             TransportSettingsKey.keepLastCache: false,
         ])
 

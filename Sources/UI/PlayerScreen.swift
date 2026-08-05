@@ -109,16 +109,13 @@ struct PlayerScreen: View {
 
                 Spacer()
 
-                Button {
-                    controller.toggleEngine()
-                } label: {
-                    Text(engineBadge)
-                        .font(.headline.monospaced())
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(Color.white.opacity(0.18))
-                        .clipShape(Capsule())
-                }
+                Text(engineBadge)
+                    .font(.headline.monospaced())
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Color.white.opacity(0.18))
+                    .clipShape(Capsule())
+                    .accessibilityLabel("当前自动播放引擎：\(controller.engineKind.title)")
 
                 Button {
                     showSettings = true
@@ -145,7 +142,7 @@ struct PlayerScreen: View {
                     Button {
                         controller.togglePlayPause()
                     } label: {
-                        Image(systemName: controller.snapshot.isPlaying ? "pause.fill" : "play.fill")
+                        Image(systemName: controller.playbackControlIsPlaying ? "pause.fill" : "play.fill")
                             .font(.system(size: 38))
                     }
 
@@ -190,6 +187,9 @@ struct PlayerScreen: View {
         VStack(alignment: .leading, spacing: 3) {
             Text("引擎：\(controller.engineKind.title) · \(controller.lastSeekSummary)")
             Text("缓冲到 \(formatTime(controller.bufferedEnd)) · \(controller.snapshot.isBuffering ? "等待数据" : "可播放")")
+            if controller.snapshot.accessLogStalls > 0 || controller.snapshot.droppedVideoFrames > 0 {
+                Text("AV 统计：停滞 \(controller.snapshot.accessLogStalls) · 丢帧 \(controller.snapshot.droppedVideoFrames)")
+            }
             if let transportSummary = controller.transportSummary {
                 Text("传输：\(transportSummary)")
             }
@@ -245,10 +245,11 @@ struct PlayerScreen: View {
 
     private var engineBadge: String {
         switch controller.engineKind {
-        case .transportAVPlayer: return "TAV"
-        case .ksAVIO: return "KSA"
-        case .avPlayer: return "AV"
-        case .mpv: return "MPV"
+        case .resourceLoaderAVPlayer: return "AUTO·AV"
+        case .transportAVPlayer: return "LEGACY"
+        case .ksAVIO: return "AUTO·FF"
+        case .avPlayer: return "DIRECT"
+        case .mpv: return "AUTO·MPV"
         }
     }
 

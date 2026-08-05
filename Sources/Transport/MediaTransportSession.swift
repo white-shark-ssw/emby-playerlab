@@ -55,6 +55,9 @@ actor MediaTransportSession {
     private var speedSamples: [SpeedSample] = []
     private let createdAt = Date()
     private var lastLoggedMegabytes: Int64 = 0
+    private var cachedRanges = SparseByteRangeSet()
+    private var demandOffset: Int64 = 0
+    private var priorityDemandUntil = Date.distantPast
     private var stopped = false
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, configuration: MediaTransportConfiguration) {
@@ -105,11 +108,20 @@ actor MediaTransportSession {
         }
     }
 
+    func noteDemand(range: Range<Int64>) async {
+        guard !stopped, !range.isEmpty else { return }
+        demandOffset = max(0, range.lowerBound)
+    }
+
     func read(offset: Int64, length: Int) async throws -> Data {
         guard !stopped else { throw MediaTransportError.cancelled }
         guard length > 0 else { return Data() }
         let resource = try await resolve()
         guard offset < resource.contentLength else { return Data() }
+        let isTailMetadataProbe = offset >= max(0, resource.contentLength - 4 * 1_048_576) && length <= 1_048_576
+        let isStaleAfterPrioritySeek = Date() < priorityDemandUntil && abs(offset - demandOffset) > 32 * 1_048_576
+        let drivesPlaybackWindow = !isTailMetadataProbe && !isStaleAfterPrioritySeek
+        if drivesPlaybackWindow { await noteDemand(range: offset..<(offset + Int64(length))) }
 
         let upperBound = min(resource.contentLength, offset + Int64(length))
         let segmentSize = max(1, configuration.segmentSizeBytes)
@@ -127,7 +139,7 @@ actor MediaTransportSession {
             for start in starts {
                 group.addTask { [weak self] in
                     guard let self else { throw MediaTransportError.cancelled }
-                    return (start, try await self.segment(start: start, preload: false))
+                    return (start, try await self.segment(start: start, preload: isTailMetadataProbe))
                 }
             }
             for try await (start, value) in group {
@@ -155,7 +167,7 @@ actor MediaTransportSession {
 
         if output.count >= 64 * 1024 {
             scheduleInitialPreload(resource: resource)
-            schedulePreload(after: upperBound, resource: resource)
+            if drivesPlaybackWindow { schedulePreload(after: upperBound, resource: resource) }
         }
         return output
     }
@@ -163,15 +175,23 @@ actor MediaTransportSession {
     func prioritizeSeek(position: Double, duration: Double) async {
         guard !stopped, position.isFinite, duration.isFinite, duration > 0 else { return }
         guard let resource = try? await resolve() else { return }
-
         let ratio = min(max(position / duration, 0), 1)
-        let approximateOffset = Int64(Double(resource.contentLength) * ratio)
+        await prioritizeOffset(Int64(Double(resource.contentLength) * ratio))
+        DiagnosticsLogger.shared.log(
+            "TransportPriority",
+            "seek position=\(position) duration=\(duration) approximateOffset=\(demandOffset)"
+        )
+    }
+
+    func prioritizeOffset(_ offset: Int64) async {
+        guard !stopped, let resource = try? await resolve() else { return }
         let segmentSize = max(1, configuration.segmentSizeBytes)
         let alignedOffset = min(
-            max(0, (approximateOffset / segmentSize) * segmentSize),
+            max(0, (offset / segmentSize) * segmentSize),
             max(0, resource.contentLength - segmentSize)
         )
-
+        demandOffset = alignedOffset
+        priorityDemandUntil = Date().addingTimeInterval(4)
         preloadTask?.cancel()
         preloadTask = nil
         initialPreloadTask?.cancel()
@@ -179,12 +199,18 @@ actor MediaTransportSession {
         cancelPreloadNetworkTasks()
         preloadAnchor = nil
         preloadWindow = nil
-
-        DiagnosticsLogger.shared.log(
-            "TransportPriority",
-            "seek position=\(position) duration=\(duration) approximateOffset=\(alignedOffset)"
-        )
         schedulePreload(after: alignedOffset, resource: resource)
+        DiagnosticsLogger.shared.log("TransportPriority", "offset=\(alignedOffset) window-reset=true")
+    }
+
+    func recoverStall(position: Double, duration: Double) async {
+        guard !stopped else { return }
+        if duration > 0, position.isFinite {
+            await prioritizeSeek(position: position, duration: duration)
+        } else {
+            await prioritizeOffset(demandOffset)
+        }
+        DiagnosticsLogger.shared.log("TransportRecovery", "position=\(position) demandOffset=\(demandOffset)")
     }
 
     func metrics() async -> TransportMetricsSnapshot {
@@ -198,10 +224,11 @@ actor MediaTransportSession {
         value.memoryCacheBytes = memoryBytes
         value.diskCacheBytes = diskBytes
         if configuration.usesDiskCache {
-            value.cacheBytes = max(memoryBytes, diskBytes)
+            value.cacheBytes = max(cachedRanges.totalBytes, max(memoryBytes, diskBytes))
         } else {
-            value.cacheBytes = memoryBytes
+            value.cacheBytes = max(cachedRanges.totalBytes, memoryBytes)
         }
+        value.contiguousCacheBytes = cachedRanges.contiguousLength(from: demandOffset, maximumLength: Int64.max)
         return value
     }
 
@@ -227,6 +254,7 @@ actor MediaTransportSession {
         DiagnosticsLogger.shared.log("TransportSession", "stopped \(finalMetrics.summary)")
         memoryEntries.removeAll()
         memoryBytes = 0
+        cachedRanges = SparseByteRangeSet()
         await diskCache.close()
     }
 
@@ -272,10 +300,12 @@ actor MediaTransportSession {
     private func cachedSegment(start: Int64) async -> Data? {
         if let memory = memoryEntries[start] {
             memoryEntries[start] = MemoryEntry(data: memory.data, lastAccess: Date())
+            cachedRanges.insert(start..<(start + Int64(memory.data.count)))
             return memory.data
         }
 
         if configuration.usesDiskCache, let diskData = await diskCache.read(start: start) {
+            cachedRanges.insert(start..<(start + Int64(diskData.count)))
             insertMemory(diskData, start: start)
             return diskData
         }
@@ -284,6 +314,7 @@ actor MediaTransportSession {
 
     private func storeSegment(_ data: Data, start: Int64) async {
         guard !data.isEmpty else { return }
+        cachedRanges.insert(start..<(start + Int64(data.count)))
         insertMemory(data, start: start)
         if configuration.usesDiskCache {
             await diskCache.write(data, start: start)
@@ -455,9 +486,13 @@ actor MediaTransportSession {
 
     private func schedulePreload(after offset: Int64, resource: TransportResolvedResource) {
         guard configuration.cacheMode != .disabled else { return }
-        let preloadLimit = NetworkPathMonitor.shared.isCellular
+        let configuredLimit = NetworkPathMonitor.shared.isCellular
             ? configuration.cellularPreloadBytes
             : configuration.wifiPreloadBytes
+        let isCellular = NetworkPathMonitor.shared.isCellular
+        let minimumWindow = isCellular ? Int64(16 * 1_048_576) : Int64(32 * 1_048_576)
+        let maximumWindow = isCellular ? Int64(64 * 1_048_576) : Int64(128 * 1_048_576)
+        let preloadLimit = min(max(configuredLimit, minimumWindow), maximumWindow)
         guard preloadLimit > 0 else { return }
 
         if preloadTask != nil {
@@ -498,7 +533,7 @@ actor MediaTransportSession {
         var firstStart = (offset / segmentSize) * segmentSize
         if firstStart < offset { firstStart += segmentSize }
         let finalOffset = min(resource.contentLength, firstStart + maximumBytes)
-        let concurrency = max(1, configuration.maximumConcurrentRequests - 1)
+        let concurrency = resource.looksLike115CDN ? 1 : max(1, min(2, configuration.maximumConcurrentRequests - 1))
         guard firstStart < finalOffset else { return }
 
         DiagnosticsLogger.shared.log(

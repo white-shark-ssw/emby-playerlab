@@ -5,7 +5,6 @@ struct PlaybackLabView: View {
     @StateObject private var model = PlaybackLabViewModel()
     @State private var client: EmbyAPIClient?
     @State private var shareURL: URL?
-    @AppStorage("player.enginePreference") private var enginePreferenceRaw = PlayerEnginePreference.automatic.rawValue
 
     var body: some View {
         NavigationView {
@@ -24,11 +23,9 @@ struct PlaybackLabView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 
-                    Picker("播放器路由", selection: $enginePreferenceRaw) {
-                        ForEach(PlayerEnginePreference.allCases) { preference in
-                            Text(preference.title).tag(preference.rawValue)
-                        }
-                    }
+                    Text("播放引擎由 App 自动选择，并在必要时按 AVPlayer → FFmpeg → MPV 单向降级。")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
 
                     Button {
                         guard let client else { return }
@@ -118,7 +115,7 @@ struct PlaybackLabView: View {
                     PlayerScreen(
                         source: source,
                         client: client,
-                        preference: PlayerEnginePreference(rawValue: enginePreferenceRaw) ?? .automatic
+                        preference: .automatic
                     )
                 }
             }

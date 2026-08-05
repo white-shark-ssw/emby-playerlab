@@ -19,6 +19,8 @@ final class PlayerController: ObservableObject {
 
     private(set) var engine: PlayerEngine
     private let client: EmbyAPIClient
+    private let orchestrator: PlaybackOrchestrator
+    private let transportContext: PlaybackTransportContext?
     private var preferredForwardBuffer: Double = 90
     private var progressTask: Task<Void, Never>?
     private var feedbackTask: Task<Void, Never>?
@@ -29,6 +31,7 @@ final class PlayerController: ObservableObject {
     private var compatibilityRecoveryTask: Task<Void, Never>?
     private var compatibilitySeekFallbackTask: Task<Void, Never>?
     private var started = false
+    private var userWantsPlayback = false
     private var userIsScrubbing = false
     private var pendingSeekTarget: Double?
     private var pendingSeekDirection: SeekDirection?
@@ -42,6 +45,8 @@ final class PlayerController: ObservableObject {
     private var mpvCompatibilityMode = false
     private var mpvCompatibilityReloadCount = 0
     private var mpvCompatibilityLoadInProgress = false
+    private var lastTransportMetrics: TransportMetricsSnapshot?
+    private var lastHandledEngineError: String?
 
     var ksAVIOView: UIView? {
         (engine as? KSAVIOPlayerEngine)?.playerView
@@ -58,9 +63,22 @@ final class PlayerController: ObservableObject {
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
         self.source = source
         self.client = client
-        let initialKind = preference.resolved(for: source.mediaSource)
+        let orchestrator = PlaybackOrchestrator(source: source, preference: preference)
+        self.orchestrator = orchestrator
+        let initialKind = orchestrator.currentKind
+        let transportContext: PlaybackTransportContext?
+        if preference.isAutomatic || initialKind == .resourceLoaderAVPlayer || initialKind == .ksAVIO {
+            transportContext = PlaybackTransportContext(
+                source: source,
+                client: client,
+                configuration: MediaTransportConfiguration.current()
+            )
+        } else {
+            transportContext = nil
+        }
+        self.transportContext = transportContext
         self.engineKind = initialKind
-        self.engine = PlayerController.makeEngine(kind: initialKind, source: source, client: client)
+        self.engine = PlayerController.makeEngine(kind: initialKind, source: source, client: client, transportContext: transportContext)
         bindEngine()
     }
 
@@ -69,6 +87,7 @@ final class PlayerController: ObservableObject {
         started = true
         self.preferredForwardBuffer = preferredForwardBuffer > 0 ? preferredForwardBuffer : 90
         configureAudioSession()
+        userWantsPlayback = true
         engine.prepare(
             url: source.url,
             headers: source.headers,
@@ -111,6 +130,7 @@ final class PlayerController: ObservableObject {
     func stop() {
         guard started else { return }
         started = false
+        userWantsPlayback = false
         DiagnosticsLogger.shared.log("Lifecycle", "player close requested engine=\(engineKind.title) position=\(snapshot.position)")
 
         progressTask?.cancel()
@@ -138,6 +158,7 @@ final class PlayerController: ObservableObject {
 
         let position = snapshot.position
         engine.stop()
+        transportContext?.stop()
 
         Task {
             await client.reportStopped(source: source, position: position)
@@ -150,10 +171,12 @@ final class PlayerController: ObservableObject {
     }
 
     func togglePlayPause() {
-        if snapshot.isPlaying {
+        if userWantsPlayback {
+            userWantsPlayback = false
             engine.pause()
             Task { await client.reportProgress(source: source, position: snapshot.position, paused: true, eventName: "Pause") }
         } else {
+            userWantsPlayback = true
             engine.play()
             Task { await client.reportProgress(source: source, position: snapshot.position, paused: false, eventName: "Unpause") }
         }
@@ -240,7 +263,7 @@ final class PlayerController: ObservableObject {
     func switchEngine(to kind: PlayerEngineKind, reason: String = "用户切换") {
         guard kind != engineKind else { return }
         let resumePosition = clampPosition(pendingSeekTarget ?? snapshot.position)
-        let shouldPlay = snapshot.isPlaying
+        let shouldPlay = userWantsPlayback
 
         DiagnosticsLogger.shared.log(
             "Engine",
@@ -260,7 +283,9 @@ final class PlayerController: ObservableObject {
         seekAnchorReleaseTask = nil
         engine.stop()
         engineKind = kind
-        engine = Self.makeEngine(kind: kind, source: source, client: client)
+        orchestrator.didSwitch(to: kind)
+        lastHandledEngineError = nil
+        engine = Self.makeEngine(kind: kind, source: source, client: client, transportContext: transportContext)
         bindEngine()
         resetWatchdog()
         prematureEOFMessage = nil
@@ -279,13 +304,16 @@ final class PlayerController: ObservableObject {
     func toggleEngine() {
         let next: PlayerEngineKind
         switch engineKind {
-        case .transportAVPlayer: next = .ksAVIO
-        case .ksAVIO: next = .avPlayer
-        case .avPlayer: next = .mpv
-        case .mpv: next = .transportAVPlayer
+        case .resourceLoaderAVPlayer: next = .ksAVIO
+        case .transportAVPlayer: next = .resourceLoaderAVPlayer
+        case .ksAVIO: next = .mpv
+        case .avPlayer: next = .resourceLoaderAVPlayer
+        case .mpv: next = .resourceLoaderAVPlayer
         }
         switchEngine(to: next)
     }
+
+    var playbackControlIsPlaying: Bool { userWantsPlayback }
 
     var effectiveDuration: Double {
         max(snapshot.duration, source.mediaSource.durationSeconds ?? 0)
@@ -298,8 +326,21 @@ final class PlayerController: ObservableObject {
             .max() ?? 0
     }
 
-    private static func makeEngine(kind: PlayerEngineKind, source: ResolvedPlaybackSource, client: EmbyAPIClient) -> PlayerEngine {
+    private static func makeEngine(
+        kind: PlayerEngineKind,
+        source: ResolvedPlaybackSource,
+        client: EmbyAPIClient,
+        transportContext: PlaybackTransportContext?
+    ) -> PlayerEngine {
         switch kind {
+        case .resourceLoaderAVPlayer:
+            return AVPlayerEngine(
+                kind: .resourceLoaderAVPlayer,
+                transportSource: source,
+                transportClient: client,
+                transportConfiguration: MediaTransportConfiguration.current(),
+                sharedTransportSession: transportContext?.session
+            )
         case .transportAVPlayer:
             return AVPlayerEngine(
                 kind: .transportAVPlayer,
@@ -308,7 +349,12 @@ final class PlayerController: ObservableObject {
                 transportConfiguration: MediaTransportConfiguration.current()
             )
         case .ksAVIO:
-            return KSAVIOPlayerEngine(source: source, client: client, configuration: MediaTransportConfiguration.current())
+            return KSAVIOPlayerEngine(
+                source: source,
+                client: client,
+                configuration: MediaTransportConfiguration.current(),
+                sharedTransportSession: transportContext?.session
+            )
         case .avPlayer:
             return AVPlayerEngine()
         case .mpv:
@@ -342,6 +388,11 @@ final class PlayerController: ObservableObject {
                     )
                 } else if !self.userIsScrubbing, self.pendingSeekTarget == nil {
                     self.displayedPosition = value.position
+                }
+
+                if let error = value.errorMessage, !error.isEmpty, error != self.lastHandledEngineError {
+                    self.lastHandledEngineError = error
+                    self.handleEngineError(error)
                 }
 
                 if value.didReachEnd && !wasEnd {
@@ -457,35 +508,42 @@ final class PlayerController: ObservableObject {
             avDuration: snapshot.duration,
             embyDuration: source.mediaSource.durationSeconds
         )
-
         DiagnosticsLogger.shared.log(
             "EOF",
             "engine=\(engineKind.title) premature=\(decision.isPremature) reason=\(decision.reason) current=\(snapshot.position) engineDuration=\(snapshot.duration) embyDuration=\(source.mediaSource.durationSeconds ?? 0)"
         )
 
-        if decision.isPremature, engineKind != .mpv {
-            prematureEOFMessage = "\(decision.reason)；自动切换 MPV。"
-            switchEngine(to: .mpv, reason: "AVPlayer 疑似提前结束")
-        } else if decision.isPremature, eofRetryCount < 2 {
-            guard !mpvCompatibilityLoadInProgress else {
-                DiagnosticsLogger.shared.log(
-                    "EOF",
-                    "ignored during MPV compatibility file transition"
-                )
-                return
-            }
-            eofRetryCount += 1
-            let skip = eofRetryCount == 1 ? 5.0 : 15.0
-            let target = clampPosition(snapshot.position + skip)
-            prematureEOFMessage = "\(decision.reason)；启用异常 MP4 兼容读取并从 \(formatTime(target)) 恢复（\(eofRetryCount)/2）"
-            startMPVCompatibilityReload(
-                at: target,
-                reason: "MPV 提前 EOF"
-            )
-        } else if decision.isPremature {
-            prematureEOFMessage = "\(decision.reason)；自动恢复已达上限，请导出日志。"
-        } else {
+        guard decision.isPremature else {
+            userWantsPlayback = false
             Task { await client.reportStopped(source: source, position: snapshot.position) }
+            return
+        }
+
+        switch orchestrator.actionForPrematureEOF(kind: engineKind, reason: decision.reason) {
+        case .switchEngine(let next, let reason):
+            prematureEOFMessage = "\(decision.reason)；App 正在自动切换到 \(next.title)。"
+            switchEngine(to: next, reason: reason)
+        case .reloadCurrent(let reason):
+            if engineKind == .mpv, eofRetryCount < 2 {
+                eofRetryCount += 1
+                let target = clampPosition(snapshot.position + (eofRetryCount == 1 ? 5 : 15))
+                prematureEOFMessage = "\(reason)；MPV 正在从 \(formatTime(target)) 恢复。"
+                startMPVCompatibilityReload(at: target, reason: reason)
+            } else {
+                engine.reload(at: snapshot.position)
+                engine.play()
+            }
+        case .recoverTransport(let message), .wait(let message):
+            prematureEOFMessage = message
+            engine.recoverStall(position: snapshot.position, duration: effectiveDuration)
+        }
+    }
+
+    private func handleEngineError(_ message: String) {
+        guard let action = orchestrator.actionForEngineError(kind: engineKind, message: message) else { return }
+        if case .switchEngine(let next, let reason) = action {
+            stallMessage = "\(engineKind.title) 发生错误，正在自动切换到 \(next.title)。"
+            switchEngine(to: next, reason: reason)
         }
     }
 
@@ -499,17 +557,12 @@ final class PlayerController: ObservableObject {
 
         let positionGrowth = snapshot.position - lastWatchdogPosition
         let bufferGrowth = bufferedEnd - lastWatchdogBufferEnd
-        if positionGrowth < 0.15 && bufferGrowth < 0.5 {
-            stagnantWatchdogIntervals += 1
-        } else {
-            stagnantWatchdogIntervals = 0
-            stallRecoveryCount = 0
-            stallMessage = nil
-        }
+        if positionGrowth < 0.15 && bufferGrowth < 0.5 { stagnantWatchdogIntervals += 1 }
+        else { stagnantWatchdogIntervals = 0; stallRecoveryCount = 0; stallMessage = nil }
         lastWatchdogPosition = snapshot.position
         lastWatchdogBufferEnd = bufferedEnd
 
-        let recoveryThreshold = engineKind == .transportAVPlayer ? 2 : 4
+        let recoveryThreshold = engineKind == .resourceLoaderAVPlayer || engineKind == .transportAVPlayer ? 2 : 3
         guard stagnantWatchdogIntervals >= recoveryThreshold else { return }
         stagnantWatchdogIntervals = 0
         stallRecoveryCount += 1
@@ -519,71 +572,48 @@ final class PlayerController: ObservableObject {
             "engine=\(engineKind.title) recovery=\(stallRecoveryCount) position=\(snapshot.position) bufferedEnd=\(bufferedEnd) duration=\(effectiveDuration) waiting=\(snapshot.waitingReason ?? "none")"
         )
 
-        if engineKind == .transportAVPlayer || engineKind == .ksAVIO {
+        let action = orchestrator.actionForStall(
+            kind: engineKind,
+            recoveryCount: stallRecoveryCount,
+            snapshot: snapshot,
+            metrics: lastTransportMetrics
+        )
+        switch action {
+        case .recoverTransport(let message):
+            stallMessage = message
             engine.recoverStall(position: snapshot.position, duration: effectiveDuration)
-            stallMessage = snapshot.errorMessage == nil
-                ? (engineKind == .ksAVIO ? "KSPlayer AVIO 正在等待精确字节数据；已绕过 localhost 原始 MP4。" : "下载优先传输正在按播放器真实字节需求补齐缺口；不会自动切回已知会卡顿的 MPV。")
-                : "下载优先传输失败：\(snapshot.errorMessage ?? "未知错误")"
-            return
-        }
-
-        if engineKind == .avPlayer, stallRecoveryCount >= 2 {
-            switchEngine(to: .mpv, reason: "原生 AVPlayer 连续停滞且缓冲不增长")
-            return
-        }
-
-        if engineKind == .mpv {
-            guard source.mediaSource.normalizedContainer == "mp4" else {
-                stallMessage = "检测到 MPV 停滞，正在使用同一实例重新载入当前位置。"
+        case .switchEngine(let next, let reason):
+            stallMessage = "自动切换到 \(next.title)：\(reason)"
+            switchEngine(to: next, reason: reason)
+        case .reloadCurrent(let reason):
+            stallMessage = reason
+            if engineKind == .mpv, source.mediaSource.normalizedContainer == "mp4" {
+                startMPVCompatibilityReload(at: clampPosition(snapshot.position + 3), reason: reason)
+            } else {
                 engine.reload(at: snapshot.position)
                 engine.play()
-                return
             }
-
-            if !mpvCompatibilityMode {
-                let target = clampPosition(snapshot.position + 3)
-                stallMessage = "检测到远程 MP4 停滞，正在启用坏交错 MP4 兼容读取。"
-                startMPVCompatibilityReload(
-                    at: target,
-                    reason: "首次停滞：关闭 interleaved_read 和缓存内 Seek"
-                )
-            } else if mpvCompatibilityReloadCount < 2 {
-                let target = clampPosition(snapshot.position + 8)
-                stallMessage = "兼容读取仍停滞，正在刷新播放会话并从后方重新载入。"
-                startMPVCompatibilityReload(
-                    at: target,
-                    reason: "兼容模式再次停滞"
-                )
-            } else {
-                stallMessage = "异常 MP4 兼容读取仍无法继续，请拖动到更后方位置并导出日志。"
-            }
-            return
+        case .wait(let message):
+            stallMessage = message
         }
-
-        stallMessage = "检测到播放停滞，正在重新加载当前媒体。"
-        engine.reload(at: snapshot.position)
-        engine.play()
     }
 
     private func startTransportMetricsPolling() {
         transportMetricsTask?.cancel()
         transportMetricsTask = nil
         transportSummary = nil
+        lastTransportMetrics = nil
 
-        if engineKind == .transportAVPlayer, let avEngine = engine as? AVPlayerEngine {
-            transportMetricsTask = Task { [weak self, weak avEngine] in
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    guard let self, let avEngine, self.started, self.engine === avEngine else { return }
-                    if let metrics = await avEngine.transportMetrics() { self.transportSummary = metrics.summary }
-                }
-            }
-        } else if engineKind == .ksAVIO, let ksEngine = engine as? KSAVIOPlayerEngine {
-            transportMetricsTask = Task { [weak self, weak ksEngine] in
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    guard let self, let ksEngine, self.started, self.engine === ksEngine else { return }
-                    if let metrics = await ksEngine.transportMetrics() { self.transportSummary = metrics.summary }
+        transportMetricsTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self, self.started else { return }
+                let engine = self.engine
+                if let metrics = await engine.transportMetrics(), self.engine === engine {
+                    self.lastTransportMetrics = metrics
+                    self.transportSummary = metrics.summary
+                } else if self.engine === engine {
+                    self.lastTransportMetrics = nil
                 }
             }
         }

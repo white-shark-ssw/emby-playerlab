@@ -1,69 +1,93 @@
 # Emby Player Lab
 
-面向 TrollStore、自用 STRM → 302 网盘直链环境的原生 iOS 播放器实验室。
+面向 TrollStore、自用 STRM → 302 → 115 直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.5.5
+## 当前版本：0.6.0
 
 ### 系统与构建
 
 - Deployment Target：iOS 15.0
 - 重点测试：iPhone 15 Pro Max / iOS 17.0
-- 本地环境：Windows
 - 云端编译：GitHub Actions macOS 15 / Xcode 16.4
 - 安装方式：未签名 IPA + TrollStore
-- MPVKit：固定 Streamyfin AVFoundation fork 0.40.0-av（MPVKit-GPL）
+- KSPlayer：2.3.4
+- MPVKit：0.40.0-av（MPVKit-GPL）
 
-### 已实现
+### 0.6.0 自动播放器架构
 
-- Emby 4.8.10.0 登录和 Keychain Token 保存。
-- 输入 ItemId 获取 BaseItem 与 PlaybackInfo。
-- 显示真实媒体标题、媒体源名称、容器、编码、时长和大小。
-- STRM 播放入口与 HTTP 302 链路。
-- AVPlayer 与 MPV 双引擎。
-- MKV 等容器自动路由 MPV。
-- 播放页手动即时切换 AV / MPV，并从当前点位恢复。
-- 左侧双击快退、右侧双击快进，秒数可配置。
-- 全屏横向滑动调整进度，松手后只提交一次 Seek。
-- MPV 前向/后向 demuxer cache。
-- AVPlayer 与 MPV 分别记录 Seek 后真实画面/播放恢复耗时。
-- 播放停滞检测与自动恢复。
-- AVPlayer 提前结束或连续停滞时自动回退 MPV。
-- Emby 播放开始、周期进度、暂停、Seek 和停止上报。
-- 连续双击时合并 Emby 进度上报。
-- 日志脱敏、导出和最低系统检查。
+普通播放不再要求用户选择引擎。`PlaybackOrchestrator` 会根据容器、编码、传输健康和播放器状态自动执行单向路由：
+
+```text
+智能 AVPlayer（AVAssetResourceLoader）
+    ↓ 数据充足但连续停滞 / 播放项错误 / 提前 EOF
+KSPlayer FFmpeg（自定义 AVIO）
+    ↓ FFmpeg 仍无法稳定播放
+MPV 容错
+```
+
+智能 AVPlayer 与 KSPlayer FFmpeg 共用同一个 `MediaTransportSession`：
+
+- 共享 Emby 播放会话和 302 最终直链。
+- 共享内存缓存、磁盘分片和当前位置播放窗口。
+- 引擎切换不重新下载已缓存字节。
+- 移除自动路径中的 localhost HTTP listener。
+- AVPlayer 通过自定义 URL scheme 和 `AVAssetResourceLoaderDelegate` 读取缓存。
+- KSPlayer 通过 FFmpeg AVIO 直接读取同一个会话。
+- MPV 暂时仍使用自身网络栈，作为最后一级容错；后续再接共享 IO。
+
+### 115 播放窗口
+
+在线播放不再追求尽快下载完整文件。传输层只维护当前播放位置前方的连续窗口：
+
+- Wi-Fi 默认 128 MB，允许设置 32–128 MB。
+- 蜂窝默认 64 MB，允许设置 16–64 MB。
+- 115 后台连续预取固定为 1 条连接，稳定阶段使用 64 MB 长 Range。
+- Seek 时取消旧窗口预取，立即在新位置建立窗口。
+- MP4 尾部元数据探测不会改变当前播放需求位置。
+- 诊断栏分别显示实时速度、平均速度、总缓存和当前位置连续缓存。
+
+### 自动故障分类
+
+- 当前连续缓存或有效速度不足：只恢复传输窗口，不切换解码器。
+- 数据充足但 AVPlayer 连续停滞：自动切到 KSPlayer FFmpeg。
+- KSPlayer 仍连续停滞或加载失败：自动切到 MPV。
+- 疑似提前 EOF：按同一降级链处理。
+- 自动切换保留播放位置、播放/暂停意图和 Emby 播放会话。
+- 普通播放页只显示当前自动引擎，不提供手动切换按钮。
+
+### 已保留功能
+
+- Emby 4.8.10.0 登录、Keychain Token、PlaybackInfo。
+- STRM、HTTP 302、115 临时直链刷新、Range/206。
+- 左侧双击快退、右侧双击快进以及可配置秒数。
+- 横向拖动进度，松手只提交一次 Seek。
+- Emby 播放开始、进度、暂停、Seek 和停止上报。
+- AVPlayer 访问日志中的停滞数、丢帧数和观察码率。
+- 日志脱敏、导出、提前 EOF 与异常 MP4 诊断。
 
 ## GitHub 构建
 
-1. 把仓库内容提交到 `main`。
+1. 将仓库内容提交到 `main`。
 2. 等待 `Validate Source` 成功。
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
-4. 首次解析 MPVKit 会下载多组 XCFramework，耗时和 IPA 大小都会明显增加。
-5. 构建成功后，在页面底部下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-6. 解压获得 `EmbyPlayerLab-0.5.5-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+4. 下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
+5. 解压获得 `EmbyPlayerLab-0.6.0-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
-## 建议测试顺序
+## 0.6.0 建议测试
 
-1. `145926` 或 `144788`：确认 MKV 自动使用 MPV 并正常出画面。
-2. `63368`：先选择“强制 MPV”，确认能跨过原来的停止缓冲位置。
-3. `152901`：比较 AVPlayer 与 MPV 的双击恢复耗时。
-4. 在画面中部横向滑动，确认只有松手后发生一次 Seek。
-5. 导出日志并保留异常发生前后的完整记录。
+1. 使用 ItemId `63368`，直接点击“播放”，不要选择引擎。
+2. 确认起始日志为 `engine=智能 AVPlayer` 和 `prepare-resource-loader`，且没有 `TransportHTTP ready port=`。
+3. 正常播放两分钟，记录实时速度和连续缓存。
+4. 连续双击快进 30 次，确认每次立即响应。
+5. 拖到 70% 以后继续播放至少两分钟，观察掉帧、停滞与自动降级。
+6. 若自动切到 FFmpeg，确认日志显示缓存会话保持不变，没有重新解析 302。
+7. 导出完整日志。
 
-## 安全处理
+## 安全与许可证
 
-- 密码不落盘。
-- AccessToken 保存到 Keychain。
-- 只有与 Emby 入口同源的播放 URL 才会附加 `api_key` 和 `PlaySessionId`。
-- 过滤媒体 Headers 中的 Authorization、Emby Token 和 Cookie。
-- 日志隐藏 Token、签名、Cookie、Authorization 和敏感查询参数。
-
-## 当前仍未完成
-
-- KSPlayer AVIO 真机首帧、Seek、异常 EOF 与长时间播放验证。
-- 302 最终域名、状态码和 Content-Range 的统一代理诊断。
-- 外挂字幕 URL、音轨和字幕轨切换界面。
-- MPV 异常 PTS/DTS 的多级强制容错参数。
-- 画中画。
+- 密码不落盘，AccessToken 保存到 Keychain。
+- 日志隐藏 Token、Cookie、签名和敏感查询参数。
+- MPVKit 当前产品标记为 GPL-3.0；项目用于自用 TrollStore 安装，公开分发前需重新检查许可证义务。
 
 ## 0.2.1 修复
 

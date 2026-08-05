@@ -1,6 +1,7 @@
 import Foundation
 
 enum PlayerEngineKind: String, CaseIterable, Identifiable {
+    case resourceLoaderAVPlayer
     case transportAVPlayer
     case ksAVIO
     case avPlayer
@@ -10,16 +11,28 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .transportAVPlayer: return "传输层 AVPlayer"
-        case .ksAVIO: return "KSPlayer AVIO 实验"
-        case .avPlayer: return "AVPlayer"
-        case .mpv: return "MPV"
+        case .resourceLoaderAVPlayer: return "智能 AVPlayer"
+        case .transportAVPlayer: return "旧版传输层 AVPlayer"
+        case .ksAVIO: return "KSPlayer FFmpeg"
+        case .avPlayer: return "直连 AVPlayer"
+        case .mpv: return "MPV 容错"
+        }
+    }
+
+    var automaticRank: Int {
+        switch self {
+        case .resourceLoaderAVPlayer: return 0
+        case .ksAVIO: return 1
+        case .mpv: return 2
+        case .transportAVPlayer: return 3
+        case .avPlayer: return 4
         }
     }
 }
 
 enum PlayerEnginePreference: String, CaseIterable, Identifiable {
     case automatic
+    case resourceLoaderAVPlayer
     case transportAVPlayer
     case ksAVIO
     case avPlayer
@@ -29,31 +42,36 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .automatic: return "自动（MP4 使用下载优先）"
-        case .transportAVPlayer: return "强制传输层 AVPlayer"
-        case .ksAVIO: return "强制 KSPlayer AVIO（实验）"
-        case .avPlayer: return "强制原生 AVPlayer"
-        case .mpv: return "强制 MPV"
+        case .automatic: return "自动（推荐）"
+        case .resourceLoaderAVPlayer: return "诊断：智能 AVPlayer"
+        case .transportAVPlayer: return "诊断：旧版本机 HTTP"
+        case .ksAVIO: return "诊断：KSPlayer FFmpeg"
+        case .avPlayer: return "诊断：直连 AVPlayer"
+        case .mpv: return "诊断：MPV"
         }
     }
 
+    var isAutomatic: Bool { self == .automatic }
+
     func resolved(for source: MediaSource) -> PlayerEngineKind {
         switch self {
-        case .transportAVPlayer:
-            return .transportAVPlayer
-        case .ksAVIO:
-            return .ksAVIO
-        case .avPlayer:
-            return .avPlayer
-        case .mpv:
-            return .mpv
+        case .resourceLoaderAVPlayer: return .resourceLoaderAVPlayer
+        case .transportAVPlayer: return .transportAVPlayer
+        case .ksAVIO: return .ksAVIO
+        case .avPlayer: return .avPlayer
+        case .mpv: return .mpv
         case .automatic:
             let nativeContainers: Set<String> = ["mp4", "mov", "m4v"]
-            if nativeContainers.contains(source.normalizedContainer) {
-                return .transportAVPlayer
+            let nativeVideo: Set<String> = ["h264", "hevc", "h265"]
+            let nativeAudio: Set<String> = ["aac", "alac", "mp3", "ac3", "eac3"]
+            let video = source.videoCodec?.lowercased() ?? ""
+            let audio = source.audioCodec?.lowercased() ?? ""
+            if nativeContainers.contains(source.normalizedContainer),
+               video.isEmpty || nativeVideo.contains(video),
+               audio.isEmpty || nativeAudio.contains(audio) {
+                return .resourceLoaderAVPlayer
             }
-            let mpvContainers: Set<String> = ["mkv", "webm", "avi", "flv", "ts", "m2ts", "wmv"]
-            return mpvContainers.contains(source.normalizedContainer) ? .mpv : .transportAVPlayer
+            return .ksAVIO
         }
     }
 }
@@ -67,6 +85,9 @@ struct PlayerSnapshot: Equatable {
     var waitingReason: String?
     var errorMessage: String?
     var didReachEnd = false
+    var accessLogStalls = 0
+    var droppedVideoFrames = 0
+    var observedBitrate: Double = 0
 }
 
 struct SeekResult {
@@ -89,11 +110,13 @@ protocol PlayerEngine: AnyObject {
     func seek(to seconds: Double, direction: SeekDirection)
     func reload(at seconds: Double)
     func recoverStall(position: Double, duration: Double)
+    func transportMetrics() async -> TransportMetricsSnapshot?
     func stop()
 }
 
 extension PlayerEngine {
     func recoverStall(position: Double, duration: Double) {}
+    func transportMetrics() async -> TransportMetricsSnapshot? { nil }
 }
 
 enum SeekDirection {

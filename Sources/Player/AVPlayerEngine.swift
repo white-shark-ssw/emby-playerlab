@@ -15,6 +15,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var failedObserver: NSObjectProtocol?
+    private var accessLogObserver: NSObjectProtocol?
     private var displayLink: CADisplayLink?
     private var videoOutput: AVPlayerItemVideoOutput?
     private var pendingFrameMeasurement: FrameMeasurement?
@@ -22,7 +23,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private let transportSource: ResolvedPlaybackSource?
     private let transportClient: EmbyAPIClient?
     private let transportConfiguration: MediaTransportConfiguration?
+    private let sharedTransportSession: MediaTransportSession?
     private var transportServer: TransportHTTPServer?
+    private var transportResourceLoader: TransportResourceLoader?
     private var transportPrepareTask: Task<Void, Never>?
     private var transportLocalURL: URL?
     private var transportForwardBufferDuration: Double = 4
@@ -51,12 +54,14 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         kind: PlayerEngineKind = .avPlayer,
         transportSource: ResolvedPlaybackSource? = nil,
         transportClient: EmbyAPIClient? = nil,
-        transportConfiguration: MediaTransportConfiguration? = nil
+        transportConfiguration: MediaTransportConfiguration? = nil,
+        sharedTransportSession: MediaTransportSession? = nil
     ) {
         self.kind = kind
         self.transportSource = transportSource
         self.transportClient = transportClient
         self.transportConfiguration = transportConfiguration
+        self.sharedTransportSession = sharedTransportSession
         super.init()
         player.automaticallyWaitsToMinimizeStalling = true
         displayLink = CADisplayLink(target: self, selector: #selector(displayLinkTick))
@@ -79,6 +84,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         transportPrepareTask = nil
         transportServer?.stop()
         transportServer = nil
+        transportResourceLoader?.invalidate()
+        transportResourceLoader = nil
         transportLocalURL = nil
         lastTransportItemRebindAt = .distantPast
         transportAssetRevision = 0
@@ -91,11 +98,32 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
         snapshot = PlayerSnapshot(
             position: max(0, startPosition),
-            isBuffering: kind == .transportAVPlayer,
-            waitingReason: kind == .transportAVPlayer ? "Transport HTTP preparing" : nil
+            isBuffering: kind == .transportAVPlayer || kind == .resourceLoaderAVPlayer,
+            waitingReason: kind == .transportAVPlayer ? "Transport HTTP preparing" : (kind == .resourceLoaderAVPlayer ? "ResourceLoader preparing" : nil)
         )
         emit()
 
+
+        if kind == .resourceLoaderAVPlayer,
+           let transportSource,
+           let transportClient,
+           let transportConfiguration {
+            let profile = transportConfiguration.resourceLoaderProfile()
+            let session = sharedTransportSession ?? MediaTransportSession(source: transportSource, client: transportClient, configuration: profile)
+            let loader = TransportResourceLoader(session: session, stopSessionOnInvalidate: sharedTransportSession == nil)
+            transportResourceLoader = loader
+            let forwardBuffer = min(max(4, preferredForwardBuffer), 30)
+            DiagnosticsLogger.shared.log(
+                "SmartAV",
+                "prepare-resource-loader item=\(transportSource.itemId) memory=\(profile.memoryLimitBytes) disk=\(profile.diskLimitBytes) wifiWindow=\(profile.wifiPreloadBytes) cellularWindow=\(profile.cellularPreloadBytes) segment=\(profile.segmentSizeBytes) concurrent=\(profile.maximumConcurrentRequests)"
+            )
+            installAsset(
+                loader.makeAsset(fileExtension: transportSource.mediaSource.normalizedContainer),
+                preferredForwardBuffer: forwardBuffer,
+                startPosition: startPosition
+            )
+            return
+        }
         if kind == .transportAVPlayer,
            let transportSource,
            let transportClient,
@@ -191,7 +219,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         let generation = seekRequestGeneration
 
         if shouldResume { shouldPlayWhenReady = true }
-        if kind == .transportAVPlayer, let transportServer {
+        if kind == .resourceLoaderAVPlayer, let transportResourceLoader {
+            transportResourceLoader.prioritizeSeek(position: target, duration: duration)
+        } else if kind == .transportAVPlayer, let transportServer {
             transportServer.resetClientStreams(reason: "user-seek generation=\(generation)")
             Task { [transportServer] in
                 await transportServer.prioritizeSeek(position: target, duration: duration)
@@ -250,21 +280,37 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     }
 
     func recoverStall(position: Double, duration: Double) {
-        guard kind == .transportAVPlayer, shouldPlayWhenReady, let transportServer else { return }
-        if abs(position - lastStallPosition) < 0.5 {
-            stallRecoveryAttempts += 1
-        } else {
-            lastStallPosition = position
-            stallRecoveryAttempts = 1
-        }
+        guard shouldPlayWhenReady else { return }
+        if abs(position - lastStallPosition) < 0.5 { stallRecoveryAttempts += 1 }
+        else { lastStallPosition = position; stallRecoveryAttempts = 1 }
         let attempt = stallRecoveryAttempts
         DiagnosticsLogger.shared.log(
             "AVPlayerState",
-            "stall position=\(position) attempt=\(attempt) rate=\(player.rate) timeControl=\(player.timeControlStatus.rawValue) itemStatus=\(player.currentItem?.status.rawValue ?? -1) bufferEmpty=\(player.currentItem?.isPlaybackBufferEmpty ?? false) likelyToKeepUp=\(player.currentItem?.isPlaybackLikelyToKeepUp ?? false) waiting=\(player.reasonForWaitingToPlay?.rawValue ?? "none")"
+            "stall engine=\(kind.title) position=\(position) attempt=\(attempt) rate=\(player.rate) timeControl=\(player.timeControlStatus.rawValue) itemStatus=\(player.currentItem?.status.rawValue ?? -1) bufferEmpty=\(player.currentItem?.isPlaybackBufferEmpty ?? false) likelyToKeepUp=\(player.currentItem?.isPlaybackLikelyToKeepUp ?? false) waiting=\(player.reasonForWaitingToPlay?.rawValue ?? "none")"
         )
-        Task { [transportServer] in
-            await transportServer.recoverStall(position: position, duration: duration)
+
+        if kind == .resourceLoaderAVPlayer, let transportResourceLoader {
+            transportResourceLoader.recoverStall(position: position, duration: duration)
+            player.automaticallyWaitsToMinimizeStalling = true
+            if attempt == 1 {
+                resumePlayback(reason: "resource-loader-stall", generation: seekRequestGeneration)
+            } else {
+                let target = max(0, position)
+                player.currentItem?.cancelPendingSeeks()
+                player.currentItem?.seek(
+                    to: CMTime(seconds: target, preferredTimescale: 600),
+                    toleranceBefore: .zero,
+                    toleranceAfter: CMTime(seconds: 0.25, preferredTimescale: 600)
+                ) { [weak self] finished in
+                    guard let self, finished else { return }
+                    DispatchQueue.main.async { self.resumePlayback(reason: "resource-loader-reseek", generation: self.seekRequestGeneration, immediate: true) }
+                }
+            }
+            return
         }
+
+        guard kind == .transportAVPlayer, let transportServer else { return }
+        Task { [transportServer] in await transportServer.recoverStall(position: position, duration: duration) }
         DispatchQueue.main.async { [weak self, weak transportServer] in
             guard let self, let transportServer, self.shouldPlayWhenReady else { return }
             self.player.automaticallyWaitsToMinimizeStalling = true
@@ -272,16 +318,13 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             let timelineIsBehind = bufferedEnd + 1 < position
             if attempt <= 1, !timelineIsBehind {
                 transportServer.resetClientStreams(reason: "stall-recovery attempt=1")
-                DiagnosticsLogger.shared.log("AVPlayerRecovery", "reset-streams-and-play position=\(position) attempt=\(attempt)")
                 self.resumePlayback(reason: "stall-recovery", generation: self.seekRequestGeneration)
                 return
             }
-
             if Date().timeIntervalSince(self.lastTransportItemRebindAt) >= 2.5 {
                 let detail = timelineIsBehind ? "timeline-behind bufferedEnd=\(bufferedEnd)" : "stall"
                 self.rebindTransportItem(at: position, reason: "\(detail) attempt=\(attempt)")
             } else {
-                DiagnosticsLogger.shared.log("AVPlayerRecovery", "rebind-throttled position=\(position) attempt=\(attempt)")
                 self.resumePlayback(reason: "stall-rebind-throttled", generation: self.seekRequestGeneration)
             }
         }
@@ -307,6 +350,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         transportPrepareTask = nil
         transportServer?.stop()
         transportServer = nil
+        transportResourceLoader?.invalidate()
+        transportResourceLoader = nil
         transportLocalURL = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
@@ -320,8 +365,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     }
 
     func transportMetrics() async -> TransportMetricsSnapshot? {
-        guard let transportServer else { return nil }
-        return await transportServer.metrics()
+        if let transportResourceLoader { return await transportResourceLoader.metrics() }
+        if let transportServer { return await transportServer.metrics() }
+        return nil
     }
 
     @objc private func displayLinkTick() {
@@ -362,7 +408,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         player.replaceCurrentItem(with: item)
         snapshot.position = max(0, startPosition)
         snapshot.isBuffering = true
-        snapshot.waitingReason = kind == .transportAVPlayer ? "Transport HTTP loading" : snapshot.waitingReason
+        snapshot.waitingReason = kind == .transportAVPlayer ? "Transport HTTP loading" : (kind == .resourceLoaderAVPlayer ? "ResourceLoader loading" : snapshot.waitingReason)
         snapshot.errorMessage = nil
         emit()
         observe(item: item)
@@ -474,6 +520,26 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             self.shouldPlayWhenReady = false
             self.snapshot.isPlaying = false
             self.snapshot.errorMessage = error?.localizedDescription ?? "Failed to play to end"
+            self.emit()
+        }
+
+        accessLogObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemNewAccessLogEntry,
+            object: item,
+            queue: .main
+        ) { [weak self, weak item] _ in
+            guard let self, let event = item?.accessLog()?.events.last else { return }
+            let stalls = max(0, event.numberOfStalls)
+            let dropped = max(0, event.numberOfDroppedVideoFrames)
+            let observed = event.observedBitrate.isFinite ? max(0, event.observedBitrate) : 0
+            let indicated = event.indicatedBitrate.isFinite ? max(0, event.indicatedBitrate) : 0
+            self.snapshot.accessLogStalls = stalls
+            self.snapshot.droppedVideoFrames = dropped
+            self.snapshot.observedBitrate = observed
+            DiagnosticsLogger.shared.log(
+                "AVAccess",
+                "engine=\(self.kind.title) stalls=\(stalls) dropped=\(dropped) observedBitrate=\(Int(observed)) indicatedBitrate=\(Int(indicated))"
+            )
             self.emit()
         }
     }
@@ -600,6 +666,10 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         if let failedObserver {
             NotificationCenter.default.removeObserver(failedObserver)
             self.failedObserver = nil
+        }
+        if let accessLogObserver {
+            NotificationCenter.default.removeObserver(accessLogObserver)
+            self.accessLogObserver = nil
         }
     }
 

@@ -18,7 +18,7 @@ The previous official LGPL MPVKit 1.0.0 dependency was removed because its
 prebuilt iOS Libmpv binary did not contain vo_avfoundation.
 
 
-Emby Player Lab 0.5.5 uses KSPlayer 2.3.4.
+Emby Player Lab 0.6.0 uses KSPlayer 2.3.4.
 
 Project:
 https://github.com/kingslay/KSPlayer

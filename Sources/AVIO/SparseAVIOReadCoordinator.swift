@@ -16,16 +16,18 @@ final class SparseAVIOReadCoordinator: @unchecked Sendable {
     }
 
     private let lock = NSLock()
-    private let session: DownloadFirstMediaSession
+    private let session: TransportDataSession
     private let contentLength: Int64
+    private let stopSessionOnClose: Bool
     private var logicalOffset: Int64 = 0
     private var generation: UInt64 = 0
     private var closed = false
     private var userSeekArmed = false
 
-    init(session: DownloadFirstMediaSession, contentLength: Int64) {
+    init(session: TransportDataSession, contentLength: Int64, stopSessionOnClose: Bool = true) {
         self.session = session
         self.contentLength = contentLength
+        self.stopSessionOnClose = stopSessionOnClose
     }
 
     var fileSize: Int64 { contentLength }
@@ -94,7 +96,7 @@ final class SparseAVIOReadCoordinator: @unchecked Sendable {
 
         DiagnosticsLogger.shared.log("KSAVIOSeek", "offset=\(offset) whence=\(baseWhence) target=\(target) user=\(migrateMain)")
         if migrateMain {
-            Task { [session] in await session.migrateMainToAVIOOffset(target, reason: "user-seek") }
+            Task { [session] in await session.prioritizeOffset(target) }
         }
         return target
     }
@@ -111,6 +113,6 @@ final class SparseAVIOReadCoordinator: @unchecked Sendable {
         closed = true
         generation &+= 1
         lock.unlock()
-        Task { [session] in await session.stop() }
+        if stopSessionOnClose { Task { [session] in await session.stop() } }
     }
 }

@@ -10,8 +10,9 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     private let source: ResolvedPlaybackSource
     private let client: EmbyAPIClient
     private let configuration: MediaTransportConfiguration
+    private let sharedTransportSession: MediaTransportSession?
     private var player: KSMEPlayer?
-    private var session: DownloadFirstMediaSession?
+    private var session: MediaTransportSession?
     private var coordinator: SparseAVIOReadCoordinator?
     private var context: KSPlayerSparseAVIOContext?
     private var options: KSAVIOOptions?
@@ -27,10 +28,16 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
 
     var playerView: UIView? { player?.view }
 
-    init(source: ResolvedPlaybackSource, client: EmbyAPIClient, configuration: MediaTransportConfiguration) {
+    init(
+        source: ResolvedPlaybackSource,
+        client: EmbyAPIClient,
+        configuration: MediaTransportConfiguration,
+        sharedTransportSession: MediaTransportSession? = nil
+    ) {
         self.source = source
         self.client = client
         self.configuration = configuration
+        self.sharedTransportSession = sharedTransportSession
         super.init()
     }
 
@@ -46,11 +53,15 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
 
         prepareTask = Task { [weak self] in
             guard let self else { return }
-            let session = DownloadFirstMediaSession(source: source, client: client, configuration: configuration, demandMode: .directAVIO)
+            let session = sharedTransportSession ?? MediaTransportSession(source: source, client: client, configuration: configuration.resourceLoaderProfile())
             do {
                 let resource = try await session.resolve()
                 guard !Task.isCancelled, currentGeneration == self.generation else { await session.stop(); return }
-                let coordinator = SparseAVIOReadCoordinator(session: session, contentLength: resource.contentLength)
+                let coordinator = SparseAVIOReadCoordinator(
+                    session: session,
+                    contentLength: resource.contentLength,
+                    stopSessionOnClose: self.sharedTransportSession == nil
+                )
                 let context = KSPlayerSparseAVIOContext(coordinator: coordinator)
                 let options = KSAVIOOptions(context: context)
                 let ext = source.mediaSource.normalizedContainer.isEmpty ? "mp4" : source.mediaSource.normalizedContainer
@@ -69,7 +80,7 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
                     self.startStateTimer()
                     player.prepareToPlay()
                     if self.shouldPlay { player.play() }
-                    DiagnosticsLogger.shared.log("KSAVIO", "prepared item=\(self.source.itemId) bytes=\(resource.contentLength) directAVIO=true buffer=262144")
+                    DiagnosticsLogger.shared.log("KSAVIO", "prepared item=\(self.source.itemId) bytes=\(resource.contentLength) sharedWindow=true buffer=262144")
                 }
             } catch {
                 await MainActor.run {
