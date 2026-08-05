@@ -42,7 +42,7 @@ struct TransportMetricsSnapshot: Equatable {
         let cached = ByteCountFormatter.string(fromByteCount: cacheBytes, countStyle: .file)
         let contiguous = ByteCountFormatter.string(fromByteCount: contiguousCacheBytes, countStyle: .file)
         let contiguousText = contiguousCacheBytes > 0 ? " · 连续 \(contiguous)" : ""
-        return "实时 \(currentSpeed)/s · 平均 \(averageSpeed)/s · 总缓存 \(cached)\(contiguousText) · 命中 \(Int(cacheHitRatio * 100))% · 并发 \(activeRequestCount)"
+        return "115上游 \(currentSpeed)/s · 平均 \(averageSpeed)/s · 总缓存 \(cached)\(contiguousText) · 命中 \(Int(cacheHitRatio * 100))% · 并发 \(activeRequestCount)"
     }
 }
 

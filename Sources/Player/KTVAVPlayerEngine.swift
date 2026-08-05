@@ -3,12 +3,8 @@ import Foundation
 
 final class KTVAVPlayerEngine: PlayerEngine {
     let kind: PlayerEngineKind = .ktvAVPlayer
-    var onSnapshot: ((PlayerSnapshot) -> Void)? {
-        didSet { underlying.onSnapshot = onSnapshot }
-    }
-    var onSeekCompleted: ((SeekResult) -> Void)? {
-        didSet { underlying.onSeekCompleted = onSeekCompleted }
-    }
+    var onSnapshot: ((PlayerSnapshot) -> Void)?
+    var onSeekCompleted: ((SeekResult) -> Void)?
 
     let player: AVPlayer
 
@@ -16,12 +12,14 @@ final class KTVAVPlayerEngine: PlayerEngine {
     private let configuration: MediaTransportConfiguration
     private let underlying: AVPlayerEngine
     private var cacheSession: KTVCachePlaybackSession?
+    private var lastSnapshot = PlayerSnapshot()
 
     init(source: ResolvedPlaybackSource, configuration: MediaTransportConfiguration) {
         self.source = source
         self.configuration = configuration
-        self.underlying = AVPlayerEngine(kind: .avPlayer)
+        self.underlying = AVPlayerEngine(kind: .ktvAVPlayer)
         self.player = underlying.player
+        bindUnderlying()
     }
 
     func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
@@ -43,8 +41,17 @@ final class KTVAVPlayerEngine: PlayerEngine {
 
     func play() { underlying.play() }
     func pause() { underlying.pause() }
-    func seek(to seconds: Double, direction: SeekDirection) { underlying.seek(to: seconds, direction: direction) }
-    func reload(at seconds: Double) { underlying.reload(at: seconds) }
+
+    func seek(to seconds: Double, direction: SeekDirection) {
+        let duration = lastSnapshot.duration > 0 ? lastSnapshot.duration : source.mediaSource.durationSeconds ?? 0
+        cacheSession?.prioritizeSeek(position: seconds, duration: duration)
+        underlying.seek(to: seconds, direction: direction)
+    }
+
+    func reload(at seconds: Double) {
+        cacheSession?.ensurePreloadActive(reason: "same-engine reload")
+        underlying.reload(at: seconds)
+    }
 
     func recoverStall(position: Double, duration: Double) {
         cacheSession?.ensurePreloadActive(reason: "stall at \(String(format: "%.2f", position))")
@@ -59,5 +66,15 @@ final class KTVAVPlayerEngine: PlayerEngine {
         underlying.stop()
         cacheSession?.stop()
         cacheSession = nil
+    }
+
+    private func bindUnderlying() {
+        underlying.onSnapshot = { [weak self] snapshot in
+            guard let self else { return }
+            self.lastSnapshot = snapshot
+            self.cacheSession?.updatePlayback(position: snapshot.position, duration: snapshot.duration)
+            self.onSnapshot?(snapshot)
+        }
+        underlying.onSeekCompleted = { [weak self] result in self?.onSeekCompleted?(result) }
     }
 }

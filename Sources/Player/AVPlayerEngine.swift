@@ -19,6 +19,13 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private var displayLink: CADisplayLink?
     private var videoOutput: AVPlayerItemVideoOutput?
     private var pendingFrameMeasurement: FrameMeasurement?
+    private var lastVideoProbeHostTime: TimeInterval = 0
+    private var lastVideoFrameHostTime: TimeInterval = 0
+    private var lastVideoFrameItemTime: Double = 0
+    private var assetInstalledHostTime: TimeInterval = 0
+    private var videoFreezeRecoveryCount = 0
+    private var lastVideoFreezeRecoveryAt: TimeInterval = 0
+    private var videoFreezeRecoveryInProgress = false
     private var lastConfiguration: Configuration?
     private let transportSource: ResolvedPlaybackSource?
     private let transportClient: EmbyAPIClient?
@@ -93,6 +100,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         player.replaceCurrentItem(with: nil)
         videoOutput = nil
         pendingFrameMeasurement = nil
+        resetVideoFrameWatchdog()
         lastStallPosition = -1
         stallRecoveryAttempts = 0
 
@@ -365,6 +373,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         stopObservers()
         videoOutput = nil
         pendingFrameMeasurement = nil
+        resetVideoFrameWatchdog()
         lastStallPosition = -1
         stallRecoveryAttempts = 0
         lastTransportFailureReloadAt = .distantPast
@@ -378,25 +387,105 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     }
 
     @objc private func displayLinkTick() {
-        guard let pending = pendingFrameMeasurement,
-              let output = videoOutput else { return }
+        let hostTime = CACurrentMediaTime()
+        guard hostTime - lastVideoProbeHostTime >= 0.10 else { return }
+        lastVideoProbeHostTime = hostTime
+        guard let output = videoOutput else { return }
 
-        let itemTime = output.itemTime(forHostTime: CACurrentMediaTime())
+        let itemTime = output.itemTime(forHostTime: hostTime)
         guard itemTime.isNumeric else { return }
         let seconds = itemTime.seconds
-        guard seconds.isFinite, abs(seconds - pending.target) <= 2.0,
-              output.hasNewPixelBuffer(forItemTime: itemTime) else { return }
+        guard seconds.isFinite else { return }
 
-        _ = output.copyPixelBuffer(forItemTime: itemTime, itemTimeForDisplay: nil)
-        pendingFrameMeasurement = nil
-        onSeekCompleted?(SeekResult(
-            requestedAt: pending.requestedAt,
-            target: pending.target,
-            actualPosition: seconds,
-            bufferHit: pending.bufferHit,
-            completionLatencyMs: (CACurrentMediaTime() - pending.requestedAt) * 1000,
-            measurement: "AV 新画面"
-        ))
+        if output.hasNewPixelBuffer(forItemTime: itemTime) {
+            _ = output.copyPixelBuffer(forItemTime: itemTime, itemTimeForDisplay: nil)
+            lastVideoFrameHostTime = hostTime
+            lastVideoFrameItemTime = seconds
+            if videoFreezeRecoveryInProgress {
+                DiagnosticsLogger.shared.log("VideoFreeze", "recovered engine=\(kind.title) frame=\(String(format: "%.3f", seconds)) attempts=\(videoFreezeRecoveryCount)")
+            }
+            if videoFreezeRecoveryInProgress {
+                snapshot.isBuffering = false
+                snapshot.waitingReason = nil
+                emit()
+            }
+            videoFreezeRecoveryInProgress = false
+            if videoFreezeRecoveryCount > 0, hostTime - lastVideoFreezeRecoveryAt > 3 { videoFreezeRecoveryCount = 0 }
+
+            if let pending = pendingFrameMeasurement, abs(seconds - pending.target) <= 2.0 {
+                pendingFrameMeasurement = nil
+                onSeekCompleted?(SeekResult(
+                    requestedAt: pending.requestedAt,
+                    target: pending.target,
+                    actualPosition: seconds,
+                    bufferHit: pending.bufferHit,
+                    completionLatencyMs: (hostTime - pending.requestedAt) * 1000,
+                    measurement: "AV 新画面"
+                ))
+            }
+            return
+        }
+
+        evaluateVideoFreeze(hostTime: hostTime, currentItemTime: seconds)
+    }
+
+    private func evaluateVideoFreeze(hostTime: TimeInterval, currentItemTime: Double) {
+        guard shouldPlayWhenReady, player.currentItem?.status == .readyToPlay,
+              player.timeControlStatus == .playing, player.rate > 0,
+              hostTime - assetInstalledHostTime >= 5,
+              snapshot.position + 3 < snapshot.duration,
+              snapshot.position - lastVideoFrameItemTime >= 1.5,
+              hostTime - lastVideoFrameHostTime >= 2.5,
+              hostTime - lastVideoFreezeRecoveryAt >= 4 else { return }
+
+        videoFreezeRecoveryCount += 1
+        videoFreezeRecoveryInProgress = true
+        lastVideoFreezeRecoveryAt = hostTime
+        snapshot.isBuffering = true
+        snapshot.waitingReason = "检测到音频继续但视频帧停止，正在恢复同一 AVPlayer"
+        emit()
+        let position = max(0, player.currentTime().seconds.isFinite ? player.currentTime().seconds : currentItemTime)
+        DiagnosticsLogger.shared.log(
+            "VideoFreeze",
+            "detected engine=\(kind.title) attempt=\(videoFreezeRecoveryCount) position=\(String(format: "%.3f", position)) lastFrame=\(String(format: "%.3f", lastVideoFrameItemTime)) noFrameMs=\(Int((hostTime - lastVideoFrameHostTime) * 1000)) audioClockAdvancing=true"
+        )
+
+        if videoFreezeRecoveryCount == 1 {
+            softRecoverVideoFrame(at: position)
+        } else {
+            DiagnosticsLogger.shared.log("VideoFreeze", "same-engine item reload position=\(position)")
+            reload(at: position)
+        }
+    }
+
+    private func softRecoverVideoFrame(at position: Double) {
+        guard let item = player.currentItem else { return }
+        player.pause()
+        item.cancelPendingSeeks()
+        item.seek(
+            to: CMTime(seconds: max(0, position), preferredTimescale: 600),
+            toleranceBefore: CMTime(seconds: 0.15, preferredTimescale: 600),
+            toleranceAfter: CMTime(seconds: 0.35, preferredTimescale: 600)
+        ) { [weak self] finished in
+            guard let self, finished else { return }
+            DispatchQueue.main.async {
+                guard self.shouldPlayWhenReady else { return }
+                self.player.playImmediately(atRate: 1)
+                self.snapshot.isPlaying = true
+                self.emit()
+            }
+        }
+    }
+
+    private func resetVideoFrameWatchdog() {
+        let now = CACurrentMediaTime()
+        lastVideoProbeHostTime = 0
+        lastVideoFrameHostTime = now
+        lastVideoFrameItemTime = 0
+        assetInstalledHostTime = now
+        videoFreezeRecoveryCount = 0
+        lastVideoFreezeRecoveryAt = 0
+        videoFreezeRecoveryInProgress = false
     }
 
     private func installAsset(_ asset: AVURLAsset, preferredForwardBuffer: Double, startPosition: Double) {
@@ -411,6 +500,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         ])
         item.add(output)
         videoOutput = output
+        resetVideoFrameWatchdog()
 
         player.replaceCurrentItem(with: item)
         snapshot.position = max(0, startPosition)

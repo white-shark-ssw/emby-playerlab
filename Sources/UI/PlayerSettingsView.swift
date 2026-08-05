@@ -63,7 +63,7 @@ struct PlayerSettingsView: View {
                     Toggle("持续预取到缓存上限或文件结尾", isOn: $ktvContinuousPreload)
                     Toggle("蜂窝网络也持续预取", isOn: $ktvPreloadOnCellular)
                     Toggle("退出后保留磁盘缓存", isOn: $keepLastCache)
-                    Text("KTVHTTPCache 会边播边缓存，并在容量允许时持续向后预取。缓存预算大于视频体积时，视频会自然完整缓存；预算不足时在达到上限后按框架淘汰策略管理。当前实验先使用框架默认连接方式，不同时启用自适应单双连接测速。")
+                    Text("KTVHTTPCache 负责稀疏缓存，App 使用 16/32/64 MB 分段测速并自动选择表现更好的 Range 大小。连接持续低速或无增长时会从当前字节位置重建；Seek 后预取窗口立即迁移到目标位置，再继续补全文件。缓存预算大于视频体积时会自然形成完整缓存。")
                         .font(.footnote)
                         .foregroundColor(.secondary)
 
@@ -89,7 +89,7 @@ struct PlayerSettingsView: View {
                 }
 
                 Section {
-                    Text("诊断日志会记录 KTV 预取进度、实时速度、总缓存、是否形成完整文件、当前引擎等待原因和 Seek 首帧耗时。")
+                    Text("诊断日志会分别记录 115/CDN 上游缓存增长速度、分段 Range 选优、慢连接重建、Seek 下载迁移、视频帧冻结检测和同引擎恢复。")
                         .font(.footnote)
                 }
             }
