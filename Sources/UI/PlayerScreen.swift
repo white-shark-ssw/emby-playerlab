@@ -245,6 +245,7 @@ struct PlayerScreen: View {
 
     private var engineBadge: String {
         switch controller.engineKind {
+        case .ktvAVPlayer: return "AUTO·KTV"
         case .resourceLoaderAVPlayer: return "AUTO·AV"
         case .transportAVPlayer: return "LEGACY"
         case .ksAVIO: return "AUTO·FF"

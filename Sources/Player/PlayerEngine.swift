@@ -1,6 +1,7 @@
 import Foundation
 
 enum PlayerEngineKind: String, CaseIterable, Identifiable {
+    case ktvAVPlayer
     case resourceLoaderAVPlayer
     case transportAVPlayer
     case ksAVIO
@@ -11,6 +12,7 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .ktvAVPlayer: return "KTV 缓存 AVPlayer"
         case .resourceLoaderAVPlayer: return "智能 AVPlayer"
         case .transportAVPlayer: return "旧版传输层 AVPlayer"
         case .ksAVIO: return "KSPlayer FFmpeg"
@@ -21,17 +23,19 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
 
     var automaticRank: Int {
         switch self {
-        case .resourceLoaderAVPlayer: return 0
-        case .ksAVIO: return 1
-        case .mpv: return 2
-        case .transportAVPlayer: return 3
-        case .avPlayer: return 4
+        case .ktvAVPlayer: return 0
+        case .resourceLoaderAVPlayer: return 1
+        case .ksAVIO: return 2
+        case .mpv: return 3
+        case .transportAVPlayer: return 4
+        case .avPlayer: return 5
         }
     }
 }
 
 enum PlayerEnginePreference: String, CaseIterable, Identifiable {
     case automatic
+    case ktvAVPlayer
     case resourceLoaderAVPlayer
     case transportAVPlayer
     case ksAVIO
@@ -43,6 +47,7 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .automatic: return "自动（推荐）"
+        case .ktvAVPlayer: return "诊断：KTV 缓存 AVPlayer"
         case .resourceLoaderAVPlayer: return "诊断：智能 AVPlayer"
         case .transportAVPlayer: return "诊断：旧版本机 HTTP"
         case .ksAVIO: return "诊断：KSPlayer FFmpeg"
@@ -55,6 +60,7 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
 
     func resolved(for source: MediaSource) -> PlayerEngineKind {
         switch self {
+        case .ktvAVPlayer: return .ktvAVPlayer
         case .resourceLoaderAVPlayer: return .resourceLoaderAVPlayer
         case .transportAVPlayer: return .transportAVPlayer
         case .ksAVIO: return .ksAVIO
@@ -69,7 +75,9 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
             if nativeContainers.contains(source.normalizedContainer),
                video.isEmpty || nativeVideo.contains(video),
                audio.isEmpty || nativeAudio.contains(audio) {
-                return .resourceLoaderAVPlayer
+                let transport = MediaTransportConfiguration.current()
+                let ktvEnabled = transport.strategy == .ktvHTTP && transport.diskLimitBytes > 0 && (transport.cacheMode == .disk || transport.cacheMode == .automatic)
+                return ktvEnabled ? .ktvAVPlayer : .resourceLoaderAVPlayer
             }
             return .ksAVIO
         }

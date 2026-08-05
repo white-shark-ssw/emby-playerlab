@@ -6,6 +6,7 @@ struct PlayerSettingsView: View {
     @AppStorage("seek.screenPanEnabled") private var screenPanEnabled = true
     @AppStorage("buffer.preset") private var bufferPreset = BufferPreset.balanced.rawValue
 
+    @AppStorage(TransportSettingsKey.strategy) private var transportStrategy = TransportStrategy.ktvHTTP.rawValue
     @AppStorage(TransportSettingsKey.cacheMode) private var cacheMode = TransportCacheMode.automatic.rawValue
     @AppStorage(TransportSettingsKey.memoryCacheMB) private var memoryCacheMB = 256
     @AppStorage(TransportSettingsKey.diskCacheGB) private var diskCacheGB = 2
@@ -13,6 +14,8 @@ struct PlayerSettingsView: View {
     @AppStorage(TransportSettingsKey.cellularPreloadMB) private var cellularWindowMB = 64
     @AppStorage(TransportSettingsKey.segmentSizeMB) private var segmentSizeMB = 1
     @AppStorage(TransportSettingsKey.keepLastCache) private var keepLastCache = false
+    @AppStorage(TransportSettingsKey.ktvContinuousPreload) private var ktvContinuousPreload = true
+    @AppStorage(TransportSettingsKey.ktvPreloadOnCellular) private var ktvPreloadOnCellular = false
 
     @Environment(\.presentationMode) private var presentationMode
     @State private var cacheMaintenanceMessage: String?
@@ -24,7 +27,7 @@ struct PlayerSettingsView: View {
         NavigationView {
             Form {
                 Section(header: Text("自动播放器")) {
-                    Text("App 自动选择智能 AVPlayer、KSPlayer FFmpeg 或 MPV。普通播放不提供手动引擎开关；发生兼容问题时只会向更强容错引擎单向降级。")
+                    Text("App 在播放开始前选择引擎。本次播放开始后固定使用该引擎；卡住时只等待缓存或恢复当前传输，不再自动热切换，避免警告后闪退。")
                         .font(.footnote)
                         .foregroundColor(.secondary)
                 }
@@ -39,7 +42,12 @@ struct PlayerSettingsView: View {
                     Toggle("横向滑动屏幕调整进度", isOn: $screenPanEnabled)
                 }
 
-                Section(header: Text("115 按需缓存")) {
+                Section(header: Text("115 持续缓存实验")) {
+                    Picker("传输实现", selection: $transportStrategy) {
+                        ForEach(TransportStrategy.allCases) { strategy in
+                            Text(strategy.title).tag(strategy.rawValue)
+                        }
+                    }
                     Picker("缓存位置", selection: $cacheMode) {
                         ForEach(TransportCacheMode.allCases) { mode in
                             Text(mode.title).tag(mode.rawValue)
@@ -52,8 +60,10 @@ struct PlayerSettingsView: View {
                     Picker("缓存分片", selection: $segmentSizeMB) {
                         ForEach(segmentSizes, id: \.self) { size in Text("\(size) MB").tag(size) }
                     }
+                    Toggle("持续预取到缓存上限或文件结尾", isOn: $ktvContinuousPreload)
+                    Toggle("蜂窝网络也持续预取", isOn: $ktvPreloadOnCellular)
                     Toggle("退出后保留磁盘缓存", isOn: $keepLastCache)
-                    Text("播放窗口只覆盖当前播放位置前方的数据。Seek 后旧窗口立即降级，新位置先填充连续数据；不会再以尽快下载完整文件为播放目标。115 默认只使用一条连续预取连接，稳定阶段采用 32 MB 长 Range。")
+                    Text("KTVHTTPCache 会边播边缓存，并在容量允许时持续向后预取。缓存预算大于视频体积时，视频会自然完整缓存；预算不足时在达到上限后按框架淘汰策略管理。当前实验先使用框架默认连接方式，不同时启用自适应单双连接测速。")
                         .font(.footnote)
                         .foregroundColor(.secondary)
 
@@ -79,7 +89,7 @@ struct PlayerSettingsView: View {
                 }
 
                 Section {
-                    Text("诊断日志会记录自动路由原因、当前位置有效速度、连续缓存、ResourceLoader 请求取消、引擎降级和 Seek 首帧耗时。")
+                    Text("诊断日志会记录 KTV 预取进度、实时速度、总缓存、是否形成完整文件、当前引擎等待原因和 Seek 首帧耗时。")
                         .font(.footnote)
                 }
             }

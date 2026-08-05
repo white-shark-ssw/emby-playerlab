@@ -1,6 +1,7 @@
 import Foundation
 
 enum TransportStrategy: String, CaseIterable, Identifiable {
+    case ktvHTTP
     case downloadFirst
     case legacyMultiRange
 
@@ -8,7 +9,8 @@ enum TransportStrategy: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .downloadFirst: return "下载优先（推荐）"
+        case .ktvHTTP: return "KTVHTTPCache 持续预取"
+        case .downloadFirst: return "下载优先"
         case .legacyMultiRange: return "旧版多 Range"
         }
     }
@@ -43,6 +45,8 @@ enum TransportSettingsKey {
     static let upstreamBlockSizeMB = "transport.upstreamBlockSizeMB"
     static let concurrentRequests = "transport.concurrentRequests"
     static let keepLastCache = "transport.keepLastCache"
+    static let ktvContinuousPreload = "transport.ktvContinuousPreload"
+    static let ktvPreloadOnCellular = "transport.ktvPreloadOnCellular"
 }
 
 struct MediaTransportConfiguration: Equatable {
@@ -56,6 +60,8 @@ struct MediaTransportConfiguration: Equatable {
     let upstreamBlockSizeBytes: Int64
     let maximumConcurrentRequests: Int
     let keepLastCache: Bool
+    let ktvContinuousPreloadEnabled: Bool
+    let ktvPreloadOnCellular: Bool
 
     var usesMemoryCache: Bool {
         cacheMode == .memory || cacheMode == .automatic
@@ -79,13 +85,15 @@ struct MediaTransportConfiguration: Equatable {
             segmentSizeBytes: min(max(segmentSizeBytes, Int64(1_048_576)), Int64(4 * 1_048_576)),
             upstreamBlockSizeBytes: Int64(32 * 1_048_576),
             maximumConcurrentRequests: 2,
-            keepLastCache: keepLastCache
+            keepLastCache: keepLastCache,
+            ktvContinuousPreloadEnabled: ktvContinuousPreloadEnabled,
+            ktvPreloadOnCellular: ktvPreloadOnCellular
         )
     }
 
     static func current(defaults: UserDefaults = .standard) -> MediaTransportConfiguration {
         defaults.register(defaults: [
-            TransportSettingsKey.strategy: TransportStrategy.downloadFirst.rawValue,
+            TransportSettingsKey.strategy: TransportStrategy.ktvHTTP.rawValue,
             TransportSettingsKey.cacheMode: TransportCacheMode.automatic.rawValue,
             TransportSettingsKey.memoryCacheMB: 256,
             TransportSettingsKey.diskCacheGB: 2,
@@ -95,9 +103,11 @@ struct MediaTransportConfiguration: Equatable {
             TransportSettingsKey.upstreamBlockSizeMB: 16,
             TransportSettingsKey.concurrentRequests: 2,
             TransportSettingsKey.keepLastCache: false,
+            TransportSettingsKey.ktvContinuousPreload: true,
+            TransportSettingsKey.ktvPreloadOnCellular: false,
         ])
 
-        let strategy = TransportStrategy(rawValue: defaults.string(forKey: TransportSettingsKey.strategy) ?? "") ?? .downloadFirst
+        let strategy = TransportStrategy(rawValue: defaults.string(forKey: TransportSettingsKey.strategy) ?? "") ?? .ktvHTTP
         let mode = TransportCacheMode(rawValue: defaults.string(forKey: TransportSettingsKey.cacheMode) ?? "") ?? .automatic
         let memoryMB = max(0, defaults.integer(forKey: TransportSettingsKey.memoryCacheMB))
         let diskGB = max(0, defaults.integer(forKey: TransportSettingsKey.diskCacheGB))
@@ -121,7 +131,9 @@ struct MediaTransportConfiguration: Equatable {
             segmentSizeBytes: Int64(segmentMB) * 1_048_576,
             upstreamBlockSizeBytes: Int64(upstreamBlockMB) * 1_048_576,
             maximumConcurrentRequests: concurrent,
-            keepLastCache: defaults.bool(forKey: TransportSettingsKey.keepLastCache)
+            keepLastCache: defaults.bool(forKey: TransportSettingsKey.keepLastCache),
+            ktvContinuousPreloadEnabled: defaults.bool(forKey: TransportSettingsKey.ktvContinuousPreload),
+            ktvPreloadOnCellular: defaults.bool(forKey: TransportSettingsKey.ktvPreloadOnCellular)
         )
     }
 }
@@ -129,6 +141,7 @@ struct MediaTransportConfiguration: Equatable {
 enum TransportCacheMaintenance {
     static func clearAll() throws {
         let cacheRoot = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        EPLKTVCacheBridge.clearAllCaches()
         for name in ["EmbyPlayerLabTransport", "EmbyPlayerLabDownloadFirst"] {
             let root = cacheRoot.appendingPathComponent(name, isDirectory: true)
             if FileManager.default.fileExists(atPath: root.path) { try FileManager.default.removeItem(at: root) }

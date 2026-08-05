@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 120
+    timeout-minutes: 150
 
     steps:
       - name: Checkout
@@ -19,6 +19,7 @@ jobs:
           : > build.log
           : > package-resolution.log
           : > mpv-module-maps.log
+          : > pods-install.log
 
       - name: Select Xcode 16.4
         run: |
@@ -28,20 +29,28 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
           swift --version
 
-      - name: Install XcodeGen
+      - name: Install build tools
         run: |
           set -euo pipefail
           brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
           xcodegen --version
+          pod --version
 
       - name: Generate Xcode project
         run: xcodegen generate
+
+      - name: Install KTVHTTPCache 3.1.0
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          pod install --repo-update 2>&1 | tee pods-install.log
 
       - name: Restore Swift package cache
         uses: actions/cache@v4
         with:
           path: .spm-cache
-          key: ${{ runner.os }}-mpvkit-0.40.0-ksplayer-2.3.4-${{ hashFiles('project.yml') }}
+          key: ${{ runner.os }}-mpvkit-0.40.0-ksplayer-2.3.4-ktv-3.1.0-${{ hashFiles('project.yml', 'Podfile') }}
 
       - name: Resolve MPVKit and KSPlayer
         run: |
@@ -49,7 +58,7 @@ jobs:
           set -o pipefail
           xcodebuild \
             -resolvePackageDependencies \
-            -project EmbyPlayerLab.xcodeproj \
+            -workspace EmbyPlayerLab.xcworkspace \
             -scheme EmbyPlayerLab \
             -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
 
@@ -61,23 +70,19 @@ jobs:
             echo ".spm-cache does not exist after package resolution." | tee mpv-module-maps.log
             exit 0
           fi
-
           MODULE_MAP_LIST="$(mktemp)"
           find .spm-cache \( -path '*/Modules/module.modulemap' -o -path '*/module.modulemap' \) -type f | sort > "$MODULE_MAP_LIST"
-
           if [[ ! -s "$MODULE_MAP_LIST" ]]; then
             echo "No module.modulemap files found under .spm-cache." | tee mpv-module-maps.log
             rm -f "$MODULE_MAP_LIST"
             exit 0
           fi
-
           {
             while IFS= read -r file; do
               echo "===== $file ====="
               sed -n '1,120p' "$file"
             done < "$MODULE_MAP_LIST"
           } | tee mpv-module-maps.log
-
           rm -f "$MODULE_MAP_LIST"
 
       - name: Build unsigned app
@@ -86,7 +91,7 @@ jobs:
           set -o pipefail
           rm -rf build
           xcodebuild \
-            -project EmbyPlayerLab.xcodeproj \
+            -workspace EmbyPlayerLab.xcworkspace \
             -scheme EmbyPlayerLab \
             -configuration Release \
             -sdk iphoneos \
@@ -106,8 +111,7 @@ jobs:
           {
             echo "## First compiler errors"
             echo '```text'
-            grep -nE '(^|[[:space:]])(error:|fatal error:)' \
-              build.log package-resolution.log mpv-module-maps.log | head -80 || true
+            grep -nE '(^|[[:space:]])(error:|fatal error:)' build.log package-resolution.log pods-install.log mpv-module-maps.log | head -100 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -135,7 +139,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="EmbyPlayerLab-0.6.2-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="EmbyPlayerLab-0.7.0-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
@@ -159,6 +163,7 @@ jobs:
           path: |
             build.log
             package-resolution.log
+            pods-install.log
             mpv-module-maps.log
           if-no-files-found: error
           retention-days: 14

@@ -57,7 +57,9 @@ final class PlayerController: ObservableObject {
     }
 
     var avPlayer: AVPlayer? {
-        (engine as? AVPlayerEngine)?.player
+        if let engine = engine as? AVPlayerEngine { return engine.player }
+        if let engine = engine as? KTVAVPlayerEngine { return engine.player }
+        return nil
     }
 
     var mpvDisplayLayer: AVSampleBufferDisplayLayer? {
@@ -71,7 +73,7 @@ final class PlayerController: ObservableObject {
         self.orchestrator = orchestrator
         let initialKind = orchestrator.currentKind
         let transportContext: PlaybackTransportContext?
-        if preference.isAutomatic || initialKind == .resourceLoaderAVPlayer || initialKind == .ksAVIO {
+        if initialKind == .resourceLoaderAVPlayer || initialKind == .ksAVIO {
             transportContext = PlaybackTransportContext(
                 source: source,
                 client: client,
@@ -342,11 +344,12 @@ final class PlayerController: ObservableObject {
     func toggleEngine() {
         let next: PlayerEngineKind
         switch engineKind {
+        case .ktvAVPlayer: next = .resourceLoaderAVPlayer
         case .resourceLoaderAVPlayer: next = .ksAVIO
         case .transportAVPlayer: next = .resourceLoaderAVPlayer
         case .ksAVIO: next = .mpv
         case .avPlayer: next = .resourceLoaderAVPlayer
-        case .mpv: next = .resourceLoaderAVPlayer
+        case .mpv: next = .ktvAVPlayer
         }
         switchEngine(to: next)
     }
@@ -371,6 +374,8 @@ final class PlayerController: ObservableObject {
         transportContext: PlaybackTransportContext?
     ) -> PlayerEngine {
         switch kind {
+        case .ktvAVPlayer:
+            return KTVAVPlayerEngine(source: source, configuration: MediaTransportConfiguration.current())
         case .resourceLoaderAVPlayer:
             return AVPlayerEngine(
                 kind: .resourceLoaderAVPlayer,
@@ -611,7 +616,7 @@ final class PlayerController: ObservableObject {
         lastWatchdogPosition = snapshot.position
         lastWatchdogBufferEnd = bufferedEnd
 
-        let recoveryThreshold = engineKind == .resourceLoaderAVPlayer || engineKind == .transportAVPlayer ? 2 : 3
+        let recoveryThreshold = engineKind == .ktvAVPlayer || engineKind == .resourceLoaderAVPlayer || engineKind == .transportAVPlayer ? 2 : 3
         guard stagnantWatchdogIntervals >= recoveryThreshold else { return }
         stagnantWatchdogIntervals = 0
         stallRecoveryCount += 1
