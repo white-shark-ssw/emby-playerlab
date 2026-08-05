@@ -2,7 +2,7 @@
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
     "bytes": 5321,
-    "sha256": "a0e61eecc5a6a047ce698030134af2cf02330426c70ddb1bc93f3b829a5f5cd6"
+    "sha256": "60ec37f00ea7dcaad5f3674a1f04e6fe290667379d8b6061f6367c237073f3bd"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -22,7 +22,7 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1783,
-    "sha256": "9a357e2d2b61031596744d74c6d2bb48ca5a855f55d63354ff5ee7e67317a28e"
+    "sha256": "93338eb23118363062522d92fde74f379bedf95dd4872833a59d811a4776de5f"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -42,7 +42,7 @@
   {
     "path": "README.md",
     "bytes": 19262,
-    "sha256": "48bd78092accb3dce949ee6ab1a3dee5734658c765860a79deaad605e4287072"
+    "sha256": "e8677d6a19c104319598db4db4f41e36dd40615a6b05cd208f6b26e2f73cb4dd"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -222,7 +222,7 @@
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1062,
-    "sha256": "16a273c9d3c607c4628b4a6fea2ed55371eb528d08907572d11148402a60e366"
+    "sha256": "b9dcdf082f55acac42723307024d4fa1272dbcf19d9ca2877c7f662cca019f0e"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -261,8 +261,8 @@
   },
   {
     "path": "Sources/Player/AVPlayerEngine.swift",
-    "bytes": 31059,
-    "sha256": "63e2574a10d6e35d52557589fdae7f8f7123a5fbee2efa403256211b0b30d2f2"
+    "bytes": 31474,
+    "sha256": "ab4c24f8d6be266b5e0c8ef542b06d4f837fb88aefe1ef76e4433ca88a8ea7b7"
   },
   {
     "path": "Sources/Player/KSAVIOPlayerEngine.swift",
@@ -462,7 +462,7 @@
   {
     "path": "docs/BUILD_REPORT.md",
     "bytes": 1106,
-    "sha256": "9a90df2a4781e37c579d39788228a215708939a3978ec82333e26d15085f1604"
+    "sha256": "ada7d33dcdcc1f3f2a54b2a1d79950b5e556a15df0e40cf1d219b1fabecf4c37"
   },
   {
     "path": "docs/CHANGELOG_0.1.0.md",
@@ -630,6 +630,11 @@
     "sha256": "27a97b442082be2e9495188b3f60ecf31b3f8a804811a77604f97f4e772b13c2"
   },
   {
+    "path": "docs/CHANGELOG_0.7.1.md",
+    "bytes": 818,
+    "sha256": "7336450b7b07d4470d0c7f41cb5cc8e8f2bedc1486d8a4844f5488c09777493b"
+  },
+  {
     "path": "docs/GITHUB_BUILD_FIX_0.5.1.md",
     "bytes": 1701,
     "sha256": "516d1e1bb3e26c51bf0ce41c35ccc5ad31bde85e3afb6b1d92f23a2735f384e6"
@@ -762,7 +767,7 @@
   {
     "path": "project.yml",
     "bytes": 1539,
-    "sha256": "ae77523c600904f4b091e65b43a033acd2dbe2213e072c4437e02cf12b30d9b2"
+    "sha256": "df61e22acdf97a249fe645c32eb605de5391aadb7b9812ce4ce1f6c199617529"
   },
   {
     "path": "scripts/check_min_os.sh",

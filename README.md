@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → OneStrm 302 → 115 直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.7.0
+## 当前版本：0.7.1
 
 ### 系统与构建
 
@@ -14,7 +14,7 @@
 - KSPlayer：2.3.4
 - MPVKit：0.40.0-av（MPVKit-GPL）
 
-### 0.7.0：KTV 持续缓存实验
+### 0.7.1：KTV 持续缓存实验
 
 本版不再把“缓存完整视频”写成固定行为，而是模拟 EplayerX 的实际表现：下载器在缓存容量允许时持续高速预取；当用户设置的缓存预算大于视频体积时，视频自然缓存完整。
 
@@ -37,7 +37,7 @@
 - 不再因为 Stall、缓冲等待、疑似提前 EOF 或引擎错误自动创建另一套播放器。
 - 引擎只在播放开始前自动选择；普通播放界面不要求用户手动切换。
 
-### 0.7.0 首轮测试目标
+### 0.7.1 首轮测试目标
 
 1. 设置磁盘缓存预算大于测试视频体积。
 2. 播放异常 MP4 `63368`，确认顶部显示 `AUTO·KTV`。
@@ -61,7 +61,7 @@
 2. 等待 `Validate Source` 成功。
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-5. 解压获得 `EmbyPlayerLab-0.7.0-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+5. 解压获得 `EmbyPlayerLab-0.7.1-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 首次构建会通过 CocoaPods 安装固定版本 KTVHTTPCache 3.1.0，并通过 Swift Package Manager解析 KSPlayer 与 MPVKit。
 

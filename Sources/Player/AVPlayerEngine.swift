@@ -130,6 +130,13 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
            let transportConfiguration {
             let session: TransportDataSession
             switch transportConfiguration.strategy {
+            case .ktvHTTP:
+                DiagnosticsLogger.shared.log("TransportPlayer", "legacy HTTP engine requested while KTV strategy is active; using download-first compatibility session")
+                session = DownloadFirstMediaSession(
+                    source: transportSource,
+                    client: transportClient,
+                    configuration: transportConfiguration
+                )
             case .downloadFirst:
                 session = DownloadFirstMediaSession(
                     source: transportSource,

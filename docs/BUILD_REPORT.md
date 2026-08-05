@@ -1,6 +1,6 @@
 # Build Report
 
-- Version: 0.7.0 (33)
+- Version: 0.7.1 (34)
 - Deployment Target: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Expected CI: Xcode 16.4, arm64 iPhoneOS Release
