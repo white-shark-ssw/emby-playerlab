@@ -2,7 +2,7 @@
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
     "bytes": 5300,
-    "sha256": "82e45ca36e44d55f193f3a72c07ae8a1c877246f8dd6e5147a48556c85b91036"
+    "sha256": "4a3795d1f38ff99b43017e8460c4ccff89e0152c78192d64de5ee95160e9b4f3"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -22,7 +22,7 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1783,
-    "sha256": "d1668115a2601673164bac31d2458b01fdc02c267c5795f57851db961418a0d5"
+    "sha256": "b882ea840ba5288f355753282f2042942f26b076257d47815cb7201c1e42e560"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -41,8 +41,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 21680,
-    "sha256": "bad5d6f72593fbc531c015416039fc18c1bfc37a6465bbca6bd9d5ede984647d"
+    "bytes": 22553,
+    "sha256": "49d48853ddabd8964c815494566a8b7e3edc714c106dbc80574ac3b6fe9b4b20"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -216,13 +216,13 @@
   },
   {
     "path": "Sources/Cache/KTVCachePlaybackSession.swift",
-    "bytes": 18008,
-    "sha256": "9a78fea7464a2ab4cf022d9a0cb9edae01a2bba4b659b4a22e7c1d0a71a36c57"
+    "bytes": 32531,
+    "sha256": "9d7a2d7042e85bde6715216486496ec3c280d73c2569a028a7c0b457aa32c2bb"
   },
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1062,
-    "sha256": "d09673fff54ce3000a7cfdf0c599232ce42a54ce18a4a7c2b1dc9a6fd4919697"
+    "sha256": "8dac4991f8c270f7d5e24d60233c7e3e46f29ac9916b6e2f8efd684842510ad9"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -271,8 +271,8 @@
   },
   {
     "path": "Sources/Player/KTVAVPlayerEngine.swift",
-    "bytes": 3567,
-    "sha256": "3f52da25f07a0d462c85175b3d307519b4ec74a0ecd592aaea273fa4f9cbc4d1"
+    "bytes": 3877,
+    "sha256": "638f9acfded7133396928d6964a845a00915c1f2b7924aafa342eb9e4f292646"
   },
   {
     "path": "Sources/Player/MPVPlayerEngine.swift",
@@ -291,8 +291,8 @@
   },
   {
     "path": "Sources/Player/PlayerController.swift",
-    "bytes": 34373,
-    "sha256": "80da3a45ef8d6076ed65d0522f034b8731e5ff317a241fde9b61ec8701e8aab5"
+    "bytes": 37441,
+    "sha256": "fd9c04a69f34375766b77d909b2114aa9b4f07aad6af13e5f1062094544612ca"
   },
   {
     "path": "Sources/Player/PlayerEngine.swift",
@@ -466,8 +466,8 @@
   },
   {
     "path": "docs/BUILD_REPORT.md",
-    "bytes": 2843,
-    "sha256": "8727226b878eeee4e350261de3010028e56f4f03ce80938802512feb42fb8209"
+    "bytes": 3361,
+    "sha256": "6fad54d4a9c826bfb75f429ae76cccb85009d903d1f414e804c2ae45efe24176"
   },
   {
     "path": "docs/CHANGELOG_0.1.0.md",
@@ -655,6 +655,11 @@
     "sha256": "1468a00c612af69d1a50d55afd94995b7f1b8e86cd80b8c39a73256c98d6f610"
   },
   {
+    "path": "docs/CHANGELOG_0.7.5.md",
+    "bytes": 1142,
+    "sha256": "3afc6986b264c27bcde14ccb80dbc67f572a17062a2908c785336864e8a8881d"
+  },
+  {
     "path": "docs/GITHUB_BUILD_FIX_0.5.1.md",
     "bytes": 1701,
     "sha256": "516d1e1bb3e26c51bf0ce41c35ccc5ad31bde85e3afb6b1d92f23a2735f384e6"
@@ -795,6 +800,11 @@
     "sha256": "f1e7e778ec7cd5ada58efb1fa977541f3990eed8b45053a0ddd270c42e262fad"
   },
   {
+    "path": "docs/TEST_CHECKLIST_0.7.5.md",
+    "bytes": 1969,
+    "sha256": "c28d425395bcccb8ad8b0c54075af0d90478378ee4796e922187cf506c67861c"
+  },
+  {
     "path": "docs/THIRD_PARTY_KTVHTTPCACHE.md",
     "bytes": 733,
     "sha256": "dd63c7a8bc6fd29a5c39e0fa0fc2799566d91d70baadbbd1ed0af34b1389177b"
@@ -807,7 +817,7 @@
   {
     "path": "project.yml",
     "bytes": 1399,
-    "sha256": "43c85b535ed38d67da6022e00b143c7935fb6da87987048bb2c999572ad166f0"
+    "sha256": "0c6d8f91f9dba518136b0496573bdf4a28296ee6c6294fd819912ab172cca074"
   },
   {
     "path": "scripts/check_min_os.sh",

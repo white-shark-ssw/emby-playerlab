@@ -27,12 +27,16 @@ final class KTVAVPlayerEngine: PlayerEngine {
             let session = try KTVCachePlaybackSession(source: source, configuration: configuration)
             cacheSession = session
             DiagnosticsLogger.shared.log("KTVPlayer", "prepare proxyHost=\(session.proxyURL.host ?? "localhost") proxyPort=\(session.proxyURL.port ?? 0)")
-            underlying.prepare(
-                url: session.proxyURL,
-                headers: headers,
-                preferredForwardBuffer: preferredForwardBuffer,
-                startPosition: startPosition
-            )
+            session.prepareForPlayback { [weak self, weak session] in
+                guard let self, let session, self.cacheSession === session else { return }
+                DiagnosticsLogger.shared.log("KTVPlayer", "open warmup ready item=\(self.source.itemId)")
+                self.underlying.prepare(
+                    url: session.proxyURL,
+                    headers: headers,
+                    preferredForwardBuffer: preferredForwardBuffer,
+                    startPosition: startPosition
+                )
+            }
         } catch {
             DiagnosticsLogger.shared.log("KTVPlayer", "proxy preparation failed, direct AVPlayer fallback error=\(error.localizedDescription)")
             underlying.prepare(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition)

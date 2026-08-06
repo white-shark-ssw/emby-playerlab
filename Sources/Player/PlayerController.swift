@@ -31,6 +31,7 @@ final class PlayerController: ObservableObject {
     private var compatibilityRecoveryTask: Task<Void, Never>?
     private var compatibilitySeekFallbackTask: Task<Void, Never>?
     private var engineSwitchTask: Task<Void, Never>?
+    private var startupFallbackTask: Task<Void, Never>?
     private var engineSwitchInProgress = false
     private var engineTransitionAwaitingFirstSnapshot = false
     private var engineSwitchSerial: UInt64 = 0
@@ -152,6 +153,8 @@ final class PlayerController: ObservableObject {
         compatibilitySeekFallbackTask = nil
         engineSwitchTask?.cancel()
         engineSwitchTask = nil
+        startupFallbackTask?.cancel()
+        startupFallbackTask = nil
         engineSwitchInProgress = false
         engineTransitionAwaitingFirstSnapshot = false
         EngineTransitionBreadcrumb.clear()
@@ -300,6 +303,8 @@ final class PlayerController: ObservableObject {
         transportMetricsTask = nil
         lastTransportMetrics = nil
         transportSummary = nil
+        startupFallbackTask?.cancel()
+        startupFallbackTask = nil
 
         engineGeneration += 1
         previousEngine.onSnapshot = nil
@@ -592,16 +597,61 @@ final class PlayerController: ObservableObject {
     }
 
     private func handleEngineError(_ message: String) {
-        guard !engineSwitchInProgress, !engineTransitionAwaitingFirstSnapshot,
-              let action = orchestrator.actionForEngineError(kind: engineKind, message: message) else { return }
+        guard !engineSwitchInProgress, !engineTransitionAwaitingFirstSnapshot else { return }
+        if scheduleStartupCompatibilityFallbackIfNeeded(message: message) { return }
+        guard let action = orchestrator.actionForEngineError(kind: engineKind, message: message) else { return }
         if case .switchEngine(let next, let reason) = action {
             stallMessage = "\(engineKind.title) 发生错误，正在自动切换到 \(next.title)。"
             switchEngine(to: next, reason: reason)
         }
     }
 
+    private func scheduleStartupCompatibilityFallbackIfNeeded(message: String) -> Bool {
+        let normalized = message.lowercased()
+        guard orchestrator.automaticMode,
+              engineKind == .ktvAVPlayer,
+              source.mediaSource.normalizedContainer == "mp4",
+              snapshot.position < 1,
+              normalized.contains("cannot open") || normalized.contains("无法打开") else { return false }
+
+        guard startupFallbackTask == nil else { return true }
+        DiagnosticsLogger.shared.log("StartupFallback", "armed item=\(source.itemId) error=\(message) position=\(snapshot.position)")
+        stallMessage = "AVPlayer 无法打开此视频，正在确认下载链路后使用兼容播放器重新打开。"
+
+        startupFallbackTask = Task { [weak self] in
+            guard let self else { return }
+            for attempt in 1...6 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled, self.started, self.engineKind == .ktvAVPlayer, self.snapshot.position < 1 else {
+                    self.startupFallbackTask = nil
+                    return
+                }
+
+                let metrics = self.lastTransportMetrics
+                let healthyBytes = metrics?.bytesDownloaded ?? 0
+                let cacheBytes = metrics?.cacheBytes ?? 0
+                let speed = metrics?.currentDownloadBytesPerSecond ?? 0
+                let active = metrics?.activeRequestCount ?? 0
+                let transportHealthy = healthyBytes >= 16 * 1_048_576 || cacheBytes >= 32 * 1_048_576 || (active > 0 && speed >= 2 * 1_048_576)
+                DiagnosticsLogger.shared.log("StartupFallback", "check item=\(self.source.itemId) attempt=\(attempt) downloaded=\(healthyBytes) cache=\(cacheBytes) speed=\(Int(speed))B/s active=\(active) healthy=\(transportHealthy)")
+                guard transportHealthy else { continue }
+
+                MediaCompatibilityStore.markFFmpegRequired(itemId: self.source.itemId, reason: "ktv-avplayer-startup-cannot-open")
+                self.stallMessage = "媒体数据下载正常，但 AVPlayer 无法打开容器；正在从 0 秒使用 KSPlayer/FFmpeg 重新打开。"
+                self.startupFallbackTask = nil
+                self.switchEngine(to: .ksAVIO, reason: "启动阶段 Cannot Open，传输健康，受控回退到 FFmpeg")
+                return
+            }
+
+            DiagnosticsLogger.shared.log("StartupFallback", "deferred item=\(self.source.itemId) reason=transport-not-confirmed")
+            self.stallMessage = "AVPlayer 无法打开视频，但当前下载链路尚未确认健康，请稍后重试。"
+            self.startupFallbackTask = nil
+        }
+        return true
+    }
+
     private func evaluatePlaybackStall() {
-        guard !engineSwitchInProgress, !engineTransitionAwaitingFirstSnapshot,
+        guard !engineSwitchInProgress, !engineTransitionAwaitingFirstSnapshot, startupFallbackTask == nil,
               !userIsScrubbing, pendingSeekTarget == nil,
               snapshot.isPlaying || snapshot.isBuffering,
               snapshot.position + 3 < effectiveDuration else {

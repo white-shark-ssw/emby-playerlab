@@ -1,17 +1,17 @@
 # Build Report
 
-- Version: 0.7.4 (37)
+- Version: 0.7.5 (38)
 - Deployment Target: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Expected CI: Xcode 16.4, arm64 iPhoneOS Release
 - Swift language mode: Swift 5
 - KTVHTTPCache: 3.1.0 via CocoaPods; upstream minimum iOS 12.0; MIT
 - CocoaAsyncSocket: transitive dependency of KTVHTTPCache
-- MPVKit: not linked in 0.7.4; source adapter retained behind compile-time guard
+- MPVKit: not linked in 0.7.5; source adapter retained behind compile-time guard
 - KSPlayer: 2.3.4
 - FFmpegKit: 6.1.4 through KSPlayer
 - Automatic standard MP4 path: KTVHTTPCache local iPhone proxy + AVPlayer
-- Continuous cache: KTVHCDataLoader with fixed 32 MB segmented Range scheduling, 750 ms coalesced Seek reprioritization, and cache-cap/EOF completion
+- Continuous cache: fixed 32 MB segmented Range scheduling with 10-second single-lane baseline, 15-second dual-lane trial, 750 ms coalesced primary-lane Seek reprioritization, and cache-cap/EOF completion
 - Runtime automatic engine switching: disabled
 - NAS media proxy: prohibited and not used
 - Deployment Target changed: no; remains iOS 15.0
@@ -19,6 +19,13 @@
 - Local validation: Swift parser for all Swift sources; plist/YAML/Ruby/shell validation; source manifest, patch application and ZIP extraction verification.
 - Full Objective-C importer validation, CocoaPods integration, iPhoneOS typecheck/link, embedded-framework MinimumOS validation and unsigned IPA packaging: pending GitHub Actions.
 
+
+## 0.7.5 双通道与启动容错
+
+- 通道 A 负责播放附近，通道 B 在后方下载；双通道净缓存增长至少提高 12% 且无新增失败才保留。
+- 大于 4 GB 或超过 1 小时的 MP4 在 AVPlayer 打开前预取头部 8 MB 与尾部 16 MB。
+- AVPlayer 在 0 秒 `Cannot Open` 且传输健康时，完整关闭 KTV AVPlayer 后从 0 秒启动 KSPlayer/FFmpeg。
+- 已开始播放后的 Runtime automatic engine switching remains disabled.
 
 ## 0.7.4 稳定化策略
 
