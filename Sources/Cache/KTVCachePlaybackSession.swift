@@ -75,6 +75,9 @@ final class KTVCachePlaybackSession {
     private var lastRotationAt = Date.distantPast
     private var stopped = false
     private var initialPreloadStarted = false
+    private var playbackPreparationStarted = false
+    private var playbackPreparationFinished = false
+    private var playbackPreparationCallbacks: [() -> Void] = []
 
     private var warmupGeneration: UInt64 = 0
     private var warmupRemaining = 0
@@ -113,6 +116,18 @@ final class KTVCachePlaybackSession {
     deinit { stop() }
 
     func prepareForPlayback(completion: @escaping () -> Void) {
+        lock.lock()
+        guard !stopped else { lock.unlock(); return }
+        if playbackPreparationFinished {
+            lock.unlock()
+            DispatchQueue.main.async { completion() }
+            return
+        }
+        playbackPreparationCallbacks.append(completion)
+        if playbackPreparationStarted { lock.unlock(); return }
+        playbackPreparationStarted = true
+        lock.unlock()
+
         let duration = source.mediaSource.durationSeconds ?? 0
         let isLargeMP4 = source.mediaSource.normalizedContainer == "mp4" && (contentLength >= 4 * 1_073_741_824 || duration >= 3_600)
         if isLargeMP4 {
@@ -125,18 +140,28 @@ final class KTVCachePlaybackSession {
                     let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
                     self.updateResolvedResource(resource)
                     DiagnosticsLogger.shared.log("KTVOrigin", "probe finalHost=\(resource.finalURL.host ?? "unknown") redirects=\(resource.redirectCount) bytes=\(resource.contentLength) range=\(resource.supportsByteRanges) ms=\(elapsedMs) \(NetworkPathMonitor.shared.diagnosticSummary)")
-                    self.startLargeMP4Warmup(resourceLength: resource.contentLength, completion: completion)
+                    self.startLargeMP4Warmup(resourceLength: resource.contentLength) { [weak self] in self?.finishPlaybackPreparation() }
                 } catch {
                     DiagnosticsLogger.shared.log("KTVOpenWarmup", "origin resolve failed error=\(error.localizedDescription); continue without tail warmup")
                     self.startInitialPreloadOnce()
-                    DispatchQueue.main.async { completion() }
+                    self.finishPlaybackPreparation()
                 }
             }
         } else {
             startInitialPreloadOnce()
-            DispatchQueue.main.async { completion() }
+            finishPlaybackPreparation()
             probeOriginInBackground()
         }
+    }
+
+    private func finishPlaybackPreparation() {
+        lock.lock()
+        guard !stopped, !playbackPreparationFinished else { lock.unlock(); return }
+        playbackPreparationFinished = true
+        let callbacks = playbackPreparationCallbacks
+        playbackPreparationCallbacks.removeAll()
+        lock.unlock()
+        DispatchQueue.main.async { callbacks.forEach { $0() } }
     }
 
     func stop() {
@@ -149,6 +174,7 @@ final class KTVCachePlaybackSession {
         let warmups = warmupHandles
         warmupHandles.removeAll()
         warmupCompletion = nil
+        playbackPreparationCallbacks.removeAll()
         primaryLane.generation &+= 1
         secondaryLane.generation &+= 1
         let primary = primaryLane.loader
@@ -398,7 +424,16 @@ final class KTVCachePlaybackSession {
                 if let error {
                     DiagnosticsLogger.shared.log("KTVAdaptive", "lane=\(lane.id.rawValue) segment failed range=\(segmentStart)-\(segmentEnd) loaded=\(loaded) networkBytes=\(networkBytes) speed=\(Int(speed))B/s error=\(error.localizedDescription)")
                     if lane.id == .secondary {
-                        self.rejectDualLaneImmediately(reason: "secondary-error-\(error.localizedDescription)")
+                        let retryOffset = segmentStart + loaded
+                        if lane.failureCount <= 1 {
+                            DiagnosticsLogger.shared.log("KTVAdaptive", "lane=B transient retry count=\(lane.failureCount) restart=\(retryOffset)")
+                            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.75) { [weak self] in
+                                guard let self else { return }
+                                self.startLane(.secondary, reason: "secondary-retry", startOffset: self.firstMissingOffset(from: retryOffset))
+                            }
+                        } else {
+                            self.rejectDualLaneImmediately(reason: "secondary-error-\(error.localizedDescription)")
+                        }
                     } else {
                         let retryOffset = segmentStart + loaded
                         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -667,6 +702,7 @@ final class KTVCachePlaybackSession {
         let handles = warmupHandles
         warmupHandles.removeAll()
         warmupCompletion = nil
+        playbackPreparationCallbacks.removeAll()
         lock.unlock()
         handles.forEach { $0.close() }
         DiagnosticsLogger.shared.log("KTVOpenWarmup", "finished reason=\(reason) cached=\(EPLKTVCacheBridge.cacheLength(for: originalURL))")

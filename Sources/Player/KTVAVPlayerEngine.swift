@@ -14,9 +14,10 @@ final class KTVAVPlayerEngine: PlayerEngine {
     private var cacheSession: KTVCachePlaybackSession?
     private var lastSnapshot = PlayerSnapshot()
 
-    init(source: ResolvedPlaybackSource, configuration: MediaTransportConfiguration) {
+    init(source: ResolvedPlaybackSource, configuration: MediaTransportConfiguration, cacheSession: KTVCachePlaybackSession? = nil) {
         self.source = source
         self.configuration = configuration
+        self.cacheSession = cacheSession
         self.underlying = AVPlayerEngine(kind: .ktvAVPlayer)
         self.player = underlying.player
         bindUnderlying()
@@ -24,7 +25,7 @@ final class KTVAVPlayerEngine: PlayerEngine {
 
     func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
         do {
-            let session = try KTVCachePlaybackSession(source: source, configuration: configuration)
+            let session = cacheSession ?? (try KTVCachePlaybackSession(source: source, configuration: configuration))
             cacheSession = session
             DiagnosticsLogger.shared.log("KTVPlayer", "prepare proxyHost=\(session.proxyURL.host ?? "localhost") proxyPort=\(session.proxyURL.port ?? 0)")
             session.prepareForPlayback { [weak self, weak session] in
@@ -63,6 +64,14 @@ final class KTVAVPlayerEngine: PlayerEngine {
     }
 
     func transportMetrics() async -> TransportMetricsSnapshot? { cacheSession?.metrics() }
+
+
+    func takeCacheSessionForHandoff() -> KTVCachePlaybackSession? {
+        let session = cacheSession
+        cacheSession = nil
+        if session != nil { DiagnosticsLogger.shared.log("KTVCache", "handoff AVPlayer -> FFmpeg item=\(source.itemId)") }
+        return session
+    }
 
     func stop() {
         underlying.onSnapshot = nil

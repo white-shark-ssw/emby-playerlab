@@ -1,16 +1,16 @@
 # Build Report
 
-- Version: 0.7.5 (38)
+- Version: 0.7.6 (39)
 - Deployment Target: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Expected CI: Xcode 16.4, arm64 iPhoneOS Release
 - Swift language mode: Swift 5
 - KTVHTTPCache: 3.1.0 via CocoaPods; upstream minimum iOS 12.0; MIT
 - CocoaAsyncSocket: transitive dependency of KTVHTTPCache
-- MPVKit: not linked in 0.7.5; source adapter retained behind compile-time guard
+- MPVKit: not linked in 0.7.6; source adapter retained behind compile-time guard
 - KSPlayer: 2.3.4
 - FFmpegKit: 6.1.4 through KSPlayer
-- Automatic standard MP4 path: KTVHTTPCache local iPhone proxy + AVPlayer
+- Automatic standard MP4 path: KTVHTTPCache local iPhone proxy + AVPlayer; compatibility path: the same KTV proxy + KSPlayer/FFmpeg
 - Continuous cache: fixed 32 MB segmented Range scheduling with 10-second single-lane baseline, 15-second dual-lane trial, 750 ms coalesced primary-lane Seek reprioritization, and cache-cap/EOF completion
 - Runtime automatic engine switching: disabled
 - NAS media proxy: prohibited and not used
@@ -19,6 +19,15 @@
 - Local validation: Swift parser for all Swift sources; plist/YAML/Ruby/shell validation; source manifest, patch application and ZIP extraction verification.
 - Full Objective-C importer validation, CocoaPods integration, iPhoneOS typecheck/link, embedded-framework MinimumOS validation and unsigned IPA packaging: pending GitHub Actions.
 
+
+
+## 0.7.6 统一高速传输
+
+- KTV AVPlayer 与 KSPlayer/FFmpeg 共享同一 KTVCachePlaybackSession。
+- 启动阶段回退会移交现有缓存会话，避免旧 AVIO 单 worker 导致的速度下降。
+- 已标记 FFmpeg 优先的媒体直接使用 KTV 双通道，不再创建旧 PlaybackTransportContext。
+- KTV＋FFmpeg 10 秒仍未 ready 时才内部降级旧 AVIO。
+- 第二通道首次瞬时错误会重试一次。
 
 ## 0.7.5 双通道与启动容错
 

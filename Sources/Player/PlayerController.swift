@@ -73,19 +73,16 @@ final class PlayerController: ObservableObject {
         let orchestrator = PlaybackOrchestrator(source: source, preference: preference)
         self.orchestrator = orchestrator
         let initialKind = orchestrator.currentKind
+        let configuration = MediaTransportConfiguration.current()
         let transportContext: PlaybackTransportContext?
-        if initialKind == .resourceLoaderAVPlayer || initialKind == .ksAVIO {
-            transportContext = PlaybackTransportContext(
-                source: source,
-                client: client,
-                configuration: MediaTransportConfiguration.current()
-            )
+        if initialKind == .resourceLoaderAVPlayer || (initialKind == .ksAVIO && configuration.strategy != .ktvHTTP) {
+            transportContext = PlaybackTransportContext(source: source, client: client, configuration: configuration)
         } else {
             transportContext = nil
         }
         self.transportContext = transportContext
         self.engineKind = initialKind
-        self.engine = PlayerController.makeEngine(kind: initialKind, source: source, client: client, transportContext: transportContext)
+        self.engine = PlayerController.makeEngine(kind: initialKind, source: source, client: client, transportContext: transportContext, ktvCacheSession: nil)
         bindEngine()
     }
 
@@ -280,6 +277,15 @@ final class PlayerController: ObservableObject {
         let shouldPlay = userWantsPlayback
         let previousKind = engineKind
         let previousEngine = engine
+        let canHandoffKTVCache = MediaTransportConfiguration.current().strategy == .ktvHTTP
+        let ktvCacheHandoff: KTVCachePlaybackSession?
+        if canHandoffKTVCache, kind == .ksAVIO, let ktvEngine = previousEngine as? KTVAVPlayerEngine {
+            ktvCacheHandoff = ktvEngine.takeCacheSessionForHandoff()
+        } else if canHandoffKTVCache, kind == .ktvAVPlayer, let ksEngine = previousEngine as? KSAVIOPlayerEngine {
+            ktvCacheHandoff = ksEngine.takeCacheSessionForHandoff()
+        } else {
+            ktvCacheHandoff = nil
+        }
 
         engineSwitchInProgress = true
         engineTransitionAwaitingFirstSnapshot = true
@@ -327,7 +333,7 @@ final class PlayerController: ObservableObject {
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
 
-            let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext)
+            let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext, ktvCacheSession: ktvCacheHandoff)
             self.engine = nextEngine
             self.engineKind = kind
             self.orchestrator.didSwitch(to: kind)
@@ -376,17 +382,19 @@ final class PlayerController: ObservableObject {
         kind: PlayerEngineKind,
         source: ResolvedPlaybackSource,
         client: EmbyAPIClient,
-        transportContext: PlaybackTransportContext?
+        transportContext: PlaybackTransportContext?,
+        ktvCacheSession: KTVCachePlaybackSession?
     ) -> PlayerEngine {
+        let configuration = MediaTransportConfiguration.current()
         switch kind {
         case .ktvAVPlayer:
-            return KTVAVPlayerEngine(source: source, configuration: MediaTransportConfiguration.current())
+            return KTVAVPlayerEngine(source: source, configuration: configuration, cacheSession: ktvCacheSession)
         case .resourceLoaderAVPlayer:
             return AVPlayerEngine(
                 kind: .resourceLoaderAVPlayer,
                 transportSource: source,
                 transportClient: client,
-                transportConfiguration: MediaTransportConfiguration.current(),
+                transportConfiguration: configuration,
                 sharedTransportSession: transportContext?.session
             )
         case .transportAVPlayer:
@@ -394,14 +402,15 @@ final class PlayerController: ObservableObject {
                 kind: .transportAVPlayer,
                 transportSource: source,
                 transportClient: client,
-                transportConfiguration: MediaTransportConfiguration.current()
+                transportConfiguration: configuration
             )
         case .ksAVIO:
             return KSAVIOPlayerEngine(
                 source: source,
                 client: client,
-                configuration: MediaTransportConfiguration.current(),
-                sharedTransportSession: transportContext?.session
+                configuration: configuration,
+                sharedTransportSession: configuration.strategy == .ktvHTTP ? nil : transportContext?.session,
+                ktvCacheSession: configuration.strategy == .ktvHTTP ? ktvCacheSession : nil
             )
         case .avPlayer:
             return AVPlayerEngine()

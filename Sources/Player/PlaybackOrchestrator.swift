@@ -25,7 +25,7 @@ final class PlaybackOrchestrator {
         self.automaticMode = preference.isAutomatic
         if preference.isAutomatic, MediaCompatibilityStore.requiresFFmpeg(itemId: source.itemId) {
             self.currentKind = .ksAVIO
-            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticEngine=KSPlayer-FFmpeg reason=stored-video-freeze")
+            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticEngine=KSPlayer-FFmpeg reason=stored-media-compatibility")
         } else {
             self.currentKind = preference.resolved(for: source.mediaSource)
         }

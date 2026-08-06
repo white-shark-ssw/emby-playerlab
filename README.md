@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → OneStrm 302 → 115 直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.7.5
+## 当前版本：0.7.6
 
 ### 系统与构建
 
@@ -12,85 +12,17 @@
 - 安装方式：未签名 IPA + TrollStore
 - KTVHTTPCache：3.1.0（MIT，最低 iOS 12）
 - KSPlayer：2.3.4
-- MPVKit：源码适配保留；0.7.5 实验构建不链接二进制
+- MPVKit：源码适配保留；0.7.6 实验构建不链接二进制
 
 
-### 0.7.5：双通道带宽试跑与大 MP4 启动容错
+### 0.7.6：统一 KTV 高速缓存传输
 
-- KTV 持续缓存保留 32 MB 分段，先运行 10 秒单通道基线，再试运行 15 秒双通道。双通道净缓存增长至少提高 12% 且无新增失败才保留，否则自动关闭第二通道。
-- 通道 A 服务播放附近并在停手 750 ms 后跟随最终 Seek；通道 B 位于更后方，不因每次连续双击而取消。
-- 大于 4 GB 或时长超过 1 小时的 MP4 在交给 AVPlayer 前预取文件头 8 MB 和文件尾 16 MB，帮助读取尾部 `moov`/索引。
-- AVPlayer 在 0 秒明确报 `Cannot Open` 且传输已确认健康时，完整关闭 KTV AVPlayer，再从 0 秒启动 KSPlayer/FFmpeg；不会在已开始播放后热切换。
-- 启动失败媒体写入兼容性记录，下次自动模式直接从 KSPlayer/FFmpeg 开始。
+- AVPlayer 与 KSPlayer/FFmpeg 统一读取 KTVHTTPCache localhost 代理。
+- 启动阶段 AVPlayer `Cannot Open` 时直接移交当前 KTV 缓存会话，不清缓存、不重建115连接。
+- 已标记为 FFmpeg 优先的媒体从一开始使用 KTV 双通道预取。
+- KSPlayer 通过 KTV 代理 10 秒仍未就绪时，才降级到旧 AVIO，保留播放可靠性。
+- 第二通道单次瞬时错误先重试一次，不再立即放弃双通道。
 - Deployment Target 继续保持 iOS 15.0。
-
-### 0.7.4：稳定分段、Seek 合并与异常媒体记忆
-
-- KTV 持续预取固定使用 32 MB Range；慢连接只在当前字节游标重建，不再切换到 64 MB。
-- 连续双击/拖动时播放器立即 Seek，但后台预取延迟 750 ms，只跟随最后一个目标，避免反复取消高速连接。
-- 缓存命中分段记录 `cacheHit=true`、网络速度为 0；新增缓存字节最多按当前 Range 实际加载量计入，减少并发 AVPlayer 下载造成的虚高。
-- 视频帧看门狗改为 250 ms 采样；用户 Seek、初始 Seek、软恢复期间暂停检测并给予恢复宽限期。
-- 同一媒体累计两次确认的“音频继续、视频帧停止”后，仅记忆为 AVPlayer 不兼容；下次自动模式从开始使用 KSPlayer/FFmpeg，不执行播放中热切换。
-- 每次 KTV 会话新增网络接口状态与 1 字节 302/CDN 探测日志，便于对比不同时段的最终 CDN 主机和解析耗时。
-- Deployment Target 继续保持 iOS 15.0。
-
-### 0.7.3：自适应分段下载与视频帧冻结恢复
-
-- KTV 持续预取不再使用一条覆盖整部文件的超大 Range，改为 16/32/64 MB 分段试跑并保存当前 CDN 主机的优胜分段大小。
-- 每秒按“缓存新增字节”测量 115/CDN 上游速度；连接持续低于播放需求或无增长时，从当前字节游标重建并轮换 Range 大小。
-- Seek 会立即取消旧预取并把下载窗口迁移到目标时间对应字节位置，当前位置优先，之后继续向文件末尾补全。
-- `AVPlayerItemVideoOutput` 持续检测真实视频帧；音频时钟继续但视频 2.5 秒无新帧时，先轻量重 Seek，再重建同一个 AVPlayerItem。
-- 下载慢、普通 Stall、视频冻结都不会自动切换引擎。
-- Deployment Target 继续保持 iOS 15.0。
-
-### 0.7.2：KTV 持续缓存实验
-
-本版不再把“缓存完整视频”写成固定行为，而是模拟 EplayerX 的实际表现：下载器在缓存容量允许时持续高速预取；当用户设置的缓存预算大于视频体积时，视频自然缓存完整。
-
-- 标准 MP4/MOV/M4V 自动使用 `KTVHTTPCache → localhost → AVPlayer` 实验路径。
-- localhost 只运行在 iPhone 内部；NAS 仍只负责 OneStrm/Emby 控制入口，媒体字节保持 115/CDN → iPhone，不经过 NAS。
-- KTVHTTPCache 负责本地 HTTP Range、稀疏磁盘缓存、缓存复用和完整文件合并。
-- 独立 `KTVHCDataLoader` 从文件起点持续预取到缓存上限或文件结尾。
-- 默认磁盘预算 2 GB；当视频小于预算时，预期会自然形成完整缓存文件。
-- 默认只在 Wi-Fi 持续预取；蜂窝持续预取需要单独开启。
-- 退出播放后是否保留缓存由“退出后保留磁盘缓存”控制。
-- 本版先使用 KTVHTTPCache 默认连接方式建立基线，不同时加入单双连接和 Range 大小自适应，避免无法判断变量来源。
-
-### 播放中禁止自动热切换
-
-连续多次真机日志表明，警告出现后执行 AVPlayer → KSPlayer 热切换会紧接着异常退出。本版从自动恢复策略中关闭播放中引擎切换：
-
-- 下载慢或连续缓存不足：保持当前引擎并继续等待下载。
-- KTV 预取没有推进：只重启当前预取任务。
-- 播放器有数据但未推进：只恢复或重载同一个引擎。
-- 不再因为 Stall、缓冲等待、疑似提前 EOF 或引擎错误自动创建另一套播放器。
-- 引擎只在播放开始前自动选择；普通播放界面不要求用户手动切换。
-
-
-### 0.7.2 链接修复
-
-- CocoaPods 为 KTVHTTPCache 静态集成加入 `-ObjC` 后，链接器会同时完整拉入 MPVKit 内置 FFmpeg/MoltenVK 与 KSPlayer/FFmpegKit 对应二进制，造成 513 个重复符号。
-- 本次 KTV 缓存实验构建暂时不链接 MPVKit，只保留 KTV AVPlayer 与 KSPlayer/FFmpeg。
-- 自动模式本来就不会在播放中切换到 MPV，因此本次调整不影响当前 KTV 实验目标。
-- MPV 源码适配保留在条件编译分支中，后续需要重新启用时必须改为与 KSPlayer 不冲突的独立构建方案。
-
-### 0.7.2 首轮测试目标
-
-1. 设置磁盘缓存预算大于测试视频体积。
-2. 播放异常 MP4 `63368`，确认顶部显示 `AUTO·KTV`。
-3. 连续播放并观察速度是否持续，而不是达到几十秒缓冲后停止。
-4. 确认缓存量持续增长并最终接近文件总大小。
-5. 连续双击快进、远距离拖动，确认缓存片段可复用。
-6. 出现缓冲警告后等待，确认不会切换引擎和闪退。
-7. 连续播放两次，第二次分别测试保留缓存开启和关闭。
-8. 导出日志，重点查看 `[KTVCache]`、`[KTVPlayer]`、`[Stall]` 和传输速度。
-
-### 当前实验边界
-
-- KTVHTTPCache 能否在你的 115 CDN 链路长期跑满带宽，需要真机数据确认，不能仅凭框架能力保证。
-- 本版持续预取与播放器读取可能同时存在；若日志显示重复下载或连接竞争，下一版再加入统一优先级和自适应调度。
-- KTV 路径目前首先服务 AVPlayer 兼容媒体；KSPlayer/FFmpeg 共用 KTV 缓存留到基线验证后处理。
-- KTV 使用 iPhone 本地代理，不能与“NAS 中转”混为一谈。
 
 ## GitHub 构建
 
@@ -98,7 +30,7 @@
 2. 等待 `Validate Source` 成功。
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-5. 解压获得 `EmbyPlayerLab-0.7.5-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+5. 解压获得 `EmbyPlayerLab-0.7.6-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 首次构建会通过 CocoaPods 安装固定版本 KTVHTTPCache 3.1.0，并通过 Swift Package Manager 解析 KSPlayer 2.3.4。
 
@@ -107,7 +39,7 @@
 - 密码不落盘，AccessToken 保存到 Keychain。
 - KTVHTTPCache 自带文件日志默认关闭，避免临时播放 URL 进入第三方日志。
 - App 自有日志只记录原始主机、localhost 端口、缓存字节和速度，不记录完整代理 URL。
-- KTVHTTPCache 3.1.0 为 MIT；KSPlayer 2.3.4 及其 FFmpegKit 依赖按项目现有 GPL 说明处理。0.7.5 不链接 MPVKit。
+- KTVHTTPCache 3.1.0 为 MIT；KSPlayer 2.3.4 及其 FFmpegKit 依赖按项目现有 GPL 说明处理。0.7.6 不链接 MPVKit。
 
 ## 0.2.1 修复
 
