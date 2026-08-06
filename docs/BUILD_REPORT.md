@@ -1,13 +1,13 @@
 # Build Report
 
-- Version: 0.7.7 (40)
+- Version: 0.7.8 (41)
 - Deployment Target: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Expected CI: Xcode 16.4, arm64 iPhoneOS Release
 - Swift language mode: Swift 5
 - KTVHTTPCache: 3.1.0 via CocoaPods; upstream minimum iOS 12.0; MIT
 - CocoaAsyncSocket: transitive dependency of KTVHTTPCache
-- MPVKit: not linked in 0.7.7; source adapter retained behind compile-time guard
+- MPVKit: not linked in 0.7.8; source adapter retained behind compile-time guard
 - KSPlayer: 2.3.4
 - FFmpegKit: 6.1.4 through KSPlayer
 - Automatic standard MP4 path: KTVHTTPCache local iPhone proxy + AVPlayer; compatibility path: the same KTV proxy + KSPlayer/FFmpeg
@@ -18,6 +18,16 @@
 - Full iOS 17.0 compatibility claim: pending GitHub Actions build and real-device test
 - Local validation: Swift parser for all Swift sources; plist/YAML/Ruby/shell validation; source manifest, patch application and ZIP extraction verification.
 - Full Objective-C importer validation, CocoaPods integration, iPhoneOS typecheck/link, embedded-framework MinimumOS validation and unsigned IPA packaging: pending GitHub Actions.
+
+
+
+## 0.7.8 播放优先与大 MP4 回归修复
+
+- 修复 `finishLargeMP4Warmup` 在执行准备完成回调前清空 `playbackPreparationCallbacks` 的错误；大 MP4 现在能够真正创建 AVPlayerItem，并在 `Cannot Open` 时进入受控 FFmpeg 回退。
+- `laneContainsOffsetLocked` 只计算当前 loader 已经实际交付的字节，不再用完整 `segmentEnd` 误判 Seek 目标已覆盖。
+- AVPlayer 当前读取发生 Stall/低前向缓冲时，KTV 后台 lane A/B 暂停约 3 秒，优先让 localhost 代理服务播放器真实 Range，然后恢复后台预取。
+- 慢连接重建阈值改为低于实际播放消耗才触发，确认时间与冷却时间延长；主通道连续失败最多自动重试三次。
+- `PlaybackLabViewModel` 使用已加载 `BaseItem.id` 生成播放 URL，避免输入框为空时生成 `/Videos//stream`。
 
 
 

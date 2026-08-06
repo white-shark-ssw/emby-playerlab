@@ -60,8 +60,8 @@ final class KTVAVPlayerEngine: PlayerEngine {
     }
 
     func recoverStall(position: Double, duration: Double) {
-        cacheSession?.ensurePreloadActive(reason: "stall at \(String(format: "%.2f", position))")
-        DiagnosticsLogger.shared.log("KTVPlayer", "stall waits for cache position=\(position) duration=\(duration)")
+        cacheSession?.yieldBandwidthToPlayback(position: position, duration: duration, reason: "stall")
+        DiagnosticsLogger.shared.log("KTVPlayer", "stall gives bandwidth to foreground position=\(position) duration=\(duration)")
     }
 
     func transportMetrics() async -> TransportMetricsSnapshot? { cacheSession?.metrics() }
@@ -87,6 +87,10 @@ final class KTVAVPlayerEngine: PlayerEngine {
             guard let self else { return }
             self.lastSnapshot = snapshot
             self.cacheSession?.updatePlayback(position: snapshot.position, duration: snapshot.duration)
+            let bufferedAhead = snapshot.bufferedRanges.filter { $0.lowerBound <= snapshot.position + 0.25 }.map { max(0, $0.upperBound - snapshot.position) }.max() ?? 0
+            if snapshot.position > 0.5, snapshot.isBuffering, bufferedAhead < 0.75 {
+                self.cacheSession?.yieldBandwidthToPlayback(position: snapshot.position, duration: snapshot.duration, reason: "buffering-low-ahead")
+            }
             self.onSnapshot?(snapshot)
         }
         underlying.onSeekCompleted = { [weak self] result in self?.onSeekCompleted?(result) }

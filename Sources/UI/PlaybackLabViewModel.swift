@@ -55,10 +55,12 @@ final class PlaybackLabViewModel: ObservableObject {
     }
 
     private func resolvedSource(client: EmbyAPIClient, mediaSource: MediaSource) throws -> ResolvedPlaybackSource {
-        let id = itemId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let loadedItem = item, playbackInfo != nil else {
+            throw NSError(domain: "EmbyPlayerLab.PlaybackLab", code: 1, userInfo: [NSLocalizedDescriptionKey: "请先重新加载媒体信息，再开始播放。"] )
+        }
         return try client.resolvePlaybackSource(
-            itemId: id,
-            itemName: item?.name ?? id,
+            itemId: loadedItem.id,
+            itemName: loadedItem.name,
             mediaSource: mediaSource,
             playSessionId: playbackInfo?.playSessionId
         )
