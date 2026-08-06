@@ -2,7 +2,7 @@
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
     "bytes": 5300,
-    "sha256": "2d1cec2931b35417c12a2502df0cded67ae95da5d92d4a9beb617515e7261b8c"
+    "sha256": "82e45ca36e44d55f193f3a72c07ae8a1c877246f8dd6e5147a48556c85b91036"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -41,8 +41,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 20681,
-    "sha256": "364c401682142cd7279c3c72f34bc78724069c73be49eead32dd19b92f8c7824"
+    "bytes": 21680,
+    "sha256": "bad5d6f72593fbc531c015416039fc18c1bfc37a6465bbca6bd9d5ede984647d"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -216,13 +216,13 @@
   },
   {
     "path": "Sources/Cache/KTVCachePlaybackSession.swift",
-    "bytes": 18361,
-    "sha256": "83baa066c0a7b28b3da77e78734abec91454e6b8fa6e937326f5ea00321bac61"
+    "bytes": 18008,
+    "sha256": "9a78fea7464a2ab4cf022d9a0cb9edae01a2bba4b659b4a22e7c1d0a71a36c57"
   },
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1062,
-    "sha256": "3d35f497c38153a01c6b2a46a51dde765b5d48395761cae9000c28eb1e7f09c5"
+    "sha256": "d09673fff54ce3000a7cfdf0c599232ce42a54ce18a4a7c2b1dc9a6fd4919697"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -261,8 +261,8 @@
   },
   {
     "path": "Sources/Player/AVPlayerEngine.swift",
-    "bytes": 35639,
-    "sha256": "0eae0c473702fe716562d3271b900b5bae95d9883daaf041cff74b3bd05f8920"
+    "bytes": 37105,
+    "sha256": "6284c35c383b04ecf95a83f9668478db2676bb8788f2c73e39812f8b7eda7443"
   },
   {
     "path": "Sources/Player/KSAVIOPlayerEngine.swift",
@@ -271,8 +271,8 @@
   },
   {
     "path": "Sources/Player/KTVAVPlayerEngine.swift",
-    "bytes": 3303,
-    "sha256": "6d34283d70ff14d4e38165ac8f81c761eaf0ea14e7e809061b7672605e01d7ff"
+    "bytes": 3567,
+    "sha256": "3f52da25f07a0d462c85175b3d307519b4ec74a0ecd592aaea273fa4f9cbc4d1"
   },
   {
     "path": "Sources/Player/MPVPlayerEngine.swift",
@@ -280,9 +280,14 @@
     "sha256": "1ccdc79d20ec789df65c3c62c09b6048e1e63ff997bd7f1e711ca824a104382c"
   },
   {
+    "path": "Sources/Player/MediaCompatibilityStore.swift",
+    "bytes": 1110,
+    "sha256": "1a3a8d430e2d09b38f643c10a3a80664a22a459d33291148a362486bc8e2a402"
+  },
+  {
     "path": "Sources/Player/PlaybackOrchestrator.swift",
-    "bytes": 4745,
-    "sha256": "57858ce71a8813f4e9be099b289f1f4d520c71c0d4be81c2097adf7244c2b4f8"
+    "bytes": 5056,
+    "sha256": "b95ac6f21d4c5a7be12707158ce545b6f0b9011313643b02bd148db0c4f6f3d4"
   },
   {
     "path": "Sources/Player/PlayerController.swift",
@@ -326,8 +331,8 @@
   },
   {
     "path": "Sources/Transport/NetworkPathMonitor.swift",
-    "bytes": 710,
-    "sha256": "1d1eb10a2d15f795f7b8d611332ba10a3a491276e731317dc1bad0a0580cc31c"
+    "bytes": 1566,
+    "sha256": "7d1116b7fc7d6203816f8e5849f6690503394f32d3ad1639f9d09359ba4759c9"
   },
   {
     "path": "Sources/Transport/PlaybackTransportContext.swift",
@@ -461,8 +466,8 @@
   },
   {
     "path": "docs/BUILD_REPORT.md",
-    "bytes": 2303,
-    "sha256": "c030e864c503363f16b422225315fe3d253862e29df59d6f9ed03f6992c4285b"
+    "bytes": 2843,
+    "sha256": "8727226b878eeee4e350261de3010028e56f4f03ce80938802512feb42fb8209"
   },
   {
     "path": "docs/CHANGELOG_0.1.0.md",
@@ -645,6 +650,11 @@
     "sha256": "532e95b3925f8c8e71dc61807a4ac68f9dc1a5e7ba928b00e0539fb11da6ba4b"
   },
   {
+    "path": "docs/CHANGELOG_0.7.4.md",
+    "bytes": 1282,
+    "sha256": "1468a00c612af69d1a50d55afd94995b7f1b8e86cd80b8c39a73256c98d6f610"
+  },
+  {
     "path": "docs/GITHUB_BUILD_FIX_0.5.1.md",
     "bytes": 1701,
     "sha256": "516d1e1bb3e26c51bf0ce41c35ccc5ad31bde85e3afb6b1d92f23a2735f384e6"
@@ -780,6 +790,11 @@
     "sha256": "0ffabb719ee7d78d16d9097c36e84eee7ae024d1fb02a96d32c701a0a984b2fe"
   },
   {
+    "path": "docs/TEST_CHECKLIST_0.7.4.md",
+    "bytes": 1084,
+    "sha256": "f1e7e778ec7cd5ada58efb1fa977541f3990eed8b45053a0ddd270c42e262fad"
+  },
+  {
     "path": "docs/THIRD_PARTY_KTVHTTPCACHE.md",
     "bytes": 733,
     "sha256": "dd63c7a8bc6fd29a5c39e0fa0fc2799566d91d70baadbbd1ed0af34b1389177b"
@@ -792,7 +807,7 @@
   {
     "path": "project.yml",
     "bytes": 1399,
-    "sha256": "ed57896fc2c4150c719975327e5d3491396ac9f09d4afb80cd07bc7166ed2048"
+    "sha256": "43c85b535ed38d67da6022e00b143c7935fb6da87987048bb2c999572ad166f0"
   },
   {
     "path": "scripts/check_min_os.sh",

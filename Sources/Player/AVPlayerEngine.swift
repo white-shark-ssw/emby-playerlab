@@ -7,6 +7,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     let kind: PlayerEngineKind
     var onSnapshot: ((PlayerSnapshot) -> Void)?
     var onSeekCompleted: ((SeekResult) -> Void)?
+    var onConfirmedVideoFreeze: ((Int) -> Void)?
 
     let player = AVPlayer()
 
@@ -24,7 +25,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private var lastVideoFrameItemTime: Double = 0
     private var assetInstalledHostTime: TimeInterval = 0
     private var videoFreezeRecoveryCount = 0
+    private var videoFreezeTotalCount = 0
     private var lastVideoFreezeRecoveryAt: TimeInterval = 0
+    private var videoFreezeSuppressedUntil: TimeInterval = 0
     private var videoFreezeRecoveryInProgress = false
     private var lastConfiguration: Configuration?
     private let transportSource: ResolvedPlaybackSource?
@@ -229,6 +232,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         let target = min(max(0, seconds), duration > 0 ? duration : seconds)
         let bufferHit = snapshot.bufferedRanges.contains(where: { $0.contains(target) })
         let requestedAt = CACurrentMediaTime()
+        suppressVideoFreeze(until: requestedAt + 2.0, itemTime: target, reason: "user-seek")
         let shouldResume = shouldPlayWhenReady || player.rate > 0 || snapshot.isPlaying
         seekRequestGeneration += 1
         let generation = seekRequestGeneration
@@ -272,6 +276,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             guard let self, finished else { return }
             DispatchQueue.main.async {
                 guard generation == self.seekRequestGeneration else { return }
+                self.suppressVideoFreeze(until: CACurrentMediaTime() + 1.5, itemTime: target, reason: "seek-completed")
                 if shouldResume { self.resumePlayback(reason: "seek-completed", generation: generation, immediate: true) }
                 self.emit()
             }
@@ -377,6 +382,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         lastStallPosition = -1
         stallRecoveryAttempts = 0
         lastTransportFailureReloadAt = .distantPast
+        onConfirmedVideoFreeze = nil
         snapshot = PlayerSnapshot()
     }
 
@@ -388,7 +394,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     @objc private func displayLinkTick() {
         let hostTime = CACurrentMediaTime()
-        guard hostTime - lastVideoProbeHostTime >= 0.10 else { return }
+        guard hostTime - lastVideoProbeHostTime >= 0.25 else { return }
         lastVideoProbeHostTime = hostTime
         guard let output = videoOutput else { return }
 
@@ -432,6 +438,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private func evaluateVideoFreeze(hostTime: TimeInterval, currentItemTime: Double) {
         guard shouldPlayWhenReady, player.currentItem?.status == .readyToPlay,
               player.timeControlStatus == .playing, player.rate > 0,
+              hostTime >= videoFreezeSuppressedUntil,
+              pendingFrameMeasurement == nil,
               hostTime - assetInstalledHostTime >= 5,
               snapshot.position + 3 < snapshot.duration,
               snapshot.position - lastVideoFrameItemTime >= 1.5,
@@ -439,6 +447,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
               hostTime - lastVideoFreezeRecoveryAt >= 4 else { return }
 
         videoFreezeRecoveryCount += 1
+        videoFreezeTotalCount += 1
         videoFreezeRecoveryInProgress = true
         lastVideoFreezeRecoveryAt = hostTime
         snapshot.isBuffering = true
@@ -447,8 +456,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         let position = max(0, player.currentTime().seconds.isFinite ? player.currentTime().seconds : currentItemTime)
         DiagnosticsLogger.shared.log(
             "VideoFreeze",
-            "detected engine=\(kind.title) attempt=\(videoFreezeRecoveryCount) position=\(String(format: "%.3f", position)) lastFrame=\(String(format: "%.3f", lastVideoFrameItemTime)) noFrameMs=\(Int((hostTime - lastVideoFrameHostTime) * 1000)) audioClockAdvancing=true"
+            "detected engine=\(kind.title) attempt=\(videoFreezeRecoveryCount) total=\(videoFreezeTotalCount) position=\(String(format: "%.3f", position)) lastFrame=\(String(format: "%.3f", lastVideoFrameItemTime)) noFrameMs=\(Int((hostTime - lastVideoFrameHostTime) * 1000)) audioClockAdvancing=true"
         )
+        onConfirmedVideoFreeze?(videoFreezeTotalCount)
 
         if videoFreezeRecoveryCount == 1 {
             softRecoverVideoFrame(at: position)
@@ -460,6 +470,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     private func softRecoverVideoFrame(at position: Double) {
         guard let item = player.currentItem else { return }
+        suppressVideoFreeze(until: CACurrentMediaTime() + 2.0, itemTime: position, reason: "soft-recovery")
         player.pause()
         item.cancelPendingSeeks()
         item.seek(
@@ -484,8 +495,17 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         lastVideoFrameItemTime = 0
         assetInstalledHostTime = now
         videoFreezeRecoveryCount = 0
+        videoFreezeTotalCount = 0
         lastVideoFreezeRecoveryAt = 0
+        videoFreezeSuppressedUntil = now + 2.0
         videoFreezeRecoveryInProgress = false
+    }
+
+    private func suppressVideoFreeze(until: TimeInterval, itemTime: Double, reason: String) {
+        videoFreezeSuppressedUntil = max(videoFreezeSuppressedUntil, until)
+        lastVideoFrameHostTime = CACurrentMediaTime()
+        if itemTime.isFinite { lastVideoFrameItemTime = max(0, itemTime) }
+        DiagnosticsLogger.shared.log("VideoFreeze", "watchdog suppressed reason=\(reason) untilMs=\(Int(max(0, videoFreezeSuppressedUntil - CACurrentMediaTime()) * 1000)) itemTime=\(String(format: "%.3f", lastVideoFrameItemTime))")
     }
 
     private func installAsset(_ asset: AVURLAsset, preferredForwardBuffer: Double, startPosition: Double) {
@@ -511,6 +531,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         observe(item: item)
 
         if startPosition > 0 {
+            suppressVideoFreeze(until: CACurrentMediaTime() + 2.0, itemTime: startPosition, reason: "initial-seek")
             item.seek(
                 to: CMTime(seconds: startPosition, preferredTimescale: 600),
                 toleranceBefore: CMTime(seconds: 0.5, preferredTimescale: 600),

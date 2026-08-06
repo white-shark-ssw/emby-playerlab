@@ -4,29 +4,15 @@ final class KTVCachePlaybackSession {
     let originalURL: URL
     let proxyURL: URL
 
-    private struct SegmentTrial: Codable {
-        var samples: [Double] = []
-
-        var average: Double {
-            guard !samples.isEmpty else { return 0 }
-            return samples.reduce(0, +) / Double(samples.count)
-        }
-    }
-
-    private struct StoredProfile: Codable {
-        let segmentBytes: Int64
-        let averageBytesPerSecond: Double
-    }
-
     private let headers: [String: String]
     private let contentLength: Int64
     private let configuration: MediaTransportConfiguration
     private let baselineCacheBytes: Int64
     private let targetCacheBytes: Int64
     private let mediaBytesPerSecond: Double
-    private let profileKey: String
     private let lock = NSLock()
-    private let candidateSegmentBytes: [Int64] = [16, 32, 64].map { Int64($0) * 1_048_576 }
+    private let segmentBytes: Int64 = 32 * 1_048_576
+    private let seekDebounceInterval: TimeInterval = 0.75
 
     private var loader: EPLKTVPreloadHandle?
     private var loaderGeneration: UInt64 = 0
@@ -36,14 +22,13 @@ final class KTVCachePlaybackSession {
     private var activeSegmentStartedAt = Date()
     private var activeSegmentCacheStart: Int64 = 0
     private var nextOffset: Int64 = 0
-    private var preferredSegmentBytes: Int64 = 32 * 1_048_576
-    private var trialIndex = 0
-    private var trialResults: [Int64: SegmentTrial] = [:]
     private var sessionRanges = SparseByteRangeSet()
     private var wrappedToStart = false
     private var playbackPosition: Double = 0
     private var playbackDuration: Double = 0
     private var lastSeekAt = Date.distantPast
+    private var seekDebounceWorkItem: DispatchWorkItem?
+    private var seekDebounceGeneration: UInt64 = 0
     private var startedAt = Date()
     private var lastSampleAt = Date()
     private var lastSampleBytes: Int64 = 0
@@ -65,8 +50,6 @@ final class KTVCachePlaybackSession {
         self.configuration = configuration
         let duration = max(source.mediaSource.durationSeconds ?? 0, 1)
         self.mediaBytesPerSecond = contentLength > 0 ? Double(contentLength) / duration : 2 * 1_048_576
-        self.profileKey = "ktv.adaptive.\(source.url.host?.lowercased() ?? "unknown")"
-
         let cacheBytes = configuration.diskLimitBytes > 0 ? configuration.diskLimitBytes : 2 * 1_073_741_824
         self.targetCacheBytes = contentLength > 0 ? min(contentLength, cacheBytes) : cacheBytes
         if let error = EPLKTVCacheBridge.start(maxCacheLength: cacheBytes, allowedHeaderKeys: Array(source.headers.keys)) { throw error }
@@ -74,12 +57,20 @@ final class KTVCachePlaybackSession {
         self.baselineCacheBytes = EPLKTVCacheBridge.cacheLength(for: source.url)
         self.loadedBytes = self.baselineCacheBytes
         self.lastSampleBytes = self.baselineCacheBytes
-        self.preferredSegmentBytes = Self.loadProfile(key: profileKey)?.segmentBytes ?? 32 * 1_048_576
-
         DiagnosticsLogger.shared.log(
             "KTVCache",
-            "proxy started originalHost=\(source.url.host ?? "unknown") proxyPort=\(proxyURL.port ?? 0) cacheBudget=\(cacheBytes)B target=\(targetCacheBytes)B adaptiveSegment=\(preferredSegmentBytes)B"
+            "proxy started originalHost=\(source.url.host ?? "unknown") proxyPort=\(proxyURL.port ?? 0) cacheBudget=\(cacheBytes)B target=\(targetCacheBytes)B segment=\(segmentBytes)B \(NetworkPathMonitor.shared.diagnosticSummary)"
         )
+        Task { [source] in
+            do {
+                let startedAt = Date()
+                let resource = try await RedirectResolver().resolve(source: source)
+                let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
+                DiagnosticsLogger.shared.log("KTVOrigin", "probe finalHost=\(resource.finalURL.host ?? "unknown") redirects=\(resource.redirectCount) bytes=\(resource.contentLength) range=\(resource.supportsByteRanges) ms=\(elapsedMs) \(NetworkPathMonitor.shared.diagnosticSummary)")
+            } catch {
+                DiagnosticsLogger.shared.log("KTVOrigin", "probe failed error=\(error.localizedDescription) \(NetworkPathMonitor.shared.diagnosticSummary)")
+            }
+        }
         startPreloadIfAllowed(reason: "initial", startOffset: firstMissingOffset(from: 0))
     }
 
@@ -89,6 +80,8 @@ final class KTVCachePlaybackSession {
         lock.lock()
         guard !stopped else { lock.unlock(); return }
         stopped = true
+        seekDebounceWorkItem?.cancel()
+        seekDebounceWorkItem = nil
         loaderGeneration &+= 1
         let current = loader
         loader = nil
@@ -119,15 +112,35 @@ final class KTVCachePlaybackSession {
         playbackDuration = duration
         lastSeekAt = Date()
         wrappedToStart = false
+        seekDebounceWorkItem?.cancel()
+        seekDebounceGeneration &+= 1
+        let generation = seekDebounceGeneration
         let activeContainsTarget = active && alignedOffset >= activeSegmentStart && alignedOffset <= activeSegmentEnd
+        let work = DispatchWorkItem { [weak self] in self?.commitSeekPriority(position: position, duration: duration, alignedOffset: alignedOffset, generation: generation) }
+        seekDebounceWorkItem = activeContainsTarget ? nil : work
         lock.unlock()
 
-        guard !activeContainsTarget else {
-            DiagnosticsLogger.shared.log("KTVAdaptive", "seek target already covered position=\(position) byte=\(alignedOffset)")
+        if activeContainsTarget {
+            DiagnosticsLogger.shared.log("KTVAdaptive", "seek coalesced target already covered position=\(position) byte=\(alignedOffset)")
             return
         }
-        DiagnosticsLogger.shared.log("KTVAdaptive", "seek reprioritize position=\(position) duration=\(duration) byte=\(alignedOffset)")
-        startPreloadIfAllowed(reason: "seek-priority", startOffset: firstMissingOffset(from: alignedOffset))
+        DiagnosticsLogger.shared.log("KTVAdaptive", "seek queued position=\(position) duration=\(duration) byte=\(alignedOffset) debounceMs=\(Int(seekDebounceInterval * 1000))")
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + seekDebounceInterval, execute: work)
+    }
+
+    private func commitSeekPriority(position: Double, duration: Double, alignedOffset: Int64, generation: UInt64) {
+        lock.lock()
+        guard !stopped, seekDebounceWorkItem != nil, generation == seekDebounceGeneration else { lock.unlock(); return }
+        seekDebounceWorkItem = nil
+        let activeContainsTarget = active && alignedOffset >= activeSegmentStart && alignedOffset <= activeSegmentEnd
+        lock.unlock()
+        guard !activeContainsTarget else {
+            DiagnosticsLogger.shared.log("KTVAdaptive", "seek final target covered position=\(position) byte=\(alignedOffset)")
+            return
+        }
+        let start = firstMissingOffset(from: alignedOffset)
+        DiagnosticsLogger.shared.log("KTVAdaptive", "seek reprioritize final position=\(position) duration=\(duration) byte=\(alignedOffset) start=\(start)")
+        startPreloadIfAllowed(reason: "seek-priority-final", startOffset: start)
     }
 
     func ensurePreloadActive(reason: String) {
@@ -219,7 +232,7 @@ final class KTVCachePlaybackSession {
         }
 
         lock.lock()
-        let segmentBytes = nextSegmentSizeLocked()
+        let segmentBytes = self.segmentBytes
         let endOffset = contentLength > 0 ? min(contentLength - 1, offset + segmentBytes - 1) : offset + segmentBytes - 1
         loaderGeneration &+= 1
         let generation = loaderGeneration
@@ -269,26 +282,26 @@ final class KTVCachePlaybackSession {
                 let elapsed = max(Date().timeIntervalSince(self.activeSegmentStartedAt), 0.001)
                 let loaded = max(0, self.activeSegmentLoaded)
                 let newCacheBytes = max(0, cacheBytes - self.activeSegmentCacheStart)
-                let effectiveBytes = newCacheBytes > 0 ? newCacheBytes : loaded
-                let speed = Double(effectiveBytes) / elapsed
+                let cacheHit = newCacheBytes == 0
+                let networkBytes = cacheHit ? 0 : min(newCacheBytes, loaded)
+                let speed = networkBytes > 0 ? Double(networkBytes) / elapsed : 0
                 if error != nil { self.failureCount += 1 }
                 else if self.activeSegmentEnd >= self.activeSegmentStart {
                     self.sessionRanges.insert(self.activeSegmentStart..<(self.activeSegmentEnd + 1))
-                    self.recordTrialLocked(segmentBytes: segmentBytes, speed: speed, newCacheBytes: newCacheBytes)
                 }
                 self.loadedBytes = max(self.loadedBytes, cacheBytes)
                 let next = self.nextOffset
                 self.lock.unlock()
 
                 if let error {
-                    DiagnosticsLogger.shared.log("KTVAdaptive", "segment failed range=\(segmentStart)-\(segmentEnd) loaded=\(loaded) speed=\(Int(speed))B/s error=\(error.localizedDescription)")
+                    DiagnosticsLogger.shared.log("KTVAdaptive", "segment failed range=\(segmentStart)-\(segmentEnd) loaded=\(loaded) networkBytes=\(networkBytes) speed=\(Int(speed))B/s error=\(error.localizedDescription)")
                     let retryOffset = segmentStart + loaded
                     DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5) { [weak self] in
                         guard let self else { return }
                         self.startPreloadIfAllowed(reason: "segment-retry", startOffset: self.firstMissingOffset(from: retryOffset))
                     }
                 } else {
-                    DiagnosticsLogger.shared.log("KTVAdaptive", "segment finished range=\(segmentStart)-\(segmentEnd) newCache=\(newCacheBytes) loaded=\(loaded) speed=\(Int(speed))B/s next=\(next)")
+                    DiagnosticsLogger.shared.log("KTVAdaptive", "segment finished range=\(segmentStart)-\(segmentEnd) cacheHit=\(cacheHit) newCache=\(newCacheBytes) networkBytes=\(networkBytes) loaded=\(loaded) speed=\(Int(speed))B/s next=\(next)")
                     DispatchQueue.global(qos: .utility).async { [weak self] in
                         guard let self else { return }
                         self.startPreloadIfAllowed(reason: "segment-next", startOffset: self.firstMissingOffset(from: next))
@@ -304,34 +317,8 @@ final class KTVCachePlaybackSession {
         DiagnosticsLogger.shared.log("KTVAdaptive", "segment start reason=\(reason) range=\(segmentStart)-\(segmentEnd) size=\(segmentBytes)")
     }
 
-    private func nextSegmentSizeLocked() -> Int64 {
-        if trialIndex < candidateSegmentBytes.count {
-            let candidate = candidateSegmentBytes[trialIndex]
-            trialIndex += 1
-            return candidate
-        }
-        return preferredSegmentBytes
-    }
-
-    private func recordTrialLocked(segmentBytes: Int64, speed: Double, newCacheBytes: Int64) {
-        guard newCacheBytes >= 1_048_576, speed.isFinite, speed > 0 else { return }
-        var trial = trialResults[segmentBytes] ?? SegmentTrial()
-        trial.samples.append(speed)
-        if trial.samples.count > 3 { trial.samples.removeFirst(trial.samples.count - 3) }
-        trialResults[segmentBytes] = trial
-
-        let best = trialResults.max { lhs, rhs in lhs.value.average < rhs.value.average }
-        guard let best, best.value.average > 0 else { return }
-        let old = preferredSegmentBytes
-        preferredSegmentBytes = best.key
-        if old != preferredSegmentBytes {
-            DiagnosticsLogger.shared.log("KTVAdaptive", "segment winner old=\(old) new=\(preferredSegmentBytes) average=\(Int(best.value.average))B/s")
-        }
-        Self.saveProfile(StoredProfile(segmentBytes: preferredSegmentBytes, averageBytesPerSecond: best.value.average), key: profileKey)
-    }
-
     private func evaluateSlowConnectionLocked(now: Date) {
-        guard active else { slowSince = nil; return }
+        guard active, now.timeIntervalSince(lastSeekAt) >= 2 else { slowSince = nil; return }
         let threshold = max(mediaBytesPerSecond * 1.15, 2 * 1_048_576)
         let noProgress = now.timeIntervalSince(lastProgressAt) >= 4
         let tooSlow = currentBytesPerSecond > 0 && currentBytesPerSecond < threshold
@@ -344,18 +331,12 @@ final class KTVCachePlaybackSession {
 
     private func rotateSlowConnection(from offset: Int64, observedSpeed: Double) {
         lock.lock()
-        guard !stopped, active, Date().timeIntervalSince(lastRotationAt) >= 12 else { lock.unlock(); return }
+        guard !stopped, active, Date().timeIntervalSince(lastRotationAt) >= 12, Date().timeIntervalSince(lastSeekAt) >= 2 else { lock.unlock(); return }
         lastRotationAt = Date()
         slowSince = nil
-        if let index = candidateSegmentBytes.firstIndex(of: preferredSegmentBytes) {
-            preferredSegmentBytes = candidateSegmentBytes[(index + 1) % candidateSegmentBytes.count]
-        } else {
-            preferredSegmentBytes = 32 * 1_048_576
-        }
-        let newSize = preferredSegmentBytes
         lock.unlock()
-        DiagnosticsLogger.shared.log("KTVAdaptive", "slow connection rotate speed=\(Int(observedSpeed))B/s restart=\(offset) nextSegment=\(newSize)")
-        startPreloadIfAllowed(reason: "slow-rotate", startOffset: firstMissingOffset(from: offset))
+        DiagnosticsLogger.shared.log("KTVAdaptive", "slow connection restart speed=\(Int(observedSpeed))B/s restart=\(offset) segment=\(segmentBytes)")
+        startPreloadIfAllowed(reason: "slow-restart", startOffset: firstMissingOffset(from: offset))
     }
 
     private func firstMissingOffset(from offset: Int64) -> Int64 {
@@ -384,13 +365,4 @@ final class KTVCachePlaybackSession {
         lastSampleBytes = cacheBytes
     }
 
-    private static func loadProfile(key: String) -> StoredProfile? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
-        return try? JSONDecoder().decode(StoredProfile.self, from: data)
-    }
-
-    private static func saveProfile(_ profile: StoredProfile, key: String) {
-        guard let data = try? JSONEncoder().encode(profile) else { return }
-        UserDefaults.standard.set(data, forKey: key)
-    }
 }

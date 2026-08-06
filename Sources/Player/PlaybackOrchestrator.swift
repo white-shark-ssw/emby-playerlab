@@ -23,7 +23,12 @@ final class PlaybackOrchestrator {
     init(source: ResolvedPlaybackSource, preference: PlayerEnginePreference) {
         self.source = source
         self.automaticMode = preference.isAutomatic
-        self.currentKind = preference.resolved(for: source.mediaSource)
+        if preference.isAutomatic, MediaCompatibilityStore.requiresFFmpeg(itemId: source.itemId) {
+            self.currentKind = .ksAVIO
+            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticEngine=KSPlayer-FFmpeg reason=stored-video-freeze")
+        } else {
+            self.currentKind = preference.resolved(for: source.mediaSource)
+        }
     }
 
     func didSwitch(to kind: PlayerEngineKind) { currentKind = kind }

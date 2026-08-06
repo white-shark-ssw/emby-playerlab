@@ -1,17 +1,17 @@
 # Build Report
 
-- Version: 0.7.3 (36)
+- Version: 0.7.4 (37)
 - Deployment Target: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Expected CI: Xcode 16.4, arm64 iPhoneOS Release
 - Swift language mode: Swift 5
 - KTVHTTPCache: 3.1.0 via CocoaPods; upstream minimum iOS 12.0; MIT
 - CocoaAsyncSocket: transitive dependency of KTVHTTPCache
-- MPVKit: not linked in 0.7.3; source adapter retained behind compile-time guard
+- MPVKit: not linked in 0.7.4; source adapter retained behind compile-time guard
 - KSPlayer: 2.3.4
 - FFmpegKit: 6.1.4 through KSPlayer
 - Automatic standard MP4 path: KTVHTTPCache local iPhone proxy + AVPlayer
-- Continuous cache: KTVHCDataLoader with adaptive 16/32/64 MB segmented Range scheduling, Seek reprioritization, and cache-cap/EOF completion
+- Continuous cache: KTVHCDataLoader with fixed 32 MB segmented Range scheduling, 750 ms coalesced Seek reprioritization, and cache-cap/EOF completion
 - Runtime automatic engine switching: disabled
 - NAS media proxy: prohibited and not used
 - Deployment Target changed: no; remains iOS 15.0
@@ -20,6 +20,13 @@
 - Full Objective-C importer validation, CocoaPods integration, iPhoneOS typecheck/link, embedded-framework MinimumOS validation and unsigned IPA packaging: pending GitHub Actions.
 
 
+## 0.7.4 稳定化策略
+
+- 固定 32 MB 分段，慢连接同尺寸重建，避免 64 MB Range 在弱连接中继续拖慢。
+- 缓存命中与真实新增缓存分离；当前外部速度仍是“缓存有效增长估算”，新增 CDN 探针用于比较不同时段的最终 Host 和解析延迟。
+- 连续 Seek 合并为一次后台预取迁移。
+- Seek 期间暂停视频冻结检测；累计两次确认冻结的 Item 在下次自动播放时预选 KSPlayer/FFmpeg。
+- Runtime automatic engine switching remains disabled.
 
 ## 0.7.3 传输与画面恢复策略
 
