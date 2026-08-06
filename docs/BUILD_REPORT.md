@@ -1,13 +1,13 @@
 # Build Report
 
-- Version: 0.7.6 (39)
+- Version: 0.7.7 (40)
 - Deployment Target: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Expected CI: Xcode 16.4, arm64 iPhoneOS Release
 - Swift language mode: Swift 5
 - KTVHTTPCache: 3.1.0 via CocoaPods; upstream minimum iOS 12.0; MIT
 - CocoaAsyncSocket: transitive dependency of KTVHTTPCache
-- MPVKit: not linked in 0.7.6; source adapter retained behind compile-time guard
+- MPVKit: not linked in 0.7.7; source adapter retained behind compile-time guard
 - KSPlayer: 2.3.4
 - FFmpegKit: 6.1.4 through KSPlayer
 - Automatic standard MP4 path: KTVHTTPCache local iPhone proxy + AVPlayer; compatibility path: the same KTV proxy + KSPlayer/FFmpeg
@@ -19,6 +19,14 @@
 - Local validation: Swift parser for all Swift sources; plist/YAML/Ruby/shell validation; source manifest, patch application and ZIP extraction verification.
 - Full Objective-C importer validation, CocoaPods integration, iPhoneOS typecheck/link, embedded-framework MinimumOS validation and unsigned IPA packaging: pending GitHub Actions.
 
+
+
+## 0.7.7 Swift throwing 表达式编译修复
+
+- 修复 `KTVAVPlayerEngine.swift:28` 与 `KSAVIOPlayerEngine.swift:140` 的 `operator can throw but expression is not marked with try`。
+- 原因是 throwing 初始化器位于 nil-coalescing `??` 的右侧自动闭包中，Swift 要求整条 `??` 表达式显式 `try`。
+- 改为明确的 `if let` 会话复用分支，保留同一 KTVCachePlaybackSession 的交接语义。
+- KTVHTTPCache、KSPlayer、FFmpegKit 已进入主目标 Swift 编译阶段；本次日志未显示第三方依赖或链接错误。
 
 
 ## 0.7.6 统一高速传输

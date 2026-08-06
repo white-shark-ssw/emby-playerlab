@@ -137,7 +137,8 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
 
     private func prepareKTVBacked(currentGeneration: Int) {
         do {
-            let cacheSession = ktvCacheSession ?? (try KTVCachePlaybackSession(source: source, configuration: configuration))
+            let cacheSession: KTVCachePlaybackSession
+            if let ktvCacheSession { cacheSession = ktvCacheSession } else { cacheSession = try KTVCachePlaybackSession(source: source, configuration: configuration) }
             ktvCacheSession = cacheSession
             cacheSession.prepareForPlayback { [weak self, weak cacheSession] in
                 guard let self, let cacheSession, currentGeneration == self.generation, self.ktvCacheSession === cacheSession else { return }

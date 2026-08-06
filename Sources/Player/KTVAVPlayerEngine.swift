@@ -25,7 +25,8 @@ final class KTVAVPlayerEngine: PlayerEngine {
 
     func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
         do {
-            let session = cacheSession ?? (try KTVCachePlaybackSession(source: source, configuration: configuration))
+            let session: KTVCachePlaybackSession
+            if let cacheSession { session = cacheSession } else { session = try KTVCachePlaybackSession(source: source, configuration: configuration) }
             cacheSession = session
             DiagnosticsLogger.shared.log("KTVPlayer", "prepare proxyHost=\(session.proxyURL.host ?? "localhost") proxyPort=\(session.proxyURL.port ?? 0)")
             session.prepareForPlayback { [weak self, weak session] in
