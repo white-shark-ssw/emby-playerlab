@@ -13,6 +13,7 @@ final class KTVAVPlayerEngine: PlayerEngine {
     private let underlying: AVPlayerEngine
     private var cacheSession: KTVCachePlaybackSession?
     private var lastSnapshot = PlayerSnapshot()
+    private var lowAheadSince: Date?
 
     init(source: ResolvedPlaybackSource, configuration: MediaTransportConfiguration, cacheSession: KTVCachePlaybackSession? = nil) {
         self.source = source
@@ -49,6 +50,7 @@ final class KTVAVPlayerEngine: PlayerEngine {
     func pause() { underlying.pause() }
 
     func seek(to seconds: Double, direction: SeekDirection) {
+        lowAheadSince = nil
         let duration = lastSnapshot.duration > 0 ? lastSnapshot.duration : source.mediaSource.durationSeconds ?? 0
         cacheSession?.prioritizeSeek(position: seconds, duration: duration)
         underlying.seek(to: seconds, direction: direction)
@@ -89,7 +91,12 @@ final class KTVAVPlayerEngine: PlayerEngine {
             self.cacheSession?.updatePlayback(position: snapshot.position, duration: snapshot.duration)
             let bufferedAhead = snapshot.bufferedRanges.filter { $0.lowerBound <= snapshot.position + 0.25 }.map { max(0, $0.upperBound - snapshot.position) }.max() ?? 0
             if snapshot.position > 0.5, snapshot.isBuffering, bufferedAhead < 0.75 {
-                self.cacheSession?.yieldBandwidthToPlayback(position: snapshot.position, duration: snapshot.duration, reason: "buffering-low-ahead")
+                if self.lowAheadSince == nil { self.lowAheadSince = Date() }
+                if Date().timeIntervalSince(self.lowAheadSince ?? Date()) >= 0.8 {
+                    self.cacheSession?.yieldBandwidthToPlayback(position: snapshot.position, duration: snapshot.duration, reason: "buffering-low-ahead-confirmed")
+                }
+            } else {
+                self.lowAheadSince = nil
             }
             self.onSnapshot?(snapshot)
         }

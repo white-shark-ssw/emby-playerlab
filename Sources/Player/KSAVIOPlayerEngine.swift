@@ -103,6 +103,7 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
 
     func recoverStall(position: Double, duration: Double) {
         if let ktvCacheSession {
+            ktvCacheSession.yieldBandwidthToPlayback(position: position, duration: duration, reason: "stall")
             ktvCacheSession.ensurePreloadActive(reason: "KSPlayer stall at \(String(format: "%.2f", position))")
         } else {
             coordinator?.recoverStall(position: position, duration: duration)
@@ -138,7 +139,7 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     private func prepareKTVBacked(currentGeneration: Int) {
         do {
             let cacheSession: KTVCachePlaybackSession
-            if let ktvCacheSession { cacheSession = ktvCacheSession } else { cacheSession = try KTVCachePlaybackSession(source: source, configuration: configuration) }
+            if let ktvCacheSession { cacheSession = ktvCacheSession } else { cacheSession = try KTVCachePlaybackSession(source: source, configuration: configuration, openWarmupEnabled: false) }
             ktvCacheSession = cacheSession
             cacheSession.prepareForPlayback { [weak self, weak cacheSession] in
                 guard let self, let cacheSession, currentGeneration == self.generation, self.ktvCacheSession === cacheSession else { return }

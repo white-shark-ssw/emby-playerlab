@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → OneStrm 302 → 115 直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.7.8
+## 当前版本：0.7.9
 
 ### 系统与构建
 
@@ -12,7 +12,18 @@
 - 安装方式：未签名 IPA + TrollStore
 - KTVHTTPCache：3.1.0（MIT，最低 iOS 12）
 - KSPlayer：2.3.4
-- MPVKit：源码适配保留；0.7.8 实验构建不链接二进制
+- MPVKit：源码适配保留；0.7.9 实验构建不链接二进制
+
+
+### 0.7.9：持续双通道与大 MP4 直启 FFmpeg
+
+- KTV 持续预取从“10 秒单通道基线＋15 秒双通道试跑”改为播放开始后 0.75 秒直接启用两条常驻 32 MB 通道，优先维持115可用带宽。
+- 快速 Seek 和短暂缓冲不再同时关闭 lane A/B；lane A 保持并跟随最终播放位置，只有确认持续缓冲或 Stall 才短暂停 lane B 约 1.25 秒。
+- lane B 瞬时失败不会永久退出，按失败次数退避后重新加入。
+- 大于等于 4 GiB 且时长不少于 1 小时的 MP4，在 KTV 自动模式下直接使用 KTV 双通道＋KSPlayer/FFmpeg，跳过已知会失败的 AVPlayer 和首尾预热。
+- KSPlayer 直接创建的 KTV 会话不执行 AVPlayer 专用大 MP4 首尾 warmup，缩短首帧等待。
+- 混合缓存区间明确记录 `mixedCache=true`，避免把少量补缺口误认为整条115连接只有几百 KB/s。
+- Deployment Target 继续保持 iOS 15.0。
 
 
 ### 0.7.8：播放优先与大 MP4 回归修复
@@ -47,7 +58,7 @@
 2. 等待 `Validate Source` 成功。
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-5. 解压获得 `EmbyPlayerLab-0.7.8-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+5. 解压获得 `EmbyPlayerLab-0.7.9-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 首次构建会通过 CocoaPods 安装固定版本 KTVHTTPCache 3.1.0，并通过 Swift Package Manager 解析 KSPlayer 2.3.4。
 
@@ -56,7 +67,7 @@
 - 密码不落盘，AccessToken 保存到 Keychain。
 - KTVHTTPCache 自带文件日志默认关闭，避免临时播放 URL 进入第三方日志。
 - App 自有日志只记录原始主机、localhost 端口、缓存字节和速度，不记录完整代理 URL。
-- KTVHTTPCache 3.1.0 为 MIT；KSPlayer 2.3.4 及其 FFmpegKit 依赖按项目现有 GPL 说明处理。0.7.8 不链接 MPVKit。
+- KTVHTTPCache 3.1.0 为 MIT；KSPlayer 2.3.4 及其 FFmpegKit 依赖按项目现有 GPL 说明处理。0.7.9 不链接 MPVKit。
 
 ## 0.2.1 修复
 

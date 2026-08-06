@@ -23,9 +23,19 @@ final class PlaybackOrchestrator {
     init(source: ResolvedPlaybackSource, preference: PlayerEnginePreference) {
         self.source = source
         self.automaticMode = preference.isAutomatic
-        if preference.isAutomatic, MediaCompatibilityStore.requiresFFmpeg(itemId: source.itemId) {
+        let media = source.mediaSource
+        let transport = MediaTransportConfiguration.current()
+        let ktvDiskEnabled = transport.strategy == .ktvHTTP &&
+            transport.diskLimitBytes > 0 &&
+            (transport.cacheMode == .disk || transport.cacheMode == .automatic)
+        let largeKTVMP4 = ktvDiskEnabled &&
+            media.normalizedContainer == "mp4" &&
+            (media.size ?? 0) >= 4 * 1_073_741_824 &&
+            (media.durationSeconds ?? 0) >= 3_600
+        if preference.isAutomatic, MediaCompatibilityStore.requiresFFmpeg(itemId: source.itemId) || largeKTVMP4 {
             self.currentKind = .ksAVIO
-            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticEngine=KSPlayer-FFmpeg reason=stored-media-compatibility")
+            let reason = largeKTVMP4 ? "large-mp4-ktv-direct-ffmpeg" : "stored-media-compatibility"
+            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticEngine=KSPlayer-FFmpeg reason=\(reason)")
         } else {
             self.currentKind = preference.resolved(for: source.mediaSource)
         }

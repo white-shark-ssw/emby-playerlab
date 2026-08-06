@@ -1,17 +1,17 @@
 # Build Report
 
-- Version: 0.7.8 (41)
+- Version: 0.7.9 (42)
 - Deployment Target: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Expected CI: Xcode 16.4, arm64 iPhoneOS Release
 - Swift language mode: Swift 5
 - KTVHTTPCache: 3.1.0 via CocoaPods; upstream minimum iOS 12.0; MIT
 - CocoaAsyncSocket: transitive dependency of KTVHTTPCache
-- MPVKit: not linked in 0.7.8; source adapter retained behind compile-time guard
+- MPVKit: not linked in 0.7.9; source adapter retained behind compile-time guard
 - KSPlayer: 2.3.4
 - FFmpegKit: 6.1.4 through KSPlayer
-- Automatic standard MP4 path: KTVHTTPCache local iPhone proxy + AVPlayer; compatibility path: the same KTV proxy + KSPlayer/FFmpeg
-- Continuous cache: fixed 32 MB segmented Range scheduling with 10-second single-lane baseline, 15-second dual-lane trial, 750 ms coalesced primary-lane Seek reprioritization, and cache-cap/EOF completion
+- Automatic standard MP4 path: KTVHTTPCache local iPhone proxy + AVPlayer; MP4 files at least 4 GiB and 1 hour use the same KTV proxy + KSPlayer/FFmpeg from startup; stored compatibility items use the same FFmpeg path
+- Continuous cache: two persistent 32 MB Range lanes on Wi-Fi/KTV, lane B starts after 750 ms, primary-lane Seek reprioritization remains coalesced at 750 ms, confirmed foreground starvation pauses only lane B for about 1.25 seconds, and cache-cap/EOF completion remains enabled
 - Runtime automatic engine switching: disabled
 - NAS media proxy: prohibited and not used
 - Deployment Target changed: no; remains iOS 15.0
@@ -19,6 +19,17 @@
 - Local validation: Swift parser for all Swift sources; plist/YAML/Ruby/shell validation; source manifest, patch application and ZIP extraction verification.
 - Full Objective-C importer validation, CocoaPods integration, iPhoneOS typecheck/link, embedded-framework MinimumOS validation and unsigned IPA packaging: pending GitHub Actions.
 
+
+
+## 0.7.9 持续双通道与大 MP4 直启兼容引擎
+
+- 真机日志确认 v0.7.8 的 lane A 单通道可达约 11–16 MB/s，lane B 可达约 8–15 MB/s；但快速 Seek 触发的 foreground priority 会同时关闭两条通道并重置双通道试跑，因此多数会话无法持续维持总带宽。
+- KTV 会话现在直接进入 persistent-2 模式：lane A 立即启动，lane B 在 750 ms 后启动，不再等待 10 秒单通道基线和 15 秒试跑。
+- transient buffering 不立即让路；只有低前向缓存持续至少 800 ms 或正式 Stall 才触发 foreground priority。
+- foreground priority 只暂停 lane B 约 1.25 秒，lane A 保持工作；正式 Stall 时 lane A 立即对准当前播放字节。
+- lane B 连续错误不再永久禁用，按 8–30 秒退避恢复。
+- 自动模式下，KTV 环境中大于等于 4 GiB且时长不少于 1 小时的 MP4 直接选择 KSPlayer/FFmpeg；KSPlayer 创建 KTV 会话时跳过 AVPlayer 专用首尾 warmup。
+- Runtime automatic engine switching during established playback remains disabled.
 
 
 ## 0.7.8 播放优先与大 MP4 回归修复
