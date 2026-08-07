@@ -103,7 +103,6 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
 
     func recoverStall(position: Double, duration: Double) {
         if let ktvCacheSession {
-            ktvCacheSession.yieldBandwidthToPlayback(position: position, duration: duration, reason: "stall")
             ktvCacheSession.ensurePreloadActive(reason: "KSPlayer stall at \(String(format: "%.2f", position))")
         } else {
             coordinator?.recoverStall(position: position, duration: duration)
@@ -159,7 +158,7 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
                 self.startStateTimer()
                 player.prepareToPlay()
                 if self.shouldPlay { player.play() }
-                DiagnosticsLogger.shared.log("KSKTV", "prepared item=\(self.source.itemId) proxyPort=\(cacheSession.proxyURL.port ?? 0) transport=KTV-dual-lane")
+                DiagnosticsLogger.shared.log("KSKTV", "prepared item=\(self.source.itemId) proxyPort=\(cacheSession.proxyURL.port ?? 0) transport=KTV-staged-dual")
                 self.scheduleKTVStartupGuard(player: player, generation: currentGeneration)
             }
         } catch {
@@ -265,7 +264,7 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
             isBuffering: buffering,
             waitingReason: buffering ? (ktvCacheSession != nil ? "KSPlayer 等待 KTV 缓存数据" : "KSPlayer 等待 AVIO 数据") : nil,
             errorMessage: nil,
-            didReachEnd: player.playbackState == .finished
+            didReachEnd: player.isReadyToPlay && player.playbackState == .finished
         )
         onSnapshot?(snapshot)
     }

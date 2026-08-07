@@ -1,13 +1,13 @@
 # Build Report
 
-- Version: 0.7.9 (42)
+- Version: 0.7.10 (43)
 - Deployment Target: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Expected CI: Xcode 16.4, arm64 iPhoneOS Release
 - Swift language mode: Swift 5
 - KTVHTTPCache: 3.1.0 via CocoaPods; upstream minimum iOS 12.0; MIT
 - CocoaAsyncSocket: transitive dependency of KTVHTTPCache
-- MPVKit: not linked in 0.7.9; source adapter retained behind compile-time guard
+- MPVKit: not linked in 0.7.10; source adapter retained behind compile-time guard
 - KSPlayer: 2.3.4
 - FFmpegKit: 6.1.4 through KSPlayer
 - Automatic standard MP4 path: KTVHTTPCache local iPhone proxy + AVPlayer; MP4 files at least 4 GiB and 1 hour use the same KTV proxy + KSPlayer/FFmpeg from startup; stored compatibility items use the same FFmpeg path
@@ -21,7 +21,7 @@
 
 
 
-## 0.7.9 持续双通道与大 MP4 直启兼容引擎
+## 0.7.10 持续双通道与大 MP4 直启兼容引擎
 
 - 真机日志确认 v0.7.8 的 lane A 单通道可达约 11–16 MB/s，lane B 可达约 8–15 MB/s；但快速 Seek 触发的 foreground priority 会同时关闭两条通道并重置双通道试跑，因此多数会话无法持续维持总带宽。
 - KTV 会话现在直接进入 persistent-2 模式：lane A 立即启动，lane B 在 750 ms 后启动，不再等待 10 秒单通道基线和 15 秒试跑。

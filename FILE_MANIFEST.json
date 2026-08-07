@@ -1,8 +1,8 @@
 [
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
-    "bytes": 5300,
-    "sha256": "815de97dd91f22d61184e4fef3bc4741c8f43aa18edeeb394602dd379f051052"
+    "bytes": 5301,
+    "sha256": "e08df80c4d2e76eeb43070aa360f57c442a40ac15532856356e67735de217581"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -21,8 +21,8 @@
   },
   {
     "path": "Config/Info.plist",
-    "bytes": 1783,
-    "sha256": "6f56fd98e0324b0d515847c2b940469f7256bdd8b2d8ad75bbbfcfe6410bf9cf"
+    "bytes": 1784,
+    "sha256": "1576253dd98ce020c991308ab0cd93125f2da87003326d093dccf9e7053b0d04"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -41,8 +41,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 19133,
-    "sha256": "c3d8e4728ffd5efe61d488bacf537ab481ac71be09554124c7d5bd6709d7355d"
+    "bytes": 18885,
+    "sha256": "3187af01759d95398c0879998d928069b21af8a9588ef01821c448faf3790150"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -221,13 +221,13 @@
   },
   {
     "path": "Sources/Cache/KTVCachePlaybackSession.swift",
-    "bytes": 40927,
-    "sha256": "ae6a87f17e5aea96d91769557c696daf217223edb3bb41f3808b110dc45f07ed"
+    "bytes": 39562,
+    "sha256": "a0d198c6ffda7bee23f5cf32db0106f3014f97230f9ef2faa035f69ce6a7a92e"
   },
   {
     "path": "Sources/Core/AppIdentity.swift",
-    "bytes": 1062,
-    "sha256": "d348f7f82fe089c4addb4f1d510b1dfe3f6fb9d388124b3aba5fc9a4fea3ed96"
+    "bytes": 1064,
+    "sha256": "4d6383e7c88016dfde6fef9d15371c0b6352589f281065f090b38fdc03d87524"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -271,13 +271,13 @@
   },
   {
     "path": "Sources/Player/KSAVIOPlayerEngine.swift",
-    "bytes": 12395,
-    "sha256": "263111a50a8d7f9869ffd31b6d9943e12405272dda9d0cdba1278d22bf8335ad"
+    "bytes": 12311,
+    "sha256": "ccea6d3364652530c94ab1ed4cb0c72d1cc75e621086bf373f92ed18e6f0ca0f"
   },
   {
     "path": "Sources/Player/KTVAVPlayerEngine.swift",
-    "bytes": 5106,
-    "sha256": "f9edb9c3710fdd1481d60d9ca91e2049f4d5ee00799358ab442cddbe2a536d66"
+    "bytes": 4370,
+    "sha256": "c88c82f0761b9f10b51455bbc337fb32a311e496f4388d15f4f17de70329babf"
   },
   {
     "path": "Sources/Player/MPVPlayerEngine.swift",
@@ -471,8 +471,8 @@
   },
   {
     "path": "docs/BUILD_REPORT.md",
-    "bytes": 6501,
-    "sha256": "c94ddaa56b5504f79255f49dce0843762825535c4ef509e8be8ba605bbe2543d"
+    "bytes": 6504,
+    "sha256": "195fae554d5d001d2e31dd196288d967b65715c5026bad91410c267069f9b3d6"
   },
   {
     "path": "docs/CHANGELOG_0.1.0.md",
@@ -645,6 +645,11 @@
     "sha256": "7336450b7b07d4470d0c7f41cb5cc8e8f2bedc1486d8a4844f5488c09777493b"
   },
   {
+    "path": "docs/CHANGELOG_0.7.10.md",
+    "bytes": 950,
+    "sha256": "308a129e71515b3b43be60b1202e3d8d613a138e2638230974e7622e462681c4"
+  },
+  {
     "path": "docs/CHANGELOG_0.7.2.md",
     "bytes": 670,
     "sha256": "434c6a74a3da9778ba2c024c7c000e40c02ff3fb2fa407f8d6853182f936e57a"
@@ -718,6 +723,11 @@
     "path": "docs/LOG_ANALYSIS_0.6.2.md",
     "bytes": 1114,
     "sha256": "258cd5e35cd5ef31c5d8abb259e096524eac270205dad775cf4679b464f14960"
+  },
+  {
+    "path": "docs/LOG_ANALYSIS_0.7.10.md",
+    "bytes": 1152,
+    "sha256": "8601acadcb3f5c86f5f0e0ed88933476df664124bc24a1ae6e6b52c5e77a336e"
   },
   {
     "path": "docs/LOG_ANALYSIS_0.7.3.md",
@@ -810,6 +820,11 @@
     "sha256": "dffcaa615a49b4e4996b7db0f5347ae47936bdf458399d8ff3191740b07fe827"
   },
   {
+    "path": "docs/TEST_CHECKLIST_0.7.10.md",
+    "bytes": 688,
+    "sha256": "5b837f9676613334bbb9e62f916a246ce068ddf508649a1624bd738276eadc6a"
+  },
+  {
     "path": "docs/TEST_CHECKLIST_0.7.2.md",
     "bytes": 938,
     "sha256": "e758893cf273abdc85d987f0f174adbbda34946c6af0a8130350586b58426515"
@@ -861,8 +876,8 @@
   },
   {
     "path": "project.yml",
-    "bytes": 1399,
-    "sha256": "d8188db1cd6d7dffa6fb4cc9b747166f25886b30cd04a255fd6a5446d544c1e9"
+    "bytes": 1401,
+    "sha256": "c9644ae53d1a871ed4c844613078cf979445dc77d7de9e7b2124f4a241e88375"
   },
   {
     "path": "scripts/check_min_os.sh",
