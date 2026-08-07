@@ -410,8 +410,6 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: receivedForClaim > 0 ? receivedForClaim : nil, error: nil)
             } else {
                 var slowStartupRefreshUsed = false
-            } else {
-                var slowStartupRefreshUsed = false
                 while receivedForClaim < Int64(claim.range.count) {
                     let remaining = (claim.range.lowerBound + receivedForClaim)..<claim.range.upperBound
                     let attemptStarted = Date()
