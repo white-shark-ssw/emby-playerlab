@@ -32,6 +32,7 @@ require('[lower isEqualToString:@"user-agent"]' in bridge, "source User-Agent mu
 
 require("private let segmentBytes: Int64 = 512 * 1_048_576" in session, "background claims must be long-lived 512 MiB ranges")
 require("probe skipped transport-v2" in session, "legacy wrong-UA redirect probe must stay disabled")
+require("enableSecondaryAfterWarmup" in session and "session-warmup-dual" in session, "lane B must start from session warmup rather than UI metrics polling")
 require("playback-priority-yield-secondary" in session, "starvation must yield only secondary lane")
 require("user-seek-yield-secondary" in session, "user seek must immediately yield secondary lane")
 require("keep-primary-yield-secondary" in session, "seek must preserve warmed primary lane")
@@ -45,12 +46,15 @@ require("stopSecondaryLane" in pause_body, "playback starvation must stop lane B
 require("primaryLane.loader" not in pause_body and "primary?.close" not in pause_body, "playback starvation must never tear down primary lane")
 
 require("headers: [:]" in ktv_av, "AVPlayer must talk to localhost without forwarding source headers")
+require("takeCacheSessionForHandoff" in ktv_av, "AVPlayer must support KTV cache handoff")
 require("automaticProfile=AVPlayer+KTVProxyTransportV2" in orchestrator, "native automatic route must use KTV proxy")
 require("automaticProfile=MPV+KTVProxyTransportV2" in orchestrator, "compatibility automatic route must use KTV proxy")
 require("self.currentKind = .ktvAVPlayer" in orchestrator, "native automatic engine must be KTV AVPlayer")
 require("return .ktvAVPlayer" in engine, "automatic native preference must resolve to KTV AVPlayer")
 
 require("KTVMPVPlayerEngine" in controller and "return KTVMPVPlayerEngine" in controller, "automatic MPV must use KTV proxy wrapper")
+require("ktvCacheHandoff" in controller and "ktvCacheSession: ktvCacheHandoff" in controller, "AVPlayer/MPV switch must preserve session cache")
+require("takeCacheSessionForHandoff" in wrapper and "cacheSession: KTVCachePlaybackSession? = nil" in wrapper, "MPV wrapper must support KTV cache handoff")
 require("KTVCachePlaybackSession" in wrapper and "headers: [:]" in wrapper, "KTV MPV wrapper must use localhost proxy without source headers")
 require("load direct HTTP transport=KTVProxyTransportV2" in mpv, "MPV must support localhost HTTP Transport v2")
 require("url.absoluteString" in mpv, "MPV localhost URL must load as normal HTTP URL")
