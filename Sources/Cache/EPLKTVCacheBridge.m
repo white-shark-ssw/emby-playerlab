@@ -5,6 +5,8 @@ static NSString * const EPLKTV115UserAgent = @"Mozilla/5.0 (Windows NT 10.0; Win
 
 static NSString * const EPLKTV115UserAgent = @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 115Browser/36.0.0 Chromium/125.0";
 
+static NSString * const EPLKTV115UserAgent = @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 115Browser/36.0.0 Chromium/125.0";
+
 @interface EPLKTVPreloadHandle () <KTVHCDataLoaderDelegate>
 @property (nonatomic, strong) KTVHCDataLoader *loader;
 @property (nonatomic, copy, nullable) EPLKTVPreloadProgressHandler progressHandler;
@@ -18,7 +20,10 @@ static NSString * const EPLKTV115UserAgent = @"Mozilla/5.0 (Windows NT 10.0; Win
     self = [super init];
     if (self) {
         NSMutableDictionary<NSString *, NSString *> *requestHeaders = [headers mutableCopy] ?: [NSMutableDictionary dictionary];
-        [@[@"Authorization", @"X-Emby-Token", @"X-MediaBrowser-Token", @"Cookie", @"Set-Cookie"] enumerateObjectsUsingBlock:^(NSString *key, NSUInteger idx, BOOL *stop) { [requestHeaders removeObjectForKey:key]; }];
+        NSSet<NSString *> *sensitiveHeaderKeys = [NSSet setWithArray:@[@"authorization", @"x-emby-token", @"x-mediabrowser-token", @"cookie", @"set-cookie"]];
+        for (NSString *key in requestHeaders.allKeys.copy) {
+            if ([sensitiveHeaderKeys containsObject:key.lowercaseString]) [requestHeaders removeObjectForKey:key];
+        }
         requestHeaders[@"User-Agent"] = EPLKTV115UserAgent;
         requestHeaders[@"Accept-Encoding"] = @"identity";
         requestHeaders[@"Connection"] = @"keep-alive";
@@ -78,11 +83,11 @@ static NSString * const EPLKTV115UserAgent = @"Mozilla/5.0 (Windows NT 10.0; Win
     }];
 
     NSMutableOrderedSet<NSString *> *keys = [NSMutableOrderedSet orderedSetWithArray:@[
-        @"User-Agent", @"Connection", @"Accept", @"Accept-Encoding", @"Accept-Language", @"Range", @"Referer", @"Origin"
+        @"Connection", @"Accept", @"Accept-Encoding", @"Accept-Language", @"Range", @"Referer", @"Origin"
     ]];
     for (NSString *key in allowedHeaderKeys) {
         NSString *lower = key.lowercaseString;
-        if ([lower isEqualToString:@"authorization"] || [lower isEqualToString:@"cookie"] || [lower isEqualToString:@"x-emby-token"] || [lower isEqualToString:@"x-mediabrowser-token"]) continue;
+        if ([lower isEqualToString:@"authorization"] || [lower isEqualToString:@"cookie"] || [lower isEqualToString:@"x-emby-token"] || [lower isEqualToString:@"x-mediabrowser-token"] || [lower isEqualToString:@"user-agent"]) continue;
         [keys addObject:key];
     }
     [KTVHTTPCache downloadSetWhitelistHeaderKeys:keys.array];

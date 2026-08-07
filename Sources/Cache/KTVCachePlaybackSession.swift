@@ -123,7 +123,7 @@ final class KTVCachePlaybackSession {
         playbackPreparationStarted = true
         lock.unlock()
 
-        probeOriginInBackground()
+        DiagnosticsLogger.shared.log("KTVOrigin", "probe skipped transport-v2 reason=avoid-second-UA-bound-115-link")
         if shouldWarmLargeMP4Metadata {
             startLargeMP4StartupWarmup()
         } else {

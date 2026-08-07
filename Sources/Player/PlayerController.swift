@@ -81,10 +81,9 @@ final class PlayerController: ObservableObject {
         self.orchestrator = orchestrator
         let initialKind = orchestrator.currentKind
         let configuration = MediaTransportConfiguration.current()
-        // Transport v2 automatic engines use the KTV localhost proxy. Build UnifiedTransport only
-        // for explicit diagnostic engines so it cannot open or cancel 115 connections in parallel.
-        let usesUnifiedTransport = initialKind == .resourceLoaderAVPlayer || initialKind == .transportAVPlayer || initialKind == .ksAVIO
-        let transportContext: PlaybackTransportContext? = usesUnifiedTransport ? PlaybackTransportContext(source: source, client: client, configuration: configuration) : nil
+        // Keep the diagnostic UnifiedTransport context lazy and available for manual engine switches.
+        // Construction performs no network I/O; automatic KTV/MPV Transport v2 does not consume it.
+        let transportContext: PlaybackTransportContext? = PlaybackTransportContext(source: source, client: client, configuration: configuration)
         self.transportContext = transportContext
         self.engineKind = initialKind
         if initialKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "engine create begin item=\(source.itemId)") }
