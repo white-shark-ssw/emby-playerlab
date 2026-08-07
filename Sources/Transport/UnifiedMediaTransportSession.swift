@@ -310,7 +310,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         // A tiny metadata probe (typical MP4/MKV tail index) may use Slot 1 while Slot 0 is
         // already serving urgent playback. Larger metadata stays on Slot 0 because worker 1 can
         // have a much slower cold-start on some 115 CDN paths.
-        if let metadata = pendingMetadataRange, Int64(metadata.count) <= secondaryMetadataMaxBytes, !store.contains(metadata), slotClaims[0]?.role == .urgentPlayback, slotTasks[1] == nil {
+        if let metadata = pendingMetadataRange, Int64(metadata.count) <= secondaryMetadataMaxBytes, !store.contains(metadata), Date() >= secondaryCooldownUntil, slotClaims[0]?.role == .urgentPlayback, slotTasks[1] == nil {
             pendingMetadataRange = nil
             startSlot(1, claim: SlotClaim(range: metadata, role: .metadata), reason: "metadata-\(reason)")
         }
