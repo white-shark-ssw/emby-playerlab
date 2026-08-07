@@ -9,18 +9,15 @@ final class MPVSurfaceUIView: UIView {
 
     func attach(_ layer: CAMetalLayer) {
         if displayLayer !== layer {
-            if displayLayer?.delegate === self { displayLayer?.delegate = nil }
             displayLayer?.removeFromSuperlayer()
             displayLayer = layer
-            layer.delegate = self
             self.layer.addSublayer(layer)
-            DiagnosticsLogger.shared.log("MPVSurface", "attach layer=CAMetalLayer delegate=MPVSurfaceUIView")
+            DiagnosticsLogger.shared.log("MPVSurface", "attach layer=CAMetalLayer")
         }
         setNeedsLayout()
     }
 
     func detach() {
-        if displayLayer?.delegate === self { displayLayer?.delegate = nil }
         displayLayer?.removeFromSuperlayer()
         displayLayer = nil
         lastGeometryLog = ""

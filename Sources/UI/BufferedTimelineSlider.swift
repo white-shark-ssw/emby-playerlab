@@ -34,11 +34,6 @@ struct BufferedTimelineSlider: View {
 
                 Capsule().fill(Color.white).frame(width: progressWidth(totalWidth: width), height: 4)
 
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 16, height: 16)
-                    .shadow(radius: 1)
-                    .offset(x: thumbOffset(totalWidth: width))
             }
             .frame(height: max(geometry.size.height, 24))
             .contentShape(Rectangle())
@@ -98,10 +93,6 @@ struct BufferedTimelineSlider: View {
 
     private func progressWidth(totalWidth: CGFloat) -> CGFloat { totalWidth * fraction(for: value) }
 
-    private func thumbOffset(totalWidth: CGFloat) -> CGFloat {
-        let thumbWidth: CGFloat = 16
-        return min(max(0, totalWidth * fraction(for: value) - thumbWidth / 2), max(0, totalWidth - thumbWidth))
-    }
 
     private func segmentOffset(_ buffered: ClosedRange<Double>, totalWidth: CGFloat) -> CGFloat { totalWidth * fraction(for: buffered.lowerBound) }
 

@@ -102,7 +102,7 @@ struct MediaTransportConfiguration: Equatable {
             TransportSettingsKey.wifiPreloadMB: 128,
             TransportSettingsKey.cellularPreloadMB: 64,
             TransportSettingsKey.segmentSizeMB: 1,
-            TransportSettingsKey.upstreamBlockSizeMB: 16,
+            TransportSettingsKey.upstreamBlockSizeMB: 32,
             TransportSettingsKey.concurrentRequests: 2,
             TransportSettingsKey.keepLastCache: false,
             TransportSettingsKey.ktvContinuousPreload: true,
@@ -120,7 +120,7 @@ struct MediaTransportConfiguration: Equatable {
             : 1
         let upstreamBlockMB = [4, 8, 16, 32, 64].contains(defaults.integer(forKey: TransportSettingsKey.upstreamBlockSizeMB))
             ? defaults.integer(forKey: TransportSettingsKey.upstreamBlockSizeMB)
-            : 16
+            : 32
         let concurrent = min(max(2, defaults.integer(forKey: TransportSettingsKey.concurrentRequests)), 8)
 
         return MediaTransportConfiguration(

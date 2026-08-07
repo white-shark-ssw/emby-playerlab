@@ -22,20 +22,6 @@ final class MPVMetalLayer: CAMetalLayer {
         }
     }
 
-    // MPVKit's own iOS Metal layer marshals EDR changes to the main thread. MoltenVK/libplacebo
-    // may update this while changing video output parameters; UIKit screen EDR state must not be
-    // mutated from the renderer queue.
-    @available(iOS 16.0, *)
-    override var wantsExtendedDynamicRangeContent: Bool {
-        get { super.wantsExtendedDynamicRangeContent }
-        set {
-            if Thread.isMainThread { setExtendedDynamicRange(newValue) }
-            else { DispatchQueue.main.sync { [self] in setExtendedDynamicRange(newValue) } }
-        }
-    }
-
-    @available(iOS 16.0, *)
-    private func setExtendedDynamicRange(_ value: Bool) { super.wantsExtendedDynamicRangeContent = value }
 }
 
 #if canImport(Libmpv)
@@ -77,7 +63,6 @@ final class MPVPlayerEngine: PlayerEngine {
         displayLayer.backgroundColor = UIColor.black.cgColor
         displayLayer.contentsScale = UIScreen.main.nativeScale
         displayLayer.framebufferOnly = true
-        if #available(iOS 16.0, *) { displayLayer.wantsExtendedDynamicRangeContent = true }
     }
 
     deinit {

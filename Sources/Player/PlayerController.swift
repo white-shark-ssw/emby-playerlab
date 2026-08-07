@@ -84,7 +84,9 @@ final class PlayerController: ObservableObject {
         let transportContext: PlaybackTransportContext? = PlaybackTransportContext(source: source, client: client, configuration: configuration)
         self.transportContext = transportContext
         self.engineKind = initialKind
+        if initialKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "engine create begin item=\(source.itemId)") }
         self.engine = PlayerController.makeEngine(kind: initialKind, source: source, client: client, transportContext: transportContext)
+        if initialKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "engine create finished item=\(source.itemId)") }
         bindEngine()
     }
 
@@ -95,12 +97,14 @@ final class PlayerController: ObservableObject {
         configureAudioSession()
         userWantsPlayback = true
         suppressStallWatchdog(for: engineKind == .mpv ? 12 : 6)
+        if engineKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "prepare begin item=\(source.itemId)") }
         engine.prepare(
             url: source.url,
             headers: source.headers,
             preferredForwardBuffer: self.preferredForwardBuffer,
             startPosition: 0
         )
+        if engineKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "prepare returned item=\(source.itemId)") }
         engine.play()
 
         DiagnosticsLogger.shared.log(
