@@ -52,6 +52,7 @@ final class PlayerController: ObservableObject {
     private var mpvCompatibilityLoadInProgress = false
     private var lastTransportMetrics: TransportMetricsSnapshot?
     private var lastHandledEngineError: String?
+    private var lastBufferTimelineLogAt = Date.distantPast
 
     var ksAVIOView: UIView? {
         (engine as? KSAVIOPlayerEngine)?.playerView
@@ -372,10 +373,28 @@ final class PlayerController: ObservableObject {
     }
 
     var bufferedEnd: Double {
-        snapshot.bufferedRanges
-            .filter { $0.lowerBound <= snapshot.position + 0.5 }
+        Self.bufferedEnd(for: snapshot)
+    }
+
+    var forwardBufferedDuration: Double { max(0, bufferedEnd - snapshot.position) }
+
+    private static func bufferedEnd(for snapshot: PlayerSnapshot) -> Double {
+        let tolerance = 0.05
+        return snapshot.bufferedRanges
+            .filter { $0.lowerBound <= snapshot.position + tolerance && $0.upperBound >= snapshot.position - tolerance }
             .map(\.upperBound)
-            .max() ?? 0
+            .max() ?? snapshot.position
+    }
+
+    private func logBufferTimelineIfNeeded(_ value: PlayerSnapshot) {
+        let now = Date()
+        guard now.timeIntervalSince(lastBufferTimelineLogAt) >= 1 else { return }
+        lastBufferTimelineLogAt = now
+        let end = Self.bufferedEnd(for: value)
+        let forward = max(0, end - value.position)
+        let ranges = value.bufferedRanges.prefix(8).map { String(format: "%.2f-%.2f", $0.lowerBound, $0.upperBound) }.joined(separator: ",")
+        let suffix = value.bufferedRanges.count > 8 ? ",..." : ""
+        DiagnosticsLogger.shared.log("BufferTimeline", "engine=\(engineKind.title) position=\(String(format: "%.3f", value.position)) forwardPlayable=\(String(format: "%.3f", forward)) playableRanges=[\(ranges)\(suffix)] buffering=\(value.isBuffering)")
     }
 
     private static func makeEngine(
@@ -429,6 +448,7 @@ final class PlayerController: ObservableObject {
                 guard generation == self.engineGeneration else { return }
                 let wasEnd = self.snapshot.didReachEnd
                 self.snapshot = value
+                self.logBufferTimelineIfNeeded(value)
                 if self.engineTransitionAwaitingFirstSnapshot {
                     self.engineTransitionAwaitingFirstSnapshot = false
                     if let error = value.errorMessage, !error.isEmpty {
@@ -888,4 +908,3 @@ final class PlayerController: ObservableObject {
         }
     }
 }
-

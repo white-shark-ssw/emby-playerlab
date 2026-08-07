@@ -19,7 +19,6 @@ final class KTVCachePlaybackSession {
         var loaded: Int64 = 0
         var startedAt = Date()
         var cacheStart: Int64 = 0
-        var nextOffset: Int64 = 0
         var requestCount = 0
         var failureCount = 0
         var consecutiveFailureCount = 0
@@ -49,53 +48,38 @@ final class KTVCachePlaybackSession {
     private let baselineCacheBytes: Int64
     private let lock = NSLock()
     private let segmentBytes: Int64 = 32 * 1_048_576
-    private let secondaryLeadBytes: Int64 = 96 * 1_048_576
-    private let seekDebounceInterval: TimeInterval = 0.75
     private let singleBaselineSeconds: TimeInterval = 10
     private let dualTrialSeconds: TimeInterval = 15
-    private let foregroundYieldSeconds: TimeInterval = 1.25
+    private let schedulerAnchorByte: Int64 = 0
     private let primaryLane = LaneState(id: .primary)
     private let secondaryLane = LaneState(id: .secondary)
 
     private var contentLength: Int64
     private var targetCacheBytes: Int64
-    private var mediaBytesPerSecond: Double
-    private var sessionRanges = SparseByteRangeSet()
-    private var wrappedToStart = false
+    private var rangeMap = PlaybackRangeMap()
     private var playbackPosition: Double = 0
     private var playbackDuration: Double = 0
     private var lastSeekAt = Date.distantPast
-    private var seekDebounceWorkItem: DispatchWorkItem?
-    private var seekDebounceGeneration: UInt64 = 0
     private var startedAt = Date()
     private var lastSampleAt = Date()
     private var lastSampleBytes: Int64 = 0
     private var currentBytesPerSecond: Double = 0
     private var loadedBytes: Int64 = 0
-    private var completed = false
     private var lastProgressAt = Date()
-    private var slowSince: Date?
-    private var lastRotationAt = Date.distantPast
     private var stopped = false
     private var initialPreloadStarted = false
-    private var playbackPreparationStarted = false
     private var playbackPreparationFinished = false
     private var playbackPreparationCallbacks: [() -> Void] = []
-    private var foregroundPriorityUntil = Date.distantPast
-    private var foregroundResumeOffset: Int64 = 0
-    private var foregroundResumeSecondary = false
-    private var foregroundResumeWorkItem: DispatchWorkItem?
 
-    private var warmupGeneration: UInt64 = 0
-    private var warmupRemaining = 0
-    private var warmupHandles: [EPLKTVPreloadHandle] = []
-    private var warmupCompletion: (() -> Void)?
+    private var metadataGeneration: UInt64 = 0
+    private var metadataHandle: EPLKTVPreloadHandle?
 
     private var dualPhase: DualLanePhase = .singleBaseline
     private var dualWindowStartedAt = Date()
     private var dualWindowStartBytes: Int64 = 0
     private var singleLaneBaselineSpeed: Double = 0
     private var dualTrialFailureBaseline = 0
+    private var lastBufferMapLogAt = Date.distantPast
 
     init(source: ResolvedPlaybackSource, configuration: MediaTransportConfiguration, openWarmupEnabled: Bool = true) throws {
         self.source = source
@@ -104,20 +88,18 @@ final class KTVCachePlaybackSession {
         self.configuration = configuration
         self.openWarmupEnabled = openWarmupEnabled
         self.contentLength = max(source.mediaSource.size ?? 0, 0)
-        let duration = max(source.mediaSource.durationSeconds ?? 0, 1)
-        self.mediaBytesPerSecond = contentLength > 0 ? Double(contentLength) / duration : 2 * 1_048_576
         let cacheBytes = configuration.diskLimitBytes > 0 ? configuration.diskLimitBytes : 2 * 1_073_741_824
         self.cacheBudgetBytes = cacheBytes
         self.targetCacheBytes = contentLength > 0 ? min(contentLength, cacheBytes) : cacheBytes
         if let error = EPLKTVCacheBridge.start(maxCacheLength: cacheBytes, allowedHeaderKeys: Array(source.headers.keys)) { throw error }
         self.proxyURL = EPLKTVCacheBridge.proxyURL(for: source.url)
         self.baselineCacheBytes = EPLKTVCacheBridge.cacheLength(for: source.url)
-        self.loadedBytes = self.baselineCacheBytes
-        self.lastSampleBytes = self.baselineCacheBytes
-        self.dualWindowStartBytes = self.baselineCacheBytes
+        self.loadedBytes = baselineCacheBytes
+        self.lastSampleBytes = baselineCacheBytes
+        self.dualWindowStartBytes = baselineCacheBytes
         DiagnosticsLogger.shared.log(
             "KTVCache",
-            "proxy started originalHost=\(source.url.host ?? "unknown") proxyPort=\(proxyURL.port ?? 0) cacheBudget=\(cacheBytes)B target=\(targetCacheBytes)B segment=\(segmentBytes)B lanes=staged-adaptive-1x2 warmup=\(openWarmupEnabled) \(NetworkPathMonitor.shared.diagnosticSummary)"
+            "proxy started originalHost=\(source.url.host ?? "unknown") proxyPort=\(proxyURL.port ?? 0) cacheBudget=\(cacheBytes)B target=\(targetCacheBytes)B segment=\(segmentBytes)B scheduler=contiguous-frontier-1x2 metadataWarmup=\(openWarmupEnabled) \(NetworkPathMonitor.shared.diagnosticSummary)"
         )
     }
 
@@ -132,43 +114,14 @@ final class KTVCachePlaybackSession {
             return
         }
         playbackPreparationCallbacks.append(completion)
-        if playbackPreparationStarted { lock.unlock(); return }
-        playbackPreparationStarted = true
-        lock.unlock()
-
-        let duration = source.mediaSource.durationSeconds ?? 0
-        let isLargeMP4 = openWarmupEnabled && source.mediaSource.normalizedContainer == "mp4" && (contentLength >= 4 * 1_073_741_824 || duration >= 3_600)
-        if isLargeMP4 {
-            DiagnosticsLogger.shared.log("KTVOpenWarmup", "begin item=\(source.itemId) knownBytes=\(contentLength) duration=\(duration)")
-            Task { [weak self] in
-                guard let self else { return }
-                do {
-                    let startedAt = Date()
-                    let resource = try await RedirectResolver().resolve(source: self.source)
-                    let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
-                    self.updateResolvedResource(resource)
-                    DiagnosticsLogger.shared.log("KTVOrigin", "probe finalHost=\(resource.finalURL.host ?? "unknown") redirects=\(resource.redirectCount) bytes=\(resource.contentLength) range=\(resource.supportsByteRanges) ms=\(elapsedMs) \(NetworkPathMonitor.shared.diagnosticSummary)")
-                    self.startLargeMP4Warmup(resourceLength: resource.contentLength) { [weak self] in self?.finishPlaybackPreparation() }
-                } catch {
-                    DiagnosticsLogger.shared.log("KTVOpenWarmup", "origin resolve failed error=\(error.localizedDescription); continue without tail warmup")
-                    self.startInitialPreloadOnce()
-                    self.finishPlaybackPreparation()
-                }
-            }
-        } else {
-            startInitialPreloadOnce()
-            finishPlaybackPreparation()
-            probeOriginInBackground()
-        }
-    }
-
-    private func finishPlaybackPreparation() {
-        lock.lock()
-        guard !stopped, !playbackPreparationFinished else { lock.unlock(); return }
         playbackPreparationFinished = true
         let callbacks = playbackPreparationCallbacks
         playbackPreparationCallbacks.removeAll()
         lock.unlock()
+
+        startInitialPreloadOnce()
+        if shouldWarmLargeMP4Metadata { scheduleLargeMP4MetadataWarmup() }
+        probeOriginInBackground()
         DispatchQueue.main.async { callbacks.forEach { $0() } }
     }
 
@@ -176,14 +129,9 @@ final class KTVCachePlaybackSession {
         lock.lock()
         guard !stopped else { lock.unlock(); return }
         stopped = true
-        seekDebounceWorkItem?.cancel()
-        seekDebounceWorkItem = nil
-        foregroundResumeWorkItem?.cancel()
-        foregroundResumeWorkItem = nil
-        warmupGeneration &+= 1
-        let warmups = warmupHandles
-        warmupHandles.removeAll()
-        warmupCompletion = nil
+        metadataGeneration &+= 1
+        let metadata = metadataHandle
+        metadataHandle = nil
         playbackPreparationCallbacks.removeAll()
         primaryLane.generation &+= 1
         secondaryLane.generation &+= 1
@@ -193,8 +141,10 @@ final class KTVCachePlaybackSession {
         secondaryLane.loader = nil
         primaryLane.active = false
         secondaryLane.active = false
+        rangeMap.clearDownloading(lane: LaneID.primary.rawValue)
+        rangeMap.clearDownloading(lane: LaneID.secondary.rawValue)
         lock.unlock()
-        warmups.forEach { $0.close() }
+        metadata?.close()
         primary?.close()
         secondary?.close()
         if !configuration.keepLastCache { EPLKTVCacheBridge.deleteCache(for: originalURL) }
@@ -208,159 +158,71 @@ final class KTVCachePlaybackSession {
     }
 
     func prioritizeSeek(position: Double, duration: Double) {
-        let resourceBytes = resolvedContentLength()
-        guard resourceBytes > 0, duration.isFinite, duration > 0 else {
-            ensurePreloadActive(reason: "seek without byte map")
-            return
-        }
-        let ratio = min(max(position / duration, 0), 1)
-        let rawOffset = Int64(Double(resourceBytes) * ratio)
-        let alignedOffset = max(0, min(resourceBytes - 1, rawOffset / 1_048_576 * 1_048_576))
-
         lock.lock()
         playbackPosition = max(0, position)
-        playbackDuration = duration
+        if duration.isFinite, duration > 0 { playbackDuration = duration }
         lastSeekAt = Date()
-        wrappedToStart = false
-        seekDebounceWorkItem?.cancel()
-        seekDebounceGeneration &+= 1
-        let generation = seekDebounceGeneration
-        let targetCoveredByActiveLane = laneContainsOffsetLocked(primaryLane, alignedOffset) || laneContainsOffsetLocked(secondaryLane, alignedOffset)
-        let work = DispatchWorkItem { [weak self] in self?.commitSeekPriority(position: position, duration: duration, alignedOffset: alignedOffset, generation: generation) }
-        seekDebounceWorkItem = targetCoveredByActiveLane ? nil : work
+        let frontier = rangeMap.contiguousFrontier(from: schedulerAnchorByte)
         lock.unlock()
-
-        if targetCoveredByActiveLane {
-            DiagnosticsLogger.shared.log("KTVAdaptive", "seek coalesced target already covered position=\(position) byte=\(alignedOffset)")
-            return
-        }
-        DiagnosticsLogger.shared.log("KTVAdaptive", "seek queued position=\(position) duration=\(duration) byte=\(alignedOffset) debounceMs=\(Int(seekDebounceInterval * 1000))")
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + seekDebounceInterval, execute: work)
-    }
-
-    private func commitSeekPriority(position: Double, duration: Double, alignedOffset: Int64, generation: UInt64) {
-        lock.lock()
-        guard !stopped, seekDebounceWorkItem != nil, generation == seekDebounceGeneration else { lock.unlock(); return }
-        seekDebounceWorkItem = nil
-        let targetCoveredByActiveLane = laneContainsOffsetLocked(primaryLane, alignedOffset) || laneContainsOffsetLocked(secondaryLane, alignedOffset)
-        lock.unlock()
-        guard !targetCoveredByActiveLane else {
-            DiagnosticsLogger.shared.log("KTVAdaptive", "seek final target covered position=\(position) byte=\(alignedOffset)")
-            return
-        }
-        let start = firstMissingOffset(from: alignedOffset)
-        DiagnosticsLogger.shared.log("KTVAdaptive", "seek reprioritize final position=\(position) duration=\(duration) byte=\(alignedOffset) start=\(start)")
-        startLane(.primary, reason: "seek-priority-final", startOffset: start)
+        DiagnosticsLogger.shared.log(
+            "BufferAnchor",
+            "reason=user-seek position=\(position) byteGuess=disabled schedulerAnchor=\(schedulerAnchorByte) frontier=\(frontier) action=keep-sequential-preload waitingForRealProxyDemand=true"
+        )
+        ensurePreloadActive(reason: "seek keeps contiguous frontier")
     }
 
     func yieldBandwidthToPlayback(position: Double, duration: Double, reason: String) {
-        let now = Date()
-        let until = now.addingTimeInterval(foregroundYieldSeconds)
-        var secondary: EPLKTVPreloadHandle?
-        var retargetPrimary = false
-        var targetOffset: Int64 = 0
-        var shouldLog = false
-
-        lock.lock()
-        guard !stopped else { lock.unlock(); return }
-        playbackPosition = max(0, position)
-        if duration.isFinite, duration > 0 { playbackDuration = duration }
-        if until > foregroundPriorityUntil { foregroundPriorityUntil = until }
-
-        let resourceBytes = contentLength
-        targetOffset = byteOffsetLocked(position: playbackPosition, duration: playbackDuration, resourceBytes: resourceBytes)
-        retargetPrimary = reason == "stall" && resourceBytes > 0 && !laneContainsOffsetLocked(primaryLane, targetOffset)
-
-        let wasAlreadyYielding = foregroundResumeWorkItem != nil
-        let secondaryOffset = secondaryLane.active ? min(secondaryLane.segmentEnd + 1, secondaryLane.segmentStart + max(0, secondaryLane.loaded)) : secondaryLane.nextOffset
-        foregroundResumeOffset = max(foregroundResumeOffset, secondaryOffset)
-        foregroundResumeSecondary = true
-
-        if secondaryLane.active {
-            secondaryLane.generation &+= 1
-            secondary = secondaryLane.loader
-            secondaryLane.loader = nil
-            secondaryLane.active = false
-        }
-        slowSince = nil
-
-        if !wasAlreadyYielding {
-            let work = DispatchWorkItem { [weak self] in self?.resumeBackgroundAfterForegroundPriority() }
-            foregroundResumeWorkItem = work
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + foregroundYieldSeconds, execute: work)
-            shouldLog = true
-        }
-        lock.unlock()
-
-        secondary?.close()
-        if retargetPrimary {
-            startLane(.primary, reason: "foreground-stall-target", startOffset: firstMissingOffset(from: targetOffset))
-        }
-        if shouldLog {
-            DiagnosticsLogger.shared.log("KTVAdaptive", "foreground priority reason=\(reason) position=\(position) secondaryPauseMs=\(Int(foregroundYieldSeconds * 1000)) primaryRetarget=\(retargetPrimary)")
-        }
-    }
-
-    private func resumeBackgroundAfterForegroundPriority() {
-        lock.lock()
-        guard !stopped, foregroundResumeWorkItem != nil else { lock.unlock(); return }
-        let remaining = foregroundPriorityUntil.timeIntervalSinceNow
-        if remaining > 0 {
-            let work = DispatchWorkItem { [weak self] in self?.resumeBackgroundAfterForegroundPriority() }
-            foregroundResumeWorkItem = work
-            lock.unlock()
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + remaining, execute: work)
-            return
-        }
-        foregroundResumeWorkItem = nil
-        let resumeOffset = foregroundResumeOffset
-        let resumeSecondary = foregroundResumeSecondary && dualPhase == .dualKept
-        let playbackByte = byteOffsetLocked(position: playbackPosition, duration: playbackDuration, resourceBytes: contentLength)
-        foregroundResumeOffset = 0
-        foregroundResumeSecondary = false
-        lock.unlock()
-
-        guard resumeSecondary else { return }
-        let preferred = max(resumeOffset, playbackByte + secondaryLeadBytes)
-        let secondaryStart = firstMissingOffset(from: preferred)
-        DiagnosticsLogger.shared.log("KTVAdaptive", "foreground priority ended secondaryRestart=\(secondaryStart) primaryKept=true")
-        startLane(.secondary, reason: "foreground-resume", startOffset: secondaryStart)
+        updatePlayback(position: position, duration: duration)
+        DiagnosticsLogger.shared.log("BufferAnchor", "reason=\(reason) position=\(position) action=no-byte-guess-no-lane-cancel")
+        ensurePreloadActive(reason: reason)
     }
 
     func ensurePreloadActive(reason: String) {
+        scheduleAvailableWorkers(reason: reason)
+    }
+
+    func startupFallbackReason() -> String? {
         lock.lock()
-        let noProgressSeconds = Date().timeIntervalSince(lastProgressAt)
-        let shouldRestart = !completed && (!primaryLane.active || noProgressSeconds > 8)
-        let restartOffset = primaryLane.active ? min(primaryLane.segmentEnd + 1, max(primaryLane.segmentStart, primaryLane.segmentStart + primaryLane.loaded)) : primaryLane.nextOffset
+        let idleSeconds = Date().timeIntervalSince(lastProgressAt)
+        let active = primaryLane.active || secondaryLane.active || metadataHandle != nil
+        let failures = primaryLane.failureCount + secondaryLane.failureCount
+        let stopped = self.stopped
         lock.unlock()
-        guard shouldRestart else { return }
-        startLane(.primary, reason: reason, startOffset: firstMissingOffset(from: restartOffset))
+        guard !stopped, !active, failures >= 3, idleSeconds >= 12 else { return nil }
+        return "KTV连续Range已停止推进 idle=\(Int(idleSeconds))s failures=\(failures)"
     }
 
     func metrics() -> TransportMetricsSnapshot {
         let itemCacheBytes = EPLKTVCacheBridge.cacheLength(for: originalURL)
         let resourceBytes = max(resolvedContentLength(), EPLKTVCacheBridge.resourceLength(for: originalURL))
+        let ktvZoneCount = EPLKTVCacheBridge.cacheZoneCount(for: originalURL)
         let now = Date()
 
         lock.lock()
         loadedBytes = max(loadedBytes, itemCacheBytes)
         sampleSpeedLocked(now: now)
-        evaluateSlowConnectionLocked(now: now)
         let dualAction = evaluateDualLaneLocked(now: now, cacheBytes: itemCacheBytes)
         let bytes = loadedBytes
         let speed = currentBytesPerSecond
-        let activeRequests = (primaryLane.active ? 1 : 0) + (secondaryLane.active ? 1 : 0) + (warmupRemaining > 0 ? warmupRemaining : 0)
+        let activeRequests = (primaryLane.active ? 1 : 0) + (secondaryLane.active ? 1 : 0) + (metadataHandle != nil ? 1 : 0)
         let failures = primaryLane.failureCount + secondaryLane.failureCount
         let requests = primaryLane.requestCount + secondaryLane.requestCount
         let elapsed = max(now.timeIntervalSince(startedAt), 0.001)
-        let playbackByte = byteOffsetLocked(position: playbackPosition, duration: playbackDuration, resourceBytes: resourceBytes)
-        let trackedContiguous = sessionRanges.contiguousLength(from: playbackByte, maximumLength: max(0, resourceBytes - playbackByte))
-        let shouldRestart = slowSince != nil && now.timeIntervalSince(slowSince ?? now) >= 12 && now.timeIntervalSince(lastRotationAt) >= 20
-        let restartOffset = min(primaryLane.segmentEnd + 1, max(primaryLane.segmentStart, primaryLane.segmentStart + primaryLane.loaded))
+        let map = rangeMap.snapshot(anchor: schedulerAnchorByte, resourceLength: resourceBytes)
+        let shouldLogMap = now.timeIntervalSince(lastBufferMapLogAt) >= 1
+        if shouldLogMap { lastBufferMapLogAt = now }
+        let laneASummary = laneSummaryLocked(primaryLane)
+        let laneBSummary = laneSummaryLocked(secondaryLane)
+        let position = playbackPosition
         lock.unlock()
 
         performDualLaneAction(dualAction)
-        if shouldRestart { restartSlowPrimary(from: restartOffset, observedSpeed: speed) }
+        if shouldLogMap {
+            DiagnosticsLogger.shared.log(
+                "BufferMap",
+                "position=\(String(format: "%.3f", position)) demandAnchor=unavailable schedulerAnchor=\(map.anchorByte) frontier=\(map.frontierByte) forwardBytes=\(max(0, map.frontierByte - map.anchorByte)) playbackBytes=\(map.playbackBytes) metadataBytes=\(map.metadataBytes) holes=\(map.holeCount) ktvZones=\(ktvZoneCount) laneA=\(laneASummary) laneB=\(laneBSummary) networkBps=\(Int(speed))"
+            )
+        }
 
         return TransportMetricsSnapshot(
             bytesDownloaded: max(0, bytes - baselineCacheBytes),
@@ -372,10 +234,21 @@ final class KTVCachePlaybackSession {
             cacheBytes: itemCacheBytes,
             memoryCacheBytes: 0,
             diskCacheBytes: itemCacheBytes,
-            contiguousCacheBytes: trackedContiguous,
+            contiguousCacheBytes: max(0, map.frontierByte - map.anchorByte),
+            metadataCacheBytes: map.metadataBytes,
+            sparsePlaybackCacheBytes: max(0, map.playbackBytes - max(0, map.frontierByte - map.anchorByte)),
+            cacheHoleCount: map.holeCount,
+            ktvCacheZoneCount: ktvZoneCount,
+            schedulerAnchorByte: map.anchorByte,
+            schedulerFrontierByte: map.frontierByte,
             currentDownloadBytesPerSecond: speed,
             elapsedSeconds: elapsed
         )
+    }
+
+    private var shouldWarmLargeMP4Metadata: Bool {
+        let duration = source.mediaSource.durationSeconds ?? 0
+        return openWarmupEnabled && source.mediaSource.normalizedContainer == "mp4" && (contentLength >= 4 * 1_073_741_824 || duration >= 3_600)
     }
 
     private func startInitialPreloadOnce() {
@@ -386,12 +259,19 @@ final class KTVCachePlaybackSession {
         dualWindowStartedAt = Date()
         dualWindowStartBytes = EPLKTVCacheBridge.cacheLength(for: originalURL)
         lock.unlock()
-        let primaryStart = firstMissingOffset(from: 0)
-        DiagnosticsLogger.shared.log("KTVAdaptive", "staged primary warmup start=\(primaryStart) baselineSeconds=\(Int(singleBaselineSeconds))")
-        startLane(.primary, reason: "initial", startOffset: primaryStart)
+        DiagnosticsLogger.shared.log("KTVAdaptive", "contiguous primary warmup anchor=\(schedulerAnchorByte) baselineSeconds=\(Int(singleBaselineSeconds))")
+        scheduleAvailableWorkers(reason: "initial")
     }
 
-    private func startLane(_ laneID: LaneID, reason: String, startOffset: Int64) {
+    private func scheduleAvailableWorkers(reason: String) {
+        startLaneIfPossible(.primary, reason: reason)
+        lock.lock()
+        let allowsSecondary = dualPhase == .dualTrial || dualPhase == .dualKept
+        lock.unlock()
+        if allowsSecondary { startLaneIfPossible(.secondary, reason: reason) }
+    }
+
+    private func startLaneIfPossible(_ laneID: LaneID, reason: String) {
         guard configuration.ktvContinuousPreloadEnabled else {
             DiagnosticsLogger.shared.log("KTVCache", "continuous preload disabled")
             return
@@ -404,75 +284,35 @@ final class KTVCachePlaybackSession {
         let itemCacheBytes = EPLKTVCacheBridge.cacheLength(for: originalURL)
         lock.lock()
         guard !stopped else { lock.unlock(); return }
-        if laneID == .secondary, Date() < foregroundPriorityUntil { lock.unlock(); return }
-        if laneID == .secondary, dualPhase != .dualTrial, dualPhase != .dualKept { lock.unlock(); return }
-        if targetCacheBytes > 0, itemCacheBytes >= max(0, targetCacheBytes - 1_048_576) {
-            completed = true
-            primaryLane.generation &+= 1
-            secondaryLane.generation &+= 1
-            primaryLane.active = false
-            secondaryLane.active = false
-            let primary = primaryLane.loader
-            let secondary = secondaryLane.loader
-            primaryLane.loader = nil
-            secondaryLane.loader = nil
+        let lane = laneID == .primary ? primaryLane : secondaryLane
+        guard !lane.active else { lock.unlock(); return }
+        let workerLimit = (dualPhase == .dualTrial || dualPhase == .dualKept) ? 2 : 1
+        guard laneID == .primary || workerLimit == 2 else { lock.unlock(); return }
+        let schedulerLimit = schedulingUpperBoundLocked()
+        guard let claim = rangeMap.nextClaim(from: schedulerAnchorByte, resourceLength: schedulerLimit, segmentBytes: segmentBytes, workerLimit: workerLimit) else {
+            let frontier = rangeMap.contiguousFrontier(from: schedulerAnchorByte)
             lock.unlock()
-            primary?.close()
-            secondary?.close()
-            DiagnosticsLogger.shared.log("KTVAdaptive", "cache target reached cached=\(itemCacheBytes) target=\(targetCacheBytes)")
+            if frontier >= schedulerLimit { DiagnosticsLogger.shared.log("KTVAdaptive", "contiguous target reached frontier=\(frontier) target=\(schedulerLimit)") }
             return
         }
 
-        let lane = laneID == .primary ? primaryLane : secondaryLane
-        var offset = max(0, startOffset)
-        let resourceBytes = contentLength
-        if resourceBytes > 0, offset >= resourceBytes {
-            if laneID == .primary, !wrappedToStart {
-                wrappedToStart = true
-                offset = 0
-            } else {
-                lane.active = false
-                if laneID == .primary { completed = secondaryLane.active == false }
-                lock.unlock()
-                DiagnosticsLogger.shared.log("KTVAdaptive", "lane=\(laneID.rawValue) traversal finished cached=\(itemCacheBytes) completeFile=\(EPLKTVCacheBridge.completeFileURL(for: originalURL) != nil)")
-                return
-            }
-        }
-
-        offset = adjustedOffsetAvoidingOtherLaneLocked(offset, laneID: laneID)
-        if resourceBytes > 0, offset >= resourceBytes {
-            if laneID == .primary, !wrappedToStart {
-                wrappedToStart = true
-                offset = 0
-            } else {
-                lane.active = false
-                lock.unlock()
-                DiagnosticsLogger.shared.log("KTVAdaptive", "lane=\(laneID.rawValue) no non-overlapping range remains")
-                return
-            }
-        }
-        let endOffset = resourceBytes > 0 ? min(resourceBytes - 1, offset + segmentBytes - 1) : offset + segmentBytes - 1
         lane.generation &+= 1
         let generation = lane.generation
-        let previous = lane.loader
-        lane.loader = nil
         lane.active = true
-        lane.segmentStart = offset
-        lane.segmentEnd = endOffset
+        lane.segmentStart = claim.lowerBound
+        lane.segmentEnd = claim.upperBound - 1
         lane.loaded = 0
         lane.startedAt = Date()
         lane.cacheStart = itemCacheBytes
-        lane.nextOffset = endOffset + 1
         lane.requestCount += 1
-        if reason != "segment-retry" && reason != "secondary-retry" && reason != "secondary-recover" { lane.consecutiveFailureCount = 0 }
+        if reason != "segment-retry" { lane.consecutiveFailureCount = 0 }
+        rangeMap.setDownloading(claim, lane: laneID.rawValue)
         lastProgressAt = Date()
-        if laneID == .primary { slowSince = nil }
         lock.unlock()
-        previous?.close()
 
-        let segmentStart = offset
-        let segmentEnd = endOffset
-        let newLoader = EPLKTVCacheBridge.preload(
+        let segmentStart = claim.lowerBound
+        let segmentEnd = claim.upperBound - 1
+        let loader = EPLKTVCacheBridge.preload(
             url: originalURL,
             headers: headers,
             startOffset: segmentStart,
@@ -483,8 +323,8 @@ final class KTVCachePlaybackSession {
                 self.lock.lock()
                 guard generation == lane.generation else { self.lock.unlock(); return }
                 lane.loaded = max(lane.loaded, loadedLength)
-                let availableEnd = min(lane.segmentEnd + 1, lane.segmentStart + max(0, loadedLength))
-                if availableEnd > lane.segmentStart { self.sessionRanges.insert(lane.segmentStart..<availableEnd) }
+                let availableEnd = min(claim.upperBound, claim.lowerBound + max(0, loadedLength))
+                if availableEnd > claim.lowerBound { self.rangeMap.insertPlayback(claim.lowerBound..<availableEnd) }
                 self.loadedBytes = max(self.loadedBytes, cacheBytes)
                 self.lastProgressAt = Date()
                 self.sampleSpeedLocked(now: Date())
@@ -497,6 +337,7 @@ final class KTVCachePlaybackSession {
                 guard generation == lane.generation else { self.lock.unlock(); return }
                 lane.active = false
                 lane.loader = nil
+                self.rangeMap.clearDownloading(lane: lane.id.rawValue)
                 let elapsed = max(Date().timeIntervalSince(lane.startedAt), 0.001)
                 let loaded = max(0, lane.loaded)
                 let newCacheBytes = max(0, cacheBytes - lane.cacheStart)
@@ -504,17 +345,16 @@ final class KTVCachePlaybackSession {
                 let networkBytes = cacheHit ? 0 : min(newCacheBytes, loaded)
                 let speed = networkBytes > 0 ? Double(networkBytes) / elapsed : 0
                 let mixedCache = loaded > 0 && networkBytes > 0 && networkBytes < loaded / 2
-                if mixedCache { self.slowSince = nil }
-                if error != nil {
+                if let _ = error {
                     lane.failureCount += 1
                     lane.consecutiveFailureCount += 1
                 } else {
                     lane.consecutiveFailureCount = 0
-                    if lane.segmentEnd >= lane.segmentStart { self.sessionRanges.insert(lane.segmentStart..<(lane.segmentEnd + 1)) }
+                    self.rangeMap.insertPlayback(claim)
                 }
                 self.loadedBytes = max(self.loadedBytes, cacheBytes)
-                let next = lane.nextOffset
-                let continueLane = lane.id == .primary || self.dualPhase == .dualTrial || self.dualPhase == .dualKept
+                self.lastProgressAt = Date()
+                let consecutiveFailures = lane.consecutiveFailureCount
                 self.lock.unlock()
 
                 if let error {
@@ -522,69 +362,42 @@ final class KTVCachePlaybackSession {
                     let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
                     let underlyingSummary = underlying.map { "\($0.domain):\($0.code)" } ?? "none"
                     DiagnosticsLogger.shared.log("KTVAdaptive", "lane=\(lane.id.rawValue) segment failed range=\(segmentStart)-\(segmentEnd) loaded=\(loaded) networkBytes=\(networkBytes) speed=\(Int(speed))B/s errorDomain=\(nsError.domain) errorCode=\(nsError.code) underlying=\(underlyingSummary) error=\(error.localizedDescription)")
-                    let retryOffset = segmentStart + loaded
                     if lane.id == .secondary {
-                        self.rejectDualLaneImmediately(reason: "secondary-error-\(error.localizedDescription)")
-                    } else if lane.consecutiveFailureCount <= 3 {
-                        let delay = 0.75 * Double(lane.consecutiveFailureCount)
-                        DiagnosticsLogger.shared.log("KTVAdaptive", "lane=A retry count=\(lane.consecutiveFailureCount) delayMs=\(Int(delay * 1000)) restart=\(retryOffset)")
-                        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + delay) { [weak self] in
-                            guard let self else { return }
-                            self.startLane(.primary, reason: "segment-retry", startOffset: self.firstMissingOffset(from: retryOffset))
-                        }
+                        self.rejectDualLaneImmediately(reason: "secondary-error-\(nsError.code)")
+                        self.scheduleAvailableWorkers(reason: "secondary-hole-returned-to-primary")
+                    } else if consecutiveFailures <= 3 {
+                        let delay = 0.75 * Double(consecutiveFailures)
+                        DiagnosticsLogger.shared.log("KTVAdaptive", "lane=A retry count=\(consecutiveFailures) delayMs=\(Int(delay * 1000)) hole=\(segmentStart)-\(segmentEnd)")
+                        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + delay) { [weak self] in self?.scheduleAvailableWorkers(reason: "segment-retry") }
                     } else {
-                        DiagnosticsLogger.shared.log("KTVAdaptive", "lane=A retry suspended consecutive=\(lane.consecutiveFailureCount) reason=\(error.localizedDescription)")
+                        DiagnosticsLogger.shared.log("KTVAdaptive", "lane=A retry suspended consecutive=\(consecutiveFailures) reason=\(error.localizedDescription)")
                     }
                 } else {
-                    DiagnosticsLogger.shared.log("KTVAdaptive", "lane=\(lane.id.rawValue) segment finished range=\(segmentStart)-\(segmentEnd) cacheHit=\(cacheHit) mixedCache=\(mixedCache) newCache=\(newCacheBytes) networkBytes=\(networkBytes) loaded=\(loaded) speed=\(Int(speed))B/s next=\(next)")
-                    if continueLane {
-                        DispatchQueue.global(qos: .utility).async { [weak self] in
-                            guard let self else { return }
-                            self.startLane(lane.id, reason: "segment-next", startOffset: self.firstMissingOffset(from: next))
-                        }
-                    }
+                    DiagnosticsLogger.shared.log("KTVAdaptive", "lane=\(lane.id.rawValue) segment finished range=\(segmentStart)-\(segmentEnd) cacheHit=\(cacheHit) mixedCache=\(mixedCache) newCache=\(newCacheBytes) networkBytes=\(networkBytes) loaded=\(loaded) speed=\(Int(speed))B/s")
+                    self.scheduleAvailableWorkers(reason: "segment-next")
                 }
             }
         )
 
         lock.lock()
-        if generation == lane.generation { lane.loader = newLoader }
-        else { newLoader.close() }
+        if generation == lane.generation { lane.loader = loader } else { loader.close() }
         lock.unlock()
-        DiagnosticsLogger.shared.log("KTVAdaptive", "lane=\(laneID.rawValue) segment start reason=\(reason) range=\(segmentStart)-\(segmentEnd) size=\(segmentBytes)")
+        DiagnosticsLogger.shared.log("KTVAdaptive", "lane=\(laneID.rawValue) segment start reason=\(reason) range=\(segmentStart)-\(segmentEnd) adjacency=frontier-window")
     }
 
-    private func startSecondaryTrial(singleSpeed: Double) {
-        lock.lock()
-        guard !stopped, dualPhase == .dualTrial, !secondaryLane.active else { lock.unlock(); return }
-        let resourceBytes = contentLength
-        let playbackByte = byteOffsetLocked(position: playbackPosition, duration: playbackDuration, resourceBytes: resourceBytes)
-        let primaryTail = primaryLane.active ? primaryLane.segmentEnd + 1 : primaryLane.nextOffset
-        let preferred = max(primaryTail + secondaryLeadBytes, playbackByte + secondaryLeadBytes)
-        lock.unlock()
-        let start = firstMissingOffset(from: preferred)
-        DiagnosticsLogger.shared.log("KTVAdaptive", "dual trial start baseline=\(Int(singleSpeed))B/s laneBStart=\(start) lead=\(secondaryLeadBytes)")
-        startLane(.secondary, reason: "dual-trial", startOffset: start)
-    }
-
-    private func stopSecondaryLane(reason: String) {
-        lock.lock()
-        secondaryLane.generation &+= 1
-        let loader = secondaryLane.loader
-        secondaryLane.loader = nil
-        secondaryLane.active = false
-        lock.unlock()
-        loader?.close()
-        DiagnosticsLogger.shared.log("KTVAdaptive", "dual lane stopped reason=\(reason)")
+    private func schedulingUpperBoundLocked() -> Int64 {
+        let desired = targetCacheBytes > 0 ? schedulerAnchorByte + targetCacheBytes : Int64.max
+        return contentLength > 0 ? min(contentLength, desired) : desired
     }
 
     private func evaluateDualLaneLocked(now: Date, cacheBytes: Int64) -> DualLaneAction {
-        guard !completed, contentLength == 0 || targetCacheBytes > cacheBytes + 4 * segmentBytes else { return .none }
-        guard now.timeIntervalSince(lastSeekAt) >= 3 else { return .none }
+        guard now.timeIntervalSince(lastSeekAt) >= 2 else { return .none }
+        let map = rangeMap.snapshot(anchor: schedulerAnchorByte, resourceLength: contentLength)
+        guard map.frontierByte < schedulingUpperBoundLocked() else { return .none }
         let elapsed = now.timeIntervalSince(dualWindowStartedAt)
         switch dualPhase {
         case .singleBaseline:
-            guard elapsed >= singleBaselineSeconds, primaryLane.active else { return .none }
+            guard elapsed >= singleBaselineSeconds, primaryLane.active || map.frontierByte > schedulerAnchorByte else { return .none }
             let speed = Double(max(0, cacheBytes - dualWindowStartBytes)) / max(elapsed, 0.001)
             singleLaneBaselineSpeed = speed
             dualPhase = .dualTrial
@@ -614,12 +427,14 @@ final class KTVCachePlaybackSession {
         case .none:
             return
         case .startTrial(let singleSpeed):
-            startSecondaryTrial(singleSpeed: singleSpeed)
+            DiagnosticsLogger.shared.log("KTVAdaptive", "adjacent dual trial start baseline=\(Int(singleSpeed))B/s rule=no-gap")
+            scheduleAvailableWorkers(reason: "adjacent-dual-trial")
         case .keep(let singleSpeed, let dualSpeed):
-            DiagnosticsLogger.shared.log("KTVAdaptive", "dual lane kept single=\(Int(singleSpeed))B/s dual=\(Int(dualSpeed))B/s gain=\(percentageGain(from: singleSpeed, to: dualSpeed))%")
+            DiagnosticsLogger.shared.log("KTVAdaptive", "adjacent dual kept single=\(Int(singleSpeed))B/s dual=\(Int(dualSpeed))B/s gain=\(percentageGain(from: singleSpeed, to: dualSpeed))%")
         case .reject(let singleSpeed, let dualSpeed, let reason):
-            DiagnosticsLogger.shared.log("KTVAdaptive", "dual lane rejected single=\(Int(singleSpeed))B/s dual=\(Int(dualSpeed))B/s gain=\(percentageGain(from: singleSpeed, to: dualSpeed))% reason=\(reason)")
+            DiagnosticsLogger.shared.log("KTVAdaptive", "adjacent dual rejected single=\(Int(singleSpeed))B/s dual=\(Int(dualSpeed))B/s gain=\(percentageGain(from: singleSpeed, to: dualSpeed))% reason=\(reason)")
             stopSecondaryLane(reason: reason)
+            scheduleAvailableWorkers(reason: "dual-rejected-fill-hole")
         }
     }
 
@@ -631,53 +446,71 @@ final class KTVCachePlaybackSession {
         stopSecondaryLane(reason: reason)
     }
 
-    private func percentageGain(from baseline: Double, to value: Double) -> Int {
-        guard baseline > 0 else { return value > 0 ? 100 : 0 }
-        return Int(((value / baseline) - 1) * 100)
+    private func stopSecondaryLane(reason: String) {
+        lock.lock()
+        secondaryLane.generation &+= 1
+        let loader = secondaryLane.loader
+        secondaryLane.loader = nil
+        secondaryLane.active = false
+        rangeMap.clearDownloading(lane: LaneID.secondary.rawValue)
+        lock.unlock()
+        loader?.close()
+        DiagnosticsLogger.shared.log("KTVAdaptive", "dual lane stopped reason=\(reason)")
     }
 
-    private func evaluateSlowConnectionLocked(now: Date) {
-        guard primaryLane.active, now.timeIntervalSince(lastSeekAt) >= 2 else { slowSince = nil; return }
-        let threshold = max(mediaBytesPerSecond * 1.15, 2 * 1_048_576)
-        let noProgress = now.timeIntervalSince(lastProgressAt) >= 4
-        let tooSlow = currentBytesPerSecond > 0 && currentBytesPerSecond < threshold
-        if noProgress || tooSlow {
-            if slowSince == nil { slowSince = now }
-        } else {
-            slowSince = nil
+    private func scheduleLargeMP4MetadataWarmup() {
+        lock.lock()
+        metadataGeneration &+= 1
+        let generation = metadataGeneration
+        lock.unlock()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.startLargeMP4MetadataWarmup(generation: generation)
         }
     }
 
-    private func restartSlowPrimary(from offset: Int64, observedSpeed: Double) {
+    private func startLargeMP4MetadataWarmup(generation: UInt64) {
+        let resourceLength = resolvedContentLength()
+        guard resourceLength > 32 * 1_048_576 else { return }
+        let tailBytes: Int64 = 16 * 1_048_576
+        let start = max(0, resourceLength - tailBytes)
+        let end = resourceLength - 1
+        let started = Date()
+        let handle = EPLKTVCacheBridge.preload(
+            url: originalURL,
+            headers: headers,
+            startOffset: start,
+            endOffset: end,
+            progress: { [weak self] loadedLength, _ in
+                guard let self else { return }
+                self.lock.lock()
+                guard generation == self.metadataGeneration else { self.lock.unlock(); return }
+                let upper = min(end + 1, start + max(0, loadedLength))
+                if upper > start { self.rangeMap.insertMetadata(start..<upper) }
+                self.lastProgressAt = Date()
+                self.lock.unlock()
+            },
+            completion: { [weak self] error in
+                guard let self else { return }
+                self.lock.lock()
+                guard generation == self.metadataGeneration else { self.lock.unlock(); return }
+                if error == nil { self.rangeMap.insertMetadata(start..<(end + 1)) }
+                self.metadataHandle = nil
+                self.lastProgressAt = Date()
+                self.lock.unlock()
+                DiagnosticsLogger.shared.log("KTVMetadata", "tail range=\(start)-\(end) ms=\(Int(Date().timeIntervalSince(started) * 1000)) error=\(error?.localizedDescription ?? "none")")
+            }
+        )
         lock.lock()
-        guard !stopped, primaryLane.active, Date().timeIntervalSince(lastRotationAt) >= 20, Date().timeIntervalSince(lastSeekAt) >= 2 else { lock.unlock(); return }
-        lastRotationAt = Date()
-        slowSince = nil
+        guard generation == metadataGeneration, !stopped else { lock.unlock(); handle.close(); return }
+        metadataHandle?.close()
+        metadataHandle = handle
         lock.unlock()
-        DiagnosticsLogger.shared.log("KTVAdaptive", "slow primary restart speed=\(Int(observedSpeed))B/s restart=\(offset) segment=\(segmentBytes)")
-        startLane(.primary, reason: "slow-restart", startOffset: firstMissingOffset(from: offset))
+        DiagnosticsLogger.shared.log("KTVMetadata", "tail preload start range=\(start)-\(end) classification=metadata-not-playable")
     }
 
-    private func laneContainsOffsetLocked(_ lane: LaneState, _ offset: Int64) -> Bool {
-        guard lane.active, lane.loaded > 0 else { return false }
-        let availableEnd = min(lane.segmentEnd + 1, lane.segmentStart + lane.loaded)
-        return offset >= lane.segmentStart && offset < availableEnd
-    }
-
-    private func adjustedOffsetAvoidingOtherLaneLocked(_ offset: Int64, laneID: LaneID) -> Int64 {
-        let other = laneID == .primary ? secondaryLane : primaryLane
-        guard other.active else { return offset }
-        let candidateEnd = offset + segmentBytes - 1
-        if candidateEnd < other.segmentStart || offset > other.segmentEnd { return offset }
-        return other.segmentEnd + 1
-    }
-
-    private func firstMissingOffset(from offset: Int64) -> Int64 {
-        lock.lock()
-        let upper = contentLength > 0 ? contentLength : Int64.max
-        let missing = sessionRanges.firstMissingOffset(from: max(0, offset), upperBound: upper) ?? max(0, offset)
-        lock.unlock()
-        return missing
+    private func percentageGain(from baseline: Double, to value: Double) -> Int {
+        guard baseline > 0 else { return value > 0 ? 100 : 0 }
+        return Int(((value / baseline) - 1) * 100)
     }
 
     private func resolvedContentLength() -> Int64 {
@@ -692,16 +525,8 @@ final class KTVCachePlaybackSession {
         if resource.contentLength > 0 {
             contentLength = max(contentLength, resource.contentLength)
             targetCacheBytes = min(contentLength, cacheBudgetBytes)
-            let duration = max(source.mediaSource.durationSeconds ?? 0, 1)
-            mediaBytesPerSecond = Double(contentLength) / duration
         }
         lock.unlock()
-    }
-
-    private func byteOffsetLocked(position: Double, duration: Double, resourceBytes: Int64) -> Int64 {
-        guard resourceBytes > 0, duration.isFinite, duration > 0 else { return 0 }
-        let ratio = min(max(position / duration, 0), 1)
-        return min(resourceBytes - 1, max(0, Int64(Double(resourceBytes) * ratio)))
     }
 
     private func sampleSpeedLocked(now: Date) {
@@ -720,9 +545,9 @@ final class KTVCachePlaybackSession {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let startedAt = Date()
+                let started = Date()
                 let resource = try await RedirectResolver().resolve(source: self.source)
-                let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
+                let elapsedMs = Int(Date().timeIntervalSince(started) * 1_000)
                 self.updateResolvedResource(resource)
                 DiagnosticsLogger.shared.log("KTVOrigin", "probe finalHost=\(resource.finalURL.host ?? "unknown") redirects=\(resource.redirectCount) bytes=\(resource.contentLength) range=\(resource.supportsByteRanges) ms=\(elapsedMs) \(NetworkPathMonitor.shared.diagnosticSummary)")
             } catch {
@@ -731,77 +556,8 @@ final class KTVCachePlaybackSession {
         }
     }
 
-    private func startLargeMP4Warmup(resourceLength: Int64, completion: @escaping () -> Void) {
-        guard resourceLength > 32 * 1_048_576 else {
-            startInitialPreloadOnce()
-            DispatchQueue.main.async { completion() }
-            return
-        }
-
-        let headBytes: Int64 = 8 * 1_048_576
-        let tailBytes: Int64 = 16 * 1_048_576
-        let ranges: [(String, Int64, Int64)] = [
-            ("head", 0, headBytes - 1),
-            ("tail", max(0, resourceLength - tailBytes), resourceLength - 1)
-        ]
-
-        lock.lock()
-        warmupGeneration &+= 1
-        let generation = warmupGeneration
-        warmupRemaining = ranges.count
-        warmupCompletion = completion
-        lock.unlock()
-
-        var handles: [EPLKTVPreloadHandle] = []
-        for (name, start, end) in ranges {
-            let startedAt = Date()
-            let handle = EPLKTVCacheBridge.preload(
-                url: originalURL,
-                headers: headers,
-                startOffset: start,
-                endOffset: end,
-                progress: nil,
-                completion: { [weak self] error in
-                    guard let self else { return }
-                    let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
-                    DiagnosticsLogger.shared.log("KTVOpenWarmup", "range=\(name) bytes=\(start)-\(end) ms=\(elapsedMs) error=\(error?.localizedDescription ?? "none")")
-                    self.finishWarmupRange(generation: generation)
-                }
-            )
-            handles.append(handle)
-        }
-
-        lock.lock()
-        if generation == warmupGeneration { warmupHandles = handles }
-        else { handles.forEach { $0.close() } }
-        lock.unlock()
-
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 6) { [weak self] in
-            self?.finishLargeMP4Warmup(generation: generation, reason: "timeout")
-        }
-    }
-
-    private func finishWarmupRange(generation: UInt64) {
-        lock.lock()
-        guard generation == warmupGeneration, warmupRemaining > 0 else { lock.unlock(); return }
-        warmupRemaining -= 1
-        let done = warmupRemaining == 0
-        lock.unlock()
-        if done { finishLargeMP4Warmup(generation: generation, reason: "complete") }
-    }
-
-    private func finishLargeMP4Warmup(generation: UInt64, reason: String) {
-        lock.lock()
-        guard generation == warmupGeneration, let completion = warmupCompletion else { lock.unlock(); return }
-        warmupGeneration &+= 1
-        warmupRemaining = 0
-        let handles = warmupHandles
-        warmupHandles.removeAll()
-        warmupCompletion = nil
-        lock.unlock()
-        handles.forEach { $0.close() }
-        DiagnosticsLogger.shared.log("KTVOpenWarmup", "finished reason=\(reason) cached=\(EPLKTVCacheBridge.cacheLength(for: originalURL))")
-        startInitialPreloadOnce()
-        DispatchQueue.main.async { completion() }
+    private func laneSummaryLocked(_ lane: LaneState) -> String {
+        guard lane.active else { return "idle" }
+        return "\(lane.segmentStart)-\(lane.segmentEnd):\(lane.loaded)"
     }
 }

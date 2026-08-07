@@ -19,7 +19,7 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     private var ktvOptions: KTVKSPlayerOptions?
     private var ktvCacheSession: KTVCachePlaybackSession?
     private var prepareTask: Task<Void, Never>?
-    private var ktvStartupGuardTask: Task<Void, Never>?
+    private var ktvStartupMonitorTask: Task<Void, Never>?
     private var stateTimer: Timer?
     private var shouldPlay = false
     private var preferredForwardBuffer: Double = 90
@@ -49,8 +49,8 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
         prepareTask?.cancel()
         prepareTask = nil
-        ktvStartupGuardTask?.cancel()
-        ktvStartupGuardTask = nil
+        ktvStartupMonitorTask?.cancel()
+        ktvStartupMonitorTask = nil
         stopPlayerOnly()
         generation += 1
         let currentGeneration = generation
@@ -126,8 +126,8 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
         generation += 1
         prepareTask?.cancel()
         prepareTask = nil
-        ktvStartupGuardTask?.cancel()
-        ktvStartupGuardTask = nil
+        ktvStartupMonitorTask?.cancel()
+        ktvStartupMonitorTask = nil
         stopPlayerOnly()
         ktvCacheSession?.stop()
         ktvCacheSession = nil
@@ -138,7 +138,7 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     private func prepareKTVBacked(currentGeneration: Int) {
         do {
             let cacheSession: KTVCachePlaybackSession
-            if let ktvCacheSession { cacheSession = ktvCacheSession } else { cacheSession = try KTVCachePlaybackSession(source: source, configuration: configuration, openWarmupEnabled: false) }
+            if let ktvCacheSession { cacheSession = ktvCacheSession } else { cacheSession = try KTVCachePlaybackSession(source: source, configuration: configuration, openWarmupEnabled: true) }
             ktvCacheSession = cacheSession
             cacheSession.prepareForPlayback { [weak self, weak cacheSession] in
                 guard let self, let cacheSession, currentGeneration == self.generation, self.ktvCacheSession === cacheSession else { return }
@@ -158,8 +158,8 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
                 self.startStateTimer()
                 player.prepareToPlay()
                 if self.shouldPlay { player.play() }
-                DiagnosticsLogger.shared.log("KSKTV", "prepared item=\(self.source.itemId) proxyPort=\(cacheSession.proxyURL.port ?? 0) transport=KTV-staged-dual")
-                self.scheduleKTVStartupGuard(player: player, generation: currentGeneration)
+                DiagnosticsLogger.shared.log("KSKTV", "prepared item=\(self.source.itemId) proxyPort=\(cacheSession.proxyURL.port ?? 0) transport=KTV-contiguous-frontier startupFallback=state-driven")
+                self.startKTVStartupMonitor(player: player, cacheSession: cacheSession, generation: currentGeneration)
             }
         } catch {
             DiagnosticsLogger.shared.log("KSKTV", "cache setup failed item=\(source.itemId) error=\(error.localizedDescription); fallback transport=AVIO")
@@ -168,18 +168,23 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
         }
     }
 
-    private func scheduleKTVStartupGuard(player: KSMEPlayer, generation: Int) {
-        ktvStartupGuardTask?.cancel()
-        ktvStartupGuardTask = Task { @MainActor [weak self, weak player] in
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
-            guard let self, let player, !Task.isCancelled, generation == self.generation, self.player === player else { return }
-            guard !player.isReadyToPlay, player.currentPlaybackTime < 0.5 else { self.ktvStartupGuardTask = nil; return }
-            DiagnosticsLogger.shared.log("KSKTV", "startup timeout item=\(self.source.itemId); fallback transport=AVIO")
-            self.ktvStartupGuardTask = nil
-            self.stopPlayerOnly()
-            self.ktvCacheSession?.stop()
-            self.ktvCacheSession = nil
-            self.prepareAVIOBacked(currentGeneration: generation)
+
+    private func startKTVStartupMonitor(player: KSMEPlayer, cacheSession: KTVCachePlaybackSession, generation: Int) {
+        ktvStartupMonitorTask?.cancel()
+        ktvStartupMonitorTask = Task { @MainActor [weak self, weak player, weak cacheSession] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard let self, let player, let cacheSession, generation == self.generation, self.player === player, self.ktvCacheSession === cacheSession else { return }
+                if player.isReadyToPlay || player.currentPlaybackTime > 0.25 { self.ktvStartupMonitorTask = nil; return }
+                guard let reason = cacheSession.startupFallbackReason() else { continue }
+                DiagnosticsLogger.shared.log("KSKTV", "startup fatal item=\(self.source.itemId) reason=\(reason); fallback transport=AVIO")
+                self.ktvStartupMonitorTask = nil
+                self.stopPlayerOnly()
+                cacheSession.stop()
+                self.ktvCacheSession = nil
+                self.prepareAVIOBacked(currentGeneration: generation)
+                return
+            }
         }
     }
 
@@ -242,10 +247,6 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
 
     private func pollState() {
         guard let player else { return }
-        if player.isReadyToPlay {
-            ktvStartupGuardTask?.cancel()
-            ktvStartupGuardTask = nil
-        }
         if !initialSeekCommitted, player.isReadyToPlay, let target = initialSeek {
             initialSeekCommitted = true
             initialSeek = nil

@@ -40,6 +40,16 @@ jobs:
       - name: Generate project
         run: xcodegen generate
 
+      - name: Validate contiguous RangeMap
+        run: |
+          set -euo pipefail
+          swiftc \
+            Sources/Transport/SparseByteRangeSet.swift \
+            Sources/Cache/PlaybackRangeMap.swift \
+            scripts/RangeMapSmoke.swift \
+            -o /tmp/emby-range-map-smoke
+          /tmp/emby-range-map-smoke
+
       - name: Install KTVHTTPCache 3.1.0
         run: |
           set -euo pipefail

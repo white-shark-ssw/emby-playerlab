@@ -157,12 +157,13 @@ struct PlayerScreen: View {
                 HStack {
                     Text(formatTime(controller.displayedPosition))
                         .monospacedDigit()
-                    Slider(
+                    BufferedTimelineSlider(
                         value: Binding(
                             get: { controller.displayedPosition },
                             set: { controller.updateScrubbing(to: $0) }
                         ),
-                        in: 0...max(controller.effectiveDuration, 1),
+                        range: 0...max(controller.effectiveDuration, 1),
+                        bufferedRanges: controller.snapshot.bufferedRanges,
                         onEditingChanged: { editing in
                             editing ? controller.beginScrubbing() : controller.endScrubbing()
                         }
@@ -186,7 +187,7 @@ struct PlayerScreen: View {
     private var diagnosticsRow: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("引擎：\(controller.engineKind.title) · \(controller.lastSeekSummary)")
-            Text("缓冲到 \(formatTime(controller.bufferedEnd)) · \(controller.snapshot.isBuffering ? "等待数据" : "可播放")")
+            Text("前向可播 \(formatTime(controller.forwardBufferedDuration)) · 缓冲段 \(controller.snapshot.bufferedRanges.count) · \(controller.snapshot.isBuffering ? "等待数据" : "可播放")")
             if controller.snapshot.accessLogStalls > 0 || controller.snapshot.droppedVideoFrames > 0 {
                 Text("AV 统计：停滞 \(controller.snapshot.accessLogStalls) · 丢帧 \(controller.snapshot.droppedVideoFrames)")
             }

@@ -23,6 +23,7 @@ typedef void (^EPLKTVPreloadCompletionHandler)(NSError * _Nullable error);
 + (long long)totalCacheLength NS_SWIFT_NAME(totalCacheLength());
 + (long long)cacheLengthForOriginalURL:(NSURL *)URL NS_SWIFT_NAME(cacheLength(for:));
 + (long long)resourceLengthForOriginalURL:(NSURL *)URL NS_SWIFT_NAME(resourceLength(for:));
++ (NSInteger)cacheZoneCountForOriginalURL:(NSURL *)URL NS_SWIFT_NAME(cacheZoneCount(for:));
 + (NSURL * _Nullable)completeFileURLForOriginalURL:(NSURL *)URL NS_SWIFT_NAME(completeFileURL(for:));
 + (void)deleteCacheForOriginalURL:(NSURL *)URL NS_SWIFT_NAME(deleteCache(for:));
 + (NSURL * _Nullable)recordLogFileURL NS_SWIFT_NAME(recordLogFileURL());

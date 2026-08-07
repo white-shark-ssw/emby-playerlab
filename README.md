@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → OneStrm 302 → 115 直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.7.10
+## 当前版本：0.8.0
 
 ### 系统与构建
 
@@ -12,8 +12,21 @@
 - 安装方式：未签名 IPA + TrollStore
 - KTVHTTPCache：3.1.0（MIT，最低 iOS 12）
 - KSPlayer：2.3.4
-- MPVKit：源码适配保留；0.7.10 实验构建不链接二进制
+- MPVKit：源码适配保留；0.8.0 实验构建不链接二进制
 
+
+### 0.8.0：连续缓存前沿架构（第一阶段）
+
+- 新增 `PlaybackRangeMap`：后台预取只记录真实交付的字节区间，明确区分 playback data、metadata、downloading range 与 hole。
+- 双通道改为相邻 Range 流水线：lane B 只能领取 lane A 紧邻的下一段；前段未完成时禁止继续向更远位置扩张。
+- 删除 KTV 后台 Seek 的 `time / duration × fileSize` 字节猜测。播放器 Seek 仍立即执行，后台保持顺序前沿，直到后续接入真实 localhost Range demand 观测。
+- 大 MP4 的尾部 metadata 使用独立 Range 分类，不推进 playback frontier，也不计入灰色可播放缓冲条。
+- KSPlayer/FFmpeg 删除固定 10 秒 KTV startup timeout；只有 Range 连续失败并且长时间完全无进展时才允许 AVIO 最终兜底。
+- 播放进度条替换为 `BufferedTimelineSlider`：灰色部分直接显示 AVPlayer `loadedTimeRanges` / KSPlayer `playableTime` 的真实时间缓冲范围，多个不连续区间会显示为多个灰段。
+- 诊断信息新增 `前向可播`、`缓冲段`、`顺序前沿`、`Metadata`、`Holes` 与 KTV `Zones` 数量；Zones 只表示KTV内部区块数量，不冒充完整Range位置。
+- 新增 `RangeMapSmoke.swift`，CI 可验证相邻双worker、hole修补与metadata隔离。
+
+> 0.8.0 是缓存架构第一阶段。KTVHTTPCache 公开接口尚未提供 localhost 实际 Range demand 回调，因此日志会明确标记 `demandAnchor=unavailable`；当前后台顺序预取锚点保持从文件头开始，不再用时间比例猜测。后续阶段将基于固定 KTV 版本增加真实 Range 观测，再让 Seek 后的连续前沿以播放器真实请求重新锚定。
 
 ### 0.7.10：回归已验证高速调度基线
 
@@ -56,7 +69,7 @@
 2. 等待 `Validate Source` 成功。
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-5. 解压获得 `EmbyPlayerLab-0.7.10-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+5. 解压获得 `EmbyPlayerLab-0.8.0-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 首次构建会通过 CocoaPods 安装固定版本 KTVHTTPCache 3.1.0，并通过 Swift Package Manager 解析 KSPlayer 2.3.4。
 
@@ -65,7 +78,7 @@
 - 密码不落盘，AccessToken 保存到 Keychain。
 - KTVHTTPCache 自带文件日志默认关闭，避免临时播放 URL 进入第三方日志。
 - App 自有日志只记录原始主机、localhost 端口、缓存字节和速度，不记录完整代理 URL。
-- KTVHTTPCache 3.1.0 为 MIT；KSPlayer 2.3.4 及其 FFmpegKit 依赖按项目现有 GPL 说明处理。0.7.10 不链接 MPVKit。
+- KTVHTTPCache 3.1.0 为 MIT；KSPlayer 2.3.4 及其 FFmpegKit 依赖按项目现有 GPL 说明处理。0.8.0 不链接 MPVKit。
 
 ## 0.2.1 修复
 

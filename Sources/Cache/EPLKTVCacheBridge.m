@@ -113,6 +113,7 @@
 + (long long)totalCacheLength { return [KTVHTTPCache cacheTotalCacheLength]; }
 + (long long)cacheLengthForOriginalURL:(NSURL *)URL { return [KTVHTTPCache cacheCacheItemWithURL:URL].cacheLength; }
 + (long long)resourceLengthForOriginalURL:(NSURL *)URL { return [KTVHTTPCache cacheCacheItemWithURL:URL].totalLength; }
++ (NSInteger)cacheZoneCountForOriginalURL:(NSURL *)URL { return [KTVHTTPCache cacheCacheItemWithURL:URL].zones.count; }
 + (NSURL *)completeFileURLForOriginalURL:(NSURL *)URL { return [KTVHTTPCache cacheCompleteFileURLWithURL:URL]; }
 + (void)deleteCacheForOriginalURL:(NSURL *)URL { [KTVHTTPCache cacheDeleteCacheWithURL:URL]; }
 + (NSURL *)recordLogFileURL { return [KTVHTTPCache logRecordLogFileURL]; }
