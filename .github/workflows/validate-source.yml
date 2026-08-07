@@ -6,6 +6,9 @@ on:
   push:
     branches: [main, master]
 
+permissions:
+  contents: write
+
 concurrency:
   group: validate-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -17,6 +20,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+
+      - name: Apply one-shot v0.9.5 patch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/v0.9.5'
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_v095.py
+          if git diff --quiet; then
+            echo "v0.9.5 source patch already applied"
+          else
+            git config user.name "ChatGPT CI"
+            git config user.email "actions@users.noreply.github.com"
+            git add Sources Config project.yml .github/workflows/build-unsigned-ipa.yml
+            git commit -m "Fix v0.9.5 throughput MPV startup and timeline"
+            git push origin HEAD:chatgpt/v0.9.5
+          fi
 
       - name: Initialize diagnostic logs
         run: |
