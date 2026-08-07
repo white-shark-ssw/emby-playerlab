@@ -35,10 +35,10 @@ final class PlaybackOrchestrator {
         if preference.isAutomatic, storedCompatibility || largeIndexedMP4 || !nativeFriendly {
             self.currentKind = .mpv
             let reason = storedCompatibility ? "stored-media-compatibility" : (largeIndexedMP4 ? "large-indexed-mp4" : "non-native-container-or-codec")
-            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=MPV+KTVProxyTransportV2 reason=\(reason)")
+            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=MPV+UnifiedTransportV3 reason=\(reason)")
         } else if preference.isAutomatic {
-            self.currentKind = .ktvAVPlayer
-            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=AVPlayer+KTVProxyTransportV2 reason=native-friendly")
+            self.currentKind = .resourceLoaderAVPlayer
+            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=AVPlayerResourceLoader+UnifiedTransportV3 reason=native-friendly")
         } else {
             self.currentKind = preference.resolved(for: source.mediaSource)
         }

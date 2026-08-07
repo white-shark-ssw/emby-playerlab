@@ -86,17 +86,7 @@ final class MPVPlayerEngine: PlayerEngine {
             }
         }
         if sharedTransportSession == nil {
-            DiagnosticsLogger.shared.log("MPVStream", "load direct HTTP transport=KTVProxyTransportV2 host=\(url.host ?? "unknown")")
-            load(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, compatibilityMode: false)
-            return
-        }
-        if sharedTransportSession == nil {
-            DiagnosticsLogger.shared.log("MPVStream", "load direct HTTP transport=KTVProxyTransportV2 host=\(url.host ?? "unknown")")
-            load(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, compatibilityMode: false)
-            return
-        }
-        if sharedTransportSession == nil {
-            DiagnosticsLogger.shared.log("MPVStream", "load direct HTTP transport=KTVProxyTransportV2 host=\(url.host ?? "unknown")")
+            DiagnosticsLogger.shared.log("MPVStream", "load direct HTTP transport=direct-fallback host=\(url.host ?? "unknown")")
             load(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, compatibilityMode: false)
             return
         }

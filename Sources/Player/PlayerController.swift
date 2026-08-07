@@ -326,7 +326,7 @@ final class PlayerController: ObservableObject {
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
 
-            let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext, ktvCacheSession: ktvCacheHandoff)
+            let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext)
             self.engine = nextEngine
             self.engineKind = kind
             self.orchestrator.didSwitch(to: kind)
@@ -429,13 +429,12 @@ final class PlayerController: ObservableObject {
         kind: PlayerEngineKind,
         source: ResolvedPlaybackSource,
         client: EmbyAPIClient,
-        transportContext: PlaybackTransportContext?,
-        ktvCacheSession: KTVCachePlaybackSession? = nil
+        transportContext: PlaybackTransportContext?
     ) -> PlayerEngine {
         let configuration = MediaTransportConfiguration.current()
         switch kind {
         case .ktvAVPlayer:
-            return KTVAVPlayerEngine(source: source, configuration: configuration, cacheSession: ktvCacheSession)
+            return KTVAVPlayerEngine(source: source, configuration: configuration, cacheSession: nil)
         case .resourceLoaderAVPlayer:
             return AVPlayerEngine(
                 kind: .resourceLoaderAVPlayer,
@@ -461,7 +460,7 @@ final class PlayerController: ObservableObject {
         case .avPlayer:
             return AVPlayerEngine()
         case .mpv:
-            return KTVMPVPlayerEngine(source: source, configuration: configuration, cacheSession: ktvCacheSession)
+            return MPVPlayerEngine(sharedTransportSession: transportContext?.session)
         }
     }
 
