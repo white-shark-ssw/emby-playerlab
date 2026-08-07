@@ -327,7 +327,14 @@ final class KTVCachePlaybackSession {
         let now = Date()
         let cacheBytes = EPLKTVCacheBridge.cacheLength(for: originalURL)
         lock.lock()
-        guard !stopped, dualPhase == .singleBaseline, now >= playbackPriorityUntil else { lock.unlock(); return }
+        guard !stopped, dualPhase == .singleBaseline else { lock.unlock(); return }
+        if now < playbackPriorityUntil {
+            let retryDelay = max(0.05, playbackPriorityUntil.timeIntervalSince(now) + 0.05)
+            lock.unlock()
+            DiagnosticsLogger.shared.log("KTVAdaptive", "dual warmup deferred by playback priority retryMs=\(Int(retryDelay * 1000))")
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + retryDelay) { [weak self] in self?.enableSecondaryAfterWarmup() }
+            return
+        }
         let elapsed = max(now.timeIntervalSince(dualWindowStartedAt), 0.001)
         singleLaneBaselineSpeed = Double(max(0, cacheBytes - dualWindowStartBytes)) / elapsed
         dualPhase = .dualKept
