@@ -168,17 +168,20 @@ final class KTVCachePlaybackSession {
     }
 
     func prioritizeSeek(position: Double, duration: Double) {
+        let now = Date()
         lock.lock()
         playbackPosition = max(0, position)
         if duration.isFinite, duration > 0 { playbackDuration = duration }
-        lastSeekAt = Date()
+        lastSeekAt = now
+        playbackPriorityUntil = max(playbackPriorityUntil, now.addingTimeInterval(1.0))
         let frontier = rangeMap.contiguousFrontier(from: schedulerAnchorByte)
         lock.unlock()
+        stopSecondaryLane(reason: "user-seek-yield-secondary")
         DiagnosticsLogger.shared.log(
             "BufferAnchor",
-            "reason=user-seek position=\(position) byteGuess=disabled schedulerAnchor=\(schedulerAnchorByte) frontier=\(frontier) action=keep-sequential-preload waitingForRealProxyDemand=true"
+            "reason=user-seek position=\(position) byteGuess=disabled schedulerAnchor=\(schedulerAnchorByte) frontier=\(frontier) action=keep-primary-yield-secondary waitingForRealProxyDemand=true"
         )
-        ensurePreloadActive(reason: "seek keeps contiguous frontier")
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.05) { [weak self] in self?.scheduleAvailableWorkers(reason: "user-seek-priority-ended") }
     }
 
     func yieldBandwidthToPlayback(position: Double, duration: Double, reason: String) {
