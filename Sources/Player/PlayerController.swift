@@ -300,14 +300,6 @@ final class PlayerController: ObservableObject {
         engineGeneration += 1
         previousEngine.onSnapshot = nil
         previousEngine.onSeekCompleted = nil
-        let ktvCacheHandoff: KTVCachePlaybackSession?
-        if kind == .ktvAVPlayer || kind == .mpv {
-            if let previous = previousEngine as? KTVAVPlayerEngine { ktvCacheHandoff = previous.takeCacheSessionForHandoff() }
-            else if let previous = previousEngine as? KTVMPVPlayerEngine { ktvCacheHandoff = previous.takeCacheSessionForHandoff() }
-            else { ktvCacheHandoff = nil }
-        } else {
-            ktvCacheHandoff = nil
-        }
         engine = SuspendedPlayerEngine(kind: previousKind)
         resetWatchdog()
         stallMessage = "正在自动切换到 \(kind.title)：\(reason)"
