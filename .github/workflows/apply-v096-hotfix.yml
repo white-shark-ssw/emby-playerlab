@@ -1,0 +1,29 @@
+name: Apply v0.9.6 Hotfix
+
+on:
+  push:
+    branches: [chatgpt/v0.9.6]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v0.9.6
+      - name: Apply source hotfix
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_v096.py
+          if git diff --quiet; then
+            echo "v0.9.6 source hotfix already applied"
+            exit 0
+          fi
+          git config user.name "ChatGPT CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add Sources/Transport/UnifiedMediaTransportSession.swift Sources/Core/AppIdentity.swift Config/Info.plist project.yml
+          git commit -m "Fix v0.9.6 critical transport scheduling"
+          git push origin HEAD:chatgpt/v0.9.6
