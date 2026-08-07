@@ -1,1 +1,0 @@
-v0.9.6 self-review completed before PR. Final diff checked; temporary patch tooling removed; scheduler invariants documented and automated. This marker may be removed before merge.
