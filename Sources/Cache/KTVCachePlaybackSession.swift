@@ -318,8 +318,23 @@ final class KTVCachePlaybackSession {
         dualWindowStartedAt = Date()
         dualWindowStartBytes = EPLKTVCacheBridge.cacheLength(for: originalURL)
         lock.unlock()
-        DiagnosticsLogger.shared.log("KTVAdaptive", "contiguous primary warmup anchor=\(schedulerAnchorByte) baselineSeconds=\(Int(singleBaselineSeconds))")
+        DiagnosticsLogger.shared.log("KTVAdaptive", "contiguous primary warmup anchor=\(schedulerAnchorByte) baselineSeconds=\(String(format: "%.2f", singleBaselineSeconds))")
         scheduleAvailableWorkers(reason: "initial")
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + singleBaselineSeconds + 0.05) { [weak self] in self?.enableSecondaryAfterWarmup() }
+    }
+
+    private func enableSecondaryAfterWarmup() {
+        let now = Date()
+        let cacheBytes = EPLKTVCacheBridge.cacheLength(for: originalURL)
+        lock.lock()
+        guard !stopped, dualPhase == .singleBaseline, now >= playbackPriorityUntil else { lock.unlock(); return }
+        let elapsed = max(now.timeIntervalSince(dualWindowStartedAt), 0.001)
+        singleLaneBaselineSpeed = Double(max(0, cacheBytes - dualWindowStartBytes)) / elapsed
+        dualPhase = .dualKept
+        let baseline = singleLaneBaselineSpeed
+        lock.unlock()
+        DiagnosticsLogger.shared.log("KTVAdaptive", "adjacent dual enabled baseline=\(Int(baseline))B/s trigger=session-warmup policy=persistent-until-error pipelineDepth=\(pipelineLookaheadSegments)")
+        scheduleAvailableWorkers(reason: "session-warmup-dual")
     }
 
     private func scheduleAvailableWorkers(reason: String) {
