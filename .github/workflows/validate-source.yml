@@ -28,12 +28,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/apply_v095.py
+          git checkout -- .github/workflows/build-unsigned-ipa.yml
           if git diff --quiet; then
             echo "v0.9.5 source patch already applied"
           else
             git config user.name "ChatGPT CI"
             git config user.email "actions@users.noreply.github.com"
-            git add Sources Config project.yml .github/workflows/build-unsigned-ipa.yml
+            git add Sources Config project.yml
             git commit -m "Fix v0.9.5 throughput MPV startup and timeline"
             git push origin HEAD:chatgpt/v0.9.5
           fi
