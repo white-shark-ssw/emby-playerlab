@@ -260,10 +260,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         }
 
         if store.availableLength(from: range.lowerBound, maximumLength: min(Int64(range.count), urgentBlockBytes)) > 0 { return }
-        // A concrete playback read must never wait for an entire background sequential block.
-        // If Slot 0 owns the requested byte as a sequential claim, promote that same byte range
-        // to the streaming urgent lane so the first 1 MiB becomes visible immediately. Any active
-        // Slot 1 background claim yields instead of overlapping the urgent playback range.
+        // Transport v3 exposes every received MiB immediately. If the requested byte already belongs
+        // to Slot 0's active sequential stream, keep that warmed task alive and wait for its progressive
+        // chunk instead of cancelling/reopening the same CDN connection as an urgent Range.
         if let slot0 = slotClaims[0], slot0.range.contains(range.lowerBound) {
             if concretePlaybackDemand, slot0.role == .sequential {
                 DiagnosticsLogger.shared.log("UnifiedDemand", "reuse active sequential stream request=\(range.lowerBound)-\(range.upperBound) claim=\(slot0.range.lowerBound)-\(slot0.range.upperBound) reason=\(reason) action=wait-progressive-chunk")

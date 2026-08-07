@@ -228,8 +228,8 @@ private final class PersistentRangeStreamLane: NSObject, URLSessionDataDelegate,
         }
         var sanitized = request
         let sourceURL = response.url ?? resource.finalURL
-        if !Self.sameOrigin(sourceURL, target) && !Self.same115Family(sourceURL, target) {
-            for key in sanitized.allHTTPHeaderFields?.keys ?? [] where isSensitiveTransportHeader(key) { sanitized.setValue(nil, forHTTPHeaderField: key) }
+        if !Self.sameOrigin(sourceURL, target) && !Self.same115Family(sourceURL, target), let keys = sanitized.allHTTPHeaderFields?.keys {
+            for key in keys where isSensitiveTransportHeader(key) { sanitized.setValue(nil, forHTTPHeaderField: key) }
         }
         sanitized.setValue("bytes=\(range.lowerBound)-\(range.upperBound - 1)", forHTTPHeaderField: "Range")
         sanitized.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
