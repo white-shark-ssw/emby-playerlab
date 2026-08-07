@@ -25,10 +25,13 @@ require(bridge.count(ua_decl) == 1, "115 User-Agent must have exactly one declar
 require("115Browser/36.0.0" in bridge, "stable 115Browser UA profile missing")
 require("downloadSetAdditionalHeaders" in bridge, "KTV additional outbound headers missing")
 require('requestHeaders[@"User-Agent"] = EPLKTV115UserAgent;' in bridge, "preload requests must pin the same UA")
-require("sensitiveHeaderKeys" in bridge and "key.lowercaseString" in bridge, "sensitive headers must be stripped case-insensitively")
-for token in ["authorization", "x-emby-token", "x-mediabrowser-token", "cookie"]:
+require("EPLKTVIsSensitiveRemoteHeader" in bridge, "central sensitive remote-header filter missing")
+require('[lower hasPrefix:@"x-emby-"]' in bridge, "all X-Emby-* headers must be blocked")
+require('[lower hasPrefix:@"x-mediabrowser-"]' in bridge, "all X-MediaBrowser-* headers must be blocked")
+for token in ["authorization", "cookie", "set-cookie"]:
     require(token in bridge, f"sensitive header filter missing {token}")
-require('[lower isEqualToString:@"user-agent"]' in bridge, "source User-Agent must not enter KTV whitelist")
+require("EPLKTVIsSensitiveRemoteHeader(key)" in bridge, "preload requests must use the central sensitive-header filter")
+require('EPLKTVIsSensitiveRemoteHeader(key) || [lower isEqualToString:@"user-agent"]' in bridge, "KTV whitelist must reject auth prefixes and source User-Agent")
 
 require("private let segmentBytes: Int64 = 512 * 1_048_576" in session, "background claims must be long-lived 512 MiB ranges")
 require("probe skipped transport-v2" in session, "legacy wrong-UA redirect probe must stay disabled")
