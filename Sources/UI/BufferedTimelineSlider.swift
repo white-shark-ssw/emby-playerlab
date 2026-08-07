@@ -11,20 +11,20 @@ struct BufferedTimelineSlider: View {
     var body: some View {
         GeometryReader { geometry in
             let width = max(geometry.size.width, 1)
-            let trackHeight: CGFloat = 4
+            let trackHeight: CGFloat = 6
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.18)).frame(height: trackHeight)
+                Capsule().fill(Color.white.opacity(0.14)).frame(height: trackHeight)
 
                 ForEach(Array(normalizedBufferedRanges.enumerated()), id: \.offset) { _, buffered in
                     Capsule()
-                        .fill(Color.gray.opacity(0.78))
-                        .frame(width: segmentWidth(buffered, totalWidth: width), height: trackHeight)
+                        .fill(Color.white.opacity(0.46))
+                        .frame(width: max(2, segmentWidth(buffered, totalWidth: width)), height: trackHeight)
                         .offset(x: segmentOffset(buffered, totalWidth: width))
                 }
 
                 Capsule()
                     .fill(Color.white)
-                    .frame(width: progressWidth(totalWidth: width), height: trackHeight)
+                    .frame(width: progressWidth(totalWidth: width), height: 4)
 
                 Circle()
                     .fill(Color.white)
@@ -50,7 +50,7 @@ struct BufferedTimelineSlider: View {
                     }
             )
         }
-        .frame(height: 28)
+        .frame(height: 32)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("播放进度")
         .accessibilityValue(accessibilityValue)

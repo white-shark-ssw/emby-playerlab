@@ -32,14 +32,15 @@ struct PlaybackRangeMap: Equatable {
         return max(0, upper - anchor)
     }
 
-    func nextClaim(from anchor: Int64, resourceLength: Int64, segmentBytes: Int64, workerLimit: Int) -> Range<Int64>? {
+    func nextClaim(from anchor: Int64, resourceLength: Int64, segmentBytes: Int64, workerLimit: Int, lookaheadSegments: Int? = nil) -> Range<Int64>? {
         guard segmentBytes > 0, workerLimit > 0 else { return nil }
         let frontier = contiguousFrontier(from: anchor)
         let hardUpper = resourceLength > 0 ? resourceLength : Int64.max
         guard frontier < hardUpper else { return nil }
         let relativeFrontier = max(0, frontier - anchor)
         let windowBase = anchor + (relativeFrontier / segmentBytes) * segmentBytes
-        let windowUpper = min(hardUpper, safeAdd(windowBase, segmentBytes * Int64(workerLimit)))
+        let pipelineSegments = max(workerLimit, lookaheadSegments ?? workerLimit)
+        let windowUpper = min(hardUpper, safeAdd(windowBase, segmentBytes * Int64(pipelineSegments)))
         var cursor = frontier
 
         while cursor < windowUpper {
@@ -71,7 +72,7 @@ struct PlaybackRangeMap: Equatable {
             frontierByte: resourceLength > 0 ? min(frontier, resourceLength) : frontier,
             playbackBytes: playback.totalBytes,
             metadataBytes: metadata.totalBytes,
-            holeCount: holeCount(from: anchor, through: furthestObservedEnd(resourceLength: resourceLength))
+            holeCount: holeCountIncludingInflight(from: anchor, through: furthestObservedEnd(resourceLength: resourceLength))
         )
     }
 
@@ -80,11 +81,14 @@ struct PlaybackRangeMap: Equatable {
         return resourceLength > 0 ? min(value, resourceLength) : value
     }
 
-    private func holeCount(from anchor: Int64, through upperBound: Int64) -> Int {
+
+    private func holeCountIncludingInflight(from anchor: Int64, through upperBound: Int64) -> Int {
         guard upperBound > anchor else { return 0 }
+        var coverage = playback.ranges + downloading.values
+        coverage.sort { $0.lowerBound < $1.lowerBound }
         var cursor = anchor
         var holes = 0
-        for range in playback.ranges where range.upperBound > anchor && range.lowerBound < upperBound {
+        for range in coverage where range.upperBound > anchor && range.lowerBound < upperBound {
             let lower = max(anchor, range.lowerBound)
             if lower > cursor { holes += 1 }
             cursor = max(cursor, min(upperBound, range.upperBound))

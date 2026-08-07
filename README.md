@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → OneStrm 302 → 115 直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.8.0
+## 当前版本：0.8.1
 
 ### 系统与构建
 
@@ -12,8 +12,19 @@
 - 安装方式：未签名 IPA + TrollStore
 - KTVHTTPCache：3.1.0（MIT，最低 iOS 12）
 - KSPlayer：2.3.4
-- MPVKit：源码适配保留；0.8.0 实验构建不链接二进制
+- MPVKit：源码适配保留；0.8.1 实验构建不链接二进制
 
+
+### 0.8.1：连续缓存流水线与大 MP4 起播修复
+
+- 相邻双通道从“两个固定窗口”升级为4段有界流水线：只有两条网络worker，但快通道完成后可以继续领取紧邻下一段，不再因为慢通道未追上而长期空闲。
+- 双通道在主连接稳定10秒后启用，之后只因真实secondary Range错误退出；不再用包含空闲时间的15秒总缓存窗口误判“收益不足”并主动关闭高速通道。
+- 真正出现当前播放点 `forwardPlayable≈0` / buffering持续时，才短暂暂停后台预取，把KTV网络资源让给播放器真实Range；恢复到可播缓存后自动重启连续流水线。
+- 大MP4＋FFmpeg启动改为串行 `8 MiB head → 16 MiB tail metadata` 预热，避免后台主Range与尾部moov Range同时进入KTV导致 `-192703`。尾部失败会重试一次；连续失败直接走AVIO兜底。
+- FFmpeg KTV路径在连续缓存已达到64MiB但8秒仍未ready时视为“解封装未建立”，进入AVIO兜底，不再无限黑屏。
+- KSPlayer尚未ready时的Seek只记录最后目标，等ready后再提交native seek，避免黑屏阶段直接Seek触发进程异常。
+- AVIO最终兜底针对115允许2个相邻后台worker，避免旧路径固定单worker限速。
+- 灰色缓冲条加粗并提高对比度；诊断文字增加“灰条缓冲至”，仍严格使用播放器真实可播时间范围，不用字节比例伪造。
 
 ### 0.8.0：连续缓存前沿架构（第一阶段）
 
@@ -69,7 +80,7 @@
 2. 等待 `Validate Source` 成功。
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-5. 解压获得 `EmbyPlayerLab-0.8.0-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+5. 解压获得 `EmbyPlayerLab-0.8.1-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 首次构建会通过 CocoaPods 安装固定版本 KTVHTTPCache 3.1.0，并通过 Swift Package Manager 解析 KSPlayer 2.3.4。
 
@@ -78,7 +89,7 @@
 - 密码不落盘，AccessToken 保存到 Keychain。
 - KTVHTTPCache 自带文件日志默认关闭，避免临时播放 URL 进入第三方日志。
 - App 自有日志只记录原始主机、localhost 端口、缓存字节和速度，不记录完整代理 URL。
-- KTVHTTPCache 3.1.0 为 MIT；KSPlayer 2.3.4 及其 FFmpegKit 依赖按项目现有 GPL 说明处理。0.8.0 不链接 MPVKit。
+- KTVHTTPCache 3.1.0 为 MIT；KSPlayer 2.3.4 及其 FFmpegKit 依赖按项目现有 GPL 说明处理。0.8.1 不链接 MPVKit。
 
 ## 0.2.1 修复
 

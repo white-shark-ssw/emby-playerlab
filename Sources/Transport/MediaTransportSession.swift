@@ -567,7 +567,7 @@ actor MediaTransportSession {
         var firstStart = (offset / segmentSize) * segmentSize
         if firstStart < offset { firstStart += segmentSize }
         let finalOffset = min(resource.contentLength, firstStart + maximumBytes)
-        let concurrency = resource.looksLike115CDN ? 1 : max(1, min(2, configuration.maximumConcurrentRequests - 1))
+        let concurrency = resource.looksLike115CDN ? min(2, max(1, configuration.maximumConcurrentRequests)) : max(1, min(2, configuration.maximumConcurrentRequests - 1))
         guard firstStart < finalOffset else { return }
 
         DiagnosticsLogger.shared.log(

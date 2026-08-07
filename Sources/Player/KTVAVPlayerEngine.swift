@@ -87,6 +87,11 @@ final class KTVAVPlayerEngine: PlayerEngine {
             guard let self else { return }
             self.lastSnapshot = snapshot
             self.cacheSession?.updatePlayback(position: snapshot.position, duration: snapshot.duration)
+            if snapshot.position > 0.25 {
+                let bufferedEnd = snapshot.bufferedRanges.filter { $0.lowerBound <= snapshot.position + 0.05 && $0.upperBound >= snapshot.position - 0.05 }.map(\.upperBound).max() ?? snapshot.position
+                let forward = max(0, bufferedEnd - snapshot.position)
+                self.cacheSession?.updatePlaybackDemand(position: snapshot.position, duration: snapshot.duration, forwardPlayable: forward, isBuffering: snapshot.isBuffering)
+            }
             self.onSnapshot?(snapshot)
         }
         underlying.onSeekCompleted = { [weak self] result in self?.onSeekCompleted?(result) }

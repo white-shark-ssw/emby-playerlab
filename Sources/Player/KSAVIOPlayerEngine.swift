@@ -80,6 +80,12 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     func seek(to seconds: Double, direction: SeekDirection) {
         guard let player else { initialSeek = seconds; return }
         let target = max(0, seconds)
+        if ktvCacheSession != nil, !player.isReadyToPlay {
+            initialSeek = target
+            initialSeekCommitted = false
+            DiagnosticsLogger.shared.log("KSKTV", "seek queued until ready target=\(String(format: "%.3f", target))")
+            return
+        }
         let requestedAt = Date().timeIntervalSince1970
         if let ktvCacheSession {
             let duration = max(source.mediaSource.durationSeconds ?? 0, player.duration)
@@ -142,6 +148,13 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
             ktvCacheSession = cacheSession
             cacheSession.prepareForPlayback { [weak self, weak cacheSession] in
                 guard let self, let cacheSession, currentGeneration == self.generation, self.ktvCacheSession === cacheSession else { return }
+                if let reason = cacheSession.preparationFatalReason() {
+                    DiagnosticsLogger.shared.log("KSKTV", "startup metadata fatal item=\(self.source.itemId) reason=\(reason); fallback transport=AVIO")
+                    cacheSession.stop()
+                    self.ktvCacheSession = nil
+                    self.prepareAVIOBacked(currentGeneration: currentGeneration)
+                    return
+                }
                 let options = KTVKSPlayerOptions()
                 options.preferredForwardBufferDuration = 2
                 options.maxBufferDuration = 30
@@ -171,12 +184,18 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
 
     private func startKTVStartupMonitor(player: KSMEPlayer, cacheSession: KTVCachePlaybackSession, generation: Int) {
         ktvStartupMonitorTask?.cancel()
+        let startedAt = Date()
         ktvStartupMonitorTask = Task { @MainActor [weak self, weak player, weak cacheSession] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
                 guard let self, let player, let cacheSession, generation == self.generation, self.player === player, self.ktvCacheSession === cacheSession else { return }
                 if player.isReadyToPlay || player.currentPlaybackTime > 0.25 { self.ktvStartupMonitorTask = nil; return }
-                guard let reason = cacheSession.startupFallbackReason() else { continue }
+                let metrics = cacheSession.metrics()
+                var reason = cacheSession.startupFallbackReason()
+                if reason == nil, Date().timeIntervalSince(startedAt) >= 8, metrics.contiguousCacheBytes >= 64 * 1_048_576 {
+                    reason = "FFmpeg未ready但已有\(metrics.contiguousCacheBytes / 1_048_576)MiB连续数据"
+                }
+                guard let reason else { continue }
                 DiagnosticsLogger.shared.log("KSKTV", "startup fatal item=\(self.source.itemId) reason=\(reason); fallback transport=AVIO")
                 self.ktvStartupMonitorTask = nil
                 self.stopPlayerOnly()
@@ -256,7 +275,9 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
         let duration = sane(player.duration)
         let playable = max(position, sane(player.playableTime))
         let buffering = player.loadState == .loading
-        ktvCacheSession?.updatePlayback(position: position, duration: duration > 0 ? duration : source.mediaSource.durationSeconds ?? 0)
+        let effectiveDuration = duration > 0 ? duration : source.mediaSource.durationSeconds ?? 0
+        ktvCacheSession?.updatePlayback(position: position, duration: effectiveDuration)
+        if player.isReadyToPlay, position > 0.25 { ktvCacheSession?.updatePlaybackDemand(position: position, duration: effectiveDuration, forwardPlayable: max(0, playable - position), isBuffering: buffering) }
         let snapshot = PlayerSnapshot(
             position: position,
             duration: duration,

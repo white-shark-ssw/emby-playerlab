@@ -187,7 +187,7 @@ struct PlayerScreen: View {
     private var diagnosticsRow: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("引擎：\(controller.engineKind.title) · \(controller.lastSeekSummary)")
-            Text("前向可播 \(formatTime(controller.forwardBufferedDuration)) · 缓冲段 \(controller.snapshot.bufferedRanges.count) · \(controller.snapshot.isBuffering ? "等待数据" : "可播放")")
+            Text("灰条缓冲至 \(formatTime(controller.bufferedEnd)) · 前向可播 \(formatTime(controller.forwardBufferedDuration)) · 缓冲段 \(controller.snapshot.bufferedRanges.count) · \(controller.snapshot.isBuffering ? "等待数据" : "可播放")")
             if controller.snapshot.accessLogStalls > 0 || controller.snapshot.droppedVideoFrames > 0 {
                 Text("AV 统计：停滞 \(controller.snapshot.accessLogStalls) · 丢帧 \(controller.snapshot.droppedVideoFrames)")
             }
