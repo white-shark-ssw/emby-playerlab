@@ -26,6 +26,9 @@ jobs:
           : > mpv-module-maps.log
           : > pods-install.log
 
+      - name: Audit transport scheduler invariants
+        run: python3 scripts/check_transport_scheduler_invariants.py
+
       - name: Select Xcode 16.4
         run: |
           set -euo pipefail
