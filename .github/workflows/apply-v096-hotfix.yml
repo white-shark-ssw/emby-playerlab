@@ -18,6 +18,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/apply_v096.py
+          python3 scripts/refine_v096.py
           if git diff --quiet; then
             echo "v0.9.6 source hotfix already applied"
             exit 0
