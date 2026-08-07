@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → OneStrm 302 → 115 直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.9.2
+## 当前版本：0.9.3
 
 ### 系统与构建
 
@@ -15,6 +15,16 @@
 - KSPlayer：已从正式 target 移除；旧源码仅在 `canImport(KSPlayer)` 时编译
 
 
+
+### 0.9.3：当前位置优先恢复 + 大 MP4 慢起播自救 + 圆角缓冲条
+
+- 63368 真机日志确认一次长 Stall 并非总带宽不足：AVPlayer 已停在 358.25 秒附近，但滚动网络速度仍约 8~12 MB/s；真正当前位置却被拆成连续 2 MiB urgent Range，并且后台 Slot 仍在旧 anchor 区域下载。
+- 用户 Seek 后的大型 `AVAssetResourceLoader` speculative Range 不再立即消费 seek anchor；等待真实 `blocked-read` 后再重锚，避免后台预取被锚到错误字节。若 concrete blocked-read 与旧 anchor 相距超过 64 MiB，也会主动按真实需求重锚。
+- urgentPlayback 窗口由 2 MiB 扩大到 8 MiB，仍按流式首块写入 ByteStore；减少连续 Seek/Stall 时每 2 MiB 新建流请求造成的首包延迟。
+- Stall 恢复不再仅用“全局缓存量/后台总速度”判断健康；当当前位置 `forwardPlayable < 0.5s` 时，即使后台下载很快也会调用同引擎传输恢复，把优先级拉回当前真实 byte demand。
+- 152901 这轮两次起播都遇到异常慢 CDN：首轮约 15.6 秒才开始走时钟，第二轮约 29.5 秒内始终未 `file-loaded`。针对大型 MP4，首个头部块进一步缩到 1 MiB；尾部 metadata 首个 1 MiB 若明显低于 1 MiB/s，会只进行一次 302/115 直链刷新并从已收到位置继续。
+- 缓冲轨道各区段由直角 `Rectangle` 改为 `Capsule`，保持 10pt 高度与灰阶层级，但所有缓冲段两端改为圆润胶囊形。
+- Deployment Target 继续保持 iOS 15.0；NAS 仍不承载任何媒体字节。
 
 ### 0.9.2：起播优先流式供数 + 缓冲条可视性 + Seek 后假 Stall 修复
 
@@ -114,7 +124,7 @@
 2. 等待 `Validate Source` 成功。
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-5. 解压获得 `EmbyPlayerLab-0.9.2-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+5. 解压获得 `EmbyPlayerLab-0.9.3-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 首次构建会通过 CocoaPods 安装固定版本 KTVHTTPCache 3.1.0（旧诊断路径），并通过 Swift Package Manager 解析 MPVKit 0.41.0-n8.1.2。
 
@@ -123,7 +133,7 @@
 - 密码不落盘，AccessToken 保存到 Keychain。
 - KTVHTTPCache 自带文件日志默认关闭，避免临时播放 URL 进入第三方日志。
 - App 自有日志只记录原始主机、localhost 端口、缓存字节和速度，不记录完整代理 URL。
-- KTVHTTPCache 3.1.0 为 MIT；正式兼容引擎使用 MPVKit 的 LGPL 产品。KSPlayer 不再链接进 v0.9.2 正式 target。
+- KTVHTTPCache 3.1.0 为 MIT；正式兼容引擎使用 MPVKit 的 LGPL 产品。KSPlayer 不再链接进 v0.9.3 正式 target。
 
 ## 0.2.1 修复
 

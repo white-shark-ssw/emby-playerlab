@@ -19,14 +19,14 @@ struct BufferedTimelineSlider: View {
                 Capsule().fill(Color(white: 0.16)).frame(height: trackHeight)
 
                 ForEach(Array(normalizedVerifiedRanges.enumerated()), id: \.offset) { _, buffered in
-                    Rectangle()
+                    Capsule()
                         .fill(Color(white: 0.48))
                         .frame(width: max(3, segmentWidth(buffered, totalWidth: width)), height: trackHeight)
                         .offset(x: segmentOffset(buffered, totalWidth: width))
                 }
 
                 ForEach(Array(normalizedBufferedRanges.enumerated()), id: \.offset) { _, buffered in
-                    Rectangle()
+                    Capsule()
                         .fill(Color(white: 0.72))
                         .frame(width: max(3, segmentWidth(buffered, totalWidth: width)), height: 7)
                         .offset(x: segmentOffset(buffered, totalWidth: width))

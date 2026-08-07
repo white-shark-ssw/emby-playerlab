@@ -94,6 +94,11 @@ final class PlaybackOrchestrator {
         }
 
         if kind == .resourceLoaderAVPlayer || kind == .ksAVIO || kind == .transportAVPlayer || kind == .mpv {
+            let currentForward = snapshot.bufferedRanges.reduce(0.0) { result, range in
+                guard range.lowerBound <= snapshot.position + 0.25, range.upperBound >= snapshot.position - 0.10 else { return result }
+                return max(result, range.upperBound - snapshot.position)
+            }
+            if currentForward < 0.5 { return .recoverTransport(message: "当前位置可播缓存已耗尽，正在把下载优先级拉回当前画面；不会切换播放引擎") }
             if health.transportHealthy { return .wait(message: "数据正在补充，保持当前播放引擎等待恢复") }
             return .recoverTransport(message: "当前位置数据不足，重建当前传输窗口；不会切换播放引擎")
         }

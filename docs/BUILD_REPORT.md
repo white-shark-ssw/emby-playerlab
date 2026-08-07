@@ -1,6 +1,6 @@
 # Build Report
 
-- Version: 0.9.2 (48)
+- Version: 0.9.3 (49)
 - Deployment Target: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Expected CI: Xcode 16.4, arm64 iPhoneOS Release
@@ -11,11 +11,11 @@
 - Automatic native path: AVPlayer + UnifiedMediaTransportSession via AVAssetResourceLoader (no localhost HTTP)
 - Automatic compatibility path: libmpv + UnifiedMediaTransportSession via `mpv_stream_cb`; video output uses CAMetalLayer + gpu-next/Vulkan/MoltenVK + VideoToolbox
 - Unified cache: DownloadFirstSparseStore + PlaybackRangeMap
-- Upstream concurrency: exactly two normal 115/CDN slots; Slot 0 may service urgent playback holes without cancelling Slot 1
+- Upstream concurrency: exactly two normal 115/CDN slots; Slot 0 may service streamed urgent playback holes without cancelling Slot 1; urgent window is 8 MiB
 - Seek anchor: real AVAssetResourceLoader byte demand / real mpv byte seek only; no time-to-byte proportional guess
 - Wi-Fi continuous preload: may use configured disk-cache budget rather than old fixed 128 MiB ceiling
 - Cellular background preload: explicit user opt-in
-- Buffered timeline: high-contrast persistent verified-history gray layer + current live-buffer layer; `[BufferHistory]` logs prove monotonic history
+- Buffered timeline: rounded Capsule segments for persistent verified-history gray layer + current live-buffer layer; `[BufferHistory]` logs prove monotonic history
 - Runtime speed/stall engine switching after playback established: disabled
 - NAS media proxy: prohibited and not used
 - Deployment Target changed: no; remains iOS 15.0

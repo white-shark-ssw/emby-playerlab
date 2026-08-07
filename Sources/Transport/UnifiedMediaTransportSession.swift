@@ -31,9 +31,12 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let resolver = RedirectResolver()
     private let client = RangeHTTPClient(maximumConnections: 2)
     private let blockBytes: Int64
-    private let urgentBlockBytes: Int64 = 2 * 1_048_576
+    private let urgentBlockBytes: Int64 = 8 * 1_048_576
     private let metadataUrgentBlockBytes: Int64 = 16 * 1_048_576
     private let initialSequentialBlockBytes: Int64 = 4 * 1_048_576
+    private let largeFileInitialSequentialBlockBytes: Int64 = 1 * 1_048_576
+    private let startupMetadataSlowFirstChunkSeconds: TimeInterval = 1.5
+    private let startupMetadataSlowFirstChunkBps: Double = 1 * 1_048_576
     private let lookaheadSegments = 4
     private let createdAt = Date()
 
@@ -45,6 +48,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var pendingUserSeekUntil = Date.distantPast
     private var pendingUrgentRange: Range<Int64>?
     private var pendingUrgentIsMetadata = false
+    private var lastConcretePlaybackDemand: Range<Int64>?
     private var stopped = false
 
     private var slotTasks: [Int: Task<Void, Never>] = [:]
@@ -170,10 +174,22 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
     func recoverStall(position: Double, duration: Double) async {
         guard !stopped else { return }
-        DiagnosticsLogger.shared.log(
-            "UnifiedDemand",
-            "stall position=\(String(format: "%.3f", position)) anchor=\(playbackAnchor) action=keep-slot1-and-prioritize-real-range"
-        )
+        if let demand = lastConcretePlaybackDemand, let resource {
+            let previous = playbackAnchor
+            playbackAnchor = demand.lowerBound
+            let urgent = demand.lowerBound..<min(resource.contentLength, safeAdd(demand.lowerBound, urgentBlockBytes))
+            installUrgent(range: urgent, metadata: false, reason: "stall-last-concrete-demand")
+            if let active = slotClaims[0], !active.range.contains(demand.lowerBound) { cancelSlot(0, reason: "stall-current-demand") }
+            DiagnosticsLogger.shared.log(
+                "UnifiedDemand",
+                "stall position=\(String(format: "%.3f", position)) previousAnchor=\(previous) anchor=\(playbackAnchor) concrete=\(demand.lowerBound)-\(demand.upperBound) action=prioritize-current-demand"
+            )
+        } else {
+            DiagnosticsLogger.shared.log(
+                "UnifiedDemand",
+                "stall position=\(String(format: "%.3f", position)) anchor=\(playbackAnchor) action=await-concrete-demand"
+            )
+        }
         scheduleSlots(reason: "stall")
     }
 
@@ -207,6 +223,21 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard !range.isEmpty, let store else { return }
         let metadata = isMetadataProbe(range, resource: resource)
         let pendingUserSeek = Date() <= pendingUserSeekUntil
+        let concretePlaybackDemand = !metadata && (reason == "blocked-read" || reason == "byte-offset")
+        let speculativeLargeRange = reason.hasPrefix("range-demand") && Int64(range.count) > blockBytes * 2
+        if concretePlaybackDemand { lastConcretePlaybackDemand = range }
+
+        // AVAssetResourceLoader often emits a very large speculative range immediately after a seek.
+        // It is not necessarily the byte position that AVFoundation will actually block on. Keep the
+        // user-seek token alive until the concrete read/byte-offset demand arrives; otherwise the
+        // scheduler can anchor hundreds of MiB away from the frame AVPlayer is really waiting for.
+        if pendingUserSeek, !metadata, speculativeLargeRange {
+            DiagnosticsLogger.shared.log(
+                "UnifiedAnchor",
+                "seek-candidate deferred request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) awaitingConcreteDemand=true anchor=\(playbackAnchor)"
+            )
+            return
+        }
 
         if pendingUserSeek, !metadata {
             pendingUserSeekUntil = .distantPast
@@ -216,8 +247,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 "UnifiedAnchor",
                 "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason)"
             )
-            if let active = slotClaims[0], !active.range.contains(range.lowerBound) {
-                cancelSlot(0, reason: "real-seek-demand")
+            if let active = slotClaims[0], !active.range.contains(range.lowerBound) { cancelSlot(0, reason: "real-seek-demand") }
+        } else if concretePlaybackDemand {
+            let distance = range.lowerBound >= playbackAnchor ? range.lowerBound - playbackAnchor : playbackAnchor - range.lowerBound
+            if distance > blockBytes * 4 {
+                let previous = playbackAnchor
+                playbackAnchor = range.lowerBound
+                DiagnosticsLogger.shared.log("UnifiedAnchor", "blocked-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason)")
+                if let active = slotClaims[0], !active.range.contains(range.lowerBound) { cancelSlot(0, reason: "blocked-demand-reanchor") }
             }
         }
 
@@ -283,7 +320,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let upper = min(resource.contentLength, safeAdd(playbackAnchor, window))
         guard upper > playbackAnchor else { return nil }
         let firstPlaybackBlock = rangeMap.snapshot(anchor: playbackAnchor, resourceLength: resource.contentLength).playbackBytes == 0
-        let segmentBytes = firstPlaybackBlock ? min(blockBytes, initialSequentialBlockBytes) : blockBytes
+        let largeIndexedMP4Startup = source.mediaSource.normalizedContainer == "mp4" && resource.contentLength >= 4 * 1_073_741_824
+        let initialBytes = largeIndexedMP4Startup ? largeFileInitialSequentialBlockBytes : initialSequentialBlockBytes
+        let segmentBytes = firstPlaybackBlock ? min(blockBytes, initialBytes) : blockBytes
         return rangeMap.nextClaim(
             from: playbackAnchor,
             resourceLength: upper,
@@ -341,25 +380,42 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: Int64(data.count), error: nil)
             } else {
                 var received: Int64 = 0
-                do {
-                    for try await chunk in client.stream(resource: resolved, range: claim.range, worker: slot) {
-                        try Task.checkCancellation()
-                        try store.write(chunk, at: claim.range.lowerBound + received)
-                        received += Int64(chunk.count)
-                        if received == Int64(chunk.count) {
-                            DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) first-chunk role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) bytes=\(chunk.count)")
+                var slowStartupRefreshUsed = false
+                while received < Int64(claim.range.count) {
+                    let remaining = (claim.range.lowerBound + received)..<claim.range.upperBound
+                    let attemptStarted = Date()
+                    var attemptReceived: Int64 = 0
+                    var restartAfterSlowStartup = false
+                    do {
+                        for try await chunk in client.stream(resource: resolved, range: remaining, worker: slot) {
+                            try Task.checkCancellation()
+                            try store.write(chunk, at: claim.range.lowerBound + received)
+                            received += Int64(chunk.count)
+                            attemptReceived += Int64(chunk.count)
+                            if attemptReceived == Int64(chunk.count) {
+                                let firstChunkSeconds = max(Date().timeIntervalSince(attemptStarted), 0.001)
+                                let firstChunkBps = Double(chunk.count) / firstChunkSeconds
+                                DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) first-chunk role=\(claim.role.rawValue) range=\(remaining.lowerBound)-\(remaining.upperBound) bytes=\(chunk.count) ms=\(Int(firstChunkSeconds * 1000)) speedBps=\(Int(firstChunkBps))")
+                                if claim.role == .metadata, !slowStartupRefreshUsed, Date().timeIntervalSince(createdAt) < 35, firstChunkSeconds >= startupMetadataSlowFirstChunkSeconds, firstChunkBps < startupMetadataSlowFirstChunkBps {
+                                    slowStartupRefreshUsed = true
+                                    restartAfterSlowStartup = true
+                                    DiagnosticsLogger.shared.log("UnifiedRecovery", "slow-start metadata firstChunkMs=\(Int(firstChunkSeconds * 1000)) speedBps=\(Int(firstChunkBps)) received=\(received) action=refresh-115-source-and-resume")
+                                    break
+                                }
+                            }
                         }
+                    } catch MediaTransportError.expiredURL {
+                        DiagnosticsLogger.shared.log("UnifiedTransport", "slot=\(slot) refreshing expired 115 URL")
+                        resource = nil
+                        resolved = try await resolve()
+                        continue
                     }
-                } catch MediaTransportError.expiredURL {
-                    DiagnosticsLogger.shared.log("UnifiedTransport", "slot=\(slot) refreshing expired 115 URL")
-                    resource = nil
-                    resolved = try await resolve()
-                    received = 0
-                    for try await chunk in client.stream(resource: resolved, range: claim.range, worker: slot) {
-                        try Task.checkCancellation()
-                        try store.write(chunk, at: claim.range.lowerBound + received)
-                        received += Int64(chunk.count)
+                    if restartAfterSlowStartup {
+                        resource = nil
+                        resolved = try await resolve()
+                        continue
                     }
+                    break
                 }
                 let elapsed = max(Date().timeIntervalSince(started), 0.001)
                 let bps = Double(received) / elapsed
