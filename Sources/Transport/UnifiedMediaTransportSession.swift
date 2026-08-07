@@ -217,6 +217,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         rangeMap.clearDownloading(lane: "slot1")
         store?.close(removeFiles: !configuration.keepLastCache)
         store = nil
+        client.invalidate()
         DiagnosticsLogger.shared.log("UnifiedTransport", "stopped item=\(source.itemId)")
     }
 

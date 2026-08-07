@@ -34,6 +34,8 @@ enum RangeRequestLane: Equatable {
 final class RangeHTTPClient {
     private let sessions: [URLSession]
     private let streamLanes: [PersistentRangeStreamLane]
+    private let lifecycleLock = NSLock()
+    private var invalidated = false
 
     init(maximumConnections: Int) {
         let count = min(max(2, maximumConnections), 8)
@@ -42,9 +44,16 @@ final class RangeHTTPClient {
         DiagnosticsLogger.shared.log("TransportV3", "persistent range pool created lanes=\(count)")
     }
 
-    deinit {
+    deinit { invalidate() }
+
+    func invalidate() {
+        lifecycleLock.lock()
+        guard !invalidated else { lifecycleLock.unlock(); return }
+        invalidated = true
+        lifecycleLock.unlock()
         sessions.forEach { $0.invalidateAndCancel() }
         streamLanes.forEach { $0.invalidate() }
+        DiagnosticsLogger.shared.log("TransportV3", "persistent range pool invalidated")
     }
 
     func fetch(resource: TransportResolvedResource, range: Range<Int64>, lane: RangeRequestLane) async throws -> Data {
@@ -296,6 +305,19 @@ private final class PersistentRangeStreamLane: NSObject, URLSessionDataDelegate,
         lock.unlock()
 
         chunks.forEach { continuation?.yield($0) }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
+        guard let metric = metrics.transactionMetrics.last else { return }
+        lock.lock()
+        let state = states[task.taskIdentifier]
+        let lane = state?.lane.label ?? "preload-\(index)"
+        let redirects = state?.redirectCount ?? 0
+        lock.unlock()
+        let connectMs: Int
+        if let start = metric.connectStartDate, let end = metric.connectEndDate { connectMs = Int(max(0, end.timeIntervalSince(start)) * 1000) }
+        else { connectMs = 0 }
+        DiagnosticsLogger.shared.log("TransportV3Metric", "lane=\(lane) task=\(task.taskIdentifier) reused=\(metric.isReusedConnection) protocol=\(metric.networkProtocolName ?? "unknown") connectMs=\(connectMs) redirects=\(redirects)")
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
