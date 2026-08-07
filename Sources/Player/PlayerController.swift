@@ -51,6 +51,8 @@ final class PlayerController: ObservableObject {
     private var lastHandledEngineError: String?
     private var lastBufferTimelineLogAt = Date.distantPast
     private var lastVerifiedMPVPosition: Double?
+    private var stallWatchdogSuppressedUntil = Date.distantPast
+    private var hasPlaybackAdvanced = false
 
     var ksAVIOView: UIView? {
         #if canImport(KSPlayer)
@@ -92,6 +94,7 @@ final class PlayerController: ObservableObject {
         self.preferredForwardBuffer = preferredForwardBuffer > 0 ? preferredForwardBuffer : 90
         configureAudioSession()
         userWantsPlayback = true
+        suppressStallWatchdog(for: engineKind == .mpv ? 12 : 6)
         engine.prepare(
             url: source.url,
             headers: source.headers,
@@ -198,6 +201,7 @@ final class PlayerController: ObservableObject {
         pendingSeekTarget = target
         pendingSeekDirection = offset >= 0 ? .forward : .backward
         displayedPosition = target
+        suppressStallWatchdog(for: 3)
 
         DiagnosticsLogger.shared.log(
             "SeekAnchor",
@@ -396,7 +400,7 @@ final class PlayerController: ObservableObject {
         guard var current = sorted.first else { return [] }
         var result: [ClosedRange<Double>] = []
         for range in sorted.dropFirst() {
-            if range.lowerBound <= current.upperBound + 0.15 {
+            if range.lowerBound <= current.upperBound + 1.0 {
                 current = current.lowerBound...max(current.upperBound, range.upperBound)
             } else {
                 result.append(current)
@@ -456,6 +460,7 @@ final class PlayerController: ObservableObject {
                 guard generation == self.engineGeneration else { return }
                 let wasEnd = self.snapshot.didReachEnd
                 self.snapshot = value
+                if value.position > 0.25 { self.hasPlaybackAdvanced = true }
                 self.updateVerifiedBufferedRanges(from: value)
                 self.logBufferTimelineIfNeeded(value)
                 if self.engineTransitionAwaitingFirstSnapshot {
@@ -506,6 +511,7 @@ final class PlayerController: ObservableObject {
                     self.pendingSeekTarget = nil
                     self.pendingSeekDirection = nil
                     self.displayedPosition = result.actualPosition ?? pending
+                    self.suppressStallWatchdog(for: 2.5)
                     DiagnosticsLogger.shared.log(
                         "SeekAnchor",
                         "completed target=\(pending) actual=\(result.actualPosition ?? pending)"
@@ -533,6 +539,7 @@ final class PlayerController: ObservableObject {
         let target = clampPosition(displayedPosition)
         pendingSeekTarget = target
         pendingSeekDirection = .absolute
+        suppressStallWatchdog(for: 3)
 
         engine.seek(to: target, direction: .absolute)
         Task {
@@ -678,10 +685,20 @@ final class PlayerController: ObservableObject {
     }
 
     private func evaluatePlaybackStall() {
-        guard !engineSwitchInProgress, !engineTransitionAwaitingFirstSnapshot, startupFallbackTask == nil,
+        guard Date() >= stallWatchdogSuppressedUntil,
+              !engineSwitchInProgress, !engineTransitionAwaitingFirstSnapshot, startupFallbackTask == nil,
               !userIsScrubbing, pendingSeekTarget == nil,
               snapshot.isPlaying || snapshot.isBuffering,
               snapshot.position + 3 < effectiveDuration else {
+            resetWatchdogSamples()
+            return
+        }
+
+        if !hasPlaybackAdvanced && snapshot.position < 0.25 {
+            resetWatchdogSamples()
+            return
+        }
+        if !snapshot.isBuffering, snapshot.waitingReason == nil, forwardBufferedDuration >= 1.5 {
             resetWatchdogSamples()
             return
         }
@@ -755,6 +772,11 @@ final class PlayerController: ObservableObject {
         stagnantWatchdogIntervals = 0
         lastWatchdogPosition = snapshot.position
         lastWatchdogBufferEnd = bufferedEnd
+    }
+
+    private func suppressStallWatchdog(for seconds: TimeInterval) {
+        stallWatchdogSuppressedUntil = max(stallWatchdogSuppressedUntil, Date().addingTimeInterval(seconds))
+        resetWatchdogSamples()
     }
 
     private func clampPosition(_ value: Double) -> Double {

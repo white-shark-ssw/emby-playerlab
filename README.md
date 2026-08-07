@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → OneStrm 302 → 115 直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.9.1
+## 当前版本：0.9.2
 
 ### 系统与构建
 
@@ -14,6 +14,16 @@
 - MPVKit：0.41.0-n8.1.2（SPM，LGPL 产品）
 - KSPlayer：已从正式 target 移除；旧源码仅在 `canImport(KSPlayer)` 时编译
 
+
+
+### 0.9.2：起播优先流式供数 + 缓冲条可视性 + Seek 后假 Stall 修复
+
+- 63368 正常播放阶段的历史缓冲仍按真实时间范围显示，但改为固定实灰阶与 10pt 轨道；<=1 秒的 AVPlayer 报告抖动小孔自动合并，真正跳播造成的未验证区间仍保持断开。
+- Seek 提交/完成后给 Stall watchdog 独立宽限期；已有 >=1.5 秒前向可播且引擎未等待数据时不再误弹“正在补充数据”。首次起播在播放时钟真正推进前也不触发 Stall 提示。
+- UnifiedTransport 首个顺序块由 16 MiB 降至 4 MiB，先快速交付文件头；首块完成后仍恢复 16 MiB 双通道后台下载。
+- MP4 尾部 metadata 紧急窗口扩大到最多 16 MiB，并改为约 1 MiB 一次流式写入 ByteStore；MPV 不再为了 152901 的尾部索引串行等待多个 2 MiB Range 完整结束。
+- 普通 urgentPlayback 同样流式写入，让未缓存 Seek 的第一批数据更早到达播放器；后台 sequential 仍保留持久双 Session 大块下载。
+- Deployment Target 继续保持 iOS 15.0；NAS 仍不承载任何媒体字节。
 
 ### 0.9.1：Seek 首帧优先 + MPV Metal 输出 + 可见缓冲历史
 
@@ -104,7 +114,7 @@
 2. 等待 `Validate Source` 成功。
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-5. 解压获得 `EmbyPlayerLab-0.9.1-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+5. 解压获得 `EmbyPlayerLab-0.9.2-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
 首次构建会通过 CocoaPods 安装固定版本 KTVHTTPCache 3.1.0（旧诊断路径），并通过 Swift Package Manager 解析 MPVKit 0.41.0-n8.1.2。
 
@@ -113,7 +123,7 @@
 - 密码不落盘，AccessToken 保存到 Keychain。
 - KTVHTTPCache 自带文件日志默认关闭，避免临时播放 URL 进入第三方日志。
 - App 自有日志只记录原始主机、localhost 端口、缓存字节和速度，不记录完整代理 URL。
-- KTVHTTPCache 3.1.0 为 MIT；正式兼容引擎使用 MPVKit 的 LGPL 产品。KSPlayer 不再链接进 v0.9.1 正式 target。
+- KTVHTTPCache 3.1.0 为 MIT；正式兼容引擎使用 MPVKit 的 LGPL 产品。KSPlayer 不再链接进 v0.9.2 正式 target。
 
 ## 0.2.1 修复
 

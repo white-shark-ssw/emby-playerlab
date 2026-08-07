@@ -22,7 +22,7 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1783,
-    "sha256": "d5d31a4236ee926a7fa87f2fb8d6f46b9c7155910049b2a368534f8e66fb19cf"
+    "sha256": "18ff1026afca105f985187ebd4a32388bb34a8783112ceb9504b845fa3c09fa1"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -41,8 +41,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 25254,
-    "sha256": "757089d8f9ca2726875368c06bdf4aed68afa0777fe30a6c5e68d753b30b91ed"
+    "bytes": 26378,
+    "sha256": "3d9462e01159e5e6e07efd741e303c087b4184d909500a4c020e3c6f81351bf2"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -232,7 +232,7 @@
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1062,
-    "sha256": "2fa0a56f852c1b0216bec9a1ba792fa6cff1408b33a3b52c6b2b347097220d41"
+    "sha256": "f685068f9175158fc30fa04a968c65004c8082901320a54e08d7833f1ea49842"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -306,8 +306,8 @@
   },
   {
     "path": "Sources/Player/PlayerController.swift",
-    "bytes": 34486,
-    "sha256": "0e356287df324423fd8eb1b227300d800e701f75c30a99195e663fcfa0266bfb"
+    "bytes": 35425,
+    "sha256": "37c42aa1ef42ae9c48487397c1ea85f5345a36921f7104d98d1276f82629f2fc"
   },
   {
     "path": "Sources/Player/PlayerEngine.swift",
@@ -401,8 +401,8 @@
   },
   {
     "path": "Sources/Transport/UnifiedMediaTransportSession.swift",
-    "bytes": 22414,
-    "sha256": "5c30e82f7bd7f244aba4b45aa3a3de65b8ba5c128f2b4459521b0c49a460e673"
+    "bytes": 25730,
+    "sha256": "752c0bfe08d1fd86a99fb3ab31786f01e21331e2c3762a34cf07c939f9fed568"
   },
   {
     "path": "Sources/UI/AVIOBenchmarkView.swift",
@@ -426,8 +426,8 @@
   },
   {
     "path": "Sources/UI/BufferedTimelineSlider.swift",
-    "bytes": 5168,
-    "sha256": "2e56fad50e897b63a4e445bd03705ec86723d38cf8c17fb887fcbf28c695ee15"
+    "bytes": 5152,
+    "sha256": "6a65a9abb251601eef748793f0c920201d94bce46cf320f4e4bd08bce1d29d2c"
   },
   {
     "path": "Sources/UI/KSAVIOPlayerSurface.swift",
@@ -497,7 +497,7 @@
   {
     "path": "docs/BUILD_REPORT.md",
     "bytes": 2192,
-    "sha256": "71ed57b2801f333631e75210210487846327fe45988cafd5ef039a8dbc785363"
+    "sha256": "cccb24ce32b08470e4a18a239909bd4d3477d6b773677169ca10093a0939368d"
   },
   {
     "path": "docs/CHANGELOG_0.1.0.md",
@@ -735,6 +735,11 @@
     "sha256": "2370870cfb92323963867357e56804d25c1198ab3e5e14fe8662b298b97455d0"
   },
   {
+    "path": "docs/CHANGELOG_0.9.2.md",
+    "bytes": 1373,
+    "sha256": "588f2dd296846c9082a3be263926b6980e1f441bf9486011a523f6384080d83e"
+  },
+  {
     "path": "docs/GITHUB_BUILD_FIX_0.5.1.md",
     "bytes": 1701,
     "sha256": "516d1e1bb3e26c51bf0ce41c35ccc5ad31bde85e3afb6b1d92f23a2735f384e6"
@@ -783,6 +788,11 @@
     "path": "docs/LOG_ANALYSIS_0.9.1.md",
     "bytes": 2721,
     "sha256": "07a05948b74939d7e8557c822c83a8a5df1ce57c544024de881ac3553b8e7f4e"
+  },
+  {
+    "path": "docs/LOG_ANALYSIS_0.9.2.md",
+    "bytes": 1337,
+    "sha256": "ac9b717b10cbb87d41ab41c0d548009e815cea8a94bc662b8aad9ceaaa5d0408"
   },
   {
     "path": "docs/RESEARCH_NOTES.md",
@@ -935,6 +945,11 @@
     "sha256": "a439e67de2fb8c9f1b9c830ff113ee54634b173a8877bbeb804735278486fdf5"
   },
   {
+    "path": "docs/TEST_CHECKLIST_0.9.2.md",
+    "bytes": 1656,
+    "sha256": "9255e2dedeb6754cd9f888ac4fe614056b4100d85a46e5ddf94df7c541b2c0d8"
+  },
+  {
     "path": "docs/THIRD_PARTY_KTVHTTPCACHE.md",
     "bytes": 733,
     "sha256": "dd63c7a8bc6fd29a5c39e0fa0fc2799566d91d70baadbbd1ed0af34b1389177b"
@@ -952,7 +967,7 @@
   {
     "path": "project.yml",
     "bytes": 1397,
-    "sha256": "1ee05e5be5a8cf488787c96456675a478fde3c3b37274b5a5680f52f6aae8066"
+    "sha256": "c5de228f42b405798c9b9ee71f766bb5365e3f3b29ee69c107bead868fb8138a"
   },
   {
     "path": "scripts/RangeMapSmoke.swift",
