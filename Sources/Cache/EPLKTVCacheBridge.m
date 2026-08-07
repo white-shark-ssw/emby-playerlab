@@ -3,6 +3,8 @@
 
 static NSString * const EPLKTV115UserAgent = @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 115Browser/36.0.0 Chromium/125.0";
 
+static NSString * const EPLKTV115UserAgent = @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 115Browser/36.0.0 Chromium/125.0";
+
 @interface EPLKTVPreloadHandle () <KTVHCDataLoaderDelegate>
 @property (nonatomic, strong) KTVHCDataLoader *loader;
 @property (nonatomic, copy, nullable) EPLKTVPreloadProgressHandler progressHandler;
