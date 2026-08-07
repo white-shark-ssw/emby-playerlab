@@ -19,6 +19,8 @@ mpv = read("Sources/Player/MPVPlayerEngine.swift")
 project = read("project.yml")
 info = read("Config/Info.plist")
 identity = read("Sources/Core/AppIdentity.swift")
+validate_workflow = read(".github/workflows/validate-source.yml")
+build_workflow = read(".github/workflows/build-unsigned-ipa.yml")
 
 require("PersistentRangeStreamLane" in http, "persistent Range stream lane missing")
 require("private lazy var session: URLSession" in http, "each stream lane must own one long-lived URLSession")
@@ -54,5 +56,17 @@ require(project.count('MARKETING_VERSION: "0.11.0"') == 2, "project marketing ve
 require(project.count('CURRENT_PROJECT_VERSION: "54"') == 2, "project build number must be 54 in both settings scopes")
 require("<string>0.11.0</string>" in info and "<string>54</string>" in info, "Info.plist version/build mismatch")
 require('sourceVersion = "0.11.0"' in identity, "AppIdentity source version mismatch")
+
+for temporary_path in [
+    ".github/workflows/apply-transport-v3-core.yml",
+    "scripts/apply_transport_v3_core.py",
+    "scripts/refine_transport_v3.py",
+]:
+    require(not Path(temporary_path).exists(), f"temporary construction file must not ship: {temporary_path}")
+
+require("Audit Transport v3 invariants" in validate_workflow and "check_transport_v3_invariants.py" in validate_workflow, "Validate Source must enforce Transport v3 invariants")
+require("Audit Transport v3 invariants" in build_workflow and "check_transport_v3_invariants.py" in build_workflow, "unsigned IPA build must enforce Transport v3 invariants")
+require('IPA_NAME="EmbyPlayerLab-0.11.0-${GITHUB_SHA::7}-unsigned.ipa"' in build_workflow, "unsigned IPA filename must identify v0.11.0")
+require('scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0"' in build_workflow, "Release build must still validate iOS 15.0 minimum OS")
 
 print("Transport v3 invariants passed")
