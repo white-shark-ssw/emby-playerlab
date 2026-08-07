@@ -3,6 +3,11 @@
 
 static NSString * const EPLKTV115UserAgent = @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 115Browser/36.0.0 Chromium/125.0";
 
+static BOOL EPLKTVIsSensitiveRemoteHeader(NSString *key) {
+    NSString *lower = key.lowercaseString;
+    return [lower isEqualToString:@"authorization"] || [lower isEqualToString:@"cookie"] || [lower isEqualToString:@"set-cookie"] || [lower hasPrefix:@"x-emby-"] || [lower hasPrefix:@"x-mediabrowser-"];
+}
+
 @interface EPLKTVPreloadHandle () <KTVHCDataLoaderDelegate>
 @property (nonatomic, strong) KTVHCDataLoader *loader;
 @property (nonatomic, copy, nullable) EPLKTVPreloadProgressHandler progressHandler;
@@ -16,9 +21,8 @@ static NSString * const EPLKTV115UserAgent = @"Mozilla/5.0 (Windows NT 10.0; Win
     self = [super init];
     if (self) {
         NSMutableDictionary<NSString *, NSString *> *requestHeaders = [headers mutableCopy] ?: [NSMutableDictionary dictionary];
-        NSSet<NSString *> *sensitiveHeaderKeys = [NSSet setWithArray:@[@"authorization", @"x-emby-token", @"x-mediabrowser-token", @"cookie", @"set-cookie"]];
         for (NSString *key in requestHeaders.allKeys.copy) {
-            if ([sensitiveHeaderKeys containsObject:key.lowercaseString]) [requestHeaders removeObjectForKey:key];
+            if (EPLKTVIsSensitiveRemoteHeader(key)) [requestHeaders removeObjectForKey:key];
         }
         requestHeaders[@"User-Agent"] = EPLKTV115UserAgent;
         requestHeaders[@"Accept-Encoding"] = @"identity";
@@ -83,7 +87,7 @@ static NSString * const EPLKTV115UserAgent = @"Mozilla/5.0 (Windows NT 10.0; Win
     ]];
     for (NSString *key in allowedHeaderKeys) {
         NSString *lower = key.lowercaseString;
-        if ([lower isEqualToString:@"authorization"] || [lower isEqualToString:@"cookie"] || [lower isEqualToString:@"x-emby-token"] || [lower isEqualToString:@"x-mediabrowser-token"] || [lower isEqualToString:@"user-agent"]) continue;
+        if (EPLKTVIsSensitiveRemoteHeader(key) || [lower isEqualToString:@"user-agent"]) continue;
         [keys addObject:key];
     }
     [KTVHTTPCache downloadSetWhitelistHeaderKeys:keys.array];
