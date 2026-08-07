@@ -1,0 +1,56 @@
+name: Apply v0.9.4 EDR Fix
+
+on:
+  push:
+    branches: [chatgpt/ci-fix-0.9.4]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/ci-fix-0.9.4
+      - name: Apply availability-safe EDR override
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Sources/Player/MPVPlayerEngine.swift')
+          s = p.read_text()
+          old = '''    override var wantsExtendedDynamicRangeContent: Bool {
+              get { super.wantsExtendedDynamicRangeContent }
+              set {
+                  if Thread.isMainThread { super.wantsExtendedDynamicRangeContent = newValue }
+                  else { DispatchQueue.main.sync { super.wantsExtendedDynamicRangeContent = newValue } }
+              }
+          }
+          '''
+          new = '''    @available(iOS 16.0, *)
+          override var wantsExtendedDynamicRangeContent: Bool {
+              get { super.wantsExtendedDynamicRangeContent }
+              set {
+                  if Thread.isMainThread { setExtendedDynamicRange(newValue) }
+                  else { DispatchQueue.main.sync { [self] in setExtendedDynamicRange(newValue) } }
+              }
+          }
+
+          @available(iOS 16.0, *)
+          private func setExtendedDynamicRange(_ value: Bool) { super.wantsExtendedDynamicRangeContent = value }
+          '''
+          if old in s:
+              p.write_text(s.replace(old, new, 1))
+          elif '@available(iOS 16.0, *)\n    override var wantsExtendedDynamicRangeContent' not in s:
+              raise SystemExit('Expected EDR override not found')
+          PY
+          if git diff --quiet -- Sources/Player/MPVPlayerEngine.swift; then
+            echo "EDR fix already applied"
+            exit 0
+          fi
+          git config user.name "ChatGPT CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add Sources/Player/MPVPlayerEngine.swift
+          git commit -m "Fix iOS 15 EDR availability compile error"
+          git push origin HEAD:chatgpt/ci-fix-0.9.4
