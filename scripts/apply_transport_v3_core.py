@@ -4,9 +4,11 @@ from pathlib import Path
 def replace_once(path: str, old: str, new: str) -> None:
     p = Path(path)
     text = p.read_text()
-    if new in text:
+    if new and new in text:
         return
     if old not in text:
+        if not new:
+            return
         raise SystemExit(f"Transport v3 patch target not found: {path}")
     p.write_text(text.replace(old, new, 1))
 
