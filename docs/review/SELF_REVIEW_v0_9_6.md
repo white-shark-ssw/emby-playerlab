@@ -11,11 +11,12 @@ v0.9.5 compiled successfully but regressed startup scheduling on item 63368. The
 3. A cancelled Slot 1 sequential task must not restart from `finishSlot -> scheduleSlots` while critical work is still queued or active.
 4. Playback urgent and metadata demand use independent pending state; one must never overwrite the other.
 5. Tiny tail metadata may use an idle Slot 1 while Slot 0 is urgent. Large metadata stays on Slot 0 to avoid a slow worker-1 cold start.
-6. Slot 1 sequential may run only when Slot 0 is sequential and no playback urgent/metadata work is pending.
-7. Sequential Slot 0 and Slot 1 must not intentionally overlap an urgent playback range.
-8. Seek/blocked-read priority is higher than throughput optimization.
-9. Closing playback must not requeue cancelled critical work.
-10. Deployment Target remains iOS 15.0.
+6. Tiny metadata may use Slot 1 only when Slot 1 is outside its failure cooldown; after a Slot 1 metadata failure, the metadata must fall back to Slot 0 instead of immediately retrying worker 1.
+7. Slot 1 sequential may run only when Slot 0 is sequential and no playback urgent/metadata work is pending.
+8. Sequential Slot 0 and Slot 1 must not intentionally overlap an urgent playback range.
+9. Seek/blocked-read priority is higher than throughput optimization.
+10. Closing playback must not requeue cancelled critical work.
+11. Deployment Target remains iOS 15.0.
 
 ## Scenario walk-through
 
@@ -26,7 +27,7 @@ Expected sequence:
 - Slot 0 initial sequential is promoted to urgent 0..16 MiB.
 - Slot 1 remains idle; it does not start background sequential merely because Slot 0 became urgent.
 - AVPlayer tail metadata probe (~331 KiB) is classified metadata.
-- Because metadata is <= 2 MiB and Slot 0 is already urgent, Slot 1 may serve that metadata immediately.
+- Because metadata is <= 2 MiB and Slot 0 is already urgent, Slot 1 may serve that metadata immediately if worker 1 is not cooling down.
 - Metadata completion does not start background Slot 1 while Slot 0 is still urgent.
 - After critical startup work clears, both slots may return to sequential preload.
 - No ResourceLoader read should wait behind a 32 MiB background claim.
@@ -46,7 +47,7 @@ Expected sequence:
 Expected sequence:
 
 - Slot 0 serves urgent playback.
-- Tiny tail metadata may use Slot 1 concurrently.
+- Tiny tail metadata may use Slot 1 concurrently when worker 1 is healthy.
 - MPV startup fixes from v0.9.5 remain unchanged.
 
 ### Buffered continuous playback
@@ -74,6 +75,15 @@ Expected sequence:
 - Neither pending range can overwrite the other.
 - Playback urgent is served first by Slot 0; tiny metadata may use Slot 1 only when safe.
 
+### Slot 1 metadata failure
+
+Expected sequence:
+
+- Failure sets worker-1 cooldown and requeues metadata once.
+- The tiny-metadata fast path checks the cooldown.
+- While Slot 0 is still urgent, metadata waits rather than instantly retrying Slot 1.
+- When Slot 0 becomes free, Slot 0 serves the requeued metadata.
+
 ### Close / cancellation
 
 Expected sequence:
@@ -87,6 +97,7 @@ Expected sequence:
 Do not merge unless:
 
 - the source code matches every invariant above;
+- `python3 scripts/check_transport_scheduler_invariants.py` passes;
 - temporary patch workflows/scripts are removed;
 - final PR diff contains only intended source/config/review/changelog changes;
 - Xcode 16.4 generic iOS device build passes;
