@@ -34,7 +34,7 @@ final class KTVAVPlayerEngine: PlayerEngine {
                 DiagnosticsLogger.shared.log("KTVPlayer", "open warmup ready item=\(self.source.itemId)")
                 self.underlying.prepare(
                     url: session.proxyURL,
-                    headers: headers,
+                    headers: [:],
                     preferredForwardBuffer: preferredForwardBuffer,
                     startPosition: startPosition
                 )

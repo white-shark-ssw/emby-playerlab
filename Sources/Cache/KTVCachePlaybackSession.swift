@@ -47,8 +47,8 @@ final class KTVCachePlaybackSession {
     private let cacheBudgetBytes: Int64
     private let baselineCacheBytes: Int64
     private let lock = NSLock()
-    private let segmentBytes: Int64 = 32 * 1_048_576
-    private let singleBaselineSeconds: TimeInterval = 10
+    private let segmentBytes: Int64 = 512 * 1_048_576
+    private let singleBaselineSeconds: TimeInterval = 0.75
     private let pipelineLookaheadSegments = 4
     private let schedulerAnchorByte: Int64 = 0
     private let primaryLane = LaneState(id: .primary)
@@ -104,7 +104,7 @@ final class KTVCachePlaybackSession {
         self.dualWindowStartBytes = baselineCacheBytes
         DiagnosticsLogger.shared.log(
             "KTVCache",
-            "proxy started originalHost=\(source.url.host ?? "unknown") proxyPort=\(proxyURL.port ?? 0) cacheBudget=\(cacheBytes)B target=\(targetCacheBytes)B segment=\(segmentBytes)B scheduler=contiguous-frontier-1x2 metadataWarmup=\(openWarmupEnabled) \(NetworkPathMonitor.shared.diagnosticSummary)"
+            "proxy started originalHost=\(source.url.host ?? "unknown") proxyPort=\(proxyURL.port ?? 0) cacheBudget=\(cacheBytes)B target=\(targetCacheBytes)B segment=\(segmentBytes)B scheduler=transport-v2-long-range-1x2 uaProfile=115Browser/36.0.0 metadataWarmup=\(openWarmupEnabled) \(NetworkPathMonitor.shared.diagnosticSummary)"
         )
     }
 
@@ -127,8 +127,11 @@ final class KTVCachePlaybackSession {
         if shouldWarmLargeMP4Metadata {
             startLargeMP4StartupWarmup()
         } else {
-            startInitialPreloadOnce()
+            // Open the localhost player first. Starting the preload loader a fraction later avoids
+            // racing two fresh KTV requests for the same initial bytes while still warming the
+            // long-lived background connection almost immediately.
             finishPlaybackPreparation()
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.35) { [weak self] in self?.startInitialPreloadOnce() }
         }
     }
 
@@ -487,20 +490,9 @@ final class KTVCachePlaybackSession {
     }
 
     private func pauseBackgroundForPlaybackDemand() {
-        lock.lock()
-        primaryLane.generation &+= 1
-        secondaryLane.generation &+= 1
-        let primary = primaryLane.loader
-        let secondary = secondaryLane.loader
-        primaryLane.loader = nil
-        secondaryLane.loader = nil
-        primaryLane.active = false
-        secondaryLane.active = false
-        rangeMap.clearDownloading(lane: LaneID.primary.rawValue)
-        rangeMap.clearDownloading(lane: LaneID.secondary.rawValue)
-        lock.unlock()
-        primary?.close()
-        secondary?.close()
+        // Keep the warmed primary 115/CDN connection alive. Repeatedly closing lane A destroys
+        // connection reuse and CDN/TCP warm-up; foreground playback only asks lane B to yield.
+        stopSecondaryLane(reason: "playback-priority-yield-secondary")
     }
 
     private func stopSecondaryLane(reason: String) {

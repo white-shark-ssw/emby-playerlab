@@ -69,7 +69,9 @@ final class PlayerController: ObservableObject {
     }
 
     var mpvDisplayLayer: CAMetalLayer? {
-        (engine as? MPVPlayerEngine)?.displayLayer
+        if let engine = engine as? MPVPlayerEngine { return engine.displayLayer }
+        if let engine = engine as? KTVMPVPlayerEngine { return engine.displayLayer }
+        return nil
     }
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
@@ -79,9 +81,10 @@ final class PlayerController: ObservableObject {
         self.orchestrator = orchestrator
         let initialKind = orchestrator.currentKind
         let configuration = MediaTransportConfiguration.current()
-        // v0.9 keeps one unified byte source alive for the whole playback session so
-        // AVPlayer and mpv can switch consumers without opening a second 115 pipeline.
-        let transportContext: PlaybackTransportContext? = PlaybackTransportContext(source: source, client: client, configuration: configuration)
+        // Transport v2 automatic engines use the KTV localhost proxy. Build UnifiedTransport only
+        // for explicit diagnostic engines so it cannot open or cancel 115 connections in parallel.
+        let usesUnifiedTransport = initialKind == .resourceLoaderAVPlayer || initialKind == .transportAVPlayer || initialKind == .ksAVIO
+        let transportContext: PlaybackTransportContext? = usesUnifiedTransport ? PlaybackTransportContext(source: source, client: client, configuration: configuration) : nil
         self.transportContext = transportContext
         self.engineKind = initialKind
         if initialKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "engine create begin item=\(source.itemId)") }
@@ -450,7 +453,7 @@ final class PlayerController: ObservableObject {
         case .avPlayer:
             return AVPlayerEngine()
         case .mpv:
-            return MPVPlayerEngine(sharedTransportSession: transportContext?.session)
+            return KTVMPVPlayerEngine(source: source, configuration: configuration)
         }
     }
 

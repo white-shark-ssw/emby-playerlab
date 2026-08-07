@@ -1,6 +1,8 @@
 #import "EPLKTVCacheBridge.h"
 #import <KTVHTTPCache/KTVHTTPCache.h>
 
+static NSString * const EPLKTV115UserAgent = @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 115Browser/36.0.0 Chromium/125.0";
+
 @interface EPLKTVPreloadHandle () <KTVHCDataLoaderDelegate>
 @property (nonatomic, strong) KTVHCDataLoader *loader;
 @property (nonatomic, copy, nullable) EPLKTVPreloadProgressHandler progressHandler;
@@ -14,6 +16,8 @@
     self = [super init];
     if (self) {
         NSMutableDictionary<NSString *, NSString *> *requestHeaders = [headers mutableCopy] ?: [NSMutableDictionary dictionary];
+        [@[@"Authorization", @"X-Emby-Token", @"X-MediaBrowser-Token", @"Cookie", @"Set-Cookie"] enumerateObjectsUsingBlock:^(NSString *key, NSUInteger idx, BOOL *stop) { [requestHeaders removeObjectForKey:key]; }];
+        requestHeaders[@"User-Agent"] = EPLKTV115UserAgent;
         requestHeaders[@"Accept-Encoding"] = @"identity";
         requestHeaders[@"Connection"] = @"keep-alive";
         if (endOffset >= startOffset && endOffset >= 0) requestHeaders[@"Range"] = [NSString stringWithFormat:@"bytes=%lld-%lld", MAX(0, startOffset), endOffset];
@@ -65,6 +69,11 @@
     long long safeLength = MAX(64LL * 1024LL * 1024LL, maxCacheLength);
     [KTVHTTPCache cacheSetMaxCacheLength:safeLength];
     [KTVHTTPCache downloadSetTimeoutInterval:45];
+    [KTVHTTPCache downloadSetAdditionalHeaders:@{
+        @"User-Agent": EPLKTV115UserAgent,
+        @"Accept-Encoding": @"identity",
+        @"Connection": @"keep-alive"
+    }];
 
     NSMutableOrderedSet<NSString *> *keys = [NSMutableOrderedSet orderedSetWithArray:@[
         @"User-Agent", @"Connection", @"Accept", @"Accept-Encoding", @"Accept-Language", @"Range", @"Referer", @"Origin"
