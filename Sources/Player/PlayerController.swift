@@ -69,7 +69,9 @@ final class PlayerController: ObservableObject {
     }
 
     var mpvDisplayLayer: CAMetalLayer? {
-        (engine as? MPVPlayerEngine)?.displayLayer
+        if let engine = engine as? MPVPlayerEngine { return engine.displayLayer }
+        if let engine = engine as? KTVMPVPlayerEngine { return engine.displayLayer }
+        return nil
     }
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
@@ -79,8 +81,8 @@ final class PlayerController: ObservableObject {
         self.orchestrator = orchestrator
         let initialKind = orchestrator.currentKind
         let configuration = MediaTransportConfiguration.current()
-        // v0.9 keeps one unified byte source alive for the whole playback session so
-        // AVPlayer and mpv can switch consumers without opening a second 115 pipeline.
+        // Keep the diagnostic UnifiedTransport context lazy and available for manual engine switches.
+        // Construction performs no network I/O; automatic KTV/MPV Transport v2 does not consume it.
         let transportContext: PlaybackTransportContext? = PlaybackTransportContext(source: source, client: client, configuration: configuration)
         self.transportContext = transportContext
         self.engineKind = initialKind
@@ -298,6 +300,14 @@ final class PlayerController: ObservableObject {
         engineGeneration += 1
         previousEngine.onSnapshot = nil
         previousEngine.onSeekCompleted = nil
+        let ktvCacheHandoff: KTVCachePlaybackSession?
+        if kind == .ktvAVPlayer || kind == .mpv {
+            if let previous = previousEngine as? KTVAVPlayerEngine { ktvCacheHandoff = previous.takeCacheSessionForHandoff() }
+            else if let previous = previousEngine as? KTVMPVPlayerEngine { ktvCacheHandoff = previous.takeCacheSessionForHandoff() }
+            else { ktvCacheHandoff = nil }
+        } else {
+            ktvCacheHandoff = nil
+        }
         engine = SuspendedPlayerEngine(kind: previousKind)
         resetWatchdog()
         stallMessage = "正在自动切换到 \(kind.title)：\(reason)"
@@ -316,7 +326,7 @@ final class PlayerController: ObservableObject {
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
 
-            let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext)
+            let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext, ktvCacheSession: ktvCacheHandoff)
             self.engine = nextEngine
             self.engineKind = kind
             self.orchestrator.didSwitch(to: kind)
@@ -419,12 +429,13 @@ final class PlayerController: ObservableObject {
         kind: PlayerEngineKind,
         source: ResolvedPlaybackSource,
         client: EmbyAPIClient,
-        transportContext: PlaybackTransportContext?
+        transportContext: PlaybackTransportContext?,
+        ktvCacheSession: KTVCachePlaybackSession? = nil
     ) -> PlayerEngine {
         let configuration = MediaTransportConfiguration.current()
         switch kind {
         case .ktvAVPlayer:
-            return KTVAVPlayerEngine(source: source, configuration: configuration, cacheSession: nil)
+            return KTVAVPlayerEngine(source: source, configuration: configuration, cacheSession: ktvCacheSession)
         case .resourceLoaderAVPlayer:
             return AVPlayerEngine(
                 kind: .resourceLoaderAVPlayer,
@@ -450,7 +461,7 @@ final class PlayerController: ObservableObject {
         case .avPlayer:
             return AVPlayerEngine()
         case .mpv:
-            return MPVPlayerEngine(sharedTransportSession: transportContext?.session)
+            return KTVMPVPlayerEngine(source: source, configuration: configuration, cacheSession: ktvCacheSession)
         }
     }
 

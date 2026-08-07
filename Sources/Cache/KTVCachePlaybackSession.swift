@@ -47,8 +47,8 @@ final class KTVCachePlaybackSession {
     private let cacheBudgetBytes: Int64
     private let baselineCacheBytes: Int64
     private let lock = NSLock()
-    private let segmentBytes: Int64 = 32 * 1_048_576
-    private let singleBaselineSeconds: TimeInterval = 10
+    private let segmentBytes: Int64 = 512 * 1_048_576
+    private let singleBaselineSeconds: TimeInterval = 0.75
     private let pipelineLookaheadSegments = 4
     private let schedulerAnchorByte: Int64 = 0
     private let primaryLane = LaneState(id: .primary)
@@ -104,7 +104,7 @@ final class KTVCachePlaybackSession {
         self.dualWindowStartBytes = baselineCacheBytes
         DiagnosticsLogger.shared.log(
             "KTVCache",
-            "proxy started originalHost=\(source.url.host ?? "unknown") proxyPort=\(proxyURL.port ?? 0) cacheBudget=\(cacheBytes)B target=\(targetCacheBytes)B segment=\(segmentBytes)B scheduler=contiguous-frontier-1x2 metadataWarmup=\(openWarmupEnabled) \(NetworkPathMonitor.shared.diagnosticSummary)"
+            "proxy started originalHost=\(source.url.host ?? "unknown") proxyPort=\(proxyURL.port ?? 0) cacheBudget=\(cacheBytes)B target=\(targetCacheBytes)B segment=\(segmentBytes)B scheduler=transport-v2-long-range-1x2 uaProfile=115Browser/36.0.0 metadataWarmup=\(openWarmupEnabled) \(NetworkPathMonitor.shared.diagnosticSummary)"
         )
     }
 
@@ -123,12 +123,15 @@ final class KTVCachePlaybackSession {
         playbackPreparationStarted = true
         lock.unlock()
 
-        probeOriginInBackground()
+        DiagnosticsLogger.shared.log("KTVOrigin", "probe skipped transport-v2 reason=avoid-second-UA-bound-115-link")
         if shouldWarmLargeMP4Metadata {
             startLargeMP4StartupWarmup()
         } else {
-            startInitialPreloadOnce()
+            // Open the localhost player first. Starting the preload loader a fraction later avoids
+            // racing two fresh KTV requests for the same initial bytes while still warming the
+            // long-lived background connection almost immediately.
             finishPlaybackPreparation()
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.35) { [weak self] in self?.startInitialPreloadOnce() }
         }
     }
 
@@ -165,17 +168,20 @@ final class KTVCachePlaybackSession {
     }
 
     func prioritizeSeek(position: Double, duration: Double) {
+        let now = Date()
         lock.lock()
         playbackPosition = max(0, position)
         if duration.isFinite, duration > 0 { playbackDuration = duration }
-        lastSeekAt = Date()
+        lastSeekAt = now
+        playbackPriorityUntil = max(playbackPriorityUntil, now.addingTimeInterval(1.0))
         let frontier = rangeMap.contiguousFrontier(from: schedulerAnchorByte)
         lock.unlock()
+        stopSecondaryLane(reason: "user-seek-yield-secondary")
         DiagnosticsLogger.shared.log(
             "BufferAnchor",
-            "reason=user-seek position=\(position) byteGuess=disabled schedulerAnchor=\(schedulerAnchorByte) frontier=\(frontier) action=keep-sequential-preload waitingForRealProxyDemand=true"
+            "reason=user-seek position=\(position) byteGuess=disabled schedulerAnchor=\(schedulerAnchorByte) frontier=\(frontier) action=keep-primary-yield-secondary waitingForRealProxyDemand=true"
         )
-        ensurePreloadActive(reason: "seek keeps contiguous frontier")
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.05) { [weak self] in self?.scheduleAvailableWorkers(reason: "user-seek-priority-ended") }
     }
 
     func yieldBandwidthToPlayback(position: Double, duration: Double, reason: String) {
@@ -312,8 +318,30 @@ final class KTVCachePlaybackSession {
         dualWindowStartedAt = Date()
         dualWindowStartBytes = EPLKTVCacheBridge.cacheLength(for: originalURL)
         lock.unlock()
-        DiagnosticsLogger.shared.log("KTVAdaptive", "contiguous primary warmup anchor=\(schedulerAnchorByte) baselineSeconds=\(Int(singleBaselineSeconds))")
+        DiagnosticsLogger.shared.log("KTVAdaptive", "contiguous primary warmup anchor=\(schedulerAnchorByte) baselineSeconds=\(String(format: "%.2f", singleBaselineSeconds))")
         scheduleAvailableWorkers(reason: "initial")
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + singleBaselineSeconds + 0.05) { [weak self] in self?.enableSecondaryAfterWarmup() }
+    }
+
+    private func enableSecondaryAfterWarmup() {
+        let now = Date()
+        let cacheBytes = EPLKTVCacheBridge.cacheLength(for: originalURL)
+        lock.lock()
+        guard !stopped, dualPhase == .singleBaseline else { lock.unlock(); return }
+        if now < playbackPriorityUntil {
+            let retryDelay = max(0.05, playbackPriorityUntil.timeIntervalSince(now) + 0.05)
+            lock.unlock()
+            DiagnosticsLogger.shared.log("KTVAdaptive", "dual warmup deferred by playback priority retryMs=\(Int(retryDelay * 1000))")
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + retryDelay) { [weak self] in self?.enableSecondaryAfterWarmup() }
+            return
+        }
+        let elapsed = max(now.timeIntervalSince(dualWindowStartedAt), 0.001)
+        singleLaneBaselineSpeed = Double(max(0, cacheBytes - dualWindowStartBytes)) / elapsed
+        dualPhase = .dualKept
+        let baseline = singleLaneBaselineSpeed
+        lock.unlock()
+        DiagnosticsLogger.shared.log("KTVAdaptive", "adjacent dual enabled baseline=\(Int(baseline))B/s trigger=session-warmup policy=persistent-until-error pipelineDepth=\(pipelineLookaheadSegments)")
+        scheduleAvailableWorkers(reason: "session-warmup-dual")
     }
 
     private func scheduleAvailableWorkers(reason: String) {
@@ -487,20 +515,9 @@ final class KTVCachePlaybackSession {
     }
 
     private func pauseBackgroundForPlaybackDemand() {
-        lock.lock()
-        primaryLane.generation &+= 1
-        secondaryLane.generation &+= 1
-        let primary = primaryLane.loader
-        let secondary = secondaryLane.loader
-        primaryLane.loader = nil
-        secondaryLane.loader = nil
-        primaryLane.active = false
-        secondaryLane.active = false
-        rangeMap.clearDownloading(lane: LaneID.primary.rawValue)
-        rangeMap.clearDownloading(lane: LaneID.secondary.rawValue)
-        lock.unlock()
-        primary?.close()
-        secondary?.close()
+        // Keep the warmed primary 115/CDN connection alive. Repeatedly closing lane A destroys
+        // connection reuse and CDN/TCP warm-up; foreground playback only asks lane B to yield.
+        stopSecondaryLane(reason: "playback-priority-yield-secondary")
     }
 
     private func stopSecondaryLane(reason: String) {

@@ -85,6 +85,21 @@ final class MPVPlayerEngine: PlayerEngine {
                 return
             }
         }
+        if sharedTransportSession == nil {
+            DiagnosticsLogger.shared.log("MPVStream", "load direct HTTP transport=KTVProxyTransportV2 host=\(url.host ?? "unknown")")
+            load(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, compatibilityMode: false)
+            return
+        }
+        if sharedTransportSession == nil {
+            DiagnosticsLogger.shared.log("MPVStream", "load direct HTTP transport=KTVProxyTransportV2 host=\(url.host ?? "unknown")")
+            load(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, compatibilityMode: false)
+            return
+        }
+        if sharedTransportSession == nil {
+            DiagnosticsLogger.shared.log("MPVStream", "load direct HTTP transport=KTVProxyTransportV2 host=\(url.host ?? "unknown")")
+            load(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, compatibilityMode: false)
+            return
+        }
         prepareUnifiedStreamAndLoad(
             url: url,
             headers: headers,
@@ -111,7 +126,7 @@ final class MPVPlayerEngine: PlayerEngine {
             "MPVCompatibility",
             "reload reason=\(reason) start=\(startPosition) mode=bad-interleaved-mp4"
         )
-        if streamBridge != nil {
+        if sharedTransportSession == nil || streamBridge != nil {
             load(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, compatibilityMode: true)
         } else {
             prepareUnifiedStreamAndLoad(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, compatibilityMode: true)
@@ -345,8 +360,9 @@ final class MPVPlayerEngine: PlayerEngine {
             // loadfile replace already stops the current item. Sending an explicit
             // stop first produces an extra MPV_END_FILE_REASON_STOP event and can
             // race with the next file load.
-            // libmpv never talks to 115 directly in v0.9. All bytes come from MPVUnifiedStreamBridge.
-            self.updateHTTPHeaders(handle: handle, headers: [:])
+            // Automatic Transport v2 points libmpv at KTV's localhost proxy. No Emby/115
+            // credentials are forwarded to libmpv; KTV owns the remote request headers.
+            self.updateHTTPHeaders(handle: handle, headers: self.streamBridge == nil ? headers : [:])
 
             let cacheSeconds = max(30, Int(preferredForwardBuffer.rounded()))
             self.setProperty(handle: handle, name: "cache", value: "yes")
@@ -379,7 +395,10 @@ final class MPVPlayerEngine: PlayerEngine {
                 "mode=\(compatibilityMode ? "bad-interleaved-mp4" : "normal") start=\(startPosition) cacheSecs=\(cacheSeconds)"
             )
 
-            let target = self.streamBridge == nil && url.isFileURL ? url.path : "embyunified://media"
+            let target: String
+            if self.streamBridge != nil { target = "embyunified://media" }
+            else if url.isFileURL { target = url.path }
+            else { target = url.absoluteString }
             _ = self.commandSync(handle, ["loadfile", target, "replace"])
         }
     }

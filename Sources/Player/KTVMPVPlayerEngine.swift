@@ -1,16 +1,18 @@
-import AVFoundation
 import Foundation
+import QuartzCore
 
-final class KTVAVPlayerEngine: PlayerEngine {
-    let kind: PlayerEngineKind = .ktvAVPlayer
+/// MPV backed by the same KTVHTTPCache localhost proxy used by native AVPlayer.
+/// libmpv never receives Emby/115 credentials or the final CDN URL directly in this mode.
+final class KTVMPVPlayerEngine: PlayerEngine {
+    let kind: PlayerEngineKind = .mpv
     var onSnapshot: ((PlayerSnapshot) -> Void)?
     var onSeekCompleted: ((SeekResult) -> Void)?
 
-    let player: AVPlayer
+    var displayLayer: CAMetalLayer { underlying.displayLayer }
 
     private let source: ResolvedPlaybackSource
     private let configuration: MediaTransportConfiguration
-    private let underlying: AVPlayerEngine
+    private let underlying = MPVPlayerEngine(sharedTransportSession: nil)
     private var cacheSession: KTVCachePlaybackSession?
     private var lastSnapshot = PlayerSnapshot()
 
@@ -18,30 +20,23 @@ final class KTVAVPlayerEngine: PlayerEngine {
         self.source = source
         self.configuration = configuration
         self.cacheSession = cacheSession
-        self.underlying = AVPlayerEngine(kind: .ktvAVPlayer)
-        self.player = underlying.player
         bindUnderlying()
     }
 
     func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
         do {
             let session: KTVCachePlaybackSession
-            if let cacheSession { session = cacheSession } else { session = try KTVCachePlaybackSession(source: source, configuration: configuration) }
+            if let cacheSession { session = cacheSession }
+            else { session = try KTVCachePlaybackSession(source: source, configuration: configuration, openWarmupEnabled: false) }
             cacheSession = session
-            DiagnosticsLogger.shared.log("KTVPlayer", "prepare proxyHost=\(session.proxyURL.host ?? "localhost") proxyPort=\(session.proxyURL.port ?? 0)")
+            DiagnosticsLogger.shared.log("KTVMPV", "prepare proxyHost=\(session.proxyURL.host ?? "localhost") proxyPort=\(session.proxyURL.port ?? 0) transport=KTVProxyTransportV2")
             session.prepareForPlayback { [weak self, weak session] in
                 guard let self, let session, self.cacheSession === session else { return }
-                DiagnosticsLogger.shared.log("KTVPlayer", "open warmup ready item=\(self.source.itemId)")
-                self.underlying.prepare(
-                    url: session.proxyURL,
-                    headers: [:],
-                    preferredForwardBuffer: preferredForwardBuffer,
-                    startPosition: startPosition
-                )
+                self.underlying.prepare(url: session.proxyURL, headers: [:], preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition)
             }
         } catch {
-            DiagnosticsLogger.shared.log("KTVPlayer", "proxy preparation failed, direct AVPlayer fallback error=\(error.localizedDescription)")
-            underlying.prepare(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition)
+            DiagnosticsLogger.shared.log("KTVMPV", "proxy preparation failed; direct MPV fallback without forwarded auth headers error=\(error.localizedDescription)")
+            underlying.prepare(url: url, headers: [:], preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition)
         }
     }
 
@@ -55,22 +50,20 @@ final class KTVAVPlayerEngine: PlayerEngine {
     }
 
     func reload(at seconds: Double) {
-        cacheSession?.ensurePreloadActive(reason: "same-engine reload")
+        cacheSession?.ensurePreloadActive(reason: "MPV same-engine reload")
         underlying.reload(at: seconds)
     }
 
     func recoverStall(position: Double, duration: Double) {
-        cacheSession?.ensurePreloadActive(reason: "AVPlayer stall at \(String(format: "%.2f", position))")
-        DiagnosticsLogger.shared.log("KTVPlayer", "stall keeps staged preload active position=\(position) duration=\(duration)")
+        cacheSession?.ensurePreloadActive(reason: "MPV stall at \(String(format: "%.2f", position))")
     }
 
     func transportMetrics() async -> TransportMetricsSnapshot? { cacheSession?.metrics() }
 
-
     func takeCacheSessionForHandoff() -> KTVCachePlaybackSession? {
         let session = cacheSession
         cacheSession = nil
-        if session != nil { DiagnosticsLogger.shared.log("KTVCache", "handoff AVPlayer -> FFmpeg item=\(source.itemId)") }
+        if session != nil { DiagnosticsLogger.shared.log("KTVCache", "handoff MPV -> next KTV engine item=\(source.itemId)") }
         return session
     }
 
@@ -95,9 +88,5 @@ final class KTVAVPlayerEngine: PlayerEngine {
             self.onSnapshot?(snapshot)
         }
         underlying.onSeekCompleted = { [weak self] result in self?.onSeekCompleted?(result) }
-        underlying.onConfirmedVideoFreeze = { [weak self] total in
-            guard let self, total >= 2 else { return }
-            MediaCompatibilityStore.markCompatibilityEngineRequired(itemId: self.source.itemId, reason: "confirmed-video-freeze-total-\(total)")
-        }
     }
 }
