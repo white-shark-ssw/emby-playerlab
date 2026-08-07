@@ -19,8 +19,6 @@ while text.count(ua_line) > 1:
     text = text.replace(ua_line + "\n" + ua_line, ua_line, 1)
 p.write_text(text)
 
-# KTV remote User-Agent must come only from the stable additional header. Do not allow AVPlayer/MPV
-# localhost request headers to override it, and strip sensitive headers case-insensitively.
 replace(path, '''        NSMutableDictionary<NSString *, NSString *> *requestHeaders = [headers mutableCopy] ?: [NSMutableDictionary dictionary];
         [@[@"Authorization", @"X-Emby-Token", @"X-MediaBrowser-Token", @"Cookie", @"Set-Cookie"] enumerateObjectsUsingBlock:^(NSString *key, NSUInteger idx, BOOL *stop) { [requestHeaders removeObjectForKey:key]; }];
         requestHeaders[@"User-Agent"] = EPLKTV115UserAgent;
@@ -44,15 +42,43 @@ replace(path, '''        if ([lower isEqualToString:@"authorization"] || [lower 
         [keys addObject:key];
 ''')
 
-# Avoid opening a second wrong-UA diagnostic 302/CDN request beside KTV's real transport.
 replace("Sources/Cache/KTVCachePlaybackSession.swift", '''        probeOriginInBackground()
         if shouldWarmLargeMP4Metadata {
 ''', '''        DiagnosticsLogger.shared.log("KTVOrigin", "probe skipped transport-v2 reason=avoid-second-UA-bound-115-link")
         if shouldWarmLargeMP4Metadata {
 ''')
 
-# Keep the lazy UnifiedTransport context available for explicit diagnostic engine switches. Merely
-# constructing it does not open the network; automatic KTV/MPV never consume the session.
+replace("Sources/Cache/KTVCachePlaybackSession.swift", '''    func prioritizeSeek(position: Double, duration: Double) {
+        lock.lock()
+        playbackPosition = max(0, position)
+        if duration.isFinite, duration > 0 { playbackDuration = duration }
+        lastSeekAt = Date()
+        let frontier = rangeMap.contiguousFrontier(from: schedulerAnchorByte)
+        lock.unlock()
+        DiagnosticsLogger.shared.log(
+            "BufferAnchor",
+            "reason=user-seek position=\\(position) byteGuess=disabled schedulerAnchor=\\(schedulerAnchorByte) frontier=\\(frontier) action=keep-sequential-preload waitingForRealProxyDemand=true"
+        )
+        ensurePreloadActive(reason: "seek keeps contiguous frontier")
+    }
+''', '''    func prioritizeSeek(position: Double, duration: Double) {
+        let now = Date()
+        lock.lock()
+        playbackPosition = max(0, position)
+        if duration.isFinite, duration > 0 { playbackDuration = duration }
+        lastSeekAt = now
+        playbackPriorityUntil = max(playbackPriorityUntil, now.addingTimeInterval(1.0))
+        let frontier = rangeMap.contiguousFrontier(from: schedulerAnchorByte)
+        lock.unlock()
+        stopSecondaryLane(reason: "user-seek-yield-secondary")
+        DiagnosticsLogger.shared.log(
+            "BufferAnchor",
+            "reason=user-seek position=\\(position) byteGuess=disabled schedulerAnchor=\\(schedulerAnchorByte) frontier=\\(frontier) action=keep-primary-yield-secondary waitingForRealProxyDemand=true"
+        )
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.05) { [weak self] in self?.scheduleAvailableWorkers(reason: "user-seek-priority-ended") }
+    }
+''')
+
 replace("Sources/Player/PlayerController.swift", '''        // Transport v2 automatic engines use the KTV localhost proxy. Build UnifiedTransport only
         // for explicit diagnostic engines so it cannot open or cancel 115 connections in parallel.
         let usesUnifiedTransport = initialKind == .resourceLoaderAVPlayer || initialKind == .transportAVPlayer || initialKind == .ksAVIO
