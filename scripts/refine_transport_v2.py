@@ -11,9 +11,16 @@ def replace(path: str, old: str, new: str, count: int = 1) -> None:
     p.write_text(text.replace(old, new, count))
 
 
+path = "Sources/Cache/EPLKTVCacheBridge.m"
+p = Path(path)
+text = p.read_text()
+ua_line = 'static NSString * const EPLKTV115UserAgent = @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 115Browser/36.0.0 Chromium/125.0";\n'
+while text.count(ua_line) > 1:
+    text = text.replace(ua_line + "\n" + ua_line, ua_line, 1)
+p.write_text(text)
+
 # KTV remote User-Agent must come only from the stable additional header. Do not allow AVPlayer/MPV
 # localhost request headers to override it, and strip sensitive headers case-insensitively.
-path = "Sources/Cache/EPLKTVCacheBridge.m"
 replace(path, '''        NSMutableDictionary<NSString *, NSString *> *requestHeaders = [headers mutableCopy] ?: [NSMutableDictionary dictionary];
         [@[@"Authorization", @"X-Emby-Token", @"X-MediaBrowser-Token", @"Cookie", @"Set-Cookie"] enumerateObjectsUsingBlock:^(NSString *key, NSUInteger idx, BOOL *stop) { [requestHeaders removeObjectForKey:key]; }];
         requestHeaders[@"User-Agent"] = EPLKTV115UserAgent;
