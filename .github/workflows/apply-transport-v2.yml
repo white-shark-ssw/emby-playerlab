@@ -1,0 +1,29 @@
+name: Apply Transport v2
+
+on:
+  push:
+    branches: [chatgpt/v0.10.0-transport-v2]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v0.10.0-transport-v2
+      - name: Apply Transport v2 source patch
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_transport_v2.py
+          if git diff --quiet; then
+            echo "Transport v2 source patch already applied"
+            exit 0
+          fi
+          git config user.name "ChatGPT CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add Sources/Cache/EPLKTVCacheBridge.m Sources/Cache/KTVCachePlaybackSession.swift Sources/Player/KTVAVPlayerEngine.swift Sources/Player/PlaybackOrchestrator.swift Sources/Player/PlayerEngine.swift Sources/Player/MPVPlayerEngine.swift Sources/Player/PlayerController.swift Sources/Core/AppIdentity.swift Config/Info.plist project.yml
+          git commit -m "Implement v0.10.0 Transport v2 local proxy path"
+          git push origin HEAD:chatgpt/v0.10.0-transport-v2
