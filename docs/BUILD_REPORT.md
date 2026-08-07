@@ -1,6 +1,6 @@
 # Build Report
 
-- Version: 0.9.3 (49)
+- Version: 0.9.4 (50)
 - Deployment Target: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Expected CI: Xcode 16.4, arm64 iPhoneOS Release
@@ -9,9 +9,9 @@
 - MPVKit: 0.41.0-n8.1.2 via Swift Package Manager, `MPVKit` LGPL product
 - KSPlayer: removed from formal target; legacy source guarded by `canImport(KSPlayer)`
 - Automatic native path: AVPlayer + UnifiedMediaTransportSession via AVAssetResourceLoader (no localhost HTTP)
-- Automatic compatibility path: libmpv + UnifiedMediaTransportSession via `mpv_stream_cb`; video output uses CAMetalLayer + gpu-next/Vulkan/MoltenVK + VideoToolbox
-- Unified cache: DownloadFirstSparseStore + PlaybackRangeMap
-- Upstream concurrency: exactly two normal 115/CDN slots; Slot 0 may service streamed urgent playback holes without cancelling Slot 1; urgent window is 8 MiB
+- Automatic compatibility path: libmpv + UnifiedMediaTransportSession via `mpv_stream_cb`; video output uses CAMetalLayer + gpu-next/Vulkan/MoltenVK + VideoToolbox; UI no longer forces drawableSize during layout
+- Unified cache: DownloadFirstSparseStore + PlaybackRangeMap; 16 MiB sequential claims commit progressively in 4 MiB pieces
+- Upstream concurrency: exactly two normal 115/CDN slots; Slot 0 may service streamed urgent playback holes without cancelling Slot 1; urgent window is 16 MiB
 - Seek anchor: real AVAssetResourceLoader byte demand / real mpv byte seek only; no time-to-byte proportional guess
 - Wi-Fi continuous preload: may use configured disk-cache budget rather than old fixed 128 MiB ceiling
 - Cellular background preload: explicit user opt-in

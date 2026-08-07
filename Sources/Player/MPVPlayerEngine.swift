@@ -21,6 +21,17 @@ final class MPVMetalLayer: CAMetalLayer {
             if Int(newValue.width) > 1, Int(newValue.height) > 1 { super.drawableSize = newValue }
         }
     }
+
+    // MPVKit's own iOS Metal layer marshals EDR changes to the main thread. MoltenVK/libplacebo
+    // may update this while changing video output parameters; UIKit screen EDR state must not be
+    // mutated from the renderer queue.
+    override var wantsExtendedDynamicRangeContent: Bool {
+        get { super.wantsExtendedDynamicRangeContent }
+        set {
+            if Thread.isMainThread { super.wantsExtendedDynamicRangeContent = newValue }
+            else { DispatchQueue.main.sync { super.wantsExtendedDynamicRangeContent = newValue } }
+        }
+    }
 }
 
 #if canImport(Libmpv)
@@ -248,6 +259,7 @@ final class MPVPlayerEngine: PlayerEngine {
         try require(mpv_set_option_string(handle, "gpu-api", "vulkan"), operation: "set Vulkan GPU API")
         check(mpv_set_option_string(handle, "gpu-context", "moltenvk"), operation: "set MoltenVK context")
         check(mpv_set_option_string(handle, "hwdec", "videotoolbox"), operation: "set hwdec")
+        check(mpv_set_option_string(handle, "video-rotate", "no"), operation: "disable automatic video rotation")
         check(mpv_set_option_string(handle, "hwdec-codecs", "all"), operation: "set hwdec codecs")
         check(mpv_set_option_string(handle, "hwdec-software-fallback", "yes"), operation: "set hw fallback")
         check(mpv_set_option_string(handle, "cache", "yes"), operation: "enable cache")
@@ -421,6 +433,7 @@ final class MPVPlayerEngine: PlayerEngine {
             snapshot.isBuffering = false
             snapshot.waitingReason = nil
             logAudioState(handle: handle, reason: "file-loaded")
+            logVideoState(handle: handle, reason: "file-loaded")
             emitOnMain()
         case MPV_EVENT_SEEK:
             snapshot.isBuffering = true
@@ -580,6 +593,18 @@ final class MPVPlayerEngine: PlayerEngine {
             "MPVAudio",
             "reason=\(reason) currentAO=\(currentAO) aid=\(aid) audioParams=\(audioParams)"
         )
+    }
+
+    private func logVideoState(handle: OpaquePointer, reason: String) {
+        let width = getStringProperty(handle: handle, name: "width") ?? "nil"
+        let height = getStringProperty(handle: handle, name: "height") ?? "nil"
+        let dwidth = getStringProperty(handle: handle, name: "dwidth") ?? "nil"
+        let dheight = getStringProperty(handle: handle, name: "dheight") ?? "nil"
+        let rotate = getStringProperty(handle: handle, name: "video-rotate") ?? "nil"
+        let aspect = getStringProperty(handle: handle, name: "video-aspect") ?? "nil"
+        let hwdec = getStringProperty(handle: handle, name: "hwdec-current") ?? "nil"
+        let params = getStringProperty(handle: handle, name: "video-out-params") ?? getStringProperty(handle: handle, name: "video-params") ?? "nil"
+        DiagnosticsLogger.shared.log("MPVVideoState", "reason=\(reason) size=\(width)x\(height) display=\(dwidth)x\(dheight) rotate=\(rotate) aspect=\(aspect) hwdec=\(hwdec) params=\(params)")
     }
 
     private func updateHTTPHeaders(handle: OpaquePointer, headers: [String: String]) {

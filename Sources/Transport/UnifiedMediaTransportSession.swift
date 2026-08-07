@@ -31,7 +31,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let resolver = RedirectResolver()
     private let client = RangeHTTPClient(maximumConnections: 2)
     private let blockBytes: Int64
-    private let urgentBlockBytes: Int64 = 8 * 1_048_576
+    private let urgentBlockBytes: Int64 = 16 * 1_048_576
     private let metadataUrgentBlockBytes: Int64 = 16 * 1_048_576
     private let initialSequentialBlockBytes: Int64 = 4 * 1_048_576
     private let largeFileInitialSequentialBlockBytes: Int64 = 1 * 1_048_576
@@ -259,10 +259,19 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         }
 
         if store.availableLength(from: range.lowerBound, maximumLength: min(Int64(range.count), urgentBlockBytes)) > 0 { return }
-        // If slot 0 already owns this demand, let it finish. If only slot 1 owns a much
-        // larger background block, duplicate at most urgentBlockBytes on slot 0 instead
-        // of forcing the player to wait for the entire background block.
-        if let slot0 = slotClaims[0], slot0.range.contains(range.lowerBound) { return }
+        // A concrete playback read must never wait for an entire background sequential block.
+        // If slot 0 owns the requested byte as a sequential claim, promote that same byte range
+        // to the streaming urgent lane so the first 1 MiB becomes visible immediately. Slot 1
+        // remains available for background throughput and may overlap safely in the sparse store.
+        if let slot0 = slotClaims[0], slot0.range.contains(range.lowerBound) {
+            if concretePlaybackDemand, slot0.role == .sequential {
+                DiagnosticsLogger.shared.log("UnifiedDemand", "promote slot0 sequential->urgent request=\(range.lowerBound)-\(range.upperBound) claim=\(slot0.range.lowerBound)-\(slot0.range.upperBound) reason=\(reason)")
+                installUrgent(range: range, metadata: metadata, reason: "promote-\(reason)")
+                cancelSlot(0, reason: "promote-current-demand")
+                scheduleSlots(reason: "promote-current-demand")
+            }
+            return
+        }
         installUrgent(range: range, metadata: metadata, reason: reason)
         scheduleSlots(reason: reason)
     }
@@ -357,41 +366,58 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: nil, error: MediaTransportError.cancelled)
             return
         }
+        var receivedForClaim: Int64 = 0
         do {
             let started = Date()
             if claim.role == .sequential {
-                let data: Data
-                do {
-                    data = try await client.fetch(resource: resolved, range: claim.range, lane: .preload(worker: slot))
-                } catch MediaTransportError.expiredURL {
-                    DiagnosticsLogger.shared.log("UnifiedTransport", "slot=\(slot) refreshing expired 115 URL")
-                    resource = nil
-                    resolved = try await resolve()
-                    data = try await client.fetch(resource: resolved, range: claim.range, lane: .preload(worker: slot))
+                // Keep a 16 MiB logical scheduler claim for throughput, but commit it to ByteStore
+                // in 4 MiB pieces on the persistent per-slot URLSession. AVPlayer/libmpv no longer
+                // has to wait for the complete 16 MiB Range before any of that block is readable.
+                let commitBytes: Int64 = 4 * 1_048_576
+                while receivedForClaim < Int64(claim.range.count) {
+                    try Task.checkCancellation()
+                    let lower = claim.range.lowerBound + receivedForClaim
+                    let upper = min(claim.range.upperBound, lower + commitBytes)
+                    let chunkRange = lower..<upper
+                    let data: Data
+                    do {
+                        data = try await client.fetch(resource: resolved, range: chunkRange, lane: .preload(worker: slot))
+                    } catch MediaTransportError.expiredURL {
+                        DiagnosticsLogger.shared.log("UnifiedTransport", "slot=\(slot) refreshing expired 115 URL")
+                        resource = nil
+                        resolved = try await resolve()
+                        continue
+                    }
+                    try Task.checkCancellation()
+                    try store.write(data, at: lower)
+                    receivedForClaim += Int64(data.count)
+                    rangeMap.insertPlayback(lower..<min(claim.range.upperBound, lower + Int64(data.count)))
+                    if receivedForClaim == Int64(data.count) {
+                        let firstChunkSeconds = max(Date().timeIntervalSince(started), 0.001)
+                        DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) first-chunk role=sequential range=\(claim.range.lowerBound)-\(claim.range.upperBound) bytes=\(data.count) ms=\(Int(firstChunkSeconds * 1000)) speedBps=\(Int(Double(data.count) / firstChunkSeconds))")
+                    }
+                    refreshMetrics(resource: resolved)
                 }
-                try Task.checkCancellation()
-                try store.write(data, at: claim.range.lowerBound)
                 let elapsed = max(Date().timeIntervalSince(started), 0.001)
-                let bps = Double(data.count) / elapsed
-                DiagnosticsLogger.shared.log(
-                    "UnifiedSlot",
-                    "slot=\(slot) finish role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) bytes=\(data.count) speedBps=\(Int(bps))"
-                )
-                finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: Int64(data.count), error: nil)
+                let bps = Double(receivedForClaim) / elapsed
+                DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) finish role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) bytes=\(receivedForClaim) speedBps=\(Int(bps)) progressive=true")
+                finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: receivedForClaim > 0 ? receivedForClaim : nil, error: nil)
             } else {
-                var received: Int64 = 0
                 var slowStartupRefreshUsed = false
-                while received < Int64(claim.range.count) {
-                    let remaining = (claim.range.lowerBound + received)..<claim.range.upperBound
+                while receivedForClaim < Int64(claim.range.count) {
+                    let remaining = (claim.range.lowerBound + receivedForClaim)..<claim.range.upperBound
                     let attemptStarted = Date()
                     var attemptReceived: Int64 = 0
                     var restartAfterSlowStartup = false
                     do {
                         for try await chunk in client.stream(resource: resolved, range: remaining, worker: slot) {
                             try Task.checkCancellation()
-                            try store.write(chunk, at: claim.range.lowerBound + received)
-                            received += Int64(chunk.count)
+                            try store.write(chunk, at: claim.range.lowerBound + receivedForClaim)
+                            receivedForClaim += Int64(chunk.count)
                             attemptReceived += Int64(chunk.count)
+                            let writtenLower = claim.range.lowerBound + receivedForClaim - Int64(chunk.count)
+                            let written = writtenLower..<min(claim.range.upperBound, writtenLower + Int64(chunk.count))
+                            if claim.role == .metadata { rangeMap.insertMetadata(written) } else { rangeMap.insertPlayback(written) }
                             if attemptReceived == Int64(chunk.count) {
                                 let firstChunkSeconds = max(Date().timeIntervalSince(attemptStarted), 0.001)
                                 let firstChunkBps = Double(chunk.count) / firstChunkSeconds
@@ -399,10 +425,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                                 if claim.role == .metadata, !slowStartupRefreshUsed, Date().timeIntervalSince(createdAt) < 35, firstChunkSeconds >= startupMetadataSlowFirstChunkSeconds, firstChunkBps < startupMetadataSlowFirstChunkBps {
                                     slowStartupRefreshUsed = true
                                     restartAfterSlowStartup = true
-                                    DiagnosticsLogger.shared.log("UnifiedRecovery", "slow-start metadata firstChunkMs=\(Int(firstChunkSeconds * 1000)) speedBps=\(Int(firstChunkBps)) received=\(received) action=refresh-115-source-and-resume")
+                                    DiagnosticsLogger.shared.log("UnifiedRecovery", "slow-start metadata firstChunkMs=\(Int(firstChunkSeconds * 1000)) speedBps=\(Int(firstChunkBps)) received=\(receivedForClaim) action=refresh-115-source-and-resume")
                                     break
                                 }
                             }
+                            refreshMetrics(resource: resolved)
                         }
                     } catch MediaTransportError.expiredURL {
                         DiagnosticsLogger.shared.log("UnifiedTransport", "slot=\(slot) refreshing expired 115 URL")
@@ -418,17 +445,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                     break
                 }
                 let elapsed = max(Date().timeIntervalSince(started), 0.001)
-                let bps = Double(received) / elapsed
-                DiagnosticsLogger.shared.log(
-                    "UnifiedSlot",
-                    "slot=\(slot) finish role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) bytes=\(received) speedBps=\(Int(bps)) streamed=true"
-                )
-                finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: received > 0 ? received : nil, error: nil)
+                let bps = Double(receivedForClaim) / elapsed
+                DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) finish role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) bytes=\(receivedForClaim) speedBps=\(Int(bps)) streamed=true")
+                finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: receivedForClaim > 0 ? receivedForClaim : nil, error: nil)
             }
         } catch is CancellationError {
-            finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: nil, error: MediaTransportError.cancelled)
+            finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: receivedForClaim > 0 ? receivedForClaim : nil, error: MediaTransportError.cancelled)
         } catch {
-            finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: nil, error: error)
+            finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: receivedForClaim > 0 ? receivedForClaim : nil, error: error)
         }
     }
 
@@ -446,7 +470,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             speedSamples.append(SpeedSample(date: Date(), bytes: downloadedBytes))
             pruneSpeedSamples()
 
-            if slot == 0, claim.role == .sequential {
+            if slot == 0, claim.role == .sequential, downloadedBytes >= Int64(claim.range.count) {
                 successfulPrimaryBlocks += 1
                 if !secondaryEnabled, successfulPrimaryBlocks >= 1 {
                     secondaryEnabled = true
@@ -525,6 +549,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private func isCancellation(_ error: Error) -> Bool {
         if error is CancellationError { return true }
         if let transportError = error as? MediaTransportError, case .cancelled = transportError { return true }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
         return false
     }
 

@@ -2,7 +2,7 @@
   {
     "path": ".github/workflows/build-unsigned-ipa.yml",
     "bytes": 5304,
-    "sha256": "aab99577fa1154dfe535d01a47c1cb0ca63a70ac56c92a205dac990ea5ea10ec"
+    "sha256": "0e2bc4b46eec7a863c8d0bd1ccccb3bef1c08037b0d77416fdf54ea6794796e5"
   },
   {
     "path": ".github/workflows/validate-source.yml",
@@ -22,7 +22,7 @@
   {
     "path": "Config/Info.plist",
     "bytes": 1783,
-    "sha256": "ee8522cf9e200f8fd5c9f67a198bd8710cd5910d4871adf99c854f9b00f023f3"
+    "sha256": "c0e256cca4ecf905aade529161fc4fd43c4aa93110891bdb13cf7daedb34d5cd"
   },
   {
     "path": "DELETE_THESE_FILES.txt",
@@ -41,8 +41,8 @@
   },
   {
     "path": "README.md",
-    "bytes": 27951,
-    "sha256": "a75b7fdbdeee1cffed5f00e0d76ba1698f5f8d8e60fc374780b2ad48f46b770d"
+    "bytes": 29269,
+    "sha256": "d80dc74a6049e31f1db9520038e6a0cee03f69ba76582af089c5856a501e9327"
   },
   {
     "path": "Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -232,7 +232,7 @@
   {
     "path": "Sources/Core/AppIdentity.swift",
     "bytes": 1062,
-    "sha256": "0cb5157964837dfc08765e2668b28fce2faed3681536a00f69fc24455792cbba"
+    "sha256": "e85dbc1e5421a1ec27be4283c15d828424834e81fc6a25d3d32d6ebb810c96d9"
   },
   {
     "path": "Sources/Core/KeychainStore.swift",
@@ -286,8 +286,8 @@
   },
   {
     "path": "Sources/Player/MPVPlayerEngine.swift",
-    "bytes": 31162,
-    "sha256": "d8b2dfeedee6fd66b89a69fa57e184155dedcfe7f6d3f1a566bfb5a2f30087be"
+    "bytes": 32907,
+    "sha256": "821cc9dce884aad39f1173c15991f70453a61fa0611ad150391b824d806993df"
   },
   {
     "path": "Sources/Player/MPVUnifiedStreamBridge.swift",
@@ -401,8 +401,8 @@
   },
   {
     "path": "Sources/Transport/UnifiedMediaTransportSession.swift",
-    "bytes": 30099,
-    "sha256": "f26b87e6f8ee72677fa41d2532fd7becd4df19d10acd95098c371ef0f73d03db"
+    "bytes": 32748,
+    "sha256": "1d02ceb65b260e628ed450297b4ea3b2eab275981941cf7ef98d62ceb911dfd8"
   },
   {
     "path": "Sources/UI/AVIOBenchmarkView.swift",
@@ -441,8 +441,8 @@
   },
   {
     "path": "Sources/UI/MPVPlayerSurface.swift",
-    "bytes": 1499,
-    "sha256": "7bef1c2ffdc4ab362e30d4de775feac0a6abc3d5f83783121a5983cfe08b0531"
+    "bytes": 2644,
+    "sha256": "18192f476f4edc5c4d33be5a179b57c015e76b162b86750cb9b830f1fbebc358"
   },
   {
     "path": "Sources/UI/PlaybackGestureOverlay.swift",
@@ -496,8 +496,8 @@
   },
   {
     "path": "docs/BUILD_REPORT.md",
-    "bytes": 2240,
-    "sha256": "e5df22c72b41e69137b7f1a3afebbcb970fe2386d36f950817ce53f4e9ed73d1"
+    "bytes": 2352,
+    "sha256": "25fe9841b684845c7f860ce8bcc79f012ffc738aff1c7ecc9ad660ef5174827e"
   },
   {
     "path": "docs/CHANGELOG_0.1.0.md",
@@ -745,6 +745,11 @@
     "sha256": "9e25aa2d7e23fbef3d3408bd24978d7f611ed1727d74a996a4a84f6079914d8e"
   },
   {
+    "path": "docs/CHANGELOG_0.9.4.md",
+    "bytes": 1120,
+    "sha256": "b60d964447710b56e54b2da502e79a1ef5e1ba46c8c404e642e98dde8933cab6"
+  },
+  {
     "path": "docs/GITHUB_BUILD_FIX_0.5.1.md",
     "bytes": 1701,
     "sha256": "516d1e1bb3e26c51bf0ce41c35ccc5ad31bde85e3afb6b1d92f23a2735f384e6"
@@ -803,6 +808,11 @@
     "path": "docs/LOG_ANALYSIS_0.9.3.md",
     "bytes": 1809,
     "sha256": "bdbaf50f0014a32bbf5eb5877393666a248489ca51c7f1ab678fbc1d2102f3eb"
+  },
+  {
+    "path": "docs/LOG_ANALYSIS_0.9.4.md",
+    "bytes": 2013,
+    "sha256": "ebffb3824ffc8504796d53f567cac6243241d53766629109fd79abc5388909d3"
   },
   {
     "path": "docs/RESEARCH_NOTES.md",
@@ -965,6 +975,11 @@
     "sha256": "b5b39f2a0732fbbc8d2ecf80a9aa05a397b54a02c4004571f92ed6e55f70d859"
   },
   {
+    "path": "docs/TEST_CHECKLIST_0.9.4.md",
+    "bytes": 1400,
+    "sha256": "dbaa27737f910fc27dc913569ecd868d6524e186b17475506508a799c04785d8"
+  },
+  {
     "path": "docs/THIRD_PARTY_KTVHTTPCACHE.md",
     "bytes": 733,
     "sha256": "dd63c7a8bc6fd29a5c39e0fa0fc2799566d91d70baadbbd1ed0af34b1389177b"
@@ -982,7 +997,7 @@
   {
     "path": "project.yml",
     "bytes": 1397,
-    "sha256": "b2dc2a20d16e16e273aa84c2b066318dab45a42db193e0b0ecdace7bde84f1a7"
+    "sha256": "44e77ec11702777e613ca15140a30d46fc99443a2643533fd14d5ae9a1bccdaa"
   },
   {
     "path": "scripts/RangeMapSmoke.swift",

@@ -1,22 +1,29 @@
+import Foundation
 import QuartzCore
 import SwiftUI
 import UIKit
 
 final class MPVSurfaceUIView: UIView {
     private var displayLayer: CAMetalLayer?
+    private var lastGeometryLog = ""
 
     func attach(_ layer: CAMetalLayer) {
         if displayLayer !== layer {
+            if displayLayer?.delegate === self { displayLayer?.delegate = nil }
             displayLayer?.removeFromSuperlayer()
             displayLayer = layer
+            layer.delegate = self
             self.layer.addSublayer(layer)
+            DiagnosticsLogger.shared.log("MPVSurface", "attach layer=CAMetalLayer delegate=MPVSurfaceUIView")
         }
         setNeedsLayout()
     }
 
     func detach() {
+        if displayLayer?.delegate === self { displayLayer?.delegate = nil }
         displayLayer?.removeFromSuperlayer()
         displayLayer = nil
+        lastGeometryLog = ""
     }
 
     deinit { detach() }
@@ -26,10 +33,20 @@ final class MPVSurfaceUIView: UIView {
         guard let displayLayer else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        displayLayer.frame = bounds
+        displayLayer.transform = CATransform3DIdentity
+        displayLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        displayLayer.bounds = CGRect(origin: .zero, size: bounds.size)
+        displayLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
         displayLayer.contentsScale = window?.screen.nativeScale ?? UIScreen.main.nativeScale
-        displayLayer.drawableSize = CGSize(width: max(1, bounds.width * displayLayer.contentsScale), height: max(1, bounds.height * displayLayer.contentsScale))
+        // Do not force drawableSize here. MoltenVK owns swapchain/drawable sizing; MPVKit's
+        // reference iOS surface only updates the CAMetalLayer frame during UIView layout.
         CATransaction.commit()
+
+        let geometry = "view=\(Int(bounds.width))x\(Int(bounds.height)) layer=\(Int(displayLayer.bounds.width))x\(Int(displayLayer.bounds.height)) drawable=\(Int(displayLayer.drawableSize.width))x\(Int(displayLayer.drawableSize.height)) scale=\(String(format: "%.2f", displayLayer.contentsScale))"
+        if geometry != lastGeometryLog {
+            lastGeometryLog = geometry
+            DiagnosticsLogger.shared.log("MPVSurface", geometry)
+        }
     }
 }
 
@@ -39,6 +56,8 @@ struct MPVPlayerSurface: UIViewRepresentable {
     func makeUIView(context: Context) -> MPVSurfaceUIView {
         let view = MPVSurfaceUIView()
         view.backgroundColor = .black
+        view.isOpaque = true
+        view.clipsToBounds = true
         view.attach(displayLayer)
         return view
     }
