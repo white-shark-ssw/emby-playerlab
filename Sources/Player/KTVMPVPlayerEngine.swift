@@ -16,9 +16,10 @@ final class KTVMPVPlayerEngine: PlayerEngine {
     private var cacheSession: KTVCachePlaybackSession?
     private var lastSnapshot = PlayerSnapshot()
 
-    init(source: ResolvedPlaybackSource, configuration: MediaTransportConfiguration) {
+    init(source: ResolvedPlaybackSource, configuration: MediaTransportConfiguration, cacheSession: KTVCachePlaybackSession? = nil) {
         self.source = source
         self.configuration = configuration
+        self.cacheSession = cacheSession
         bindUnderlying()
     }
 
@@ -56,6 +57,13 @@ final class KTVMPVPlayerEngine: PlayerEngine {
     }
 
     func transportMetrics() async -> TransportMetricsSnapshot? { cacheSession?.metrics() }
+
+    func takeCacheSessionForHandoff() -> KTVCachePlaybackSession? {
+        let session = cacheSession
+        cacheSession = nil
+        if session != nil { DiagnosticsLogger.shared.log("KTVCache", "handoff MPV -> next KTV engine item=\(source.itemId)") }
+        return session
+    }
 
     func stop() {
         underlying.onSnapshot = nil
