@@ -1,0 +1,5 @@
+Manual build trigger for ChatGPT-managed dev IPA packaging.
+
+Triggered at: 2026-08-08T02:53:00+08:00
+Base source commit: ff0c788fe95189acf85e817e33466eb67a088190
+Purpose: force a main-branch push so Build Unsigned IPA runs and publishes the dev-latest prerelease.
