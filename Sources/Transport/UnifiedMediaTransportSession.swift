@@ -104,7 +104,12 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard !stopped, !range.isEmpty, let resolved = try? await resolve(), let store else { return }
         let normalized = clamp(range: range, contentLength: resolved.contentLength)
         guard !normalized.isEmpty else { return }
-        if store.contains(normalized) { return }
+        // A post-seek player request is authoritative even when every requested byte is already cached.
+        // Re-anchor first so background preload follows the new playback position instead of an old frontier.
+        if store.contains(normalized) {
+            acceptRealDemand(normalized, resource: resolved, reason: "range-demand-cached")
+            return
+        }
         acceptRealDemand(normalized, resource: resolved, reason: "range-demand")
     }
 

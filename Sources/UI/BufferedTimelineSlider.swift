@@ -14,21 +14,21 @@ struct BufferedTimelineSlider: View {
     var body: some View {
         GeometryReader { geometry in
             let width = max(geometry.size.width, 1)
-            let trackHeight: CGFloat = 7
+            let trackHeight: CGFloat = 9
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.13)).frame(height: trackHeight)
+                Capsule().fill(Color.white.opacity(0.18)).frame(height: trackHeight)
 
                 ForEach(Array(normalizedVerifiedRanges.enumerated()), id: \.offset) { _, buffered in
                     Capsule()
-                        .fill(Color.white.opacity(0.28))
+                        .fill(Color.white.opacity(0.68))
                         .frame(width: max(2, segmentWidth(buffered, totalWidth: width)), height: trackHeight)
                         .offset(x: segmentOffset(buffered, totalWidth: width))
                 }
 
                 ForEach(Array(normalizedBufferedRanges.enumerated()), id: \.offset) { _, buffered in
                     Capsule()
-                        .fill(Color.white.opacity(0.58))
-                        .frame(width: max(2, segmentWidth(buffered, totalWidth: width)), height: 5)
+                        .fill(Color.white.opacity(0.92))
+                        .frame(width: max(2, segmentWidth(buffered, totalWidth: width)), height: 7)
                         .offset(x: segmentOffset(buffered, totalWidth: width))
                 }
 

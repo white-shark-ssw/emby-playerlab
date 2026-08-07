@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import QuartzCore
 import UIKit
 
 @MainActor
@@ -65,7 +66,7 @@ final class PlayerController: ObservableObject {
         return nil
     }
 
-    var mpvDisplayLayer: AVSampleBufferDisplayLayer? {
+    var mpvDisplayLayer: CAMetalLayer? {
         (engine as? MPVPlayerEngine)?.displayLayer
     }
 
@@ -381,7 +382,13 @@ final class PlayerController: ObservableObject {
             }
             lastVerifiedMPVPosition = value.position
         }
-        verifiedBufferedRanges = Self.mergeTimeRanges(verifiedBufferedRanges + value.bufferedRanges)
+        let previous = verifiedBufferedRanges
+        let merged = Self.mergeTimeRanges(previous + value.bufferedRanges)
+        guard merged != previous else { return }
+        verifiedBufferedRanges = merged
+        let ranges = merged.prefix(8).map { String(format: "%.2f-%.2f", $0.lowerBound, $0.upperBound) }.joined(separator: ",")
+        let suffix = merged.count > 8 ? ",..." : ""
+        DiagnosticsLogger.shared.log("BufferHistory", "engine=\(engineKind.title) verifiedRanges=[\(ranges)\(suffix)] verifiedEnd=\(String(format: "%.2f", verifiedBufferedEnd)) count=\(merged.count)")
     }
 
     private static func mergeTimeRanges(_ ranges: [ClosedRange<Double>]) -> [ClosedRange<Double>] {

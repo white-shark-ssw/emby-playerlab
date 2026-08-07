@@ -75,7 +75,7 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
             if nativeContainers.contains(source.normalizedContainer),
                video.isEmpty || nativeVideo.contains(video),
                audio.isEmpty || nativeAudio.contains(audio) {
-                return .transportAVPlayer
+                return .resourceLoaderAVPlayer
             }
             return .mpv
         }

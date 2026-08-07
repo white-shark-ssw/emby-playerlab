@@ -37,8 +37,8 @@ final class PlaybackOrchestrator {
             let reason = storedCompatibility ? "stored-media-compatibility" : (largeIndexedMP4 ? "large-indexed-mp4" : "non-native-container-or-codec")
             DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=MPV+UnifiedTransport reason=\(reason)")
         } else if preference.isAutomatic {
-            self.currentKind = .transportAVPlayer
-            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=AVPlayer+UnifiedTransport reason=native-friendly")
+            self.currentKind = .resourceLoaderAVPlayer
+            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=AVPlayerResourceLoader+UnifiedTransport reason=native-friendly")
         } else {
             self.currentKind = preference.resolved(for: source.mediaSource)
         }

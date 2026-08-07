@@ -1,5 +1,8 @@
 import AVFoundation
 import Foundation
+import Metal
+import QuartzCore
+import UIKit
 #if canImport(MPVKit)
 import MPVKit
 #elseif canImport(_MPVKit)
@@ -8,8 +11,17 @@ import _MPVKit
 #if canImport(Libmpv)
 import Libmpv
 #endif
-import QuartzCore
-import UIKit
+
+final class MPVMetalLayer: CAMetalLayer {
+    // MoltenVK may temporarily request a 1x1 drawable to force presentation completion.
+    // Reject that transient size so the renderer cannot get stranded at 1x1 / black.
+    override var drawableSize: CGSize {
+        get { super.drawableSize }
+        set {
+            if Int(newValue.width) > 1, Int(newValue.height) > 1 { super.drawableSize = newValue }
+        }
+    }
+}
 
 #if canImport(Libmpv)
 final class MPVPlayerEngine: PlayerEngine {
@@ -17,7 +29,7 @@ final class MPVPlayerEngine: PlayerEngine {
     var onSnapshot: ((PlayerSnapshot) -> Void)?
     var onSeekCompleted: ((SeekResult) -> Void)?
 
-    let displayLayer = AVSampleBufferDisplayLayer()
+    var displayLayer = MPVMetalLayer()
 
     private let queue = DispatchQueue(label: "com.embyplayerlab.mpv", qos: .userInitiated)
     private let queueKey = DispatchSpecificKey<UInt8>()
@@ -48,10 +60,9 @@ final class MPVPlayerEngine: PlayerEngine {
         self.sharedTransportSession = sharedTransportSession
         queue.setSpecific(key: queueKey, value: 1)
         displayLayer.backgroundColor = UIColor.black.cgColor
-        displayLayer.videoGravity = .resizeAspect
-        if #available(iOS 17.0, *) {
-            displayLayer.wantsExtendedDynamicRangeContent = true
-        }
+        displayLayer.contentsScale = UIScreen.main.nativeScale
+        displayLayer.framebufferOnly = true
+        if #available(iOS 16.0, *) { displayLayer.wantsExtendedDynamicRangeContent = true }
     }
 
     deinit {
@@ -201,7 +212,8 @@ final class MPVPlayerEngine: PlayerEngine {
         snapshot = PlayerSnapshot()
 
         let flushLayer = { [displayLayer] in
-            displayLayer.flushAndRemoveImage()
+            displayLayer.contents = nil
+            displayLayer.removeAllAnimations()
         }
         if Thread.isMainThread {
             flushLayer()
@@ -228,17 +240,13 @@ final class MPVPlayerEngine: PlayerEngine {
 
         check(mpv_request_log_messages(handle, "warn"), operation: "request logs")
 
-        let layerAddress = Int(bitPattern: Unmanaged.passUnretained(displayLayer).toOpaque())
-        var wid = Int64(layerAddress)
-        try require(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &wid), operation: "set AVSampleBufferDisplayLayer")
-        try require(mpv_set_option_string(handle, "vo", "avfoundation"), operation: "enable vo_avfoundation")
-        // Do not force ao=avfoundation: this fork provides vo_avfoundation, not ao_avfoundation.
-        // Let mpv select the compiled iOS audio backend automatically.
-        #if targetEnvironment(simulator)
-        check(mpv_set_option_string(handle, "avfoundation-composite-osd", "no"), operation: "set composite osd")
-        #else
-        check(mpv_set_option_string(handle, "avfoundation-composite-osd", "yes"), operation: "set composite osd")
-        #endif
+        // MPVKit's iOS Metal path expects a CAMetalLayer as wid and the GPU renderer.
+        // The previous vo=avfoundation configuration is not present in MPVKit 0.41.0-n8.1.2
+        // and produced audio-only playback with "Video output avfoundation not found".
+        try require(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &displayLayer), operation: "set CAMetalLayer")
+        try require(mpv_set_option_string(handle, "vo", "gpu-next"), operation: "enable gpu-next")
+        try require(mpv_set_option_string(handle, "gpu-api", "vulkan"), operation: "set Vulkan GPU API")
+        check(mpv_set_option_string(handle, "gpu-context", "moltenvk"), operation: "set MoltenVK context")
         check(mpv_set_option_string(handle, "hwdec", "videotoolbox"), operation: "set hwdec")
         check(mpv_set_option_string(handle, "hwdec-codecs", "all"), operation: "set hwdec codecs")
         check(mpv_set_option_string(handle, "hwdec-software-fallback", "yes"), operation: "set hw fallback")
@@ -256,6 +264,7 @@ final class MPVPlayerEngine: PlayerEngine {
             throw MPVEngineError.initializationFailed(status)
         }
 
+        DiagnosticsLogger.shared.log("MPVVideo", "renderer=gpu-next gpu-api=vulkan gpu-context=moltenvk layer=CAMetalLayer hwdec=videotoolbox")
         observeProperties(handle)
         mpv_set_wakeup_callback(handle, { context in
             guard let context else { return }
@@ -679,13 +688,14 @@ final class MPVPlayerEngine: PlayerEngine {
     let kind: PlayerEngineKind = .mpv
     var onSnapshot: ((PlayerSnapshot) -> Void)?
     var onSeekCompleted: ((SeekResult) -> Void)?
-    let displayLayer = AVSampleBufferDisplayLayer()
+    var displayLayer = MPVMetalLayer()
 
     private var snapshot = PlayerSnapshot(errorMessage: "当前构建未链接 MPVKit；v0.9 自动模式需要 MPVKit。")
 
     init(sharedTransportSession: TransportDataSession? = nil) {
         displayLayer.backgroundColor = UIColor.black.cgColor
-        displayLayer.videoGravity = .resizeAspect
+        displayLayer.contentsScale = UIScreen.main.nativeScale
+        displayLayer.framebufferOnly = true
     }
 
     func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
@@ -714,7 +724,7 @@ final class MPVPlayerEngine: PlayerEngine {
     }
 
     func stop() {
-        displayLayer.flushAndRemoveImage()
+        displayLayer.contents = nil
         snapshot = PlayerSnapshot()
     }
 

@@ -1,49 +1,40 @@
-import AVFoundation
+import QuartzCore
 import SwiftUI
 import UIKit
 
 final class MPVSurfaceUIView: UIView {
-    private var displayLayer: AVSampleBufferDisplayLayer?
-    private var statusObservation: NSKeyValueObservation?
+    private var displayLayer: CAMetalLayer?
 
-    func attach(_ layer: AVSampleBufferDisplayLayer) {
+    func attach(_ layer: CAMetalLayer) {
         if displayLayer !== layer {
-            statusObservation?.invalidate()
             displayLayer?.removeFromSuperlayer()
             displayLayer = layer
             self.layer.addSublayer(layer)
-            statusObservation = layer.observe(\.status, options: [.initial, .new]) { observedLayer, _ in
-                if observedLayer.status == .failed {
-                    let error = observedLayer.error?.localizedDescription ?? "unknown"
-                    DiagnosticsLogger.shared.log("MPV", "AVSampleBufferDisplayLayer failed: \(error)")
-                }
-            }
         }
         setNeedsLayout()
     }
 
     func detach() {
-        statusObservation?.invalidate()
-        statusObservation = nil
         displayLayer?.removeFromSuperlayer()
         displayLayer = nil
     }
 
-    deinit {
-        detach()
-    }
+    deinit { detach() }
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        guard let displayLayer else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        displayLayer?.frame = bounds
+        displayLayer.frame = bounds
+        displayLayer.contentsScale = window?.screen.nativeScale ?? UIScreen.main.nativeScale
+        displayLayer.drawableSize = CGSize(width: max(1, bounds.width * displayLayer.contentsScale), height: max(1, bounds.height * displayLayer.contentsScale))
         CATransaction.commit()
     }
 }
 
 struct MPVPlayerSurface: UIViewRepresentable {
-    let displayLayer: AVSampleBufferDisplayLayer
+    let displayLayer: CAMetalLayer
 
     func makeUIView(context: Context) -> MPVSurfaceUIView {
         let view = MPVSurfaceUIView()
@@ -52,11 +43,7 @@ struct MPVPlayerSurface: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: MPVSurfaceUIView, context: Context) {
-        uiView.attach(displayLayer)
-    }
+    func updateUIView(_ uiView: MPVSurfaceUIView, context: Context) { uiView.attach(displayLayer) }
 
-    static func dismantleUIView(_ uiView: MPVSurfaceUIView, coordinator: ()) {
-        uiView.detach()
-    }
+    static func dismantleUIView(_ uiView: MPVSurfaceUIView, coordinator: ()) { uiView.detach() }
 }
