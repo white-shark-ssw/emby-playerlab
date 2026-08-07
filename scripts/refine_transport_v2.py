@@ -42,13 +42,14 @@ replace(path, '''        if ([lower isEqualToString:@"authorization"] || [lower 
         [keys addObject:key];
 ''')
 
-replace("Sources/Cache/KTVCachePlaybackSession.swift", '''        probeOriginInBackground()
+session = "Sources/Cache/KTVCachePlaybackSession.swift"
+replace(session, '''        probeOriginInBackground()
         if shouldWarmLargeMP4Metadata {
 ''', '''        DiagnosticsLogger.shared.log("KTVOrigin", "probe skipped transport-v2 reason=avoid-second-UA-bound-115-link")
         if shouldWarmLargeMP4Metadata {
 ''')
 
-replace("Sources/Cache/KTVCachePlaybackSession.swift", '''    func prioritizeSeek(position: Double, duration: Double) {
+replace(session, '''    func prioritizeSeek(position: Double, duration: Double) {
         lock.lock()
         playbackPosition = max(0, position)
         if duration.isFinite, duration > 0 { playbackDuration = duration }
@@ -77,6 +78,33 @@ replace("Sources/Cache/KTVCachePlaybackSession.swift", '''    func prioritizeSee
         )
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.05) { [weak self] in self?.scheduleAvailableWorkers(reason: "user-seek-priority-ended") }
     }
+''')
+
+replace(session, '''        DiagnosticsLogger.shared.log("KTVAdaptive", "contiguous primary warmup anchor=\\(schedulerAnchorByte) baselineSeconds=\\(Int(singleBaselineSeconds))")
+        scheduleAvailableWorkers(reason: "initial")
+    }
+
+    private func scheduleAvailableWorkers(reason: String) {
+''', '''        DiagnosticsLogger.shared.log("KTVAdaptive", "contiguous primary warmup anchor=\\(schedulerAnchorByte) baselineSeconds=\\(String(format: "%.2f", singleBaselineSeconds))")
+        scheduleAvailableWorkers(reason: "initial")
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + singleBaselineSeconds + 0.05) { [weak self] in self?.enableSecondaryAfterWarmup() }
+    }
+
+    private func enableSecondaryAfterWarmup() {
+        let now = Date()
+        let cacheBytes = EPLKTVCacheBridge.cacheLength(for: originalURL)
+        lock.lock()
+        guard !stopped, dualPhase == .singleBaseline, now >= playbackPriorityUntil else { lock.unlock(); return }
+        let elapsed = max(now.timeIntervalSince(dualWindowStartedAt), 0.001)
+        singleLaneBaselineSpeed = Double(max(0, cacheBytes - dualWindowStartBytes)) / elapsed
+        dualPhase = .dualKept
+        let baseline = singleLaneBaselineSpeed
+        lock.unlock()
+        DiagnosticsLogger.shared.log("KTVAdaptive", "adjacent dual enabled baseline=\\(Int(baseline))B/s trigger=session-warmup policy=persistent-until-error pipelineDepth=\\(pipelineLookaheadSegments)")
+        scheduleAvailableWorkers(reason: "session-warmup-dual")
+    }
+
+    private func scheduleAvailableWorkers(reason: String) {
 ''')
 
 controller = "Sources/Player/PlayerController.swift"
