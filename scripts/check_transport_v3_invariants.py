@@ -24,6 +24,8 @@ require("PersistentRangeStreamLane" in http, "persistent Range stream lane missi
 require("private lazy var session: URLSession" in http, "each stream lane must own one long-lived URLSession")
 require("session=persistent" in http, "persistent-session diagnostics missing")
 require("taskOnly=true sessionKept=true" in http, "task cancellation must explicitly preserve the lane session")
+require("func invalidate()" in http and "persistent range pool invalidated" in http, "RangeHTTPClient explicit lifecycle teardown missing")
+require("TransportV3Metric" in http and "isReusedConnection" in http, "connection reuse diagnostics missing")
 require("RangeStreamLoader" not in http, "legacy per-Range URLSession loader must not return")
 require("115Browser/" not in http, "Transport v3 must reuse the resolved UA rather than hard-code a 115 browser UA")
 require("lower.hasPrefix(\"x-emby-\")" in http and "lower.hasPrefix(\"x-mediabrowser-\")" in http, "remote auth-header prefix filtering missing")
@@ -36,6 +38,7 @@ require(lane_body.count("invalidateAndCancel()") == 1, "persistent lane session 
 require("reuse active sequential stream" in unified, "in-range playback demand must reuse the active sequential stream")
 require("promote slot0 sequential->urgent" not in unified, "legacy in-range cancel/reopen promotion must not return")
 require("cancelSlot(0, reason: \"real-seek-demand\")" in unified, "true far seek must still be able to retarget slot 0")
+require("client.invalidate()" in unified, "transport stop must explicitly tear down the persistent connection pool")
 
 require("automaticProfile=AVPlayerResourceLoader+UnifiedTransportV3" in orchestrator, "native automatic route must use ResourceLoader + Unified v3")
 require("automaticProfile=MPV+UnifiedTransportV3" in orchestrator, "compatibility automatic route must use MPV + Unified v3")
