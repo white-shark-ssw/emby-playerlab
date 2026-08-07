@@ -79,11 +79,51 @@ replace("Sources/Cache/KTVCachePlaybackSession.swift", '''    func prioritizeSee
     }
 ''')
 
-replace("Sources/Player/PlayerController.swift", '''        // Transport v2 automatic engines use the KTV localhost proxy. Build UnifiedTransport only
+controller = "Sources/Player/PlayerController.swift"
+replace(controller, '''        // Transport v2 automatic engines use the KTV localhost proxy. Build UnifiedTransport only
         // for explicit diagnostic engines so it cannot open or cancel 115 connections in parallel.
         let usesUnifiedTransport = initialKind == .resourceLoaderAVPlayer || initialKind == .transportAVPlayer || initialKind == .ksAVIO
         let transportContext: PlaybackTransportContext? = usesUnifiedTransport ? PlaybackTransportContext(source: source, client: client, configuration: configuration) : nil
 ''', '''        // Keep the diagnostic UnifiedTransport context lazy and available for manual engine switches.
         // Construction performs no network I/O; automatic KTV/MPV Transport v2 does not consume it.
         let transportContext: PlaybackTransportContext? = PlaybackTransportContext(source: source, client: client, configuration: configuration)
+''')
+
+replace(controller, '''        previousEngine.onSnapshot = nil
+        previousEngine.onSeekCompleted = nil
+        engine = SuspendedPlayerEngine(kind: previousKind)
+''', '''        previousEngine.onSnapshot = nil
+        previousEngine.onSeekCompleted = nil
+        let ktvCacheHandoff: KTVCachePlaybackSession?
+        if kind == .ktvAVPlayer || kind == .mpv {
+            if let previous = previousEngine as? KTVAVPlayerEngine { ktvCacheHandoff = previous.takeCacheSessionForHandoff() }
+            else if let previous = previousEngine as? KTVMPVPlayerEngine { ktvCacheHandoff = previous.takeCacheSessionForHandoff() }
+            else { ktvCacheHandoff = nil }
+        } else {
+            ktvCacheHandoff = nil
+        }
+        engine = SuspendedPlayerEngine(kind: previousKind)
+''')
+
+replace(controller, '''            let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext)
+''', '''            let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext, ktvCacheSession: ktvCacheHandoff)
+''')
+
+replace(controller, '''        client: EmbyAPIClient,
+        transportContext: PlaybackTransportContext?
+    ) -> PlayerEngine {
+''', '''        client: EmbyAPIClient,
+        transportContext: PlaybackTransportContext?,
+        ktvCacheSession: KTVCachePlaybackSession? = nil
+    ) -> PlayerEngine {
+''')
+replace(controller, '''        case .ktvAVPlayer:
+            return KTVAVPlayerEngine(source: source, configuration: configuration, cacheSession: nil)
+''', '''        case .ktvAVPlayer:
+            return KTVAVPlayerEngine(source: source, configuration: configuration, cacheSession: ktvCacheSession)
+''')
+replace(controller, '''        case .mpv:
+            return KTVMPVPlayerEngine(source: source, configuration: configuration)
+''', '''        case .mpv:
+            return KTVMPVPlayerEngine(source: source, configuration: configuration, cacheSession: ktvCacheSession)
 ''')
