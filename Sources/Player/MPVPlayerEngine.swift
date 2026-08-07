@@ -25,13 +25,17 @@ final class MPVMetalLayer: CAMetalLayer {
     // MPVKit's own iOS Metal layer marshals EDR changes to the main thread. MoltenVK/libplacebo
     // may update this while changing video output parameters; UIKit screen EDR state must not be
     // mutated from the renderer queue.
+    @available(iOS 16.0, *)
     override var wantsExtendedDynamicRangeContent: Bool {
         get { super.wantsExtendedDynamicRangeContent }
         set {
-            if Thread.isMainThread { super.wantsExtendedDynamicRangeContent = newValue }
-            else { DispatchQueue.main.sync { super.wantsExtendedDynamicRangeContent = newValue } }
+            if Thread.isMainThread { setExtendedDynamicRange(newValue) }
+            else { DispatchQueue.main.sync { [self] in setExtendedDynamicRange(newValue) } }
         }
     }
+
+    @available(iOS 16.0, *)
+    private func setExtendedDynamicRange(_ value: Bool) { super.wantsExtendedDynamicRangeContent = value }
 }
 
 #if canImport(Libmpv)
