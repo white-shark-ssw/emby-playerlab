@@ -1,22 +1,22 @@
 import Foundation
 
 enum MediaCompatibilityStore {
-    private static let key = "player.compatibility.ffmpeg-item-ids"
+    private static let key = "player.compatibility.v090-mpv-item-ids"
     private static let lock = NSLock()
 
-    static func requiresFFmpeg(itemId: String) -> Bool {
+    static func requiresCompatibilityEngine(itemId: String) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         return storedItemIds().contains(itemId)
     }
 
-    static func markFFmpegRequired(itemId: String, reason: String) {
+    static func markCompatibilityEngineRequired(itemId: String, reason: String) {
         lock.lock()
         var ids = storedItemIds()
         let inserted = ids.insert(itemId).inserted
         if inserted { UserDefaults.standard.set(Array(ids).sorted(), forKey: key) }
         lock.unlock()
-        if inserted { DiagnosticsLogger.shared.log("Compatibility", "item=\(itemId) marked=KSPlayer-FFmpeg reason=\(reason)") }
+        if inserted { DiagnosticsLogger.shared.log("Compatibility", "item=\(itemId) marked=MPV+UnifiedTransport reason=\(reason)") }
     }
 
     static func clear(itemId: String) {

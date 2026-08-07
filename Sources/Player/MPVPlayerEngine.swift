@@ -2,11 +2,16 @@ import AVFoundation
 import Foundation
 #if canImport(MPVKit)
 import MPVKit
+#elseif canImport(_MPVKit)
+import _MPVKit
+#endif
+#if canImport(Libmpv)
+import Libmpv
 #endif
 import QuartzCore
 import UIKit
 
-#if canImport(MPVKit)
+#if canImport(Libmpv)
 final class MPVPlayerEngine: PlayerEngine {
     let kind: PlayerEngineKind = .mpv
     var onSnapshot: ((PlayerSnapshot) -> Void)?
@@ -22,6 +27,9 @@ final class MPVPlayerEngine: PlayerEngine {
     private var lastConfiguration: Configuration?
     private var isStopping = false
     private var lastPositionEmission: TimeInterval = 0
+    private let sharedTransportSession: TransportDataSession?
+    private var streamBridge: MPVUnifiedStreamBridge?
+    private var streamPrepareTask: Task<Void, Never>?
 
     private struct Configuration {
         let url: URL
@@ -36,7 +44,8 @@ final class MPVPlayerEngine: PlayerEngine {
         let bufferHit: Bool
     }
 
-    init() {
+    init(sharedTransportSession: TransportDataSession? = nil) {
+        self.sharedTransportSession = sharedTransportSession
         queue.setSpecific(key: queueKey, value: 1)
         displayLayer.backgroundColor = UIColor.black.cgColor
         displayLayer.videoGravity = .resizeAspect
@@ -65,7 +74,7 @@ final class MPVPlayerEngine: PlayerEngine {
                 return
             }
         }
-        load(
+        prepareUnifiedStreamAndLoad(
             url: url,
             headers: headers,
             preferredForwardBuffer: preferredForwardBuffer,
@@ -91,13 +100,11 @@ final class MPVPlayerEngine: PlayerEngine {
             "MPVCompatibility",
             "reload reason=\(reason) start=\(startPosition) mode=bad-interleaved-mp4"
         )
-        load(
-            url: url,
-            headers: headers,
-            preferredForwardBuffer: preferredForwardBuffer,
-            startPosition: startPosition,
-            compatibilityMode: true
-        )
+        if streamBridge != nil {
+            load(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, compatibilityMode: true)
+        } else {
+            prepareUnifiedStreamAndLoad(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, compatibilityMode: true)
+        }
     }
 
     func play() {
@@ -120,28 +127,38 @@ final class MPVPlayerEngine: PlayerEngine {
         snapshot.waitingReason = "MPV seek"
         emitOnMain()
 
-        queue.async { [weak self] in
-            guard let self, let handle = self.mpv else { return }
-            // Always use keyframe seek for remote media. Exact seek can decode through
-            // malformed timestamp regions and caused item 63368 to stall again.
-            let mode = "absolute+keyframes"
-            DiagnosticsLogger.shared.log(
-                "MPVSeekRequest",
-                "target=\(target) mode=\(mode) bufferHit=\(bufferHit) enginePosition=\(self.snapshot.position)"
-            )
-            self.command(handle, ["seek", String(format: "%.3f", target), mode])
+        Task { [weak self] in
+            guard let self else { return }
+            if let session = self.sharedTransportSession { await session.prioritizeSeek(position: target, duration: duration) }
+            self.queue.async { [weak self] in
+                guard let self, let handle = self.mpv else { return }
+                let mode = "absolute+keyframes"
+                DiagnosticsLogger.shared.log(
+                    "MPVSeekRequest",
+                    "target=\(target) mode=\(mode) bufferHit=\(bufferHit) enginePosition=\(self.snapshot.position) unified=true"
+                )
+                self.command(handle, ["seek", String(format: "%.3f", target), mode])
+            }
         }
     }
 
     func reload(at seconds: Double) {
         guard let configuration = lastConfiguration else { return }
-        load(
-            url: configuration.url,
-            headers: configuration.headers,
-            preferredForwardBuffer: configuration.preferredForwardBuffer,
-            startPosition: seconds,
-            compatibilityMode: configuration.compatibilityMode
-        )
+        if streamBridge != nil {
+            load(url: configuration.url, headers: configuration.headers, preferredForwardBuffer: configuration.preferredForwardBuffer, startPosition: seconds, compatibilityMode: configuration.compatibilityMode)
+        } else {
+            prepareUnifiedStreamAndLoad(url: configuration.url, headers: configuration.headers, preferredForwardBuffer: configuration.preferredForwardBuffer, startPosition: seconds, compatibilityMode: configuration.compatibilityMode)
+        }
+    }
+
+    func recoverStall(position: Double, duration: Double) {
+        guard let session = sharedTransportSession else { return }
+        Task { await session.recoverStall(position: position, duration: duration) }
+    }
+
+    func transportMetrics() async -> TransportMetricsSnapshot? {
+        guard let session = sharedTransportSession else { return nil }
+        return await session.metrics()
     }
 
     func stop() {
@@ -153,6 +170,11 @@ final class MPVPlayerEngine: PlayerEngine {
         // Prevent new callbacks before touching the handle.
         mpv_set_wakeup_callback(handle, nil, nil)
         pendingSeek = nil
+        streamPrepareTask?.cancel()
+        streamPrepareTask = nil
+        let retainedStreamBridge = streamBridge
+        retainedStreamBridge?.cancelAll()
+        streamBridge = nil
 
         let shutdown = { [self] in
             _ = commandSync(handle, ["quit"])
@@ -189,6 +211,7 @@ final class MPVPlayerEngine: PlayerEngine {
 
         DispatchQueue.global(qos: .userInitiated).async {
             mpv_terminate_destroy(handle)
+            withExtendedLifetime(retainedStreamBridge) {}
             DiagnosticsLogger.shared.log("MPVLifecycle", "terminate_destroy finished")
         }
 
@@ -241,6 +264,50 @@ final class MPVPlayerEngine: PlayerEngine {
         }, Unmanaged.passUnretained(self).toOpaque())
     }
 
+    private func prepareUnifiedStreamAndLoad(
+        url: URL,
+        headers: [String: String],
+        preferredForwardBuffer: Double,
+        startPosition: Double,
+        compatibilityMode: Bool
+    ) {
+        guard let session = sharedTransportSession else {
+            snapshot.errorMessage = "MPV v0.9 实验需要统一媒体传输会话。"
+            snapshot.isBuffering = false
+            emitOnMain()
+            return
+        }
+        streamPrepareTask?.cancel()
+        snapshot.isBuffering = true
+        snapshot.waitingReason = "Unified transport preparing"
+        emitOnMain()
+        streamPrepareTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let resource = try await session.resolve()
+                guard !Task.isCancelled else { return }
+                let bridge = MPVUnifiedStreamBridge(session: session, contentLength: resource.contentLength)
+                self.queue.async { [weak self] in
+                    guard let self, let handle = self.mpv, !self.isStopping else { return }
+                    do {
+                        try bridge.register(on: handle)
+                        self.streamBridge = bridge
+                        DiagnosticsLogger.shared.log("MPVStream", "load unified source finalHost=\(resource.finalURL.host ?? "unknown") bytes=\(resource.contentLength)")
+                        self.load(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, compatibilityMode: compatibilityMode)
+                    } catch {
+                        self.snapshot.errorMessage = error.localizedDescription
+                        self.snapshot.isBuffering = false
+                        self.emitOnMain()
+                    }
+                }
+            } catch {
+                self.snapshot.errorMessage = error.localizedDescription
+                self.snapshot.isBuffering = false
+                self.emitOnMain()
+            }
+        }
+    }
+
     private func load(
         url: URL,
         headers: [String: String],
@@ -268,7 +335,8 @@ final class MPVPlayerEngine: PlayerEngine {
             // loadfile replace already stops the current item. Sending an explicit
             // stop first produces an extra MPV_END_FILE_REASON_STOP event and can
             // race with the next file load.
-            self.updateHTTPHeaders(handle: handle, headers: headers)
+            // libmpv never talks to 115 directly in v0.9. All bytes come from MPVUnifiedStreamBridge.
+            self.updateHTTPHeaders(handle: handle, headers: [:])
 
             let cacheSeconds = max(30, Int(preferredForwardBuffer.rounded()))
             self.setProperty(handle: handle, name: "cache", value: "yes")
@@ -301,7 +369,7 @@ final class MPVPlayerEngine: PlayerEngine {
                 "mode=\(compatibilityMode ? "bad-interleaved-mp4" : "normal") start=\(startPosition) cacheSecs=\(cacheSeconds)"
             )
 
-            let target = url.isFileURL ? url.path : url.absoluteString
+            let target = self.streamBridge == nil && url.isFileURL ? url.path : "embyunified://media"
             _ = self.commandSync(handle, ["loadfile", target, "replace"])
         }
     }
@@ -613,16 +681,16 @@ final class MPVPlayerEngine: PlayerEngine {
     var onSeekCompleted: ((SeekResult) -> Void)?
     let displayLayer = AVSampleBufferDisplayLayer()
 
-    private var snapshot = PlayerSnapshot(errorMessage: "当前 KTV 缓存实验构建未链接 MPVKit；请使用自动模式或 KSPlayer FFmpeg。")
+    private var snapshot = PlayerSnapshot(errorMessage: "当前构建未链接 MPVKit；v0.9 自动模式需要 MPVKit。")
 
-    init() {
+    init(sharedTransportSession: TransportDataSession? = nil) {
         displayLayer.backgroundColor = UIColor.black.cgColor
         displayLayer.videoGravity = .resizeAspect
     }
 
     func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double) {
         snapshot.position = max(0, startPosition)
-        snapshot.errorMessage = "当前 KTV 缓存实验构建未链接 MPVKit；请使用自动模式或 KSPlayer FFmpeg。"
+        snapshot.errorMessage = "当前构建未链接 MPVKit；v0.9 自动模式需要 MPVKit。"
         emit()
     }
 

@@ -1,3 +1,4 @@
+#if canImport(KSPlayer)
 import Foundation
 import KSPlayer
 import UIKit
@@ -298,3 +299,5 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
 
     private func sane(_ value: Double) -> Double { value.isFinite && value >= 0 ? value : 0 }
 }
+
+#endif

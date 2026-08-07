@@ -97,7 +97,7 @@ final class KTVAVPlayerEngine: PlayerEngine {
         underlying.onSeekCompleted = { [weak self] result in self?.onSeekCompleted?(result) }
         underlying.onConfirmedVideoFreeze = { [weak self] total in
             guard let self, total >= 2 else { return }
-            MediaCompatibilityStore.markFFmpegRequired(itemId: self.source.itemId, reason: "confirmed-video-freeze-total-\(total)")
+            MediaCompatibilityStore.markCompatibilityEngineRequired(itemId: self.source.itemId, reason: "confirmed-video-freeze-total-\(total)")
         }
     }
 }

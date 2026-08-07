@@ -2,7 +2,7 @@
 
 面向 TrollStore、自用 STRM → OneStrm 302 → 115 直链环境的原生 iOS 播放器实验室。
 
-## 当前版本：0.8.1
+## 当前版本：0.9.0
 
 ### 系统与构建
 
@@ -10,9 +10,23 @@
 - 重点测试：iPhone 15 Pro Max / iOS 17.0
 - 云端编译：GitHub Actions macOS 15 / Xcode 16.4
 - 安装方式：未签名 IPA + TrollStore
-- KTVHTTPCache：3.1.0（MIT，最低 iOS 12）
-- KSPlayer：2.3.4
-- MPVKit：源码适配保留；0.8.1 实验构建不链接二进制
+- KTVHTTPCache：3.1.0（MIT；仅保留旧诊断路径）
+- MPVKit：0.41.0-n8.1.2（SPM，LGPL 产品）
+- KSPlayer：已从正式 target 移除；旧源码仅在 `canImport(KSPlayer)` 时编译
+
+
+### 0.9.0：统一下载器 + AVPlayer / MPV 双引擎实验
+
+- 新增 `UnifiedMediaTransportSession`：AVPlayer 与 MPV 共用同一 302/115 解析、两槽 Range 下载、稀疏 ByteStore、RangeMap、重试和缓存指标。播放器不再各自建立115下载逻辑。
+- AVPlayer 通过本机 `TransportHTTPServer` 消费统一 ByteStore；真实 HTTP Range 会直接成为播放器字节需求。
+- MPVKit 固定 `0.41.0-n8.1.2`，通过 `mpv_stream_cb_add_ro` 注册 `embyunified://media`；libmpv 的 `read/seek/size/cancel/close` 直接读取统一 ByteStore，MPV本身不会访问115。
+- 自动播放路径改为完整 profile：普通原生友好 MP4/MOV → `AVPlayer + UnifiedTransport`；大型/长时 MP4、非原生容器/Codec、已确认兼容异常 → `MPV + UnifiedTransport`。
+- Seek 不再做 `time / duration × fileSize` 推测。用户Seek只进入“等待真实字节需求”；AVPlayer真实Range或MPV真实byte seek到达后才重新锚定连续下载前沿。
+- 统一下载器固定最多两个115上游槽。真实播放hole只抢占 Slot 0；Slot 1保持热连接。若需求恰落在Slot 1的大块中，Slot 0允许最多2MiB小范围重复下载以降低首帧等待。
+- Wi‑Fi开启持续预取时，以会话磁盘缓存预算作为后台连续下载上限，不再固定在旧128MiB窗口后主动停速；蜂窝持续预取仍需用户显式开启。
+- 灰色缓冲条分两层：淡灰为本次会话已验证的时间范围并保持历史并集，亮灰为当前引擎即时buffer；回退10秒不会让淡灰历史缓存跟着回退。
+- 自动模式播放建立后仍禁止因速度/卡顿热切换引擎。AVPlayer仅在启动阶段明确Cannot Open且统一传输已确认健康时受控切到MPV。
+- Deployment Target继续保持iOS 15.0。
 
 
 ### 0.8.1：连续缓存流水线与大 MP4 起播修复
@@ -80,16 +94,16 @@
 2. 等待 `Validate Source` 成功。
 3. 打开 Actions → `Build Unsigned IPA` → `Run workflow`。
 4. 下载 `EmbyPlayerLab-unsigned-<commit>` Artifact。
-5. 解压获得 `EmbyPlayerLab-0.8.1-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
+5. 解压获得 `EmbyPlayerLab-0.9.0-<commit>-unsigned.ipa`，使用 TrollStore 覆盖安装。
 
-首次构建会通过 CocoaPods 安装固定版本 KTVHTTPCache 3.1.0，并通过 Swift Package Manager 解析 KSPlayer 2.3.4。
+首次构建会通过 CocoaPods 安装固定版本 KTVHTTPCache 3.1.0（旧诊断路径），并通过 Swift Package Manager 解析 MPVKit 0.41.0-n8.1.2。
 
 ## 安全与许可证
 
 - 密码不落盘，AccessToken 保存到 Keychain。
 - KTVHTTPCache 自带文件日志默认关闭，避免临时播放 URL 进入第三方日志。
 - App 自有日志只记录原始主机、localhost 端口、缓存字节和速度，不记录完整代理 URL。
-- KTVHTTPCache 3.1.0 为 MIT；KSPlayer 2.3.4 及其 FFmpegKit 依赖按项目现有 GPL 说明处理。0.8.1 不链接 MPVKit。
+- KTVHTTPCache 3.1.0 为 MIT；正式兼容引擎使用 MPVKit 的 LGPL 产品。KSPlayer 不再链接进 v0.9.0 正式 target。
 
 ## 0.2.1 修复
 

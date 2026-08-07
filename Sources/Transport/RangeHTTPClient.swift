@@ -121,8 +121,7 @@ final class RangeHTTPClient {
         case .playback:
             return 0
         case .preload(let worker):
-            guard sessions.count > 1 else { return 0 }
-            return 1 + abs(worker) % (sessions.count - 1)
+            return abs(worker) % sessions.count
         }
     }
 }

@@ -14,10 +14,10 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
         switch self {
         case .ktvAVPlayer: return "KTV 缓存 AVPlayer"
         case .resourceLoaderAVPlayer: return "智能 AVPlayer"
-        case .transportAVPlayer: return "旧版传输层 AVPlayer"
-        case .ksAVIO: return "KSPlayer FFmpeg"
+        case .transportAVPlayer: return "统一缓存 AVPlayer"
+        case .ksAVIO: return "KSPlayer FFmpeg（旧实验）"
         case .avPlayer: return "直连 AVPlayer"
-        case .mpv: return "MPV 容错"
+        case .mpv: return "MPV 兼容引擎"
         }
     }
 
@@ -49,10 +49,10 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
         case .automatic: return "自动（推荐）"
         case .ktvAVPlayer: return "诊断：KTV 缓存 AVPlayer"
         case .resourceLoaderAVPlayer: return "诊断：智能 AVPlayer"
-        case .transportAVPlayer: return "诊断：旧版本机 HTTP"
-        case .ksAVIO: return "诊断：KSPlayer FFmpeg"
+        case .transportAVPlayer: return "统一缓存 AVPlayer"
+        case .ksAVIO: return "旧实验：KSPlayer FFmpeg（未链接）"
         case .avPlayer: return "诊断：直连 AVPlayer"
-        case .mpv: return "诊断：MPV（本构建未链接）"
+        case .mpv: return "MPV 兼容引擎"
         }
     }
 
@@ -75,11 +75,9 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
             if nativeContainers.contains(source.normalizedContainer),
                video.isEmpty || nativeVideo.contains(video),
                audio.isEmpty || nativeAudio.contains(audio) {
-                let transport = MediaTransportConfiguration.current()
-                let ktvEnabled = transport.strategy == .ktvHTTP && transport.diskLimitBytes > 0 && (transport.cacheMode == .disk || transport.cacheMode == .automatic)
-                return ktvEnabled ? .ktvAVPlayer : .resourceLoaderAVPlayer
+                return .transportAVPlayer
             }
-            return .ksAVIO
+            return .mpv
         }
     }
 }

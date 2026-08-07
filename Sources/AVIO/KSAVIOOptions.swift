@@ -1,3 +1,4 @@
+#if canImport(KSPlayer)
 import Foundation
 import KSPlayer
 
@@ -18,3 +19,5 @@ final class KSAVIOOptions: KSOptions {
 
     override func process(url: URL) -> AbstractAVIOContext? { avioContext }
 }
+
+#endif

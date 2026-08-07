@@ -3,6 +3,9 @@ import SwiftUI
 struct BufferedTimelineSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
+    /// Session-persistent ranges that a playback engine has actually verified as playable.
+    let verifiedBufferedRanges: [ClosedRange<Double>]
+    /// Current engine live buffer. This may move/shrink after a seek.
     let bufferedRanges: [ClosedRange<Double>]
     let onEditingChanged: (Bool) -> Void
 
@@ -11,20 +14,25 @@ struct BufferedTimelineSlider: View {
     var body: some View {
         GeometryReader { geometry in
             let width = max(geometry.size.width, 1)
-            let trackHeight: CGFloat = 6
+            let trackHeight: CGFloat = 7
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.14)).frame(height: trackHeight)
+                Capsule().fill(Color.white.opacity(0.13)).frame(height: trackHeight)
 
-                ForEach(Array(normalizedBufferedRanges.enumerated()), id: \.offset) { _, buffered in
+                ForEach(Array(normalizedVerifiedRanges.enumerated()), id: \.offset) { _, buffered in
                     Capsule()
-                        .fill(Color.white.opacity(0.46))
+                        .fill(Color.white.opacity(0.28))
                         .frame(width: max(2, segmentWidth(buffered, totalWidth: width)), height: trackHeight)
                         .offset(x: segmentOffset(buffered, totalWidth: width))
                 }
 
-                Capsule()
-                    .fill(Color.white)
-                    .frame(width: progressWidth(totalWidth: width), height: 4)
+                ForEach(Array(normalizedBufferedRanges.enumerated()), id: \.offset) { _, buffered in
+                    Capsule()
+                        .fill(Color.white.opacity(0.58))
+                        .frame(width: max(2, segmentWidth(buffered, totalWidth: width)), height: 5)
+                        .offset(x: segmentOffset(buffered, totalWidth: width))
+                }
+
+                Capsule().fill(Color.white).frame(width: progressWidth(totalWidth: width), height: 4)
 
                 Circle()
                     .fill(Color.white)
@@ -65,8 +73,11 @@ struct BufferedTimelineSlider: View {
         }
     }
 
-    private var normalizedBufferedRanges: [ClosedRange<Double>] {
-        bufferedRanges.compactMap { item in
+    private var normalizedVerifiedRanges: [ClosedRange<Double>] { normalized(verifiedBufferedRanges) }
+    private var normalizedBufferedRanges: [ClosedRange<Double>] { normalized(bufferedRanges) }
+
+    private func normalized(_ ranges: [ClosedRange<Double>]) -> [ClosedRange<Double>] {
+        ranges.compactMap { item in
             let lower = max(range.lowerBound, min(range.upperBound, item.lowerBound))
             let upper = max(range.lowerBound, min(range.upperBound, item.upperBound))
             return upper > lower ? lower...upper : nil
@@ -92,9 +103,7 @@ struct BufferedTimelineSlider: View {
         return min(max(0, totalWidth * fraction(for: value) - thumbWidth / 2), max(0, totalWidth - thumbWidth))
     }
 
-    private func segmentOffset(_ buffered: ClosedRange<Double>, totalWidth: CGFloat) -> CGFloat {
-        totalWidth * fraction(for: buffered.lowerBound)
-    }
+    private func segmentOffset(_ buffered: ClosedRange<Double>, totalWidth: CGFloat) -> CGFloat { totalWidth * fraction(for: buffered.lowerBound) }
 
     private func segmentWidth(_ buffered: ClosedRange<Double>, totalWidth: CGFloat) -> CGFloat {
         max(0, totalWidth * (fraction(for: buffered.upperBound) - fraction(for: buffered.lowerBound)))

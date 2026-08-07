@@ -33,6 +33,7 @@ final class TransportHTTPServer {
 
     private let session: TransportDataSession
     private let fileExtension: String
+    private let stopSessionOnStop: Bool
     private let token = UUID().uuidString.lowercased()
     private let logID = String(UUID().uuidString.lowercased().prefix(6))
     private let queue = DispatchQueue(label: "com.embyplayerlab.transport.http-server", qos: .userInitiated)
@@ -45,9 +46,10 @@ final class TransportHTTPServer {
     private var lastLoggedRequestAt = Date.distantPast
     private var stopped = false
 
-    init(session: TransportDataSession, fileExtension: String) {
+    init(session: TransportDataSession, fileExtension: String, stopSessionOnStop: Bool = true) {
         self.session = session
         self.fileExtension = fileExtension.isEmpty ? "mp4" : fileExtension
+        self.stopSessionOnStop = stopSessionOnStop
     }
 
     func start() async throws -> URL {
@@ -163,8 +165,8 @@ final class TransportHTTPServer {
         state.listener?.cancel()
         state.tasks.forEach { $0.cancel() }
         state.connections.forEach { $0.cancel() }
-        Task { await session.stop() }
-        DiagnosticsLogger.shared.log("TransportHTTP", "server=\(logID) stopped")
+        if stopSessionOnStop { Task { await session.stop() } }
+        DiagnosticsLogger.shared.log("TransportHTTP", "server=\(logID) stopped sharedSession=\(!stopSessionOnStop)")
     }
 
     private func accept(_ connection: NWConnection) {

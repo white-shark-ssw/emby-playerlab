@@ -1,13 +1,13 @@
 import Foundation
 
 final class PlaybackTransportContext: @unchecked Sendable {
-    let session: MediaTransportSession
+    let session: UnifiedMediaTransportSession
 
     private let lock = NSLock()
     private var stopped = false
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, configuration: MediaTransportConfiguration) {
-        session = MediaTransportSession(source: source, client: client, configuration: configuration.resourceLoaderProfile())
+        session = UnifiedMediaTransportSession(source: source, configuration: configuration)
     }
 
     func quiesceConsumers() async { await session.quiesceConsumers() }

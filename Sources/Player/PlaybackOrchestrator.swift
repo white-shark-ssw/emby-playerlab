@@ -24,18 +24,21 @@ final class PlaybackOrchestrator {
         self.source = source
         self.automaticMode = preference.isAutomatic
         let media = source.mediaSource
-        let transport = MediaTransportConfiguration.current()
-        let ktvDiskEnabled = transport.strategy == .ktvHTTP &&
-            transport.diskLimitBytes > 0 &&
-            (transport.cacheMode == .disk || transport.cacheMode == .automatic)
-        let largeKTVMP4 = ktvDiskEnabled &&
-            media.normalizedContainer == "mp4" &&
-            (media.size ?? 0) >= 4 * 1_073_741_824 &&
-            (media.durationSeconds ?? 0) >= 3_600
-        if preference.isAutomatic, MediaCompatibilityStore.requiresFFmpeg(itemId: source.itemId) || largeKTVMP4 {
-            self.currentKind = .ksAVIO
-            let reason = largeKTVMP4 ? "large-mp4-ktv-direct-ffmpeg" : "stored-media-compatibility"
-            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticEngine=KSPlayer-FFmpeg reason=\(reason)")
+        let nativeContainers: Set<String> = ["mp4", "mov", "m4v"]
+        let nativeVideo: Set<String> = ["h264", "hevc", "h265"]
+        let nativeAudio: Set<String> = ["aac", "alac", "mp3", "ac3", "eac3"]
+        let video = media.videoCodec?.lowercased() ?? ""
+        let audio = media.audioCodec?.lowercased() ?? ""
+        let nativeFriendly = nativeContainers.contains(media.normalizedContainer) && (video.isEmpty || nativeVideo.contains(video)) && (audio.isEmpty || nativeAudio.contains(audio))
+        let largeIndexedMP4 = media.normalizedContainer == "mp4" && ((media.size ?? 0) >= 4 * 1_073_741_824 || (media.durationSeconds ?? 0) >= 3_600)
+        let storedCompatibility = MediaCompatibilityStore.requiresCompatibilityEngine(itemId: source.itemId)
+        if preference.isAutomatic, storedCompatibility || largeIndexedMP4 || !nativeFriendly {
+            self.currentKind = .mpv
+            let reason = storedCompatibility ? "stored-media-compatibility" : (largeIndexedMP4 ? "large-indexed-mp4" : "non-native-container-or-codec")
+            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=MPV+UnifiedTransport reason=\(reason)")
+        } else if preference.isAutomatic {
+            self.currentKind = .transportAVPlayer
+            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=AVPlayer+UnifiedTransport reason=native-friendly")
         } else {
             self.currentKind = preference.resolved(for: source.mediaSource)
         }
@@ -90,7 +93,7 @@ final class PlaybackOrchestrator {
             return .recoverTransport(message: "下载暂时没有推进，正在重新启动持续预取；不会切换播放引擎")
         }
 
-        if kind == .resourceLoaderAVPlayer || kind == .ksAVIO || kind == .transportAVPlayer {
+        if kind == .resourceLoaderAVPlayer || kind == .ksAVIO || kind == .transportAVPlayer || kind == .mpv {
             if health.transportHealthy { return .wait(message: "数据正在补充，保持当前播放引擎等待恢复") }
             return .recoverTransport(message: "当前位置数据不足，重建当前传输窗口；不会切换播放引擎")
         }

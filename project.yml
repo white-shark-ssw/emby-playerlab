@@ -8,9 +8,9 @@ options:
   createIntermediateGroups: true
 
 packages:
-  KSPlayer:
-    url: https://github.com/kingslay/KSPlayer.git
-    exactVersion: 2.3.4
+  MPVKit:
+    url: https://github.com/mpvkit/MPVKit.git
+    exactVersion: 0.41.0-n8.1.2
 
 settings:
   base:
@@ -18,8 +18,8 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "15.0"
     ENABLE_USER_SCRIPT_SANDBOXING: "YES"
     CLANG_ENABLE_MODULES: "YES"
-    MARKETING_VERSION: "0.8.1"
-    CURRENT_PROJECT_VERSION: "45"
+    MARKETING_VERSION: "0.9.0"
+    CURRENT_PROJECT_VERSION: "46"
 
 
 targets:
@@ -32,15 +32,15 @@ targets:
       - path: Resources
         buildPhase: resources
     dependencies:
-      - package: KSPlayer
-        product: KSPlayer
+      - package: MPVKit
+        product: MPVKit
     info:
       path: Config/Info.plist
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app
-        MARKETING_VERSION: "0.8.1"
-        CURRENT_PROJECT_VERSION: "45"
+        MARKETING_VERSION: "0.9.0"
+        CURRENT_PROJECT_VERSION: "46"
         PRODUCT_NAME: EmbyPlayerLab
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: "NO"

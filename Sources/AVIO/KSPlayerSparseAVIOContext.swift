@@ -1,3 +1,4 @@
+#if canImport(KSPlayer)
 import Foundation
 import KSPlayer
 
@@ -28,3 +29,5 @@ final class KSPlayerSparseAVIOContext: AbstractAVIOContext {
     override func fileSize() -> Int64 { coordinator.fileSize }
     override func close() { coordinator.close() }
 }
+
+#endif

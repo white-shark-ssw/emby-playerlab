@@ -1,6 +1,7 @@
 import Foundation
 
 enum TransportStrategy: String, CaseIterable, Identifiable {
+    case unified
     case ktvHTTP
     case downloadFirst
     case legacyMultiRange
@@ -9,7 +10,8 @@ enum TransportStrategy: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .ktvHTTP: return "KTVHTTPCache 持续预取"
+        case .unified: return "统一双槽 Range（v0.9）"
+        case .ktvHTTP: return "KTVHTTPCache 持续预取（旧诊断）"
         case .downloadFirst: return "下载优先"
         case .legacyMultiRange: return "旧版多 Range"
         }
@@ -93,7 +95,7 @@ struct MediaTransportConfiguration: Equatable {
 
     static func current(defaults: UserDefaults = .standard) -> MediaTransportConfiguration {
         defaults.register(defaults: [
-            TransportSettingsKey.strategy: TransportStrategy.ktvHTTP.rawValue,
+            TransportSettingsKey.strategy: TransportStrategy.unified.rawValue,
             TransportSettingsKey.cacheMode: TransportCacheMode.automatic.rawValue,
             TransportSettingsKey.memoryCacheMB: 256,
             TransportSettingsKey.diskCacheGB: 2,
@@ -107,7 +109,7 @@ struct MediaTransportConfiguration: Equatable {
             TransportSettingsKey.ktvPreloadOnCellular: false,
         ])
 
-        let strategy = TransportStrategy(rawValue: defaults.string(forKey: TransportSettingsKey.strategy) ?? "") ?? .ktvHTTP
+        let strategy = TransportStrategy(rawValue: defaults.string(forKey: TransportSettingsKey.strategy) ?? "") ?? .unified
         let mode = TransportCacheMode(rawValue: defaults.string(forKey: TransportSettingsKey.cacheMode) ?? "") ?? .automatic
         let memoryMB = max(0, defaults.integer(forKey: TransportSettingsKey.memoryCacheMB))
         let diskGB = max(0, defaults.integer(forKey: TransportSettingsKey.diskCacheGB))

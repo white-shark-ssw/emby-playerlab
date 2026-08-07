@@ -6,7 +6,7 @@ struct PlayerSettingsView: View {
     @AppStorage("seek.screenPanEnabled") private var screenPanEnabled = true
     @AppStorage("buffer.preset") private var bufferPreset = BufferPreset.balanced.rawValue
 
-    @AppStorage(TransportSettingsKey.strategy) private var transportStrategy = TransportStrategy.ktvHTTP.rawValue
+    @AppStorage(TransportSettingsKey.strategy) private var transportStrategy = TransportStrategy.unified.rawValue
     @AppStorage(TransportSettingsKey.cacheMode) private var cacheMode = TransportCacheMode.automatic.rawValue
     @AppStorage(TransportSettingsKey.memoryCacheMB) private var memoryCacheMB = 256
     @AppStorage(TransportSettingsKey.diskCacheGB) private var diskCacheGB = 2
@@ -43,7 +43,7 @@ struct PlayerSettingsView: View {
                 }
 
                 Section(header: Text("115 持续缓存实验")) {
-                    Picker("传输实现", selection: $transportStrategy) {
+                    Picker("传输实现（诊断/旧引擎）", selection: $transportStrategy) {
                         ForEach(TransportStrategy.allCases) { strategy in
                             Text(strategy.title).tag(strategy.rawValue)
                         }
@@ -55,7 +55,7 @@ struct PlayerSettingsView: View {
                     }
                     Stepper("内存缓存：\(memoryCacheMB) MB", value: $memoryCacheMB, in: 64...2048, step: 64)
                     Stepper("磁盘缓存预算：\(diskCacheGB) GB", value: $diskCacheGB, in: 0...50, step: 1)
-                    Stepper("Wi-Fi 播放窗口：\(normalizedWiFiWindow) MB", value: wifiWindowBinding, in: 32...128, step: 16)
+                    Stepper("Wi-Fi 最小预取窗口：\(normalizedWiFiWindow) MB", value: wifiWindowBinding, in: 32...512, step: 32)
                     Stepper("蜂窝播放窗口：\(normalizedCellularWindow) MB", value: cellularWindowBinding, in: 16...64, step: 16)
                     Picker("缓存分片", selection: $segmentSizeMB) {
                         ForEach(segmentSizes, id: \.self) { size in Text("\(size) MB").tag(size) }
@@ -63,7 +63,7 @@ struct PlayerSettingsView: View {
                     Toggle("持续预取到缓存上限或文件结尾", isOn: $ktvContinuousPreload)
                     Toggle("蜂窝网络也持续预取", isOn: $ktvPreloadOnCellular)
                     Toggle("退出后保留磁盘缓存", isOn: $keepLastCache)
-                    Text("KTVHTTPCache 负责稀疏缓存，App 使用 16/32/64 MB 分段测速并自动选择表现更好的 Range 大小。连接持续低速或无增长时会从当前字节位置重建；Seek 后预取窗口立即迁移到目标位置，再继续补全文件。缓存预算大于视频体积时会自然形成完整缓存。")
+                    Text("v0.9 自动模式固定使用统一双槽 Range：AVPlayer 与 MPV 共用同一 ByteStore 和 115 连接池。Wi‑Fi 开启持续预取时会优先使用磁盘缓存预算作为连续下载上限；蜂窝是否持续预取仍由上方开关控制。KTV/旧多 Range 仅保留给诊断引擎。")
                         .font(.footnote)
                         .foregroundColor(.secondary)
 
@@ -107,7 +107,7 @@ struct PlayerSettingsView: View {
         }
     }
 
-    private var normalizedWiFiWindow: Int { min(max(wifiWindowMB, 32), 128) }
+    private var normalizedWiFiWindow: Int { min(max(wifiWindowMB, 32), 512) }
     private var normalizedCellularWindow: Int { min(max(cellularWindowMB, 16), 64) }
     private var wifiWindowBinding: Binding<Int> { Binding(get: { normalizedWiFiWindow }, set: { wifiWindowMB = $0 }) }
     private var cellularWindowBinding: Binding<Int> { Binding(get: { normalizedCellularWindow }, set: { cellularWindowMB = $0 }) }

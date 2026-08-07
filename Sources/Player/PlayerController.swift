@@ -14,6 +14,7 @@ final class PlayerController: ObservableObject {
     @Published private(set) var stallMessage: String?
     @Published private(set) var engineKind: PlayerEngineKind
     @Published private(set) var transportSummary: String?
+    @Published private(set) var verifiedBufferedRanges: [ClosedRange<Double>] = []
 
     @Published private(set) var source: ResolvedPlaybackSource
 
@@ -28,8 +29,6 @@ final class PlayerController: ObservableObject {
     private var seekAnchorReleaseTask: Task<Void, Never>?
     private var watchdogTask: Task<Void, Never>?
     private var transportMetricsTask: Task<Void, Never>?
-    private var compatibilityRecoveryTask: Task<Void, Never>?
-    private var compatibilitySeekFallbackTask: Task<Void, Never>?
     private var engineSwitchTask: Task<Void, Never>?
     private var startupFallbackTask: Task<Void, Never>?
     private var engineSwitchInProgress = false
@@ -47,15 +46,17 @@ final class PlayerController: ObservableObject {
     private var lastWatchdogPosition: Double = 0
     private var lastWatchdogBufferEnd: Double = 0
     private var stagnantWatchdogIntervals = 0
-    private var mpvCompatibilityMode = false
-    private var mpvCompatibilityReloadCount = 0
-    private var mpvCompatibilityLoadInProgress = false
     private var lastTransportMetrics: TransportMetricsSnapshot?
     private var lastHandledEngineError: String?
     private var lastBufferTimelineLogAt = Date.distantPast
+    private var lastVerifiedMPVPosition: Double?
 
     var ksAVIOView: UIView? {
-        (engine as? KSAVIOPlayerEngine)?.playerView
+        #if canImport(KSPlayer)
+        return (engine as? KSAVIOPlayerEngine)?.playerView
+        #else
+        return nil
+        #endif
     }
 
     var avPlayer: AVPlayer? {
@@ -75,15 +76,12 @@ final class PlayerController: ObservableObject {
         self.orchestrator = orchestrator
         let initialKind = orchestrator.currentKind
         let configuration = MediaTransportConfiguration.current()
-        let transportContext: PlaybackTransportContext?
-        if initialKind == .resourceLoaderAVPlayer || (initialKind == .ksAVIO && configuration.strategy != .ktvHTTP) {
-            transportContext = PlaybackTransportContext(source: source, client: client, configuration: configuration)
-        } else {
-            transportContext = nil
-        }
+        // v0.9 keeps one unified byte source alive for the whole playback session so
+        // AVPlayer and mpv can switch consumers without opening a second 115 pipeline.
+        let transportContext: PlaybackTransportContext? = PlaybackTransportContext(source: source, client: client, configuration: configuration)
         self.transportContext = transportContext
         self.engineKind = initialKind
-        self.engine = PlayerController.makeEngine(kind: initialKind, source: source, client: client, transportContext: transportContext, ktvCacheSession: nil)
+        self.engine = PlayerController.makeEngine(kind: initialKind, source: source, client: client, transportContext: transportContext)
         bindEngine()
     }
 
@@ -145,10 +143,6 @@ final class PlayerController: ObservableObject {
         transportMetricsTask?.cancel()
         transportMetricsTask = nil
         transportSummary = nil
-        compatibilityRecoveryTask?.cancel()
-        compatibilityRecoveryTask = nil
-        compatibilitySeekFallbackTask?.cancel()
-        compatibilitySeekFallbackTask = nil
         engineSwitchTask?.cancel()
         engineSwitchTask = nil
         startupFallbackTask?.cancel()
@@ -209,10 +203,6 @@ final class PlayerController: ObservableObject {
             "offset=\(offset) base=\(base) target=\(target) enginePosition=\(snapshot.position)"
         )
         engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)
-        scheduleCompatibilitySeekFallback(
-            target: target,
-            reason: "兼容模式双击 Seek 未收到 PLAYBACK_RESTART"
-        )
         showSeekFeedback(offset: offset)
         scheduleSeekReport(position: pendingSeekTarget ?? target)
     }
@@ -278,16 +268,6 @@ final class PlayerController: ObservableObject {
         let shouldPlay = userWantsPlayback
         let previousKind = engineKind
         let previousEngine = engine
-        let canHandoffKTVCache = MediaTransportConfiguration.current().strategy == .ktvHTTP
-        let ktvCacheHandoff: KTVCachePlaybackSession?
-        if canHandoffKTVCache, kind == .ksAVIO, let ktvEngine = previousEngine as? KTVAVPlayerEngine {
-            ktvCacheHandoff = ktvEngine.takeCacheSessionForHandoff()
-        } else if canHandoffKTVCache, kind == .ktvAVPlayer, let ksEngine = previousEngine as? KSAVIOPlayerEngine {
-            ktvCacheHandoff = ksEngine.takeCacheSessionForHandoff()
-        } else {
-            ktvCacheHandoff = nil
-        }
-
         engineSwitchInProgress = true
         engineTransitionAwaitingFirstSnapshot = true
         engineSwitchSerial &+= 1
@@ -297,13 +277,6 @@ final class PlayerController: ObservableObject {
 
         pendingSeekTarget = nil
         pendingSeekDirection = nil
-        compatibilityRecoveryTask?.cancel()
-        compatibilityRecoveryTask = nil
-        compatibilitySeekFallbackTask?.cancel()
-        compatibilitySeekFallbackTask = nil
-        mpvCompatibilityMode = false
-        mpvCompatibilityReloadCount = 0
-        mpvCompatibilityLoadInProgress = false
         seekAnchorReleaseTask?.cancel()
         seekAnchorReleaseTask = nil
         transportMetricsTask?.cancel()
@@ -334,7 +307,7 @@ final class PlayerController: ObservableObject {
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
 
-            let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext, ktvCacheSession: ktvCacheHandoff)
+            let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext)
             self.engine = nextEngine
             self.engineKind = kind
             self.orchestrator.didSwitch(to: kind)
@@ -356,12 +329,8 @@ final class PlayerController: ObservableObject {
     func toggleEngine() {
         let next: PlayerEngineKind
         switch engineKind {
-        case .ktvAVPlayer: next = .resourceLoaderAVPlayer
-        case .resourceLoaderAVPlayer: next = .ksAVIO
-        case .transportAVPlayer: next = .resourceLoaderAVPlayer
-        case .ksAVIO: next = .ktvAVPlayer
-        case .avPlayer: next = .resourceLoaderAVPlayer
-        case .mpv: next = .ktvAVPlayer
+        case .transportAVPlayer: next = .mpv
+        default: next = .transportAVPlayer
         }
         switchEngine(to: next)
     }
@@ -397,17 +366,50 @@ final class PlayerController: ObservableObject {
         DiagnosticsLogger.shared.log("BufferTimeline", "engine=\(engineKind.title) position=\(String(format: "%.3f", value.position)) forwardPlayable=\(String(format: "%.3f", forward)) playableRanges=[\(ranges)\(suffix)] buffering=\(value.isBuffering)")
     }
 
+    var verifiedBufferedEnd: Double { verifiedBufferedRanges.map(\.upperBound).max() ?? 0 }
+
+    private func updateVerifiedBufferedRanges(from value: PlayerSnapshot) {
+        guard !value.bufferedRanges.isEmpty else { return }
+        if engineKind == .mpv {
+            guard value.isPlaying, !value.isBuffering else { return }
+            if let previous = lastVerifiedMPVPosition {
+                let delta = value.position - previous
+                guard delta > 0.03, delta < 2 else { lastVerifiedMPVPosition = value.position; return }
+            } else {
+                lastVerifiedMPVPosition = value.position
+                return
+            }
+            lastVerifiedMPVPosition = value.position
+        }
+        verifiedBufferedRanges = Self.mergeTimeRanges(verifiedBufferedRanges + value.bufferedRanges)
+    }
+
+    private static func mergeTimeRanges(_ ranges: [ClosedRange<Double>]) -> [ClosedRange<Double>] {
+        let sorted = ranges.filter { $0.lowerBound.isFinite && $0.upperBound.isFinite && $0.upperBound > $0.lowerBound }.sorted { $0.lowerBound < $1.lowerBound }
+        guard var current = sorted.first else { return [] }
+        var result: [ClosedRange<Double>] = []
+        for range in sorted.dropFirst() {
+            if range.lowerBound <= current.upperBound + 0.15 {
+                current = current.lowerBound...max(current.upperBound, range.upperBound)
+            } else {
+                result.append(current)
+                current = range
+            }
+        }
+        result.append(current)
+        return result
+    }
+
     private static func makeEngine(
         kind: PlayerEngineKind,
         source: ResolvedPlaybackSource,
         client: EmbyAPIClient,
-        transportContext: PlaybackTransportContext?,
-        ktvCacheSession: KTVCachePlaybackSession?
+        transportContext: PlaybackTransportContext?
     ) -> PlayerEngine {
         let configuration = MediaTransportConfiguration.current()
         switch kind {
         case .ktvAVPlayer:
-            return KTVAVPlayerEngine(source: source, configuration: configuration, cacheSession: ktvCacheSession)
+            return KTVAVPlayerEngine(source: source, configuration: configuration, cacheSession: nil)
         case .resourceLoaderAVPlayer:
             return AVPlayerEngine(
                 kind: .resourceLoaderAVPlayer,
@@ -421,20 +423,19 @@ final class PlayerController: ObservableObject {
                 kind: .transportAVPlayer,
                 transportSource: source,
                 transportClient: client,
-                transportConfiguration: configuration
+                transportConfiguration: configuration,
+                sharedTransportSession: transportContext?.session
             )
         case .ksAVIO:
-            return KSAVIOPlayerEngine(
-                source: source,
-                client: client,
-                configuration: configuration,
-                sharedTransportSession: configuration.strategy == .ktvHTTP ? nil : transportContext?.session,
-                ktvCacheSession: configuration.strategy == .ktvHTTP ? ktvCacheSession : nil
-            )
+            #if canImport(KSPlayer)
+            return KSAVIOPlayerEngine(source: source, client: client, configuration: configuration, sharedTransportSession: transportContext?.session, ktvCacheSession: nil)
+            #else
+            return SuspendedPlayerEngine(kind: .ksAVIO)
+            #endif
         case .avPlayer:
             return AVPlayerEngine()
         case .mpv:
-            return MPVPlayerEngine()
+            return MPVPlayerEngine(sharedTransportSession: transportContext?.session)
         }
     }
 
@@ -448,6 +449,7 @@ final class PlayerController: ObservableObject {
                 guard generation == self.engineGeneration else { return }
                 let wasEnd = self.snapshot.didReachEnd
                 self.snapshot = value
+                self.updateVerifiedBufferedRanges(from: value)
                 self.logBufferTimelineIfNeeded(value)
                 if self.engineTransitionAwaitingFirstSnapshot {
                     self.engineTransitionAwaitingFirstSnapshot = false
@@ -492,8 +494,6 @@ final class PlayerController: ObservableObject {
             Task { @MainActor in
                 guard generation == self.engineGeneration else { return }
                 if let pending = self.pendingSeekTarget, abs(pending - result.target) < 0.01 {
-                    self.compatibilitySeekFallbackTask?.cancel()
-                    self.compatibilitySeekFallbackTask = nil
                     self.seekAnchorReleaseTask?.cancel()
                     self.seekAnchorReleaseTask = nil
                     self.pendingSeekTarget = nil
@@ -528,10 +528,6 @@ final class PlayerController: ObservableObject {
         pendingSeekDirection = .absolute
 
         engine.seek(to: target, direction: .absolute)
-        scheduleCompatibilitySeekFallback(
-            target: target,
-            reason: "兼容模式拖动 Seek 未收到 PLAYBACK_RESTART"
-        )
         Task {
             await client.reportProgress(
                 source: source,
@@ -610,15 +606,9 @@ final class PlayerController: ObservableObject {
             prematureEOFMessage = "\(decision.reason)；App 正在自动切换到 \(next.title)。"
             switchEngine(to: next, reason: reason)
         case .reloadCurrent(let reason):
-            if engineKind == .mpv, eofRetryCount < 2 {
-                eofRetryCount += 1
-                let target = clampPosition(snapshot.position + (eofRetryCount == 1 ? 5 : 15))
-                prematureEOFMessage = "\(reason)；MPV 正在从 \(formatTime(target)) 恢复。"
-                startMPVCompatibilityReload(at: target, reason: reason)
-            } else {
-                engine.reload(at: snapshot.position)
-                engine.play()
-            }
+            prematureEOFMessage = reason
+            engine.reload(at: snapshot.position)
+            engine.play()
         case .recoverTransport(let message), .wait(let message):
             prematureEOFMessage = message
             engine.recoverStall(position: snapshot.position, duration: effectiveDuration)
@@ -637,8 +627,9 @@ final class PlayerController: ObservableObject {
 
     private func scheduleStartupCompatibilityFallbackIfNeeded(message: String) -> Bool {
         let normalized = message.lowercased()
+        let startupAVKinds: Set<PlayerEngineKind> = [.ktvAVPlayer, .resourceLoaderAVPlayer, .transportAVPlayer]
         guard orchestrator.automaticMode,
-              engineKind == .ktvAVPlayer,
+              startupAVKinds.contains(engineKind),
               source.mediaSource.normalizedContainer == "mp4",
               snapshot.position < 1,
               normalized.contains("cannot open") || normalized.contains("无法打开") else { return false }
@@ -651,7 +642,7 @@ final class PlayerController: ObservableObject {
             guard let self else { return }
             for attempt in 1...6 {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
-                guard !Task.isCancelled, self.started, self.engineKind == .ktvAVPlayer, self.snapshot.position < 1 else {
+                guard !Task.isCancelled, self.started, startupAVKinds.contains(self.engineKind), self.snapshot.position < 1 else {
                     self.startupFallbackTask = nil
                     return
                 }
@@ -665,10 +656,10 @@ final class PlayerController: ObservableObject {
                 DiagnosticsLogger.shared.log("StartupFallback", "check item=\(self.source.itemId) attempt=\(attempt) downloaded=\(healthyBytes) cache=\(cacheBytes) speed=\(Int(speed))B/s active=\(active) healthy=\(transportHealthy)")
                 guard transportHealthy else { continue }
 
-                MediaCompatibilityStore.markFFmpegRequired(itemId: self.source.itemId, reason: "ktv-avplayer-startup-cannot-open")
-                self.stallMessage = "媒体数据下载正常，但 AVPlayer 无法打开容器；正在从 0 秒使用 KSPlayer/FFmpeg 重新打开。"
+                MediaCompatibilityStore.markCompatibilityEngineRequired(itemId: self.source.itemId, reason: "avplayer-startup-cannot-open")
+                self.stallMessage = "媒体数据下载正常，但 AVPlayer 无法打开容器；正在从 0 秒使用 MPV 兼容引擎重新打开。"
                 self.startupFallbackTask = nil
-                self.switchEngine(to: .ksAVIO, reason: "启动阶段 Cannot Open，传输健康，受控回退到 FFmpeg")
+                self.switchEngine(to: .mpv, reason: "启动阶段 Cannot Open，传输健康，受控回退到 MPV")
                 return
             }
 
@@ -720,12 +711,8 @@ final class PlayerController: ObservableObject {
             switchEngine(to: next, reason: reason)
         case .reloadCurrent(let reason):
             stallMessage = reason
-            if engineKind == .mpv, source.mediaSource.normalizedContainer == "mp4" {
-                startMPVCompatibilityReload(at: clampPosition(snapshot.position + 3), reason: reason)
-            } else {
-                engine.reload(at: snapshot.position)
-                engine.play()
-            }
+            engine.reload(at: snapshot.position)
+            engine.play()
         case .wait(let message):
             stallMessage = message
         }
@@ -749,124 +736,6 @@ final class PlayerController: ObservableObject {
                     self.lastTransportMetrics = nil
                 }
             }
-        }
-    }
-
-    private func scheduleCompatibilitySeekFallback(target: Double, reason: String) {
-        compatibilitySeekFallbackTask?.cancel()
-        compatibilitySeekFallbackTask = nil
-
-        guard started,
-              engineKind == .mpv,
-              mpvCompatibilityMode,
-              source.mediaSource.normalizedContainer == "mp4" else { return }
-
-        compatibilitySeekFallbackTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 2_500_000_000)
-            guard let self,
-                  !Task.isCancelled,
-                  self.started,
-                  self.engineKind == .mpv,
-                  self.mpvCompatibilityMode,
-                  let pending = self.pendingSeekTarget,
-                  abs(pending - target) < 0.01 else { return }
-
-            DiagnosticsLogger.shared.log(
-                "MPVSeekFallback",
-                "target=\(target) position=\(self.snapshot.position) reason=\(reason)"
-            )
-            self.compatibilitySeekFallbackTask = nil
-            self.startMPVCompatibilityReload(at: target, reason: reason)
-        }
-    }
-
-    private func startMPVCompatibilityReload(at requestedPosition: Double, reason: String) {
-        guard started,
-              engineKind == .mpv,
-              source.mediaSource.normalizedContainer == "mp4",
-              compatibilityRecoveryTask == nil,
-              !mpvCompatibilityLoadInProgress,
-              let mpvEngine = engine as? MPVPlayerEngine else { return }
-
-        let startPosition = clampPosition(requestedPosition)
-        let previousSource = source
-        pendingSeekTarget = startPosition
-        pendingSeekDirection = .absolute
-        displayedPosition = startPosition
-        compatibilitySeekFallbackTask?.cancel()
-        compatibilitySeekFallbackTask = nil
-        mpvCompatibilityMode = true
-        mpvCompatibilityLoadInProgress = true
-        mpvCompatibilityReloadCount += 1
-        resetWatchdog()
-
-        DiagnosticsLogger.shared.log(
-            "MPVCompatibility",
-            "begin reason=\(reason) from=\(snapshot.position) start=\(startPosition) reload=\(mpvCompatibilityReloadCount)"
-        )
-
-        compatibilityRecoveryTask = Task { [weak self, weak mpvEngine] in
-            guard let self, let mpvEngine else { return }
-
-            var refreshedSource = previousSource
-            do {
-                let playback = try await self.client.playbackInfo(itemId: previousSource.itemId)
-                guard !Task.isCancelled, self.started else {
-                    self.mpvCompatibilityLoadInProgress = false
-                    self.compatibilityRecoveryTask = nil
-                    return
-                }
-
-                if let mediaSource = playback.mediaSources.first(where: { $0.id == previousSource.mediaSource.id })
-                    ?? playback.mediaSources.first {
-                    refreshedSource = try self.client.resolvePlaybackSource(
-                        itemId: previousSource.itemId,
-                        itemName: previousSource.itemName,
-                        mediaSource: mediaSource,
-                        playSessionId: playback.playSessionId
-                    )
-                }
-            } catch {
-                DiagnosticsLogger.shared.log(
-                    "MPVCompatibility",
-                    "PlaybackInfo refresh failed: \(error.localizedDescription); reusing current playback source"
-                )
-            }
-
-            guard !Task.isCancelled, self.started, self.engine === mpvEngine else {
-                self.mpvCompatibilityLoadInProgress = false
-                self.compatibilityRecoveryTask = nil
-                return
-            }
-
-            self.source = refreshedSource
-            self.resetWatchdogSamples()
-            mpvEngine.reloadForBadInterleavedMP4(
-                url: refreshedSource.url,
-                headers: refreshedSource.headers,
-                preferredForwardBuffer: self.preferredForwardBuffer,
-                startPosition: startPosition,
-                reason: reason
-            )
-            mpvEngine.play()
-
-            Task {
-                await self.client.reportStopped(
-                    source: previousSource,
-                    position: self.snapshot.position
-                )
-                await self.client.reportStart(
-                    source: refreshedSource,
-                    position: startPosition,
-                    paused: false
-                )
-            }
-
-            // The file replacement is now queued. STOP/REDIRECT transition events
-            // are ignored by MPVPlayerEngine; the next FILE_LOADED/time-pos events will
-            // drive normal state again.
-            self.mpvCompatibilityLoadInProgress = false
-            self.compatibilityRecoveryTask = nil
         }
     }
 

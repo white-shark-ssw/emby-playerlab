@@ -60,9 +60,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .spm-cache
-          key: ${{ runner.os }}-ksplayer-2.3.4-ktv-3.1.0-${{ hashFiles('project.yml', 'Podfile') }}
+          key: ${{ runner.os }}-mpvkit-0.41.0-n8.1.2-ktv-3.1.0-${{ hashFiles('project.yml', 'Podfile') }}
 
-      - name: Resolve KSPlayer
+      - name: Resolve MPVKit
         run: |
           set -euo pipefail
           set -o pipefail

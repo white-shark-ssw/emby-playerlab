@@ -33,7 +33,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private let transportSource: ResolvedPlaybackSource?
     private let transportClient: EmbyAPIClient?
     private let transportConfiguration: MediaTransportConfiguration?
-    private let sharedTransportSession: MediaTransportSession?
+    private let sharedTransportSession: TransportDataSession?
     private var transportServer: TransportHTTPServer?
     private var transportResourceLoader: TransportResourceLoader?
     private var transportPrepareTask: Task<Void, Never>?
@@ -65,7 +65,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         transportSource: ResolvedPlaybackSource? = nil,
         transportClient: EmbyAPIClient? = nil,
         transportConfiguration: MediaTransportConfiguration? = nil,
-        sharedTransportSession: MediaTransportSession? = nil
+        sharedTransportSession: TransportDataSession? = nil
     ) {
         self.kind = kind
         self.transportSource = transportSource
@@ -140,28 +140,20 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
            let transportClient,
            let transportConfiguration {
             let session: TransportDataSession
-            switch transportConfiguration.strategy {
-            case .ktvHTTP:
-                DiagnosticsLogger.shared.log("TransportPlayer", "legacy HTTP engine requested while KTV strategy is active; using download-first compatibility session")
-                session = DownloadFirstMediaSession(
-                    source: transportSource,
-                    client: transportClient,
-                    configuration: transportConfiguration
-                )
-            case .downloadFirst:
-                session = DownloadFirstMediaSession(
-                    source: transportSource,
-                    client: transportClient,
-                    configuration: transportConfiguration
-                )
-            case .legacyMultiRange:
-                session = MediaTransportSession(
-                    source: transportSource,
-                    client: transportClient,
-                    configuration: transportConfiguration
-                )
+            if let sharedTransportSession {
+                session = sharedTransportSession
+                DiagnosticsLogger.shared.log("TransportPlayer", "using shared unified transport session")
+            } else {
+                switch transportConfiguration.strategy {
+                case .unified:
+                    session = UnifiedMediaTransportSession(source: transportSource, configuration: transportConfiguration)
+                case .ktvHTTP, .downloadFirst:
+                    session = DownloadFirstMediaSession(source: transportSource, client: transportClient, configuration: transportConfiguration)
+                case .legacyMultiRange:
+                    session = MediaTransportSession(source: transportSource, client: transportClient, configuration: transportConfiguration)
+                }
             }
-            let server = TransportHTTPServer(session: session, fileExtension: transportSource.mediaSource.normalizedContainer)
+            let server = TransportHTTPServer(session: session, fileExtension: transportSource.mediaSource.normalizedContainer, stopSessionOnStop: sharedTransportSession == nil)
             transportServer = server
 
             DiagnosticsLogger.shared.log(
