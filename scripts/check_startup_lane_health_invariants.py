@@ -8,19 +8,21 @@ required_unified = [
     "let startupTailMetadata = isStartupTailMetadata(range, resource: resource)",
     "let concretePlaybackDemand = concreteReason && !metadata",
     "Date() > pendingUserSeekUntil",
-    "startupTailWarmupBytes: Int64 = 16 * 1_048_576",
-    "private func configureStartupWarmupIfNeeded",
-    "large-mp4 warmup planned",
-    "head warmup complete",
-    "action=queue-tail",
-    "tail warmup complete",
-    "tail waiting for warm primary",
+    "case startupMetadata",
+    "startupMetadataSegmentBytes: Int64 = 1 * 1_048_576",
+    "actual-tail plan range=",
+    "startup-metadata-preempt",
+    "action=await-actual-tail-demand",
+    "action=straggler-cancel",
+    "action=straggler-reset",
     "private func considerSequentialLaneHealth",
+    "private func observeSequentialChunk",
     "laneHealthPeerFloorBps: Double = 4 * 1_048_576",
     "laneHealthRelativeFloor: Double = 0.50",
     "current.slowStreak >= 2",
     "laneHealthResetCooldownSeconds: TimeInterval = 25",
     "action=rotate-slow-lane",
+    "action=rotate-live-lane",
     "protected bulk changed slot=",
     "protected bulk failover slot=",
 ]
@@ -28,10 +30,10 @@ for needle in required_unified:
     if needle not in unified:
         raise SystemExit(f"startup/lane-health invariant missing: {needle}")
 
-if unified.count("private func configureStartupWarmupIfNeeded") != 1:
-    raise SystemExit("startup warmup helper must appear exactly once")
-if 'cancelSlot(0, reason: "startup-metadata-priority")' in unified:
-    raise SystemExit("large-MP4 tail warmup must not destroy the tiny warm primary head request")
+for obsolete in ["startupTailWarmupBytes", "configureStartupWarmupIfNeeded", "large-mp4 warmup planned", "action=queue-tail", "tail warmup complete"]:
+    if obsolete in unified:
+        raise SystemExit(f"obsolete proactive startup strategy remains: {obsolete}")
+
 if unified.count("recordNetworkBytes(Int64(chunk.count))") != 2:
     raise SystemExit("each received network chunk must be counted exactly once in each fetch path")
 
@@ -54,39 +56,34 @@ if 'value.bufferedRanges.contains(where:' not in controller:
 
 finish_anchor = unified.index("private func finishSlot")
 clear_index = unified.index("slotClaims[slot] = nil", finish_anchor)
-health_index = unified.index("considerSequentialLaneHealth(slot:", finish_anchor)
-if clear_index >= health_index:
-    raise SystemExit("lane health reset may only run after the completed slot is marked idle")
-if "if claim.role == .sequential, error == nil" not in unified[finish_anchor:health_index + 256]:
-    raise SystemExit("lane rotation must only be evaluated from successful sequential completion")
+live_reset_index = unified.index("client.resetStreamLane(worker: slot, reason: \"live-lane-rotation\")", finish_anchor)
+if clear_index >= live_reset_index:
+    raise SystemExit("live lane reset may only run after the cancelled slot is marked idle")
 
-# 152901 v0.11.2 regression: libmpv's startup seek lands 10,180,143 bytes from EOF
-# in a 5.88 GB MP4. Scheduler v2 proactively warms the final 16 MiB after the 1 MiB head.
+# 152901 v0.12.0 regression: actual tail starts 10,180,143 bytes from EOF. The new
+# scheduler must start from that real byte offset, not from the old final-16MiB boundary.
 resource_bytes = 5_883_702_464
 tail_offset = 5_873_522_321
-warmup_bytes = 16 * 1_048_576
-warmup_start = resource_bytes - warmup_bytes
-if resource_bytes < 4 * 1_073_741_824:
-    raise SystemExit("synthetic 152901 large-MP4 condition failed")
-if not (warmup_start <= tail_offset < resource_bytes):
-    raise SystemExit("synthetic 152901 tail request must be covered by proactive warmup")
+segment = 1 * 1_048_576
+exact_bytes = resource_bytes - tail_offset
+chunk_count = (exact_bytes + segment - 1) // segment
+if exact_bytes != 10_180_143 or chunk_count != 10:
+    raise SystemExit("synthetic 152901 actual-demand startup plan regression failed")
 
-# Health policy: rotate a clearly degraded lane only when a recently healthy peer proves
-# that the whole network is not simply slow. Two bad completed blocks are required.
+# Completed-block health remains as a conservative fallback, but live health can react
+# much earlier. A 20 MiB/s peer versus a 3 MiB/s lane is clearly degraded.
 peer_floor = 4 * 1_048_576
-relative_floor = 0.50
-peer_bps = 16 * 1_048_576
-slow_samples = [3 * 1_048_576, 2.5 * 1_048_576]
-streak = 0
-for sample in slow_samples:
-    if peer_bps >= peer_floor and sample < peer_bps * relative_floor:
-        streak += 1
-if streak < 2:
-    raise SystemExit("synthetic degraded-lane rotation regression failed")
+relative_floor = 0.45
+peer_bps = 20 * 1_048_576
+slow_bps = 3 * 1_048_576
+if not (peer_bps >= peer_floor and slow_bps < peer_bps * relative_floor):
+    raise SystemExit("synthetic 63368 live lane degradation regression failed")
 
+# Whole-link weak-network case must still avoid peer-relative rotation when the peer is
+# below the healthy floor; only the separate hard no-first-byte watchdog may intervene.
 weak_peer_bps = 3 * 1_048_576
 weak_lane_bps = 2 * 1_048_576
 if weak_peer_bps >= peer_floor and weak_lane_bps < weak_peer_bps * relative_floor:
-    raise SystemExit("whole-link weak-network case must not trigger peer-relative lane rotation")
+    raise SystemExit("whole-link weak-network case must not trigger peer-relative live rotation")
 
 print("Startup metadata / lane health invariants: OK")
