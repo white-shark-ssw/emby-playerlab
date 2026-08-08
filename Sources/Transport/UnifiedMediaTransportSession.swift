@@ -483,6 +483,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                             recordNetworkBytes(Int64(chunk.count))
                             recordNetworkBytes(Int64(chunk.count))
                             recordNetworkBytes(Int64(chunk.count))
+                            recordNetworkBytes(Int64(chunk.count))
                             let writtenLower = claim.range.lowerBound + receivedForClaim - Int64(chunk.count)
                             let written = writtenLower..<min(claim.range.upperBound, writtenLower + Int64(chunk.count))
                             if claim.role == .metadata { rangeMap.insertMetadata(written) } else { rangeMap.insertPlayback(written) }
