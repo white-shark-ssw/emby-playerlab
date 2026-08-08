@@ -77,7 +77,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let liveLaneResetCooldownSeconds: TimeInterval = 8
     private let startupTailDemandGraceSeconds: TimeInterval = 0.25
     private let stallBlockingDemandFreshSeconds: TimeInterval = 12
-    private let strictFrontierReserveBytes: Int64 = 128 * 1_048_576
+    private let strictFrontierReserveBytes: Int64 = Int64.max
     private let lookaheadSegments = 4
     private let createdAt = Date()
 
