@@ -3,21 +3,39 @@ import Combine
 
 @MainActor
 final class SessionStore: ObservableObject {
+    @Published private(set) var sessions: [EmbySession] = []
     @Published private(set) var session: EmbySession?
     @Published var isWorking = false
     @Published var errorMessage: String?
 
-    private let sessionKey = "EmbyPlayerLab.Session"
+    private let sessionsKey = "OSPlayer.Sessions"
+    private let legacySessionKey = "EmbyPlayerLab.Session"
+    private var didRestore = false
 
     func restore() {
-        guard session == nil,
-              let data = UserDefaults.standard.data(forKey: sessionKey),
+        guard !didRestore else { return }
+        didRestore = true
+
+        if let data = UserDefaults.standard.data(forKey: sessionsKey), let stored = try? JSONDecoder().decode([EmbySession].self, from: data) {
+            sessions = stored.filter { KeychainStore.get(account: $0.tokenAccount) != nil }
+            persistSessions()
+            return
+        }
+
+        guard let data = UserDefaults.standard.data(forKey: legacySessionKey),
               let stored = try? JSONDecoder().decode(EmbySession.self, from: data),
               KeychainStore.get(account: stored.tokenAccount) != nil else { return }
-        session = stored
+        sessions = [stored]
+        persistSessions()
+        UserDefaults.standard.removeObject(forKey: legacySessionKey)
     }
 
     func login(serverText: String, username: String, password: String) async {
+        _ = await addServer(serverText: serverText, username: username, password: password, activate: true)
+    }
+
+    @discardableResult
+    func addServer(serverText: String, username: String, password: String, activate: Bool = false) async -> EmbySession? {
         errorMessage = nil
         isWorking = true
         defer { isWorking = false }
@@ -41,32 +59,64 @@ final class SessionStore: ObservableObject {
                 user: auth.user,
                 tokenAccount: tokenAccount
             )
-            let data = try JSONEncoder().encode(stored)
-            UserDefaults.standard.set(data, forKey: sessionKey)
-            session = stored
-            DiagnosticsLogger.shared.log("Session", "Login success server=\(stored.serverName) version=\(stored.serverVersion)")
+
+            if let index = sessions.firstIndex(where: { $0.id == stored.id }) {
+                sessions[index] = stored
+            } else {
+                sessions.append(stored)
+            }
+            sessions.sort { $0.serverName.localizedCaseInsensitiveCompare($1.serverName) == .orderedAscending }
+            persistSessions()
+            if activate { session = stored }
+            DiagnosticsLogger.shared.log("Session", "Server saved server=\(stored.serverName) version=\(stored.serverVersion) user=\(stored.user.name)")
+            return stored
         } catch {
             errorMessage = error.localizedDescription
-            DiagnosticsLogger.shared.log("Session", "Login failed: \(error.localizedDescription)")
+            DiagnosticsLogger.shared.log("Session", "Server add failed: \(error.localizedDescription)")
+            return nil
         }
+    }
+
+    func activate(_ stored: EmbySession) {
+        guard sessions.contains(where: { $0.id == stored.id }), KeychainStore.get(account: stored.tokenAccount) != nil else { return }
+        session = stored
+    }
+
+    func leaveServer() {
+        session = nil
     }
 
     func client() throws -> EmbyAPIClient {
-        guard let session,
-              let token = KeychainStore.get(account: session.tokenAccount) else {
-            throw EmbyAPIError.missingSession
+        guard let session else { throw EmbyAPIError.missingSession }
+        return try client(for: session)
+    }
+
+    func client(for stored: EmbySession) throws -> EmbyAPIClient {
+        guard let token = KeychainStore.get(account: stored.tokenAccount) else { throw EmbyAPIError.missingSession }
+        return EmbyAPIClient(baseURL: stored.serverURL, accessToken: token, userId: stored.user.id)
+    }
+
+    func remove(_ stored: EmbySession) async {
+        if let token = KeychainStore.get(account: stored.tokenAccount) {
+            let client = EmbyAPIClient(baseURL: stored.serverURL, accessToken: token, userId: stored.user.id)
+            await client.logout()
+            KeychainStore.remove(account: stored.tokenAccount)
         }
-        return EmbyAPIClient(baseURL: session.serverURL, accessToken: token, userId: session.user.id)
+        sessions.removeAll { $0.id == stored.id }
+        if session?.id == stored.id { session = nil }
+        persistSessions()
+        DiagnosticsLogger.shared.log("Session", "Server removed server=\(stored.serverName) user=\(stored.user.name)")
     }
 
     func logout() async {
-        if let session, let token = KeychainStore.get(account: session.tokenAccount) {
-            let client = EmbyAPIClient(baseURL: session.serverURL, accessToken: token, userId: session.user.id)
-            await client.logout()
-            KeychainStore.remove(account: session.tokenAccount)
+        guard let session else { return }
+        await remove(session)
+    }
+
+    private func persistSessions() {
+        if let data = try? JSONEncoder().encode(sessions) {
+            UserDefaults.standard.set(data, forKey: sessionsKey)
         }
-        UserDefaults.standard.removeObject(forKey: sessionKey)
-        session = nil
     }
 
     private func normalizedServerURL(_ input: String) throws -> URL {
@@ -76,9 +126,7 @@ final class SessionStore: ObservableObject {
         guard var components = URLComponents(string: value),
               let scheme = components.scheme?.lowercased(),
               scheme == "https" || scheme == "http",
-              components.host != nil else {
-            throw EmbyAPIError.invalidServerURL
-        }
+              components.host != nil else { throw EmbyAPIError.invalidServerURL }
         components.path = components.path.replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
         guard let url = components.url else { throw EmbyAPIError.invalidServerURL }
         return url
