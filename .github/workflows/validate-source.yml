@@ -74,6 +74,9 @@ jobs:
           xcodegen --version
           pod --version
 
+      - name: Generate OS player app icons
+        run: python3 scripts/generate_os_player_icons.py
+
       - name: Generate project
         run: xcodegen generate
 

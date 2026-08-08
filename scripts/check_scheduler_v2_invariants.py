@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 unified = Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text()
 controller = Path("Sources/Player/PlayerController.swift").read_text()
@@ -61,10 +62,14 @@ for obsolete in ["startupTailWarmupBytes", "configureStartupWarmupIfNeeded", "ac
     require(obsolete not in unified, f"obsolete proactive startup strategy remains: {obsolete}")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
-require(project.count('MARKETING_VERSION: "0.12.7"') == 2, "marketing version must be 0.12.7")
-require(project.count('CURRENT_PROJECT_VERSION: "65"') == 2, "build number must be 65")
-require("<string>0.12.7</string>" in info and "<string>65</string>" in info, "Info.plist version/build mismatch")
-require('sourceVersion = "0.12.7"' in identity, "AppIdentity source version mismatch")
+versions = re.findall(r'MARKETING_VERSION: "([^"]+)"', project)
+builds = re.findall(r'CURRENT_PROJECT_VERSION: "([^"]+)"', project)
+require(len(versions) == 2 and len(set(versions)) == 1, "marketing version must match in both settings scopes")
+require(len(builds) == 2 and len(set(builds)) == 1, "build number must match in both settings scopes")
+version = versions[0]
+build_number = builds[0]
+require(f"<string>{version}</string>" in info and f"<string>{build_number}</string>" in info, "Info.plist version/build mismatch")
+require(f'sourceVersion = "{version}"' in identity, "AppIdentity source version mismatch")
 require("Audit Scheduler v2 invariants" in validate and "check_scheduler_v2_invariants.py" in validate, "Validate Source must enforce Scheduler v2")
 require("Audit Scheduler v2 invariants" in build and "check_scheduler_v2_invariants.py" in build, "unsigned IPA build must enforce Scheduler v2")
 require("Audit live lane/startup invariants" in validate and "check_live_lane_startup_invariants.py" in validate, "Validate Source must enforce live-lane/startup regression gate")
@@ -75,7 +80,7 @@ require("Audit v0.12.6 frontier rescue regressions" in validate and "check_v0126
 require("Audit v0.12.6 frontier rescue regressions" in build and "check_v0126_frontier_rescue.py" in build, "unsigned IPA build must enforce v0.12.6")
 require("Audit v0.12.7 MPV rotation regressions" in validate and "check_v0127_mpv_rotation.py" in validate, "Validate Source must enforce v0.12.7")
 require("Audit v0.12.7 MPV rotation regressions" in build and "check_v0127_mpv_rotation.py" in build, "unsigned IPA build must enforce v0.12.7")
-require('IPA_NAME="EmbyPlayerLab-0.12.7-${GITHUB_SHA::7}-unsigned.ipa"' in build, "IPA filename must identify v0.12.7")
+require(f'IPA_NAME="EmbyPlayerLab-{version}-${{GITHUB_SHA::7}}-unsigned.ipa"' in build, "IPA filename must identify current version")
 
 for temporary in [
     ".github/workflows/apply-v0120-scheduler-v2.yml",
