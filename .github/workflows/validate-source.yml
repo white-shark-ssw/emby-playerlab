@@ -6,6 +6,9 @@ on:
   push:
     branches: [main, master]
 
+permissions:
+  contents: write
+
 concurrency:
   group: validate-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -17,6 +20,40 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # BEGIN V0126 BOOTSTRAP
+      - name: Finalize v0.12.6 Build 64
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: |
+          set -euo pipefail
+          python3 scripts/finalize_v0126_main.py
+          python3 scripts/check_transport_scheduler_invariants.py
+          python3 scripts/check_transport_v3_invariants.py
+          python3 scripts/check_seek_stall_invariants.py
+          python3 scripts/check_transport_stability_invariants.py
+          python3 scripts/check_scheduler_v2_invariants.py
+          python3 scripts/check_live_lane_startup_invariants.py
+          python3 scripts/check_v0122_regressions.py
+          python3 scripts/check_v0123_regressions.py
+          python3 scripts/check_v0124_regressions.py
+          python3 scripts/check_v0126_frontier_rescue.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/validate-source.yml')
+          s = p.read_text()
+          s = s.replace('permissions:\n  contents: write\n\n', '', 1)
+          start = s.index('      # BEGIN V0126 BOOTSTRAP\n')
+          marker = '      # END V0126 BOOTSTRAP\n'
+          end = s.index(marker, start) + len(marker)
+          p.write_text(s[:start] + s[end:])
+          PY
+          rm -f scripts/finalize_v0126_main.py .github/workflows/finalize-v0126-main.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'v0.12.6 Build 64: frontier rescue and urgent hedge [v0.12.6-final]'
+          git push origin HEAD:main
+      # END V0126 BOOTSTRAP
 
       - name: Initialize diagnostic logs
         run: |
