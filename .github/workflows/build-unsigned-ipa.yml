@@ -173,7 +173,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="EmbyPlayerLab-0.12.4-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="EmbyPlayerLab-0.12.5-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
@@ -195,8 +195,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          RELEASE_TAG="v0.12.4-build62-dev"
-          RELEASE_IPA="EmbyPlayerLab-v0.12.4-build62-${GITHUB_SHA::7}-unsigned.ipa"
+          RELEASE_TAG="v0.12.5-build63-dev"
+          RELEASE_IPA="EmbyPlayerLab-v0.12.5-build63-${GITHUB_SHA::7}-unsigned.ipa"
           cp "$IPA_NAME" "$RELEASE_IPA"
           shasum -a 256 "$RELEASE_IPA" | tee "$RELEASE_IPA.sha256"
           gh release delete "$RELEASE_TAG" --cleanup-tag -y >/dev/null 2>&1 || true
@@ -204,8 +204,8 @@ jobs:
             "$RELEASE_IPA" \
             "$RELEASE_IPA.sha256" \
             --target "$GITHUB_SHA" \
-            --title "EmbyPlayerLab v0.12.4 Build 62" \
-            --notes "Automated TrollStore test build for v0.12.4 Build 62 from $GITHUB_SHA" \
+            --title "EmbyPlayerLab v0.12.5 Build 63" \
+            --notes "Automated TrollStore test build for v0.12.5 Build 63 from $GITHUB_SHA" \
             --prerelease
 
       - name: Upload build logs

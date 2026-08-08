@@ -34,6 +34,7 @@ required = [
     "liveLaneAbsoluteFloorBps: Double = 1.25 * 1_048_576",
     "action=rotate-live-lane",
     "liveLaneResetPending",
+    "liveLaneSourceRefreshPending",
     "action=reset-retry",
     "!liveLaneResetPending.contains(0)",
 ]
@@ -53,7 +54,7 @@ for forbidden in [
 
 require("RangeHTTPClient(maximumConnections: 2)" in unified, "normal transport must remain exactly two upstream lanes")
 require("guard !invalidated, states.isEmpty else { lock.unlock(); return false }" in http, "stream lane reset must only occur after the lane is idle")
-require("for slot in [0, 1] where slotTasks[slot] == nil && !liveLaneResetPending.contains(slot)" in unified, "startup metadata must fan out over both available lanes")
+require("for slot in [0, 1] where slotTasks[slot] == nil && !liveLaneResetPending.contains(slot) && !liveLaneSourceRefreshPending.contains(slot)" in unified, "startup metadata must fan out only over lanes that are ready")
 require("if slot == 1, Date() < secondaryCooldownUntil { continue }" in unified, "startup and sequential scheduling must respect Slot 1 failure cooldown")
 require("startupMetadataQueue.insert(claim.range, at: 0)" in unified, "failed/straggling startup chunks must return to the front of the queue")
 
@@ -77,15 +78,15 @@ peer_first_byte_bps = 9 * 1_048_576
 require(peer_first_byte_bps >= 2 * 1_048_576, "synthetic peer-fast first-byte case must qualify")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
-require(project.count('MARKETING_VERSION: "0.12.4"') == 2, "marketing version must be 0.12.4")
-require(project.count('CURRENT_PROJECT_VERSION: "62"') == 2, "build number must be 62")
-require("<string>0.12.4</string>" in info and "<string>62</string>" in info, "Info.plist version/build mismatch")
-require('sourceVersion = "0.12.4"' in identity, "AppIdentity source version mismatch")
+require(project.count('MARKETING_VERSION: "0.12.5"') == 2, "marketing version must be 0.12.5")
+require(project.count('CURRENT_PROJECT_VERSION: "63"') == 2, "build number must be 63")
+require("<string>0.12.5</string>" in info and "<string>63</string>" in info, "Info.plist version/build mismatch")
+require('sourceVersion = "0.12.5"' in identity, "AppIdentity source version mismatch")
 require("Audit live lane/startup invariants" in validate and "check_live_lane_startup_invariants.py" in validate, "Validate Source must enforce live-lane/startup invariants")
 require("Audit live lane/startup invariants" in build and "check_live_lane_startup_invariants.py" in build, "unsigned IPA workflow must enforce live-lane/startup invariants")
 require("Audit v0.12.4 scheduler regressions" in validate and "check_v0124_regressions.py" in validate, "Validate Source must enforce v0.12.4")
 require("Audit v0.12.4 scheduler regressions" in build and "check_v0124_regressions.py" in build, "unsigned IPA build must enforce v0.12.4")
-require('IPA_NAME="EmbyPlayerLab-0.12.4-${GITHUB_SHA::7}-unsigned.ipa"' in build, "IPA filename must identify v0.12.4")
+require('IPA_NAME="EmbyPlayerLab-0.12.5-${GITHUB_SHA::7}-unsigned.ipa"' in build, "IPA filename must identify v0.12.5")
 
 for temporary in [
     ".github/workflows/apply-v0121-live-lane-startup.yml",
