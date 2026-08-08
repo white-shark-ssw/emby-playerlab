@@ -40,13 +40,15 @@ required = [
 for needle in required:
     require(needle in unified, f"missing {needle}")
 
+# The old dedicated Slot-0 startup-tail request is forbidden. The new
+# "startup-tail-grace-ended" scheduler reason is intentionally valid.
 for forbidden in [
     "startupTailWarmupBytes",
     "startupTailWarmupRange",
     "configureStartupWarmupIfNeeded",
     "large-mp4 warmup planned",
     "action=queue-tail",
-    'reason: "startup-tail-',
+    'startSlot(0, claim: SlotClaim(range: metadata, role: .metadata), reason: "startup-tail-',
     "tail warmup complete",
 ]:
     require(forbidden not in unified, f"obsolete proactive-tail strategy remains: {forbidden}")
