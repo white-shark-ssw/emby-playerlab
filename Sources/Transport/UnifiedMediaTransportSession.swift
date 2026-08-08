@@ -136,6 +136,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard offset >= 0, offset < resolved.contentLength, let store else { return Data() }
 
         let requested = min(length, Int(resolved.contentLength - offset))
+        let concreteRange = offset..<min(resolved.contentLength, offset + Int64(requested))
+        acceptRealDemand(concreteRange, resource: resolved, reason: "concrete-read")
         let available = store.availableLength(from: offset, maximumLength: Int64(requested))
         metricsValue.bytesServed += Int64(requested)
         if available >= Int64(requested) { metricsValue.cacheHitBytes += Int64(requested) }
@@ -225,23 +227,22 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard !range.isEmpty, let store else { return }
         let metadata = isMetadataProbe(range, resource: resource)
         let pendingUserSeek = Date() <= pendingUserSeekUntil
-        let concretePlaybackDemand = !metadata && (reason == "blocked-read" || reason == "byte-offset")
-        let speculativeLargeRange = reason.hasPrefix("range-demand") && Int64(range.count) > blockBytes * 2
+        let concretePlaybackDemand = !metadata && (reason == "concrete-read" || reason == "blocked-read" || reason == "byte-offset")
         if concretePlaybackDemand { lastConcretePlaybackDemand = range }
 
-        // AVAssetResourceLoader often emits a very large speculative range immediately after a seek.
-        // It is not necessarily the byte position that AVFoundation will actually block on. Keep the
-        // user-seek token alive until the concrete read/byte-offset demand arrives; otherwise the
-        // scheduler can anchor hundreds of MiB away from the frame AVPlayer is really waiting for.
-        if pendingUserSeek, !metadata, speculativeLargeRange {
+        // AVFoundation may emit stale/cached range requests from the pre-seek timeline while a seek is
+        // still settling. Only the byte offset actually consumed by read(), or MPV's explicit byte seek,
+        // may consume the pending seek token. This mirrors a logical-position reader: requested ranges
+        // are hints, actual reads are authoritative.
+        if pendingUserSeek, !metadata, !concretePlaybackDemand {
             DiagnosticsLogger.shared.log(
                 "UnifiedAnchor",
-                "seek-candidate deferred request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) awaitingConcreteDemand=true anchor=\(playbackAnchor)"
+                "seek-candidate deferred request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) awaitingConcreteRead=true anchor=\(playbackAnchor)"
             )
             return
         }
 
-        if pendingUserSeek, !metadata {
+        if pendingUserSeek, !metadata, concretePlaybackDemand {
             pendingUserSeekUntil = .distantPast
             let previous = playbackAnchor
             playbackAnchor = range.lowerBound
@@ -587,8 +588,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
     private func preloadWindowBytes() -> Int64 {
         if NetworkPathMonitor.shared.isCellular {
-            // Cellular remains explicitly opt-in for background prefetch.
-            return configuration.ktvPreloadOnCellular ? max(0, configuration.cellularPreloadBytes) : 0
+            // Unified Transport v3 uses its own configured cellular byte window. A non-zero cellular
+            // budget means prefetch is enabled; zero remains the explicit opt-out. Do not inherit the
+            // legacy KTV proxy switch, otherwise v3 becomes urgent-only and can go idle after a seek.
+            return max(0, configuration.cellularPreloadBytes)
         }
         // On Wi-Fi the session disk budget is the real prefetch ceiling. The old 128 MiB
         // setting was only a forward-window hint and made a fast 115 connection stop by
