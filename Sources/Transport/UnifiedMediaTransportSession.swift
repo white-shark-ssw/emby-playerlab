@@ -400,7 +400,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             startSlot(slot, claim: SlotClaim(range: urgent, role: .urgentPlayback), reason: "foreground-\(reason)")
         }
 
-        if let metadata = pendingMetadataRange, !store.contains(metadata), let slot = firstIdleForegroundSlot() {
+        if let metadata = pendingMetadataRange, !isStartupTailMetadata(metadata, resource: resource), !store.contains(metadata), let slot = firstIdleForegroundSlot() {
             pendingMetadataRange = nil
             startSlot(slot, claim: SlotClaim(range: metadata, role: .metadata), reason: "metadata-\(reason)")
         }
