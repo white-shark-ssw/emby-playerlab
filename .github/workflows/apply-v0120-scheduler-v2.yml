@@ -1,0 +1,29 @@
+name: Apply v0.12.0 Scheduler v2
+
+on:
+  push:
+    branches: [chatgpt/v0.12.0-scheduler-v2]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v0.12.0-scheduler-v2
+      - name: Apply Scheduler v2 core
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_v0120_scheduler_v2.py
+          if git diff --quiet; then
+            echo "already applied"
+            exit 0
+          fi
+          git config user.name "ChatGPT CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add Sources/Transport/UnifiedMediaTransportSession.swift Sources/Player/PlayerController.swift
+          git commit -m "Implement Scheduler v2 core"
+          git push origin HEAD:chatgpt/v0.12.0-scheduler-v2
