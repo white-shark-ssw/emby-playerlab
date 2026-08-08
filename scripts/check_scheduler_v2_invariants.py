@@ -70,8 +70,8 @@ for obsolete in ["startupTailWarmupBytes", "configureStartupWarmupIfNeeded", "ac
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
 require(project.count('MARKETING_VERSION: "0.12.2"') == 2, "marketing version must be 0.12.2")
-require(project.count('CURRENT_PROJECT_VERSION: "60"') == 2, "build number must be 59")
-require("<string>0.12.2</string>" in info and "<string>59</string>" in info, "Info.plist version/build mismatch")
+require(project.count('CURRENT_PROJECT_VERSION: "60"') == 2, "build number must be 60")
+require("<string>0.12.2</string>" in info and "<string>60</string>" in info, "Info.plist version/build mismatch")
 require('sourceVersion = "0.12.2"' in identity, "AppIdentity source version mismatch")
 require("Audit Scheduler v2 invariants" in validate and "check_scheduler_v2_invariants.py" in validate, "Validate Source must enforce Scheduler v2")
 require("Audit Scheduler v2 invariants" in build and "check_scheduler_v2_invariants.py" in build, "unsigned IPA build must enforce Scheduler v2")
