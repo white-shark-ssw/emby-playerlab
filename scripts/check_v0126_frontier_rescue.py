@@ -33,15 +33,17 @@ for needle in [
 
 require("playback.ranges + downloading.values" not in range_map, "in-flight claims must not hide physical sparse holes")
 require("physicalHoleCount" in range_map, "physical hole metric missing")
-require(project.count('MARKETING_VERSION: "0.12.6"') == 2, "marketing version must be 0.12.6")
-require(project.count('CURRENT_PROJECT_VERSION: "64"') == 2, "build number must be 64")
-require("<string>0.12.6</string>" in info and "<string>64</string>" in info, "Info.plist version/build mismatch")
-require('sourceVersion = "0.12.6"' in identity, "AppIdentity source version mismatch")
-require('IPA_NAME="EmbyPlayerLab-0.12.6-${GITHUB_SHA::7}-unsigned.ipa"' in build, "IPA filename must identify v0.12.6")
-require('RELEASE_TAG="v0.12.6-build64-dev"' in build, "release tag mismatch")
-require('RELEASE_IPA="EmbyPlayerLab-v0.12.6-build64-${GITHUB_SHA::7}-unsigned.ipa"' in build, "release IPA mismatch")
+require(project.count('MARKETING_VERSION: "0.12.7"') == 2, "marketing version must be 0.12.7")
+require(project.count('CURRENT_PROJECT_VERSION: "65"') == 2, "build number must be 65")
+require("<string>0.12.7</string>" in info and "<string>65</string>" in info, "Info.plist version/build mismatch")
+require('sourceVersion = "0.12.7"' in identity, "AppIdentity source version mismatch")
+require('IPA_NAME="EmbyPlayerLab-0.12.7-${GITHUB_SHA::7}-unsigned.ipa"' in build, "IPA filename must identify v0.12.7")
+require('RELEASE_TAG="v0.12.7-build65-dev"' in build, "release tag mismatch")
+require('RELEASE_IPA="EmbyPlayerLab-v0.12.7-build65-${GITHUB_SHA::7}-unsigned.ipa"' in build, "release IPA mismatch")
 require("Audit v0.12.6 frontier rescue regressions" in build and "check_v0126_frontier_rescue.py" in build, "build workflow must enforce v0.12.6 regression")
 require("Audit v0.12.6 frontier rescue regressions" in validate and "check_v0126_frontier_rescue.py" in validate, "validate workflow must enforce v0.12.6 regression")
+require("Audit v0.12.7 MPV rotation regressions" in build and "check_v0127_mpv_rotation.py" in build, "build workflow must enforce v0.12.7 regression")
+require("Audit v0.12.7 MPV rotation regressions" in validate and "check_v0127_mpv_rotation.py" in validate, "validate workflow must enforce v0.12.7 regression")
 
 # Device-log regression: playback-critical urgent lane took 3.642 s for its first MiB while
 # the peer future-preload lane was simultaneously capable of >10 MiB/s. The hedge must fire
