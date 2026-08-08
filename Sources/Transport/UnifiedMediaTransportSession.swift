@@ -39,6 +39,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         var generation = 0
         var startedAt = Date.distantPast
         var lastChunkAt = Date.distantPast
+        var sampleWindowStartedAt = Date.distantPast
+        var sampleWindowStartedBytes: Int64 = 0
+        var lastSampleAt = Date.distantPast
         var receivedBytes: Int64 = 0
         var recentBps: Double = 0
         var slowStreak = 0
@@ -69,6 +72,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let liveLaneRelativeFloor: Double = 0.45
     private let liveLaneFirstBytePeerTimeoutSeconds: TimeInterval = 1.5
     private let liveLaneFirstByteHardTimeoutSeconds: TimeInterval = 3.0
+    private let liveLaneSampleWindowSeconds: TimeInterval = 1.0
+    private let liveLaneSampleMinimumBytes: Int64 = 1 * 1_048_576
     private let liveLaneResetCooldownSeconds: TimeInterval = 8
     private let startupTailDemandGraceSeconds: TimeInterval = 0.25
     private let lookaheadSegments = 4
@@ -336,9 +341,23 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             return
         }
 
-        // A non-sequential claim already starting at this byte is foreground work. Let that request
-        // finish rather than opening a duplicate Range for the same demux dependency.
-        if let active = slotClaims.values.first(where: { $0.role != .sequential && $0.range.contains(range.lowerBound) }) {
+        // Being inside an active foreground claim still does not prove that the requested byte has
+        // arrived. A far seek can land deep inside an older 16 MiB urgent claim; waiting for that lane
+        // to walk linearly to the new read head caused multi-second stalls while the second lane sat idle.
+        if let activeEntry = slotClaims.first(where: { $0.value.role != .sequential && $0.value.range.contains(range.lowerBound) }) {
+            let activeSlot = activeEntry.key
+            let active = activeEntry.value
+            if concretePlaybackDemand, active.role == .urgentPlayback {
+                let ready = store.availableLength(from: active.range.lowerBound, maximumLength: Int64(active.range.count))
+                let streamHead = min(active.range.upperBound, active.range.lowerBound + ready)
+                let gap = max(0, range.lowerBound - streamHead)
+                if gap > progressiveUrgentGapBytes {
+                    DiagnosticsLogger.shared.log("UnifiedDemand", "foreground active-gap slot=\(activeSlot) request=\(range.lowerBound)-\(range.upperBound) claim=\(active.range.lowerBound)-\(active.range.upperBound) head=\(streamHead) gap=\(gap) action=parallel-urgent")
+                    installUrgent(range: range, metadata: false, reason: "foreground-active-gap-\(reason)")
+                    scheduleSlots(reason: "foreground-active-gap-\(reason)")
+                    return
+                }
+            }
             DiagnosticsLogger.shared.log("UnifiedDemand", "reuse active foreground request=\(range.lowerBound)-\(range.upperBound) claim=\(active.range.lowerBound)-\(active.range.upperBound) role=\(active.role.rawValue) reason=\(reason)")
             return
         }
@@ -516,6 +535,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             live.generation = generation
             live.startedAt = now
             live.lastChunkAt = now
+            live.sampleWindowStartedAt = now
+            live.sampleWindowStartedBytes = 0
+            live.lastSampleAt = .distantPast
             live.receivedBytes = 0
             live.recentBps = 0
             live.slowStreak = 0
@@ -812,7 +834,13 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let peerCompleted = laneHealth[peerSlot]
         let now = Date()
         let peerLiveFresh = peerLive.map { $0.receivedBytes > 0 && now.timeIntervalSince($0.lastChunkAt) <= 4 } ?? false
-        let peerBps = peerLiveFresh ? (peerLive?.recentBps ?? 0) : (peerCompleted?.averageBps ?? 0)
+        let peerBps: Double
+        if let peerLive, peerLiveFresh {
+            let elapsed = max(now.timeIntervalSince(peerLive.startedAt), 0.001)
+            peerBps = peerLive.recentBps > 0 ? peerLive.recentBps : Double(peerLive.receivedBytes) / elapsed
+        } else {
+            peerBps = peerCompleted?.averageBps ?? 0
+        }
         guard hard || peerBps >= 2 * 1_048_576 else { return }
         requestLiveLaneRotation(slot: slot, generation: generation, reason: hard ? "first-byte-hard-timeout" : "first-byte-peer-fast", observedBps: 0, peerBps: peerBps)
     }
@@ -822,22 +850,34 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let now = Date()
         var live = liveLaneState[slot] ?? LiveLaneState()
         guard live.generation == generation else { return }
-        let interval = max(now.timeIntervalSince(live.lastChunkAt), 0.001)
-        let chunkBps = Double(bytes) / interval
         live.lastChunkAt = now
         live.receivedBytes += bytes
-        live.recentBps = live.recentBps == 0 ? chunkBps : live.recentBps * 0.55 + chunkBps * 0.45
+
+        // URLSession may deliver several already-buffered chunks back-to-back. Measuring one chunk
+        // against the previous callback timestamp produced impossible 100-500 MB/s samples and false
+        // lane rotations. Only a real time window is allowed to influence connection health.
+        let sampleSeconds = now.timeIntervalSince(live.sampleWindowStartedAt)
+        let sampleBytes = live.receivedBytes - live.sampleWindowStartedBytes
+        guard sampleSeconds >= liveLaneSampleWindowSeconds, sampleBytes >= liveLaneSampleMinimumBytes else {
+            liveLaneState[slot] = live
+            return
+        }
+        let windowBps = Double(sampleBytes) / max(sampleSeconds, 0.001)
+        live.sampleWindowStartedAt = now
+        live.sampleWindowStartedBytes = live.receivedBytes
+        live.lastSampleAt = now
+        live.recentBps = live.recentBps == 0 ? windowBps : live.recentBps * 0.60 + windowBps * 0.40
 
         let peerSlot = slot == 0 ? 1 : 0
         let peerLive = liveLaneState[peerSlot]
-        let peerCompleted = laneHealth[peerSlot]
-        let peerLiveFresh = peerLive.map { $0.receivedBytes > 0 && now.timeIntervalSince($0.lastChunkAt) <= 4 } ?? false
-        let peerBps = peerLiveFresh ? (peerLive?.recentBps ?? 0) : (peerCompleted?.averageBps ?? 0)
-        let relativeSlow = peerBps >= liveLanePeerFloorBps && live.recentBps < peerBps * liveLaneRelativeFloor
-        let absoluteSlow = live.receivedBytes >= 2 * 1_048_576 && live.recentBps < liveLaneAbsoluteFloorBps
+        let peerLiveFresh = peerLive.map { $0.recentBps > 0 && now.timeIntervalSince($0.lastSampleAt) <= 2.5 } ?? false
+        let peerBps = peerLiveFresh ? (peerLive?.recentBps ?? 0) : 0
+        let relativeSlow = peerLiveFresh && peerBps >= liveLanePeerFloorBps && live.recentBps < peerBps * liveLaneRelativeFloor
+        let absoluteSlow = now.timeIntervalSince(live.startedAt) >= 3.0 && live.receivedBytes >= 4 * 1_048_576 && live.recentBps < liveLaneAbsoluteFloorBps
         if relativeSlow || absoluteSlow { live.slowStreak += 1 }
         else if live.recentBps >= max(liveLaneAbsoluteFloorBps * 1.25, peerBps * 0.65) { live.slowStreak = 0 }
         liveLaneState[slot] = live
+        DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) windowMs=\(Int(sampleSeconds * 1000)) windowBytes=\(sampleBytes) sampleBps=\(Int(windowBps)) avgBps=\(Int(live.recentBps)) peerBps=\(Int(peerBps)) slowStreak=\(live.slowStreak)")
 
         if live.slowStreak >= 2 {
             requestLiveLaneRotation(slot: slot, generation: generation, reason: relativeSlow ? "rolling-relative-slow" : "rolling-absolute-slow", observedBps: live.recentBps, peerBps: peerBps)

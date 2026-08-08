@@ -15,6 +15,7 @@ final class PlayerController: ObservableObject {
     @Published private(set) var stallMessage: String?
     @Published private(set) var engineKind: PlayerEngineKind
     @Published private(set) var transportSummary: String?
+    @Published private(set) var transportCacheFraction: Double = 0
     @Published private(set) var verifiedBufferedRanges: [ClosedRange<Double>] = []
 
     @Published private(set) var source: ResolvedPlaybackSource
@@ -153,6 +154,7 @@ final class PlayerController: ObservableObject {
         transportMetricsTask?.cancel()
         transportMetricsTask = nil
         transportSummary = nil
+        transportCacheFraction = 0
         engineSwitchTask?.cancel()
         engineSwitchTask = nil
         startupFallbackTask?.cancel()
@@ -762,6 +764,7 @@ final class PlayerController: ObservableObject {
         transportMetricsTask?.cancel()
         transportMetricsTask = nil
         transportSummary = nil
+        transportCacheFraction = 0
         lastTransportMetrics = nil
 
         transportMetricsTask = Task { [weak self] in
@@ -772,9 +775,11 @@ final class PlayerController: ObservableObject {
                 if let metrics = await engine.transportMetrics(), self.engine === engine {
                     self.lastTransportMetrics = metrics
                     self.transportSummary = metrics.summary
+                    self.transportCacheFraction = metrics.resourceBytes > 0 ? min(1, max(0, Double(metrics.cacheBytes) / Double(metrics.resourceBytes))) : 0
                     self.promoteFullCacheRangeIfNeeded(metrics)
                 } else if self.engine === engine {
                     self.lastTransportMetrics = nil
+                    self.transportCacheFraction = 0
                 }
             }
         }

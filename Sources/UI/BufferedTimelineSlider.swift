@@ -7,6 +7,9 @@ struct BufferedTimelineSlider: View {
     let verifiedBufferedRanges: [ClosedRange<Double>]
     /// Current engine live buffer. This may move/shrink after a seek.
     let bufferedRanges: [ClosedRange<Double>]
+    /// Total UnifiedTransport byte-cache coverage. This is quantity coverage, not a claim that
+    /// every time position before the fill edge is seekable after sparse seeks.
+    let downloadCacheFraction: Double
     let onEditingChanged: (Bool) -> Void
 
     @State private var isEditing = false
@@ -17,6 +20,10 @@ struct BufferedTimelineSlider: View {
             let trackHeight: CGFloat = 10
             ZStack(alignment: .leading) {
                 Capsule().fill(Color(white: 0.16)).frame(height: trackHeight)
+
+                Capsule()
+                    .fill(Color(white: 0.34))
+                    .frame(width: max(0, width * CGFloat(min(max(downloadCacheFraction, 0), 1))), height: trackHeight)
 
                 ForEach(Array(normalizedVerifiedRanges.enumerated()), id: \.offset) { _, buffered in
                     Capsule()
