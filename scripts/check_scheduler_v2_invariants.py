@@ -63,7 +63,9 @@ require(claim_lower <= requested < claim_upper, "synthetic 63360 request must li
 require(requested - stream_head > threshold, "synthetic 63360 request must trigger parallel urgent")
 
 # v0.12.1 intentionally replaces v0.12.0's proactive fixed final-16MiB startup path.
-for obsolete in ["startupTailWarmupBytes", "configureStartupWarmupIfNeeded", "action=queue-tail", 'reason: "startup-tail-']:
+# Do not reject the new scheduler reason "startup-tail-grace-ended"; only the old
+# dedicated Slot-0 startup-tail start pattern is obsolete.
+for obsolete in ["startupTailWarmupBytes", "configureStartupWarmupIfNeeded", "action=queue-tail", 'startSlot(0, claim: SlotClaim(range: metadata, role: .metadata), reason: "startup-tail-']:
     require(obsolete not in unified, f"obsolete proactive startup strategy remains: {obsolete}")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
