@@ -382,7 +382,7 @@ final class PlayerController: ObservableObject {
     private func updateVerifiedBufferedRanges(from value: PlayerSnapshot) {
         guard !value.bufferedRanges.isEmpty else { return }
         if engineKind == .mpv {
-            guard !value.isBuffering else { return }
+            guard value.bufferedRanges.contains(where: { $0.lowerBound <= value.position + 0.05 && $0.upperBound > value.position + 0.25 }) else { return }
             if let previous = lastVerifiedMPVPosition {
                 let delta = value.position - previous
                 guard delta > 0.03, delta < 2 else { lastVerifiedMPVPosition = value.position; return }
