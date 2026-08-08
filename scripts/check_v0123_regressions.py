@@ -15,8 +15,6 @@ def require(condition: bool, message: str) -> None:
     if not condition:
         raise SystemExit(f"v0.12.3 regression failed: {message}")
 
-# User seek authority: AVPlayer's first post-seek cached/stale concrete read may not steal the
-# scheduler anchor. Only an actual blocked read (cache miss) or MPV's explicit byte seek can do so.
 for needle in [
     'let authoritativeSeekDemand = reason == "blocked-read" || reason == "byte-offset"',
     "seek concrete-read deferred request=",
@@ -27,20 +25,14 @@ for needle in [
     require(needle in unified, f"seek-anchor fix missing {needle}")
 require("pendingUserSeek, !metadata, concretePlaybackDemand, authoritativeSeekDemand" in unified, "pending seek must require authoritative demand")
 
-# Synthetic 63368 v0.12.2 regression: 237 MiB was a cached/stale read while the actual new
-# playback dependency was around 781 MiB. The stale read must not become the new bulk anchor.
 old_anchor = 233_046_016
 stale_cached_read = 237_305_856
 actual_miss = 781_254_656
 anchor = old_anchor
-# concrete-read is deferred while pending seek
 assert anchor == old_anchor
-# blocked-read is authoritative
 anchor = actual_miss
 require(anchor == actual_miss and anchor != stale_cached_read, "synthetic 478s seek must anchor at actual miss")
 
-# Completed 32 MiB claim statistics may select the protected bulk lane but must never reset a
-# connection. Reset authority belongs only to first-byte/live-window health.
 health = re.search(r"private func considerSequentialLaneHealth.*?private func resumeAfterSecondaryCooldown", unified, re.S)
 require(health is not None, "completed lane-health function missing")
 health_body = health.group(0)
@@ -49,8 +41,6 @@ require("resetStreamLane" not in health_body, "completed lane health must not re
 require("rotate-slow-lane" not in unified, "legacy completed-claim rotation must be removed")
 require("action=rotate-live-lane" in unified, "live-window lane rotation must remain")
 
-# The visible cache bar is the real sparse playback-byte map, not aggregate quantity and not
-# AVPlayer/mpv's engine buffer history. A visible hole therefore means that byte region is absent.
 for needle in [
     "func cachedByteRanges() -> [Range<Int64>]",
     "@Published private(set) var transportCacheRanges: [ClosedRange<Double>] = []",
@@ -61,9 +51,6 @@ for needle in [
 require("verifiedBufferedRanges:" not in slider and "bufferedRanges:" not in slider, "engine buffer overlays must not be rendered")
 require("downloadCacheFraction:" not in slider, "aggregate cache fraction must not masquerade as positional coverage")
 
-# v0.12.2 introduced a custom UIViewController wrapper and the supplied device log shows three
-# process restarts after MPV file-loaded. Return to the v0.12.1 external-layer UIView host, while
-# GeometryReader forces the host size to follow orientation. MoltenVK still owns drawableSize.
 require("struct MPVPlayerSurface: UIViewRepresentable" in surface, "MPV surface must use stable UIViewRepresentable host")
 require("UIViewControllerRepresentable" not in surface and "MPVSurfaceViewController" not in surface, "custom MPV wrapper controller must not return")
 require("GeometryReader" in screen and "geometry.size.width" in screen and "geometry.size.height" in screen, "MPV host must follow SwiftUI orientation geometry")
@@ -71,9 +58,9 @@ require("displayLayer.drawableSize =" not in surface, "UI must not force MoltenV
 require("displayLayer.delegate" not in surface, "do not reintroduce CAMetalLayer delegate coupling")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
-require(project.count('MARKETING_VERSION: "0.12.3"') == 2, "marketing version must be 0.12.3")
-require(project.count('CURRENT_PROJECT_VERSION: "61"') == 2, "build number must be 61")
-require("<string>0.12.3</string>" in info and "<string>61</string>" in info, "Info.plist version/build mismatch")
-require('sourceVersion = "0.12.3"' in identity, "source version mismatch")
+require(project.count('MARKETING_VERSION: "0.12.4"') == 2, "marketing version must be 0.12.4")
+require(project.count('CURRENT_PROJECT_VERSION: "62"') == 2, "build number must be 62")
+require("<string>0.12.4</string>" in info and "<string>62</string>" in info, "Info.plist version/build mismatch")
+require('sourceVersion = "0.12.4"' in identity, "source version mismatch")
 
-print("v0.12.3 regressions: OK")
+print("v0.12.3 regressions retained: OK")

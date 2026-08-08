@@ -50,6 +50,9 @@ jobs:
       - name: Audit v0.12.3 seek/cache/MPV regressions
         run: python3 scripts/check_v0123_regressions.py
 
+      - name: Audit v0.12.4 scheduler regressions
+        run: python3 scripts/check_v0124_regressions.py
+
       - name: Select Xcode 16.4
         run: |
           set -euo pipefail
