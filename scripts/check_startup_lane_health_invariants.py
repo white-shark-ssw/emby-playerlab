@@ -7,6 +7,7 @@ controller = Path("Sources/Player/PlayerController.swift").read_text()
 required_unified = [
     "let startupTailMetadata = isStartupTailMetadata(range, resource: resource)",
     "let concretePlaybackDemand = concreteReason && !metadata",
+    "Date() > pendingUserSeekUntil",
     "critical-tail-metadata range=",
     'cancelSlot(0, reason: "startup-metadata-priority")',
     "critical metadata queued on primary",
