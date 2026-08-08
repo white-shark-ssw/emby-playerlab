@@ -186,21 +186,23 @@ jobs:
             ${{ env.IPA_NAME }}.sha256
           retention-days: 30
 
-      - name: Publish latest dev IPA
+      - name: Publish versioned dev IPA
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          cp "$IPA_NAME" EmbyPlayerLab-dev-latest.ipa
-          shasum -a 256 EmbyPlayerLab-dev-latest.ipa | tee EmbyPlayerLab-dev-latest.ipa.sha256
-          gh release delete dev-latest --cleanup-tag -y >/dev/null 2>&1 || true
-          gh release create dev-latest \
-            EmbyPlayerLab-dev-latest.ipa \
-            EmbyPlayerLab-dev-latest.ipa.sha256 \
+          RELEASE_TAG="v0.12.3-build61-dev"
+          RELEASE_IPA="EmbyPlayerLab-v0.12.3-build61-${GITHUB_SHA::7}-unsigned.ipa"
+          cp "$IPA_NAME" "$RELEASE_IPA"
+          shasum -a 256 "$RELEASE_IPA" | tee "$RELEASE_IPA.sha256"
+          gh release delete "$RELEASE_TAG" --cleanup-tag -y >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" \
+            "$RELEASE_IPA" \
+            "$RELEASE_IPA.sha256" \
             --target "$GITHUB_SHA" \
-            --title "Latest Dev Build" \
-            --notes "Automated TrollStore test build from $GITHUB_SHA" \
+            --title "EmbyPlayerLab v0.12.3 Build 61" \
+            --notes "Automated TrollStore test build for v0.12.3 Build 61 from $GITHUB_SHA" \
             --prerelease
 
       - name: Upload build logs
