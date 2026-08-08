@@ -1,0 +1,27 @@
+name: Apply v0.12.2
+
+on:
+  push:
+    branches: [chatgpt/v0.12.2-cache-throughput-rotation]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v0.12.2-cache-throughput-rotation
+      - name: Apply frozen v0.12.2 patch
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_v0122.py
+          python3 scripts/check_v0122_regressions.py
+          git rm .github/workflows/apply-v0122.yml scripts/apply_v0122.py
+          git config user.name "ChatGPT CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Implement v0.12.2 cache throughput and rotation fixes"
+          git push origin HEAD:chatgpt/v0.12.2-cache-throughput-rotation
