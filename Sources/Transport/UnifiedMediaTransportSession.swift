@@ -102,6 +102,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var liveLaneState: [Int: LiveLaneState] = [0: LiveLaneState(), 1: LiveLaneState()]
     private var liveLaneRotationRequested: Set<Int> = []
     private var liveLaneResetPending: Set<Int> = []
+    private var startupMetadataReceivedBytes: [Int: Int64] = [0: 0, 1: 0]
+    private var startupMetadataRetryRequested: Set<Int> = []
 
     private var metricsValue = TransportMetricsSnapshot()
     private var speedSamples: [SpeedSample] = []
@@ -517,6 +519,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             live.slowStreak = 0
             liveLaneState[slot] = live
             armFirstByteWatchdog(slot: slot, generation: generation)
+        } else if claim.role == .startupMetadata {
+            startupMetadataReceivedBytes[slot] = 0
+            armStartupMetadataStragglerWatchdog(slot: slot, generation: generation)
         }
         rangeMap.setDownloading(claim.range, lane: "slot\(slot)")
         metricsValue.activeRequestCount = slotTasks.count + 1
@@ -592,6 +597,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                             try store.write(chunk, at: claim.range.lowerBound + receivedForClaim)
                             receivedForClaim += Int64(chunk.count)
                             attemptReceived += Int64(chunk.count)
+                            if claim.role == .startupMetadata { startupMetadataReceivedBytes[slot] = receivedForClaim }
                             recordNetworkBytes(Int64(chunk.count))
                             let writtenLower = claim.range.lowerBound + receivedForClaim - Int64(chunk.count)
                             let written = writtenLower..<min(claim.range.upperBound, writtenLower + Int64(chunk.count))
@@ -640,8 +646,17 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         slotClaims[slot] = nil
         rangeMap.clearDownloading(lane: "slot\(slot)")
 
+        let startupRetry = startupMetadataRetryRequested.remove(slot) != nil
         let liveRotation = liveLaneRotationRequested.remove(slot) != nil
-        if liveRotation {
+        if startupRetry {
+            startupMetadataQueue.insert(claim.range, at: 0)
+            let reset = client.resetStreamLane(worker: slot, reason: "startup-metadata-straggler")
+            if !reset {
+                liveLaneResetPending.insert(slot)
+                armLiveLaneResetRetry(slot: slot, attempt: 1)
+            }
+            DiagnosticsLogger.shared.log("UnifiedStartup", "slot=\(slot) action=straggler-reset range=\(claim.range.lowerBound)-\(claim.range.upperBound) success=\(reset)")
+        } else if liveRotation {
             let reset = client.resetStreamLane(worker: slot, reason: "live-lane-rotation")
             if !reset {
                 liveLaneResetPending.insert(slot)
@@ -712,6 +727,23 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         if let resource { refreshMetrics(resource: resource) }
         scheduleSlots(reason: "slot-finished")
+    }
+
+    private func armStartupMetadataStragglerWatchdog(slot: Int, generation: Int) {
+        let delay = liveLaneFirstBytePeerTimeoutSeconds
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            await self?.checkStartupMetadataStraggler(slot: slot, generation: generation)
+        }
+    }
+
+    private func checkStartupMetadataStraggler(slot: Int, generation: Int) {
+        guard slotGenerations[slot] == generation, slotClaims[slot]?.role == .startupMetadata, startupMetadataReceivedBytes[slot, default: 0] == 0, !startupMetadataRetryRequested.contains(slot) else { return }
+        let peerSlot = slot == 0 ? 1 : 0
+        guard slotClaims[peerSlot]?.role == .startupMetadata, startupMetadataReceivedBytes[peerSlot, default: 0] > 0 else { return }
+        startupMetadataRetryRequested.insert(slot)
+        DiagnosticsLogger.shared.log("UnifiedStartup", "slot=\(slot) action=straggler-cancel peer=\(peerSlot) range=\(slotClaims[slot]?.range.description ?? "none")")
+        cancelSlot(slot, reason: "startup-metadata-straggler")
     }
 
     private func armStartupTailGraceResume() {
