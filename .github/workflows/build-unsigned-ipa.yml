@@ -43,6 +43,9 @@ jobs:
       - name: Audit Scheduler v2 invariants
         run: python3 scripts/check_scheduler_v2_invariants.py
 
+      - name: Audit live lane/startup invariants
+        run: python3 scripts/check_live_lane_startup_invariants.py
+
       - name: Select Xcode 16.4
         run: |
           set -euo pipefail
@@ -161,7 +164,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="EmbyPlayerLab-0.12.0-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="EmbyPlayerLab-0.12.1-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
