@@ -58,9 +58,9 @@ require("displayLayer.drawableSize =" not in surface, "UI must not force MoltenV
 require("displayLayer.delegate" not in surface, "do not reintroduce CAMetalLayer delegate coupling")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
-require(project.count('MARKETING_VERSION: "0.12.5"') == 2, "marketing version must be 0.12.5")
-require(project.count('CURRENT_PROJECT_VERSION: "63"') == 2, "build number must be 63")
-require("<string>0.12.5</string>" in info and "<string>63</string>" in info, "Info.plist version/build mismatch")
-require('sourceVersion = "0.12.5"' in identity, "source version mismatch")
+require(project.count('MARKETING_VERSION: "0.12.6"') == 2, "marketing version must be 0.12.6")
+require(project.count('CURRENT_PROJECT_VERSION: "64"') == 2, "build number must be 64")
+require("<string>0.12.6</string>" in info and "<string>64</string>" in info, "Info.plist version/build mismatch")
+require('sourceVersion = "0.12.6"' in identity, "source version mismatch")
 
 print("v0.12.3 regressions retained: OK")
