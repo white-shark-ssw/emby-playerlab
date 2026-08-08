@@ -19,6 +19,7 @@ jobs:
           set -euo pipefail
           python3 scripts/apply_v0121_live_lane_startup.py
           python3 scripts/refine_v0121_live_lane_startup.py
+          python3 scripts/refine_v0121_review.py
           if git diff --quiet; then
             echo "already applied"
             exit 0
@@ -26,5 +27,5 @@ jobs:
           git config user.name "ChatGPT CI"
           git config user.email "actions@users.noreply.github.com"
           git add Sources/Transport/UnifiedMediaTransportSession.swift
-          git commit -m "Refine demand-driven startup and live lane lifecycle"
+          git commit -m "Finalize v0.12.1 live lane transport core"
           git push origin HEAD:chatgpt/v0.12.1-live-lane-startup
