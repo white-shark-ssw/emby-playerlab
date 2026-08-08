@@ -44,6 +44,9 @@ jobs:
       - name: Audit live lane/startup invariants
         run: python3 scripts/check_live_lane_startup_invariants.py
 
+      - name: Audit v0.12.2 cache/throughput/rotation regressions
+        run: python3 scripts/check_v0122_regressions.py
+
       - name: Select Xcode 16.4
         run: |
           set -euo pipefail
