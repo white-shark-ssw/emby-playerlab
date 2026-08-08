@@ -1,6 +1,7 @@
 name: Apply v0.12.2
 
 on:
+  pull_request:
   push:
     branches: [chatgpt/v0.12.2-cache-throughput-rotation]
 
@@ -25,5 +26,3 @@ jobs:
           git add -A
           git commit -m "Implement v0.12.2 cache throughput and rotation fixes"
           git push origin HEAD:chatgpt/v0.12.2-cache-throughput-rotation
-
-# one-shot trigger
