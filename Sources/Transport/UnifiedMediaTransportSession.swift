@@ -70,6 +70,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let liveLaneFirstBytePeerTimeoutSeconds: TimeInterval = 1.5
     private let liveLaneFirstByteHardTimeoutSeconds: TimeInterval = 3.0
     private let liveLaneResetCooldownSeconds: TimeInterval = 8
+    private let startupTailDemandGraceSeconds: TimeInterval = 0.25
     private let lookaheadSegments = 4
     private let createdAt = Date()
 
@@ -85,6 +86,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var startupMetadataPlanRange: Range<Int64>?
     private var startupMetadataQueue: [Range<Int64>] = []
     private var startupMetadataPlanCompleted = false
+    private var startupTailDemandGraceUntil = Date.distantPast
+    private var startupTailGraceResumeScheduled = false
     private var preferredBulkSlot = 0
     private var stopped = false
 
@@ -98,6 +101,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var laneHealth: [Int: LaneHealthState] = [0: LaneHealthState(), 1: LaneHealthState()]
     private var liveLaneState: [Int: LiveLaneState] = [0: LiveLaneState(), 1: LiveLaneState()]
     private var liveLaneRotationRequested: Set<Int> = []
+    private var liveLaneResetPending: Set<Int> = []
 
     private var metricsValue = TransportMetricsSnapshot()
     private var speedSamples: [SpeedSample] = []
@@ -134,7 +138,6 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 store = cache
                 for range in cache.cachedRanges { rangeMap.insertPlayback(range) }
             }
-            configureStartupWarmupIfNeeded(resource: resolved)
             DiagnosticsLogger.shared.log(
                 "UnifiedTransport",
                 "ready item=\(source.itemId) bytes=\(resolved.contentLength) slots=2 block=\(blockBytes) preloadWindow=\(preloadWindowBytes()) anchor=\(playbackAnchor) \(NetworkPathMonitor.shared.diagnosticSummary)"
@@ -401,6 +404,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let plan = max(0, lower)..<resource.contentLength
         startupMetadataPlanRange = plan
         startupMetadataPlanCompleted = false
+        startupTailDemandGraceUntil = .distantPast
 
         let activeRanges = slotClaims.values.filter { $0.role == .startupMetadata }.map(\.range)
         var chunks: [Range<Int64>] = []
@@ -419,7 +423,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard !stopped, let resource, let store else { return }
 
         if !startupMetadataQueue.isEmpty || slotClaims.values.contains(where: { $0.role == .startupMetadata }) {
-            for slot in [0, 1] where slotTasks[slot] == nil {
+            for slot in [0, 1] where slotTasks[slot] == nil && !liveLaneResetPending.contains(slot) {
                 while !startupMetadataQueue.isEmpty {
                     let chunk = startupMetadataQueue.removeFirst()
                     if store.contains(chunk) { continue }
@@ -446,6 +450,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             return
         }
 
+        if startupMetadataPlanRange == nil, Date() < startupTailDemandGraceUntil {
+            refreshMetrics(resource: resource)
+            return
+        }
+
         if !secondaryEnabled {
             if slotTasks[0] == nil, let range = nextSequentialClaim(resource: resource) { startSlot(0, claim: SlotClaim(range: range, role: .sequential), reason: reason) }
             refreshMetrics(resource: resource)
@@ -454,6 +463,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         let order = preferredBulkSlot == 0 ? [0, 1] : [1, 0]
         for slot in order where slotTasks[slot] == nil {
+            if liveLaneResetPending.contains(slot) { continue }
             if slot == 1, Date() < secondaryCooldownUntil { continue }
             if let range = nextSequentialClaim(resource: resource) { startSlot(slot, claim: SlotClaim(range: range, role: .sequential), reason: slot == preferredBulkSlot ? "bulk-\(reason)" : "service-preload-\(reason)") }
         }
@@ -464,7 +474,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let serviceSlot = preferredBulkSlot == 0 ? 1 : 0
         let order = [serviceSlot, preferredBulkSlot]
         for slot in order {
-            guard slotTasks[slot] == nil else { continue }
+            guard slotTasks[slot] == nil, !liveLaneResetPending.contains(slot) else { continue }
             if slot == 1, Date() < secondaryCooldownUntil { continue }
             return slot
         }
@@ -632,7 +642,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let liveRotation = liveLaneRotationRequested.remove(slot) != nil
         if liveRotation {
             let reset = client.resetStreamLane(worker: slot, reason: "live-lane-rotation")
-            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=reset-after-cancel success=\(reset)")
+            if !reset {
+                liveLaneResetPending.insert(slot)
+                armLiveLaneResetRetry(slot: slot, attempt: 1)
+            }
+            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=reset-after-cancel success=\(reset) pending=\(!reset)")
             var health = LaneHealthState()
             health.resetCooldownUntil = Date().addingTimeInterval(liveLaneResetCooldownSeconds)
             laneHealth[slot] = health
@@ -658,7 +672,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                     secondaryEnabled = true
                     DiagnosticsLogger.shared.log("UnifiedSlot", "secondary enabled after primary stable block")
                 }
-                DiagnosticsLogger.shared.log("UnifiedStartup", "head warmup complete range=\(claim.range.lowerBound)-\(claim.range.upperBound) action=await-actual-tail-demand")
+                if claim.range.lowerBound == 0, Int64(claim.range.count) <= largeFileInitialSequentialBlockBytes, source.mediaSource.normalizedContainer == "mp4", resource?.contentLength ?? 0 >= 4 * 1_073_741_824 {
+                    startupTailDemandGraceUntil = Date().addingTimeInterval(startupTailDemandGraceSeconds)
+                    DiagnosticsLogger.shared.log("UnifiedStartup", "head warmup complete range=\(claim.range.lowerBound)-\(claim.range.upperBound) action=await-actual-tail-demand graceMs=\(Int(startupTailDemandGraceSeconds * 1000))")
+                    armStartupTailGraceResume()
+                }
             }
             if (claim.role == .metadata || claim.role == .startupMetadata), downloadedBytes >= Int64(claim.range.count), !secondaryEnabled {
                 secondaryEnabled = true
@@ -693,6 +711,45 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         if let resource { refreshMetrics(resource: resource) }
         scheduleSlots(reason: "slot-finished")
+    }
+
+    private func armStartupTailGraceResume() {
+        guard !startupTailGraceResumeScheduled else { return }
+        startupTailGraceResumeScheduled = true
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(startupTailDemandGraceSeconds * 1_000_000_000))
+            await self?.resumeAfterStartupTailGrace()
+        }
+    }
+
+    private func resumeAfterStartupTailGrace() {
+        startupTailGraceResumeScheduled = false
+        guard !stopped, startupMetadataPlanRange == nil, Date() >= startupTailDemandGraceUntil else { return }
+        scheduleSlots(reason: "startup-tail-grace-ended")
+    }
+
+    private func armLiveLaneResetRetry(slot: Int, attempt: Int) {
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            await self?.retryLiveLaneReset(slot: slot, attempt: attempt)
+        }
+    }
+
+    private func retryLiveLaneReset(slot: Int, attempt: Int) {
+        guard liveLaneResetPending.contains(slot), !stopped else { return }
+        if client.resetStreamLane(worker: slot, reason: "live-lane-retry-\(attempt)") {
+            liveLaneResetPending.remove(slot)
+            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=reset-retry success=true attempt=\(attempt)")
+            scheduleSlots(reason: "live-lane-reset-ready")
+            return
+        }
+        if attempt < 5 {
+            armLiveLaneResetRetry(slot: slot, attempt: attempt + 1)
+        } else {
+            liveLaneResetPending.remove(slot)
+            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=reset-retry give-up attempt=\(attempt)")
+            scheduleSlots(reason: "live-lane-reset-give-up")
+        }
     }
 
     private func armFirstByteWatchdog(slot: Int, generation: Int) {
