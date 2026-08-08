@@ -59,8 +59,8 @@ require(mpv.count("if sharedTransportSession == nil") == 2, "MPV should have one
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
 require(project.count('MARKETING_VERSION: "0.12.2"') == 2, "project marketing version must be 0.12.2 in both settings scopes")
-require(project.count('CURRENT_PROJECT_VERSION: "60"') == 2, "project build number must be 59 in both settings scopes")
-require("<string>0.12.2</string>" in info and "<string>59</string>" in info, "Info.plist version/build mismatch")
+require(project.count('CURRENT_PROJECT_VERSION: "60"') == 2, "project build number must be 60 in both settings scopes")
+require("<string>0.12.2</string>" in info and "<string>60</string>" in info, "Info.plist version/build mismatch")
 require('sourceVersion = "0.12.2"' in identity, "AppIdentity source version mismatch")
 
 for temporary_path in [
