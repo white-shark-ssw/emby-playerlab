@@ -30,6 +30,7 @@ required = [
     "action=queue-tail",
     "reason: \"startup-tail-",
     "tail warmup complete",
+    "!isStartupTailMetadata(metadata, resource: resource)",
 ]
 for needle in required:
     require(needle in unified, f"missing {needle}")
@@ -47,6 +48,12 @@ hint_index = unified.index("if !concreteReason, !metadata")
 urgent_index = unified.index("installUrgent(range: range, metadata: metadata, reason: reason)", hint_index)
 return_index = unified.index("return", hint_index)
 require(return_index < urgent_index, "hint-only path must return before urgent installation")
+
+# Planned large-MP4 startup metadata may only use the dedicated Slot 0 branch. The
+# generic metadata path must explicitly exclude it, otherwise a cold Slot 1 can steal it.
+dedicated_tail = unified.index('reason: "startup-tail-')
+generic_metadata = unified.index("if let metadata = pendingMetadataRange, !isStartupTailMetadata(metadata, resource: resource)")
+require(dedicated_tail < generic_metadata, "dedicated startup-tail path must precede generic metadata scheduling")
 
 # Synthetic lane selection: whichever lane is materially faster becomes protected,
 # and the opposite lane becomes the first foreground service lane.
@@ -81,6 +88,8 @@ for temporary in [
     "scripts/apply_v0120_scheduler_v2.py",
     "scripts/refine_v0120_scheduler_v2.py",
     "scripts/cleanup_v0120_scheduler_v2.py",
+    "scripts/refine_v0120_startup_tail.py",
+    "scripts/finalize_v0120.py",
 ]:
     require(not Path(temporary).exists(), f"temporary construction file must not ship: {temporary}")
 
