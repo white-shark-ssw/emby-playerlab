@@ -28,6 +28,92 @@ final class EmbyAPIClient {
         return try await send(path: "Users/\(userId)/Items/\(itemId)", method: "GET")
     }
 
+    func userViews() async throws -> [LibraryItem] {
+        guard let userId else { throw EmbyAPIError.missingSession }
+        let page: EmbyItemPage = try await send(path: "Users/\(userId)/Views", method: "GET")
+        return page.items
+    }
+
+    func resumeItems(limit: Int = 20) async throws -> [LibraryItem] {
+        guard let userId else { throw EmbyAPIError.missingSession }
+        let query = commonBrowseFields + [
+            URLQueryItem(name: "Recursive", value: "true"),
+            URLQueryItem(name: "Limit", value: String(limit)),
+            URLQueryItem(name: "MediaTypes", value: "Video"),
+        ]
+        let page: EmbyItemPage = try await send(path: "Users/\(userId)/Items/Resume", method: "GET", query: query)
+        return page.items
+    }
+
+    func latestItems(parentId: String? = nil, limit: Int = 20) async throws -> [LibraryItem] {
+        guard let userId else { throw EmbyAPIError.missingSession }
+        var query = commonBrowseFields + [
+            URLQueryItem(name: "Limit", value: String(limit)),
+            URLQueryItem(name: "GroupItems", value: "false"),
+        ]
+        if let parentId, !parentId.isEmpty {
+            query.append(URLQueryItem(name: "ParentId", value: parentId))
+        }
+        return try await send(path: "Users/\(userId)/Items/Latest", method: "GET", query: query)
+    }
+
+    func libraryItems(parentId: String, limit: Int = 60, startIndex: Int = 0, sortBy: String = "DateCreated", sortOrder: String = "Descending") async throws -> EmbyItemPage {
+        guard let userId else { throw EmbyAPIError.missingSession }
+        let query = commonBrowseFields + [
+            URLQueryItem(name: "ParentId", value: parentId),
+            URLQueryItem(name: "Recursive", value: "true"),
+            URLQueryItem(name: "StartIndex", value: String(startIndex)),
+            URLQueryItem(name: "Limit", value: String(limit)),
+            URLQueryItem(name: "SortBy", value: sortBy),
+            URLQueryItem(name: "SortOrder", value: sortOrder),
+        ]
+        return try await send(path: "Users/\(userId)/Items", method: "GET", query: query)
+    }
+
+    func favoriteItems(limit: Int = 80) async throws -> [LibraryItem] {
+        guard let userId else { throw EmbyAPIError.missingSession }
+        let query = commonBrowseFields + [
+            URLQueryItem(name: "Recursive", value: "true"),
+            URLQueryItem(name: "Filters", value: "IsFavorite"),
+            URLQueryItem(name: "Limit", value: String(limit)),
+            URLQueryItem(name: "SortBy", value: "SortName"),
+            URLQueryItem(name: "SortOrder", value: "Ascending"),
+        ]
+        let page: EmbyItemPage = try await send(path: "Users/\(userId)/Items", method: "GET", query: query)
+        return page.items
+    }
+
+    func searchItems(term: String, limit: Int = 80) async throws -> [LibraryItem] {
+        guard let userId else { throw EmbyAPIError.missingSession }
+        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let query = commonBrowseFields + [
+            URLQueryItem(name: "Recursive", value: "true"),
+            URLQueryItem(name: "SearchTerm", value: trimmed),
+            URLQueryItem(name: "Limit", value: String(limit)),
+            URLQueryItem(name: "SortBy", value: "SortName"),
+            URLQueryItem(name: "SortOrder", value: "Ascending"),
+        ]
+        let page: EmbyItemPage = try await send(path: "Users/\(userId)/Items", method: "GET", query: query)
+        return page.items
+    }
+
+    func imageURL(itemId: String, imageType: String = "Primary", maxWidth: Int = 600, tag: String? = nil) -> URL? {
+        var components = URLComponents(url: baseURL.appendingPathComponent("Items/\(itemId)/Images/\(imageType)"), resolvingAgainstBaseURL: false)
+        var query = [
+            URLQueryItem(name: "MaxWidth", value: String(maxWidth)),
+            URLQueryItem(name: "Quality", value: "90"),
+        ]
+        if let tag, !tag.isEmpty {
+            query.append(URLQueryItem(name: "Tag", value: tag))
+        }
+        if let accessToken, !accessToken.isEmpty {
+            query.append(URLQueryItem(name: "api_key", value: accessToken))
+        }
+        components?.queryItems = query
+        return components?.url
+    }
+
     func playbackInfo(itemId: String) async throws -> PlaybackInfoResponse {
         guard let userId else { throw EmbyAPIError.missingSession }
         let query = [
@@ -106,6 +192,10 @@ final class EmbyAPIClient {
         }
     }
 
+    private var commonBrowseFields: [URLQueryItem] {
+        [URLQueryItem(name: "Fields", value: "Overview,PrimaryImageAspectRatio,DateCreated,CommunityRating,RunTimeTicks,UserData")]
+    }
+
     private func report(path: String, eventName: String?, source: ResolvedPlaybackSource, position: Double, paused: Bool) async {
         struct Body: Encodable {
             let ItemId: String
@@ -138,33 +228,16 @@ final class EmbyAPIClient {
         }
     }
 
-    private func send<Response: Decodable>(
-        path: String,
-        method: String,
-        query: [URLQueryItem] = [],
-        authenticated: Bool = true
-    ) async throws -> Response {
+    private func send<Response: Decodable>(path: String, method: String, query: [URLQueryItem] = [], authenticated: Bool = true) async throws -> Response {
         try await send(path: path, method: method, query: query, bodyData: nil, authenticated: authenticated)
     }
 
-    private func send<Response: Decodable, Body: Encodable>(
-        path: String,
-        method: String,
-        query: [URLQueryItem] = [],
-        body: Body,
-        authenticated: Bool = true
-    ) async throws -> Response {
+    private func send<Response: Decodable, Body: Encodable>(path: String, method: String, query: [URLQueryItem] = [], body: Body, authenticated: Bool = true) async throws -> Response {
         let bodyData = try JSONEncoder().encode(body)
         return try await send(path: path, method: method, query: query, bodyData: bodyData, authenticated: authenticated)
     }
 
-    private func send<Response: Decodable>(
-        path: String,
-        method: String,
-        query: [URLQueryItem],
-        bodyData: Data?,
-        authenticated: Bool
-    ) async throws -> Response {
+    private func send<Response: Decodable>(path: String, method: String, query: [URLQueryItem], bodyData: Data?, authenticated: Bool) async throws -> Response {
         let trimmedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
         guard var components = URLComponents(url: baseURL.appendingPathComponent(trimmedPath), resolvingAgainstBaseURL: false) else {
             throw EmbyAPIError.invalidServerURL
@@ -227,16 +300,12 @@ final class EmbyAPIClient {
     }
 
     private func isSameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
-        lhs.scheme?.lowercased() == rhs.scheme?.lowercased()
-            && lhs.host?.lowercased() == rhs.host?.lowercased()
-            && lhs.port == rhs.port
+        lhs.scheme?.lowercased() == rhs.scheme?.lowercased() && lhs.host?.lowercased() == rhs.host?.lowercased() && lhs.port == rhs.port
     }
 
     private func safeMediaHeaders(_ headers: [String: String]) -> [String: String] {
         let blocked = ["authorization", "x-emby-token", "x-mediabrowser-token", "cookie", "set-cookie"]
-        return headers.filter { key, _ in
-            !blocked.contains(key.lowercased())
-        }
+        return headers.filter { key, _ in !blocked.contains(key.lowercased()) }
     }
 }
 
