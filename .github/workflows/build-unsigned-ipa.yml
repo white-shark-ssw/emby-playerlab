@@ -58,6 +58,9 @@ jobs:
       - name: Audit v0.12.6 frontier rescue regressions
         run: python3 scripts/check_v0126_frontier_rescue.py
 
+      - name: Audit v0.12.7 MPV rotation regressions
+        run: python3 scripts/check_v0127_mpv_rotation.py
+
       - name: Select Xcode 16.4
         run: |
           set -euo pipefail
@@ -176,7 +179,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="EmbyPlayerLab-0.12.6-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="EmbyPlayerLab-0.12.7-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
@@ -198,8 +201,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          RELEASE_TAG="v0.12.6-build64-dev"
-          RELEASE_IPA="EmbyPlayerLab-v0.12.6-build64-${GITHUB_SHA::7}-unsigned.ipa"
+          RELEASE_TAG="v0.12.7-build65-dev"
+          RELEASE_IPA="EmbyPlayerLab-v0.12.7-build65-${GITHUB_SHA::7}-unsigned.ipa"
           cp "$IPA_NAME" "$RELEASE_IPA"
           shasum -a 256 "$RELEASE_IPA" | tee "$RELEASE_IPA.sha256"
           gh release delete "$RELEASE_TAG" --cleanup-tag -y >/dev/null 2>&1 || true
@@ -207,8 +210,8 @@ jobs:
             "$RELEASE_IPA" \
             "$RELEASE_IPA.sha256" \
             --target "$GITHUB_SHA" \
-            --title "EmbyPlayerLab v0.12.6 Build 64" \
-            --notes "Automated TrollStore test build for v0.12.6 Build 64 from $GITHUB_SHA" \
+            --title "EmbyPlayerLab v0.12.7 Build 65" \
+            --notes "Automated TrollStore test build for v0.12.7 Build 65 from $GITHUB_SHA" \
             --prerelease
 
       - name: Upload build logs
