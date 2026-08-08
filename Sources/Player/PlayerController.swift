@@ -758,6 +758,16 @@ final class PlayerController: ObservableObject {
         DiagnosticsLogger.shared.log("BufferHistory", "transport cache complete bytes=\(metrics.cacheBytes)/\(metrics.resourceBytes) action=promote-full-duration duration=\(String(format: "%.3f", duration))")
     }
 
+    private func promoteFullCacheRangeIfNeeded(_ metrics: TransportMetricsSnapshot) {
+        guard metrics.resourceBytes > 0, metrics.cacheHoleCount == 0, metrics.cacheBytes >= metrics.resourceBytes else { return }
+        let duration = effectiveDuration
+        guard duration > 0 else { return }
+        let fullRange = 0...duration
+        guard verifiedBufferedRanges != [fullRange] else { return }
+        verifiedBufferedRanges = [fullRange]
+        DiagnosticsLogger.shared.log("BufferHistory", "transport cache complete bytes=\(metrics.cacheBytes)/\(metrics.resourceBytes) action=promote-full-duration duration=\(String(format: "%.3f", duration))")
+    }
+
     private func startTransportMetricsPolling() {
         transportMetricsTask?.cancel()
         transportMetricsTask = nil
@@ -772,6 +782,7 @@ final class PlayerController: ObservableObject {
                 if let metrics = await engine.transportMetrics(), self.engine === engine {
                     self.lastTransportMetrics = metrics
                     self.transportSummary = metrics.summary
+                    self.promoteFullCacheRangeIfNeeded(metrics)
                     self.promoteFullCacheRangeIfNeeded(metrics)
                 } else if self.engine === engine {
                     self.lastTransportMetrics = nil
