@@ -88,6 +88,12 @@ final class RangeHTTPClient {
         return streamLanes[index].makeStream(resource: resource, range: range, lane: .preload(worker: worker))
     }
 
+    @discardableResult
+    func resetStreamLane(worker: Int, reason: String) -> Bool {
+        let index = abs(worker) % streamLanes.count
+        return streamLanes[index].resetIfIdle(reason: reason)
+    }
+
     private func makeRequest(resource: TransportResolvedResource, range: Range<Int64>) -> URLRequest {
         var request = URLRequest(url: resource.finalURL)
         request.httpMethod = "GET"
@@ -149,7 +155,18 @@ private final class PersistentRangeStreamLane: NSObject, URLSessionDataDelegate,
     private let delegateQueue: OperationQueue
     private var states: [Int: StreamState] = [:]
     private var invalidated = false
-    private lazy var session: URLSession = {
+    private lazy var session: URLSession = makeSession()
+
+    init(index: Int) {
+        self.index = index
+        delegateQueue = OperationQueue()
+        delegateQueue.maxConcurrentOperationCount = 1
+        delegateQueue.qualityOfService = .userInitiated
+        delegateQueue.name = "com.embyplayerlab.transport-v3.lane-\(index)"
+        super.init()
+    }
+
+    private func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.timeoutIntervalForRequest = 30
@@ -161,15 +178,6 @@ private final class PersistentRangeStreamLane: NSObject, URLSessionDataDelegate,
         configuration.httpShouldSetCookies = true
         configuration.urlCache = nil
         return URLSession(configuration: configuration, delegate: self, delegateQueue: delegateQueue)
-    }()
-
-    init(index: Int) {
-        self.index = index
-        delegateQueue = OperationQueue()
-        delegateQueue.maxConcurrentOperationCount = 1
-        delegateQueue.qualityOfService = .userInitiated
-        delegateQueue.name = "com.embyplayerlab.transport-v3.lane-\(index)"
-        super.init()
     }
 
     func makeStream(resource: TransportResolvedResource, range: Range<Int64>, lane: RangeRequestLane) -> AsyncThrowingStream<Data, Error> {
@@ -205,6 +213,17 @@ private final class PersistentRangeStreamLane: NSObject, URLSessionDataDelegate,
             task.priority = URLSessionTask.highPriority
             task.resume()
         }
+    }
+
+    func resetIfIdle(reason: String) -> Bool {
+        lock.lock()
+        guard !invalidated, states.isEmpty else { lock.unlock(); return false }
+        let previous = session
+        session = makeSession()
+        lock.unlock()
+        previous.invalidateAndCancel()
+        DiagnosticsLogger.shared.log("TransportV3Health", "lane=\(index) action=reset-idle-session reason=\(reason)")
+        return true
     }
 
     func invalidate() {

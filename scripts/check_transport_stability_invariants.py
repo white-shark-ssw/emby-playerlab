@@ -29,6 +29,8 @@ for needle in forbidden_unified:
     if needle in unified:
         raise SystemExit(f"transport stability forbidden pattern present: {needle}")
 
+if unified.count("recordNetworkBytes(Int64(chunk.count))") != 2:
+    raise SystemExit("network chunks must be counted exactly once in sequential and foreground fetch paths")
 if "var resourceBytes: Int64 = 0" not in types:
     raise SystemExit("TransportMetricsSnapshot.resourceBytes missing")
 if "transport cache complete bytes=" not in controller or "promote-full-duration" not in controller:
@@ -68,5 +70,9 @@ cache_bytes = 996_085_874
 holes = 0
 if not (resource_bytes > 0 and holes == 0 and cache_bytes >= resource_bytes):
     raise SystemExit("synthetic 63368 full-cache regression failed")
+
+# Keep startup metadata, lane-rotation and MPV timeline regressions under the same
+# permanent CI gate used by both Validate Source and the unsigned IPA workflow.
+exec(Path("scripts/check_startup_lane_health_invariants.py").read_text(), {"__name__": "__main__"})
 
 print("Transport stability invariants: OK")

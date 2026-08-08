@@ -26,6 +26,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let bytes: Int64
     }
 
+    private struct LaneHealthState {
+        var averageBps: Double = 0
+        var samples = 0
+        var slowStreak = 0
+        var lastSampleAt = Date.distantPast
+        var resetCooldownUntil = Date.distantPast
+    }
+
     private var source: ResolvedPlaybackSource
     private let configuration: MediaTransportConfiguration
     private let resolver = RedirectResolver()
@@ -39,6 +47,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let largeFileInitialSequentialBlockBytes: Int64 = 1 * 1_048_576
     private let startupMetadataSlowFirstChunkSeconds: TimeInterval = 1.5
     private let startupMetadataSlowFirstChunkBps: Double = 1 * 1_048_576
+    private let laneHealthMinSampleBytes: Int64 = 8 * 1_048_576
+    private let laneHealthPeerFloorBps: Double = 4 * 1_048_576
+    private let laneHealthRelativeFloor: Double = 0.50
+    private let laneHealthPeerFreshSeconds: TimeInterval = 20
+    private let laneHealthResetCooldownSeconds: TimeInterval = 25
     private let lookaheadSegments = 4
     private let createdAt = Date()
 
@@ -60,6 +73,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var secondaryFailureCount = 0
     private var secondaryCooldownUntil = Date.distantPast
     private var successfulPrimaryBlocks = 0
+    private var laneHealth: [Int: LaneHealthState] = [0: LaneHealthState(), 1: LaneHealthState()]
 
     private var metricsValue = TransportMetricsSnapshot()
     private var speedSamples: [SpeedSample] = []
@@ -227,14 +241,18 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private func acceptRealDemand(_ range: Range<Int64>, resource: TransportResolvedResource, reason: String) {
         guard !range.isEmpty, let store else { return }
         let concreteReason = reason == "concrete-read" || reason == "blocked-read" || reason == "byte-offset"
-        // Size/distance metadata heuristics are valid only for speculative Range hints. Once the
-        // player actually reads an offset it is a real demux dependency; poorly interleaved audio/video
-        // tracks can legitimately issue tiny reads hundreds of MiB apart.
-        let metadata = concreteReason ? false : isMetadataProbe(range, resource: resource)
+        // Distant concrete reads are normally real playback dependencies (poorly interleaved A/V),
+        // but a large MP4's first near-EOF seek is container metadata. Treating that moov/sample-table
+        // read as playback made 152901 cache 100+ MiB from the head while file-loaded waited on a slow
+        // ~10 MiB tail request. Limit this override to the startup window so a later user seek near EOF
+        // remains ordinary playback demand.
+        let startupTailMetadata = isStartupTailMetadata(range, resource: resource)
+        let metadata = startupTailMetadata || (!concreteReason && isMetadataProbe(range, resource: resource))
         let pendingUserSeek = Date() <= pendingUserSeekUntil
-        let concretePlaybackDemand = concreteReason
+        let concretePlaybackDemand = concreteReason && !metadata
         var reanchored = false
         if concretePlaybackDemand { lastConcretePlaybackDemand = range }
+        if startupTailMetadata { DiagnosticsLogger.shared.log("UnifiedStartup", "critical-tail-metadata range=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=primary-lane") }
 
         // AVFoundation may emit stale/cached range requests from the pre-seek timeline while a seek is
         // still settling. Only the byte offset actually consumed by read(), or MPV's explicit byte seek,
@@ -320,6 +338,16 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             "UnifiedDemand",
             "urgent range=\(candidate.lowerBound)-\(candidate.upperBound) metadata=\(metadata) reason=\(reason) slot0Only=\(!metadata)"
         )
+        let startupCriticalMetadata = metadata && isStartupTailMetadata(candidate, resource: resource)
+        if startupCriticalMetadata {
+            // Keep the secondary prefetch alive and reuse the already-warmed primary connection for
+            // the startup tail index. In the 152901 regression Slot 0 was 16-21 MiB/s while the fresh
+            // Slot 1 tail connection averaged ~1.1 MiB/s; file-loaded waited on the latter for 11s.
+            if let primary = slotClaims[0], primary.role == .sequential { cancelSlot(0, reason: "startup-metadata-priority") }
+            DiagnosticsLogger.shared.log("UnifiedStartup", "critical metadata queued on primary range=\(candidate.lowerBound)-\(candidate.upperBound) preserveSecondary=\(slotClaims[1]?.role == .sequential)")
+            return
+        }
+
         let foregroundCanUseSlot1 = Date() >= secondaryCooldownUntil && (slotTasks[1] == nil || slotClaims[1]?.role == .sequential)
         if let secondary = slotClaims[1], secondary.role == .sequential {
             cancelSlot(1, reason: metadata ? "metadata-priority" : "urgent-playback-priority")
@@ -466,7 +494,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 let elapsed = max(Date().timeIntervalSince(started), 0.001)
                 let bps = Double(receivedForClaim) / elapsed
                 DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) finish role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) bytes=\(receivedForClaim) speedBps=\(Int(bps)) progressive=true longRange=true")
-                finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: receivedForClaim > 0 ? receivedForClaim : nil, error: nil)
+                finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: receivedForClaim > 0 ? receivedForClaim : nil, error: nil, completedSequentialBps: bps)
             } else {
                 var slowStartupRefreshUsed = false
                 while receivedForClaim < Int64(claim.range.count) {
@@ -480,11 +508,6 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                             try store.write(chunk, at: claim.range.lowerBound + receivedForClaim)
                             receivedForClaim += Int64(chunk.count)
                             attemptReceived += Int64(chunk.count)
-                            recordNetworkBytes(Int64(chunk.count))
-                            recordNetworkBytes(Int64(chunk.count))
-                            recordNetworkBytes(Int64(chunk.count))
-                            recordNetworkBytes(Int64(chunk.count))
-                            recordNetworkBytes(Int64(chunk.count))
                             recordNetworkBytes(Int64(chunk.count))
                             let writtenLower = claim.range.lowerBound + receivedForClaim - Int64(chunk.count)
                             let written = writtenLower..<min(claim.range.upperBound, writtenLower + Int64(chunk.count))
@@ -527,11 +550,15 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         }
     }
 
-    private func finishSlot(slot: Int, generation: Int, claim: SlotClaim, downloadedBytes: Int64?, error: Error?) {
+    private func finishSlot(slot: Int, generation: Int, claim: SlotClaim, downloadedBytes: Int64?, error: Error?, completedSequentialBps: Double? = nil) {
         guard slotGenerations[slot] == generation else { return }
         slotTasks[slot] = nil
         slotClaims[slot] = nil
         rangeMap.clearDownloading(lane: "slot\(slot)")
+
+        if claim.role == .sequential, error == nil, let completedSequentialBps, let downloadedBytes {
+            considerSequentialLaneHealth(slot: slot, bytes: downloadedBytes, bps: completedSequentialBps)
+        }
 
         if let downloadedBytes, downloadedBytes > 0 {
             let written = claim.range.lowerBound..<min(claim.range.upperBound, claim.range.lowerBound + downloadedBytes)
@@ -579,6 +606,33 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         if let resource { refreshMetrics(resource: resource) }
         scheduleSlots(reason: "slot-finished")
+    }
+
+    private func considerSequentialLaneHealth(slot: Int, bytes: Int64, bps: Double) {
+        guard bytes >= laneHealthMinSampleBytes, bps > 0 else { return }
+        let now = Date()
+        let peerSlot = slot == 0 ? 1 : 0
+        var current = laneHealth[slot] ?? LaneHealthState()
+        let peer = laneHealth[peerSlot] ?? LaneHealthState()
+        let peerIsFresh = peer.samples > 0 && now.timeIntervalSince(peer.lastSampleAt) <= laneHealthPeerFreshSeconds
+        let clearlyWorse = peerIsFresh && peer.averageBps >= laneHealthPeerFloorBps && bps < peer.averageBps * laneHealthRelativeFloor
+
+        current.averageBps = current.samples == 0 ? bps : current.averageBps * 0.65 + bps * 0.35
+        current.samples += 1
+        current.lastSampleAt = now
+        if clearlyWorse { current.slowStreak += 1 }
+        else if !peerIsFresh || bps >= peer.averageBps * 0.70 { current.slowStreak = 0 }
+        laneHealth[slot] = current
+
+        DiagnosticsLogger.shared.log("UnifiedLaneHealth", "slot=\(slot) sampleBps=\(Int(bps)) avgBps=\(Int(current.averageBps)) peer=\(peerSlot) peerAvgBps=\(Int(peer.averageBps)) peerFresh=\(peerIsFresh) slowStreak=\(current.slowStreak)")
+        guard current.slowStreak >= 2, now >= current.resetCooldownUntil else { return }
+
+        let reason = "sequential-bps-\(Int(bps))-peer-\(Int(peer.averageBps))"
+        guard client.resetStreamLane(worker: slot, reason: reason) else { return }
+        var reset = LaneHealthState()
+        reset.resetCooldownUntil = now.addingTimeInterval(laneHealthResetCooldownSeconds)
+        laneHealth[slot] = reset
+        DiagnosticsLogger.shared.log("UnifiedLaneHealth", "slot=\(slot) action=rotate-slow-lane reason=\(reason) cooldown=\(Int(laneHealthResetCooldownSeconds))s")
     }
 
     private func resumeAfterSecondaryCooldown() {
@@ -655,6 +709,12 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             return max(configuration.wifiPreloadBytes, configuration.diskLimitBytes)
         }
         return max(0, configuration.wifiPreloadBytes)
+    }
+
+    private func isStartupTailMetadata(_ range: Range<Int64>, resource: TransportResolvedResource) -> Bool {
+        guard !range.isEmpty, Date().timeIntervalSince(createdAt) < 35, playbackAnchor == 0, Date() > pendingUserSeekUntil else { return false }
+        guard source.mediaSource.normalizedContainer == "mp4", resource.contentLength >= 4 * 1_073_741_824 else { return false }
+        return range.lowerBound >= resource.contentLength - 64 * 1_048_576
     }
 
     private func isMetadataProbe(_ range: Range<Int64>, resource: TransportResolvedResource) -> Bool {
