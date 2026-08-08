@@ -74,7 +74,6 @@ struct PlayerScreen: View {
             GeometryReader { geometry in
                 MPVPlayerSurface(displayLayer: layer)
                     .frame(width: geometry.size.width, height: geometry.size.height)
-                    .id("\(ObjectIdentifier(layer))-\(Int(geometry.size.width.rounded()))x\(Int(geometry.size.height.rounded()))")
             }
         } else if controller.engineKind == .ksAVIO, let view = controller.ksAVIOView {
             KSAVIOPlayerSurface(playerView: view)
