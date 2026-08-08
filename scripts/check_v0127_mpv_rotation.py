@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 surface = Path("Sources/UI/MPVPlayerSurface.swift").read_text()
 project = Path("project.yml").read_text()
@@ -21,9 +22,7 @@ require("expectedOrientation != 0, drawableOrientation != 0, expectedOrientation
 require("repair=orientation-sync" in surface, "orientation repair diagnostics missing")
 require("bounds.width * scale" in surface and "bounds.height * scale" in surface, "expected drawable must derive from actual host bounds and native scale")
 
-# Device-log regression from v0.12.6: UIKit completed rotation to 932x430 while
-# MoltenVK still exposed the previous portrait 1290x2796 drawable. The repair must
-# detect that orientation mismatch, while a correctly oriented drawable is untouched.
+
 def axis(width: float, height: float) -> int:
     if width <= 1 or height <= 1:
         return 0
@@ -32,6 +31,7 @@ def axis(width: float, height: float) -> int:
     if height > width:
         return -1
     return 0
+
 
 expected_landscape = (932 * 3, 430 * 3)
 stale_portrait = (1290, 2796)
@@ -42,14 +42,18 @@ expected_portrait = (430 * 3, 932 * 3)
 stale_landscape = (2796, 1290)
 require(axis(*expected_portrait) != axis(*stale_landscape), "reverse rotation must detect stale landscape drawable")
 
-require(project.count('MARKETING_VERSION: "0.12.7"') == 2, "marketing version must be 0.12.7")
-require(project.count('CURRENT_PROJECT_VERSION: "65"') == 2, "build number must be 65")
-require("<string>0.12.7</string>" in info and "<string>65</string>" in info, "Info.plist version/build mismatch")
-require('sourceVersion = "0.12.7"' in identity, "AppIdentity source version mismatch")
+versions = re.findall(r'MARKETING_VERSION: "([^"]+)"', project)
+builds = re.findall(r'CURRENT_PROJECT_VERSION: "([^"]+)"', project)
+require(len(versions) == 2 and len(set(versions)) == 1, "marketing version must match in both project settings scopes")
+require(len(builds) == 2 and len(set(builds)) == 1, "build number must match in both project settings scopes")
+version = versions[0]
+build_number = builds[0]
+require(f"<string>{version}</string>" in info and f"<string>{build_number}</string>" in info, "Info.plist version/build mismatch")
+require(f'sourceVersion = "{version}"' in identity, "AppIdentity source version mismatch")
 require("Audit v0.12.7 MPV rotation regressions" in validate and "check_v0127_mpv_rotation.py" in validate, "Validate Source must enforce v0.12.7 rotation regression")
 require("Audit v0.12.7 MPV rotation regressions" in build and "check_v0127_mpv_rotation.py" in build, "unsigned IPA workflow must enforce v0.12.7 rotation regression")
-require('IPA_NAME="EmbyPlayerLab-0.12.7-${GITHUB_SHA::7}-unsigned.ipa"' in build, "IPA filename must identify v0.12.7")
-require('RELEASE_TAG="v0.12.7-build65-dev"' in build, "release tag mismatch")
-require('RELEASE_IPA="EmbyPlayerLab-v0.12.7-build65-${GITHUB_SHA::7}-unsigned.ipa"' in build, "release IPA mismatch")
+require(f'IPA_NAME="EmbyPlayerLab-{version}-${{GITHUB_SHA::7}}-unsigned.ipa"' in build, "IPA filename must identify the current version")
+require(f'RELEASE_TAG="v{version}-build{build_number}-dev"' in build, "release tag mismatch")
+require(f'OS-player-v{version}-build{build_number}-${{GITHUB_SHA::7}}-unsigned.ipa' in build, "release IPA mismatch")
 
 print("v0.12.7 MPV rotation regressions: OK")
