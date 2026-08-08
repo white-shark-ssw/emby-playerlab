@@ -2,9 +2,9 @@ import Darwin
 import Foundation
 
 enum AppIdentity {
-    static let clientName = "Emby Player Lab"
-    static let sourceVersion = "0.12.7"
-    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.12.7"
+    static let clientName = "OS player"
+    static let sourceVersion = "0.13.0"
+    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.13.0"
     static let ticksPerSecond: Double = 10_000_000
 
     static var deviceName: String {
@@ -19,9 +19,7 @@ enum AppIdentity {
 
     static var deviceId: String {
         let key = "EmbyPlayerLab.DeviceId"
-        if let value = UserDefaults.standard.string(forKey: key), !value.isEmpty {
-            return value
-        }
+        if let value = UserDefaults.standard.string(forKey: key), !value.isEmpty { return value }
         let value = UUID().uuidString.lowercased()
         UserDefaults.standard.set(value, forKey: key)
         return value
