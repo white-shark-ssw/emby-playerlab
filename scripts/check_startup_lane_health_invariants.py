@@ -19,9 +19,7 @@ required_unified = [
     "private func observeSequentialChunk",
     "laneHealthPeerFloorBps: Double = 4 * 1_048_576",
     "laneHealthRelativeFloor: Double = 0.50",
-    "current.slowStreak >= 2",
-    "laneHealthResetCooldownSeconds: TimeInterval = 25",
-    "action=rotate-slow-lane",
+    "action=advisory-only",
     "action=rotate-live-lane",
     "protected bulk changed slot=",
     "protected bulk failover slot=",
@@ -30,12 +28,24 @@ for needle in required_unified:
     if needle not in unified:
         raise SystemExit(f"startup/lane-health invariant missing: {needle}")
 
-for obsolete in ["startupTailWarmupBytes", "configureStartupWarmupIfNeeded", "large-mp4 warmup planned", "action=queue-tail", "tail warmup complete"]:
+for obsolete in ["startupTailWarmupBytes", "configureStartupWarmupIfNeeded", "large-mp4 warmup planned", "action=queue-tail", "tail warmup complete", "action=rotate-slow-lane"]:
     if obsolete in unified:
-        raise SystemExit(f"obsolete proactive startup strategy remains: {obsolete}")
+        raise SystemExit(f"obsolete startup/lane-health strategy remains: {obsolete}")
 
 if unified.count("recordNetworkBytes(Int64(chunk.count))") != 2:
     raise SystemExit("each received network chunk must be counted exactly once in each fetch path")
+
+# v0.12.3: completed 32 MiB samples are advisory only. They may select the protected
+# bulk slot, but must never cancel/reset a connection. Only first-byte/live-window
+# health is allowed to rotate a lane.
+health_start = unified.index("private func considerSequentialLaneHealth")
+health_end = unified.index("private func resumeAfterSecondaryCooldown", health_start)
+completed_health = unified[health_start:health_end]
+for forbidden in ["resetStreamLane", "cancelSlot(", "rotate-slow-lane", "slowStreak +=", "slowStreak >="]:
+    if forbidden in completed_health:
+        raise SystemExit(f"completed-claim health must remain advisory only: {forbidden}")
+if "preferredBulkSlot" not in completed_health or "action=advisory-only" not in completed_health:
+    raise SystemExit("completed-claim health must still select/log protected bulk")
 
 required_http = [
     "func resetStreamLane(worker: Int, reason: String) -> Bool",
@@ -70,8 +80,7 @@ chunk_count = (exact_bytes + segment - 1) // segment
 if exact_bytes != 10_180_143 or chunk_count != 10:
     raise SystemExit("synthetic 152901 actual-demand startup plan regression failed")
 
-# Completed-block health remains as a conservative fallback, but live health can react
-# much earlier. A 20 MiB/s peer versus a 3 MiB/s lane is clearly degraded.
+# 63368: live-window health, not a completed-block historical average, owns rotation.
 peer_floor = 4 * 1_048_576
 relative_floor = 0.45
 peer_bps = 20 * 1_048_576
