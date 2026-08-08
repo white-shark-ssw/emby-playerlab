@@ -9,7 +9,7 @@ required = [
     'awaitingConcreteRead=true',
     'parallel-read-head primary=',
     'action=keep-primary-anchor',
-    'slot1.role == .urgentPlayback',
+    '$0.role != .sequential && $0.range.contains(range.lowerBound)',
     'startSlot(1, claim: SlotClaim(range: urgent, role: .urgentPlayback)',
     'reason: "parallel-urgent-',
     'if claim.role == .urgentPlayback, pendingPlaybackUrgentRange == nil { pendingPlaybackUrgentRange = claim.range }',

@@ -35,6 +35,9 @@ jobs:
       - name: Audit seek stall invariants
         run: python3 scripts/check_seek_stall_invariants.py
 
+      - name: Audit transport stability invariants
+        run: python3 scripts/check_transport_stability_invariants.py
+
       - name: Select Xcode 16.4
         run: |
           set -euo pipefail

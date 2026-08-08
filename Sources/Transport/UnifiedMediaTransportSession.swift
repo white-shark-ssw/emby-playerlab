@@ -5,8 +5,8 @@ import Foundation
 ///
 /// Invariants:
 /// - Exactly two upstream slots are used for normal 115/CDN traffic.
-/// - Slot 0 owns urgent playback; Slot 1 yields background bandwidth immediately when playback
-///   becomes urgent, and may temporarily serve critical metadata while Slot 0 is busy.
+/// - Warm sequential prefetch should survive ordinary seeks; foreground byte demand borrows the
+///   other slot first so cancelling a seek does not repeatedly reset the warmed CDN connection.
 /// - Sequential prefetch is anchored by real byte demand, never by time/file-size math.
 /// - Internal demux metadata probes are served urgently but do not move playbackAnchor.
 actor UnifiedMediaTransportSession: TransportDataSession {
@@ -32,6 +32,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let client = RangeHTTPClient(maximumConnections: 2)
     private let blockBytes: Int64
     private let urgentBlockBytes: Int64 = 16 * 1_048_576
+    private let progressiveUrgentGapBytes: Int64 = 2 * 1_048_576
     private let metadataUrgentBlockBytes: Int64 = 16 * 1_048_576
     private let secondaryMetadataMaxBytes: Int64 = 2 * 1_048_576
     private let initialSequentialBlockBytes: Int64 = 4 * 1_048_576
@@ -182,7 +183,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             playbackAnchor = demand.lowerBound
             let urgent = demand.lowerBound..<min(resource.contentLength, safeAdd(demand.lowerBound, urgentBlockBytes))
             installUrgent(range: urgent, metadata: false, reason: "stall-last-concrete-demand")
-            if let active = slotClaims[0], !active.range.contains(demand.lowerBound) { cancelSlot(0, reason: "stall-current-demand") }
+            if let active = slotClaims[0], active.role == .urgentPlayback, !active.range.contains(demand.lowerBound) { cancelSlot(0, reason: "replace-stale-urgent") }
             DiagnosticsLogger.shared.log(
                 "UnifiedDemand",
                 "stall position=\(String(format: "%.3f", position)) previousAnchor=\(previous) anchor=\(playbackAnchor) concrete=\(demand.lowerBound)-\(demand.upperBound) action=prioritize-current-demand"
@@ -256,7 +257,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 "UnifiedAnchor",
                 "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason)"
             )
-            if let active = slotClaims[0], !active.range.contains(range.lowerBound) { cancelSlot(0, reason: "real-seek-demand") }
+            if let active = slotClaims[0], active.role == .urgentPlayback, !active.range.contains(range.lowerBound) { cancelSlot(0, reason: "replace-stale-urgent") }
         } else if concretePlaybackDemand {
             let distance = range.lowerBound >= playbackAnchor ? range.lowerBound - playbackAnchor : playbackAnchor - range.lowerBound
             if distance > blockBytes * 4 {
@@ -271,17 +272,32 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             if reanchored { scheduleSlots(reason: "reanchor-cache-hit") }
             return
         }
-        // Transport v3 exposes every received MiB immediately. If the requested byte already belongs
-        // to Slot 0's active sequential stream, keep that warmed task alive and wait for its progressive
-        // chunk instead of cancelling/reopening the same CDN connection as an urgent Range.
-        if let slot0 = slotClaims[0], slot0.range.contains(range.lowerBound) {
-            if concretePlaybackDemand, slot0.role == .sequential {
-                DiagnosticsLogger.shared.log("UnifiedDemand", "reuse active sequential stream request=\(range.lowerBound)-\(range.upperBound) claim=\(slot0.range.lowerBound)-\(slot0.range.upperBound) reason=\(reason) action=wait-progressive-chunk")
-            }
+
+        // A non-sequential claim already starting at this byte is foreground work. Let that request
+        // finish rather than opening a duplicate Range for the same demux dependency.
+        if let active = slotClaims.values.first(where: { $0.role != .sequential && $0.range.contains(range.lowerBound) }) {
+            DiagnosticsLogger.shared.log("UnifiedDemand", "reuse active foreground request=\(range.lowerBound)-\(range.upperBound) claim=\(active.range.lowerBound)-\(active.range.upperBound) role=\(active.role.rawValue) reason=\(reason)")
             return
         }
-        if metadata, let slot1 = slotClaims[1], slot1.role == .metadata, slot1.range.contains(range.lowerBound) { return }
-        if !metadata, let slot1 = slotClaims[1], slot1.role == .urgentPlayback, slot1.range.contains(range.lowerBound) { return }
+
+        // Being inside a 32 MiB sequential claim does not mean the requested byte has arrived. This
+        // was the 63360/194s regression: the read was ~10 MiB ahead of Slot 0's actual download head.
+        // Wait only when the progressive stream is genuinely close; otherwise preserve the warmed
+        // sequential request and borrow Slot 1 for an exact urgent Range.
+        if concretePlaybackDemand, let slot0 = slotClaims[0], slot0.role == .sequential, slot0.range.contains(range.lowerBound) {
+            let ready = store.availableLength(from: slot0.range.lowerBound, maximumLength: Int64(slot0.range.count))
+            let streamHead = min(slot0.range.upperBound, slot0.range.lowerBound + ready)
+            let gap = max(0, range.lowerBound - streamHead)
+            if gap <= progressiveUrgentGapBytes {
+                DiagnosticsLogger.shared.log("UnifiedDemand", "reuse active sequential stream request=\(range.lowerBound)-\(range.upperBound) claim=\(slot0.range.lowerBound)-\(slot0.range.upperBound) head=\(streamHead) gap=\(gap) reason=\(reason) action=wait-progressive-chunk")
+                return
+            }
+            DiagnosticsLogger.shared.log("UnifiedDemand", "foreground gap request=\(range.lowerBound)-\(range.upperBound) claim=\(slot0.range.lowerBound)-\(slot0.range.upperBound) head=\(streamHead) gap=\(gap) action=parallel-urgent")
+            installUrgent(range: range, metadata: false, reason: "foreground-gap-\(reason)")
+            scheduleSlots(reason: "foreground-gap-\(reason)")
+            return
+        }
+
         installUrgent(range: range, metadata: metadata, reason: reason)
         scheduleSlots(reason: reason)
     }
@@ -304,15 +320,15 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             "UnifiedDemand",
             "urgent range=\(candidate.lowerBound)-\(candidate.upperBound) metadata=\(metadata) reason=\(reason) slot0Only=\(!metadata)"
         )
+        let foregroundCanUseSlot1 = Date() >= secondaryCooldownUntil && (slotTasks[1] == nil || slotClaims[1]?.role == .sequential)
         if let secondary = slotClaims[1], secondary.role == .sequential {
             cancelSlot(1, reason: metadata ? "metadata-priority" : "urgent-playback-priority")
         }
         if let active = slotClaims[0], !active.range.contains(lower), active.role == .sequential {
-            let secondaryCanTakePlayback = !metadata && Date() >= secondaryCooldownUntil && (slotTasks[1] == nil || slotClaims[1]?.role == .sequential)
-            if secondaryCanTakePlayback {
-                DiagnosticsLogger.shared.log("UnifiedDemand", "preserve slot0 sequential for parallel urgent request=\(candidate.lowerBound)-\(candidate.upperBound)")
+            if foregroundCanUseSlot1 {
+                DiagnosticsLogger.shared.log("UnifiedDemand", "preserve slot0 sequential for foreground request=\(candidate.lowerBound)-\(candidate.upperBound) metadata=\(metadata)")
             } else {
-                cancelSlot(0, reason: "urgent-demand")
+                cancelSlot(0, reason: "foreground-needs-second-slot")
             }
         }
     }
@@ -323,7 +339,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         // A second real playback read head may be hundreds of MiB away in poorly interleaved MP4.
         // Serve it on Slot 1 while Slot 0 keeps the first playback head warm instead of cancelling
         // back and forth between audio/video byte regions.
-        if let urgent = pendingPlaybackUrgentRange, !store.contains(urgent), Date() >= secondaryCooldownUntil, slotTasks[1] == nil, slotTasks[0] != nil, slotClaims[0]?.range.contains(urgent.lowerBound) != true {
+        if let urgent = pendingPlaybackUrgentRange, !store.contains(urgent), Date() >= secondaryCooldownUntil, slotTasks[1] == nil, slotTasks[0] != nil,
+           !(slotClaims[0]?.role == .urgentPlayback && slotClaims[0]?.range.contains(urgent.lowerBound) == true) {
             pendingPlaybackUrgentRange = nil
             startSlot(1, claim: SlotClaim(range: urgent, role: .urgentPlayback), reason: "parallel-urgent-\(reason)")
         }
@@ -331,7 +348,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         // A tiny metadata probe (typical MP4/MKV tail index) may use Slot 1 while Slot 0 is
         // already serving urgent playback. Larger metadata stays on Slot 0 because worker 1 can
         // have a much slower cold-start on some 115 CDN paths.
-        if let metadata = pendingMetadataRange, Int64(metadata.count) <= secondaryMetadataMaxBytes, !store.contains(metadata), Date() >= secondaryCooldownUntil, slotClaims[0]?.role == .urgentPlayback, slotTasks[1] == nil {
+        if let metadata = pendingMetadataRange, Int64(metadata.count) <= secondaryMetadataMaxBytes, !store.contains(metadata), Date() >= secondaryCooldownUntil, slotTasks[0] != nil, slotTasks[1] == nil, slotClaims[0]?.range.contains(metadata.lowerBound) != true {
             pendingMetadataRange = nil
             startSlot(1, claim: SlotClaim(range: metadata, role: .metadata), reason: "metadata-\(reason)")
         }
@@ -430,6 +447,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                             try store.write(chunk, at: writeOffset)
                             receivedForClaim += Int64(chunk.count)
                             attemptReceived += Int64(chunk.count)
+                            recordNetworkBytes(Int64(chunk.count))
                             rangeMap.insertPlayback(writeOffset..<min(claim.range.upperBound, writeOffset + Int64(chunk.count)))
                             if attemptReceived == Int64(chunk.count) {
                                 let firstChunkSeconds = max(Date().timeIntervalSince(attemptStarted), 0.001)
@@ -462,6 +480,12 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                             try store.write(chunk, at: claim.range.lowerBound + receivedForClaim)
                             receivedForClaim += Int64(chunk.count)
                             attemptReceived += Int64(chunk.count)
+                            recordNetworkBytes(Int64(chunk.count))
+                            recordNetworkBytes(Int64(chunk.count))
+                            recordNetworkBytes(Int64(chunk.count))
+                            recordNetworkBytes(Int64(chunk.count))
+                            recordNetworkBytes(Int64(chunk.count))
+                            recordNetworkBytes(Int64(chunk.count))
                             let writtenLower = claim.range.lowerBound + receivedForClaim - Int64(chunk.count)
                             let written = writtenLower..<min(claim.range.upperBound, writtenLower + Int64(chunk.count))
                             if claim.role == .metadata { rangeMap.insertMetadata(written) } else { rangeMap.insertPlayback(written) }
@@ -513,9 +537,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             let written = claim.range.lowerBound..<min(claim.range.upperBound, claim.range.lowerBound + downloadedBytes)
             if claim.role == .metadata { rangeMap.insertMetadata(written) }
             else { rangeMap.insertPlayback(written) }
-            metricsValue.bytesDownloaded += downloadedBytes
-            speedSamples.append(SpeedSample(date: Date(), bytes: downloadedBytes))
-            pruneSpeedSamples()
+            // Network bytes/speed are recorded per received chunk so long 32 MiB requests do not
+            // display as zero throughput until the entire Range finishes.
 
             if slot == 0, claim.role == .sequential, downloadedBytes >= Int64(claim.range.count) {
                 successfulPrimaryBlocks += 1
@@ -569,9 +592,17 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         task.cancel()
     }
 
+    private func recordNetworkBytes(_ bytes: Int64) {
+        guard bytes > 0 else { return }
+        metricsValue.bytesDownloaded += bytes
+        speedSamples.append(SpeedSample(date: Date(), bytes: bytes))
+        pruneSpeedSamples()
+    }
+
     private func refreshMetrics(resource: TransportResolvedResource) {
         guard let store else { return }
         let map = rangeMap.snapshot(anchor: playbackAnchor, resourceLength: resource.contentLength)
+        metricsValue.resourceBytes = resource.contentLength
         metricsValue.cacheBytes = store.uniqueBytes
         metricsValue.diskCacheBytes = store.uniqueBytes
         metricsValue.contiguousCacheBytes = map.frontierByte > playbackAnchor ? map.frontierByte - playbackAnchor : 0
