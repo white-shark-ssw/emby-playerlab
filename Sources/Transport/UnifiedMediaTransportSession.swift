@@ -203,7 +203,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             playbackAnchor = demand.lowerBound
             let urgent = demand.lowerBound..<min(resource.contentLength, safeAdd(demand.lowerBound, urgentBlockBytes))
             installUrgent(range: urgent, metadata: false, reason: "stall-last-concrete-demand")
-            if let active = slotClaims[0], active.role == .urgentPlayback, !active.range.contains(demand.lowerBound) { cancelSlot(0, reason: "replace-stale-urgent") }
+            for slot in [0, 1] {
+                if let active = slotClaims[slot], active.role == .urgentPlayback, !active.range.contains(demand.lowerBound) { cancelSlot(slot, reason: "replace-stale-urgent") }
+            }
             DiagnosticsLogger.shared.log(
                 "UnifiedDemand",
                 "stall position=\(String(format: "%.3f", position)) previousAnchor=\(previous) anchor=\(playbackAnchor) concrete=\(demand.lowerBound)-\(demand.upperBound) action=prioritize-current-demand"
@@ -290,7 +292,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 "UnifiedAnchor",
                 "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason)"
             )
-            if let active = slotClaims[0], active.role == .urgentPlayback, !active.range.contains(range.lowerBound) { cancelSlot(0, reason: "replace-stale-urgent") }
+            for slot in [0, 1] {
+                if let active = slotClaims[slot], active.role == .urgentPlayback, !active.range.contains(range.lowerBound) { cancelSlot(slot, reason: "replace-stale-urgent") }
+            }
         } else if concretePlaybackDemand {
             let distance = range.lowerBound >= playbackAnchor ? range.lowerBound - playbackAnchor : playbackAnchor - range.lowerBound
             if distance > blockBytes * 4 {
@@ -778,9 +782,20 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         DiagnosticsLogger.shared.log("UnifiedStartup", "large-mp4 warmup planned head=\(largeFileInitialSequentialBlockBytes) tail=\(tail.lowerBound)-\(tail.upperBound) tailBytes=\(tail.count)")
     }
 
+    private func configureStartupWarmupIfNeeded(resource: TransportResolvedResource) {
+        guard startupTailWarmupRange == nil, !startupTailWarmupCompleted else { return }
+        guard source.mediaSource.normalizedContainer == "mp4", resource.contentLength >= 4 * 1_073_741_824 else { return }
+        let tailBytes = min(startupTailWarmupBytes, resource.contentLength)
+        let tail = max(0, resource.contentLength - tailBytes)..<resource.contentLength
+        startupTailWarmupRange = tail
+        DiagnosticsLogger.shared.log("UnifiedStartup", "large-mp4 warmup planned head=\(largeFileInitialSequentialBlockBytes) tail=\(tail.lowerBound)-\(tail.upperBound) tailBytes=\(tail.count)")
+    }
+
     private func isStartupTailMetadata(_ range: Range<Int64>, resource: TransportResolvedResource) -> Bool {
-        guard !range.isEmpty, Date().timeIntervalSince(createdAt) < 35, playbackAnchor == 0, Date() > pendingUserSeekUntil else { return false }
+        guard !range.isEmpty, playbackAnchor == 0, Date() > pendingUserSeekUntil else { return false }
         guard source.mediaSource.normalizedContainer == "mp4", resource.contentLength >= 4 * 1_073_741_824 else { return false }
+        if let warmup = startupTailWarmupRange, !startupTailWarmupCompleted, range.upperBound > warmup.lowerBound, range.lowerBound < warmup.upperBound { return true }
+        guard Date().timeIntervalSince(createdAt) < 35 else { return false }
         return range.lowerBound >= resource.contentLength - 64 * 1_048_576
     }
 
