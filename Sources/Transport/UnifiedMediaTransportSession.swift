@@ -712,7 +712,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     }
 
     private func isStartupTailMetadata(_ range: Range<Int64>, resource: TransportResolvedResource) -> Bool {
-        guard !range.isEmpty, Date().timeIntervalSince(createdAt) < 35, playbackAnchor == 0 else { return false }
+        guard !range.isEmpty, Date().timeIntervalSince(createdAt) < 35, playbackAnchor == 0, Date() > pendingUserSeekUntil else { return false }
         guard source.mediaSource.normalizedContainer == "mp4", resource.contentLength >= 4 * 1_073_741_824 else { return false }
         return range.lowerBound >= resource.contentLength - 64 * 1_048_576
     }
