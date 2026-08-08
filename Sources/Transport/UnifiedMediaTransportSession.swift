@@ -228,6 +228,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let metadata = isMetadataProbe(range, resource: resource)
         let pendingUserSeek = Date() <= pendingUserSeekUntil
         let concretePlaybackDemand = !metadata && (reason == "concrete-read" || reason == "blocked-read" || reason == "byte-offset")
+        var reanchored = false
         if concretePlaybackDemand { lastConcretePlaybackDemand = range }
 
         // AVFoundation may emit stale/cached range requests from the pre-seek timeline while a seek is
@@ -246,6 +247,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             pendingUserSeekUntil = .distantPast
             let previous = playbackAnchor
             playbackAnchor = range.lowerBound
+            reanchored = true
             DiagnosticsLogger.shared.log(
                 "UnifiedAnchor",
                 "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason)"
@@ -256,12 +258,16 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             if distance > blockBytes * 4 {
                 let previous = playbackAnchor
                 playbackAnchor = range.lowerBound
+                reanchored = true
                 DiagnosticsLogger.shared.log("UnifiedAnchor", "blocked-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason)")
                 if let active = slotClaims[0], !active.range.contains(range.lowerBound) { cancelSlot(0, reason: "blocked-demand-reanchor") }
             }
         }
 
-        if store.availableLength(from: range.lowerBound, maximumLength: min(Int64(range.count), urgentBlockBytes)) > 0 { return }
+        if store.availableLength(from: range.lowerBound, maximumLength: min(Int64(range.count), urgentBlockBytes)) > 0 {
+            if reanchored { scheduleSlots(reason: "reanchor-cache-hit") }
+            return
+        }
         // Transport v3 exposes every received MiB immediately. If the requested byte already belongs
         // to Slot 0's active sequential stream, keep that warmed task alive and wait for its progressive
         // chunk instead of cancelling/reopening the same CDN connection as an urgent Range.
