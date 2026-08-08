@@ -111,8 +111,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard !stopped, !range.isEmpty, let resolved = try? await resolve(), let store else { return }
         let normalized = clamp(range: range, contentLength: resolved.contentLength)
         guard !normalized.isEmpty else { return }
-        // A post-seek player request is authoritative even when every requested byte is already cached.
-        // Re-anchor first so background preload follows the new playback position instead of an old frontier.
+        // Range requests are scheduler hints only. During a pending seek, the actual read() callback
+        // is authoritative because AVFoundation may still issue cached/stale requests from the old timeline.
         if store.contains(normalized) {
             acceptRealDemand(normalized, resource: resolved, reason: "range-demand-cached")
             return
@@ -225,9 +225,13 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
     private func acceptRealDemand(_ range: Range<Int64>, resource: TransportResolvedResource, reason: String) {
         guard !range.isEmpty, let store else { return }
-        let metadata = isMetadataProbe(range, resource: resource)
+        let concreteReason = reason == "concrete-read" || reason == "blocked-read" || reason == "byte-offset"
+        // Size/distance metadata heuristics are valid only for speculative Range hints. Once the
+        // player actually reads an offset it is a real demux dependency; poorly interleaved audio/video
+        // tracks can legitimately issue tiny reads hundreds of MiB apart.
+        let metadata = concreteReason ? false : isMetadataProbe(range, resource: resource)
         let pendingUserSeek = Date() <= pendingUserSeekUntil
-        let concretePlaybackDemand = !metadata && (reason == "concrete-read" || reason == "blocked-read" || reason == "byte-offset")
+        let concretePlaybackDemand = concreteReason
         var reanchored = false
         if concretePlaybackDemand { lastConcretePlaybackDemand = range }
 
