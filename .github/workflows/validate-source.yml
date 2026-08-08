@@ -41,6 +41,9 @@ jobs:
       - name: Audit Scheduler v2 invariants
         run: python3 scripts/check_scheduler_v2_invariants.py
 
+      - name: Audit live lane/startup invariants
+        run: python3 scripts/check_live_lane_startup_invariants.py
+
       - name: Select Xcode 16.4
         run: |
           set -euo pipefail
