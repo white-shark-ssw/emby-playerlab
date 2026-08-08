@@ -44,7 +44,12 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         var lastSampleAt = Date.distantPast
         var receivedBytes: Int64 = 0
         var recentBps: Double = 0
+        var peakBps: Double = 0
+        var lastHealthyBps: Double = 0
+        var badSince = Date.distantPast
         var slowStreak = 0
+        var rotationCount = 0
+        var lastRotationAt = Date.distantPast
         var resetCooldownUntil = Date.distantPast
     }
 
@@ -70,11 +75,15 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let liveLanePeerFloorBps: Double = 4 * 1_048_576
     private let liveLaneAbsoluteFloorBps: Double = 1.25 * 1_048_576
     private let liveLaneRelativeFloor: Double = 0.45
+    private let liveLanePeakFloorBps: Double = 8 * 1_048_576
+    private let liveLanePeakRelativeFloor: Double = 0.30
+    private let liveLanePeakDropSeconds: TimeInterval = 0.9
+    private let liveLaneRotationEscalationWindowSeconds: TimeInterval = 30
     private let liveLaneFirstBytePeerTimeoutSeconds: TimeInterval = 1.5
     private let liveLaneFirstByteHardTimeoutSeconds: TimeInterval = 3.0
     private let liveLaneSampleWindowSeconds: TimeInterval = 1.0
     private let liveLaneSampleMinimumBytes: Int64 = 1 * 1_048_576
-    private let liveLaneResetCooldownSeconds: TimeInterval = 8
+    private let liveLaneResetCooldownSeconds: TimeInterval = 2
     private let startupTailDemandGraceSeconds: TimeInterval = 0.25
     private let stallBlockingDemandFreshSeconds: TimeInterval = 12
     private let strictFrontierReserveBytes: Int64 = Int64.max
@@ -112,6 +121,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var liveLaneState: [Int: LiveLaneState] = [0: LiveLaneState(), 1: LiveLaneState()]
     private var liveLaneRotationRequested: Set<Int> = []
     private var liveLaneResetPending: Set<Int> = []
+    private var liveLaneSourceRefreshPending: Set<Int> = []
     private var startupMetadataReceivedBytes: [Int: Int64] = [0: 0, 1: 0]
     private var startupMetadataStartedAt: [Int: Date] = [0: .distantPast, 1: .distantPast]
     private var startupMetadataLastProgressAt: [Int: Date] = [0: .distantPast, 1: .distantPast]
@@ -474,7 +484,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard !stopped, let resource, let store else { return }
 
         if !startupMetadataQueue.isEmpty || slotClaims.values.contains(where: { $0.role == .startupMetadata }) {
-            for slot in [0, 1] where slotTasks[slot] == nil && !liveLaneResetPending.contains(slot) {
+            for slot in [0, 1] where slotTasks[slot] == nil && !liveLaneResetPending.contains(slot) && !liveLaneSourceRefreshPending.contains(slot) {
                 if slot == 1, Date() < secondaryCooldownUntil { continue }
                 while !startupMetadataQueue.isEmpty {
                     let chunk = startupMetadataQueue.removeFirst()
@@ -517,14 +527,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         }
 
         if !secondaryEnabled {
-            if slotTasks[0] == nil, !liveLaneResetPending.contains(0), let range = nextSequentialClaim(resource: resource) { startSlot(0, claim: SlotClaim(range: range, role: .sequential), reason: reason) }
+            if slotTasks[0] == nil, !liveLaneResetPending.contains(0), !liveLaneSourceRefreshPending.contains(0), let range = nextSequentialClaim(resource: resource) { startSlot(0, claim: SlotClaim(range: range, role: .sequential), reason: reason) }
             refreshMetrics(resource: resource)
             return
         }
 
         let order = preferredBulkSlot == 0 ? [0, 1] : [1, 0]
         for slot in order where slotTasks[slot] == nil {
-            if liveLaneResetPending.contains(slot) { continue }
+            if liveLaneResetPending.contains(slot) || liveLaneSourceRefreshPending.contains(slot) { continue }
             if slot == 1, Date() < secondaryCooldownUntil { continue }
             if let range = nextSequentialClaim(resource: resource) { startSlot(slot, claim: SlotClaim(range: range, role: .sequential), reason: slot == preferredBulkSlot ? "bulk-\(reason)" : "service-preload-\(reason)") }
         }
@@ -535,7 +545,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let serviceSlot = preferredBulkSlot == 0 ? 1 : 0
         let order = [serviceSlot, preferredBulkSlot]
         for slot in order {
-            guard slotTasks[slot] == nil, !liveLaneResetPending.contains(slot) else { continue }
+            guard slotTasks[slot] == nil, !liveLaneResetPending.contains(slot), !liveLaneSourceRefreshPending.contains(slot) else { continue }
             if slot == 1, Date() < secondaryCooldownUntil { continue }
             return slot
         }
@@ -596,6 +606,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             live.lastSampleAt = .distantPast
             live.receivedBytes = 0
             live.recentBps = 0
+            live.badSince = .distantPast
             live.slowStreak = 0
             liveLaneState[slot] = live
             armFirstByteWatchdog(slot: slot, generation: generation)
@@ -732,6 +743,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         let startupRetry = startupMetadataRetryRequested.remove(slot) != nil
         let liveRotation = liveLaneRotationRequested.remove(slot) != nil
+        let refreshSource = liveLaneSourceRefreshPending.contains(slot)
         if startupRetry {
             startupMetadataQueue.insert(claim.range, at: 0)
             let reset = client.resetStreamLane(worker: slot, reason: "startup-metadata-straggler")
@@ -746,8 +758,20 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 liveLaneResetPending.insert(slot)
                 armLiveLaneResetRetry(slot: slot, attempt: 1)
             }
-            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=reset-after-cancel success=\(reset) pending=\(!reset)")
+            var live = liveLaneState[slot] ?? LiveLaneState()
+            live.badSince = .distantPast
+            if refreshSource {
+                live.peakBps = 0
+                live.lastHealthyBps = 0
+                live.rotationCount = 0
+                live.lastRotationAt = .distantPast
+            }
+            liveLaneState[slot] = live
+            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=reset-after-cancel success=\(reset) pending=\(!reset) sourceRefresh=\(refreshSource)")
             laneHealth[slot] = LaneHealthState()
+            if refreshSource {
+                Task { [weak self] in await self?.refreshResolvedSourceAfterLaneRotation(slot: slot) }
+            }
         } else if claim.role == .sequential, error == nil, let completedSequentialBps, let downloadedBytes {
             considerSequentialLaneHealth(slot: slot, bytes: downloadedBytes, bps: completedSequentialBps)
         }
@@ -809,6 +833,23 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         if let resource { refreshMetrics(resource: resource) }
         scheduleSlots(reason: "slot-finished")
+    }
+
+    private func refreshResolvedSourceAfterLaneRotation(slot: Int) async {
+        guard !stopped else { return }
+        let snapshot = source
+        do {
+            let refreshed = try await resolver.resolve(source: snapshot)
+            guard refreshed.supportsByteRanges else { throw MediaTransportError.rangeUnsupported(statusCode: 200) }
+            resource = refreshed
+            liveLaneSourceRefreshPending.remove(slot)
+            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=refresh-115-source-success bytes=\(refreshed.contentLength)")
+            scheduleSlots(reason: "live-lane-source-refreshed")
+        } catch {
+            liveLaneSourceRefreshPending.remove(slot)
+            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=refresh-115-source-failed error=\(error.localizedDescription)")
+            scheduleSlots(reason: "live-lane-source-refresh-failed")
+        }
     }
 
     private func armStartupMetadataStragglerWatchdog(slot: Int, generation: Int) {
@@ -921,6 +962,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         live.sampleWindowStartedBytes = live.receivedBytes
         live.lastSampleAt = now
         live.recentBps = live.recentBps == 0 ? windowBps : live.recentBps * 0.60 + windowBps * 0.40
+        live.peakBps = max(windowBps, live.peakBps * 0.92)
+        if windowBps >= max(liveLanePeerFloorBps, live.peakBps * 0.55) { live.lastHealthyBps = max(windowBps, live.lastHealthyBps * 0.80) }
 
         let peerSlot = slot == 0 ? 1 : 0
         let peerLive = liveLaneState[peerSlot]
@@ -928,12 +971,23 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let peerBps = peerLiveFresh ? (peerLive?.recentBps ?? 0) : 0
         let relativeSlow = peerLiveFresh && peerBps >= liveLanePeerFloorBps && live.recentBps < peerBps * liveLaneRelativeFloor
         let absoluteSlow = now.timeIntervalSince(live.startedAt) >= 3.0 && live.receivedBytes >= 4 * 1_048_576 && live.recentBps < liveLaneAbsoluteFloorBps
+        let peakRelativeSlow = live.peakBps >= liveLanePeakFloorBps && windowBps < live.peakBps * liveLanePeakRelativeFloor
+        if peakRelativeSlow {
+            if live.badSince == .distantPast { live.badSince = now }
+        } else {
+            live.badSince = .distantPast
+        }
+        let peakDropSeconds = live.badSince == .distantPast ? 0 : now.timeIntervalSince(live.badSince)
+        let sustainedPeakDrop = peakRelativeSlow && peakDropSeconds >= liveLanePeakDropSeconds
         if relativeSlow || absoluteSlow { live.slowStreak += 1 }
         else if live.recentBps >= max(liveLaneAbsoluteFloorBps * 1.25, peerBps * 0.65) { live.slowStreak = 0 }
         liveLaneState[slot] = live
-        DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) windowMs=\(Int(sampleSeconds * 1000)) windowBytes=\(sampleBytes) sampleBps=\(Int(windowBps)) avgBps=\(Int(live.recentBps)) peerBps=\(Int(peerBps)) slowStreak=\(live.slowStreak)")
+        let peakRatio = live.peakBps > 0 ? windowBps / live.peakBps : 1
+        DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) windowMs=\(Int(sampleSeconds * 1000)) windowBytes=\(sampleBytes) sampleBps=\(Int(windowBps)) avgBps=\(Int(live.recentBps)) peakBps=\(Int(live.peakBps)) healthyBps=\(Int(live.lastHealthyBps)) peakRatio=\(String(format: \"%.2f\", peakRatio)) badMs=\(Int(peakDropSeconds * 1000)) peerBps=\(Int(peerBps)) slowStreak=\(live.slowStreak)")
 
-        if live.slowStreak >= 2 {
+        if sustainedPeakDrop {
+            requestLiveLaneRotation(slot: slot, generation: generation, reason: "peak-collapse", observedBps: windowBps, peerBps: peerBps)
+        } else if live.slowStreak >= 2 {
             requestLiveLaneRotation(slot: slot, generation: generation, reason: relativeSlow ? "rolling-relative-slow" : "rolling-absolute-slow", observedBps: live.recentBps, peerBps: peerBps)
         }
     }
@@ -943,12 +997,18 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         var live = liveLaneState[slot] ?? LiveLaneState()
         let now = Date()
         guard now >= live.resetCooldownUntil else { return }
+        if now.timeIntervalSince(live.lastRotationAt) > liveLaneRotationEscalationWindowSeconds { live.rotationCount = 0 }
+        live.rotationCount += 1
+        live.lastRotationAt = now
         live.resetCooldownUntil = now.addingTimeInterval(liveLaneResetCooldownSeconds)
+        let refreshSource = live.rotationCount >= 2
+        if refreshSource { liveLaneSourceRefreshPending.insert(slot) }
         liveLaneState[slot] = live
         liveLaneRotationRequested.insert(slot)
         if preferredBulkSlot == slot { preferredBulkSlot = slot == 0 ? 1 : 0 }
-        DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=rotate-live-lane reason=\(reason) observedBps=\(Int(observedBps)) peerBps=\(Int(peerBps)) received=\(live.receivedBytes)")
-        cancelSlot(slot, reason: "live-lane-rotation")
+        let stage = refreshSource ? "refresh-302" : "reset-session"
+        DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=rotate-live-lane stage=\(stage) rotation=\(live.rotationCount) reason=\(reason) observedBps=\(Int(observedBps)) peakBps=\(Int(live.peakBps)) healthyBps=\(Int(live.lastHealthyBps)) peerBps=\(Int(peerBps)) received=\(live.receivedBytes)")
+        cancelSlot(slot, reason: "live-lane-rotation-\(stage)")
     }
 
     private func considerSequentialLaneHealth(slot: Int, bytes: Int64, bps: Double) {
