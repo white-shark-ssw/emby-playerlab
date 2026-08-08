@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 def read(path: str) -> str:
@@ -58,10 +59,14 @@ require("transport=KTVProxyTransportV2" not in mpv, "MPV core must not identify 
 require(mpv.count("if sharedTransportSession == nil") == 2, "MPV should have one direct fallback in prepare and one compatibility fallback")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
-require(project.count('MARKETING_VERSION: "0.12.7"') == 2, "project marketing version must be 0.12.7 in both settings scopes")
-require(project.count('CURRENT_PROJECT_VERSION: "65"') == 2, "project build number must be 65 in both settings scopes")
-require("<string>0.12.7</string>" in info and "<string>65</string>" in info, "Info.plist version/build mismatch")
-require('sourceVersion = "0.12.7"' in identity, "AppIdentity source version mismatch")
+versions = re.findall(r'MARKETING_VERSION: "([^"]+)"', project)
+builds = re.findall(r'CURRENT_PROJECT_VERSION: "([^"]+)"', project)
+require(len(versions) == 2 and len(set(versions)) == 1, "project marketing version must match in both settings scopes")
+require(len(builds) == 2 and len(set(builds)) == 1, "project build number must match in both settings scopes")
+version = versions[0]
+build_number = builds[0]
+require(f"<string>{version}</string>" in info and f"<string>{build_number}</string>" in info, "Info.plist version/build mismatch")
+require(f'sourceVersion = "{version}"' in identity, "AppIdentity source version mismatch")
 
 for temporary_path in [
     ".github/workflows/apply-transport-v3-core.yml",
@@ -102,7 +107,7 @@ require("Audit v0.12.6 frontier rescue regressions" in validate_workflow and "ch
 require("Audit v0.12.6 frontier rescue regressions" in build_workflow and "check_v0126_frontier_rescue.py" in build_workflow, "unsigned IPA build must enforce v0.12.6 regressions")
 require("Audit v0.12.7 MPV rotation regressions" in validate_workflow and "check_v0127_mpv_rotation.py" in validate_workflow, "Validate Source must enforce v0.12.7 regressions")
 require("Audit v0.12.7 MPV rotation regressions" in build_workflow and "check_v0127_mpv_rotation.py" in build_workflow, "unsigned IPA build must enforce v0.12.7 regressions")
-require('IPA_NAME="EmbyPlayerLab-0.12.7-${GITHUB_SHA::7}-unsigned.ipa"' in build_workflow, "unsigned IPA filename must identify v0.12.7")
+require(f'IPA_NAME="EmbyPlayerLab-{version}-${{GITHUB_SHA::7}}-unsigned.ipa"' in build_workflow, "unsigned IPA filename must identify the current version")
 require('scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0"' in build_workflow, "Release build must still validate iOS 15.0 minimum OS")
 
 print("Transport v3 invariants passed")
