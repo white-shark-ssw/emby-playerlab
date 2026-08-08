@@ -14,10 +14,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: chatgpt/v0.11.1-seek-stall-fix
-      - name: Apply source patch
+      - name: Apply seek cache-hit refinement
         run: |
           set -euo pipefail
-          python3 scripts/apply_v0111_seek_stall_fix.py
+          python3 scripts/refine_v0111_seek_stall_fix.py
           if git diff --quiet; then
             echo "already applied"
             exit 0
@@ -25,5 +25,5 @@ jobs:
           git config user.name "ChatGPT CI"
           git config user.email "actions@users.noreply.github.com"
           git add Sources/Transport/UnifiedMediaTransportSession.swift
-          git commit -m "Fix seek anchoring and cellular prefetch stalls"
+          git commit -m "Refine seek cache-hit scheduling"
           git push origin HEAD:chatgpt/v0.11.1-seek-stall-fix
