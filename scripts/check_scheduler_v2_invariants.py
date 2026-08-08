@@ -35,14 +35,11 @@ require(unified.count('cancelSlot(slot, reason: "replace-stale-urgent")') == 2, 
 require('guard !value.isBuffering else { return }' not in controller, "valid MPV demux cache must remain visible during transient buffering")
 require('value.bufferedRanges.contains(where:' in controller, "MPV buffer history must verify a current-position range")
 
-# AVPlayer range announcements are speculative. They may guide the cache map but must
-# return before installUrgent, so ordinary range-demand cannot destroy a warm bulk lane.
 hint_index = unified.index("if !concreteReason, !metadata")
 urgent_index = unified.index("installUrgent(range: range, metadata: metadata, reason: reason)", hint_index)
 return_index = unified.index("return", hint_index)
 require(return_index < urgent_index, "hint-only path must return before urgent installation")
 
-# Protected bulk remains logical, not tied to a physical slot.
 for avg0, avg1, expected_bulk in [(12.0, 4.0, 0), (4.0, 12.0, 1), (8.0, 8.5, 0)]:
     bulk = 0
     if avg1 >= avg0 * 1.20:
@@ -52,8 +49,6 @@ for avg0, avg1, expected_bulk in [(12.0, 4.0, 0), (4.0, 12.0, 1), (8.0, 8.5, 0)]
     require(bulk == expected_bulk, f"synthetic protected-bulk choice failed for {avg0}/{avg1}")
     require((1 if bulk == 0 else 0) != bulk, "foreground service lane must differ from protected bulk lane")
 
-# 63360: a real read ~10 MiB ahead of a progressive stream head must become parallel
-# urgent even when it lies inside that lane's 32 MiB claim.
 claim_lower = 143_654_912
 claim_upper = 167_772_160
 stream_head = 149_946_368
@@ -62,23 +57,21 @@ threshold = 2 * 1_048_576
 require(claim_lower <= requested < claim_upper, "synthetic 63360 request must lie in the active claim")
 require(requested - stream_head > threshold, "synthetic 63360 request must trigger parallel urgent")
 
-# v0.12.3 intentionally replaced v0.12.0's proactive fixed final-16MiB startup path.
-# Do not reject the valid "startup-tail-grace-ended" scheduler reason.
 for obsolete in ["startupTailWarmupBytes", "configureStartupWarmupIfNeeded", "action=queue-tail", 'startSlot(0, claim: SlotClaim(range: metadata, role: .metadata), reason: "startup-tail-']:
     require(obsolete not in unified, f"obsolete proactive startup strategy remains: {obsolete}")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
-require(project.count('MARKETING_VERSION: "0.12.4"') == 2, "marketing version must be 0.12.4")
-require(project.count('CURRENT_PROJECT_VERSION: "62"') == 2, "build number must be 62")
-require("<string>0.12.4</string>" in info and "<string>62</string>" in info, "Info.plist version/build mismatch")
-require('sourceVersion = "0.12.4"' in identity, "AppIdentity source version mismatch")
+require(project.count('MARKETING_VERSION: "0.12.5"') == 2, "marketing version must be 0.12.5")
+require(project.count('CURRENT_PROJECT_VERSION: "63"') == 2, "build number must be 63")
+require("<string>0.12.5</string>" in info and "<string>63</string>" in info, "Info.plist version/build mismatch")
+require('sourceVersion = "0.12.5"' in identity, "AppIdentity source version mismatch")
 require("Audit Scheduler v2 invariants" in validate and "check_scheduler_v2_invariants.py" in validate, "Validate Source must enforce Scheduler v2")
 require("Audit Scheduler v2 invariants" in build and "check_scheduler_v2_invariants.py" in build, "unsigned IPA build must enforce Scheduler v2")
 require("Audit live lane/startup invariants" in validate and "check_live_lane_startup_invariants.py" in validate, "Validate Source must enforce live-lane/startup regression gate")
 require("Audit live lane/startup invariants" in build and "check_live_lane_startup_invariants.py" in build, "unsigned IPA build must enforce live-lane/startup regression gate")
 require("Audit v0.12.4 scheduler regressions" in validate and "check_v0124_regressions.py" in validate, "Validate Source must enforce v0.12.4")
 require("Audit v0.12.4 scheduler regressions" in build and "check_v0124_regressions.py" in build, "unsigned IPA build must enforce v0.12.4")
-require('IPA_NAME="EmbyPlayerLab-0.12.4-${GITHUB_SHA::7}-unsigned.ipa"' in build, "IPA filename must identify v0.12.4")
+require('IPA_NAME="EmbyPlayerLab-0.12.5-${GITHUB_SHA::7}-unsigned.ipa"' in build, "IPA filename must identify v0.12.5")
 
 for temporary in [
     ".github/workflows/apply-v0120-scheduler-v2.yml",
