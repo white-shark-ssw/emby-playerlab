@@ -165,6 +165,7 @@ struct PlayerScreen: View {
                         range: 0...max(controller.effectiveDuration, 1),
                         verifiedBufferedRanges: controller.verifiedBufferedRanges,
                         bufferedRanges: controller.snapshot.bufferedRanges,
+                        downloadCacheFraction: controller.transportCacheFraction,
                         onEditingChanged: { editing in
                             editing ? controller.beginScrubbing() : controller.endScrubbing()
                         }
@@ -188,7 +189,7 @@ struct PlayerScreen: View {
     private var diagnosticsRow: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("引擎：\(controller.engineKind.title) · \(controller.lastSeekSummary)")
-            Text("已验证缓存至 \(formatTime(controller.verifiedBufferedEnd)) · 当前亮灰至 \(formatTime(controller.bufferedEnd)) · 前向可播 \(formatTime(controller.forwardBufferedDuration)) · \(controller.snapshot.isBuffering ? "等待数据" : "可播放")")
+            Text("下载缓存 \(Int((controller.transportCacheFraction * 100).rounded()))% · 已验证缓存至 \(formatTime(controller.verifiedBufferedEnd)) · 当前亮灰至 \(formatTime(controller.bufferedEnd)) · 前向可播 \(formatTime(controller.forwardBufferedDuration)) · \(controller.snapshot.isBuffering ? "等待数据" : "可播放")")
             if controller.snapshot.accessLogStalls > 0 || controller.snapshot.droppedVideoFrames > 0 {
                 Text("AV 统计：停滞 \(controller.snapshot.accessLogStalls) · 丢帧 \(controller.snapshot.droppedVideoFrames)")
             }

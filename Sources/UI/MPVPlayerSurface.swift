@@ -35,11 +35,11 @@ final class MPVSurfaceUIView: UIView {
         displayLayer.bounds = CGRect(origin: .zero, size: bounds.size)
         displayLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
         displayLayer.contentsScale = window?.screen.nativeScale ?? UIScreen.main.nativeScale
-        // Do not force drawableSize here. MoltenVK owns swapchain/drawable sizing; MPVKit's
-        // reference iOS surface only updates the CAMetalLayer frame during UIView layout.
         CATransaction.commit()
 
-        let geometry = "view=\(Int(bounds.width))x\(Int(bounds.height)) layer=\(Int(displayLayer.bounds.width))x\(Int(displayLayer.bounds.height)) drawable=\(Int(displayLayer.drawableSize.width))x\(Int(displayLayer.drawableSize.height)) scale=\(String(format: "%.2f", displayLayer.contentsScale))"
+        let windowSize = window?.bounds.size ?? .zero
+        let orientation = window?.windowScene?.interfaceOrientation.rawValue ?? 0
+        let geometry = "view=\(Int(bounds.width))x\(Int(bounds.height)) layer=\(Int(displayLayer.bounds.width))x\(Int(displayLayer.bounds.height)) drawable=\(Int(displayLayer.drawableSize.width))x\(Int(displayLayer.drawableSize.height)) window=\(Int(windowSize.width))x\(Int(windowSize.height)) orientation=\(orientation) scale=\(String(format: "%.2f", displayLayer.contentsScale))"
         if geometry != lastGeometryLog {
             lastGeometryLog = geometry
             DiagnosticsLogger.shared.log("MPVSurface", geometry)
@@ -47,19 +47,44 @@ final class MPVSurfaceUIView: UIView {
     }
 }
 
-struct MPVPlayerSurface: UIViewRepresentable {
-    let displayLayer: CAMetalLayer
+final class MPVSurfaceViewController: UIViewController {
+    private let surfaceView = MPVSurfaceUIView()
 
-    func makeUIView(context: Context) -> MPVSurfaceUIView {
-        let view = MPVSurfaceUIView()
-        view.backgroundColor = .black
-        view.isOpaque = true
-        view.clipsToBounds = true
-        view.attach(displayLayer)
-        return view
+    override func loadView() {
+        surfaceView.backgroundColor = .black
+        surfaceView.isOpaque = true
+        surfaceView.clipsToBounds = true
+        view = surfaceView
     }
 
-    func updateUIView(_ uiView: MPVSurfaceUIView, context: Context) { uiView.attach(displayLayer) }
+    func attach(_ layer: CAMetalLayer) { surfaceView.attach(layer) }
+    func detach() { surfaceView.detach() }
 
-    static func dismantleUIView(_ uiView: MPVSurfaceUIView, coordinator: ()) { uiView.detach() }
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        surfaceView.setNeedsLayout()
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        DiagnosticsLogger.shared.log("MPVSurface", "transition target=\(Int(size.width))x\(Int(size.height))")
+        coordinator.animate(alongsideTransition: { [weak self] _ in self?.surfaceView.setNeedsLayout() }) { [weak self] _ in
+            self?.surfaceView.setNeedsLayout()
+            self?.surfaceView.layoutIfNeeded()
+        }
+        super.viewWillTransition(to: size, with: coordinator)
+    }
+}
+
+struct MPVPlayerSurface: UIViewControllerRepresentable {
+    let displayLayer: CAMetalLayer
+
+    func makeUIViewController(context: Context) -> MPVSurfaceViewController {
+        let controller = MPVSurfaceViewController()
+        controller.loadViewIfNeeded()
+        controller.attach(displayLayer)
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: MPVSurfaceViewController, context: Context) { uiViewController.attach(displayLayer) }
+    static func dismantleUIViewController(_ uiViewController: MPVSurfaceViewController, coordinator: ()) { uiViewController.detach() }
 }

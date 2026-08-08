@@ -9,7 +9,10 @@ required = [
     'awaitingConcreteRead=true',
     'parallel-read-head primary=',
     'action=keep-primary-anchor',
-    '$0.role != .sequential && $0.range.contains(range.lowerBound)',
+    '$0.value.role != .sequential && $0.value.range.contains(range.lowerBound)',
+    'active.role == .urgentPlayback',
+    'foreground active-gap slot=',
+    'reason: "foreground-active-gap-',
     'startSlot(slot, claim: SlotClaim(range: urgent, role: .urgentPlayback)',
     'second foreground head borrows bulk slot=',
     'if claim.role == .urgentPlayback, pendingPlaybackUrgentRange == nil { pendingPlaybackUrgentRange = claim.range }',
@@ -45,5 +48,16 @@ for primary, second in [(195_035_138, 611_385_344), (236_257_280, 772_734_976)]:
         parallel = None
     if anchor != primary or parallel != second:
         raise SystemExit("synthetic 63368 parallel-read regression failed")
+
+# v0.12.1 152901 regression: the requested read can already be inside a 16 MiB urgent
+# claim while only the first MiB has arrived. Containment is not readiness; if the
+# concrete read is >2 MiB ahead of that urgent stream head the second lane must fill it.
+urgent_lower = 4_687_136_579
+urgent_upper = urgent_lower + 16 * 1_048_576
+stream_head = urgent_lower + 1 * 1_048_576
+requested = 4_698_670_915
+progressive_gap = 2 * 1_048_576
+if not (urgent_lower <= requested < urgent_upper and requested - stream_head > progressive_gap):
+    raise SystemExit("synthetic 152901 active-urgent gap regression failed")
 
 print("Seek stall invariants: OK")

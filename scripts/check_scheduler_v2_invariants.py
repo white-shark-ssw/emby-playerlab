@@ -62,22 +62,22 @@ threshold = 2 * 1_048_576
 require(claim_lower <= requested < claim_upper, "synthetic 63360 request must lie in the active claim")
 require(requested - stream_head > threshold, "synthetic 63360 request must trigger parallel urgent")
 
-# v0.12.1 intentionally replaces v0.12.0's proactive fixed final-16MiB startup path.
+# v0.12.2 intentionally replaces v0.12.0's proactive fixed final-16MiB startup path.
 # Do not reject the new scheduler reason "startup-tail-grace-ended"; only the old
 # dedicated Slot-0 startup-tail start pattern is obsolete.
 for obsolete in ["startupTailWarmupBytes", "configureStartupWarmupIfNeeded", "action=queue-tail", 'startSlot(0, claim: SlotClaim(range: metadata, role: .metadata), reason: "startup-tail-']:
     require(obsolete not in unified, f"obsolete proactive startup strategy remains: {obsolete}")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
-require(project.count('MARKETING_VERSION: "0.12.1"') == 2, "marketing version must be 0.12.1")
-require(project.count('CURRENT_PROJECT_VERSION: "59"') == 2, "build number must be 59")
-require("<string>0.12.1</string>" in info and "<string>59</string>" in info, "Info.plist version/build mismatch")
-require('sourceVersion = "0.12.1"' in identity, "AppIdentity source version mismatch")
+require(project.count('MARKETING_VERSION: "0.12.2"') == 2, "marketing version must be 0.12.2")
+require(project.count('CURRENT_PROJECT_VERSION: "60"') == 2, "build number must be 60")
+require("<string>0.12.2</string>" in info and "<string>60</string>" in info, "Info.plist version/build mismatch")
+require('sourceVersion = "0.12.2"' in identity, "AppIdentity source version mismatch")
 require("Audit Scheduler v2 invariants" in validate and "check_scheduler_v2_invariants.py" in validate, "Validate Source must enforce Scheduler v2")
 require("Audit Scheduler v2 invariants" in build and "check_scheduler_v2_invariants.py" in build, "unsigned IPA build must enforce Scheduler v2")
 require("Audit live lane/startup invariants" in validate and "check_live_lane_startup_invariants.py" in validate, "Validate Source must enforce live-lane/startup regression gate")
 require("Audit live lane/startup invariants" in build and "check_live_lane_startup_invariants.py" in build, "unsigned IPA build must enforce live-lane/startup regression gate")
-require('IPA_NAME="EmbyPlayerLab-0.12.1-${GITHUB_SHA::7}-unsigned.ipa"' in build, "IPA filename must identify v0.12.1")
+require('IPA_NAME="EmbyPlayerLab-0.12.2-${GITHUB_SHA::7}-unsigned.ipa"' in build, "IPA filename must identify v0.12.2")
 
 for temporary in [
     ".github/workflows/apply-v0120-scheduler-v2.yml",
