@@ -1,0 +1,59 @@
+name: Apply v0.12.6 Frontier Rescue
+
+on:
+  push:
+    branches: [dev/v0.12.6-frontier-rescue]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-v0126-frontier-rescue
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[v0.12.6-applied]') }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev/v0.12.6-frontier-rescue
+
+      - name: Repair staging script literal
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply_v0126_frontier_rescue.py')
+          s = p.read_text()
+          old = '            try? await Task.sleep(nanoseconds: UInt64(self?.urgentFirstByteHedgeSeconds ?? 0.65 * 1_000_000_000))'
+          new = '            let delay = self?.urgentFirstByteHedgeSeconds ?? 0.65\n            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))'
+          if old not in s:
+              raise SystemExit('staging literal not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
+      - name: Apply patch
+        run: python3 scripts/apply_v0126_frontier_rescue.py
+
+      - name: Run transport regressions
+        run: |
+          python3 scripts/check_transport_scheduler_invariants.py
+          python3 scripts/check_transport_v3_invariants.py
+          python3 scripts/check_seek_stall_invariants.py
+          python3 scripts/check_transport_stability_invariants.py
+          python3 scripts/check_scheduler_v2_invariants.py
+          python3 scripts/check_live_lane_startup_invariants.py
+          python3 scripts/check_v0122_regressions.py
+          python3 scripts/check_v0123_regressions.py
+          python3 scripts/check_v0124_regressions.py
+          python3 scripts/check_v0126_frontier_rescue.py
+
+      - name: Commit clean patch
+        run: |
+          rm -f scripts/apply_v0126_frontier_rescue.py .github/workflows/apply-v0126-frontier-rescue.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'v0.12.6-alpha1: hedge urgent stalls and rescue stalled frontier [v0.12.6-applied]'
+          git push origin HEAD:dev/v0.12.6-frontier-rescue
