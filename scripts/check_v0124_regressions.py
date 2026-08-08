@@ -62,27 +62,41 @@ metrics = re.search(r"func metrics\(\) async -> TransportMetricsSnapshot.*?func 
 require(metrics is not None, "metrics function missing")
 require("slotTasks.isEmpty" in metrics.group(0) and 'scheduleSlots(reason: "metrics-idle-repair")' in metrics.group(0), "idle scheduler self-heal missing")
 
-# Near startup and after a seek, prefetch is wave-bounded. Two adjacent 32 MiB workers may
-# run concurrently, but the fast one may not open a third segment while the frontier pair is incomplete.
+# Near startup and after a seek, prefetch is wave-bounded. The wave boundary must use the
+# same playbackAnchor/segment grid as PlaybackRangeMap. Otherwise a wave reset while the
+# frontier sits inside an active 32 MiB claim can expose a 4 MiB third tail beyond the pair.
 for needle in [
     "strictFrontierReserveBytes: Int64 = 128 * 1_048_576",
     "sequentialWaveUpperBound",
     "sequentialWaveSegmentBytes",
     "action=strict-two-segment",
-    "safeAdd(snapshot.frontierByte, segmentBytes * 2)",
+    "let relativeFrontier = max(0, snapshot.frontierByte - playbackAnchor)",
+    "let waveBase = playbackAnchor + (relativeFrontier / segmentBytes) * segmentBytes",
+    "safeAdd(waveBase, segmentBytes * 2)",
+    "claimUpper = min(upper, sequentialWaveUpperBound)",
     "claimLookahead = 2",
+    "resourceLength: claimUpper",
 ]:
-    require(needle in unified, f"strict frontier wave missing {needle}")
+    require(needle in unified, f"aligned strict frontier wave missing {needle}")
+require("safeAdd(snapshot.frontierByte, segmentBytes * 2)" not in unified, "unaligned frontier wave must not return")
 
-# Synthetic strict-wave barrier: 0-32 and 32-64 are the only two initial claims.
-# If 0-32 finishes first while 32-64 is still active, no 64-96 third claim is legal
-# until the active frontier segment closes.
+# Exact grid regression: imagine a reset at 68 MiB while the first active claim still spans
+# 64-96 MiB and the peer already filled 96-128 MiB. The old frontier+64 calculation yielded
+# 132 MiB and allowed an erroneous 128-132 MiB third tail. Grid alignment must cap at 128 MiB.
 mib = 1_048_576
-wave_upper = 64 * mib
-frontier = 32 * mib
-active_frontier_upper = 64 * mib
-candidate = active_frontier_upper
-require(candidate >= wave_upper, "synthetic strict wave unexpectedly allows a third segment")
+anchor = 0
+frontier = 68 * mib
+segment = 32 * mib
+relative = max(0, frontier - anchor)
+wave_base = anchor + (relative // segment) * segment
+wave_upper = wave_base + 2 * segment
+require(wave_base == 64 * mib, "synthetic wave base must align down to 64 MiB")
+require(wave_upper == 128 * mib, "synthetic wave upper must end at 128 MiB")
+old_unaligned_upper = frontier + 2 * segment
+require(old_unaligned_upper == 132 * mib and old_unaligned_upper > wave_upper, "synthetic old 4 MiB third-tail regression changed")
+active_first_upper = 96 * mib
+cached_peer_upper = 128 * mib
+require(max(active_first_upper, cached_peer_upper) >= wave_upper, "completed/active pair must consume the entire aligned wave")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
 require(project.count('MARKETING_VERSION: "0.12.4"') == 2, "marketing version must be 0.12.4")
