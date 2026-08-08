@@ -34,13 +34,15 @@ struct AuthenticationResult: Decodable {
     }
 }
 
-struct EmbySession: Codable, Equatable {
+struct EmbySession: Codable, Equatable, Identifiable {
     let serverURL: URL
     let serverId: String
     let serverName: String
     let serverVersion: String
     let user: EmbyUser
     let tokenAccount: String
+
+    var id: String { tokenAccount }
 }
 
 struct BaseItem: Decodable, Identifiable, Hashable {
@@ -54,6 +56,104 @@ struct BaseItem: Decodable, Identifiable, Hashable {
         case name = "Name"
         case type = "Type"
         case runTimeTicks = "RunTimeTicks"
+    }
+}
+
+struct EmbyItemPage: Decodable {
+    let items: [LibraryItem]
+    let totalRecordCount: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case items = "Items"
+        case totalRecordCount = "TotalRecordCount"
+    }
+}
+
+struct LibraryItem: Decodable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let type: String?
+    let overview: String?
+    let productionYear: Int?
+    let runTimeTicks: Int64?
+    let communityRating: Double?
+    let seriesName: String?
+    let seriesId: String?
+    let indexNumber: Int?
+    let parentIndexNumber: Int?
+    let childCount: Int?
+    let collectionType: String?
+    let primaryImageTag: String?
+    let backdropImageTags: [String]
+    let userData: EmbyUserItemData?
+
+    enum CodingKeys: String, CodingKey {
+        case id = "Id"
+        case name = "Name"
+        case type = "Type"
+        case overview = "Overview"
+        case productionYear = "ProductionYear"
+        case runTimeTicks = "RunTimeTicks"
+        case communityRating = "CommunityRating"
+        case seriesName = "SeriesName"
+        case seriesId = "SeriesId"
+        case indexNumber = "IndexNumber"
+        case parentIndexNumber = "ParentIndexNumber"
+        case childCount = "ChildCount"
+        case collectionType = "CollectionType"
+        case imageTags = "ImageTags"
+        case backdropImageTags = "BackdropImageTags"
+        case userData = "UserData"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = (try? container.decode(String.self, forKey: .name)) ?? "未命名"
+        type = try? container.decode(String.self, forKey: .type)
+        overview = try? container.decode(String.self, forKey: .overview)
+        productionYear = try? container.decode(Int.self, forKey: .productionYear)
+        runTimeTicks = try? container.decode(Int64.self, forKey: .runTimeTicks)
+        communityRating = try? container.decode(Double.self, forKey: .communityRating)
+        seriesName = try? container.decode(String.self, forKey: .seriesName)
+        seriesId = try? container.decode(String.self, forKey: .seriesId)
+        indexNumber = try? container.decode(Int.self, forKey: .indexNumber)
+        parentIndexNumber = try? container.decode(Int.self, forKey: .parentIndexNumber)
+        childCount = try? container.decode(Int.self, forKey: .childCount)
+        collectionType = try? container.decode(String.self, forKey: .collectionType)
+        let imageTags = (try? container.decode([String: String].self, forKey: .imageTags)) ?? [:]
+        primaryImageTag = imageTags["Primary"]
+        backdropImageTags = (try? container.decode([String].self, forKey: .backdropImageTags)) ?? []
+        userData = try? container.decode(EmbyUserItemData.self, forKey: .userData)
+    }
+
+    var durationSeconds: Double? {
+        guard let runTimeTicks, runTimeTicks > 0 else { return nil }
+        return Double(runTimeTicks) / AppIdentity.ticksPerSecond
+    }
+
+    var playbackProgress: Double {
+        guard let runTimeTicks, runTimeTicks > 0, let position = userData?.playbackPositionTicks, position > 0 else { return 0 }
+        return min(1, max(0, Double(position) / Double(runTimeTicks)))
+    }
+
+    var isFavorite: Bool { userData?.isFavorite == true }
+    var isPlayed: Bool { userData?.played == true }
+}
+
+struct EmbyUserItemData: Decodable, Hashable {
+    let playbackPositionTicks: Int64?
+    let playCount: Int?
+    let isFavorite: Bool?
+    let played: Bool?
+    let unplayedItemCount: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case playbackPositionTicks = "PlaybackPositionTicks"
+        case playCount = "PlayCount"
+        case isFavorite = "IsFavorite"
+        case played = "Played"
+        case unplayedItemCount = "UnplayedItemCount"
     }
 }
 
