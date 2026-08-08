@@ -424,6 +424,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         if !startupMetadataQueue.isEmpty || slotClaims.values.contains(where: { $0.role == .startupMetadata }) {
             for slot in [0, 1] where slotTasks[slot] == nil && !liveLaneResetPending.contains(slot) {
+                if slot == 1, Date() < secondaryCooldownUntil { continue }
                 while !startupMetadataQueue.isEmpty {
                     let chunk = startupMetadataQueue.removeFirst()
                     if store.contains(chunk) { continue }
@@ -456,7 +457,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         }
 
         if !secondaryEnabled {
-            if slotTasks[0] == nil, let range = nextSequentialClaim(resource: resource) { startSlot(0, claim: SlotClaim(range: range, role: .sequential), reason: reason) }
+            if slotTasks[0] == nil, !liveLaneResetPending.contains(0), let range = nextSequentialClaim(resource: resource) { startSlot(0, claim: SlotClaim(range: range, role: .sequential), reason: reason) }
             refreshMetrics(resource: resource)
             return
         }
@@ -672,7 +673,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                     secondaryEnabled = true
                     DiagnosticsLogger.shared.log("UnifiedSlot", "secondary enabled after primary stable block")
                 }
-                if claim.range.lowerBound == 0, Int64(claim.range.count) <= largeFileInitialSequentialBlockBytes, source.mediaSource.normalizedContainer == "mp4", resource?.contentLength ?? 0 >= 4 * 1_073_741_824 {
+                if claim.range.lowerBound == 0, Int64(claim.range.count) <= largeFileInitialSequentialBlockBytes, source.mediaSource.normalizedContainer == "mp4", (resource?.contentLength ?? 0) >= 4 * 1_073_741_824 {
                     startupTailDemandGraceUntil = Date().addingTimeInterval(startupTailDemandGraceSeconds)
                     DiagnosticsLogger.shared.log("UnifiedStartup", "head warmup complete range=\(claim.range.lowerBound)-\(claim.range.upperBound) action=await-actual-tail-demand graceMs=\(Int(startupTailDemandGraceSeconds * 1000))")
                     armStartupTailGraceResume()
@@ -716,8 +717,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private func armStartupTailGraceResume() {
         guard !startupTailGraceResumeScheduled else { return }
         startupTailGraceResumeScheduled = true
+        let delay = startupTailDemandGraceSeconds
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(startupTailDemandGraceSeconds * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             await self?.resumeAfterStartupTailGrace()
         }
     }
@@ -743,7 +745,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             scheduleSlots(reason: "live-lane-reset-ready")
             return
         }
-        if attempt < 5 {
+        if attempt < 10 {
             armLiveLaneResetRetry(slot: slot, attempt: attempt + 1)
         } else {
             liveLaneResetPending.remove(slot)
@@ -753,10 +755,12 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     }
 
     private func armFirstByteWatchdog(slot: Int, generation: Int) {
+        let peerDelay = liveLaneFirstBytePeerTimeoutSeconds
+        let hardDelay = liveLaneFirstByteHardTimeoutSeconds - liveLaneFirstBytePeerTimeoutSeconds
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(liveLaneFirstBytePeerTimeoutSeconds * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(peerDelay * 1_000_000_000))
             await self?.checkFirstByteWatchdog(slot: slot, generation: generation, hard: false)
-            try? await Task.sleep(nanoseconds: UInt64((liveLaneFirstByteHardTimeoutSeconds - liveLaneFirstBytePeerTimeoutSeconds) * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(hardDelay * 1_000_000_000))
             await self?.checkFirstByteWatchdog(slot: slot, generation: generation, hard: true)
         }
     }
