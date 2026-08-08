@@ -769,6 +769,15 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         DiagnosticsLogger.shared.log("UnifiedStartup", "large-mp4 warmup planned head=\(largeFileInitialSequentialBlockBytes) tail=\(tail.lowerBound)-\(tail.upperBound) tailBytes=\(tail.count)")
     }
 
+    private func configureStartupWarmupIfNeeded(resource: TransportResolvedResource) {
+        guard startupTailWarmupRange == nil, !startupTailWarmupCompleted else { return }
+        guard source.mediaSource.normalizedContainer == "mp4", resource.contentLength >= 4 * 1_073_741_824 else { return }
+        let tailBytes = min(startupTailWarmupBytes, resource.contentLength)
+        let tail = max(0, resource.contentLength - tailBytes)..<resource.contentLength
+        startupTailWarmupRange = tail
+        DiagnosticsLogger.shared.log("UnifiedStartup", "large-mp4 warmup planned head=\(largeFileInitialSequentialBlockBytes) tail=\(tail.lowerBound)-\(tail.upperBound) tailBytes=\(tail.count)")
+    }
+
     private func isStartupTailMetadata(_ range: Range<Int64>, resource: TransportResolvedResource) -> Bool {
         guard !range.isEmpty, Date().timeIntervalSince(createdAt) < 35, playbackAnchor == 0, Date() > pendingUserSeekUntil else { return false }
         guard source.mediaSource.normalizedContainer == "mp4", resource.contentLength >= 4 * 1_073_741_824 else { return false }
