@@ -8,25 +8,32 @@ required_unified = [
     "let startupTailMetadata = isStartupTailMetadata(range, resource: resource)",
     "let concretePlaybackDemand = concreteReason && !metadata",
     "Date() > pendingUserSeekUntil",
-    "critical-tail-metadata range=",
-    'cancelSlot(0, reason: "startup-metadata-priority")',
-    "critical metadata queued on primary",
-    "preserveSecondary=",
+    "startupTailWarmupBytes: Int64 = 16 * 1_048_576",
+    "private func configureStartupWarmupIfNeeded",
+    "large-mp4 warmup planned",
+    "head warmup complete",
+    "action=queue-tail",
+    "tail warmup complete",
+    "tail waiting for warm primary",
     "private func considerSequentialLaneHealth",
     "laneHealthPeerFloorBps: Double = 4 * 1_048_576",
     "laneHealthRelativeFloor: Double = 0.50",
     "current.slowStreak >= 2",
     "laneHealthResetCooldownSeconds: TimeInterval = 25",
     "action=rotate-slow-lane",
+    "protected bulk changed slot=",
+    "protected bulk failover slot=",
 ]
 for needle in required_unified:
     if needle not in unified:
         raise SystemExit(f"startup/lane-health invariant missing: {needle}")
 
+if unified.count("private func configureStartupWarmupIfNeeded") != 1:
+    raise SystemExit("startup warmup helper must appear exactly once")
+if 'cancelSlot(0, reason: "startup-metadata-priority")' in unified:
+    raise SystemExit("large-MP4 tail warmup must not destroy the tiny warm primary head request")
 if unified.count("recordNetworkBytes(Int64(chunk.count))") != 2:
-    raise SystemExit("each received network chunk must be counted exactly once in each of the two fetch paths")
-if "recordNetworkBytes(Int64(chunk.count))\n                            recordNetworkBytes(Int64(chunk.count))" in unified:
-    raise SystemExit("duplicate adjacent network-byte accounting returned")
+    raise SystemExit("each received network chunk must be counted exactly once in each fetch path")
 
 required_http = [
     "func resetStreamLane(worker: Int, reason: String) -> Bool",
@@ -40,8 +47,10 @@ for needle in required_http:
 
 if 'guard value.isPlaying, !value.isBuffering else { return }' in controller:
     raise SystemExit("MPV persistent buffer history must not depend on the flaky initial isPlaying property")
-if controller.count("guard !value.isBuffering else { return }") != 1:
-    raise SystemExit("MPV persistent buffer history must require non-buffering progression exactly once")
+if 'guard !value.isBuffering else { return }' in controller:
+    raise SystemExit("MPV buffer history must retain valid demuxer cache during transient buffering states")
+if 'value.bufferedRanges.contains(where:' not in controller:
+    raise SystemExit("MPV buffer history must require a real current-position buffer range")
 
 finish_anchor = unified.index("private func finishSlot")
 clear_index = unified.index("slotClaims[slot] = nil", finish_anchor)
@@ -52,14 +61,15 @@ if "if claim.role == .sequential, error == nil" not in unified[finish_anchor:hea
     raise SystemExit("lane rotation must only be evaluated from successful sequential completion")
 
 # 152901 v0.11.2 regression: libmpv's startup seek lands 10,180,143 bytes from EOF
-# in a 5.88 GB MP4. That is container-tail metadata, not a 5.87 GB playback seek.
+# in a 5.88 GB MP4. Scheduler v2 proactively warms the final 16 MiB after the 1 MiB head.
 resource_bytes = 5_883_702_464
 tail_offset = 5_873_522_321
-near_tail_window = 64 * 1_048_576
+warmup_bytes = 16 * 1_048_576
+warmup_start = resource_bytes - warmup_bytes
 if resource_bytes < 4 * 1_073_741_824:
     raise SystemExit("synthetic 152901 large-MP4 condition failed")
-if tail_offset < resource_bytes - near_tail_window:
-    raise SystemExit("synthetic 152901 tail metadata condition failed")
+if not (warmup_start <= tail_offset < resource_bytes):
+    raise SystemExit("synthetic 152901 tail request must be covered by proactive warmup")
 
 # Health policy: rotate a clearly degraded lane only when a recently healthy peer proves
 # that the whole network is not simply slow. Two bad completed blocks are required.
