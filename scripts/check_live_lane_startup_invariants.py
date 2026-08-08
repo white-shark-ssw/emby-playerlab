@@ -61,7 +61,7 @@ require("startupMetadataQueue.insert(claim.range, at: 0)" in unified, "failed/st
 
 # 152901 v0.12.0 device log: libmpv's actual startup-tail seek is 10,180,143 bytes
 # from EOF. The old final-16MiB warmup wasted 6,597,073 bytes before the real offset
-# and then pinned the whole critical path to one ~0.83 MB/s Range. v0.12.2 must plan
+# and then pinned the whole critical path to one ~0.83 MB/s Range. v0.12.3 must plan
 # from the actual offset and split that exact tail into 1 MiB pieces.
 resource_bytes = 5_883_702_464
 actual_tail = 5_873_522_321
@@ -89,13 +89,13 @@ peer_first_byte_bps = 9 * 1_048_576
 require(peer_first_byte_bps >= 2 * 1_048_576, "synthetic peer-fast first-byte case must qualify")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
-require(project.count('MARKETING_VERSION: "0.12.2"') == 2, "marketing version must be 0.12.2")
-require(project.count('CURRENT_PROJECT_VERSION: "60"') == 2, "build number must be 60")
-require("<string>0.12.2</string>" in info and "<string>60</string>" in info, "Info.plist version/build mismatch")
-require('sourceVersion = "0.12.2"' in identity, "AppIdentity source version mismatch")
-require("Audit live lane/startup invariants" in validate and "check_live_lane_startup_invariants.py" in validate, "Validate Source must enforce v0.12.2 live-lane/startup invariants")
-require("Audit live lane/startup invariants" in build and "check_live_lane_startup_invariants.py" in build, "unsigned IPA workflow must enforce v0.12.2 live-lane/startup invariants")
-require('IPA_NAME="EmbyPlayerLab-0.12.2-${GITHUB_SHA::7}-unsigned.ipa"' in build, "IPA filename must identify v0.12.2")
+require(project.count('MARKETING_VERSION: "0.12.3"') == 2, "marketing version must be 0.12.3")
+require(project.count('CURRENT_PROJECT_VERSION: "61"') == 2, "build number must be 60")
+require("<string>0.12.3</string>" in info and "<string>61</string>" in info, "Info.plist version/build mismatch")
+require('sourceVersion = "0.12.3"' in identity, "AppIdentity source version mismatch")
+require("Audit live lane/startup invariants" in validate and "check_live_lane_startup_invariants.py" in validate, "Validate Source must enforce v0.12.3 live-lane/startup invariants")
+require("Audit live lane/startup invariants" in build and "check_live_lane_startup_invariants.py" in build, "unsigned IPA workflow must enforce v0.12.3 live-lane/startup invariants")
+require('IPA_NAME="EmbyPlayerLab-0.12.3-${GITHUB_SHA::7}-unsigned.ipa"' in build, "IPA filename must identify v0.12.3")
 
 for temporary in [
     ".github/workflows/apply-v0121-live-lane-startup.yml",

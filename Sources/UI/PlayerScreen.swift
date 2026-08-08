@@ -71,8 +71,11 @@ struct PlayerScreen: View {
     @ViewBuilder
     private var playerSurface: some View {
         if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {
-            MPVPlayerSurface(displayLayer: layer)
-                .id(ObjectIdentifier(layer))
+            GeometryReader { geometry in
+                MPVPlayerSurface(displayLayer: layer)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .id("\(ObjectIdentifier(layer))-\(Int(geometry.size.width.rounded()))x\(Int(geometry.size.height.rounded()))")
+            }
         } else if controller.engineKind == .ksAVIO, let view = controller.ksAVIOView {
             KSAVIOPlayerSurface(playerView: view)
                 .id(ObjectIdentifier(view))
@@ -163,9 +166,7 @@ struct PlayerScreen: View {
                             set: { controller.updateScrubbing(to: $0) }
                         ),
                         range: 0...max(controller.effectiveDuration, 1),
-                        verifiedBufferedRanges: controller.verifiedBufferedRanges,
-                        bufferedRanges: controller.snapshot.bufferedRanges,
-                        downloadCacheFraction: controller.transportCacheFraction,
+                        downloadCacheRanges: controller.transportCacheRanges,
                         onEditingChanged: { editing in
                             editing ? controller.beginScrubbing() : controller.endScrubbing()
                         }
@@ -189,7 +190,7 @@ struct PlayerScreen: View {
     private var diagnosticsRow: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("引擎：\(controller.engineKind.title) · \(controller.lastSeekSummary)")
-            Text("下载缓存 \(Int((controller.transportCacheFraction * 100).rounded()))% · 已验证缓存至 \(formatTime(controller.verifiedBufferedEnd)) · 当前亮灰至 \(formatTime(controller.bufferedEnd)) · 前向可播 \(formatTime(controller.forwardBufferedDuration)) · \(controller.snapshot.isBuffering ? "等待数据" : "可播放")")
+            Text("下载缓存 \(Int((controller.transportCacheFraction * 100).rounded()))% · 前向可播 \(formatTime(controller.forwardBufferedDuration)) · \(controller.snapshot.isBuffering ? "等待数据" : "可播放")")
             if controller.snapshot.accessLogStalls > 0 || controller.snapshot.droppedVideoFrames > 0 {
                 Text("AV 统计：停滞 \(controller.snapshot.accessLogStalls) · 丢帧 \(controller.snapshot.droppedVideoFrames)")
             }

@@ -16,6 +16,7 @@ final class PlayerController: ObservableObject {
     @Published private(set) var engineKind: PlayerEngineKind
     @Published private(set) var transportSummary: String?
     @Published private(set) var transportCacheFraction: Double = 0
+    @Published private(set) var transportCacheRanges: [ClosedRange<Double>] = []
     @Published private(set) var verifiedBufferedRanges: [ClosedRange<Double>] = []
 
     @Published private(set) var source: ResolvedPlaybackSource
@@ -155,6 +156,7 @@ final class PlayerController: ObservableObject {
         transportMetricsTask = nil
         transportSummary = nil
         transportCacheFraction = 0
+        transportCacheRanges = []
         engineSwitchTask?.cancel()
         engineSwitchTask = nil
         startupFallbackTask?.cancel()
@@ -765,6 +767,7 @@ final class PlayerController: ObservableObject {
         transportMetricsTask = nil
         transportSummary = nil
         transportCacheFraction = 0
+        transportCacheRanges = []
         lastTransportMetrics = nil
 
         transportMetricsTask = Task { [weak self] in
@@ -776,10 +779,19 @@ final class PlayerController: ObservableObject {
                     self.lastTransportMetrics = metrics
                     self.transportSummary = metrics.summary
                     self.transportCacheFraction = metrics.resourceBytes > 0 ? min(1, max(0, Double(metrics.cacheBytes) / Double(metrics.resourceBytes))) : 0
+                    let byteRanges: [Range<Int64>]
+                    if let session = self.transportContext?.session { byteRanges = await session.cachedByteRanges() }
+                    else { byteRanges = [] }
+                    self.transportCacheRanges = metrics.resourceBytes > 0 ? byteRanges.compactMap { byteRange in
+                        let lower = min(1, max(0, Double(byteRange.lowerBound) / Double(metrics.resourceBytes)))
+                        let upper = min(1, max(0, Double(byteRange.upperBound) / Double(metrics.resourceBytes)))
+                        return upper > lower ? lower...upper : nil
+                    } : []
                     self.promoteFullCacheRangeIfNeeded(metrics)
                 } else if self.engine === engine {
                     self.lastTransportMetrics = nil
                     self.transportCacheFraction = 0
+                    self.transportCacheRanges = []
                 }
             }
         }
