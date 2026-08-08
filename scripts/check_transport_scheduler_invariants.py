@@ -11,7 +11,7 @@ required = [
     "preserveBulk=",
     "second foreground head borrows bulk slot=",
     "slotClaims.first(where: { $0.value.role == .sequential && $0.value.range.contains(range.lowerBound) })",
-    "Date() >= secondaryCooldownUntil",
+    "if slot == 1, Date() < secondaryCooldownUntil { continue }",
 ]
 
 for needle in required:
