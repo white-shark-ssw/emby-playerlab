@@ -12,40 +12,40 @@ struct ServerListView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 18) {
                     HStack {
                         Spacer()
                         Button { showingAddServer = true } label: {
                             Image(systemName: "plus")
-                                .font(.system(size: 29, weight: .light))
+                                .font(.system(size: 24, weight: .light))
                         }
                         Button {} label: {
                             Image(systemName: "ellipsis")
-                                .font(.system(size: 24, weight: .medium))
-                                .frame(width: 44, height: 44)
+                                .font(.system(size: 20, weight: .medium))
+                                .frame(width: 40, height: 40)
                         }
                     }
 
                     Text("服务器")
-                        .font(.system(size: 44, weight: .bold))
+                        .font(.largeTitle.weight(.bold))
 
-                    HStack(spacing: 10) {
+                    HStack(spacing: 9) {
                         Image(systemName: "magnifyingglass")
-                            .font(.system(size: 21))
+                            .font(.system(size: 17))
                             .foregroundColor(.secondary)
                         TextField("搜索服务器", text: $searchText)
-                            .font(.system(size: 20))
+                            .font(.body)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                     }
-                    .padding(.horizontal, 14)
-                    .frame(height: 50)
+                    .padding(.horizontal, 13)
+                    .frame(height: 44)
                     .background(Color(uiColor: .secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
 
                     if filteredSessions.isEmpty {
                         emptyState
-                            .padding(.top, 70)
+                            .padding(.top, 60)
                     } else {
                         LazyVGrid(columns: columns, spacing: 12) {
                             ForEach(filteredSessions) { stored in
@@ -71,8 +71,8 @@ struct ServerListView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 40)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
             }
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             .navigationBarHidden(true)
@@ -81,7 +81,7 @@ struct ServerListView: View {
                     .environmentObject(sessionStore)
             }
             .fullScreenCover(item: $selectedSession, onDismiss: { sessionStore.leaveServer() }) { stored in
-                EmbyServerRootView(session: stored)
+                EmbyServerRootViewV2(session: stored)
                     .environmentObject(sessionStore)
             }
         }
@@ -97,44 +97,45 @@ struct ServerListView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             Image(systemName: "externaldrive.badge.plus")
-                .font(.system(size: 46, weight: .light))
+                .font(.system(size: 38, weight: .light))
                 .foregroundColor(.secondary)
             Text("还没有服务器")
-                .font(.title3.weight(.semibold))
+                .font(.headline)
             Text("点击右上角 + 添加 Emby 服务器")
+                .font(.subheadline)
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
     }
 
     private func serverCard(_ stored: EmbySession) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 ZStack {
                     Circle().fill(Color.green.opacity(0.8))
                     Image(systemName: "play.fill")
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: 17, weight: .bold))
                         .foregroundColor(.white)
                 }
-                .frame(width: 44, height: 44)
+                .frame(width: 40, height: 40)
                 Spacer()
                 Text(stored.serverVersion)
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundColor(.secondary)
             }
 
             HStack(spacing: 6) {
                 Text(stored.serverName)
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.headline)
                     .lineLimit(1)
-                Circle().fill(Color.green).frame(width: 7, height: 7)
+                Circle().fill(Color.green).frame(width: 6, height: 6)
             }
 
             Spacer(minLength: 2)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 7) {
                 Image(systemName: "person")
                 Text(stored.user.name)
                     .lineLimit(1)
@@ -142,10 +143,10 @@ struct ServerListView: View {
             .font(.subheadline)
             .foregroundColor(.secondary)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 154, alignment: .leading)
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 132, alignment: .leading)
         .background(Color.green.opacity(colorScheme == .dark ? 0.28 : 0.16))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
