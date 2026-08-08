@@ -1,0 +1,8 @@
+v0.12.0 / Build 58 final scope
+- Scheduler v2 dynamic protected bulk lane
+- speculative range-demand no longer preempts bulk
+- real foreground read borrows service lane; second real head may borrow both
+- large MP4 final-16MiB startup tail warmup after 1MiB head
+- MPV valid demux cache history survives transient buffering
+- exactly two upstream lanes
+- Deployment Target iOS 15.0
