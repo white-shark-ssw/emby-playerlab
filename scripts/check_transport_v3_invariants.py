@@ -37,9 +37,11 @@ lane_body = http[lane_start:]
 require("finishTasksAndInvalidate" not in lane_body, "stream completion must not invalidate a persistent lane session")
 require(lane_body.count("invalidateAndCancel()") == 1, "persistent lane session may only be invalidated during lane teardown")
 
-require("reuse active sequential stream" in unified, "in-range playback demand must reuse the active sequential stream")
+require("reuse active sequential stream" in unified, "near-head playback demand must still reuse the active sequential stream")
 require("promote slot0 sequential->urgent" not in unified, "legacy in-range cancel/reopen promotion must not return")
 require("cancelSlot(0, reason: \"real-seek-demand\")" not in unified, "ordinary user seeks must preserve the warmed sequential slot")
+require("foreground gap request=" in unified and "action=parallel-urgent" in unified, "far in-claim foreground reads must be able to borrow the other lane")
+require("recordNetworkBytes(Int64(chunk.count))" in unified, "network throughput must be sampled progressively per chunk")
 require("client.invalidate()" in unified, "transport stop must explicitly tear down the persistent connection pool")
 
 require("automaticProfile=AVPlayerResourceLoader+UnifiedTransportV3" in orchestrator, "native automatic route must use ResourceLoader + Unified v3")
@@ -61,6 +63,9 @@ for temporary_path in [
     ".github/workflows/apply-transport-v3-core.yml",
     "scripts/apply_transport_v3_core.py",
     "scripts/refine_transport_v3.py",
+    ".github/workflows/apply-v0112-transport-stability.yml",
+    "scripts/apply_v0112_transport_stability.py",
+    "scripts/finalize_v0112.py",
 ]:
     require(not Path(temporary_path).exists(), f"temporary construction file must not ship: {temporary_path}")
 
