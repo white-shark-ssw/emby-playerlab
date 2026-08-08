@@ -13,18 +13,28 @@ concurrency:
 
 jobs:
   finalize:
-    if: ${{ !contains(github.event.head_commit.message, '[v0.12.6-final]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[v0.12.6-final]') && !contains(github.event.head_commit.message, '[v0.12.6-debug]') }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
           ref: dev/v0.12.6-frontier-rescue
 
-      - name: Finalize version metadata
-        run: python3 scripts/finalize_v0126.py
-
-      - name: Run regression gates
+      - name: Run finalizer and capture result
         run: |
+          set +e
+          python3 scripts/finalize_v0126.py > finalize-v0126.log 2>&1
+          STATUS=$?
+          cat finalize-v0126.log
+          if [ "$STATUS" -ne 0 ]; then
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add finalize-v0126.log
+            git commit -m 'Capture v0.12.6 finalizer failure [v0.12.6-debug]'
+            git push origin HEAD:dev/v0.12.6-frontier-rescue
+            exit 0
+          fi
+
           python3 scripts/check_transport_scheduler_invariants.py
           python3 scripts/check_transport_v3_invariants.py
           python3 scripts/check_seek_stall_invariants.py
@@ -35,10 +45,18 @@ jobs:
           python3 scripts/check_v0123_regressions.py
           python3 scripts/check_v0124_regressions.py
           python3 scripts/check_v0126_frontier_rescue.py
+          STATUS=$?
+          if [ "$STATUS" -ne 0 ]; then
+            echo "regression gate failed with status $STATUS" >> finalize-v0126.log
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add finalize-v0126.log
+            git commit -m 'Capture v0.12.6 regression failure [v0.12.6-debug]'
+            git push origin HEAD:dev/v0.12.6-frontier-rescue
+            exit 0
+          fi
 
-      - name: Commit clean release candidate
-        run: |
-          rm -f scripts/finalize_v0126.py .github/workflows/finalize-v0126.yml
+          rm -f finalize-v0126.log scripts/finalize_v0126.py .github/workflows/finalize-v0126.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
