@@ -76,6 +76,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let liveLaneSampleMinimumBytes: Int64 = 1 * 1_048_576
     private let liveLaneResetCooldownSeconds: TimeInterval = 8
     private let startupTailDemandGraceSeconds: TimeInterval = 0.25
+    private let stallBlockingDemandFreshSeconds: TimeInterval = 12
+    private let strictFrontierReserveBytes: Int64 = 128 * 1_048_576
     private let lookaheadSegments = 4
     private let createdAt = Date()
 
@@ -87,7 +89,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var pendingUserSeekUntil = Date.distantPast
     private var pendingPlaybackUrgentRange: Range<Int64>?
     private var pendingMetadataRange: Range<Int64>?
-    private var lastConcretePlaybackDemand: Range<Int64>?
+    private var lastBlockingPlaybackDemand: Range<Int64>?
+    private var lastBlockingPlaybackDemandAt = Date.distantPast
+    private var sequentialWaveUpperBound: Int64 = 0
+    private var sequentialWaveSegmentBytes: Int64 = 0
     private var startupMetadataPlanRange: Range<Int64>?
     private var startupMetadataQueue: [Range<Int64>] = []
     private var startupMetadataPlanCompleted = false
@@ -229,29 +234,34 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
     func recoverStall(position: Double, duration: Double) async {
         guard !stopped else { return }
-        if let demand = lastConcretePlaybackDemand, let resource {
+        let now = Date()
+        if let demand = lastBlockingPlaybackDemand, now.timeIntervalSince(lastBlockingPlaybackDemandAt) <= stallBlockingDemandFreshSeconds, let resource {
             let previous = playbackAnchor
             playbackAnchor = demand.lowerBound
+            resetSequentialWave()
             let urgent = demand.lowerBound..<min(resource.contentLength, safeAdd(demand.lowerBound, urgentBlockBytes))
-            installUrgent(range: urgent, metadata: false, reason: "stall-last-concrete-demand")
+            if store?.contains(urgent) == true {
+                DiagnosticsLogger.shared.log("UnifiedDemand", "stall position=\(String(format: "%.3f", position)) previousAnchor=\(previous) anchor=\(playbackAnchor) blocked=\(demand.lowerBound)-\(demand.upperBound) action=blocking-demand-already-cached")
+            } else {
+                installUrgent(range: urgent, metadata: false, reason: "stall-last-blocking-demand")
+                DiagnosticsLogger.shared.log("UnifiedDemand", "stall position=\(String(format: "%.3f", position)) previousAnchor=\(previous) anchor=\(playbackAnchor) blocked=\(demand.lowerBound)-\(demand.upperBound) action=prioritize-blocking-demand")
+            }
             for slot in [0, 1] {
                 if let active = slotClaims[slot], active.role == .urgentPlayback, !active.range.contains(demand.lowerBound) { cancelSlot(slot, reason: "replace-stale-urgent") }
             }
-            DiagnosticsLogger.shared.log(
-                "UnifiedDemand",
-                "stall position=\(String(format: "%.3f", position)) previousAnchor=\(previous) anchor=\(playbackAnchor) concrete=\(demand.lowerBound)-\(demand.upperBound) action=prioritize-current-demand"
-            )
         } else {
-            DiagnosticsLogger.shared.log(
-                "UnifiedDemand",
-                "stall position=\(String(format: "%.3f", position)) anchor=\(playbackAnchor) action=await-concrete-demand"
-            )
+            DiagnosticsLogger.shared.log("UnifiedDemand", "stall position=\(String(format: "%.3f", position)) anchor=\(playbackAnchor) action=keep-anchor-await-blocked-read")
         }
         scheduleSlots(reason: "stall")
     }
 
     func metrics() async -> TransportMetricsSnapshot {
-        if let resolved = try? await resolve() { refreshMetrics(resource: resolved) }
+        if let resolved = try? await resolve() {
+            if slotTasks.isEmpty, Date() > pendingUserSeekUntil || pendingPlaybackUrgentRange != nil || pendingMetadataRange != nil {
+                scheduleSlots(reason: "metrics-idle-repair")
+            }
+            refreshMetrics(resource: resolved)
+        }
         return metricsValue
     }
 
@@ -297,11 +307,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let authoritativeSeekDemand = reason == "blocked-read" || reason == "byte-offset"
         var reanchored = false
         if startupTailMetadata { DiagnosticsLogger.shared.log("UnifiedStartup", "critical-tail-metadata range=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=actual-demand") }
+        if concretePlaybackDemand, authoritativeSeekDemand {
+            lastBlockingPlaybackDemand = range
+            lastBlockingPlaybackDemandAt = Date()
+        }
 
         // AVFoundation may emit stale/cached range requests from the pre-seek timeline while a seek is
-        // still settling. Only the byte offset actually consumed by read(), or MPV's explicit byte seek,
-        // may consume the pending seek token. This mirrors a logical-position reader: requested ranges
-        // are hints, actual reads are authoritative.
+        // still settling. Only a cache-miss blocked read, or MPV's explicit byte seek, may consume the
+        // pending seek token. Ordinary concrete reads can be stale demux traffic from the old timeline.
         if pendingUserSeek, !metadata, !concretePlaybackDemand {
             DiagnosticsLogger.shared.log(
                 "UnifiedAnchor",
@@ -316,7 +329,6 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             )
             return
         }
-        if concretePlaybackDemand { lastConcretePlaybackDemand = range }
 
         // AVPlayer range announcements are speculative. They must never preempt a healthy bulk
         // connection merely because the demuxer considered a region. Concrete read()/byte-offset
@@ -331,6 +343,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             pendingUserSeekUntil = .distantPast
             let previous = playbackAnchor
             playbackAnchor = range.lowerBound
+            resetSequentialWave()
             reanchored = true
             DiagnosticsLogger.shared.log(
                 "UnifiedAnchor",
@@ -474,12 +487,21 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             return
         }
 
-        if let urgent = pendingPlaybackUrgentRange, !store.contains(urgent), let slot = firstIdleForegroundSlot() {
+        if let urgent = pendingPlaybackUrgentRange, store.contains(urgent) {
+            pendingPlaybackUrgentRange = nil
+            DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "pending urgent satisfied range=\(urgent.lowerBound)-\(urgent.upperBound) action=drop-satisfied")
+        }
+        if let metadata = pendingMetadataRange, store.contains(metadata) {
+            pendingMetadataRange = nil
+            DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "pending metadata satisfied range=\(metadata.lowerBound)-\(metadata.upperBound) action=drop-satisfied")
+        }
+
+        if let urgent = pendingPlaybackUrgentRange, let slot = firstIdleForegroundSlot() {
             pendingPlaybackUrgentRange = nil
             startSlot(slot, claim: SlotClaim(range: urgent, role: .urgentPlayback), reason: "foreground-\(reason)")
         }
 
-        if let metadata = pendingMetadataRange, !store.contains(metadata), let slot = firstIdleForegroundSlot() {
+        if let metadata = pendingMetadataRange, let slot = firstIdleForegroundSlot() {
             pendingMetadataRange = nil
             startSlot(slot, claim: SlotClaim(range: metadata, role: .metadata), reason: "metadata-\(reason)")
         }
@@ -526,17 +548,34 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         if configuration.usesDiskCache, configuration.diskLimitBytes > 0, store?.uniqueBytes ?? 0 >= configuration.diskLimitBytes { return nil }
         let upper = min(resource.contentLength, safeAdd(playbackAnchor, window))
         guard upper > playbackAnchor else { return nil }
-        let firstPlaybackBlock = rangeMap.snapshot(anchor: playbackAnchor, resourceLength: resource.contentLength).playbackBytes == 0
+        let snapshot = rangeMap.snapshot(anchor: playbackAnchor, resourceLength: resource.contentLength)
+        let firstPlaybackBlock = snapshot.playbackBytes == 0
         let largeIndexedMP4Startup = source.mediaSource.normalizedContainer == "mp4" && resource.contentLength >= 4 * 1_073_741_824
         let initialBytes = largeIndexedMP4Startup ? largeFileInitialSequentialBlockBytes : initialSequentialBlockBytes
         let segmentBytes = firstPlaybackBlock ? min(blockBytes, initialBytes) : blockBytes
-        return rangeMap.nextClaim(
-            from: playbackAnchor,
-            resourceLength: upper,
-            segmentBytes: segmentBytes,
-            workerLimit: 2,
-            lookaheadSegments: lookaheadSegments
-        )
+        let contiguousBytes = max(0, snapshot.frontierByte - playbackAnchor)
+        let strictFrontier = contiguousBytes < strictFrontierReserveBytes
+        let claimUpper: Int64
+        let claimLookahead: Int
+        if strictFrontier {
+            if sequentialWaveSegmentBytes != segmentBytes || sequentialWaveUpperBound <= snapshot.frontierByte || sequentialWaveUpperBound <= playbackAnchor {
+                sequentialWaveSegmentBytes = segmentBytes
+                sequentialWaveUpperBound = min(upper, safeAdd(snapshot.frontierByte, segmentBytes * 2))
+                DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "frontier wave start=\(snapshot.frontierByte) upper=\(sequentialWaveUpperBound) segment=\(segmentBytes) contiguous=\(contiguousBytes) action=strict-two-segment")
+            }
+            claimUpper = min(upper, sequentialWaveUpperBound)
+            claimLookahead = 2
+        } else {
+            resetSequentialWave()
+            claimUpper = upper
+            claimLookahead = lookaheadSegments
+        }
+        return rangeMap.nextClaim(from: playbackAnchor, resourceLength: claimUpper, segmentBytes: segmentBytes, workerLimit: 2, lookaheadSegments: claimLookahead)
+    }
+
+    private func resetSequentialWave() {
+        sequentialWaveUpperBound = 0
+        sequentialWaveSegmentBytes = 0
     }
 
     private func startSlot(_ slot: Int, claim: SlotClaim, reason: String) {
@@ -988,7 +1027,6 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let cutoff = Date().addingTimeInterval(-6)
         speedSamples.removeAll { $0.date < cutoff }
     }
-
 
     private func isCancellation(_ error: Error) -> Bool {
         if error is CancellationError { return true }
