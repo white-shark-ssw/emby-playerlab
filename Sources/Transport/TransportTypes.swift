@@ -20,6 +20,7 @@ struct TransportMetricsSnapshot: Equatable {
     var networkRequestCount: Int = 0
     var rangeFailureCount: Int = 0
     var activeRequestCount: Int = 0
+    var resourceBytes: Int64 = 0
     var cacheBytes: Int64 = 0
     var memoryCacheBytes: Int64 = 0
     var diskCacheBytes: Int64 = 0
