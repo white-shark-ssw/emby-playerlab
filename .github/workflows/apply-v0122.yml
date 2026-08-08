@@ -25,3 +25,5 @@ jobs:
           git add -A
           git commit -m "Implement v0.12.2 cache throughput and rotation fixes"
           git push origin HEAD:chatgpt/v0.12.2-cache-throughput-rotation
+
+# one-shot trigger
