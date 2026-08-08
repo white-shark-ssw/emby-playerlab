@@ -321,15 +321,17 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         // was the 63360/194s regression: the read was ~10 MiB ahead of Slot 0's actual download head.
         // Wait only when the progressive stream is genuinely close; otherwise preserve the warmed
         // sequential request and borrow Slot 1 for an exact urgent Range.
-        if concretePlaybackDemand, let slot0 = slotClaims[0], slot0.role == .sequential, slot0.range.contains(range.lowerBound) {
-            let ready = store.availableLength(from: slot0.range.lowerBound, maximumLength: Int64(slot0.range.count))
-            let streamHead = min(slot0.range.upperBound, slot0.range.lowerBound + ready)
+        if concretePlaybackDemand, let activeSequential = slotClaims.first(where: { $0.value.role == .sequential && $0.value.range.contains(range.lowerBound) }) {
+            let slot = activeSequential.key
+            let claim = activeSequential.value
+            let ready = store.availableLength(from: claim.range.lowerBound, maximumLength: Int64(claim.range.count))
+            let streamHead = min(claim.range.upperBound, claim.range.lowerBound + ready)
             let gap = max(0, range.lowerBound - streamHead)
             if gap <= progressiveUrgentGapBytes {
-                DiagnosticsLogger.shared.log("UnifiedDemand", "reuse active sequential stream request=\(range.lowerBound)-\(range.upperBound) claim=\(slot0.range.lowerBound)-\(slot0.range.upperBound) head=\(streamHead) gap=\(gap) reason=\(reason) action=wait-progressive-chunk")
+                DiagnosticsLogger.shared.log("UnifiedDemand", "reuse active sequential stream slot=\(slot) request=\(range.lowerBound)-\(range.upperBound) claim=\(claim.range.lowerBound)-\(claim.range.upperBound) head=\(streamHead) gap=\(gap) reason=\(reason) action=wait-progressive-chunk")
                 return
             }
-            DiagnosticsLogger.shared.log("UnifiedDemand", "foreground gap request=\(range.lowerBound)-\(range.upperBound) claim=\(slot0.range.lowerBound)-\(slot0.range.upperBound) head=\(streamHead) gap=\(gap) action=parallel-urgent")
+            DiagnosticsLogger.shared.log("UnifiedDemand", "foreground gap slot=\(slot) request=\(range.lowerBound)-\(range.upperBound) claim=\(claim.range.lowerBound)-\(claim.range.upperBound) head=\(streamHead) gap=\(gap) action=parallel-urgent")
             installUrgent(range: range, metadata: false, reason: "foreground-gap-\(reason)")
             scheduleSlots(reason: "foreground-gap-\(reason)")
             return
@@ -762,33 +764,6 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             return max(configuration.wifiPreloadBytes, configuration.diskLimitBytes)
         }
         return max(0, configuration.wifiPreloadBytes)
-    }
-
-    private func configureStartupWarmupIfNeeded(resource: TransportResolvedResource) {
-        guard startupTailWarmupRange == nil, !startupTailWarmupCompleted else { return }
-        guard source.mediaSource.normalizedContainer == "mp4", resource.contentLength >= 4 * 1_073_741_824 else { return }
-        let tailBytes = min(startupTailWarmupBytes, resource.contentLength)
-        let tail = max(0, resource.contentLength - tailBytes)..<resource.contentLength
-        startupTailWarmupRange = tail
-        DiagnosticsLogger.shared.log("UnifiedStartup", "large-mp4 warmup planned head=\(largeFileInitialSequentialBlockBytes) tail=\(tail.lowerBound)-\(tail.upperBound) tailBytes=\(tail.count)")
-    }
-
-    private func configureStartupWarmupIfNeeded(resource: TransportResolvedResource) {
-        guard startupTailWarmupRange == nil, !startupTailWarmupCompleted else { return }
-        guard source.mediaSource.normalizedContainer == "mp4", resource.contentLength >= 4 * 1_073_741_824 else { return }
-        let tailBytes = min(startupTailWarmupBytes, resource.contentLength)
-        let tail = max(0, resource.contentLength - tailBytes)..<resource.contentLength
-        startupTailWarmupRange = tail
-        DiagnosticsLogger.shared.log("UnifiedStartup", "large-mp4 warmup planned head=\(largeFileInitialSequentialBlockBytes) tail=\(tail.lowerBound)-\(tail.upperBound) tailBytes=\(tail.count)")
-    }
-
-    private func configureStartupWarmupIfNeeded(resource: TransportResolvedResource) {
-        guard startupTailWarmupRange == nil, !startupTailWarmupCompleted else { return }
-        guard source.mediaSource.normalizedContainer == "mp4", resource.contentLength >= 4 * 1_073_741_824 else { return }
-        let tailBytes = min(startupTailWarmupBytes, resource.contentLength)
-        let tail = max(0, resource.contentLength - tailBytes)..<resource.contentLength
-        startupTailWarmupRange = tail
-        DiagnosticsLogger.shared.log("UnifiedStartup", "large-mp4 warmup planned head=\(largeFileInitialSequentialBlockBytes) tail=\(tail.lowerBound)-\(tail.upperBound) tailBytes=\(tail.count)")
     }
 
     private func configureStartupWarmupIfNeeded(resource: TransportResolvedResource) {
