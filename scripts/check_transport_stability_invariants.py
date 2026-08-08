@@ -35,6 +35,10 @@ if "transport cache complete bytes=" not in controller or "promote-full-duration
     raise SystemExit("full-cache timeline promotion missing")
 if "metrics.cacheHoleCount == 0" not in controller or "metrics.cacheBytes >= metrics.resourceBytes" not in controller:
     raise SystemExit("full-cache promotion must require complete byte coverage")
+if controller.count("private func promoteFullCacheRangeIfNeeded") != 1:
+    raise SystemExit("full-cache promotion function must appear exactly once")
+if controller.count("self.promoteFullCacheRangeIfNeeded(metrics)") != 1:
+    raise SystemExit("full-cache promotion polling call must appear exactly once")
 
 # 63360 regression from the 0.11.1 device log: the real read for ~194s was inside
 # Slot 0's 143.65-167.77 MiB claim, but the progressive stream head was still far
