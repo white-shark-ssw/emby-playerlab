@@ -22,13 +22,12 @@ required_unified = [
     "action=advisory-only",
     "action=rotate-live-lane",
     "protected bulk changed slot=",
-    "protected bulk failover slot=",
 ]
 for needle in required_unified:
     if needle not in unified:
         raise SystemExit(f"startup/lane-health invariant missing: {needle}")
 
-for obsolete in ["startupTailWarmupBytes", "configureStartupWarmupIfNeeded", "large-mp4 warmup planned", "action=queue-tail", "tail warmup complete", "action=rotate-slow-lane"]:
+for obsolete in ["startupTailWarmupBytes", "configureStartupWarmupIfNeeded", "large-mp4 warmup planned", "action=queue-tail", "tail warmup complete", "action=rotate-slow-lane", "protected bulk failover slot="]:
     if obsolete in unified:
         raise SystemExit(f"obsolete startup/lane-health strategy remains: {obsolete}")
 
@@ -37,7 +36,8 @@ if unified.count("recordNetworkBytes(Int64(chunk.count))") != 2:
 
 # v0.12.3: completed 32 MiB samples are advisory only. They may select the protected
 # bulk slot, but must never cancel/reset a connection. Only first-byte/live-window
-# health is allowed to rotate a lane.
+# health is allowed to rotate a lane. Live rotation may move preferredBulkSlot directly;
+# it does not need a separate legacy 'protected bulk failover' log path.
 health_start = unified.index("private func considerSequentialLaneHealth")
 health_end = unified.index("private func resumeAfterSecondaryCooldown", health_start)
 completed_health = unified[health_start:health_end]
