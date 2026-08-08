@@ -10,8 +10,8 @@ required = [
     'parallel-read-head primary=',
     'action=keep-primary-anchor',
     '$0.role != .sequential && $0.range.contains(range.lowerBound)',
-    'startSlot(1, claim: SlotClaim(range: urgent, role: .urgentPlayback)',
-    'reason: "parallel-urgent-',
+    'startSlot(slot, claim: SlotClaim(range: urgent, role: .urgentPlayback)',
+    'second foreground head borrows bulk slot=',
     'if claim.role == .urgentPlayback, pendingPlaybackUrgentRange == nil { pendingPlaybackUrgentRange = claim.range }',
     'return max(0, configuration.cellularPreloadBytes)',
     'if reanchored { scheduleSlots(reason: "reanchor-cache-hit") }',
@@ -24,6 +24,7 @@ forbidden = [
     'cancelSlot(0, reason: "blocked-demand-reanchor")',
     'return configuration.ktvPreloadOnCellular ? max(0, configuration.cellularPreloadBytes) : 0',
     'awaitingConcreteDemand=true anchor=',
+    'startSlot(1, claim: SlotClaim(range: urgent, role: .urgentPlayback)',
 ]
 for needle in forbidden:
     if needle in text:
