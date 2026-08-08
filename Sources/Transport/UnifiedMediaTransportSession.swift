@@ -255,6 +255,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         return metricsValue
     }
 
+    func cachedByteRanges() -> [Range<Int64>] {
+        let resourceLength = resource?.contentLength ?? 0
+        return rangeMap.snapshot(anchor: 0, resourceLength: resourceLength).playbackRanges
+    }
+
     func quiesceConsumers() async {
         // The shared byte store is intentionally kept alive across engine switches.
         // Give in-flight local reads a tiny handoff window without cancelling upstream slots.
@@ -289,8 +294,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let metadata = startupTailMetadata || (!concreteReason && isMetadataProbe(range, resource: resource))
         let pendingUserSeek = Date() <= pendingUserSeekUntil
         let concretePlaybackDemand = concreteReason && !metadata
+        let authoritativeSeekDemand = reason == "blocked-read" || reason == "byte-offset"
         var reanchored = false
-        if concretePlaybackDemand { lastConcretePlaybackDemand = range }
         if startupTailMetadata { DiagnosticsLogger.shared.log("UnifiedStartup", "critical-tail-metadata range=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=actual-demand") }
 
         // AVFoundation may emit stale/cached range requests from the pre-seek timeline while a seek is
@@ -304,6 +309,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             )
             return
         }
+        if pendingUserSeek, concretePlaybackDemand, !authoritativeSeekDemand {
+            DiagnosticsLogger.shared.log(
+                "UnifiedAnchor",
+                "seek concrete-read deferred request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) awaitingBlockedRead=true anchor=\(playbackAnchor)"
+            )
+            return
+        }
+        if concretePlaybackDemand { lastConcretePlaybackDemand = range }
 
         // AVPlayer range announcements are speculative. They must never preempt a healthy bulk
         // connection merely because the demuxer considered a region. Concrete read()/byte-offset
@@ -314,17 +327,19 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             return
         }
 
-        if pendingUserSeek, !metadata, concretePlaybackDemand {
+        if pendingUserSeek, !metadata, concretePlaybackDemand, authoritativeSeekDemand {
             pendingUserSeekUntil = .distantPast
             let previous = playbackAnchor
             playbackAnchor = range.lowerBound
             reanchored = true
             DiagnosticsLogger.shared.log(
                 "UnifiedAnchor",
-                "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason)"
+                "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) authority=cache-miss"
             )
             for slot in [0, 1] {
-                if let active = slotClaims[slot], active.role == .urgentPlayback, !active.range.contains(range.lowerBound) { cancelSlot(slot, reason: "replace-stale-urgent") }
+                guard let active = slotClaims[slot], !active.range.contains(range.lowerBound) else { continue }
+                if active.role == .urgentPlayback { cancelSlot(slot, reason: "replace-stale-urgent") }
+                if active.role == .sequential { cancelSlot(slot, reason: "seek-reanchor-sequential") }
             }
         } else if concretePlaybackDemand {
             let distance = range.lowerBound >= playbackAnchor ? range.lowerBound - playbackAnchor : playbackAnchor - range.lowerBound
@@ -691,9 +706,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 armLiveLaneResetRetry(slot: slot, attempt: 1)
             }
             DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=reset-after-cancel success=\(reset) pending=\(!reset)")
-            var health = LaneHealthState()
-            health.resetCooldownUntil = Date().addingTimeInterval(liveLaneResetCooldownSeconds)
-            laneHealth[slot] = health
+            laneHealth[slot] = LaneHealthState()
         } else if claim.role == .sequential, error == nil, let completedSequentialBps, let downloadedBytes {
             considerSequentialLaneHealth(slot: slot, bytes: downloadedBytes, bps: completedSequentialBps)
         }
@@ -904,13 +917,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         var current = laneHealth[slot] ?? LaneHealthState()
         let peer = laneHealth[peerSlot] ?? LaneHealthState()
         let peerIsFresh = peer.samples > 0 && now.timeIntervalSince(peer.lastSampleAt) <= laneHealthPeerFreshSeconds
-        let clearlyWorse = peerIsFresh && peer.averageBps >= laneHealthPeerFloorBps && bps < peer.averageBps * laneHealthRelativeFloor
 
         current.averageBps = current.samples == 0 ? bps : current.averageBps * 0.65 + bps * 0.35
         current.samples += 1
         current.lastSampleAt = now
-        if clearlyWorse { current.slowStreak += 1 }
-        else if !peerIsFresh || bps >= peer.averageBps * 0.70 { current.slowStreak = 0 }
+        current.slowStreak = 0
         laneHealth[slot] = current
 
         if peerIsFresh {
@@ -923,19 +934,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             }
         }
 
-        DiagnosticsLogger.shared.log("UnifiedLaneHealth", "slot=\(slot) sampleBps=\(Int(bps)) avgBps=\(Int(current.averageBps)) peer=\(peerSlot) peerAvgBps=\(Int(peer.averageBps)) peerFresh=\(peerIsFresh) slowStreak=\(current.slowStreak) protectedBulk=\(preferredBulkSlot)")
-        guard current.slowStreak >= 2, now >= current.resetCooldownUntil else { return }
-
-        let reason = "sequential-bps-\(Int(bps))-peer-\(Int(peer.averageBps))"
-        guard client.resetStreamLane(worker: slot, reason: reason) else { return }
-        var reset = LaneHealthState()
-        reset.resetCooldownUntil = now.addingTimeInterval(laneHealthResetCooldownSeconds)
-        laneHealth[slot] = reset
-        if preferredBulkSlot == slot {
-            preferredBulkSlot = peerSlot
-            DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "protected bulk failover slot=\(peerSlot) reason=slow-lane-rotation")
-        }
-        DiagnosticsLogger.shared.log("UnifiedLaneHealth", "slot=\(slot) action=rotate-slow-lane reason=\(reason) cooldown=\(Int(laneHealthResetCooldownSeconds))s")
+        DiagnosticsLogger.shared.log("UnifiedLaneHealth", "slot=\(slot) sampleBps=\(Int(bps)) avgBps=\(Int(current.averageBps)) peer=\(peerSlot) peerAvgBps=\(Int(peer.averageBps)) peerFresh=\(peerIsFresh) action=advisory-only protectedBulk=\(preferredBulkSlot)")
     }
 
     private func resumeAfterSecondaryCooldown() {

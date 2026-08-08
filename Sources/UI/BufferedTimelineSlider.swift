@@ -3,13 +3,10 @@ import SwiftUI
 struct BufferedTimelineSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
-    /// Session-persistent ranges that a playback engine has actually verified as playable.
-    let verifiedBufferedRanges: [ClosedRange<Double>]
-    /// Current engine live buffer. This may move/shrink after a seek.
-    let bufferedRanges: [ClosedRange<Double>]
-    /// Total UnifiedTransport byte-cache coverage. This is quantity coverage, not a claim that
-    /// every time position before the fill edge is seekable after sparse seeks.
-    let downloadCacheFraction: Double
+    /// Exact UnifiedTransport playback-byte cache coverage normalized to 0...1.
+    /// Sparse seeks remain sparse here: a hole is rendered as a hole instead of being
+    /// disguised by aggregate cacheBytes/resourceBytes.
+    let downloadCacheRanges: [ClosedRange<Double>]
     let onEditingChanged: (Bool) -> Void
 
     @State private var isEditing = false
@@ -21,26 +18,14 @@ struct BufferedTimelineSlider: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Color(white: 0.16)).frame(height: trackHeight)
 
-                Capsule()
-                    .fill(Color(white: 0.34))
-                    .frame(width: max(0, width * CGFloat(min(max(downloadCacheFraction, 0), 1))), height: trackHeight)
-
-                ForEach(Array(normalizedVerifiedRanges.enumerated()), id: \.offset) { _, buffered in
+                ForEach(Array(normalizedDownloadRanges.enumerated()), id: \.offset) { _, cached in
                     Capsule()
                         .fill(Color(white: 0.48))
-                        .frame(width: max(3, segmentWidth(buffered, totalWidth: width)), height: trackHeight)
-                        .offset(x: segmentOffset(buffered, totalWidth: width))
-                }
-
-                ForEach(Array(normalizedBufferedRanges.enumerated()), id: \.offset) { _, buffered in
-                    Capsule()
-                        .fill(Color(white: 0.72))
-                        .frame(width: max(3, segmentWidth(buffered, totalWidth: width)), height: 7)
-                        .offset(x: segmentOffset(buffered, totalWidth: width))
+                        .frame(width: max(2, width * CGFloat(cached.upperBound - cached.lowerBound)), height: trackHeight)
+                        .offset(x: width * CGFloat(cached.lowerBound))
                 }
 
                 Capsule().fill(Color.white).frame(width: progressWidth(totalWidth: width), height: 4)
-
             }
             .frame(height: max(geometry.size.height, 24))
             .contentShape(Rectangle())
@@ -75,13 +60,10 @@ struct BufferedTimelineSlider: View {
         }
     }
 
-    private var normalizedVerifiedRanges: [ClosedRange<Double>] { normalized(verifiedBufferedRanges) }
-    private var normalizedBufferedRanges: [ClosedRange<Double>] { normalized(bufferedRanges) }
-
-    private func normalized(_ ranges: [ClosedRange<Double>]) -> [ClosedRange<Double>] {
-        ranges.compactMap { item in
-            let lower = max(range.lowerBound, min(range.upperBound, item.lowerBound))
-            let upper = max(range.lowerBound, min(range.upperBound, item.upperBound))
+    private var normalizedDownloadRanges: [ClosedRange<Double>] {
+        downloadCacheRanges.compactMap { item in
+            let lower = min(1, max(0, item.lowerBound))
+            let upper = min(1, max(0, item.upperBound))
             return upper > lower ? lower...upper : nil
         }
     }
@@ -99,13 +81,6 @@ struct BufferedTimelineSlider: View {
     }
 
     private func progressWidth(totalWidth: CGFloat) -> CGFloat { totalWidth * fraction(for: value) }
-
-
-    private func segmentOffset(_ buffered: ClosedRange<Double>, totalWidth: CGFloat) -> CGFloat { totalWidth * fraction(for: buffered.lowerBound) }
-
-    private func segmentWidth(_ buffered: ClosedRange<Double>, totalWidth: CGFloat) -> CGFloat {
-        max(0, totalWidth * (fraction(for: buffered.upperBound) - fraction(for: buffered.lowerBound)))
-    }
 
     private func valueForLocation(_ x: CGFloat, totalWidth: CGFloat) -> Double {
         let ratio = Double(min(max(x / max(totalWidth, 1), 0), 1))

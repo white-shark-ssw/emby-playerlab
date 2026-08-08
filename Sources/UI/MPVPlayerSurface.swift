@@ -12,7 +12,7 @@ final class MPVSurfaceUIView: UIView {
             displayLayer?.removeFromSuperlayer()
             displayLayer = layer
             self.layer.addSublayer(layer)
-            DiagnosticsLogger.shared.log("MPVSurface", "attach layer=CAMetalLayer")
+            DiagnosticsLogger.shared.log("MPVSurface", "attach layer=CAMetalLayer host=UIViewRepresentable")
         }
         setNeedsLayout()
     }
@@ -24,6 +24,11 @@ final class MPVSurfaceUIView: UIView {
     }
 
     deinit { detach() }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        setNeedsLayout()
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -47,44 +52,22 @@ final class MPVSurfaceUIView: UIView {
     }
 }
 
-final class MPVSurfaceViewController: UIViewController {
-    private let surfaceView = MPVSurfaceUIView()
-
-    override func loadView() {
-        surfaceView.backgroundColor = .black
-        surfaceView.isOpaque = true
-        surfaceView.clipsToBounds = true
-        view = surfaceView
-    }
-
-    func attach(_ layer: CAMetalLayer) { surfaceView.attach(layer) }
-    func detach() { surfaceView.detach() }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        surfaceView.setNeedsLayout()
-    }
-
-    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
-        DiagnosticsLogger.shared.log("MPVSurface", "transition target=\(Int(size.width))x\(Int(size.height))")
-        coordinator.animate(alongsideTransition: { [weak self] _ in self?.surfaceView.setNeedsLayout() }) { [weak self] _ in
-            self?.surfaceView.setNeedsLayout()
-            self?.surfaceView.layoutIfNeeded()
-        }
-        super.viewWillTransition(to: size, with: coordinator)
-    }
-}
-
-struct MPVPlayerSurface: UIViewControllerRepresentable {
+struct MPVPlayerSurface: UIViewRepresentable {
     let displayLayer: CAMetalLayer
 
-    func makeUIViewController(context: Context) -> MPVSurfaceViewController {
-        let controller = MPVSurfaceViewController()
-        controller.loadViewIfNeeded()
-        controller.attach(displayLayer)
-        return controller
+    func makeUIView(context: Context) -> MPVSurfaceUIView {
+        let view = MPVSurfaceUIView()
+        view.backgroundColor = .black
+        view.isOpaque = true
+        view.clipsToBounds = true
+        view.attach(displayLayer)
+        return view
     }
 
-    func updateUIViewController(_ uiViewController: MPVSurfaceViewController, context: Context) { uiViewController.attach(displayLayer) }
-    static func dismantleUIViewController(_ uiViewController: MPVSurfaceViewController, coordinator: ()) { uiViewController.detach() }
+    func updateUIView(_ uiView: MPVSurfaceUIView, context: Context) {
+        uiView.attach(displayLayer)
+        uiView.setNeedsLayout()
+    }
+
+    static func dismantleUIView(_ uiView: MPVSurfaceUIView, coordinator: ()) { uiView.detach() }
 }

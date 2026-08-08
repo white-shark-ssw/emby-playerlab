@@ -58,10 +58,10 @@ require("transport=KTVProxyTransportV2" not in mpv, "MPV core must not identify 
 require(mpv.count("if sharedTransportSession == nil") == 2, "MPV should have one direct fallback in prepare and one compatibility fallback")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
-require(project.count('MARKETING_VERSION: "0.12.2"') == 2, "project marketing version must be 0.12.2 in both settings scopes")
-require(project.count('CURRENT_PROJECT_VERSION: "60"') == 2, "project build number must be 60 in both settings scopes")
-require("<string>0.12.2</string>" in info and "<string>60</string>" in info, "Info.plist version/build mismatch")
-require('sourceVersion = "0.12.2"' in identity, "AppIdentity source version mismatch")
+require(project.count('MARKETING_VERSION: "0.12.3"') == 2, "project marketing version must be 0.12.3 in both settings scopes")
+require(project.count('CURRENT_PROJECT_VERSION: "61"') == 2, "project build number must be 60 in both settings scopes")
+require("<string>0.12.3</string>" in info and "<string>61</string>" in info, "Info.plist version/build mismatch")
+require('sourceVersion = "0.12.3"' in identity, "AppIdentity source version mismatch")
 
 for temporary_path in [
     ".github/workflows/apply-transport-v3-core.yml",
@@ -96,7 +96,7 @@ require("Audit Scheduler v2 invariants" in validate_workflow and "check_schedule
 require("Audit Scheduler v2 invariants" in build_workflow and "check_scheduler_v2_invariants.py" in build_workflow, "unsigned IPA build must enforce Scheduler v2 invariants")
 require("Audit live lane/startup invariants" in validate_workflow and "check_live_lane_startup_invariants.py" in validate_workflow, "Validate Source must enforce live lane/startup invariants")
 require("Audit live lane/startup invariants" in build_workflow and "check_live_lane_startup_invariants.py" in build_workflow, "unsigned IPA build must enforce live lane/startup invariants")
-require('IPA_NAME="EmbyPlayerLab-0.12.2-${GITHUB_SHA::7}-unsigned.ipa"' in build_workflow, "unsigned IPA filename must identify v0.12.2")
+require('IPA_NAME="EmbyPlayerLab-0.12.3-${GITHUB_SHA::7}-unsigned.ipa"' in build_workflow, "unsigned IPA filename must identify v0.12.3")
 require('scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0"' in build_workflow, "Release build must still validate iOS 15.0 minimum OS")
 
 print("Transport v3 invariants passed")
