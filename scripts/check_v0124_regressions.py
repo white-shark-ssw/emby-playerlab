@@ -62,11 +62,11 @@ metrics = re.search(r"func metrics\(\) async -> TransportMetricsSnapshot.*?func 
 require(metrics is not None, "metrics function missing")
 require("slotTasks.isEmpty" in metrics.group(0) and 'scheduleSlots(reason: "metrics-idle-repair")' in metrics.group(0), "idle scheduler self-heal missing")
 
-# Near startup and after a seek, prefetch is wave-bounded. The wave boundary must use the
-# same playbackAnchor/segment grid as PlaybackRangeMap. Otherwise a wave reset while the
-# frontier sits inside an active 32 MiB claim can expose a 4 MiB third tail beyond the pair.
+# Prefetch stays wave-bounded for the whole session. The wave boundary must use the same
+# playbackAnchor/segment grid as PlaybackRangeMap. Otherwise a wave reset while the frontier
+# sits inside an active 32 MiB claim can expose a 4 MiB third tail beyond the active pair.
 for needle in [
-    "strictFrontierReserveBytes: Int64 = 128 * 1_048_576",
+    "strictFrontierReserveBytes: Int64 = Int64.max",
     "sequentialWaveUpperBound",
     "sequentialWaveSegmentBytes",
     "action=strict-two-segment",
