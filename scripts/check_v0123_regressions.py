@@ -54,7 +54,9 @@ require("downloadCacheFraction:" not in slider, "aggregate cache fraction must n
 require("struct MPVPlayerSurface: UIViewRepresentable" in surface, "MPV surface must use stable UIViewRepresentable host")
 require("UIViewControllerRepresentable" not in surface and "MPVSurfaceViewController" not in surface, "custom MPV wrapper controller must not return")
 require("GeometryReader" in screen and "geometry.size.width" in screen and "geometry.size.height" in screen, "MPV host must follow SwiftUI orientation geometry")
-require("displayLayer.drawableSize =" not in surface, "UI must not force MoltenVK drawableSize")
+require(surface.count("displayLayer.drawableSize = expectedDrawable") == 1, "MPV surface may repair drawableSize only through the targeted orientation-sync path")
+require("expectedOrientation != 0, drawableOrientation != 0, expectedOrientation != drawableOrientation" in surface, "drawable repair must be gated by a real orientation mismatch")
+require("repair=orientation-sync" in surface, "orientation repair diagnostics missing")
 require("displayLayer.delegate" not in surface, "do not reintroduce CAMetalLayer delegate coupling")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
