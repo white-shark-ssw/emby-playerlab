@@ -558,10 +558,12 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let claimUpper: Int64
         let claimLookahead: Int
         if strictFrontier {
+            let relativeFrontier = max(0, snapshot.frontierByte - playbackAnchor)
+            let waveBase = playbackAnchor + (relativeFrontier / segmentBytes) * segmentBytes
             if sequentialWaveSegmentBytes != segmentBytes || sequentialWaveUpperBound <= snapshot.frontierByte || sequentialWaveUpperBound <= playbackAnchor {
                 sequentialWaveSegmentBytes = segmentBytes
-                sequentialWaveUpperBound = min(upper, safeAdd(snapshot.frontierByte, segmentBytes * 2))
-                DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "frontier wave start=\(snapshot.frontierByte) upper=\(sequentialWaveUpperBound) segment=\(segmentBytes) contiguous=\(contiguousBytes) action=strict-two-segment")
+                sequentialWaveUpperBound = min(upper, safeAdd(waveBase, segmentBytes * 2))
+                DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "frontier wave start=\(snapshot.frontierByte) base=\(waveBase) upper=\(sequentialWaveUpperBound) segment=\(segmentBytes) contiguous=\(contiguousBytes) action=strict-two-segment")
             }
             claimUpper = min(upper, sequentialWaveUpperBound)
             claimLookahead = 2
