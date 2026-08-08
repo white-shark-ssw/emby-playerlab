@@ -78,6 +78,9 @@ jobs:
           xcodegen --version
           pod --version
 
+      - name: Generate OS player app icons
+        run: python3 scripts/generate_os_player_icons.py
+
       - name: Generate Xcode project
         run: xcodegen generate
 
@@ -180,7 +183,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="EmbyPlayerLab-0.12.7-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="EmbyPlayerLab-0.13.0-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
@@ -202,8 +205,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          RELEASE_TAG="v0.12.7-build65-dev"
-          RELEASE_IPA="EmbyPlayerLab-v0.12.7-build65-${GITHUB_SHA::7}-unsigned.ipa"
+          RELEASE_TAG="v0.13.0-build66-dev"
+          RELEASE_IPA="OS-player-v0.13.0-build66-${GITHUB_SHA::7}-unsigned.ipa"
           cp "$IPA_NAME" "$RELEASE_IPA"
           shasum -a 256 "$RELEASE_IPA" | tee "$RELEASE_IPA.sha256"
           gh release delete "$RELEASE_TAG" --cleanup-tag -y >/dev/null 2>&1 || true
@@ -211,8 +214,8 @@ jobs:
             "$RELEASE_IPA" \
             "$RELEASE_IPA.sha256" \
             --target "$GITHUB_SHA" \
-            --title "EmbyPlayerLab v0.12.7 Build 65" \
-            --notes "Automated TrollStore test build for v0.12.7 Build 65 from $GITHUB_SHA" \
+            --title "OS player v0.13.0 Build 66" \
+            --notes "Automated TrollStore test build for OS player v0.13.0 Build 66 from $GITHUB_SHA" \
             --prerelease
 
       - name: Record successful dev build
@@ -220,12 +223,12 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          printf '{"version":"0.12.7","build":65,"commit":"%s","runId":%s,"status":"success"}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > .github/build-status.json
+          printf '{"version":"0.13.0","build":66,"commit":"%s","runId":%s,"status":"success"}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > .github/build-status.json
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add .github/build-status.json
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Build status: v0.12.7 Build 65 success run=$GITHUB_RUN_ID [skip-ipa]"
+          git commit -m "Build status: v0.13.0 Build 66 success run=$GITHUB_RUN_ID [skip-ipa]"
           git push origin HEAD:main
 
       - name: Record failed dev build
@@ -233,12 +236,12 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          printf '{"version":"0.12.7","build":65,"commit":"%s","runId":%s,"status":"failure"}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > .github/build-status.json
+          printf '{"version":"0.13.0","build":66,"commit":"%s","runId":%s,"status":"failure"}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > .github/build-status.json
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add .github/build-status.json
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Build status: v0.12.7 Build 65 failure run=$GITHUB_RUN_ID [skip-ipa]"
+          git commit -m "Build status: v0.13.0 Build 66 failure run=$GITHUB_RUN_ID [skip-ipa]"
           git push origin HEAD:main
 
       - name: Upload build logs
