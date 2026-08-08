@@ -60,9 +60,13 @@ require("repair=orientation-sync" in surface, "orientation repair diagnostics mi
 require("displayLayer.delegate" not in surface, "do not reintroduce CAMetalLayer delegate coupling")
 
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
-require(project.count('MARKETING_VERSION: "0.12.7"') == 2, "marketing version must be 0.12.7")
-require(project.count('CURRENT_PROJECT_VERSION: "65"') == 2, "build number must be 65")
-require("<string>0.12.7</string>" in info and "<string>65</string>" in info, "Info.plist version/build mismatch")
-require('sourceVersion = "0.12.7"' in identity, "source version mismatch")
+versions = re.findall(r'MARKETING_VERSION: "([^"]+)"', project)
+builds = re.findall(r'CURRENT_PROJECT_VERSION: "([^"]+)"', project)
+require(len(versions) == 2 and len(set(versions)) == 1, "marketing version must match in both settings scopes")
+require(len(builds) == 2 and len(set(builds)) == 1, "build number must match in both settings scopes")
+version = versions[0]
+build_number = builds[0]
+require(f"<string>{version}</string>" in info and f"<string>{build_number}</string>" in info, "Info.plist version/build mismatch")
+require(f'sourceVersion = "{version}"' in identity, "source version mismatch")
 
 print("v0.12.3 regressions retained: OK")
