@@ -47,3 +47,5 @@ jobs:
           git add -A
           git commit -m 'v0.12.6 Build 64: frontier rescue and urgent hedge [v0.12.6-final]'
           git push origin HEAD:main
+
+# explicit trigger after workflow reached default branch
