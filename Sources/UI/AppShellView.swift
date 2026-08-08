@@ -23,20 +23,20 @@ struct GlobalSettingsView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 20) {
                     Text("设置")
-                        .font(.system(size: 44, weight: .bold))
-                        .padding(.top, 26)
+                        .font(.largeTitle.weight(.bold))
+                        .padding(.top, 14)
 
                     settingsGroup {
                         NavigationLink(destination: PlaceholderSettingsView(title: "通用")) { settingsRow("通用", systemImage: "slider.horizontal.3") }
-                        Divider().padding(.leading, 52)
+                        Divider().padding(.leading, 48)
                         NavigationLink(destination: PlayerSettingsView()) { settingsRow("播放", systemImage: "playpause") }
-                        Divider().padding(.leading, 52)
+                        Divider().padding(.leading, 48)
                         NavigationLink(destination: PlaceholderSettingsView(title: "音频")) { settingsRow("音频", systemImage: "waveform") }
-                        Divider().padding(.leading, 52)
+                        Divider().padding(.leading, 48)
                         NavigationLink(destination: PlaceholderSettingsView(title: "字幕")) { settingsRow("字幕", systemImage: "captions.bubble") }
-                        Divider().padding(.leading, 52)
+                        Divider().padding(.leading, 48)
                         NavigationLink(destination: PlaceholderSettingsView(title: "缓存")) { settingsRow("缓存", systemImage: "externaldrive") }
                     }
 
@@ -47,12 +47,12 @@ struct GlobalSettingsView: View {
                             settingsRow("导出播放日志", systemImage: "doc.text")
                         }
                         .buttonStyle(.plain)
-                        Divider().padding(.leading, 52)
+                        Divider().padding(.leading, 48)
                         NavigationLink(destination: AboutOSPlayerView()) { settingsRow("关于 OS player", systemImage: "info.circle") }
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 36)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 30)
             }
             .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             .navigationBarHidden(true)
@@ -71,21 +71,21 @@ struct GlobalSettingsView: View {
     }
 
     private func settingsRow(_ title: String, systemImage: String) -> some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             Image(systemName: systemImage)
-                .font(.system(size: 21))
+                .font(.system(size: 18))
                 .foregroundColor(.blue)
-                .frame(width: 28)
+                .frame(width: 26)
             Text(title)
-                .font(.system(size: 20))
+                .font(.body)
                 .foregroundColor(.primary)
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(Color(uiColor: .tertiaryLabel))
         }
-        .padding(.horizontal, 16)
-        .frame(minHeight: 64)
+        .padding(.horizontal, 15)
+        .frame(minHeight: 54)
         .contentShape(Rectangle())
     }
 }
