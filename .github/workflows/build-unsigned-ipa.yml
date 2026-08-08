@@ -34,6 +34,9 @@ jobs:
       - name: Audit Transport v3 invariants
         run: python3 scripts/check_transport_v3_invariants.py
 
+      - name: Audit seek stall invariants
+        run: python3 scripts/check_seek_stall_invariants.py
+
       - name: Select Xcode 16.4
         run: |
           set -euo pipefail
@@ -152,7 +155,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="EmbyPlayerLab-0.11.0-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="EmbyPlayerLab-0.11.1-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"

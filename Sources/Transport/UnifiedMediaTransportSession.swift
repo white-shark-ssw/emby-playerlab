@@ -111,8 +111,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard !stopped, !range.isEmpty, let resolved = try? await resolve(), let store else { return }
         let normalized = clamp(range: range, contentLength: resolved.contentLength)
         guard !normalized.isEmpty else { return }
-        // A post-seek player request is authoritative even when every requested byte is already cached.
-        // Re-anchor first so background preload follows the new playback position instead of an old frontier.
+        // Range requests are scheduler hints only. During a pending seek, the actual read() callback
+        // is authoritative because AVFoundation may still issue cached/stale requests from the old timeline.
         if store.contains(normalized) {
             acceptRealDemand(normalized, resource: resolved, reason: "range-demand-cached")
             return
@@ -136,6 +136,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard offset >= 0, offset < resolved.contentLength, let store else { return Data() }
 
         let requested = min(length, Int(resolved.contentLength - offset))
+        let concreteRange = offset..<min(resolved.contentLength, offset + Int64(requested))
+        acceptRealDemand(concreteRange, resource: resolved, reason: "concrete-read")
         let available = store.availableLength(from: offset, maximumLength: Int64(requested))
         metricsValue.bytesServed += Int64(requested)
         if available >= Int64(requested) { metricsValue.cacheHitBytes += Int64(requested) }
@@ -223,28 +225,33 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
     private func acceptRealDemand(_ range: Range<Int64>, resource: TransportResolvedResource, reason: String) {
         guard !range.isEmpty, let store else { return }
-        let metadata = isMetadataProbe(range, resource: resource)
+        let concreteReason = reason == "concrete-read" || reason == "blocked-read" || reason == "byte-offset"
+        // Size/distance metadata heuristics are valid only for speculative Range hints. Once the
+        // player actually reads an offset it is a real demux dependency; poorly interleaved audio/video
+        // tracks can legitimately issue tiny reads hundreds of MiB apart.
+        let metadata = concreteReason ? false : isMetadataProbe(range, resource: resource)
         let pendingUserSeek = Date() <= pendingUserSeekUntil
-        let concretePlaybackDemand = !metadata && (reason == "blocked-read" || reason == "byte-offset")
-        let speculativeLargeRange = reason.hasPrefix("range-demand") && Int64(range.count) > blockBytes * 2
+        let concretePlaybackDemand = concreteReason
+        var reanchored = false
         if concretePlaybackDemand { lastConcretePlaybackDemand = range }
 
-        // AVAssetResourceLoader often emits a very large speculative range immediately after a seek.
-        // It is not necessarily the byte position that AVFoundation will actually block on. Keep the
-        // user-seek token alive until the concrete read/byte-offset demand arrives; otherwise the
-        // scheduler can anchor hundreds of MiB away from the frame AVPlayer is really waiting for.
-        if pendingUserSeek, !metadata, speculativeLargeRange {
+        // AVFoundation may emit stale/cached range requests from the pre-seek timeline while a seek is
+        // still settling. Only the byte offset actually consumed by read(), or MPV's explicit byte seek,
+        // may consume the pending seek token. This mirrors a logical-position reader: requested ranges
+        // are hints, actual reads are authoritative.
+        if pendingUserSeek, !metadata, !concretePlaybackDemand {
             DiagnosticsLogger.shared.log(
                 "UnifiedAnchor",
-                "seek-candidate deferred request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) awaitingConcreteDemand=true anchor=\(playbackAnchor)"
+                "seek-candidate deferred request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) awaitingConcreteRead=true anchor=\(playbackAnchor)"
             )
             return
         }
 
-        if pendingUserSeek, !metadata {
+        if pendingUserSeek, !metadata, concretePlaybackDemand {
             pendingUserSeekUntil = .distantPast
             let previous = playbackAnchor
             playbackAnchor = range.lowerBound
+            reanchored = true
             DiagnosticsLogger.shared.log(
                 "UnifiedAnchor",
                 "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason)"
@@ -253,14 +260,17 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         } else if concretePlaybackDemand {
             let distance = range.lowerBound >= playbackAnchor ? range.lowerBound - playbackAnchor : playbackAnchor - range.lowerBound
             if distance > blockBytes * 4 {
-                let previous = playbackAnchor
-                playbackAnchor = range.lowerBound
-                DiagnosticsLogger.shared.log("UnifiedAnchor", "blocked-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason)")
-                if let active = slotClaims[0], !active.range.contains(range.lowerBound) { cancelSlot(0, reason: "blocked-demand-reanchor") }
+                // Poorly interleaved MP4 files may legitimately alternate between distant audio/video
+                // byte regions. Do not reinterpret that second read head as another timeline seek and
+                // cancel the first head. The scheduler can use Slot 1 for the parallel urgent demand.
+                DiagnosticsLogger.shared.log("UnifiedAnchor", "parallel-read-head primary=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=keep-primary-anchor")
             }
         }
 
-        if store.availableLength(from: range.lowerBound, maximumLength: min(Int64(range.count), urgentBlockBytes)) > 0 { return }
+        if store.availableLength(from: range.lowerBound, maximumLength: min(Int64(range.count), urgentBlockBytes)) > 0 {
+            if reanchored { scheduleSlots(reason: "reanchor-cache-hit") }
+            return
+        }
         // Transport v3 exposes every received MiB immediately. If the requested byte already belongs
         // to Slot 0's active sequential stream, keep that warmed task alive and wait for its progressive
         // chunk instead of cancelling/reopening the same CDN connection as an urgent Range.
@@ -271,6 +281,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             return
         }
         if metadata, let slot1 = slotClaims[1], slot1.role == .metadata, slot1.range.contains(range.lowerBound) { return }
+        if !metadata, let slot1 = slotClaims[1], slot1.role == .urgentPlayback, slot1.range.contains(range.lowerBound) { return }
         installUrgent(range: range, metadata: metadata, reason: reason)
         scheduleSlots(reason: reason)
     }
@@ -297,12 +308,25 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             cancelSlot(1, reason: metadata ? "metadata-priority" : "urgent-playback-priority")
         }
         if let active = slotClaims[0], !active.range.contains(lower), active.role == .sequential {
-            cancelSlot(0, reason: "urgent-demand")
+            let secondaryCanTakePlayback = !metadata && Date() >= secondaryCooldownUntil && (slotTasks[1] == nil || slotClaims[1]?.role == .sequential)
+            if secondaryCanTakePlayback {
+                DiagnosticsLogger.shared.log("UnifiedDemand", "preserve slot0 sequential for parallel urgent request=\(candidate.lowerBound)-\(candidate.upperBound)")
+            } else {
+                cancelSlot(0, reason: "urgent-demand")
+            }
         }
     }
 
     private func scheduleSlots(reason: String) {
         guard !stopped, let resource, let store else { return }
+
+        // A second real playback read head may be hundreds of MiB away in poorly interleaved MP4.
+        // Serve it on Slot 1 while Slot 0 keeps the first playback head warm instead of cancelling
+        // back and forth between audio/video byte regions.
+        if let urgent = pendingPlaybackUrgentRange, !store.contains(urgent), Date() >= secondaryCooldownUntil, slotTasks[1] == nil, slotTasks[0] != nil, slotClaims[0]?.range.contains(urgent.lowerBound) != true {
+            pendingPlaybackUrgentRange = nil
+            startSlot(1, claim: SlotClaim(range: urgent, role: .urgentPlayback), reason: "parallel-urgent-\(reason)")
+        }
 
         // A tiny metadata probe (typical MP4/MKV tail index) may use Slot 1 while Slot 0 is
         // already serving urgent playback. Larger metadata stays on Slot 0 because worker 1 can
@@ -513,6 +537,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         if let error, !isCancellation(error) {
             if claim.role == .metadata, pendingMetadataRange == nil { pendingMetadataRange = claim.range }
+            if claim.role == .urgentPlayback, pendingPlaybackUrgentRange == nil { pendingPlaybackUrgentRange = claim.range }
             metricsValue.rangeFailureCount += 1
             DiagnosticsLogger.shared.log(
                 "UnifiedSlot",
@@ -587,8 +612,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
     private func preloadWindowBytes() -> Int64 {
         if NetworkPathMonitor.shared.isCellular {
-            // Cellular remains explicitly opt-in for background prefetch.
-            return configuration.ktvPreloadOnCellular ? max(0, configuration.cellularPreloadBytes) : 0
+            // Unified Transport v3 uses its own configured cellular byte window. A non-zero cellular
+            // budget means prefetch is enabled; zero remains the explicit opt-out. Do not inherit the
+            // legacy KTV proxy switch, otherwise v3 becomes urgent-only and can go idle after a seek.
+            return max(0, configuration.cellularPreloadBytes)
         }
         // On Wi-Fi the session disk budget is the real prefetch ceiling. The old 128 MiB
         // setting was only a forward-window hint and made a fast 115 connection stop by
