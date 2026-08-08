@@ -56,6 +56,9 @@ jobs:
       - name: Audit v0.12.6 frontier rescue regressions
         run: python3 scripts/check_v0126_frontier_rescue.py
 
+      - name: Audit v0.12.7 MPV rotation regressions
+        run: python3 scripts/check_v0127_mpv_rotation.py
+
       - name: Select Xcode 16.4
         run: |
           set -euo pipefail
