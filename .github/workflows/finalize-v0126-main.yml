@@ -1,0 +1,49 @@
+name: Finalize v0.12.6 Build 64
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/finalize_v0126_main.py'
+      - '.github/workflows/finalize-v0126-main.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-v0126-main
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    if: ${{ !contains(github.event.head_commit.message, '[v0.12.6-final]') }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Finalize release metadata
+        run: python3 scripts/finalize_v0126_main.py
+
+      - name: Run static regression gates
+        run: |
+          python3 scripts/check_transport_scheduler_invariants.py
+          python3 scripts/check_transport_v3_invariants.py
+          python3 scripts/check_seek_stall_invariants.py
+          python3 scripts/check_transport_stability_invariants.py
+          python3 scripts/check_scheduler_v2_invariants.py
+          python3 scripts/check_live_lane_startup_invariants.py
+          python3 scripts/check_v0122_regressions.py
+          python3 scripts/check_v0123_regressions.py
+          python3 scripts/check_v0124_regressions.py
+          python3 scripts/check_v0126_frontier_rescue.py
+
+      - name: Commit final v0.12.6 Build 64 state
+        run: |
+          rm -f scripts/finalize_v0126_main.py .github/workflows/finalize-v0126-main.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'v0.12.6 Build 64: frontier rescue and urgent hedge [v0.12.6-final]'
+          git push origin HEAD:main
