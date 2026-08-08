@@ -1,0 +1,29 @@
+name: Apply v0.12.1 Live Lane Startup
+
+on:
+  push:
+    branches: [chatgpt/v0.12.1-live-lane-startup]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v0.12.1-live-lane-startup
+      - name: Apply transport core
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_v0121_live_lane_startup.py
+          if git diff --quiet; then
+            echo "already applied"
+            exit 0
+          fi
+          git config user.name "ChatGPT CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add Sources/Transport/UnifiedMediaTransportSession.swift
+          git commit -m "Implement demand-driven startup metadata and live lane rotation"
+          git push origin HEAD:chatgpt/v0.12.1-live-lane-startup
