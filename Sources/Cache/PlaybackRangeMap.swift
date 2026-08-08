@@ -72,7 +72,7 @@ struct PlaybackRangeMap: Equatable {
             frontierByte: resourceLength > 0 ? min(frontier, resourceLength) : frontier,
             playbackBytes: playback.totalBytes,
             metadataBytes: metadata.totalBytes,
-            holeCount: holeCountIncludingInflight(from: anchor, through: furthestObservedEnd(resourceLength: resourceLength))
+            holeCount: physicalHoleCount(from: anchor, through: furthestObservedEnd(resourceLength: resourceLength))
         )
     }
 
@@ -82,9 +82,9 @@ struct PlaybackRangeMap: Equatable {
     }
 
 
-    private func holeCountIncludingInflight(from anchor: Int64, through upperBound: Int64) -> Int {
+    private func physicalHoleCount(from anchor: Int64, through upperBound: Int64) -> Int {
         guard upperBound > anchor else { return 0 }
-        var coverage = playback.ranges + downloading.values
+        var coverage = playback.ranges
         coverage.sort { $0.lowerBound < $1.lowerBound }
         var cursor = anchor
         var holes = 0

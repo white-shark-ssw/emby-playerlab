@@ -74,13 +74,18 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let laneHealthResetCooldownSeconds: TimeInterval = 25
     private let liveLanePeerFloorBps: Double = 4 * 1_048_576
     private let liveLaneAbsoluteFloorBps: Double = 1.25 * 1_048_576
+    private let liveLaneWifiAbsoluteFloorBps: Double = 2.5 * 1_048_576
     private let liveLaneRelativeFloor: Double = 0.45
-    private let liveLanePeakFloorBps: Double = 8 * 1_048_576
-    private let liveLanePeakRelativeFloor: Double = 0.30
-    private let liveLanePeakDropSeconds: TimeInterval = 0.9
+    private let liveLanePeakFloorBps: Double = 6 * 1_048_576
+    private let liveLanePeakRelativeFloor: Double = 0.45
+    private let liveLanePeakDropSeconds: TimeInterval = 1.0
     private let liveLaneRotationEscalationWindowSeconds: TimeInterval = 30
     private let liveLaneFirstBytePeerTimeoutSeconds: TimeInterval = 1.5
     private let liveLaneFirstByteHardTimeoutSeconds: TimeInterval = 3.0
+    private let liveLaneProgressWatchdogIntervalSeconds: TimeInterval = 0.75
+    private let liveLaneNoProgressPeerSeconds: TimeInterval = 1.25
+    private let liveLaneNoProgressHardSeconds: TimeInterval = 2.75
+    private let urgentFirstByteHedgeSeconds: TimeInterval = 0.65
     private let liveLaneSampleWindowSeconds: TimeInterval = 1.0
     private let liveLaneSampleMinimumBytes: Int64 = 1 * 1_048_576
     private let liveLaneResetCooldownSeconds: TimeInterval = 2
@@ -122,6 +127,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var liveLaneRotationRequested: Set<Int> = []
     private var liveLaneResetPending: Set<Int> = []
     private var liveLaneSourceRefreshPending: Set<Int> = []
+    private var urgentReceivedBytes: [Int: Int64] = [0: 0, 1: 0]
+    private var urgentHedgeRequested: Set<Int> = []
+    private var urgentRaceResetPending: Set<Int> = []
     private var startupMetadataReceivedBytes: [Int: Int64] = [0: 0, 1: 0]
     private var startupMetadataStartedAt: [Int: Date] = [0: .distantPast, 1: .distantPast]
     private var startupMetadataLastProgressAt: [Int: Date] = [0: .distantPast, 1: .distantPast]
@@ -610,6 +618,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             live.slowStreak = 0
             liveLaneState[slot] = live
             armFirstByteWatchdog(slot: slot, generation: generation)
+            armSequentialProgressWatchdog(slot: slot, generation: generation)
+        } else if claim.role == .urgentPlayback {
+            urgentReceivedBytes[slot] = 0
+            urgentHedgeRequested.remove(slot)
+            armUrgentFirstByteHedge(slot: slot, generation: generation)
         } else if claim.role == .startupMetadata {
             startupMetadataReceivedBytes[slot] = 0
             startupMetadataStartedAt[slot] = Date()
@@ -689,6 +702,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                             try store.write(chunk, at: claim.range.lowerBound + receivedForClaim)
                             receivedForClaim += Int64(chunk.count)
                             attemptReceived += Int64(chunk.count)
+                            if claim.role == .urgentPlayback { urgentReceivedBytes[slot] = receivedForClaim }
                             if claim.role == .startupMetadata {
                                 startupMetadataReceivedBytes[slot] = receivedForClaim
                                 startupMetadataLastProgressAt[slot] = Date()
@@ -701,6 +715,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                                 let firstChunkSeconds = max(Date().timeIntervalSince(attemptStarted), 0.001)
                                 let firstChunkBps = Double(chunk.count) / firstChunkSeconds
                                 DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) first-chunk role=\(claim.role.rawValue) range=\(remaining.lowerBound)-\(remaining.upperBound) bytes=\(chunk.count) ms=\(Int(firstChunkSeconds * 1000)) speedBps=\(Int(firstChunkBps))")
+                                if claim.role == .urgentPlayback { resolveUrgentRaceWinner(slot: slot, generation: generation, claim: claim) }
                                 if claim.role == .metadata, !slowStartupRefreshUsed, Date().timeIntervalSince(createdAt) < 35, firstChunkSeconds >= startupMetadataSlowFirstChunkSeconds, firstChunkBps < startupMetadataSlowFirstChunkBps {
                                     slowStartupRefreshUsed = true
                                     restartAfterSlowStartup = true
@@ -744,7 +759,18 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let startupRetry = startupMetadataRetryRequested.remove(slot) != nil
         let liveRotation = liveLaneRotationRequested.remove(slot) != nil
         let refreshSource = liveLaneSourceRefreshPending.contains(slot)
-        if startupRetry {
+        let urgentRaceReset = urgentRaceResetPending.remove(slot) != nil
+        urgentReceivedBytes[slot] = 0
+        urgentHedgeRequested.remove(slot)
+        if urgentRaceReset {
+            let reset = client.resetStreamLane(worker: slot, reason: "urgent-race-loser")
+            if !reset {
+                liveLaneResetPending.insert(slot)
+                armLiveLaneResetRetry(slot: slot, attempt: 1)
+            }
+            laneHealth[slot] = LaneHealthState()
+            DiagnosticsLogger.shared.log("UnifiedHedge", "slot=\(slot) action=reset-race-loser success=\(reset) pending=\(!reset)")
+        } else if startupRetry {
             startupMetadataQueue.insert(claim.range, at: 0)
             let reset = client.resetStreamLane(worker: slot, reason: "startup-metadata-straggler")
             if !reset {
@@ -911,6 +937,65 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         }
     }
 
+    private func armUrgentFirstByteHedge(slot: Int, generation: Int) {
+        Task { [weak self] in
+            let delay = self?.urgentFirstByteHedgeSeconds ?? 0.65
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            await self?.checkUrgentFirstByteHedge(slot: slot, generation: generation)
+        }
+    }
+
+    private func checkUrgentFirstByteHedge(slot: Int, generation: Int) {
+        guard slotGenerations[slot] == generation, let claim = slotClaims[slot], claim.role == .urgentPlayback, urgentReceivedBytes[slot, default: 0] == 0, !urgentHedgeRequested.contains(slot) else { return }
+        let peerSlot = slot == 0 ? 1 : 0
+        guard let peerClaim = slotClaims[peerSlot], peerClaim.role == .sequential, !liveLaneResetPending.contains(peerSlot), !liveLaneSourceRefreshPending.contains(peerSlot) else { return }
+        urgentHedgeRequested.insert(slot)
+        DiagnosticsLogger.shared.log("UnifiedHedge", "slot=\(slot) peer=\(peerSlot) action=hedge-urgent-first-byte afterMs=\(Int(urgentFirstByteHedgeSeconds * 1000)) range=\(claim.range.lowerBound)-\(claim.range.upperBound) peerRange=\(peerClaim.range.lowerBound)-\(peerClaim.range.upperBound)")
+        installUrgent(range: claim.range, metadata: false, reason: "urgent-first-byte-hedge")
+        scheduleSlots(reason: "urgent-first-byte-hedge")
+    }
+
+    private func resolveUrgentRaceWinner(slot: Int, generation: Int, claim: SlotClaim) {
+        guard slotGenerations[slot] == generation, slotClaims[slot]?.role == .urgentPlayback else { return }
+        let peerSlot = slot == 0 ? 1 : 0
+        guard let peerClaim = slotClaims[peerSlot], peerClaim.role == .urgentPlayback, peerClaim.range == claim.range else { return }
+        urgentRaceResetPending.insert(peerSlot)
+        DiagnosticsLogger.shared.log("UnifiedHedge", "winner=\(slot) loser=\(peerSlot) action=urgent-race-won range=\(claim.range.lowerBound)-\(claim.range.upperBound)")
+        cancelSlot(peerSlot, reason: "urgent-race-lost")
+    }
+
+    private func armSequentialProgressWatchdog(slot: Int, generation: Int) {
+        Task { [weak self] in
+            let delay = self?.liveLaneProgressWatchdogIntervalSeconds ?? 0.75
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            await self?.checkSequentialProgressWatchdog(slot: slot, generation: generation)
+        }
+    }
+
+    private func checkSequentialProgressWatchdog(slot: Int, generation: Int) {
+        guard slotGenerations[slot] == generation, slotClaims[slot]?.role == .sequential, let live = liveLaneState[slot], live.generation == generation, !liveLaneRotationRequested.contains(slot) else { return }
+        let now = Date()
+        if live.receivedBytes > 0 {
+            let stalledSeconds = now.timeIntervalSince(live.lastChunkAt)
+            let peerSlot = slot == 0 ? 1 : 0
+            let peerLive = liveLaneState[peerSlot]
+            let peerCompleted = laneHealth[peerSlot]
+            let peerFresh = peerLive.map { $0.recentBps > 0 && now.timeIntervalSince($0.lastSampleAt) <= 2.5 } ?? false
+            let peerBps = peerFresh ? (peerLive?.recentBps ?? 0) : (peerCompleted?.averageBps ?? 0)
+            if stalledSeconds >= liveLaneNoProgressPeerSeconds, peerBps >= 2 * 1_048_576 {
+                DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=midstream-no-progress stalledMs=\(Int(stalledSeconds * 1000)) peerBps=\(Int(peerBps)) received=\(live.receivedBytes)")
+                requestLiveLaneRotation(slot: slot, generation: generation, reason: "midstream-no-progress-peer-fast", observedBps: live.recentBps, peerBps: peerBps)
+                return
+            }
+            if stalledSeconds >= liveLaneNoProgressHardSeconds {
+                DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=midstream-hard-timeout stalledMs=\(Int(stalledSeconds * 1000)) peerBps=\(Int(peerBps)) received=\(live.receivedBytes)")
+                requestLiveLaneRotation(slot: slot, generation: generation, reason: "midstream-no-progress-hard", observedBps: live.recentBps, peerBps: peerBps)
+                return
+            }
+        }
+        armSequentialProgressWatchdog(slot: slot, generation: generation)
+    }
+
     private func armFirstByteWatchdog(slot: Int, generation: Int) {
         let peerDelay = liveLaneFirstBytePeerTimeoutSeconds
         let hardDelay = liveLaneFirstByteHardTimeoutSeconds - liveLaneFirstBytePeerTimeoutSeconds
@@ -970,7 +1055,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let peerLiveFresh = peerLive.map { $0.recentBps > 0 && now.timeIntervalSince($0.lastSampleAt) <= 2.5 } ?? false
         let peerBps = peerLiveFresh ? (peerLive?.recentBps ?? 0) : 0
         let relativeSlow = peerLiveFresh && peerBps >= liveLanePeerFloorBps && live.recentBps < peerBps * liveLaneRelativeFloor
-        let absoluteSlow = now.timeIntervalSince(live.startedAt) >= 3.0 && live.receivedBytes >= 4 * 1_048_576 && live.recentBps < liveLaneAbsoluteFloorBps
+        let absoluteFloorBps = NetworkPathMonitor.shared.isCellular ? liveLaneAbsoluteFloorBps : liveLaneWifiAbsoluteFloorBps
+        let absoluteSlow = now.timeIntervalSince(live.startedAt) >= 3.0 && live.receivedBytes >= 4 * 1_048_576 && live.recentBps < absoluteFloorBps
         let peakRelativeSlow = live.peakBps >= liveLanePeakFloorBps && windowBps < live.peakBps * liveLanePeakRelativeFloor
         if peakRelativeSlow {
             if live.badSince == .distantPast { live.badSince = now }
@@ -980,7 +1066,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let peakDropSeconds = live.badSince == .distantPast ? 0 : now.timeIntervalSince(live.badSince)
         let sustainedPeakDrop = peakRelativeSlow && peakDropSeconds >= liveLanePeakDropSeconds
         if relativeSlow || absoluteSlow { live.slowStreak += 1 }
-        else if live.recentBps >= max(liveLaneAbsoluteFloorBps * 1.25, peerBps * 0.65) { live.slowStreak = 0 }
+        else if live.recentBps >= max(absoluteFloorBps * 1.25, peerBps * 0.65) { live.slowStreak = 0 }
         liveLaneState[slot] = live
         let peakRatio = live.peakBps > 0 ? windowBps / live.peakBps : 1
         DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) windowMs=\(Int(sampleSeconds * 1000)) windowBytes=\(sampleBytes) sampleBps=\(Int(windowBps)) avgBps=\(Int(live.recentBps)) peakBps=\(Int(live.peakBps)) healthyBps=\(Int(live.lastHealthyBps)) peakRatio=\(String(format: "%.2f", peakRatio)) badMs=\(Int(peakDropSeconds * 1000)) peerBps=\(Int(peerBps)) slowStreak=\(live.slowStreak)")
@@ -997,6 +1083,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         var live = liveLaneState[slot] ?? LiveLaneState()
         let now = Date()
         guard now >= live.resetCooldownUntil else { return }
+        let peerSlot = slot == 0 ? 1 : 0
+        guard !liveLaneRotationRequested.contains(peerSlot), !liveLaneResetPending.contains(peerSlot), !liveLaneSourceRefreshPending.contains(peerSlot) else { return }
         if now.timeIntervalSince(live.lastRotationAt) > liveLaneRotationEscalationWindowSeconds { live.rotationCount = 0 }
         live.rotationCount += 1
         live.lastRotationAt = now
