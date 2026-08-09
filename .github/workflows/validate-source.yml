@@ -43,7 +43,7 @@ jobs:
           require('deploymentTarget: "15.0"' in project, "app deploymentTarget must remain 15.0")
           require('PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app' in project, "unexpected bundle identifier")
           require('PRODUCT_NAME: "OS player"' in project, "unexpected product name")
-          require('exactVersion: 0.41.0-n8.1.2' in project, "MPVKit version changed unexpectedly")
+          require('exactVersion: 1.0.0' in project, "MPVKit version changed unexpectedly")
 
           with Path("Config/Info.plist").open("rb") as handle:
               info = plistlib.load(handle)
@@ -108,7 +108,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .spm-cache
-          key: ${{ runner.os }}-mpvkit-0.41.0-n8.1.2-ktv-3.1.0-${{ hashFiles('project.yml', 'Podfile') }}
+          key: ${{ runner.os }}-mpvkit-1.0.0-ktv-3.1.0-${{ hashFiles('project.yml', 'Podfile') }}
 
       - name: Resolve MPVKit
         run: |
