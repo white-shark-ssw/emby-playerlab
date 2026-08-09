@@ -1,0 +1,133 @@
+name: Alpha1 Release Diagnose
+
+on:
+  pull_request:
+
+concurrency:
+  group: alpha1-release-diagnose-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize logs
+        run: |
+          : > release-build.log
+          : > package-resolution.log
+          : > pods-install.log
+          : > app-validation.log
+          : > min-os-report.log
+          : > package.log
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Generate packaging assets and project
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_os_player_icons.py
+          python3 scripts/version_os_player_icons.py
+          xcodegen generate
+
+      - name: Install pods
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          pod install --repo-update 2>&1 | tee pods-install.log
+
+      - name: Resolve MPVKit
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild \
+            -resolvePackageDependencies \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Release build exactly like IPA workflow
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee release-build.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
+            echo "::error::Release .app was not produced"
+            exit 1
+          fi
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py \
+            "$APP_PATH" \
+            --bundle-id "com.embyplayerlab.app" \
+            --version "0.13.2" \
+            --build "68" 2>&1 | tee app-validation.log
+
+      - name: Package IPA before compatibility audit
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          APP_PATH="${{ steps.app.outputs.path }}"
+          rm -rf Payload Alpha1-diagnose.ipa
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          /usr/bin/zip -qry Alpha1-diagnose.ipa Payload
+          /usr/bin/unzip -t Alpha1-diagnose.ipa 2>&1 | tee package.log
+          APP_DIR="$(basename "$APP_PATH")"
+          /usr/bin/unzip -Z1 Alpha1-diagnose.ipa | grep -Fx "Payload/$APP_DIR/Info.plist" >/dev/null
+
+      - name: Minimum OS and linked static objects
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" min-os-report.log release-build.log
+
+      - name: Upload diagnosis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Alpha1-release-diagnosis-${{ github.sha }}
+          path: |
+            release-build.log
+            package-resolution.log
+            pods-install.log
+            app-validation.log
+            min-os-report.log
+            package.log
+            Alpha1-diagnose.ipa
+          if-no-files-found: warn
+          retention-days: 3
