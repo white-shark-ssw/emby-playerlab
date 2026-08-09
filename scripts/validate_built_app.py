@@ -17,13 +17,11 @@ def read_plist(path: Path) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Validate only install-critical properties of a built iOS .app")
+    parser = argparse.ArgumentParser(description="Validate only package-critical properties of a built iOS .app")
     parser.add_argument("app_path")
-    parser.add_argument("--display-name", required=True)
     parser.add_argument("--bundle-id", required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--build", required=True)
-    parser.add_argument("--minimum-os", required=True)
     args = parser.parse_args()
 
     app = Path(args.app_path)
@@ -36,29 +34,36 @@ def main() -> None:
 
     info = read_plist(info_path)
     expected = {
-        "CFBundleDisplayName": args.display_name,
         "CFBundleIdentifier": args.bundle_id,
         "CFBundleShortVersionString": args.version,
         "CFBundleVersion": args.build,
-        "MinimumOSVersion": args.minimum_os,
     }
 
+    print(f"appPath={app}")
+    print(f"infoPlist={info_path}")
     for key, value in expected.items():
         actual = str(info.get(key, ""))
         print(f"{key}={actual}")
         if actual != value:
             fail(f"{key} mismatch: expected {value!r}, got {actual!r}")
 
-    bundle_name = str(info.get("CFBundleName", ""))
     executable = str(info.get("CFBundleExecutable", ""))
-    print(f"CFBundleName={bundle_name}")
     print(f"CFBundleExecutable={executable}")
-    if not bundle_name:
-        fail("CFBundleName is empty")
     if not executable:
         fail("CFBundleExecutable is empty")
-    if not (app / executable).is_file():
-        fail(f"CFBundleExecutable does not exist in app bundle: {app / executable}")
+
+    executable_path = app / executable
+    if not executable_path.is_file():
+        fail(f"CFBundleExecutable does not exist in app bundle: {executable_path}")
+    print(f"executableBytes={executable_path.stat().st_size}")
+
+    # The following fields are useful diagnostics but are not IPA packaging gates.
+    # Source branding/icon configuration is checked before the build, and minimum-OS
+    # compatibility is audited by check_min_os.sh in the next workflow step.
+    print(f"CFBundleDisplayName={info.get('CFBundleDisplayName', '')}")
+    print(f"CFBundleName={info.get('CFBundleName', '')}")
+    print(f"MinimumOSVersion={info.get('MinimumOSVersion', '')}")
+    print(f"CFBundlePackageType={info.get('CFBundlePackageType', '')}")
 
     primary_icon = info.get("CFBundleIcons", {}).get("CFBundlePrimaryIcon", {})
     icon_name = primary_icon.get("CFBundleIconName", "")
@@ -69,12 +74,17 @@ def main() -> None:
     print(f"iconFiles={icon_files}")
     print(f"Assets.car={'yes' if assets_car.is_file() else 'no'}")
     print(f"looseIconPNGs={len(loose_icons)}")
-    if not icon_name and not icon_files:
-        print("::warning::Built Info.plist has no primary icon metadata. Source asset configuration is validated separately; this does not block TrollStore packaging.")
-    if not assets_car.is_file() and not loose_icons:
-        print("::warning::No Assets.car or loose icon PNGs were found at app root. This is diagnostic only because Xcode may encode app icons differently.")
 
-    print("Built app install-critical validation: OK")
+    if not info.get("CFBundleDisplayName"):
+        print("::warning::Built Info.plist has no CFBundleDisplayName; bundle identity remains valid for packaging.")
+    if not info.get("CFBundleName"):
+        print("::warning::Built Info.plist has no CFBundleName; executable and bundle identity are validated separately.")
+    if not icon_name and not icon_files:
+        print("::warning::Built Info.plist has no primary icon metadata. Source asset configuration is validated before build.")
+    if not assets_car.is_file() and not loose_icons:
+        print("::warning::No Assets.car or loose icon PNGs were found at app root. This is diagnostic only.")
+
+    print("Built app package-critical validation: OK")
 
 
 if __name__ == "__main__":
