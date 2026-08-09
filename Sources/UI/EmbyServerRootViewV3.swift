@@ -211,7 +211,11 @@ private struct V3EmbyHomeView: View {
         VStack(spacing: 10) {
             TabView(selection: $carouselIndex) {
                 ForEach(Array(model.carouselItems.enumerated()), id: \.element.id) { index, item in
-                    V3HeroCard(item: item, client: client).tag(index)
+                    NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
+                        V3HeroCard(item: item, client: client)
+                    }
+                    .buttonStyle(.plain)
+                    .tag(index)
                 }
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
@@ -241,11 +245,25 @@ private struct V3EmbyHomeView: View {
     }
 
     private func landscapeRow(_ items: [LibraryItem]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 12) { ForEach(items) { item in V3LandscapeCard(item: item, client: client) } }.padding(.horizontal, 16) }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(items) { item in
+                    NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { V3LandscapeCard(item: item, client: client) }.buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
     }
 
     private func posterRow(_ items: [LibraryItem]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) { HStack(alignment: .top, spacing: 12) { ForEach(items) { item in V3PosterCard(item: item, client: client, width: 118) } }.padding(.horizontal, 16) }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(items) { item in
+                    NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { V3PosterCard(item: item, client: client, width: 118) }.buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
     }
 }
 
@@ -299,25 +317,46 @@ private final class V3EmbyHomeViewModel: ObservableObject {
             async let viewsRequest = client.userViews()
             async let resumeRequest = client.resumeItems(limit: 18)
             let (views, resume) = try await (viewsRequest, resumeRequest)
-            libraries = views
-            resumeItems = resume
-            preferences = reconcilePreferences(views)
+            libraries = uniqueItems(views)
+            resumeItems = uniqueItems(resume).filter { ["movie", "episode"].contains($0.type?.lowercased() ?? "") }
+            preferences = reconcilePreferences(libraries)
             persistPreferences(preferences)
 
             var latest: [String: [LibraryItem]] = [:]
             await withTaskGroup(of: (String, [LibraryItem]?).self) { group in
-                for library in views {
+                for library in libraries {
                     group.addTask {
-                        do { return (library.id, try await self.client.latestItems(parentId: library.id, limit: 16)) }
-                        catch { return (library.id, nil) }
+                        do {
+                            let types = Self.browseItemTypes(for: library)
+                            if types.isEmpty { return (library.id, try await self.client.latestItems(parentId: library.id, limit: 16)) }
+                            let page = try await self.client.libraryItems(parentId: library.id, limit: 16, sortBy: "DateCreated", sortOrder: "Descending", includeItemTypes: types)
+                            return (library.id, page.items)
+                        } catch {
+                            return (library.id, nil)
+                        }
                     }
                 }
-                for await result in group { if let items = result.1 { latest[result.0] = items } }
+                for await result in group { if let items = result.1 { latest[result.0] = uniqueItems(items) } }
             }
             latestByLibrary = latest
         } catch {
-            errorMessage = error.localizedDescription
+            if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
         }
+    }
+
+    private static func browseItemTypes(for library: LibraryItem) -> [String] {
+        switch library.collectionType?.lowercased() {
+        case "movies": return ["Movie"]
+        case "tvshows": return ["Series"]
+        case "homevideos": return ["Video"]
+        case "mixed": return ["Movie", "Series", "Video"]
+        default: return []
+        }
+    }
+
+    private func uniqueItems(_ items: [LibraryItem]) -> [LibraryItem] {
+        var seen = Set<String>()
+        return items.filter { seen.insert($0.id).inserted }
     }
 
     func savePreferences(_ next: [V3HomeLibraryPreference]) {
@@ -483,7 +522,11 @@ private struct V3LibraryBrowserView: View {
                         sortButton("随机", key: "Random")
                     } label: { Image(systemName: "arrow.up.arrow.down").font(.system(size: 20)) }
                 }
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 18) { ForEach(model.items) { item in V3PosterCard(item: item, client: client, width: nil) } }
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                    ForEach(model.items) { item in
+                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { V3PosterCard(item: item, client: client, width: nil) }.buttonStyle(.plain)
+                    }
+                }
                 if model.isLoading { ProgressView().frame(maxWidth: .infinity).padding() }
                 if let error = model.errorMessage { Text(error).foregroundColor(.red).font(.footnote) }
             }
@@ -522,8 +565,25 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false; hasLoaded = true }
-        do { items = try await client.libraryItems(parentId: library.id, limit: 120, sortBy: sortBy).items }
-        catch { errorMessage = error.localizedDescription }
+        do {
+            let expectedTypes: [String]
+            switch library.collectionType?.lowercased() {
+            case "movies": expectedTypes = ["Movie"]
+            case "tvshows": expectedTypes = ["Series"]
+            case "homevideos": expectedTypes = ["Video"]
+            case "mixed": expectedTypes = ["Movie", "Series", "Video"]
+            default: expectedTypes = []
+            }
+            let page = try await client.libraryItems(parentId: library.id, limit: 120, sortBy: sortBy, includeItemTypes: expectedTypes)
+            let allowed = Set(expectedTypes.map { $0.lowercased() })
+            var seen = Set<String>()
+            items = page.items.filter { item in
+                guard seen.insert(item.id).inserted else { return false }
+                return allowed.isEmpty || allowed.contains(item.type?.lowercased() ?? "")
+            }
+        } catch {
+            if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
+        }
     }
 }
 
@@ -539,28 +599,39 @@ private struct V3EmbyFavoritesView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 22) {
-                V3PageHeader(title: "收藏", onClose: onClose)
-                favoriteSection("电影", items: model.movies)
-                favoriteSection("剧集", items: model.series)
-                favoritePeople
-                favoriteSection("合集", items: model.collections)
-                if model.isLoading { ProgressView().frame(maxWidth: .infinity) }
-                if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
+        NavigationView {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 22) {
+                    V3PageHeader(title: "收藏", onClose: onClose)
+                    favoriteSection("电影", items: model.movies)
+                    favoriteSection("剧集", items: model.series)
+                    favoritePeople
+                    favoriteSection("合集", items: model.collections)
+                    if model.isLoading { ProgressView().frame(maxWidth: .infinity) }
+                    if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
+                }
+                .padding(.bottom, 26)
             }
-            .padding(.bottom, 26)
+            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+            .refreshable { await model.load() }
+            .onAppear { if !model.hasLoaded { Task { await model.load() } } }
+            .navigationBarHidden(true)
         }
-        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .refreshable { await model.load() }
-        .onAppear { if !model.hasLoaded { Task { await model.load() } } }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 
     @ViewBuilder
     private func favoriteSection(_ title: String, items: [LibraryItem]) -> some View {
         if !items.isEmpty {
             Text(title).font(.title2.weight(.bold)).padding(.horizontal, 16)
-            ScrollView(.horizontal, showsIndicators: false) { HStack(alignment: .top, spacing: 12) { ForEach(items) { item in V3PosterCard(item: item, client: client, width: 118) } }.padding(.horizontal, 16) }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(items) { item in
+                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { V3PosterCard(item: item, client: client, width: 118) }.buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
         }
     }
 
@@ -592,7 +663,7 @@ private final class V3FavoritesViewModel: ObservableObject {
     private(set) var hasLoaded = false
 
     init(client: EmbyAPIClient) { self.client = client }
-    var movies: [LibraryItem] { items.filter { ["movie", "video", "episode"].contains($0.type?.lowercased() ?? "") } }
+    var movies: [LibraryItem] { items.filter { $0.type?.caseInsensitiveCompare("Movie") == .orderedSame } }
     var series: [LibraryItem] { items.filter { $0.type?.caseInsensitiveCompare("Series") == .orderedSame } }
     var people: [LibraryItem] { items.filter { $0.type?.caseInsensitiveCompare("Person") == .orderedSame } }
     var collections: [LibraryItem] { items.filter { ["boxset", "collectionfolder"].contains($0.type?.lowercased() ?? "") } }
@@ -603,7 +674,7 @@ private final class V3FavoritesViewModel: ObservableObject {
         errorMessage = nil
         defer { isLoading = false; hasLoaded = true }
         do { items = try await client.favoriteItems() }
-        catch { errorMessage = error.localizedDescription }
+        catch { if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription } }
     }
 }
 
@@ -621,24 +692,36 @@ private struct V3EmbySearchView: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            V3PageHeader(title: "搜索", onClose: onClose)
-            HStack(spacing: 9) {
-                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                TextField("搜索当前 Emby", text: $searchText, onCommit: { Task { await model.search(searchText) } }).textInputAutocapitalization(.never).autocorrectionDisabled()
-                if !searchText.isEmpty { Button { searchText = ""; model.items = [] } label: { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary) } }
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 42)
-            .background(Color(uiColor: .secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .padding(.horizontal, 16)
+        NavigationView {
+            VStack(spacing: 10) {
+                V3PageHeader(title: "搜索", onClose: onClose)
+                HStack(spacing: 9) {
+                    Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                    TextField("搜索当前 Emby", text: $searchText, onCommit: { Task { await model.search(searchText) } }).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    if !searchText.isEmpty { Button { searchText = ""; model.items = [] } label: { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary) } }
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 42)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.horizontal, 16)
 
-            ScrollView { LazyVGrid(columns: columns, spacing: 18) { ForEach(model.items) { item in V3PosterCard(item: item, client: client, width: nil) } }.padding(.horizontal, 14).padding(.bottom, 26) }
-            if model.isLoading { ProgressView().padding(.bottom, 8) }
+                ScrollView {
+                    LazyVGrid(columns: columns, spacing: 18) {
+                        ForEach(model.items) { item in
+                            NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { V3PosterCard(item: item, client: client, width: nil) }.buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 26)
+                }
+                if model.isLoading { ProgressView().padding(.bottom, 8) }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+            .navigationBarHidden(true)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 }
 
@@ -654,7 +737,7 @@ private final class V3SearchViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do { items = try await client.searchItems(term: term) }
-        catch { items = [] }
+        catch { if !isEmbyRequestCancellation(error) { items = [] } }
     }
 }
 
