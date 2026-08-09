@@ -88,8 +88,7 @@ jobs:
           require('PRODUCT_NAME: "OS player"' in project, "unexpected PRODUCT_NAME")
           require('ASSETCATALOG_COMPILER_APPICON_NAME: OSPlayerIcon' in project, "OSPlayerIcon is not configured as app icon")
 
-          info_path = Path("Config/Info.plist")
-          with info_path.open("rb") as handle:
+          with Path("Config/Info.plist").open("rb") as handle:
               info = plistlib.load(handle)
           require(info.get("CFBundleDisplayName") == "OS player", "source CFBundleDisplayName must be OS player")
           require(str(info.get("CFBundleShortVersionString")) == "0.13.2", "source version must be 0.13.2")
@@ -202,13 +201,9 @@ jobs:
             --version "0.13.2" \
             --build "68" 2>&1 | tee app-validation.log
 
-      - name: Validate minimum OS and embedded binaries
-        run: |
-          set -euo pipefail
-          chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" min-os-report.log
-
-      - name: Package and verify TrollStore IPA
+      # Package first. A successful .app must always produce a downloadable TrollStore test IPA.
+      # Compatibility certification runs afterwards and may keep the job/release red without deleting this artifact.
+      - name: Package and verify TrollStore test IPA
         run: |
           set -euo pipefail
           set -o pipefail
@@ -218,7 +213,6 @@ jobs:
           IPA_NAME="EmbyPlayerLab-0.13.2-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
-
           {
             echo "IPA: $IPA_NAME"
             /usr/bin/unzip -t "$IPA_NAME"
@@ -232,7 +226,7 @@ jobs:
           } 2>&1 | tee package.log
           shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
 
-      - name: Upload IPA
+      - name: Upload TrollStore test IPA
         uses: actions/upload-artifact@v4
         with:
           name: EmbyPlayerLab-unsigned-${{ github.sha }}
@@ -242,7 +236,13 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish versioned dev IPA
+      - name: Validate runtime minimum OS and linked static objects
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" min-os-report.log build.log
+
+      - name: Publish compatibility-certified dev IPA
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -258,7 +258,7 @@ jobs:
             "$RELEASE_IPA.sha256" \
             --target "$GITHUB_SHA" \
             --title "OS player v0.13.2 Build 68" \
-            --notes "Automated TrollStore test build for OS player v0.13.2 Build 68 from $GITHUB_SHA" \
+            --notes "Compatibility-certified TrollStore test build for OS player v0.13.2 Build 68 from $GITHUB_SHA" \
             --prerelease
 
       - name: Summarize failure
@@ -267,7 +267,7 @@ jobs:
           {
             echo "## Build/packaging diagnostics"
             echo '```text'
-            grep -nEi '(^|[[:space:]])(error:|fatal error:)|::error::| failed:|ERROR ' build.log package-resolution.log pods-install.log mpv-module-maps.log app-validation.log built-info-plist.log min-os-report.log package.log | head -160 || true
+            grep -nEi '(^|[[:space:]])(error:|fatal error:)|::error::| failed:|ERROR ' build.log package-resolution.log pods-install.log mpv-module-maps.log app-validation.log built-info-plist.log min-os-report.log package.log | head -200 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
