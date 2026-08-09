@@ -84,16 +84,7 @@ final class PlaybackOrchestrator {
             "stall engine=\(kind.title) count=\(recoveryCount) transportHealthy=\(health.transportHealthy) \(health.reason) waiting=\(snapshot.waitingReason ?? "none") runtimeSwitch=disabled"
         )
 
-        if kind == .ktvAVPlayer {
-            if let metrics, metrics.activeRequestCount > 0, metrics.currentDownloadBytesPerSecond > 0 {
-                let speed = ByteCountFormatter.string(fromByteCount: Int64(metrics.currentDownloadBytesPerSecond), countStyle: .file)
-                let cached = ByteCountFormatter.string(fromByteCount: metrics.cacheBytes, countStyle: .file)
-                return .wait(message: "正在补充缓存 · \(speed)/s · 已缓存 \(cached)")
-            }
-            return .recoverTransport(message: "下载暂时没有推进，正在重新启动持续预取；不会切换播放引擎")
-        }
-
-        if kind == .resourceLoaderAVPlayer || kind == .ksAVIO || kind == .transportAVPlayer || kind == .mpv {
+        if kind == .resourceLoaderAVPlayer || kind == .transportAVPlayer || kind == .mpv {
             let currentForward = snapshot.bufferedRanges.reduce(0.0) { result, range in
                 guard range.lowerBound <= snapshot.position + 0.25, range.upperBound >= snapshot.position - 0.10 else { return result }
                 return max(result, range.upperBound - snapshot.position)
