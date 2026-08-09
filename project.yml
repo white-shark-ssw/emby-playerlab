@@ -10,7 +10,7 @@ options:
 packages:
   MPVKit:
     url: https://github.com/mpvkit/MPVKit.git
-    exactVersion: 0.41.0-n8.1.2
+    exactVersion: 1.0.0
 
 settings:
   base:
