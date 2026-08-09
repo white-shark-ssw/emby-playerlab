@@ -1,6 +1,11 @@
 import Foundation
 
 enum PlayerEngineKind: String, CaseIterable, Identifiable {
+    // Retired implementations remain internal until their large controller branches are
+    // removed in a dedicated source-only cleanup. They are not exposed by
+    // PlayerEnginePreference and are never selected by automatic mode.
+    case ktvAVPlayer
+    case ksAVIO
     case resourceLoaderAVPlayer
     case transportAVPlayer
     case avPlayer
@@ -10,6 +15,8 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .ktvAVPlayer: return "旧 KTV AVPlayer"
+        case .ksAVIO: return "旧 KSPlayer FFmpeg"
         case .resourceLoaderAVPlayer: return "智能 AVPlayer"
         case .transportAVPlayer: return "统一缓存 AVPlayer"
         case .avPlayer: return "直连 AVPlayer"
@@ -23,6 +30,8 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
         case .mpv: return 1
         case .transportAVPlayer: return 2
         case .avPlayer: return 3
+        case .ktvAVPlayer: return 100
+        case .ksAVIO: return 101
         }
     }
 }
