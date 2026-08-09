@@ -1,10 +1,8 @@
 import Foundation
 
 enum PlayerEngineKind: String, CaseIterable, Identifiable {
-    case ktvAVPlayer
     case resourceLoaderAVPlayer
     case transportAVPlayer
-    case ksAVIO
     case avPlayer
     case mpv
 
@@ -12,10 +10,8 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .ktvAVPlayer: return "KTV 缓存 AVPlayer"
         case .resourceLoaderAVPlayer: return "智能 AVPlayer"
         case .transportAVPlayer: return "统一缓存 AVPlayer"
-        case .ksAVIO: return "KSPlayer FFmpeg（旧实验）"
         case .avPlayer: return "直连 AVPlayer"
         case .mpv: return "MPV 兼容引擎"
         }
@@ -23,22 +19,18 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
 
     var automaticRank: Int {
         switch self {
-        case .ktvAVPlayer: return 0
-        case .resourceLoaderAVPlayer: return 1
-        case .ksAVIO: return 2
-        case .mpv: return 3
-        case .transportAVPlayer: return 4
-        case .avPlayer: return 5
+        case .resourceLoaderAVPlayer: return 0
+        case .mpv: return 1
+        case .transportAVPlayer: return 2
+        case .avPlayer: return 3
         }
     }
 }
 
 enum PlayerEnginePreference: String, CaseIterable, Identifiable {
     case automatic
-    case ktvAVPlayer
     case resourceLoaderAVPlayer
     case transportAVPlayer
-    case ksAVIO
     case avPlayer
     case mpv
 
@@ -47,10 +39,8 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .automatic: return "自动（推荐）"
-        case .ktvAVPlayer: return "诊断：KTV 缓存 AVPlayer"
         case .resourceLoaderAVPlayer: return "诊断：智能 AVPlayer"
         case .transportAVPlayer: return "统一缓存 AVPlayer"
-        case .ksAVIO: return "旧实验：KSPlayer FFmpeg（未链接）"
         case .avPlayer: return "诊断：直连 AVPlayer"
         case .mpv: return "MPV 兼容引擎"
         }
@@ -60,10 +50,8 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
 
     func resolved(for source: MediaSource) -> PlayerEngineKind {
         switch self {
-        case .ktvAVPlayer: return .ktvAVPlayer
         case .resourceLoaderAVPlayer: return .resourceLoaderAVPlayer
         case .transportAVPlayer: return .transportAVPlayer
-        case .ksAVIO: return .ksAVIO
         case .avPlayer: return .avPlayer
         case .mpv: return .mpv
         case .automatic:
