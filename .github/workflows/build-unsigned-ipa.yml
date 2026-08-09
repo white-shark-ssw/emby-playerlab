@@ -183,10 +183,25 @@ jobs:
         run: |
           set -euo pipefail
           APP_PATH="${{ steps.app.outputs.path }}"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP_PATH/Info.plist" | grep -Fx 'OS player'
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$APP_PATH/Info.plist" | grep -Fx 'OS player'
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Info.plist" | grep -Fx 'OS player'
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$APP_PATH/Info.plist" | grep -Fx 'OSPlayerIcon'
+          INFO="$APP_PATH/Info.plist"
+          DISPLAY_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$INFO")"
+          BUNDLE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$INFO")"
+          EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$INFO")"
+          ICON_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$INFO" 2>/dev/null || true)"
+          ICON_FILES="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles' "$INFO" 2>/dev/null || true)"
+          printf 'display=%s\nbundle=%s\nexecutable=%s\niconName=%s\niconFiles=%s\n' "$DISPLAY_NAME" "$BUNDLE_NAME" "$EXECUTABLE" "$ICON_NAME" "$ICON_FILES"
+          test "$DISPLAY_NAME" = 'OS player'
+          test "$BUNDLE_NAME" = 'OS player'
+          test -n "$EXECUTABLE"
+          test -f "$APP_PATH/$EXECUTABLE"
+          test -f "$APP_PATH/Assets.car"
+          if [[ -n "$ICON_NAME" ]]; then
+            test "$ICON_NAME" = 'OSPlayerIcon'
+          else
+            test -n "$ICON_FILES"
+          fi
+          grep -F 'ASSETCATALOG_COMPILER_APPICON_NAME: OSPlayerIcon' project.yml >/dev/null
+          python3 scripts/check_v0132_ui_regressions.py
 
       - name: Validate minimum OS
         if: success()
