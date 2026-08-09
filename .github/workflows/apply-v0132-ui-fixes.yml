@@ -1,0 +1,27 @@
+name: Apply v0.13.2 UI fixes
+
+on:
+  push:
+    branches: [dev/v0.13.2-ui-fixes]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[ui-fix-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply UI fixes
+        run: python3 scripts/apply_v0132_ui_fixes.py
+      - name: Commit patched source
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/apply-v0132-ui-fixes.yml scripts/apply_v0132_ui_fixes.py
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m "v0.13.2: fix app identity, Emby tabs and home layout [ui-fix-applied]"
+          git push origin HEAD:dev/v0.13.2-ui-fixes
