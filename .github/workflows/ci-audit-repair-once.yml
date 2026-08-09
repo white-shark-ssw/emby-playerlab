@@ -11,6 +11,7 @@ concurrency:
   group: ci-audit-repair-once
   cancel-in-progress: true
 
+# Existing on main before this trigger commit so GitHub Actions will register the push event.
 jobs:
   repair:
     runs-on: ubuntu-latest
