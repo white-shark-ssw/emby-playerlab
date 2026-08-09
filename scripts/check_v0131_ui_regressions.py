@@ -7,7 +7,7 @@ def require(condition: bool, message: str) -> None:
 
 
 server_list = Path("Sources/UI/ServerListView.swift").read_text()
-server_root = Path("Sources/UI/EmbyServerRootViewV2.swift").read_text()
+server_root = Path("Sources/UI/EmbyServerRootViewV3.swift").read_text()
 shell = Path("Sources/UI/AppShellView.swift").read_text()
 info = Path("Config/Info.plist").read_text()
 identity = Path("Sources/Core/AppIdentity.swift").read_text()
@@ -15,10 +15,10 @@ project = Path("project.yml").read_text()
 validate = Path(".github/workflows/validate-source.yml").read_text()
 build = Path(".github/workflows/build-unsigned-ipa.yml").read_text()
 
-require("EmbyServerRootViewV2(session: stored)" in server_list, "server list must open the full-height v0.13.1 shell")
+require("EmbyServerRootViewV3(session: stored)" in server_list, "server list must open the current full-height shell")
 require(".frame(maxWidth: .infinity, maxHeight: .infinity)" in server_root, "server content must fill all space above the bottom tabs")
 require("ScrollViewReader" in server_root and ".refreshable { await model.refresh() }" in server_root, "home must use native iOS 15 scrolling and pull-to-refresh")
-require('proxy.scrollTo("v2-home-top", anchor: .top)' in server_root, "home tab scroll-to-top behavior missing")
+require('proxy.scrollTo("v3-home-top", anchor: .top)' in server_root, "home tab scroll-to-top behavior missing")
 require("RefreshableScrollView(" not in server_root, "bounded UIKit refresh wrapper must not return to the active shell")
 require(".font(.system(size: 40" not in server_root and ".font(.system(size: 44" not in server_root, "oversized fixed page title returned")
 require(".font(.system(size: 44" not in server_list and ".font(.system(size: 44" not in shell, "oversized outer-shell title returned")
