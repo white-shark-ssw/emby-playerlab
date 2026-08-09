@@ -14,7 +14,6 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ !contains(github.event.head_commit.message, '[skip-ipa]') }}
     runs-on: macos-15
     timeout-minutes: 150
 
@@ -32,45 +31,6 @@ jobs:
           : > built-info-plist.log
           : > min-os-report.log
           : > package.log
-
-      # Retained source audits are mirrored here for historical regression scripts that
-      # verify both CI entry points. They are non-blocking for IPA packaging; Validate Source
-      # remains the authoritative source-regression gate.
-      - name: Audit Transport v3 invariants
-        continue-on-error: true
-        run: python3 scripts/check_transport_v3_invariants.py
-
-      - name: Audit seek stall invariants
-        continue-on-error: true
-        run: python3 scripts/check_seek_stall_invariants.py
-
-      - name: Audit transport stability invariants
-        continue-on-error: true
-        run: python3 scripts/check_transport_stability_invariants.py
-
-      - name: Audit Scheduler v2 invariants
-        continue-on-error: true
-        run: python3 scripts/check_scheduler_v2_invariants.py
-
-      - name: Audit live lane/startup invariants
-        continue-on-error: true
-        run: python3 scripts/check_live_lane_startup_invariants.py
-
-      - name: Audit v0.12.4 scheduler regressions
-        continue-on-error: true
-        run: python3 scripts/check_v0124_regressions.py
-
-      - name: Audit v0.12.6 frontier rescue regressions
-        continue-on-error: true
-        run: python3 scripts/check_v0126_frontier_rescue.py
-
-      - name: Audit v0.12.7 MPV rotation regressions
-        continue-on-error: true
-        run: python3 scripts/check_v0127_mpv_rotation.py
-
-      - name: Audit v0.13.1 UI regressions
-        continue-on-error: true
-        run: python3 scripts/check_v0131_ui_regressions.py
 
       - name: Export exact source snapshot
         run: |
