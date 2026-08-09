@@ -5,7 +5,14 @@ from pathlib import Path
 
 
 def fail(message: str) -> None:
-    raise SystemExit(f"::error::{message}")
+    text = f"::error::{message}"
+    print(text)
+    try:
+        with Path("build.log").open("a", encoding="utf-8") as handle:
+            handle.write(f"\n[BuiltAppValidation] {text}\n")
+    except Exception:
+        pass
+    raise SystemExit(1)
 
 
 def read_plist(path: Path) -> dict:
