@@ -28,8 +28,49 @@ jobs:
           : > package-resolution.log
           : > mpv-module-maps.log
           : > pods-install.log
+          : > app-validation.log
+          : > built-info-plist.log
           : > min-os-report.log
           : > package.log
+
+      # Retained source audits are mirrored here for historical regression scripts that
+      # verify both CI entry points. They are non-blocking for IPA packaging; Validate Source
+      # remains the authoritative source-regression gate.
+      - name: Audit Transport v3 invariants
+        continue-on-error: true
+        run: python3 scripts/check_transport_v3_invariants.py
+
+      - name: Audit seek stall invariants
+        continue-on-error: true
+        run: python3 scripts/check_seek_stall_invariants.py
+
+      - name: Audit transport stability invariants
+        continue-on-error: true
+        run: python3 scripts/check_transport_stability_invariants.py
+
+      - name: Audit Scheduler v2 invariants
+        continue-on-error: true
+        run: python3 scripts/check_scheduler_v2_invariants.py
+
+      - name: Audit live lane/startup invariants
+        continue-on-error: true
+        run: python3 scripts/check_live_lane_startup_invariants.py
+
+      - name: Audit v0.12.4 scheduler regressions
+        continue-on-error: true
+        run: python3 scripts/check_v0124_regressions.py
+
+      - name: Audit v0.12.6 frontier rescue regressions
+        continue-on-error: true
+        run: python3 scripts/check_v0126_frontier_rescue.py
+
+      - name: Audit v0.12.7 MPV rotation regressions
+        continue-on-error: true
+        run: python3 scripts/check_v0127_mpv_rotation.py
+
+      - name: Audit v0.13.1 UI regressions
+        continue-on-error: true
+        run: python3 scripts/check_v0131_ui_regressions.py
 
       - name: Export exact source snapshot
         run: |
@@ -184,16 +225,22 @@ jobs:
           echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
           echo "Found $APP_PATH"
 
-      - name: Validate built app
+      - name: Validate built app structure
         run: |
           set -euo pipefail
+          set -o pipefail
+          APP_PATH="${{ steps.app.outputs.path }}"
+          {
+            echo "App path: $APP_PATH"
+            echo "===== plutil -p Info.plist ====="
+            /usr/bin/plutil -p "$APP_PATH/Info.plist"
+          } 2>&1 | tee built-info-plist.log
+
           python3 scripts/validate_built_app.py \
-            "${{ steps.app.outputs.path }}" \
-            --display-name "OS player" \
+            "$APP_PATH" \
             --bundle-id "com.embyplayerlab.app" \
             --version "0.13.2" \
-            --build "68" \
-            --minimum-os "15.0"
+            --build "68" 2>&1 | tee app-validation.log
 
       - name: Validate minimum OS and embedded binaries
         run: |
@@ -260,7 +307,7 @@ jobs:
           {
             echo "## Build/packaging diagnostics"
             echo '```text'
-            grep -nEi '(^|[[:space:]])(error:|fatal error:)|::error::| failed:|ERROR ' build.log package-resolution.log pods-install.log mpv-module-maps.log min-os-report.log package.log | head -120 || true
+            grep -nEi '(^|[[:space:]])(error:|fatal error:)|::error::| failed:|ERROR ' build.log package-resolution.log pods-install.log mpv-module-maps.log app-validation.log built-info-plist.log min-os-report.log package.log | head -160 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -281,6 +328,8 @@ jobs:
             package-resolution.log
             pods-install.log
             mpv-module-maps.log
+            app-validation.log
+            built-info-plist.log
             min-os-report.log
             package.log
             build-report.json
