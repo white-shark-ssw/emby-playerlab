@@ -613,7 +613,11 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             var seen = Set(items.map(\.id))
             items.append(contentsOf: filtered.filter { seen.insert($0.id).inserted })
             nextStartIndex = requestedStartIndex + page.items.count
-            hasMore = !page.items.isEmpty && nextStartIndex < page.totalRecordCount
+            if let totalRecordCount = page.totalRecordCount {
+                hasMore = nextStartIndex < totalRecordCount
+            } else {
+                hasMore = page.items.count == pageSize
+            }
         } catch {
             if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
         }
