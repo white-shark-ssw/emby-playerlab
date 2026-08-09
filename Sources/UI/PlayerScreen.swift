@@ -248,6 +248,7 @@ struct PlayerScreen: View {
         case .transportAVPlayer: return "LEGACY"
         case .avPlayer: return "DIRECT"
         case .mpv: return "AUTO·MPV"
+        case .ktvAVPlayer, .ksAVIO: return "RETIRED"
         }
     }
 
