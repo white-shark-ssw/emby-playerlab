@@ -1,0 +1,37 @@
+name: Temporary v0.13.3 Paging Fix
+
+on:
+  push:
+    branches:
+      - chatgpt/v0133-grid-paging-detail-20260810
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v0133-grid-paging-detail-20260810
+      - name: Apply precise optional total count fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Sources/UI/EmbyServerRootViewV3.swift')
+          text = path.read_text()
+          old = '            hasMore = !page.items.isEmpty && nextStartIndex < page.totalRecordCount\n'
+          new = '''            if let totalRecordCount = page.totalRecordCount {\n                hasMore = nextStartIndex < totalRecordCount\n            } else {\n                hasMore = page.items.count == pageSize\n            }\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one paging expression, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Sources/UI/EmbyServerRootViewV3.swift
+          git commit -m 'fix: handle optional Emby total count in paging'
+          git push origin HEAD:chatgpt/v0133-grid-paging-detail-20260810
