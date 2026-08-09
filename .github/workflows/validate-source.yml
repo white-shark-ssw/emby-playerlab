@@ -25,45 +25,42 @@ jobs:
           : > package-resolution.log
           : > mpv-module-maps.log
           : > pods-install.log
+          : > source-audit.log
 
-      - name: Audit transport scheduler invariants
-        run: python3 scripts/check_transport_scheduler_invariants.py
-
-      - name: Audit Transport v3 invariants
-        run: python3 scripts/check_transport_v3_invariants.py
-
-      - name: Audit seek stall invariants
-        run: python3 scripts/check_seek_stall_invariants.py
-
-      - name: Audit transport stability invariants
-        run: python3 scripts/check_transport_stability_invariants.py
-
-      - name: Audit Scheduler v2 invariants
-        run: python3 scripts/check_scheduler_v2_invariants.py
-
-      - name: Audit live lane/startup invariants
-        run: python3 scripts/check_live_lane_startup_invariants.py
-
-      - name: Audit retained v0.12.2 regressions
-        run: python3 scripts/check_v0122_regressions.py
-
-      - name: Audit v0.12.3 seek/cache/MPV regressions
-        run: python3 scripts/check_v0123_regressions.py
-
-      - name: Audit v0.12.4 scheduler regressions
-        run: python3 scripts/check_v0124_regressions.py
-
-      - name: Audit v0.12.6 frontier rescue regressions
-        run: python3 scripts/check_v0126_frontier_rescue.py
-
-      - name: Audit v0.12.7 MPV rotation regressions
-        run: python3 scripts/check_v0127_mpv_rotation.py
-
-      - name: Audit v0.13.1 UI regressions
-        run: python3 scripts/check_v0131_ui_regressions.py
-
-      - name: Audit v0.13.2 UI regressions
-        run: python3 scripts/check_v0132_ui_regressions.py
+      - name: Audit all source invariants
+        run: |
+          set -uo pipefail
+          : > source-audit.log
+          failed=0
+          audits=(
+            "Audit transport scheduler invariants|check_transport_scheduler_invariants.py"
+            "Audit Transport v3 invariants|check_transport_v3_invariants.py"
+            "Audit seek stall invariants|check_seek_stall_invariants.py"
+            "Audit transport stability invariants|check_transport_stability_invariants.py"
+            "Audit Scheduler v2 invariants|check_scheduler_v2_invariants.py"
+            "Audit live lane/startup invariants|check_live_lane_startup_invariants.py"
+            "Audit retained v0.12.2 regressions|check_v0122_regressions.py"
+            "Audit v0.12.3 seek/cache/MPV regressions|check_v0123_regressions.py"
+            "Audit v0.12.4 scheduler regressions|check_v0124_regressions.py"
+            "Audit v0.12.6 frontier rescue regressions|check_v0126_frontier_rescue.py"
+            "Audit v0.12.7 MPV rotation regressions|check_v0127_mpv_rotation.py"
+            "Audit v0.13.1 UI regressions|check_v0131_ui_regressions.py"
+            "Audit v0.13.2 UI regressions|check_v0132_ui_regressions.py"
+          )
+          for item in "${audits[@]}"; do
+            name="${item%%|*}"
+            script="${item#*|}"
+            echo "===== $name ($script) =====" | tee -a source-audit.log
+            python3 "scripts/$script" 2>&1 | tee -a source-audit.log
+            rc=${PIPESTATUS[0]}
+            if ((rc != 0)); then
+              echo "::error::$name failed with exit code $rc" | tee -a source-audit.log
+              failed=1
+            else
+              echo "PASS: $name" | tee -a source-audit.log
+            fi
+          done
+          exit "$failed"
 
       - name: Select Xcode 16.4
         run: |
@@ -182,7 +179,7 @@ jobs:
           {
             echo "## First compiler errors"
             echo '```text'
-            grep -nE '(^|[[:space:]])(error:|fatal error:)' validate-build.log build-settings.log package-resolution.log pods-install.log mpv-module-maps.log | head -100 || true
+            grep -nE '(^|[[:space:]])(error:|fatal error:)|::error::| failed with exit code ' source-audit.log validate-build.log build-settings.log package-resolution.log pods-install.log mpv-module-maps.log | head -160 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -192,6 +189,7 @@ jobs:
         with:
           name: EmbyPlayerLab-validation-logs-${{ github.sha }}
           path: |
+            source-audit.log
             validate-build.log
             build-settings.log
             package-resolution.log
