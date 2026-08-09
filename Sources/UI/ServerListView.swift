@@ -10,82 +10,78 @@ struct ServerListView: View {
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack {
-                        Spacer()
-                        Button { showingAddServer = true } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 24, weight: .light))
-                        }
-                        Button {} label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 20, weight: .medium))
-                                .frame(width: 40, height: 40)
-                        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Spacer()
+                    Button { showingAddServer = true } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 24, weight: .light))
                     }
-
-                    Text("服务器")
-                        .font(.largeTitle.weight(.bold))
-
-                    HStack(spacing: 9) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 17))
-                            .foregroundColor(.secondary)
-                        TextField("搜索服务器", text: $searchText)
-                            .font(.body)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
+                    Button {} label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 20, weight: .medium))
+                            .frame(width: 40, height: 40)
                     }
-                    .padding(.horizontal, 13)
-                    .frame(height: 44)
-                    .background(Color(uiColor: .secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
 
-                    if filteredSessions.isEmpty {
-                        emptyState
-                            .padding(.top, 60)
-                    } else {
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(filteredSessions) { stored in
-                                serverCard(stored)
-                                    .onTapGesture {
-                                        sessionStore.activate(stored)
-                                        selectedSession = stored
+                Text("服务器")
+                    .font(.largeTitle.weight(.bold))
+
+                HStack(spacing: 9) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 17))
+                        .foregroundColor(.secondary)
+                    TextField("搜索服务器", text: $searchText)
+                        .font(.body)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                .padding(.horizontal, 13)
+                .frame(height: 44)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                if filteredSessions.isEmpty {
+                    emptyState
+                        .padding(.top, 60)
+                } else {
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(filteredSessions) { stored in
+                            serverCard(stored)
+                                .onTapGesture {
+                                    sessionStore.activate(stored)
+                                    selectedSession = stored
+                                }
+                                .contextMenu {
+                                    Button {
+                                        UIPasteboard.general.string = stored.serverURL.absoluteString
+                                    } label: {
+                                        Label("复制地址", systemImage: "doc.on.doc")
                                     }
-                                    .contextMenu {
-                                        Button {
-                                            UIPasteboard.general.string = stored.serverURL.absoluteString
-                                        } label: {
-                                            Label("复制地址", systemImage: "doc.on.doc")
-                                        }
-                                        Button(role: .destructive) {
-                                            Task { await sessionStore.remove(stored) }
-                                        } label: {
-                                            Label("删除", systemImage: "trash")
-                                        }
+                                    Button(role: .destructive) {
+                                        Task { await sessionStore.remove(stored) }
+                                    } label: {
+                                        Label("删除", systemImage: "trash")
                                     }
-                            }
+                                }
                         }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 32)
             }
-            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-            .navigationBarHidden(true)
-            .sheet(isPresented: $showingAddServer) {
-                AddServerView()
-                    .environmentObject(sessionStore)
-            }
-            .fullScreenCover(item: $selectedSession, onDismiss: { sessionStore.leaveServer() }) { stored in
-                EmbyServerRootViewV2(session: stored)
-                    .environmentObject(sessionStore)
-            }
+            .padding(.horizontal, 16)
+            .padding(.top, 0)
+            .padding(.bottom, 32)
         }
-        .navigationViewStyle(StackNavigationViewStyle())
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .sheet(isPresented: $showingAddServer) {
+            AddServerView()
+                .environmentObject(sessionStore)
+        }
+        .fullScreenCover(item: $selectedSession, onDismiss: { sessionStore.leaveServer() }) { stored in
+            EmbyServerRootViewV2(session: stored)
+                .environmentObject(sessionStore)
+        }
     }
 
     private var filteredSessions: [EmbySession] {
