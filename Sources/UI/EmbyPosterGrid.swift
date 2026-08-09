@@ -44,9 +44,9 @@ struct EmbyPosterGrid<Content: View>: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .clipped()
                     .onAppear {
-                        guard let onApproachingEnd else { return }
+                        guard let handler = onApproachingEnd else { return }
                         let threshold = max(0, items.count - EmbyPosterGridMetrics.loadAheadItemCount)
-                        if index >= threshold { onApproachingEnd() }
+                        if index >= threshold { handler() }
                     }
             }
         }
