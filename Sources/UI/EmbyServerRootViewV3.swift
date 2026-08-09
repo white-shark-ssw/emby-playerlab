@@ -498,7 +498,6 @@ private struct V3LibraryBrowserView: View {
     let library: LibraryItem
     let client: EmbyAPIClient
     @StateObject private var model: V3LibraryBrowserViewModel
-    private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
     init(library: LibraryItem, client: EmbyAPIClient) {
         self.library = library
@@ -522,21 +521,31 @@ private struct V3LibraryBrowserView: View {
                         sortButton("随机", key: "Random")
                     } label: { Image(systemName: "arrow.up.arrow.down").font(.system(size: 20)) }
                 }
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-                    ForEach(model.items) { item in
-                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { V3PosterCard(item: item, client: client, width: nil) }.buttonStyle(.plain)
+                .padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding)
+
+                if model.isLoading && model.items.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
+                } else {
+                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
+                        guard model.hasMore else { return }
+                        Task { await model.loadNextPage() }
+                    }) { item in
+                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
+                            V3PosterCard(item: item, client: client, width: nil)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                if model.isLoading { ProgressView().frame(maxWidth: .infinity).padding() }
-                if let error = model.errorMessage { Text(error).foregroundColor(.red).font(.footnote) }
+
+                if model.isLoading && !model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12) }
+                if let error = model.errorMessage { Text(error).foregroundColor(.red).font(.footnote).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
             }
-            .padding(.horizontal, 14)
             .padding(.bottom, 26)
         }
         .navigationTitle(library.name)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .onAppear { if !model.hasLoaded { Task { await model.load() } } }
+        .onAppear { if !model.hasLoaded { Task { await model.reload() } } }
     }
 
     private var contentTitle: String {
@@ -544,7 +553,7 @@ private struct V3LibraryBrowserView: View {
     }
 
     private func sortButton(_ title: String, key: String) -> some View {
-        Button { model.sortBy = key; Task { await model.load() } } label: { if model.sortBy == key { Label(title, systemImage: "checkmark") } else { Text(title) } }
+        Button { Task { await model.changeSort(to: key) } } label: { if model.sortBy == key { Label(title, systemImage: "checkmark") } else { Text(title) } }
     }
 }
 
@@ -553,17 +562,41 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     @Published var items: [LibraryItem] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
-    var sortBy = "DateCreated"
+    @Published private(set) var hasMore = true
+    @Published var sortBy = "DateCreated"
     private let library: LibraryItem
     private let client: EmbyAPIClient
+    private let pageSize = 60
+    private var nextStartIndex = 0
     private(set) var hasLoaded = false
 
     init(library: LibraryItem, client: EmbyAPIClient) { self.library = library; self.client = client }
 
-    func load() async {
+    func reload() async {
         guard !isLoading else { return }
+        items = []
+        nextStartIndex = 0
+        hasMore = true
+        hasLoaded = false
+        await fetchNextPage()
+    }
+
+    func loadNextPage() async {
+        guard hasLoaded, hasMore, !isLoading else { return }
+        await fetchNextPage()
+    }
+
+    func changeSort(to key: String) async {
+        guard key != sortBy else { return }
+        sortBy = key
+        await reload()
+    }
+
+    private func fetchNextPage() async {
+        guard !isLoading, hasMore else { return }
         isLoading = true
         errorMessage = nil
+        let requestedStartIndex = nextStartIndex
         defer { isLoading = false; hasLoaded = true }
         do {
             let expectedTypes: [String]
@@ -574,13 +607,13 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             case "mixed": expectedTypes = ["Movie", "Series", "Video"]
             default: expectedTypes = []
             }
-            let page = try await client.libraryItems(parentId: library.id, limit: 120, sortBy: sortBy, includeItemTypes: expectedTypes)
+            let page = try await client.libraryItems(parentId: library.id, limit: pageSize, startIndex: requestedStartIndex, sortBy: sortBy, includeItemTypes: expectedTypes)
             let allowed = Set(expectedTypes.map { $0.lowercased() })
-            var seen = Set<String>()
-            items = page.items.filter { item in
-                guard seen.insert(item.id).inserted else { return false }
-                return allowed.isEmpty || allowed.contains(item.type?.lowercased() ?? "")
-            }
+            let filtered = page.items.filter { allowed.isEmpty || allowed.contains($0.type?.lowercased() ?? "") }
+            var seen = Set(items.map(\.id))
+            items.append(contentsOf: filtered.filter { seen.insert($0.id).inserted })
+            nextStartIndex = requestedStartIndex + page.items.count
+            hasMore = !page.items.isEmpty && nextStartIndex < page.totalRecordCount
         } catch {
             if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
         }
@@ -624,13 +657,11 @@ private struct V3EmbyFavoritesView: View {
     private func favoriteSection(_ title: String, items: [LibraryItem]) -> some View {
         if !items.isEmpty {
             Text(title).font(.title2.weight(.bold)).padding(.horizontal, 16)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(items) { item in
-                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { V3PosterCard(item: item, client: client, width: 118) }.buttonStyle(.plain)
-                    }
+            EmbyPosterGrid(items: items) { item in
+                NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
+                    V3PosterCard(item: item, client: client, width: nil)
                 }
-                .padding(.horizontal, 16)
+                .buttonStyle(.plain)
             }
         }
     }
@@ -683,7 +714,6 @@ private struct V3EmbySearchView: View {
     let onClose: () -> Void
     @StateObject private var model: V3SearchViewModel
     @State private var searchText = ""
-    private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
     init(client: EmbyAPIClient, onClose: @escaping () -> Void) {
         self.client = client
@@ -707,12 +737,12 @@ private struct V3EmbySearchView: View {
                 .padding(.horizontal, 16)
 
                 ScrollView {
-                    LazyVGrid(columns: columns, spacing: 18) {
-                        ForEach(model.items) { item in
-                            NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { V3PosterCard(item: item, client: client, width: nil) }.buttonStyle(.plain)
+                    EmbyPosterGrid(items: model.items) { item in
+                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
+                            V3PosterCard(item: item, client: client, width: nil)
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 14)
                     .padding(.bottom, 26)
                 }
                 if model.isLoading { ProgressView().padding(.bottom, 8) }
@@ -847,7 +877,10 @@ private struct V3PosterCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ZStack(alignment: .bottomLeading) {
-                V3RemoteImage(url: client.imageURL(itemId: item.id, maxWidth: 440, tag: item.primaryImageTag), contentMode: .fill).aspectRatio(2.0 / 3.0, contentMode: .fit).frame(width: width).clipped()
+                V3RemoteImage(url: client.imageURL(itemId: item.id, maxWidth: 440, tag: item.primaryImageTag), contentMode: .fill)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(2.0 / 3.0, contentMode: .fill)
+                    .clipped()
                 if item.playbackProgress > 0 { GeometryReader { proxy in VStack { Spacer(); Rectangle().fill(Color.blue).frame(width: proxy.size.width * item.playbackProgress, height: 3) } } }
                 if let count = item.userData?.unplayedItemCount, count > 0 {
                     VStack { HStack { Spacer(); Text("\(count)").font(.caption2.weight(.bold)).foregroundColor(.white).padding(6).background(Color.blue).clipShape(Circle()) }; Spacer() }.padding(5)
@@ -857,10 +890,12 @@ private struct V3PosterCard: View {
             }
             .background(Color(uiColor: .secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            Text(item.name).font(.subheadline).lineLimit(1)
-            if let year = item.productionYear { Text(String(year)).font(.caption).foregroundColor(.secondary) }
+            Text(item.name).font(.subheadline).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            if let year = item.productionYear { Text(String(year)).font(.caption).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading) }
         }
         .frame(width: width, alignment: .leading)
+        .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
+        .clipped()
     }
 }
 
