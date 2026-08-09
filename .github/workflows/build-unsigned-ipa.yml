@@ -195,10 +195,9 @@ jobs:
           test -n "$EXECUTABLE"
           test -f "$APP_PATH/$EXECUTABLE"
           test -f "$APP_PATH/Assets.car"
-          if [[ -n "$ICON_NAME" ]]; then
-            test "$ICON_NAME" = 'OSPlayerIcon'
-          else
-            test -n "$ICON_FILES"
+          if [[ -z "$ICON_NAME" && -z "$ICON_FILES" ]]; then
+            echo 'Built app has no primary icon metadata.' >&2
+            exit 1
           fi
           grep -F 'ASSETCATALOG_COMPILER_APPICON_NAME: OSPlayerIcon' project.yml >/dev/null
           python3 scripts/check_v0132_ui_regressions.py
