@@ -28,45 +28,27 @@ jobs:
           : > package-resolution.log
           : > mpv-module-maps.log
           : > pods-install.log
+          : > min-os-report.log
+          : > package.log
 
-      - name: Audit transport scheduler invariants
-        run: python3 scripts/check_transport_scheduler_invariants.py
+      - name: Export exact source snapshot
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OS-player-v0.13.2-build68-${GITHUB_SHA::7}-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+          du -h "$SOURCE_ZIP"
 
-      - name: Audit Transport v3 invariants
-        run: python3 scripts/check_transport_v3_invariants.py
-
-      - name: Audit seek stall invariants
-        run: python3 scripts/check_seek_stall_invariants.py
-
-      - name: Audit transport stability invariants
-        run: python3 scripts/check_transport_stability_invariants.py
-
-      - name: Audit Scheduler v2 invariants
-        run: python3 scripts/check_scheduler_v2_invariants.py
-
-      - name: Audit live lane/startup invariants
-        run: python3 scripts/check_live_lane_startup_invariants.py
-
-      - name: Audit retained v0.12.2 regressions
-        run: python3 scripts/check_v0122_regressions.py
-
-      - name: Audit v0.12.3 seek/cache/MPV regressions
-        run: python3 scripts/check_v0123_regressions.py
-
-      - name: Audit v0.12.4 scheduler regressions
-        run: python3 scripts/check_v0124_regressions.py
-
-      - name: Audit v0.12.6 frontier rescue regressions
-        run: python3 scripts/check_v0126_frontier_rescue.py
-
-      - name: Audit v0.12.7 MPV rotation regressions
-        run: python3 scripts/check_v0127_mpv_rotation.py
-
-      - name: Audit v0.13.1 UI regressions
-        run: python3 scripts/check_v0131_ui_regressions.py
-
-      - name: Audit v0.13.2 UI regressions
-        run: python3 scripts/check_v0132_ui_regressions.py
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: OS-player-source-${{ github.sha }}
+          path: |
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Select Xcode 16.4
         run: |
@@ -84,10 +66,43 @@ jobs:
           xcodegen --version
           pod --version
 
-      - name: Generate OS player app icons
+      - name: Prepare packaging assets
         run: |
+          set -euo pipefail
           python3 scripts/generate_os_player_icons.py
           python3 scripts/version_os_player_icons.py
+          python3 - <<'PY'
+          import json
+          import plistlib
+          from pathlib import Path
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(f"::error::{message}")
+
+          project = Path("project.yml").read_text()
+          require('iOS: "15.0"' in project, "project.yml deploymentTarget.iOS must remain 15.0")
+          require('deploymentTarget: "15.0"' in project, "application deploymentTarget must remain 15.0")
+          require('PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app' in project, "unexpected PRODUCT_BUNDLE_IDENTIFIER")
+          require('PRODUCT_NAME: "OS player"' in project, "unexpected PRODUCT_NAME")
+          require('ASSETCATALOG_COMPILER_APPICON_NAME: OSPlayerIcon' in project, "OSPlayerIcon is not configured as app icon")
+
+          info_path = Path("Config/Info.plist")
+          with info_path.open("rb") as handle:
+              info = plistlib.load(handle)
+          require(info.get("CFBundleDisplayName") == "OS player", "source CFBundleDisplayName must be OS player")
+          require(str(info.get("CFBundleShortVersionString")) == "0.13.2", "source version must be 0.13.2")
+          require(str(info.get("CFBundleVersion")) == "68", "source build must be 68")
+
+          contents_path = Path("Resources/Assets.xcassets/OSPlayerIcon.appiconset/Contents.json")
+          require(contents_path.is_file(), "OSPlayerIcon Contents.json is missing")
+          contents = json.loads(contents_path.read_text())
+          filenames = [image.get("filename", "") for image in contents.get("images", []) if image.get("filename")]
+          require(len(filenames) == 18, f"OSPlayerIcon must contain 18 named icon slots, got {len(filenames)}")
+          missing = [name for name in filenames if not (contents_path.parent / name).is_file()]
+          require(not missing, f"OSPlayerIcon image files are missing: {missing}")
+          print("Packaging source preflight: OK")
+          PY
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -157,109 +172,71 @@ jobs:
             DEVELOPMENT_TEAM='' \
             clean build 2>&1 | tee build.log
 
-      - name: Summarize compiler errors
-        if: failure()
-        run: |
-          {
-            echo "## First compiler errors"
-            echo '```text'
-            grep -nE '(^|[[:space:]])(error:|fatal error:)' build.log package-resolution.log pods-install.log mpv-module-maps.log | head -100 || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Locate app
-        if: success()
         id: app
         run: |
           set -euo pipefail
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
-          test -n "$APP_PATH"
-          test -d "$APP_PATH"
+          if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
+            echo "::error::Release .app was not produced under build/DerivedData/Build/Products/Release-iphoneos"
+            exit 1
+          fi
           echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
           echo "Found $APP_PATH"
 
-      - name: Validate product identity
-        if: success()
+      - name: Validate built app
         run: |
           set -euo pipefail
-          APP_PATH="${{ steps.app.outputs.path }}"
-          INFO="$APP_PATH/Info.plist"
-          test -f "$INFO"
+          python3 scripts/validate_built_app.py \
+            "${{ steps.app.outputs.path }}" \
+            --display-name "OS player" \
+            --bundle-id "com.embyplayerlab.app" \
+            --version "0.13.2" \
+            --build "68" \
+            --minimum-os "15.0"
 
-          DISPLAY_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$INFO")"
-          BUNDLE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$INFO")"
-          EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$INFO")"
-          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO")"
-          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO")"
-          BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO")"
-          ICON_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$INFO" 2>/dev/null || true)"
-          ICON_FILES="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles' "$INFO" 2>/dev/null || true)"
-
-          printf 'display=%s\nbundle=%s\nexecutable=%s\nbundleId=%s\nversion=%s\nbuild=%s\niconName=%s\niconFiles=%s\n' \
-            "$DISPLAY_NAME" "$BUNDLE_NAME" "$EXECUTABLE" "$BUNDLE_ID" "$VERSION" "$BUILD" "$ICON_NAME" "$ICON_FILES"
-
-          # Keep user-visible/package identity strict. CFBundleName may be rewritten by Xcode
-          # from the target/module name, so require it to exist without forcing its display value.
-          test "$DISPLAY_NAME" = 'OS player'
-          test -n "$BUNDLE_NAME"
-          test "$BUNDLE_ID" = 'com.embyplayerlab.app'
-          test "$VERSION" = '0.13.2'
-          test "$BUILD" = '68'
-          test -n "$EXECUTABLE"
-          test -f "$APP_PATH/$EXECUTABLE"
-
-          # Verify the source project really declares the intended icon set. Xcode is free to
-          # transform icon metadata/resources in the built product, so the exact post-build
-          # CFBundleIcons/Assets.car representation is diagnostic only and must not block an
-          # otherwise valid TrollStore IPA.
-          grep -F 'ASSETCATALOG_COMPILER_APPICON_NAME: OSPlayerIcon' project.yml >/dev/null
-          test -f Resources/Assets.xcassets/OSPlayerIcon.appiconset/Contents.json
-          python3 scripts/check_v0132_ui_regressions.py
-
-          if [[ -z "$ICON_NAME" && -z "$ICON_FILES" ]]; then
-            echo "::warning::Built Info.plist does not expose primary icon metadata; source OSPlayerIcon configuration is present, continuing IPA packaging."
-          fi
-
-          if [[ -f "$APP_PATH/Assets.car" ]]; then
-            echo "Built app contains Assets.car."
-          else
-            ICON_PNG_COUNT="$(find "$APP_PATH" -maxdepth 1 -type f \( -iname '*icon*.png' -o -iname 'AppIcon*.png' \) | wc -l | tr -d ' ')"
-            echo "::warning::Built app has no Assets.car (loose icon PNG count: $ICON_PNG_COUNT). This is not a TrollStore packaging failure condition."
-          fi
-
-          echo "Product identity validation passed; icon representation diagnostics are non-blocking."
-
-      - name: Validate minimum OS
-        if: success()
+      - name: Validate minimum OS and embedded binaries
         run: |
+          set -euo pipefail
           chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0"
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" min-os-report.log
 
-      - name: Package TrollStore IPA
-        if: success()
+      - name: Package and verify TrollStore IPA
         run: |
           set -euo pipefail
+          set -o pipefail
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
           IPA_NAME="EmbyPlayerLab-0.13.2-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
-          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
-          du -h "$IPA_NAME"
+
+          {
+            echo "IPA: $IPA_NAME"
+            /usr/bin/unzip -t "$IPA_NAME"
+            APP_DIR="$(basename "${{ steps.app.outputs.path }}")"
+            if ! /usr/bin/unzip -Z1 "$IPA_NAME" | grep -Fx "Payload/$APP_DIR/Info.plist" >/dev/null; then
+              echo "::error::IPA does not contain Payload/$APP_DIR/Info.plist"
+              exit 1
+            fi
+            shasum -a 256 "$IPA_NAME"
+            du -h "$IPA_NAME"
+          } 2>&1 | tee package.log
+          shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
 
       - name: Upload IPA
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: EmbyPlayerLab-unsigned-${{ github.sha }}
           path: |
             ${{ env.IPA_NAME }}
             ${{ env.IPA_NAME }}.sha256
+          if-no-files-found: error
           retention-days: 30
 
       - name: Publish versioned dev IPA
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -277,41 +254,35 @@ jobs:
             --notes "Automated TrollStore test build for OS player v0.13.2 Build 68 from $GITHUB_SHA" \
             --prerelease
 
-      - name: Record successful dev build
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        continue-on-error: true
+      - name: Summarize failure
+        if: failure()
         run: |
-          set -euo pipefail
-          printf '{"version":"0.13.2","build":68,"commit":"%s","runId":%s,"status":"success"}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > .github/build-status.json
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add .github/build-status.json
-          if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Build status: v0.13.2 Build 68 success run=$GITHUB_RUN_ID [skip-ipa]"
-          git push origin HEAD:main
+          {
+            echo "## Build/packaging diagnostics"
+            echo '```text'
+            grep -nEi '(^|[[:space:]])(error:|fatal error:)|::error::| failed:|ERROR ' build.log package-resolution.log pods-install.log mpv-module-maps.log min-os-report.log package.log | head -120 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Record failed dev build
-        if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        continue-on-error: true
+      - name: Write build report
+        if: always()
         run: |
-          set -euo pipefail
-          printf '{"version":"0.13.2","build":68,"commit":"%s","runId":%s,"status":"failure"}\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > .github/build-status.json
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add .github/build-status.json
-          if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Build status: v0.13.2 Build 68 failure run=$GITHUB_RUN_ID [skip-ipa]"
-          git push origin HEAD:main
+          printf '{"version":"0.13.2","build":68,"commit":"%s","runId":%s,"runNumber":%s,"status":"%s","deploymentTarget":"15.0","requiredDeviceIOS":"17.0"}\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_NUMBER" "${{ job.status }}" > build-report.json
+          cat build-report.json
 
-      - name: Upload build logs
+      - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerLab-build-logs-${{ github.sha }}
+          name: EmbyPlayerLab-build-diagnostics-${{ github.sha }}
           path: |
             build.log
             package-resolution.log
             pods-install.log
             mpv-module-maps.log
+            min-os-report.log
+            package.log
+            build-report.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
