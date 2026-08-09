@@ -22,6 +22,8 @@ def main() -> None:
     parser.add_argument("--bundle-id", required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--build", required=True)
+    parser.add_argument("--display-name")
+    parser.add_argument("--minimum-os")
     args = parser.parse_args()
 
     app = Path(args.app_path)
@@ -57,13 +59,23 @@ def main() -> None:
         fail(f"CFBundleExecutable does not exist in app bundle: {executable_path}")
     print(f"executableBytes={executable_path.stat().st_size}")
 
-    # The following fields are useful diagnostics but are not IPA packaging gates.
-    # Source branding/icon configuration is checked before the build, and minimum-OS
-    # compatibility is audited by check_min_os.sh in the next workflow step.
-    print(f"CFBundleDisplayName={info.get('CFBundleDisplayName', '')}")
-    print(f"CFBundleName={info.get('CFBundleName', '')}")
-    print(f"MinimumOSVersion={info.get('MinimumOSVersion', '')}")
+    # Diagnostic-only fields. These must not block IPA packaging.
+    # Source branding/icon configuration is checked before build, while minimum-OS
+    # compatibility is audited independently by check_min_os.sh in the next step.
+    display_name = str(info.get("CFBundleDisplayName", ""))
+    bundle_name = str(info.get("CFBundleName", ""))
+    minimum_os = str(info.get("MinimumOSVersion", ""))
+    print(f"CFBundleDisplayName={display_name}")
+    print(f"CFBundleName={bundle_name}")
+    print(f"MinimumOSVersion={minimum_os}")
     print(f"CFBundlePackageType={info.get('CFBundlePackageType', '')}")
+
+    if args.display_name and display_name != args.display_name:
+        print(f"::warning::CFBundleDisplayName differs from requested display name: expected {args.display_name!r}, got {display_name!r}. Source branding is validated separately; packaging continues.")
+    if args.minimum_os and minimum_os != args.minimum_os:
+        print(f"::warning::MinimumOSVersion differs from requested value: expected {args.minimum_os!r}, got {minimum_os!r}. check_min_os.sh owns this validation; packaging validation continues.")
+    if not bundle_name:
+        print("::warning::Built Info.plist has no CFBundleName; executable and bundle identity are validated separately.")
 
     primary_icon = info.get("CFBundleIcons", {}).get("CFBundlePrimaryIcon", {})
     icon_name = primary_icon.get("CFBundleIconName", "")
@@ -74,15 +86,10 @@ def main() -> None:
     print(f"iconFiles={icon_files}")
     print(f"Assets.car={'yes' if assets_car.is_file() else 'no'}")
     print(f"looseIconPNGs={len(loose_icons)}")
-
-    if not info.get("CFBundleDisplayName"):
-        print("::warning::Built Info.plist has no CFBundleDisplayName; bundle identity remains valid for packaging.")
-    if not info.get("CFBundleName"):
-        print("::warning::Built Info.plist has no CFBundleName; executable and bundle identity are validated separately.")
     if not icon_name and not icon_files:
-        print("::warning::Built Info.plist has no primary icon metadata. Source asset configuration is validated before build.")
+        print("::warning::Built Info.plist has no primary icon metadata. Source asset configuration is validated before build; packaging continues.")
     if not assets_car.is_file() and not loose_icons:
-        print("::warning::No Assets.car or loose icon PNGs were found at app root. This is diagnostic only.")
+        print("::warning::No Assets.car or loose icon PNGs were found at app root. This is diagnostic only; packaging continues.")
 
     print("Built app package-critical validation: OK")
 
