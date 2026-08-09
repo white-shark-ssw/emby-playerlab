@@ -1,0 +1,39 @@
+name: Export Source Snapshot
+
+on:
+  push:
+    branches:
+      - chatgpt/source-export-20260809
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package exact main snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_SHA="15f88f8921a8f1bd5421a12bd38518a496f072e1"
+          ZIP_NAME="emby-playerlab-main-${BASE_SHA:0:8}.zip"
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git archive --format=zip --output="${ZIP_NAME}" "${BASE_SHA}"
+          sha256sum "${ZIP_NAME}" > "${ZIP_NAME}.sha256"
+          echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: emby-playerlab-source-main-15f88f89
+          path: |
+            ${{ env.ZIP_NAME }}
+            ${{ env.ZIP_NAME }}.sha256
+          if-no-files-found: error
+          retention-days: 7
