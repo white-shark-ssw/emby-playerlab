@@ -75,9 +75,6 @@ struct PlayerScreen: View {
                 MPVPlayerSurface(displayLayer: layer)
                     .frame(width: geometry.size.width, height: geometry.size.height)
             }
-        } else if controller.engineKind == .ksAVIO, let view = controller.ksAVIOView {
-            KSAVIOPlayerSurface(playerView: view)
-                .id(ObjectIdentifier(view))
         } else if let player = controller.avPlayer {
             AVPlayerSurface(player: player)
                 .id("avplayer")
@@ -94,7 +91,6 @@ struct PlayerScreen: View {
                     isClosing = true
                     DiagnosticsLogger.shared.log("Lifecycle", "close button tapped")
 
-                    // Give SwiftUI one frame to dismantle the MPV surface/KVO before libmpv teardown.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         controller.stop()
                         presentationMode.wrappedValue.dismiss()
@@ -248,10 +244,8 @@ struct PlayerScreen: View {
 
     private var engineBadge: String {
         switch controller.engineKind {
-        case .ktvAVPlayer: return "AUTO·KTV"
         case .resourceLoaderAVPlayer: return "AUTO·AV"
         case .transportAVPlayer: return "LEGACY"
-        case .ksAVIO: return "AUTO·FF"
         case .avPlayer: return "DIRECT"
         case .mpv: return "AUTO·MPV"
         }
