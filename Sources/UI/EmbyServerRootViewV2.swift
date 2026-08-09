@@ -72,7 +72,7 @@ struct EmbyServerRootViewV2: View {
             }
         } label: {
             VStack(spacing: 2) {
-                Image(systemName: selectedTab == tab ? systemImage + ".fill" : systemImage)
+                Image(systemName: selectedTab == tab && tab != .search ? systemImage + ".fill" : systemImage)
                     .font(.system(size: 22))
                 Text(title).font(.caption2)
             }
@@ -114,50 +114,53 @@ private struct V2EmbyHomeView: View {
 
     var body: some View {
         NavigationView {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 22) {
-                        Color.clear.frame(height: 1).id("v2-home-top")
-                        header
+            VStack(spacing: 0) {
+                header
 
-                        if model.isLoading && model.libraries.isEmpty {
-                            ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
-                        } else {
-                            if !model.libraries.isEmpty {
-                                sectionTitle("我的媒体")
-                                libraryRow
-                            }
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 22) {
+                            Color.clear.frame(height: 1).id("v2-home-top")
 
-                            if !model.resumeItems.isEmpty {
-                                sectionTitle("继续观看")
-                                landscapeRow(model.resumeItems)
-                            }
+                            if model.isLoading && model.libraries.isEmpty {
+                                ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
+                            } else {
+                                if !model.libraries.isEmpty {
+                                    sectionTitle("我的媒体")
+                                    libraryRow
+                                }
 
-                            ForEach(model.libraries.prefix(6)) { library in
-                                if let items = model.latestByLibrary[library.id], !items.isEmpty {
-                                    HStack(spacing: 8) {
-                                        sectionTitle(library.name)
-                                        Spacer()
-                                        NavigationLink("更多", destination: V2LibraryBrowserView(library: library, client: client))
-                                            .font(.subheadline)
-                                            .foregroundColor(.blue)
-                                            .padding(.trailing, 16)
+                                if !model.resumeItems.isEmpty {
+                                    sectionTitle("继续观看")
+                                    landscapeRow(model.resumeItems)
+                                }
+
+                                ForEach(model.libraries) { library in
+                                    if let items = model.latestByLibrary[library.id], !items.isEmpty {
+                                        HStack(spacing: 8) {
+                                            sectionTitle(library.name)
+                                            Spacer()
+                                            NavigationLink("更多", destination: V2LibraryBrowserView(library: library, client: client))
+                                                .font(.subheadline)
+                                                .foregroundColor(.blue)
+                                                .padding(.trailing, 16)
+                                        }
+                                        posterRow(items)
                                     }
-                                    posterRow(items)
+                                }
+
+                                if let error = model.errorMessage {
+                                    Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16)
                                 }
                             }
-
-                            if let error = model.errorMessage {
-                                Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16)
-                            }
                         }
+                        .padding(.bottom, 28)
                     }
-                    .padding(.bottom, 28)
-                }
-                .refreshable { await model.refresh() }
-                .onChange(of: refreshToken) { _ in Task { await model.refresh() } }
-                .onChange(of: scrollToTopToken) { _ in
-                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("v2-home-top", anchor: .top) }
+                    .refreshable { await model.refresh() }
+                    .onChange(of: refreshToken) { _ in Task { await model.refresh() } }
+                    .onChange(of: scrollToTopToken) { _ in
+                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("v2-home-top", anchor: .top) }
+                    }
                 }
             }
             .navigationBarHidden(true)
@@ -187,7 +190,8 @@ private struct V2EmbyHomeView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.top, 2)
+        .padding(.bottom, 6)
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -255,7 +259,7 @@ private final class V2EmbyHomeViewModel: ObservableObject {
 
             var latest: [String: [LibraryItem]] = [:]
             await withTaskGroup(of: (String, [LibraryItem]?).self) { group in
-                for library in views.prefix(6) {
+                for library in views {
                     group.addTask {
                         do { return (library.id, try await self.client.latestItems(parentId: library.id, limit: 16)) }
                         catch { return (library.id, nil) }
