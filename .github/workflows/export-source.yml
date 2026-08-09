@@ -1,0 +1,39 @@
+name: Export Source ZIP
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: source-export-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create exact source ZIP
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OS-player-v0.13.2-build68-${GITHUB_SHA::7}-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          sha256sum "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+          cat "$SOURCE_ZIP.sha256"
+          du -h "$SOURCE_ZIP"
+
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: OS-player-source-${{ github.sha }}
+          path: |
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+          if-no-files-found: error
+          retention-days: 30
