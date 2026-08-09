@@ -79,7 +79,7 @@ struct ServerListView: View {
                 .environmentObject(sessionStore)
         }
         .fullScreenCover(item: $selectedSession, onDismiss: { sessionStore.leaveServer() }) { stored in
-            EmbyServerRootViewV2(session: stored)
+            EmbyServerRootViewV3(session: stored)
                 .environmentObject(sessionStore)
         }
     }
