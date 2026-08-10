@@ -6,6 +6,8 @@ enum EmbyPosterGridMetrics {
     static let columnSpacing: CGFloat = 12
     static let rowSpacing: CGFloat = 18
     static let loadAheadItemCount = 9
+    static let posterAspectRatio: CGFloat = 2.0 / 3.0
+    static let cardTextAreaHeight: CGFloat = 44
 }
 
 private struct EmbyPosterGridWidthPreferenceKey: PreferenceKey {
@@ -44,6 +46,12 @@ struct EmbyPosterGrid<Content: View>: View {
         return floor(available / CGFloat(EmbyPosterGridMetrics.columnCount))
     }
 
+    private var cellHeight: CGFloat? {
+        guard let cellWidth = cellWidth else { return nil }
+        let posterHeight = cellWidth / EmbyPosterGridMetrics.posterAspectRatio
+        return floor(posterHeight + EmbyPosterGridMetrics.cardTextAreaHeight)
+    }
+
     private var columns: [GridItem] {
         if let cellWidth = cellWidth {
             return Array(
@@ -70,8 +78,9 @@ struct EmbyPosterGrid<Content: View>: View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 content(item)
-                    .frame(width: cellWidth, alignment: .topLeading)
+                    .frame(width: cellWidth, height: cellHeight, alignment: .topLeading)
                     .clipped()
+                    .contentShape(Rectangle())
                     .onAppear {
                         guard let handler = onApproachingEnd else { return }
                         let threshold = max(0, items.count - EmbyPosterGridMetrics.loadAheadItemCount)
