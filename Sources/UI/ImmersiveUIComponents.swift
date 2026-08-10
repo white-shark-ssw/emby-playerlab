@@ -67,19 +67,36 @@ private final class NativeNavigationPopViewController: UIViewController {
 
 private struct NativeNavigationPopBridge: UIViewControllerRepresentable {
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        weak var navigationController: UINavigationController?
+        private let navigationControllers = NSHashTable<UINavigationController>.weakObjects()
 
         func install(from viewController: UIViewController) {
-            guard let navigationController = viewController.navigationController else { return }
-            self.navigationController = navigationController
+            if let navigationController = viewController.navigationController { install(navigationController) }
+            if let root = viewController.viewIfLoaded?.window?.rootViewController { installTree(from: root) }
+        }
+
+        private func installTree(from root: UIViewController) {
+            var stack: [UIViewController] = [root]
+            while let current = stack.popLast() {
+                if let navigationController = current as? UINavigationController { install(navigationController) }
+                if let presented = current.presentedViewController { stack.append(presented) }
+                stack.append(contentsOf: current.children)
+            }
+        }
+
+        private func install(_ navigationController: UINavigationController) {
+            navigationControllers.add(navigationController)
             guard let gesture = navigationController.interactivePopGestureRecognizer else { return }
             gesture.isEnabled = navigationController.viewControllers.count > 1
             gesture.delegate = self
             gesture.cancelsTouchesInView = true
         }
 
+        private func navigationController(for gestureRecognizer: UIGestureRecognizer) -> UINavigationController? {
+            navigationControllers.allObjects.first { $0.interactivePopGestureRecognizer === gestureRecognizer }
+        }
+
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard let navigationController else { return false }
+            guard let navigationController = navigationController(for: gestureRecognizer) else { return false }
             return navigationController.viewControllers.count > 1 && navigationController.transitionCoordinator == nil
         }
 
