@@ -90,13 +90,53 @@ private final class EmbyPosterNavigationGate {
     }
 }
 
+private final class EmbyPosterTouchArbiter {
+    static let shared = EmbyPosterTouchArbiter()
+    private var owner: UUID?
+
+    private init() {}
+
+    func begin(_ id: UUID) -> Bool {
+        precondition(Thread.isMainThread)
+        if let owner { return owner == id }
+        owner = id
+        return true
+    }
+
+    func end(_ id: UUID) {
+        precondition(Thread.isMainThread)
+        if owner == id { owner = nil }
+    }
+}
+
 private struct EmbyExclusivePosterTapControl: UIViewRepresentable {
     let action: () -> Void
 
     final class Coordinator: NSObject {
+        let id = UUID()
         var action: () -> Void
+        var ownsTouch = false
+
         init(action: @escaping () -> Void) { self.action = action }
-        @objc func tapped() { action() }
+
+        deinit { EmbyPosterTouchArbiter.shared.end(id) }
+
+        @objc func touchDown() {
+            ownsTouch = EmbyPosterTouchArbiter.shared.begin(id)
+        }
+
+        @objc func touchUpInside() {
+            guard ownsTouch else { return }
+            ownsTouch = false
+            EmbyPosterTouchArbiter.shared.end(id)
+            action()
+        }
+
+        @objc func touchEnded() {
+            guard ownsTouch else { return }
+            ownsTouch = false
+            EmbyPosterTouchArbiter.shared.end(id)
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(action: action) }
@@ -107,7 +147,9 @@ private struct EmbyExclusivePosterTapControl: UIViewRepresentable {
         control.isOpaque = false
         control.isExclusiveTouch = true
         control.isMultipleTouchEnabled = false
-        control.addTarget(context.coordinator, action: #selector(Coordinator.tapped), for: .touchUpInside)
+        control.addTarget(context.coordinator, action: #selector(Coordinator.touchDown), for: .touchDown)
+        control.addTarget(context.coordinator, action: #selector(Coordinator.touchUpInside), for: .touchUpInside)
+        control.addTarget(context.coordinator, action: #selector(Coordinator.touchEnded), for: [.touchCancel, .touchUpOutside])
         return control
     }
 
