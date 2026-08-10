@@ -149,7 +149,7 @@ private struct EmbyExclusivePosterTapControl: UIViewRepresentable {
         let control = UIControl(frame: .zero)
         control.backgroundColor = .clear
         control.isOpaque = false
-        control.isExclusiveTouch = false
+        control.isExclusiveTouch = true
         control.isMultipleTouchEnabled = false
         control.addTarget(context.coordinator, action: #selector(Coordinator.touchDown), for: .touchDown)
         control.addTarget(context.coordinator, action: #selector(Coordinator.touchUpInside), for: .touchUpInside)
