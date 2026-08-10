@@ -48,8 +48,8 @@ jobs:
           with Path("Config/Info.plist").open("rb") as handle:
               info = plistlib.load(handle)
           require(info.get("CFBundleDisplayName") == "OS player", "source display name must be OS player")
-          require(str(info.get("CFBundleShortVersionString")) == "0.13.2", "source version must be 0.13.2")
-          require(str(info.get("CFBundleVersion")) == "68", "source build must be 68")
+          require(str(info.get("CFBundleShortVersionString")) == "0.13.3", "source version must be 0.13.3")
+          require(str(info.get("CFBundleVersion")) == "69", "source build must be 69")
 
           required = [
               "Sources/Player/PlayerController.swift",
