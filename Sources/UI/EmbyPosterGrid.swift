@@ -19,6 +19,17 @@ private struct EmbyPosterGridWidthPreferenceKey: PreferenceKey {
     }
 }
 
+private struct EmbyPosterGridCellWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat? = nil
+}
+
+extension EnvironmentValues {
+    var embyPosterGridCellWidth: CGFloat? {
+        get { self[EmbyPosterGridCellWidthKey.self] }
+        set { self[EmbyPosterGridCellWidthKey.self] = newValue }
+    }
+}
+
 struct EmbyPosterGrid<Content: View>: View {
     let items: [LibraryItem]
     let horizontalPadding: CGFloat
@@ -78,6 +89,7 @@ struct EmbyPosterGrid<Content: View>: View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 content(item)
+                    .environment(\.embyPosterGridCellWidth, cellWidth)
                     .frame(width: cellWidth, height: cellHeight, alignment: .topLeading)
                     .clipped()
                     .contentShape(Rectangle())
