@@ -65,8 +65,8 @@ struct EmbyServerRootViewV3: View {
             serverTabButton(.search, title: "搜索", systemImage: "magnifyingglass")
             serverTabButton(.settings, title: "设置", systemImage: "gearshape")
         }
-        .padding(.top, 5)
-        .padding(.bottom, 2)
+        .padding(.top, 3)
+        .padding(.bottom, 0)
         .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea(edges: .bottom))
     }
 
