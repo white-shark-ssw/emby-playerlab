@@ -15,23 +15,38 @@ struct EmbyServerRootViewV3: View {
     var body: some View {
         Group {
             if let client {
-                VStack(spacing: 0) {
-                    Group {
-                        switch selectedTab {
-                        case .home:
+                GeometryReader { geometry in
+                    ZStack(alignment: .bottom) {
+                        ZStack {
                             V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close)
-                        case .favorites:
+                                .opacity(selectedTab == .home ? 1 : 0)
+                                .allowsHitTesting(selectedTab == .home)
+                                .accessibilityHidden(selectedTab != .home)
+
                             V3EmbyFavoritesView(client: client, onClose: close)
-                        case .search:
+                                .opacity(selectedTab == .favorites ? 1 : 0)
+                                .allowsHitTesting(selectedTab == .favorites)
+                                .accessibilityHidden(selectedTab != .favorites)
+
                             V3EmbySearchView(client: client, onClose: close)
-                        case .settings:
+                                .opacity(selectedTab == .search ? 1 : 0)
+                                .allowsHitTesting(selectedTab == .search)
+                                .accessibilityHidden(selectedTab != .search)
+
                             V3EmbyServerSettingsView(session: session, onClose: close)
+                                .opacity(selectedTab == .settings ? 1 : 0)
+                                .allowsHitTesting(selectedTab == .settings)
+                                .accessibilityHidden(selectedTab != .settings)
                         }
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+
+                        serverTabBar
+                            .padding(.bottom, max(0, geometry.safeAreaInsets.bottom - 6))
+                            .zIndex(100)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    serverTabBar
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 }
-                .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             } else {
                 ProgressView("连接 \(session.serverName)…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -52,7 +67,7 @@ struct EmbyServerRootViewV3: View {
         }
         .padding(.top, 6)
         .padding(.bottom, 4)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea(edges: .bottom))
     }
 
     private func serverTabButton(_ tab: V3ServerTab, title: String, systemImage: String) -> some View {
@@ -154,7 +169,7 @@ private struct V3EmbyHomeView: View {
                                 if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
                             }
                         }
-                        .padding(.bottom, 28)
+                        .padding(.bottom, 86)
                     }
                     .refreshable { await model.refresh() }
                     .onChange(of: refreshToken) { _ in Task { await model.refresh() } }
@@ -530,17 +545,16 @@ private struct V3LibraryBrowserView: View {
                         guard model.hasMore else { return }
                         Task { await model.loadNextPage() }
                     }) { item in
-                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
+                        EmbyPosterDetailLink(item: item, client: client) {
                             V3PosterCard(item: item, client: client, width: nil)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
 
                 if model.isLoading && !model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12) }
                 if let error = model.errorMessage { Text(error).foregroundColor(.red).font(.footnote).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
             }
-            .padding(.bottom, 26)
+            .padding(.bottom, 86)
         }
         .navigationTitle(library.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -647,7 +661,7 @@ private struct V3EmbyFavoritesView: View {
                     if model.isLoading { ProgressView().frame(maxWidth: .infinity) }
                     if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
                 }
-                .padding(.bottom, 26)
+                .padding(.bottom, 86)
             }
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             .refreshable { await model.load() }
@@ -662,10 +676,9 @@ private struct V3EmbyFavoritesView: View {
         if !items.isEmpty {
             Text(title).font(.title2.weight(.bold)).padding(.horizontal, 16)
             EmbyPosterGrid(items: items) { item in
-                NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
+                EmbyPosterDetailLink(item: item, client: client) {
                     V3PosterCard(item: item, client: client, width: nil)
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -742,12 +755,11 @@ private struct V3EmbySearchView: View {
 
                 ScrollView {
                     EmbyPosterGrid(items: model.items) { item in
-                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
+                        EmbyPosterDetailLink(item: item, client: client) {
                             V3PosterCard(item: item, client: client, width: nil)
                         }
-                        .buttonStyle(.plain)
                     }
-                    .padding(.bottom, 26)
+                    .padding(.bottom, 86)
                 }
                 if model.isLoading { ProgressView().padding(.bottom, 8) }
             }
@@ -802,7 +814,7 @@ private struct V3EmbyServerSettingsView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 28)
+                .padding(.bottom, 86)
             }
             .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             .navigationBarHidden(true)
@@ -914,17 +926,7 @@ private struct V3PosterCard: View {
 private struct V3RemoteImage: View {
     let url: URL?
     let contentMode: ContentMode
-    var body: some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image): image.resizable().aspectRatio(contentMode: contentMode)
-            case .failure: placeholder
-            case .empty: ZStack { placeholder; ProgressView() }
-            @unknown default: placeholder
-            }
-        }
-    }
-    private var placeholder: some View { ZStack { Color(uiColor: .secondarySystemBackground); Image(systemName: "play.rectangle").font(.system(size: 24)).foregroundColor(.secondary) } }
+    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode, placeholderSystemImage: "play.rectangle") }
 }
 
 private func v3MediaSubtitle(_ item: LibraryItem) -> String {
