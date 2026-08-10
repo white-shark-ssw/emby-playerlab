@@ -50,7 +50,7 @@ struct EmbyMediaDetailView: View {
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .background(Color.clear)
-                .ignoresSafeArea(edges: .top)
+                .ignoresSafeArea(edges: [.top, .bottom])
 
                 topBar
                     .padding(.horizontal, 14)
@@ -63,7 +63,7 @@ struct EmbyMediaDetailView: View {
                     .hidden()
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
-            .ignoresSafeArea(edges: .top)
+            .ignoresSafeArea(edges: [.top, .bottom])
         }
         .navigationBarHidden(true)
         .nativeInteractivePop()
