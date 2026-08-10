@@ -155,7 +155,7 @@ private final class EmbyPosterGridTouchShieldViewController: UIViewController {
     private func installTouchShield(on navigationController: UINavigationController) {
         let alreadyInstalled = navigationController.view.gestureRecognizers?.contains { $0 is EmbyPosterGridMultitouchCancellationGesture } ?? false
         guard !alreadyInstalled else { return }
-        navigationController.view.addGestureRecognizer(EmbyPosterGridMultitouchCancellationGesture())
+        navigationController.view.addGestureRecognizer(EmbyPosterGridMultitouchCancellationGesture(target: nil, action: nil))
     }
 }
 
