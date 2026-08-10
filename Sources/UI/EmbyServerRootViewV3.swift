@@ -99,6 +99,7 @@ struct EmbyServerRootViewV3: View {
             }
             .foregroundColor(selectedTab == tab ? .blue : .secondary)
             .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
+            .offset(y: 10)
         }
         .buttonStyle(.plain)
     }
@@ -198,6 +199,7 @@ private struct V3EmbyHomeView: View {
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 
     private var header: some View {
@@ -677,6 +679,7 @@ private struct V3EmbyFavoritesView: View {
             .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 
     @ViewBuilder
@@ -776,6 +779,7 @@ private struct V3EmbySearchView: View {
             .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 }
 
@@ -829,6 +833,7 @@ private struct V3EmbyServerSettingsView: View {
             .sheet(isPresented: Binding(get: { shareURL != nil }, set: { if !$0 { shareURL = nil } })) { if let shareURL { ActivityView(items: [shareURL]) } }
         }
         .navigationViewStyle(StackNavigationViewStyle())
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 
     private func settingRow(_ title: String, value: String?, systemImage: String) -> some View {
