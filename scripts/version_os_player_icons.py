@@ -13,9 +13,9 @@ def main() -> None:
         target_name = image.get("filename")
         if not target_name:
             continue
-        if not target_name.startswith("OSPlayer-v0132-"):
+        if not target_name.startswith("OSPlayer-v0133-"):
             raise SystemExit(f"unexpected target icon name: {target_name}")
-        suffix = target_name[len("OSPlayer-v0132-"):]
+        suffix = target_name[len("OSPlayer-v0133-"):]
         source = source_dir / ("Icon-" + suffix)
         if not source.exists():
             raise SystemExit(f"missing generated source icon: {source}")
@@ -25,7 +25,7 @@ def main() -> None:
 
     if copied != 18:
         raise SystemExit(f"expected 18 app icon files, copied {copied}")
-    print(f"OS player v0.13.2 icon assets prepared: {copied}")
+    print(f"OS player v0.13.3 icon assets prepared: {copied}")
 
 
 if __name__ == "__main__":
