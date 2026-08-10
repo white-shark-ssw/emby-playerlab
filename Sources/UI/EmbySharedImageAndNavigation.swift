@@ -118,6 +118,7 @@ struct EmbyCachedRemoteImage: View {
 }
 
 struct EmbyPosterDetailLink<Content: View>: View {
+    @Environment(\.embyPosterGridNavigationState) private var gridNavigationState
     let item: LibraryItem
     let client: EmbyAPIClient
     private let content: Content
@@ -130,20 +131,28 @@ struct EmbyPosterDetailLink<Content: View>: View {
     }
 
     var body: some View {
-        content
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard !isActive, EmbyPosterNavigationGate.shared.acquire(item.id) else { return }
-                isActive = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { EmbyPosterNavigationGate.shared.release(item.id) }
+        Group {
+            if let gridNavigationState {
+                content
+                    .contentShape(Rectangle())
+                    .onTapGesture { gridNavigationState.open(item: item, client: client) }
+            } else {
+                content
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        guard !isActive, EmbyPosterNavigationGate.shared.acquire(item.id) else { return }
+                        isActive = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { EmbyPosterNavigationGate.shared.release(item.id) }
+                    }
+                    .background(
+                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client), isActive: $isActive) { EmptyView() }
+                            .frame(width: 0, height: 0)
+                            .hidden()
+                    )
+                    .onChange(of: isActive) { active in
+                        if !active { EmbyPosterNavigationGate.shared.release(item.id) }
+                    }
             }
-            .background(
-                NavigationLink(destination: EmbyMediaDetailView(item: item, client: client), isActive: $isActive) { EmptyView() }
-                    .frame(width: 0, height: 0)
-                    .hidden()
-            )
-            .onChange(of: isActive) { active in
-                if !active { EmbyPosterNavigationGate.shared.release(item.id) }
-            }
+        }
     }
 }
