@@ -86,7 +86,7 @@ private struct EmbyPosterGridNavigationHost: View {
     }
 }
 
-private final class EmbyPosterGridTouchShieldViewController: UIViewController {
+private final class EmbyPosterGridScrollBridgeViewController: UIViewController {
     weak var navigationState: EmbyPosterGridNavigationState?
 
     override func viewDidAppear(_ animated: Bool) {
@@ -107,10 +107,6 @@ private final class EmbyPosterGridTouchShieldViewController: UIViewController {
     private func configureGridEnvironment() {
         guard let scrollView = enclosingScrollView() else { return }
         scrollView.showsVerticalScrollIndicator = false
-        scrollView.isMultipleTouchEnabled = false
-        scrollView.isExclusiveTouch = true
-        scrollView.panGestureRecognizer.maximumNumberOfTouches = 1
-        applyExclusiveTouch(to: scrollView)
     }
 
     private func enclosingScrollView() -> UIScrollView? {
@@ -121,25 +117,19 @@ private final class EmbyPosterGridTouchShieldViewController: UIViewController {
         }
         return nil
     }
-
-    private func applyExclusiveTouch(to view: UIView) {
-        view.isMultipleTouchEnabled = false
-        view.isExclusiveTouch = true
-        for subview in view.subviews { applyExclusiveTouch(to: subview) }
-    }
 }
 
-private struct EmbyPosterGridTouchShieldBridge: UIViewControllerRepresentable {
+private struct EmbyPosterGridScrollBridge: UIViewControllerRepresentable {
     let navigationState: EmbyPosterGridNavigationState
 
     func makeUIViewController(context: Context) -> UIViewController {
-        let controller = EmbyPosterGridTouchShieldViewController()
+        let controller = EmbyPosterGridScrollBridgeViewController()
         controller.navigationState = navigationState
         return controller
     }
 
     func updateUIViewController(_ viewController: UIViewController, context: Context) {
-        guard let controller = viewController as? EmbyPosterGridTouchShieldViewController else { return }
+        guard let controller = viewController as? EmbyPosterGridScrollBridgeViewController else { return }
         controller.navigationState = navigationState
         DispatchQueue.main.async { controller.view.setNeedsLayout() }
     }
@@ -219,7 +209,7 @@ struct EmbyPosterGrid<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(GeometryReader { proxy in Color.clear.preference(key: EmbyPosterGridWidthPreferenceKey.self, value: proxy.size.width) })
         .background(EmbyPosterGridNavigationHost(state: navigationState))
-        .background(EmbyPosterGridTouchShieldBridge(navigationState: navigationState).frame(width: 0, height: 0))
+        .background(EmbyPosterGridScrollBridge(navigationState: navigationState).frame(width: 0, height: 0))
         .onPreferenceChange(EmbyPosterGridWidthPreferenceKey.self) { width in
             if width > 0 && abs(containerWidth - width) > 0.5 { containerWidth = width }
         }
