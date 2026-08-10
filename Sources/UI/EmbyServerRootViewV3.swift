@@ -41,7 +41,6 @@ struct EmbyServerRootViewV3: View {
                         .frame(width: geometry.size.width, height: geometry.size.height)
 
                         serverTabBar
-                            .padding(.bottom, max(0, geometry.safeAreaInsets.bottom - 6))
                             .zIndex(100)
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
@@ -559,6 +558,7 @@ private struct V3LibraryBrowserView: View {
         .navigationTitle(library.name)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .nativeInteractivePop()
         .onAppear { if !model.hasLoaded { Task { await model.reload() } } }
     }
 
