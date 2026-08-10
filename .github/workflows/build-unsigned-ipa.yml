@@ -35,7 +35,7 @@ jobs:
       - name: Export exact source snapshot
         run: |
           set -euo pipefail
-          SOURCE_ZIP="OS-player-v0.13.2-build68-${GITHUB_SHA::7}-source.zip"
+          SOURCE_ZIP="OS-player-v0.13.3-build69-${GITHUB_SHA::7}-source.zip"
           git archive --format=zip --output "$SOURCE_ZIP" HEAD
           shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
           echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
@@ -91,8 +91,8 @@ jobs:
           with Path("Config/Info.plist").open("rb") as handle:
               info = plistlib.load(handle)
           require(info.get("CFBundleDisplayName") == "OS player", "source CFBundleDisplayName must be OS player")
-          require(str(info.get("CFBundleShortVersionString")) == "0.13.2", "source version must be 0.13.2")
-          require(str(info.get("CFBundleVersion")) == "68", "source build must be 68")
+          require(str(info.get("CFBundleShortVersionString")) == "0.13.3", "source version must be 0.13.3")
+          require(str(info.get("CFBundleVersion")) == "69", "source build must be 69")
 
           contents_path = Path("Resources/Assets.xcassets/OSPlayerIcon.appiconset/Contents.json")
           require(contents_path.is_file(), "OSPlayerIcon Contents.json is missing")
@@ -198,8 +198,8 @@ jobs:
           python3 scripts/validate_built_app.py \
             "$APP_PATH" \
             --bundle-id "com.embyplayerlab.app" \
-            --version "0.13.2" \
-            --build "68" 2>&1 | tee app-validation.log
+            --version "0.13.3" \
+            --build "69" 2>&1 | tee app-validation.log
 
       # Package first. A successful .app must always produce a downloadable TrollStore test IPA.
       # Compatibility certification runs afterwards and may keep the job/release red without deleting this artifact.
@@ -210,7 +210,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="EmbyPlayerLab-0.13.2-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="EmbyPlayerLab-0.13.3-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           {
@@ -248,8 +248,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          RELEASE_TAG="v0.13.2-build68-dev"
-          RELEASE_IPA="OS-player-v0.13.2-build68-${GITHUB_SHA::7}-unsigned.ipa"
+          RELEASE_TAG="v0.13.3-build69-dev"
+          RELEASE_IPA="OS-player-v0.13.3-build69-${GITHUB_SHA::7}-unsigned.ipa"
           cp "$IPA_NAME" "$RELEASE_IPA"
           shasum -a 256 "$RELEASE_IPA" | tee "$RELEASE_IPA.sha256"
           gh release delete "$RELEASE_TAG" --cleanup-tag -y >/dev/null 2>&1 || true
@@ -257,8 +257,8 @@ jobs:
             "$RELEASE_IPA" \
             "$RELEASE_IPA.sha256" \
             --target "$GITHUB_SHA" \
-            --title "OS player v0.13.2 Build 68" \
-            --notes "Compatibility-certified TrollStore test build for OS player v0.13.2 Build 68 from $GITHUB_SHA" \
+            --title "OS player v0.13.3 Build 69" \
+            --notes "Compatibility-certified TrollStore test build for OS player v0.13.3 Build 69 from $GITHUB_SHA" \
             --prerelease
 
       - name: Summarize failure
@@ -274,7 +274,7 @@ jobs:
       - name: Write build report
         if: always()
         run: |
-          printf '{"version":"0.13.2","build":68,"commit":"%s","runId":%s,"runNumber":%s,"status":"%s","deploymentTarget":"15.0","requiredDeviceIOS":"17.0"}\n' \
+          printf '{"version":"0.13.3","build":69,"commit":"%s","runId":%s,"runNumber":%s,"status":"%s","deploymentTarget":"15.0","requiredDeviceIOS":"17.0"}\n' \
             "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_NUMBER" "${{ job.status }}" > build-report.json
           cat build-report.json
 
