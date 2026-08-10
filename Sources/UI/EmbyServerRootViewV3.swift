@@ -41,7 +41,6 @@ struct EmbyServerRootViewV3: View {
                         .frame(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom, alignment: .top)
 
                         serverTabBar
-                            .offset(y: 5)
                             .zIndex(100)
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
