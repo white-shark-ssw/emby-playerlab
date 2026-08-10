@@ -114,8 +114,7 @@ private final class EmbyPosterGridMultitouchGuardGesture: UILongPressGestureReco
     override init(target: Any?, action: Selector?) {
         super.init(target: target, action: action)
         minimumPressDuration = 0
-        minimumNumberOfTouches = 2
-        maximumNumberOfTouches = 10
+        numberOfTouchesRequired = 2
         allowableMovement = CGFloat.greatestFiniteMagnitude
         cancelsTouchesInView = true
         delaysTouchesBegan = false
@@ -181,7 +180,7 @@ private final class EmbyPosterGridTouchShieldViewController: UIViewController {
             guardGesture.isEnabled = true
         }
         navigationState?.prepareForGridAppearance()
-        DispatchQueue.main.async { [weak navigationState] in navigationState?.prepareForGridAppearance() }
+        DispatchQueue.main.async { [weak self] in self?.navigationState?.prepareForGridAppearance() }
     }
 
     @objc private func multitouchGuardChanged(_ gesture: EmbyPosterGridMultitouchGuardGesture) {
