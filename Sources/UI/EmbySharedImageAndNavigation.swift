@@ -92,36 +92,43 @@ private final class EmbyPosterNavigationGate {
 
 private final class EmbyPosterTouchArbiter {
     static let shared = EmbyPosterTouchArbiter()
-    private var owner: UUID?
+    private var activeTouches = Set<UUID>()
+    private var primaryOwner: UUID?
     private var contaminated = false
 
     private init() {}
 
     func begin(_ id: UUID) -> Bool {
         precondition(Thread.isMainThread)
-        if let owner {
-            if owner != id { contaminated = true }
-            return owner == id
+        if activeTouches.isEmpty {
+            primaryOwner = id
+            contaminated = false
+        } else if !activeTouches.contains(id) {
+            contaminated = true
         }
-        owner = id
-        contaminated = false
-        return true
+        activeTouches.insert(id)
+        return primaryOwner == id
     }
 
     func finish(_ id: UUID, triggerAction: Bool) -> Bool {
         precondition(Thread.isMainThread)
-        guard owner == id else { return false }
-        let shouldTrigger = triggerAction && !contaminated
-        owner = nil
-        contaminated = false
+        guard activeTouches.contains(id) else { return false }
+        let shouldTrigger = triggerAction && primaryOwner == id && !contaminated && activeTouches.count == 1
+        activeTouches.remove(id)
+        if activeTouches.isEmpty {
+            primaryOwner = nil
+            contaminated = false
+        }
         return shouldTrigger
     }
 
     func cancel(_ id: UUID) {
         precondition(Thread.isMainThread)
-        guard owner == id else { return }
-        owner = nil
-        contaminated = false
+        activeTouches.remove(id)
+        if activeTouches.isEmpty {
+            primaryOwner = nil
+            contaminated = false
+        }
     }
 }
 
@@ -131,25 +138,27 @@ private struct EmbyExclusivePosterTapControl: UIViewRepresentable {
     final class Coordinator: NSObject {
         let id = UUID()
         var action: () -> Void
-        var ownsTouch = false
+        var registeredTouch = false
 
         init(action: @escaping () -> Void) { self.action = action }
 
         deinit { EmbyPosterTouchArbiter.shared.cancel(id) }
 
         @objc func touchDown() {
-            ownsTouch = EmbyPosterTouchArbiter.shared.begin(id)
+            guard !registeredTouch else { return }
+            registeredTouch = true
+            _ = EmbyPosterTouchArbiter.shared.begin(id)
         }
 
         @objc func touchUpInside() {
-            guard ownsTouch else { return }
-            ownsTouch = false
+            guard registeredTouch else { return }
+            registeredTouch = false
             if EmbyPosterTouchArbiter.shared.finish(id, triggerAction: true) { action() }
         }
 
         @objc func touchEnded() {
-            guard ownsTouch else { return }
-            ownsTouch = false
+            guard registeredTouch else { return }
+            registeredTouch = false
             _ = EmbyPosterTouchArbiter.shared.finish(id, triggerAction: false)
         }
     }
