@@ -21,7 +21,7 @@ struct EmbyEpisodePickerView: View {
                 ZStack(alignment: .top) {
                     ImmersiveBackdrop(url: pickerHeroURL, overlayOpacity: colorScheme == .dark ? 0.50 : 0.64)
 
-                    ScrollView(.vertical, showsIndicators: true) {
+                    ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(spacing: 0) {
                             pickerHero(width: geometry.size.width)
                             LazyVStack(spacing: 16) {
@@ -30,7 +30,7 @@ struct EmbyEpisodePickerView: View {
                             .padding(.leading, 18)
                             .padding(.trailing, 48)
                             .padding(.top, 12)
-                            .padding(.bottom, 70)
+                            .padding(.bottom, 92)
                         }
                         .frame(width: geometry.size.width)
                     }
@@ -173,7 +173,8 @@ struct EmbyEpisodePickerView: View {
     }
 
     private func episodeRow(_ episode: LibraryItem) -> some View {
-        Button {
+        let overview = model.normalizedOverview(for: episode) ?? ""
+        return Button {
             presentationMode.wrappedValue.dismiss()
             Task {
                 try? await Task.sleep(nanoseconds: 100_000_000)
@@ -201,14 +202,14 @@ struct EmbyEpisodePickerView: View {
                         .foregroundColor(.primary)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    if let overview = model.normalizedOverview(for: episode), !overview.isEmpty {
-                        Text(overview)
-                            .font(.system(size: 11.5))
-                            .foregroundColor(.secondary.opacity(0.72))
-                            .lineLimit(3)
-                            .lineSpacing(1.5)
-                            .frame(maxWidth: .infinity, minHeight: 43, alignment: .topLeading)
-                    } else {
+                    Text(overview.isEmpty ? " " : overview)
+                        .font(.system(size: 11.5))
+                        .foregroundColor(.secondary.opacity(0.72))
+                        .lineLimit(3)
+                        .lineSpacing(1.5)
+                        .frame(maxWidth: .infinity, minHeight: 43, alignment: .topLeading)
+                        .opacity(overview.isEmpty ? 0 : 1)
+                    if overview.isEmpty {
                         HStack(spacing: 6) {
                             if let date = episode.premiereDate, date.count >= 10 { Text(String(date.prefix(10))) }
                             else if let year = episode.productionYear { Text(String(year)) }
