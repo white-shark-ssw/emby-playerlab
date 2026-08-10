@@ -15,16 +15,14 @@ final class EmbyPosterGridNavigationState: ObservableObject {
     @Published fileprivate var client: EmbyAPIClient?
     @Published fileprivate var isActive = false
     private var transitionLocked = false
-    private var multitouchBlocked = false
-    private var multitouchReleaseWorkItem: DispatchWorkItem?
 
     func open(item: LibraryItem, client: EmbyAPIClient) {
-        guard !isActive, !transitionLocked, !multitouchBlocked else { return }
+        guard !isActive, !transitionLocked else { return }
         transitionLocked = true
         selectedItem = item
         self.client = client
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.selectedItem?.id == item.id, !self.isActive, !self.multitouchBlocked else {
+            guard let self, self.selectedItem?.id == item.id, !self.isActive else {
                 self?.cancelPendingOpenIfNeeded(itemID: item.id)
                 return
             }
@@ -43,27 +41,7 @@ final class EmbyPosterGridNavigationState: ObservableObject {
         }
     }
 
-    fileprivate func beginMultitouchBlock() {
-        multitouchReleaseWorkItem?.cancel()
-        multitouchReleaseWorkItem = nil
-        multitouchBlocked = true
-        if !isActive { cancelPendingOpenIfNeeded(itemID: selectedItem?.id) }
-    }
-
-    fileprivate func endMultitouchBlock() {
-        multitouchReleaseWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.multitouchBlocked = false
-            self?.multitouchReleaseWorkItem = nil
-        }
-        multitouchReleaseWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: workItem)
-    }
-
     fileprivate func prepareForGridAppearance() {
-        multitouchReleaseWorkItem?.cancel()
-        multitouchReleaseWorkItem = nil
-        multitouchBlocked = false
         guard !isActive else { return }
         selectedItem = nil
         client = nil
@@ -108,17 +86,17 @@ private struct EmbyPosterGridNavigationHost: View {
     }
 }
 
-private let embyPosterGridMultitouchGuardName = "emby.poster-grid.multitouch-guard"
-
-private final class EmbyPosterGridTouchShieldViewController: UIViewController, UIGestureRecognizerDelegate {
+private final class EmbyPosterGridTouchShieldViewController: UIViewController {
     weak var navigationState: EmbyPosterGridNavigationState?
-    private weak var guardedScrollView: UIScrollView?
-    private weak var guardGesture: UILongPressGestureRecognizer?
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         configureGridEnvironment()
-        resetGuardForFreshAppearance()
+        navigationState?.prepareForGridAppearance()
+        DispatchQueue.main.async { [weak self] in
+            self?.configureGridEnvironment()
+            self?.navigationState?.prepareForGridAppearance()
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -129,7 +107,10 @@ private final class EmbyPosterGridTouchShieldViewController: UIViewController, U
     private func configureGridEnvironment() {
         guard let scrollView = enclosingScrollView() else { return }
         scrollView.showsVerticalScrollIndicator = false
-        installTouchShield(on: scrollView)
+        scrollView.isMultipleTouchEnabled = false
+        scrollView.isExclusiveTouch = true
+        scrollView.panGestureRecognizer.maximumNumberOfTouches = 1
+        applyExclusiveTouch(to: scrollView)
     }
 
     private func enclosingScrollView() -> UIScrollView? {
@@ -141,53 +122,10 @@ private final class EmbyPosterGridTouchShieldViewController: UIViewController, U
         return nil
     }
 
-    private func installTouchShield(on scrollView: UIScrollView) {
-        guardedScrollView = scrollView
-        if let existing = scrollView.gestureRecognizers?.first(where: { $0.name == embyPosterGridMultitouchGuardName }) as? UILongPressGestureRecognizer {
-            existing.delegate = self
-            if guardGesture !== existing {
-                existing.addTarget(self, action: #selector(multitouchGuardChanged(_:)))
-                guardGesture = existing
-            }
-            return
-        }
-
-        let gesture = UILongPressGestureRecognizer(target: self, action: #selector(multitouchGuardChanged(_:)))
-        gesture.name = embyPosterGridMultitouchGuardName
-        gesture.minimumPressDuration = 0
-        gesture.numberOfTouchesRequired = 2
-        gesture.allowableMovement = CGFloat.greatestFiniteMagnitude
-        gesture.cancelsTouchesInView = true
-        gesture.delaysTouchesBegan = false
-        gesture.delaysTouchesEnded = false
-        gesture.delegate = self
-        scrollView.addGestureRecognizer(gesture)
-        guardGesture = gesture
-    }
-
-    private func resetGuardForFreshAppearance() {
-        if let guardGesture {
-            guardGesture.isEnabled = false
-            guardGesture.isEnabled = true
-        }
-        navigationState?.prepareForGridAppearance()
-        DispatchQueue.main.async { [weak self] in self?.navigationState?.prepareForGridAppearance() }
-    }
-
-    @objc private func multitouchGuardChanged(_ gesture: UILongPressGestureRecognizer) {
-        switch gesture.state {
-        case .began, .changed:
-            navigationState?.beginMultitouchBlock()
-        case .ended, .cancelled, .failed:
-            navigationState?.endMultitouchBlock()
-        default:
-            break
-        }
-    }
-
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let guardedScrollView else { return false }
-        return otherGestureRecognizer === guardedScrollView.panGestureRecognizer
+    private func applyExclusiveTouch(to view: UIView) {
+        view.isMultipleTouchEnabled = false
+        view.isExclusiveTouch = true
+        for subview in view.subviews { applyExclusiveTouch(to: subview) }
     }
 }
 
