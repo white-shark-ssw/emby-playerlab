@@ -2,12 +2,19 @@ import Foundation
 
 extension EmbyAPIClient {
     func detailItems(filter: String, isGenre: Bool, limit: Int = 60, startIndex: Int = 0) async throws -> EmbyItemPage {
+        try await detailBrowseItems(extraQuery: [URLQueryItem(name: isGenre ? "Genres" : "Tags", value: filter)], limit: limit, startIndex: startIndex)
+    }
+
+    func personMediaItems(personId: String, limit: Int = 60, startIndex: Int = 0) async throws -> EmbyItemPage {
+        try await detailBrowseItems(extraQuery: [URLQueryItem(name: "PersonIds", value: personId)], limit: limit, startIndex: startIndex)
+    }
+
+    private func detailBrowseItems(extraQuery: [URLQueryItem], limit: Int, startIndex: Int) async throws -> EmbyItemPage {
         guard let userId else { throw EmbyAPIError.missingSession }
         guard var components = URLComponents(url: baseURL.appendingPathComponent("Users/\(userId)/Items"), resolvingAgainstBaseURL: false) else { throw EmbyAPIError.invalidServerURL }
 
         components.queryItems = [
             URLQueryItem(name: "Recursive", value: "true"),
-            URLQueryItem(name: isGenre ? "Genres" : "Tags", value: filter),
             URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Video"),
             URLQueryItem(name: "StartIndex", value: String(startIndex)),
             URLQueryItem(name: "Limit", value: String(limit)),
@@ -18,7 +25,7 @@ extension EmbyAPIClient {
             URLQueryItem(name: "ImageTypeLimit", value: "1"),
             URLQueryItem(name: "EnableImageTypes", value: "Primary,Backdrop"),
             URLQueryItem(name: "EnableUserData", value: "true"),
-        ]
+        ] + extraQuery
         guard let url = components.url else { throw EmbyAPIError.invalidServerURL }
 
         var request = URLRequest(url: url)
