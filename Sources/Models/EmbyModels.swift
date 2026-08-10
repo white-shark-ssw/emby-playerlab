@@ -69,6 +69,34 @@ struct EmbyItemPage: Decodable {
     }
 }
 
+struct EmbyNamedItem: Decodable, Identifiable, Hashable {
+    let id: String
+    let name: String
+
+    enum CodingKeys: String, CodingKey {
+        case id = "Id"
+        case name = "Name"
+    }
+}
+
+struct EmbyPerson: Decodable, Identifiable, Hashable {
+    let itemId: String?
+    let name: String
+    let role: String?
+    let type: String?
+    let primaryImageTag: String?
+
+    var id: String { itemId ?? "\(name)|\(role ?? "")|\(type ?? "")" }
+
+    enum CodingKeys: String, CodingKey {
+        case itemId = "Id"
+        case name = "Name"
+        case role = "Role"
+        case type = "Type"
+        case primaryImageTag = "PrimaryImageTag"
+    }
+}
+
 struct LibraryItem: Decodable, Identifiable, Hashable {
     let id: String
     let name: String
@@ -77,6 +105,8 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
     let productionYear: Int?
     let runTimeTicks: Int64?
     let communityRating: Double?
+    let officialRating: String?
+    let premiereDate: String?
     let seriesName: String?
     let seriesId: String?
     let indexNumber: Int?
@@ -84,7 +114,13 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
     let childCount: Int?
     let collectionType: String?
     let primaryImageTag: String?
+    let primaryImageItemId: String?
+    let seriesPrimaryImageTag: String?
     let backdropImageTags: [String]
+    let genres: [String]
+    let tags: [String]
+    let studios: [EmbyNamedItem]
+    let people: [EmbyPerson]
     let userData: EmbyUserItemData?
 
     enum CodingKeys: String, CodingKey {
@@ -95,6 +131,8 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
         case productionYear = "ProductionYear"
         case runTimeTicks = "RunTimeTicks"
         case communityRating = "CommunityRating"
+        case officialRating = "OfficialRating"
+        case premiereDate = "PremiereDate"
         case seriesName = "SeriesName"
         case seriesId = "SeriesId"
         case indexNumber = "IndexNumber"
@@ -102,7 +140,13 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
         case childCount = "ChildCount"
         case collectionType = "CollectionType"
         case imageTags = "ImageTags"
+        case primaryImageItemId = "PrimaryImageItemId"
+        case seriesPrimaryImageTag = "SeriesPrimaryImageTag"
         case backdropImageTags = "BackdropImageTags"
+        case genres = "Genres"
+        case tags = "Tags"
+        case studios = "Studios"
+        case people = "People"
         case userData = "UserData"
     }
 
@@ -115,6 +159,8 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
         productionYear = try? container.decode(Int.self, forKey: .productionYear)
         runTimeTicks = try? container.decode(Int64.self, forKey: .runTimeTicks)
         communityRating = try? container.decode(Double.self, forKey: .communityRating)
+        officialRating = try? container.decode(String.self, forKey: .officialRating)
+        premiereDate = try? container.decode(String.self, forKey: .premiereDate)
         seriesName = try? container.decode(String.self, forKey: .seriesName)
         seriesId = try? container.decode(String.self, forKey: .seriesId)
         indexNumber = try? container.decode(Int.self, forKey: .indexNumber)
@@ -123,7 +169,13 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
         collectionType = try? container.decode(String.self, forKey: .collectionType)
         let imageTags = (try? container.decode([String: String].self, forKey: .imageTags)) ?? [:]
         primaryImageTag = imageTags["Primary"]
+        primaryImageItemId = try? container.decode(String.self, forKey: .primaryImageItemId)
+        seriesPrimaryImageTag = try? container.decode(String.self, forKey: .seriesPrimaryImageTag)
         backdropImageTags = (try? container.decode([String].self, forKey: .backdropImageTags)) ?? []
+        genres = (try? container.decode([String].self, forKey: .genres)) ?? []
+        tags = (try? container.decode([String].self, forKey: .tags)) ?? []
+        studios = (try? container.decode([EmbyNamedItem].self, forKey: .studios)) ?? []
+        people = (try? container.decode([EmbyPerson].self, forKey: .people)) ?? []
         userData = try? container.decode(EmbyUserItemData.self, forKey: .userData)
     }
 
@@ -137,6 +189,14 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
         return min(1, max(0, Double(position) / Double(runTimeTicks)))
     }
 
+    var preferredPrimaryImageItemId: String {
+        if primaryImageTag != nil { return id }
+        if let primaryImageItemId, !primaryImageItemId.isEmpty { return primaryImageItemId }
+        if let seriesId, !seriesId.isEmpty, seriesPrimaryImageTag != nil { return seriesId }
+        return id
+    }
+
+    var preferredPrimaryImageTag: String? { primaryImageTag ?? seriesPrimaryImageTag }
     var isFavorite: Bool { userData?.isFavorite == true }
     var isPlayed: Bool { userData?.played == true }
 }
@@ -199,17 +259,9 @@ struct MediaSource: Decodable, Identifiable, Hashable {
         return Double(runTimeTicks) / AppIdentity.ticksPerSecond
     }
 
-    var normalizedContainer: String {
-        container?.lowercased() ?? ""
-    }
-
-    var videoCodec: String? {
-        mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Video") == .orderedSame })?.codec
-    }
-
-    var audioCodec: String? {
-        mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Audio") == .orderedSame })?.codec
-    }
+    var normalizedContainer: String { container?.lowercased() ?? "" }
+    var videoCodec: String? { mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Video") == .orderedSame })?.codec }
+    var audioCodec: String? { mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Audio") == .orderedSame })?.codec }
 }
 
 struct MediaStream: Decodable, Hashable {
