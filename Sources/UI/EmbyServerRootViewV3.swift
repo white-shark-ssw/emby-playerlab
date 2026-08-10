@@ -38,9 +38,10 @@ struct EmbyServerRootViewV3: View {
                                 .allowsHitTesting(selectedTab == .settings)
                                 .accessibilityHidden(selectedTab != .settings)
                         }
-                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .frame(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom, alignment: .top)
 
                         serverTabBar
+                            .offset(y: 5)
                             .zIndex(100)
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
@@ -64,8 +65,8 @@ struct EmbyServerRootViewV3: View {
             serverTabButton(.search, title: "搜索", systemImage: "magnifyingglass")
             serverTabButton(.settings, title: "设置", systemImage: "gearshape")
         }
-        .padding(.top, 6)
-        .padding(.bottom, 4)
+        .padding(.top, 5)
+        .padding(.bottom, 2)
         .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea(edges: .bottom))
     }
 
@@ -137,7 +138,7 @@ private struct V3EmbyHomeView: View {
             VStack(spacing: 0) {
                 header
                 ScrollViewReader { proxy in
-                    ScrollView {
+                    ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(alignment: .leading, spacing: 22) {
                             Color.clear.frame(height: 1).id("v3-home-top")
                             if model.isLoading && model.libraries.isEmpty {
@@ -217,7 +218,7 @@ private struct V3EmbyHomeView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 2)
+        .padding(.top, 0)
         .padding(.bottom, 6)
     }
 
@@ -520,7 +521,7 @@ private struct V3LibraryBrowserView: View {
     }
 
     var body: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     Text(contentTitle).font(.headline).foregroundColor(.blue)
@@ -651,7 +652,7 @@ private struct V3EmbyFavoritesView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     V3PageHeader(title: "收藏", onClose: onClose)
                     favoriteSection("电影", items: model.movies)
@@ -753,7 +754,7 @@ private struct V3EmbySearchView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .padding(.horizontal, 16)
 
-                ScrollView {
+                ScrollView(.vertical, showsIndicators: false) {
                     EmbyPosterGrid(items: model.items) { item in
                         EmbyPosterDetailLink(item: item, client: client) {
                             V3PosterCard(item: item, client: client, width: nil)
@@ -794,7 +795,7 @@ private struct V3EmbyServerSettingsView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     V3PageHeader(title: "设置", onClose: onClose)
                     V3SettingsCard {
@@ -855,7 +856,7 @@ private struct V3PageHeader: View {
             Button(action: onClose) { Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundColor(.primary).frame(width: 36, height: 36).background(Color(uiColor: .secondarySystemBackground)).clipShape(Circle()) }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.top, 5)
     }
 }
 
