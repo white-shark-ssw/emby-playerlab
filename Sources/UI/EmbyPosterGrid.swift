@@ -117,12 +117,28 @@ private final class EmbyPosterGridMultitouchCancellationGesture: UIGestureRecogn
 private final class EmbyPosterGridTouchShieldViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        installTouchShield()
+        configureGridEnvironment()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        configureGridEnvironment()
+    }
+
+    private func configureGridEnvironment() {
+        hideEnclosingVerticalScrollIndicator()
         installTouchShield()
+    }
+
+    private func hideEnclosingVerticalScrollIndicator() {
+        var current = view.superview
+        while let candidate = current {
+            if let scrollView = candidate as? UIScrollView {
+                scrollView.showsVerticalScrollIndicator = false
+                break
+            }
+            current = candidate.superview
+        }
     }
 
     private func installTouchShield() {
