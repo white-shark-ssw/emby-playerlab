@@ -6,7 +6,6 @@ private struct EmbyEpisodeRange: Identifiable, Hashable {
     let endOffset: Int
     let firstNumber: Int
     let lastNumber: Int
-
     var id: Int { startOffset }
     var title: String { firstNumber == lastNumber ? String(firstNumber) : "\(firstNumber)-\(lastNumber)" }
 }
@@ -17,6 +16,20 @@ private struct EmbyEpisodeJump: Identifiable {
     var id: String { episode.id }
 }
 
+private struct EmbyStillSelection: Identifiable {
+    let index: Int
+    var id: Int { index }
+}
+
+private struct DetailPressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.88 : 1)
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .animation(.easeOut(duration: 0.07), value: configuration.isPressed)
+    }
+}
+
 struct EmbyMediaDetailView: View {
     @Environment(\.presentationMode) private var presentationMode
     @Environment(\.colorScheme) private var colorScheme
@@ -25,7 +38,7 @@ struct EmbyMediaDetailView: View {
     @StateObject private var model: EmbyMediaDetailViewModel
     @State private var showFullOverview = false
     @State private var showAllEpisodes = false
-    @State private var selectedStill: EmbyImageInfo?
+    @State private var selectedStill: EmbyStillSelection?
 
     init(item: LibraryItem, client: EmbyAPIClient) {
         self.item = item
@@ -36,12 +49,12 @@ struct EmbyMediaDetailView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .top) {
-                ambientBackground(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom)
+                ImmersiveBackdrop(url: heroImageURL, overlayOpacity: colorScheme == .dark ? 0.46 : 0.58)
 
-                ScrollView {
+                ScrollView(.vertical, showsIndicators: true) {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         hero(width: geometry.size.width)
-                        VStack(alignment: .leading, spacing: 26) {
+                        VStack(alignment: .leading, spacing: 24) {
                             overview
                             if model.isSeries { seriesContent }
                             castSection
@@ -51,91 +64,64 @@ struct EmbyMediaDetailView: View {
                             if let error = model.errorMessage { errorView(error) }
                         }
                         .padding(.top, 2)
-                        .padding(.bottom, 52)
+                        .padding(.bottom, 72)
                     }
                     .frame(width: geometry.size.width)
                 }
-                .frame(width: geometry.size.width)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .background(Color.clear)
                 .ignoresSafeArea(edges: .top)
 
                 topBar
-                    .padding(.horizontal, 16)
-                    .padding(.top, geometry.safeAreaInsets.top + 8)
+                    .padding(.horizontal, 14)
+                    .padding(.top, geometry.safeAreaInsets.top + 4)
                     .frame(width: geometry.size.width)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .ignoresSafeArea(edges: .top)
         }
         .navigationBarHidden(true)
+        .interactiveEdgeBack { presentationMode.wrappedValue.dismiss() }
         .task { await model.load() }
-        .sheet(isPresented: $showFullOverview) { overviewSheet }
+        .fullScreenCover(isPresented: $showFullOverview) { overviewScreen }
         .fullScreenCover(isPresented: $showAllEpisodes) { EmbyEpisodePickerView(model: model, client: client) }
-        .fullScreenCover(item: $selectedStill) { info in
-            EmbyStillViewer(url: client.imageURL(itemId: model.item.id, imageType: info.imageType, maxWidth: 2200, index: info.imageIndex))
+        .fullScreenCover(item: $selectedStill) { selection in
+            EmbyStillViewer(images: model.stillImages, initialIndex: selection.index, itemId: model.item.id, client: client)
         }
         .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
-    }
-
-    private func ambientBackground(width: CGFloat, height: CGFloat) -> some View {
-        ZStack {
-            EmbyDetailRemoteImage(url: heroImageURL, contentMode: .fill)
-                .frame(width: width, height: height)
-                .clipped()
-                .scaleEffect(1.22)
-                .blur(radius: 52)
-                .opacity(colorScheme == .dark ? 0.62 : 0.44)
-            Color(uiColor: .systemBackground)
-                .opacity(colorScheme == .dark ? 0.58 : 0.68)
-        }
-        .frame(width: width, height: height)
-        .clipped()
-        .ignoresSafeArea()
     }
 
     private var topBar: some View {
         HStack {
             Button { presentationMode.wrappedValue.dismiss() } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Color.black.opacity(0.48))
+                    .frame(width: ImmersiveUIMetrics.topControlVisualSize, height: ImmersiveUIMetrics.topControlVisualSize)
+                    .background(Color.black.opacity(0.50))
                     .clipShape(Circle())
+                    .frame(width: ImmersiveUIMetrics.topControlHitSize, height: ImmersiveUIMetrics.topControlHitSize)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(DetailPressButtonStyle())
             Spacer()
-            if model.item.isFavorite {
-                Image(systemName: "heart.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Color.black.opacity(0.48))
-                    .clipShape(Circle())
-            }
         }
     }
 
     private func hero(width: CGFloat) -> some View {
-        let heroHeight = min(500, max(455, width * 1.15))
+        let heroHeight = min(488, max(430, width * 1.08))
         let contentWidth = max(0, width - 40)
         return ZStack(alignment: .bottom) {
             EmbyDetailRemoteImage(url: heroImageURL, contentMode: .fill)
                 .frame(width: width, height: heroHeight)
                 .clipped()
-                .mask(
-                    LinearGradient(
-                        colors: [.black, .black, .black.opacity(0.92), .black.opacity(0.56), .clear],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .mask(LinearGradient(colors: [.black, .black, .black.opacity(0.94), .black.opacity(0.52), .clear], startPoint: .top, endPoint: .bottom))
 
-            VStack(spacing: 10) {
+            VStack(spacing: 9) {
                 heroIdentity(width: contentWidth)
 
                 Text(heroMetadataLine)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(.primary.opacity(0.72))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                     .frame(width: contentWidth)
@@ -154,14 +140,14 @@ struct EmbyMediaDetailView: View {
                         .background(Color.blue)
                         .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(DetailPressButtonStyle())
                     .disabled(model.isResolvingPlayback)
                 }
 
                 detailActionRow(width: contentWidth)
             }
             .frame(width: width)
-            .padding(.bottom, 8)
+            .padding(.bottom, 6)
         }
         .frame(width: width, height: heroHeight)
     }
@@ -171,13 +157,11 @@ struct EmbyMediaDetailView: View {
         if let logoURL = logoImageURL {
             AsyncImage(url: logoURL) { phase in
                 switch phase {
-                case .success(let image):
-                    image.resizable().scaledToFit().frame(width: min(270, width), height: 88)
-                default:
-                    fallbackHeroTitle(width: width)
+                case .success(let image): image.resizable().scaledToFit().frame(width: min(270, width), height: 82)
+                default: fallbackHeroTitle(width: width)
                 }
             }
-            .frame(width: width, height: 88)
+            .frame(width: width, height: 82)
         } else {
             fallbackHeroTitle(width: width)
         }
@@ -185,21 +169,23 @@ struct EmbyMediaDetailView: View {
 
     private func fallbackHeroTitle(width: CGFloat) -> some View {
         Text(model.item.name)
-            .font(.system(size: 28, weight: .bold, design: .rounded))
+            .font(.system(size: 27, weight: .bold, design: .rounded))
             .multilineTextAlignment(.center)
             .lineLimit(2)
-            .frame(width: width, minHeight: 54)
+            .frame(width: width)
+            .frame(minHeight: 50)
     }
 
     private func heroTagScroller(width: CGFloat) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 16) {
+            HStack(spacing: 17) {
                 ForEach(model.detailFilters) { filter in
                     NavigationLink(destination: EmbyDetailFilterResultsView(filter: filter, client: client)) {
                         Text(filter.name)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 13.5, weight: .bold))
+                            .foregroundColor(.primary.opacity(0.84))
                             .lineLimit(1)
+                            .shadow(color: Color(uiColor: .systemBackground).opacity(0.32), radius: 1)
                     }
                     .buttonStyle(.plain)
                 }
@@ -210,25 +196,29 @@ struct EmbyMediaDetailView: View {
     }
 
     private func detailActionRow(width: CGFloat) -> some View {
-        HStack(spacing: 18) {
-            actionButton(systemName: model.item.isPlayed ? "checkmark.circle.fill" : "checkmark.circle", active: model.item.isPlayed, label: model.item.isPlayed ? "标记为未看" : "标记为已看") { Task { await model.togglePlayed() } }
-            actionButton(systemName: model.item.isFavorite ? "heart.fill" : "heart", active: model.item.isFavorite, label: model.item.isFavorite ? "取消收藏" : "收藏") { Task { await model.toggleFavorite() } }
+        HStack(spacing: 17) {
+            actionButton(systemName: model.displayedPlayed ? "checkmark.circle.fill" : "checkmark.circle", active: model.displayedPlayed, isBusy: model.isUpdatingPlayed, label: model.displayedPlayed ? "标记为未看" : "标记为已看") { Task { await model.togglePlayed() } }
+            actionButton(systemName: model.displayedFavorite ? "heart.fill" : "heart", active: model.displayedFavorite, isBusy: model.isUpdatingFavorite, label: model.displayedFavorite ? "取消收藏" : "收藏") { Task { await model.toggleFavorite() } }
             deferredAction(systemName: "arrow.down.circle", label: "下载")
             deferredAction(systemName: "film", label: "版本")
             deferredAction(systemName: "headphones", label: "音轨")
         }
-        .frame(width: width, height: 34)
+        .frame(width: width, height: 32)
     }
 
-    private func actionButton(systemName: String, active: Bool, label: String, action: @escaping () -> Void) -> some View {
+    private func actionButton(systemName: String, active: Bool, isBusy: Bool, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 19, weight: .regular))
-                .foregroundColor(active ? .blue : .secondary)
-                .frame(width: 28, height: 28)
+            ZStack {
+                Image(systemName: systemName)
+                    .font(.system(size: 19, weight: .regular))
+                    .foregroundColor(active ? .blue : .secondary)
+                    .opacity(isBusy ? 0.58 : 1)
+                if isBusy { ProgressView().scaleEffect(0.48) }
+            }
+            .frame(width: 28, height: 28)
         }
-        .buttonStyle(.plain)
-        .disabled(model.isUpdatingUserData)
+        .buttonStyle(DetailPressButtonStyle())
+        .disabled(isBusy)
         .accessibilityLabel(label)
     }
 
@@ -241,10 +231,8 @@ struct EmbyMediaDetailView: View {
     }
 
     private var heroImageURL: URL? {
-        if !model.item.backdropImageTags.isEmpty {
-            return client.imageURL(itemId: model.item.id, imageType: "Backdrop", maxWidth: 1600, tag: model.item.backdropImageTags.first, index: 0)
-        }
-        return client.imageURL(itemId: model.item.preferredPrimaryImageItemId, maxWidth: 1200, tag: model.item.preferredPrimaryImageTag)
+        if !model.item.backdropImageTags.isEmpty { return client.imageURL(itemId: model.item.id, imageType: "Backdrop", maxWidth: 1800, tag: model.item.backdropImageTags.first, index: 0) }
+        return client.imageURL(itemId: model.item.preferredPrimaryImageItemId, maxWidth: 1400, tag: model.item.preferredPrimaryImageTag)
     }
 
     private var logoImageURL: URL? {
@@ -269,7 +257,7 @@ struct EmbyMediaDetailView: View {
             Button { showFullOverview = true } label: {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(text)
-                        .font(.system(size: 15))
+                        .font(.system(size: 14))
                         .foregroundColor(.primary.opacity(0.82))
                         .lineLimit(4)
                         .lineSpacing(2)
@@ -288,38 +276,39 @@ struct EmbyMediaDetailView: View {
         }
     }
 
-    private var overviewSheet: some View {
-        NavigationView {
-            GeometryReader { geometry in
-                ZStack {
-                    ambientBackground(width: geometry.size.width, height: geometry.size.height)
-                    ScrollView(.vertical, showsIndicators: true) {
-                        Text(model.normalizedOverview ?? "")
-                            .font(.body)
-                            .lineSpacing(5)
-                            .frame(width: max(0, geometry.size.width - 40), alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.vertical, 24)
-                    }
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+    private var overviewScreen: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .top) {
+                ImmersiveBackdrop(url: heroImageURL, overlayOpacity: colorScheme == .dark ? 0.48 : 0.63)
+                ScrollView(.vertical, showsIndicators: true) {
+                    Text(model.normalizedOverview ?? "")
+                        .font(.system(size: 16))
+                        .lineSpacing(5)
+                        .frame(width: max(0, geometry.size.width - 40), alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, geometry.safeAreaInsets.top + 70)
+                        .padding(.bottom, max(40, geometry.safeAreaInsets.bottom + 24))
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height)
+
+                HStack {
+                    Spacer()
+                    Button("完成") { showFullOverview = false }
+                        .font(.system(size: 16, weight: .semibold))
+                        .padding(.trailing, 20)
+                }
+                .padding(.top, geometry.safeAreaInsets.top + 10)
+                .frame(width: geometry.size.width)
             }
-            .navigationTitle("简介")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) { Button("完成") { showFullOverview = false } }
-            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .ignoresSafeArea(edges: .top)
         }
-        .navigationViewStyle(StackNavigationViewStyle())
     }
 
     @ViewBuilder
     private var seriesContent: some View {
         if model.isLoadingEpisodes && model.episodes.isEmpty {
-            HStack { Spacer(); ProgressView("正在加载剧集…"); Spacer() }
-                .padding(.vertical, 24)
-                .padding(.horizontal, 20)
+            HStack { Spacer(); ProgressView("正在加载剧集…"); Spacer() }.padding(.vertical, 24).padding(.horizontal, 20)
         } else if !model.episodes.isEmpty {
             VStack(alignment: .leading, spacing: 28) {
                 upcomingEpisodesSection
@@ -330,11 +319,9 @@ struct EmbyMediaDetailView: View {
 
     private var upcomingEpisodesSection: some View {
         ScrollViewReader { proxy in
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 11) {
                 HStack(spacing: 10) {
-                    Text("即将播放")
-                        .font(.title2.weight(.bold))
-                        .fixedSize()
+                    Text("即将播放").font(.title2.weight(.bold)).fixedSize()
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 7) {
                             ForEach(model.episodeRanges) { range in
@@ -357,18 +344,13 @@ struct EmbyMediaDetailView: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    Button("查看全部") { showAllEpisodes = true }
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.blue)
-                        .fixedSize()
+                    Button("查看全部") { showAllEpisodes = true }.font(.caption.weight(.semibold)).foregroundColor(.blue).fixedSize()
                 }
                 .padding(.horizontal, 20)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 12) {
-                        ForEach(model.selectedSeasonEpisodes) { episode in
-                            episodePreviewCard(episode).id(episode.id)
-                        }
+                        ForEach(model.selectedSeasonEpisodes) { episode in episodePreviewCard(episode).id(episode.id) }
                     }
                     .padding(.horizontal, 20)
                 }
@@ -378,7 +360,7 @@ struct EmbyMediaDetailView: View {
 
     private func episodePreviewCard(_ episode: LibraryItem) -> some View {
         Button { Task { await model.play(episode) } } label: {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 5) {
                 ZStack {
                     EmbyDetailRemoteImage(url: client.imageURL(itemId: episode.preferredPrimaryImageItemId, maxWidth: 620, tag: episode.preferredPrimaryImageTag), contentMode: .fill)
                         .frame(width: 174, height: 98)
@@ -392,18 +374,18 @@ struct EmbyMediaDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 Text(model.displayEpisodeTitle(episode))
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(width: 174, alignment: .leading)
 
-                if let overview = model.normalizedOverview(for: episode), !overview.isEmpty {
-                    Text(overview)
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary.opacity(0.78))
+                if let text = model.normalizedOverview(for: episode), !text.isEmpty {
+                    Text(text)
+                        .font(.system(size: 11.25))
+                        .foregroundColor(.secondary.opacity(0.72))
                         .lineLimit(3)
-                        .lineSpacing(2)
+                        .lineSpacing(1.5)
                         .frame(width: 174, alignment: .leading)
                 }
             }
@@ -439,20 +421,10 @@ struct EmbyMediaDetailView: View {
                         .background(Color(uiColor: .secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     if count > 0 {
-                        Text(String(count))
-                            .font(.caption2.weight(.bold))
-                            .foregroundColor(.white)
-                            .frame(minWidth: 29, minHeight: 29)
-                            .background(Color.green)
-                            .clipShape(Circle())
-                            .padding(6)
+                        Text(String(count)).font(.caption2.weight(.bold)).foregroundColor(.white).frame(minWidth: 29, minHeight: 29).background(Color.green).clipShape(Circle()).padding(6)
                     }
                 }
-                Text(seasonDisplayTitle(season, item: seasonItem))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .frame(width: 106, alignment: .leading)
+                Text(seasonDisplayTitle(season, item: seasonItem)).font(.subheadline.weight(.semibold)).foregroundColor(.primary).lineLimit(1).frame(width: 106, alignment: .leading)
             }
         }
         .buttonStyle(.plain)
@@ -465,7 +437,9 @@ struct EmbyMediaDetailView: View {
                 Text("演职人员").font(.title2.weight(.bold)).padding(.horizontal, 20)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 12) {
-                        ForEach(model.visiblePeople) { person in personCard(person) }
+                        ForEach(model.visiblePeople) { person in
+                            NavigationLink(destination: EmbyPersonMediaView(person: person, client: client)) { personCard(person) }.buttonStyle(.plain)
+                        }
                     }
                     .padding(.horizontal, 20)
                 }
@@ -480,12 +454,9 @@ struct EmbyMediaDetailView: View {
                 .clipped()
                 .background(Color(uiColor: .secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            Text(person.name).font(.subheadline.weight(.semibold)).lineLimit(1).frame(width: 108, alignment: .leading)
-            if let role = person.role, !role.isEmpty {
-                Text("饰 " + role).font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: 108, alignment: .leading)
-            } else if let type = person.type, !type.isEmpty {
-                Text(personTypeTitle(type)).font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: 108, alignment: .leading)
-            }
+            Text(person.name).font(.subheadline.weight(.semibold)).foregroundColor(.primary).lineLimit(1).frame(width: 108, alignment: .leading)
+            if let role = person.role, !role.isEmpty { Text("饰 " + role).font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: 108, alignment: .leading) }
+            else if let type = person.type, !type.isEmpty { Text(personTypeTitle(type)).font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: 108, alignment: .leading) }
         }
     }
 
@@ -528,15 +499,15 @@ struct EmbyMediaDetailView: View {
                 Text("剧照").font(.title2.weight(.bold)).padding(.horizontal, 20)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
-                        ForEach(model.stillImages) { info in
-                            Button { selectedStill = info } label: {
+                        ForEach(Array(model.stillImages.enumerated()), id: \.element.id) { index, info in
+                            Button { selectedStill = EmbyStillSelection(index: index) } label: {
                                 EmbyDetailRemoteImage(url: client.imageURL(itemId: model.item.id, imageType: info.imageType, maxWidth: 900, index: info.imageIndex), contentMode: .fill)
                                     .frame(width: 248, height: 140)
                                     .clipped()
                                     .background(Color(uiColor: .secondarySystemBackground))
                                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(DetailPressButtonStyle())
                         }
                     }
                     .padding(.horizontal, 20)
@@ -625,79 +596,79 @@ private struct EmbyEpisodePickerView: View {
     @ObservedObject var model: EmbyMediaDetailViewModel
     let client: EmbyAPIClient
     @State private var sortAscending = true
+    @State private var lastHapticIndex: Int?
+    @State private var lastHapticTime: TimeInterval = 0
 
     var body: some View {
         GeometryReader { geometry in
             ScrollViewReader { proxy in
                 ZStack(alignment: .top) {
-                    pickerBackground(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom)
+                    ImmersiveBackdrop(url: pickerHeroURL, overlayOpacity: colorScheme == .dark ? 0.52 : 0.68)
 
                     ScrollView(.vertical, showsIndicators: true) {
                         LazyVStack(spacing: 0) {
                             pickerHero(width: geometry.size.width)
                             LazyVStack(spacing: 16) {
-                                ForEach(displayedEpisodes) { episode in
-                                    episodeRow(episode).id(episode.id)
-                                }
+                                ForEach(displayedEpisodes) { episode in episodeRow(episode).id(episode.id) }
                             }
-                            .padding(.horizontal, 18)
+                            .padding(.leading, 18)
+                            .padding(.trailing, 36)
                             .padding(.top, 12)
-                            .padding(.bottom, 40)
+                            .padding(.bottom, 56)
                         }
                         .frame(width: geometry.size.width)
                     }
-                    .frame(width: geometry.size.width)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
                     .ignoresSafeArea(edges: .top)
 
                     HStack {
                         Button { presentationMode.wrappedValue.dismiss() } label: {
                             Image(systemName: "chevron.left")
-                                .font(.system(size: 17, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(.white)
-                                .frame(width: 40, height: 40)
-                                .background(Color.black.opacity(0.48))
+                                .frame(width: ImmersiveUIMetrics.topControlVisualSize, height: ImmersiveUIMetrics.topControlVisualSize)
+                                .background(Color.black.opacity(0.50))
                                 .clipShape(Circle())
+                                .frame(width: ImmersiveUIMetrics.topControlHitSize, height: ImmersiveUIMetrics.topControlHitSize)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(DetailPressButtonStyle())
                         Spacer()
-                        Button { sortAscending.toggle() } label: {
-                            Image(systemName: "arrow.up.arrow.down")
-                                .font(.system(size: 20, weight: .semibold))
+                        Button { sortAscending.toggle(); DetailHaptics.selection() } label: {
+                            Image(systemName: sortAscending ? "arrow.up" : "arrow.down")
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(.white)
-                                .frame(width: 40, height: 40)
-                                .background(Color.black.opacity(0.48))
+                                .frame(width: ImmersiveUIMetrics.topControlVisualSize, height: ImmersiveUIMetrics.topControlVisualSize)
+                                .background(Color.black.opacity(0.50))
                                 .clipShape(Circle())
+                                .frame(width: ImmersiveUIMetrics.topControlHitSize, height: ImmersiveUIMetrics.topControlHitSize)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(DetailPressButtonStyle())
                         .accessibilityLabel(sortAscending ? "改为倒序" : "改为正序")
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, geometry.safeAreaInsets.top + 8)
+                    .padding(.horizontal, 14)
+                    .padding(.top, geometry.safeAreaInsets.top + 4)
                     .frame(width: geometry.size.width)
+                    .zIndex(20)
 
-                    VStack {
-                        Spacer().frame(height: max(150, geometry.size.height * 0.18))
-                        HStack {
-                            Spacer()
-                            quickJumpRail(proxy: proxy)
-                                .frame(width: 42, height: min(560, geometry.size.height * 0.66))
-                                .padding(.trailing, 4)
-                        }
-                        Spacer().frame(height: 70)
+                    HStack {
+                        Spacer()
+                        quickJumpRail(proxy: proxy)
+                            .frame(width: 54, height: min(580, geometry.size.height * 0.70))
                     }
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .allowsHitTesting(true)
+                    .padding(.top, max(130, geometry.size.height * 0.14))
+                    .padding(.bottom, 58)
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                    .zIndex(30)
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .ignoresSafeArea(edges: .top)
             }
         }
         .navigationBarHidden(true)
+        .interactiveEdgeBack { presentationMode.wrappedValue.dismiss() }
     }
 
-    private var displayedEpisodes: [LibraryItem] {
-        sortAscending ? model.selectedSeasonEpisodes : Array(model.selectedSeasonEpisodes.reversed())
-    }
+    private var displayedEpisodes: [LibraryItem] { sortAscending ? model.selectedSeasonEpisodes : Array(model.selectedSeasonEpisodes.reversed()) }
 
     private var quickJumps: [EmbyEpisodeJump] {
         let items = displayedEpisodes
@@ -705,71 +676,51 @@ private struct EmbyEpisodePickerView: View {
         let step = max(1, Int(ceil(Double(max(0, items.count - 1)) / 29.0)))
         var offsets = Array(stride(from: 0, to: items.count, by: step))
         if offsets.last != items.count - 1 { offsets.append(items.count - 1) }
-        return offsets.map { offset in
-            let episode = items[offset]
-            return EmbyEpisodeJump(label: episode.indexNumber ?? offset + 1, episode: episode)
-        }
-    }
-
-    private func pickerBackground(width: CGFloat, height: CGFloat) -> some View {
-        ZStack {
-            EmbyDetailRemoteImage(url: pickerHeroURL, contentMode: .fill)
-                .frame(width: width, height: height)
-                .clipped()
-                .scaleEffect(1.2)
-                .blur(radius: 54)
-                .opacity(colorScheme == .dark ? 0.45 : 0.26)
-            Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.72 : 0.82)
-        }
-        .frame(width: width, height: height)
-        .clipped()
-        .ignoresSafeArea()
+        return offsets.map { offset in EmbyEpisodeJump(label: items[offset].indexNumber ?? offset + 1, episode: items[offset]) }
     }
 
     private func pickerHero(width: CGFloat) -> some View {
         ZStack(alignment: .bottomLeading) {
             EmbyDetailRemoteImage(url: pickerHeroURL, contentMode: .fill)
-                .frame(width: width, height: 238)
+                .frame(width: width, height: 218)
                 .clipped()
-                .mask(LinearGradient(colors: [.black, .black, .black.opacity(0.82), .clear], startPoint: .top, endPoint: .bottom))
+                .mask(LinearGradient(colors: [.black, .black, .black.opacity(0.80), .clear], startPoint: .top, endPoint: .bottom))
             VStack(alignment: .leading, spacing: 4) {
                 Text(model.item.name).font(.headline).lineLimit(1)
                 Text(model.selectedSeasonTitle).font(.title2.weight(.bold))
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 16)
+            .padding(.bottom, 14)
         }
-        .frame(width: width, height: 238)
+        .frame(width: width, height: 218)
     }
 
     private var pickerHeroURL: URL? {
-        if !model.item.backdropImageTags.isEmpty {
-            return client.imageURL(itemId: model.item.id, imageType: "Backdrop", maxWidth: 1600, tag: model.item.backdropImageTags.first, index: 0)
-        }
-        if let season = model.selectedSeason, let seasonItem = model.seasonItem(number: season) {
-            return client.imageURL(itemId: seasonItem.preferredPrimaryImageItemId, maxWidth: 1000, tag: seasonItem.preferredPrimaryImageTag)
-        }
+        if !model.item.backdropImageTags.isEmpty { return client.imageURL(itemId: model.item.id, imageType: "Backdrop", maxWidth: 1600, tag: model.item.backdropImageTags.first, index: 0) }
+        if let season = model.selectedSeason, let seasonItem = model.seasonItem(number: season) { return client.imageURL(itemId: seasonItem.preferredPrimaryImageItemId, maxWidth: 1000, tag: seasonItem.preferredPrimaryImageTag) }
         return client.imageURL(itemId: model.item.preferredPrimaryImageItemId, maxWidth: 1200, tag: model.item.preferredPrimaryImageTag)
     }
 
     private func quickJumpRail(proxy: ScrollViewProxy) -> some View {
         GeometryReader { geometry in
             let jumps = quickJumps
-            let rowHeight = jumps.isEmpty ? 0 : min(18, geometry.size.height / CGFloat(jumps.count))
+            let rowHeight = jumps.isEmpty ? 0 : min(19, geometry.size.height / CGFloat(jumps.count))
             VStack(spacing: 0) {
-                ForEach(jumps) { jump in
-                    Button { proxy.scrollTo(jump.episode.id, anchor: .top) } label: {
+                ForEach(Array(jumps.enumerated()), id: \.element.id) { index, jump in
+                    Button {
+                        proxy.scrollTo(jump.episode.id, anchor: .top)
+                        emitRailHaptic(index: index)
+                    } label: {
                         Text(String(jump.label))
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.blue)
-                            .frame(width: 38, height: rowHeight)
+                            .frame(width: 48, height: rowHeight, alignment: .trailing)
                     }
                     .buttonStyle(.plain)
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .center)
-            .background(Color(uiColor: .secondarySystemBackground).opacity(0.80))
-            .clipShape(Capsule())
+            .background(Color.clear)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -778,54 +729,51 @@ private struct EmbyEpisodePickerView: View {
                         let fraction = min(0.999, max(0, value.location.y / geometry.size.height))
                         let index = min(jumps.count - 1, max(0, Int(fraction * CGFloat(jumps.count))))
                         proxy.scrollTo(jumps[index].episode.id, anchor: .top)
+                        emitRailHaptic(index: index)
                     }
             )
         }
+    }
+
+    private func emitRailHaptic(index: Int) {
+        guard index != lastHapticIndex else { return }
+        let now = Date().timeIntervalSince1970
+        guard now - lastHapticTime >= 0.010 else { return }
+        lastHapticIndex = index
+        lastHapticTime = now
+        DetailHaptics.selection()
     }
 
     private func episodeRow(_ episode: LibraryItem) -> some View {
         Button {
             presentationMode.wrappedValue.dismiss()
             Task {
-                try? await Task.sleep(nanoseconds: 180_000_000)
+                try? await Task.sleep(nanoseconds: 120_000_000)
                 await model.play(episode)
             }
         } label: {
             HStack(alignment: .top, spacing: 13) {
                 ZStack {
                     EmbyDetailRemoteImage(url: client.imageURL(itemId: episode.preferredPrimaryImageItemId, maxWidth: 620, tag: episode.preferredPrimaryImageTag), contentMode: .fill)
-                        .frame(width: 136, height: 78)
+                        .frame(width: 132, height: 76)
                         .clipped()
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 34, height: 34)
-                        .background(Color.black.opacity(0.48))
-                        .clipShape(Circle())
+                    Image(systemName: "play.fill").font(.system(size: 12, weight: .bold)).foregroundColor(.white).frame(width: 32, height: 32).background(Color.black.opacity(0.48)).clipShape(Circle())
                 }
-                .frame(width: 136, height: 78)
+                .frame(width: 132, height: 76)
                 .background(Color(uiColor: .secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(model.displayEpisodeTitle(episode))
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    Text(model.displayEpisodeTitle(episode)).font(.system(size: 14, weight: .semibold)).foregroundColor(.primary).lineLimit(1).truncationMode(.tail)
                     if let overview = model.normalizedOverview(for: episode), !overview.isEmpty {
-                        Text(overview)
-                            .font(.system(size: 12.5))
-                            .foregroundColor(.secondary.opacity(0.78))
-                            .lineLimit(3)
-                            .lineSpacing(2)
+                        Text(overview).font(.system(size: 11.75)).foregroundColor(.secondary.opacity(0.72)).lineLimit(3).lineSpacing(1.5)
                     } else {
                         HStack(spacing: 6) {
                             if let date = episode.premiereDate, date.count >= 10 { Text(String(date.prefix(10))) }
                             else if let year = episode.productionYear { Text(String(year)) }
                             if let duration = episode.durationSeconds { Text("·"); Text(formatDuration(duration)) }
                         }
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundColor(.secondary)
                     }
                 }
@@ -848,27 +796,63 @@ private struct EmbyEpisodePickerView: View {
 
 private struct EmbyStillViewer: View {
     @Environment(\.presentationMode) private var presentationMode
-    let url: URL?
+    let images: [EmbyImageInfo]
+    let initialIndex: Int
+    let itemId: String
+    let client: EmbyAPIClient
+    @State private var currentIndex: Int
+    @State private var verticalOffset: CGFloat = 0
+
+    init(images: [EmbyImageInfo], initialIndex: Int, itemId: String, client: EmbyAPIClient) {
+        self.images = images
+        self.initialIndex = min(max(0, initialIndex), max(0, images.count - 1))
+        self.itemId = itemId
+        self.client = client
+        _currentIndex = State(initialValue: min(max(0, initialIndex), max(0, images.count - 1)))
+    }
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
-                Color.black.ignoresSafeArea()
-                EmbyDetailRemoteImage(url: url, contentMode: .fit)
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+                Color.black.opacity(max(0.35, 1 - Double(abs(verticalOffset) / max(1, geometry.size.height)))).ignoresSafeArea()
+
+                TabView(selection: $currentIndex) {
+                    ForEach(Array(images.enumerated()), id: \.element.id) { index, info in
+                        EmbyDetailRemoteImage(url: client.imageURL(itemId: itemId, imageType: info.imageType, maxWidth: 2400, index: info.imageIndex), contentMode: .fit)
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .tag(index)
+                    }
+                }
+                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+                .offset(y: verticalOffset)
+                .gesture(
+                    DragGesture(minimumDistance: 12)
+                        .onChanged { value in
+                            guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                            if value.translation.height > 0 { verticalOffset = value.translation.height }
+                        }
+                        .onEnded { value in
+                            if verticalOffset > 105 || value.predictedEndTranslation.height > 220 { presentationMode.wrappedValue.dismiss() }
+                            else { withAnimation(.interactiveSpring(response: 0.24, dampingFraction: 0.86)) { verticalOffset = 0 } }
+                        }
+                )
+
                 Button { presentationMode.wrappedValue.dismiss() } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.white)
-                        .frame(width: 42, height: 42)
-                        .background(Color.black.opacity(0.5))
+                        .frame(width: 38, height: 38)
+                        .background(Color.black.opacity(0.52))
                         .clipShape(Circle())
                 }
-                .buttonStyle(.plain)
-                .padding(.leading, 16)
-                .padding(.top, geometry.safeAreaInsets.top + 8)
+                .buttonStyle(DetailPressButtonStyle())
+                .padding(.leading, 14)
+                .padding(.top, max(2, geometry.safeAreaInsets.top - 6))
+                .zIndex(10)
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
+        .ignoresSafeArea(edges: .top)
     }
 }
 
@@ -892,17 +876,13 @@ private struct EmbyDetailFilterResultsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                if model.isLoading && model.items.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
-                } else {
+                if model.isLoading && model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.top, 44) }
+                else {
                     EmbyPosterGrid(items: model.items, onApproachingEnd: {
                         guard model.hasMore else { return }
                         Task { await model.loadNextPage() }
                     }) { item in
-                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
-                            EmbyDetailPosterCard(item: item, client: client)
-                        }
-                        .buttonStyle(.plain)
+                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { EmbyDetailPosterCard(item: item, client: client) }.buttonStyle(.plain)
                     }
                 }
                 if model.isLoading && !model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12) }
@@ -972,7 +952,6 @@ private struct EmbyDetailPosterCard: View {
     @Environment(\.embyPosterGridCellWidth) private var gridCellWidth
     let item: LibraryItem
     let client: EmbyAPIClient
-
     private var width: CGFloat { gridCellWidth ?? 118 }
     private var height: CGFloat { floor(width / EmbyPosterGridMetrics.posterAspectRatio) }
 
@@ -984,12 +963,7 @@ private struct EmbyDetailPosterCard: View {
                 .background(Color(uiColor: .secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             Text(item.name).font(.subheadline).lineLimit(1).frame(width: width, height: 20, alignment: .leading)
-            Text(item.productionYear.map(String.init) ?? " ")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .frame(width: width, height: 16, alignment: .leading)
-                .opacity(item.productionYear == nil ? 0 : 1)
+            Text(item.productionYear.map(String.init) ?? " ").font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: width, height: 16, alignment: .leading).opacity(item.productionYear == nil ? 0 : 1)
         }
         .frame(width: width, alignment: .leading)
     }
@@ -1007,8 +981,11 @@ private final class EmbyMediaDetailViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var isLoadingEpisodes = false
     @Published var isResolvingPlayback = false
-    @Published var isUpdatingUserData = false
+    @Published var isUpdatingFavorite = false
+    @Published var isUpdatingPlayed = false
     @Published var selectedSource: ResolvedPlaybackSource?
+    @Published private var favoriteOverride: Bool?
+    @Published private var playedOverride: Bool?
     private let client: EmbyAPIClient
     private(set) var hasLoaded = false
 
@@ -1019,7 +996,8 @@ private final class EmbyMediaDetailViewModel: ObservableObject {
 
     var isSeries: Bool { item.type?.caseInsensitiveCompare("Series") == .orderedSame }
     var isPlayable: Bool { ["movie", "episode", "video"].contains(item.type?.lowercased() ?? "") }
-
+    var displayedFavorite: Bool { favoriteOverride ?? item.isFavorite }
+    var displayedPlayed: Bool { playedOverride ?? item.isPlayed }
     var normalizedOverview: String? { normalizedOverview(for: item) }
 
     func normalizedOverview(for item: LibraryItem) -> String? {
@@ -1184,25 +1162,35 @@ private final class EmbyMediaDetailViewModel: ObservableObject {
     }
 
     func toggleFavorite() async {
-        guard !isUpdatingUserData else { return }
-        isUpdatingUserData = true
-        defer { isUpdatingUserData = false }
+        guard !isUpdatingFavorite else { return }
+        let target = !displayedFavorite
+        favoriteOverride = target
+        isUpdatingFavorite = true
+        DetailHaptics.selection()
+        defer { isUpdatingFavorite = false }
         do {
-            try await client.setFavorite(itemId: item.id, favorite: !item.isFavorite)
+            try await client.setFavorite(itemId: item.id, favorite: target)
             item = try await client.libraryItem(itemId: item.id)
+            favoriteOverride = nil
         } catch {
+            favoriteOverride = nil
             if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
         }
     }
 
     func togglePlayed() async {
-        guard !isUpdatingUserData else { return }
-        isUpdatingUserData = true
-        defer { isUpdatingUserData = false }
+        guard !isUpdatingPlayed else { return }
+        let target = !displayedPlayed
+        playedOverride = target
+        isUpdatingPlayed = true
+        DetailHaptics.selection()
+        defer { isUpdatingPlayed = false }
         do {
-            try await client.setPlayed(itemId: item.id, played: !item.isPlayed)
+            try await client.setPlayed(itemId: item.id, played: target)
             item = try await client.libraryItem(itemId: item.id)
+            playedOverride = nil
         } catch {
+            playedOverride = nil
             if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
         }
     }
@@ -1240,9 +1228,7 @@ private struct EmbyDetailRemoteImage: View {
     private var placeholder: some View {
         ZStack {
             Color(uiColor: .secondarySystemBackground)
-            Image(systemName: "photo")
-                .font(.system(size: 26, weight: .medium))
-                .foregroundColor(.secondary.opacity(0.6))
+            Image(systemName: "photo").font(.system(size: 26, weight: .medium)).foregroundColor(.secondary.opacity(0.6))
         }
     }
 }
