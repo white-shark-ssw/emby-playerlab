@@ -125,7 +125,7 @@ private struct EmbyStillViewer: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let progress = min(1, max(0, verticalOffset / max(1, geometry.size.height * 0.72)))
+            let progress = Double(min(1, max(0, verticalOffset / max(1, geometry.size.height * 0.72))))
             ZStack(alignment: .topLeading) {
                 Color.black.opacity((1 - progress) * 0.96).ignoresSafeArea()
 
