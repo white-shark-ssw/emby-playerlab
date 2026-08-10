@@ -82,6 +82,9 @@ private final class EmbyPosterGridScrollBridgeViewController: UIViewController {
     private func configureGridEnvironment() {
         guard let scrollView = enclosingScrollView() else { return }
         scrollView.showsVerticalScrollIndicator = false
+        scrollView.isMultipleTouchEnabled = false
+        scrollView.panGestureRecognizer.minimumNumberOfTouches = 1
+        scrollView.panGestureRecognizer.maximumNumberOfTouches = 1
     }
 
     private func enclosingScrollView() -> UIScrollView? {
