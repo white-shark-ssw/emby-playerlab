@@ -67,6 +67,7 @@ struct EmbyMediaDetailView: View {
         }
         .navigationBarHidden(true)
         .nativeInteractivePop()
+        .hidesServerDockWhileVisible()
         .task { await model.load() }
         .background(EmbyStillViewerPresenter(selectedIndex: $selectedStillIndex, images: model.stillImages, itemId: model.item.id, client: client).frame(width: 0, height: 0))
         .fullScreenCover(isPresented: $showFullOverview) {
