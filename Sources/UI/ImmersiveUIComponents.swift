@@ -7,6 +7,7 @@ enum ImmersiveUIMetrics {
     static let topControlHitSize: CGFloat = 44
     static let topControlPadding: CGFloat = 1
     static let quickJumpHitWidth: CGFloat = 58
+    static let backdropBottomOverscan: CGFloat = 28
 }
 
 struct ImmersiveBackdrop: View {
@@ -22,6 +23,7 @@ struct ImmersiveBackdrop: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let extendedHeight = geometry.size.height + ImmersiveUIMetrics.backdropBottomOverscan
             ZStack {
                 AsyncImage(url: url) { phase in
                     switch phase {
@@ -29,14 +31,13 @@ struct ImmersiveBackdrop: View {
                     default: Color(uiColor: .systemBackground)
                     }
                 }
-                .frame(width: geometry.size.width, height: geometry.size.height)
+                .frame(width: geometry.size.width, height: extendedHeight)
                 .clipped()
                 .scaleEffect(1.18)
                 .blur(radius: blurRadius)
                 Color(uiColor: .systemBackground).opacity(overlayOpacity)
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
-            .clipped()
+            .frame(width: geometry.size.width, height: extendedHeight, alignment: .top)
         }
         .ignoresSafeArea()
     }
@@ -118,10 +119,7 @@ private struct NativeNavigationPopBridge: UIViewControllerRepresentable {
 }
 
 extension View {
-    func nativeInteractivePop() -> some View {
-        ignoresSafeArea(.container, edges: .bottom)
-            .background(NativeNavigationPopBridge().frame(width: 0, height: 0))
-    }
+    func nativeInteractivePop() -> some View { background(NativeNavigationPopBridge().frame(width: 0, height: 0)) }
 }
 
 enum DetailHaptics {
