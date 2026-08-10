@@ -78,8 +78,23 @@ final class EmbyAPIClient {
         return EmbyItemPage(items: deduplicated(page.items), totalRecordCount: page.totalRecordCount)
     }
 
-    func seriesEpisodes(seriesId: String, limit: Int = 500) async throws -> [LibraryItem] {
-        let page = try await libraryItems(parentId: seriesId, limit: limit, sortBy: "ParentIndexNumber,IndexNumber", sortOrder: "Ascending", includeItemTypes: ["Episode"])
+    func seriesEpisodes(seriesId: String, pageSize: Int = 500) async throws -> [LibraryItem] {
+        var all: [LibraryItem] = []
+        var startIndex = 0
+        let safePageSize = max(50, min(500, pageSize))
+        while true {
+            let page = try await libraryItems(parentId: seriesId, limit: safePageSize, startIndex: startIndex, sortBy: "ParentIndexNumber,IndexNumber", sortOrder: "Ascending", includeItemTypes: ["Episode"])
+            guard !page.items.isEmpty else { break }
+            all.append(contentsOf: page.items)
+            startIndex += page.items.count
+            if let total = page.totalRecordCount, startIndex >= total { break }
+            if page.items.count < safePageSize { break }
+        }
+        return deduplicated(all)
+    }
+
+    func seriesSeasons(seriesId: String, limit: Int = 100) async throws -> [LibraryItem] {
+        let page = try await libraryItems(parentId: seriesId, limit: limit, sortBy: "IndexNumber", sortOrder: "Ascending", includeItemTypes: ["Season"])
         return page.items
     }
 
@@ -125,13 +140,29 @@ final class EmbyAPIClient {
         return deduplicated(page.items.filter { $0.id != itemId })
     }
 
-    func imageURL(itemId: String, imageType: String = "Primary", maxWidth: Int = 600, tag: String? = nil) -> URL? {
-        var components = URLComponents(url: baseURL.appendingPathComponent("Items/\(itemId)/Images/\(imageType)"), resolvingAgainstBaseURL: false)
+    func imageInfos(itemId: String) async throws -> [EmbyImageInfo] {
+        try await send(path: "Items/\(itemId)/Images", method: "GET")
+    }
+
+    func imageURL(itemId: String, imageType: String = "Primary", maxWidth: Int = 600, tag: String? = nil, index: Int? = nil) -> URL? {
+        var path = "Items/\(itemId)/Images/\(imageType)"
+        if let index { path += "/\(index)" }
+        var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
         var query = [URLQueryItem(name: "MaxWidth", value: String(maxWidth)), URLQueryItem(name: "Quality", value: "90")]
         if let tag, !tag.isEmpty { query.append(URLQueryItem(name: "Tag", value: tag)) }
         if let accessToken, !accessToken.isEmpty { query.append(URLQueryItem(name: "api_key", value: accessToken)) }
         components?.queryItems = query
         return components?.url
+    }
+
+    func setFavorite(itemId: String, favorite: Bool) async throws {
+        guard let userId else { throw EmbyAPIError.missingSession }
+        let _: EmptyResponse = try await send(path: "Users/\(userId)/FavoriteItems/\(itemId)", method: favorite ? "POST" : "DELETE")
+    }
+
+    func setPlayed(itemId: String, played: Bool) async throws {
+        guard let userId else { throw EmbyAPIError.missingSession }
+        let _: EmptyResponse = try await send(path: "Users/\(userId)/PlayedItems/\(itemId)", method: played ? "POST" : "DELETE")
     }
 
     func playbackInfo(itemId: String) async throws -> PlaybackInfoResponse {
@@ -189,7 +220,7 @@ final class EmbyAPIClient {
     }
 
     private var commonBrowseFields: [URLQueryItem] {
-        [URLQueryItem(name: "Fields", value: "Overview,PrimaryImageAspectRatio,DateCreated,CommunityRating,RunTimeTicks,UserData,ProductionYear,SeriesName,SeriesId,IndexNumber,ParentIndexNumber,ChildCount,Genres,People,Studios,Taglines,ProviderIds")] + imageBrowseOptions
+        [URLQueryItem(name: "Fields", value: "Overview,PrimaryImageAspectRatio,DateCreated,CommunityRating,OfficialRating,PremiereDate,RunTimeTicks,UserData,ProductionYear,SeriesName,SeriesId,IndexNumber,ParentIndexNumber,ChildCount,Genres,Tags,People,Studios,Taglines,ProviderIds")] + imageBrowseOptions
     }
 
     private func report(path: String, eventName: String?, source: ResolvedPlaybackSource, position: Double, paused: Bool) async {
