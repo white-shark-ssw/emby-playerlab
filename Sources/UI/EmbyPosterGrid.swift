@@ -108,29 +108,12 @@ private struct EmbyPosterGridNavigationHost: View {
     }
 }
 
-private final class EmbyPosterGridMultitouchGuardGesture: UILongPressGestureRecognizer, UIGestureRecognizerDelegate {
-    weak var guardedScrollView: UIScrollView?
+private let embyPosterGridMultitouchGuardName = "emby.poster-grid.multitouch-guard"
 
-    override init(target: Any?, action: Selector?) {
-        super.init(target: target, action: action)
-        minimumPressDuration = 0
-        numberOfTouchesRequired = 2
-        allowableMovement = CGFloat.greatestFiniteMagnitude
-        cancelsTouchesInView = true
-        delaysTouchesBegan = false
-        delaysTouchesEnded = false
-        delegate = self
-    }
-
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let guardedScrollView else { return false }
-        return otherGestureRecognizer === guardedScrollView.panGestureRecognizer
-    }
-}
-
-private final class EmbyPosterGridTouchShieldViewController: UIViewController {
+private final class EmbyPosterGridTouchShieldViewController: UIViewController, UIGestureRecognizerDelegate {
     weak var navigationState: EmbyPosterGridNavigationState?
-    private weak var guardGesture: EmbyPosterGridMultitouchGuardGesture?
+    private weak var guardedScrollView: UIScrollView?
+    private weak var guardGesture: UILongPressGestureRecognizer?
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -159,8 +142,9 @@ private final class EmbyPosterGridTouchShieldViewController: UIViewController {
     }
 
     private func installTouchShield(on scrollView: UIScrollView) {
-        if let existing = scrollView.gestureRecognizers?.first(where: { $0 is EmbyPosterGridMultitouchGuardGesture }) as? EmbyPosterGridMultitouchGuardGesture {
-            existing.guardedScrollView = scrollView
+        guardedScrollView = scrollView
+        if let existing = scrollView.gestureRecognizers?.first(where: { $0.name == embyPosterGridMultitouchGuardName }) as? UILongPressGestureRecognizer {
+            existing.delegate = self
             if guardGesture !== existing {
                 existing.addTarget(self, action: #selector(multitouchGuardChanged(_:)))
                 guardGesture = existing
@@ -168,8 +152,15 @@ private final class EmbyPosterGridTouchShieldViewController: UIViewController {
             return
         }
 
-        let gesture = EmbyPosterGridMultitouchGuardGesture(target: self, action: #selector(multitouchGuardChanged(_:)))
-        gesture.guardedScrollView = scrollView
+        let gesture = UILongPressGestureRecognizer(target: self, action: #selector(multitouchGuardChanged(_:)))
+        gesture.name = embyPosterGridMultitouchGuardName
+        gesture.minimumPressDuration = 0
+        gesture.numberOfTouchesRequired = 2
+        gesture.allowableMovement = CGFloat.greatestFiniteMagnitude
+        gesture.cancelsTouchesInView = true
+        gesture.delaysTouchesBegan = false
+        gesture.delaysTouchesEnded = false
+        gesture.delegate = self
         scrollView.addGestureRecognizer(gesture)
         guardGesture = gesture
     }
@@ -183,7 +174,7 @@ private final class EmbyPosterGridTouchShieldViewController: UIViewController {
         DispatchQueue.main.async { [weak self] in self?.navigationState?.prepareForGridAppearance() }
     }
 
-    @objc private func multitouchGuardChanged(_ gesture: EmbyPosterGridMultitouchGuardGesture) {
+    @objc private func multitouchGuardChanged(_ gesture: UILongPressGestureRecognizer) {
         switch gesture.state {
         case .began, .changed:
             navigationState?.beginMultitouchBlock()
@@ -192,6 +183,11 @@ private final class EmbyPosterGridTouchShieldViewController: UIViewController {
         default:
             break
         }
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let guardedScrollView else { return false }
+        return otherGestureRecognizer === guardedScrollView.panGestureRecognizer
     }
 }
 
