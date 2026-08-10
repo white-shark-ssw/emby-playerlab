@@ -51,29 +51,54 @@ struct DetailPressButtonStyle: ButtonStyle {
     }
 }
 
+private final class NativeNavigationPopViewController: UIViewController {
+    weak var popCoordinator: NativeNavigationPopBridge.Coordinator?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        popCoordinator?.install(from: self)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        popCoordinator?.install(from: self)
+    }
+}
+
 private struct NativeNavigationPopBridge: UIViewControllerRepresentable {
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         weak var navigationController: UINavigationController?
 
+        func install(from viewController: UIViewController) {
+            guard let navigationController = viewController.navigationController else { return }
+            self.navigationController = navigationController
+            guard let gesture = navigationController.interactivePopGestureRecognizer else { return }
+            gesture.isEnabled = navigationController.viewControllers.count > 1
+            gesture.delegate = self
+            gesture.cancelsTouchesInView = true
+        }
+
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard let navigationController else { return false }
-            return navigationController.viewControllers.count > 1
+            return navigationController.viewControllers.count > 1 && navigationController.transitionCoordinator == nil
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            true
         }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIViewController(context: Context) -> UIViewController {
-        UIViewController()
+        let controller = NativeNavigationPopViewController()
+        controller.popCoordinator = context.coordinator
+        return controller
     }
 
     func updateUIViewController(_ viewController: UIViewController, context: Context) {
-        DispatchQueue.main.async {
-            guard let navigationController = viewController.navigationController else { return }
-            context.coordinator.navigationController = navigationController
-            navigationController.interactivePopGestureRecognizer?.isEnabled = navigationController.viewControllers.count > 1
-            navigationController.interactivePopGestureRecognizer?.delegate = context.coordinator
-        }
+        context.coordinator.install(from: viewController)
+        DispatchQueue.main.async { context.coordinator.install(from: viewController) }
     }
 }
 
