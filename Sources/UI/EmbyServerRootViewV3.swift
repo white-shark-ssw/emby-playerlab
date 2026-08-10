@@ -11,6 +11,7 @@ struct EmbyServerRootViewV3: View {
     @State private var homeRefreshToken = 0
     @State private var homeScrollToTopToken = 0
     @State private var lastHomeTap = Date.distantPast
+    @StateObject private var dockVisibility = ServerDockVisibilityController()
 
     var body: some View {
         Group {
@@ -38,11 +39,14 @@ struct EmbyServerRootViewV3: View {
                                 .allowsHitTesting(selectedTab == .settings)
                                 .accessibilityHidden(selectedTab != .settings)
                         }
-                        .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                        .frame(width: geometry.size.width, height: geometry.size.height + (dockVisibility.isHidden ? geometry.safeAreaInsets.bottom : 0), alignment: .top)
                         .ignoresSafeArea(.container, edges: .bottom)
+                        .environment(\.serverDockVisibilityController, dockVisibility)
 
-                        serverTabBar
-                            .zIndex(100)
+                        if !dockVisibility.isHidden {
+                            serverTabBar
+                                .zIndex(100)
+                        }
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .background(Color(uiColor: .systemBackground).ignoresSafeArea())
@@ -65,8 +69,7 @@ struct EmbyServerRootViewV3: View {
             serverTabButton(.search, title: "搜索", systemImage: "magnifyingglass")
             serverTabButton(.settings, title: "设置", systemImage: "gearshape")
         }
-        .padding(.top, 3)
-        .padding(.bottom, 0)
+        .frame(height: 34)
         .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea(edges: .bottom))
     }
 
@@ -86,12 +89,12 @@ struct EmbyServerRootViewV3: View {
                 if tab == .home { lastHomeTap = Date() }
             }
         } label: {
-            VStack(spacing: 2) {
-                Image(systemName: selectedTab == tab && tab != .search ? systemImage + ".fill" : systemImage).font(.system(size: 22))
-                Text(title).font(.caption2)
+            VStack(spacing: 0) {
+                Image(systemName: selectedTab == tab && tab != .search ? systemImage + ".fill" : systemImage).font(.system(size: 19))
+                Text(title).font(.system(size: 10))
             }
             .foregroundColor(selectedTab == tab ? .blue : .secondary)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
         }
         .buttonStyle(.plain)
     }
