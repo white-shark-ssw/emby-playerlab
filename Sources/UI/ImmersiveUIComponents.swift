@@ -118,7 +118,10 @@ private struct NativeNavigationPopBridge: UIViewControllerRepresentable {
 }
 
 extension View {
-    func nativeInteractivePop() -> some View { background(NativeNavigationPopBridge().frame(width: 0, height: 0)) }
+    func nativeInteractivePop() -> some View {
+        ignoresSafeArea(.container, edges: .bottom)
+            .background(NativeNavigationPopBridge().frame(width: 0, height: 0))
+    }
 }
 
 enum DetailHaptics {
