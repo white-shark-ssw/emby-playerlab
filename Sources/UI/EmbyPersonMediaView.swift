@@ -21,10 +21,9 @@ struct EmbyPersonMediaView: View {
                         guard model.hasMore else { return }
                         Task { await model.loadNextPage() }
                     }) { item in
-                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
+                        EmbyPosterDetailLink(item: item, client: client) {
                             EmbyPersonResultPoster(item: item, client: client)
                         }
-                        .buttonStyle(.plain)
                     }
                 } else {
                     Text("该演职人员缺少 Emby PersonId，暂时无法按人物精确筛选。")
@@ -55,15 +54,10 @@ private struct EmbyPersonResultPoster: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            AsyncImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 440, tag: item.preferredPrimaryImageTag)) { phase in
-                switch phase {
-                case .success(let image): image.resizable().aspectRatio(contentMode: .fill)
-                default: Color(uiColor: .secondarySystemBackground).overlay(Image(systemName: "photo").foregroundColor(.secondary))
-                }
-            }
-            .frame(width: width, height: height)
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            EmbyCachedRemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 440, tag: item.preferredPrimaryImageTag), contentMode: .fill)
+                .frame(width: width, height: height)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             Text(item.name).font(.subheadline).lineLimit(1).frame(width: width, height: 20, alignment: .leading)
             Text(item.productionYear.map(String.init) ?? " ").font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: width, height: 16, alignment: .leading).opacity(item.productionYear == nil ? 0 : 1)
         }
