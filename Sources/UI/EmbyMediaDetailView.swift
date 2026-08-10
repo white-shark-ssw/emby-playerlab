@@ -1,7 +1,7 @@
 import SwiftUI
 import Combine
 
-private struct EmbyEpisodeRange: Identifiable, Hashable {
+struct EmbyEpisodeRange: Identifiable, Hashable {
     let startOffset: Int
     let endOffset: Int
     let firstNumber: Int
@@ -548,7 +548,7 @@ struct EmbyMediaDetailView: View {
     }
 }
 
-private struct EmbyDetailFilter: Identifiable, Hashable {
+struct EmbyDetailFilter: Identifiable, Hashable {
     let name: String
     let isGenre: Bool
     var id: String { "\(isGenre ? "genre" : "tag")|\(name)" }
