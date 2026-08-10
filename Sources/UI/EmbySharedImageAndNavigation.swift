@@ -93,19 +93,35 @@ private final class EmbyPosterNavigationGate {
 private final class EmbyPosterTouchArbiter {
     static let shared = EmbyPosterTouchArbiter()
     private var owner: UUID?
+    private var contaminated = false
 
     private init() {}
 
     func begin(_ id: UUID) -> Bool {
         precondition(Thread.isMainThread)
-        if let owner { return owner == id }
+        if let owner {
+            if owner != id { contaminated = true }
+            return owner == id
+        }
         owner = id
+        contaminated = false
         return true
     }
 
-    func end(_ id: UUID) {
+    func finish(_ id: UUID, triggerAction: Bool) -> Bool {
         precondition(Thread.isMainThread)
-        if owner == id { owner = nil }
+        guard owner == id else { return false }
+        let shouldTrigger = triggerAction && !contaminated
+        owner = nil
+        contaminated = false
+        return shouldTrigger
+    }
+
+    func cancel(_ id: UUID) {
+        precondition(Thread.isMainThread)
+        guard owner == id else { return }
+        owner = nil
+        contaminated = false
     }
 }
 
@@ -119,7 +135,7 @@ private struct EmbyExclusivePosterTapControl: UIViewRepresentable {
 
         init(action: @escaping () -> Void) { self.action = action }
 
-        deinit { EmbyPosterTouchArbiter.shared.end(id) }
+        deinit { EmbyPosterTouchArbiter.shared.cancel(id) }
 
         @objc func touchDown() {
             ownsTouch = EmbyPosterTouchArbiter.shared.begin(id)
@@ -128,14 +144,13 @@ private struct EmbyExclusivePosterTapControl: UIViewRepresentable {
         @objc func touchUpInside() {
             guard ownsTouch else { return }
             ownsTouch = false
-            EmbyPosterTouchArbiter.shared.end(id)
-            action()
+            if EmbyPosterTouchArbiter.shared.finish(id, triggerAction: true) { action() }
         }
 
         @objc func touchEnded() {
             guard ownsTouch else { return }
             ownsTouch = false
-            EmbyPosterTouchArbiter.shared.end(id)
+            _ = EmbyPosterTouchArbiter.shared.finish(id, triggerAction: false)
         }
     }
 
@@ -145,7 +160,7 @@ private struct EmbyExclusivePosterTapControl: UIViewRepresentable {
         let control = UIControl(frame: .zero)
         control.backgroundColor = .clear
         control.isOpaque = false
-        control.isExclusiveTouch = true
+        control.isExclusiveTouch = false
         control.isMultipleTouchEnabled = false
         control.addTarget(context.coordinator, action: #selector(Coordinator.touchDown), for: .touchDown)
         control.addTarget(context.coordinator, action: #selector(Coordinator.touchUpInside), for: .touchUpInside)
