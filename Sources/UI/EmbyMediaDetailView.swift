@@ -139,13 +139,9 @@ struct EmbyMediaDetailView: View {
     @ViewBuilder
     private func heroIdentity(width: CGFloat) -> some View {
         if let logoURL = logoImageURL {
-            AsyncImage(url: logoURL) { phase in
-                switch phase {
-                case .success(let image): image.resizable().scaledToFit().frame(width: min(270, width), height: 82)
-                default: fallbackHeroTitle(width: width)
-                }
-            }
-            .frame(width: width, height: 82)
+            EmbyCachedRemoteImage(url: logoURL, contentMode: .fit)
+                .frame(width: min(270, width), height: 82)
+                .frame(width: width, height: 82)
         } else {
             fallbackHeroTitle(width: width)
         }
@@ -569,13 +565,15 @@ private struct EmbyDetailFilterResultsView: View {
                         guard model.hasMore else { return }
                         Task { await model.loadNextPage() }
                     }) { item in
-                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { EmbyDetailPosterCard(item: item, client: client) }.buttonStyle(.plain)
+                        EmbyPosterDetailLink(item: item, client: client) {
+                            EmbyDetailPosterCard(item: item, client: client)
+                        }
                     }
                 }
                 if model.isLoading && !model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12) }
                 if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
             }
-            .padding(.bottom, 24)
+            .padding(.bottom, 86)
         }
         .navigationBarHidden(false)
         .navigationTitle(filter.name)
@@ -929,21 +927,5 @@ private struct EmbyDetailRemoteImage: View {
     let url: URL?
     let contentMode: ContentMode
 
-    var body: some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image): image.resizable().aspectRatio(contentMode: contentMode)
-            case .failure: placeholder
-            case .empty: ZStack { placeholder; ProgressView() }
-            @unknown default: placeholder
-            }
-        }
-    }
-
-    private var placeholder: some View {
-        ZStack {
-            Color(uiColor: .secondarySystemBackground)
-            Image(systemName: "photo").font(.system(size: 26, weight: .medium)).foregroundColor(.secondary.opacity(0.6))
-        }
-    }
+    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode) }
 }
