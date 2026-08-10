@@ -90,6 +90,30 @@ private final class EmbyPosterNavigationGate {
     }
 }
 
+private struct EmbyExclusivePosterTapControl: UIViewRepresentable {
+    let action: () -> Void
+
+    final class Coordinator: NSObject {
+        var action: () -> Void
+        init(action: @escaping () -> Void) { self.action = action }
+        @objc func tapped() { action() }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(action: action) }
+
+    func makeUIView(context: Context) -> UIControl {
+        let control = UIControl(frame: .zero)
+        control.backgroundColor = .clear
+        control.isOpaque = false
+        control.isExclusiveTouch = true
+        control.isMultipleTouchEnabled = false
+        control.addTarget(context.coordinator, action: #selector(Coordinator.tapped), for: .touchUpInside)
+        return control
+    }
+
+    func updateUIView(_ uiView: UIControl, context: Context) { context.coordinator.action = action }
+}
+
 struct EmbyCachedRemoteImage: View {
     let url: URL?
     let contentMode: ContentMode
@@ -135,7 +159,7 @@ struct EmbyPosterDetailLink<Content: View>: View {
             if let gridNavigationState {
                 content
                     .contentShape(Rectangle())
-                    .onTapGesture { gridNavigationState.open(item: item, client: client) }
+                    .overlay(EmbyExclusivePosterTapControl { gridNavigationState.open(item: item, client: client) })
             } else {
                 content
                     .contentShape(Rectangle())
