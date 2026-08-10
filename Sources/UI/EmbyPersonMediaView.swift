@@ -12,7 +12,7 @@ struct EmbyPersonMediaView: View {
     }
 
     var body: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
                 if model.isLoading && model.items.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
@@ -40,6 +40,7 @@ struct EmbyPersonMediaView: View {
         .navigationTitle(person.name)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .nativeInteractivePop()
         .onAppear { if !model.hasLoaded { Task { await model.reload() } } }
     }
 }
