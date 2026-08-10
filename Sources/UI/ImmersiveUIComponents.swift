@@ -85,10 +85,20 @@ private struct NativeNavigationPopBridge: UIViewControllerRepresentable {
 
         private func install(_ navigationController: UINavigationController) {
             navigationControllers.add(navigationController)
+            extendTopControllerUnderBottomSafeArea(navigationController)
             guard let gesture = navigationController.interactivePopGestureRecognizer else { return }
             gesture.isEnabled = navigationController.viewControllers.count > 1
             gesture.delegate = self
             gesture.cancelsTouchesInView = true
+        }
+
+        private func extendTopControllerUnderBottomSafeArea(_ navigationController: UINavigationController) {
+            guard navigationController.viewControllers.count > 1, let topViewController = navigationController.topViewController else { return }
+            let bottomInset = topViewController.viewIfLoaded?.window?.safeAreaInsets.bottom ?? navigationController.viewIfLoaded?.window?.safeAreaInsets.bottom ?? 0
+            guard bottomInset > 0 else { return }
+            if abs(topViewController.additionalSafeAreaInsets.bottom + bottomInset) > 0.5 {
+                topViewController.additionalSafeAreaInsets.bottom = -bottomInset
+            }
         }
 
         private func navigationController(for gestureRecognizer: UIGestureRecognizer) -> UINavigationController? {
@@ -100,9 +110,7 @@ private struct NativeNavigationPopBridge: UIViewControllerRepresentable {
             return navigationController.viewControllers.count > 1 && navigationController.transitionCoordinator == nil
         }
 
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-            true
-        }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -120,17 +128,10 @@ private struct NativeNavigationPopBridge: UIViewControllerRepresentable {
 }
 
 extension View {
-    func nativeInteractivePop() -> some View {
-        background(NativeNavigationPopBridge().frame(width: 0, height: 0))
-    }
+    func nativeInteractivePop() -> some View { background(NativeNavigationPopBridge().frame(width: 0, height: 0)) }
 }
 
 enum DetailHaptics {
-    static func selection() {
-        UISelectionFeedbackGenerator().selectionChanged()
-    }
-
-    static func lightImpact() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
+    static func selection() { UISelectionFeedbackGenerator().selectionChanged() }
+    static func lightImpact() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
 }
