@@ -36,7 +36,7 @@ struct EmbyEpisodePickerView: View {
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .background(Color.clear)
-                    .ignoresSafeArea(edges: .top)
+                    .ignoresSafeArea(edges: [.top, .bottom])
 
                     topControls(geometry: geometry)
                         .zIndex(20)
@@ -52,7 +52,7 @@ struct EmbyEpisodePickerView: View {
                     .zIndex(30)
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height)
-                .ignoresSafeArea(edges: .top)
+                .ignoresSafeArea(edges: [.top, .bottom])
             }
         }
         .navigationBarHidden(true)
