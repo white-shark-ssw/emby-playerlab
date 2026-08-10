@@ -2,9 +2,11 @@ import SwiftUI
 import Combine
 
 struct EmbyMediaDetailView: View {
+    @Environment(\.presentationMode) private var presentationMode
     let item: LibraryItem
     let client: EmbyAPIClient
     @StateObject private var model: EmbyMediaDetailViewModel
+    @State private var showFullOverview = false
 
     init(item: LibraryItem, client: EmbyAPIClient) {
         self.item = item
@@ -13,116 +15,282 @@ struct EmbyMediaDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                hero
-                VStack(alignment: .leading, spacing: 20) {
-                    metadata
-                    if model.isSeries { seriesContent } else if model.isPlayable { playButton(model.item) }
-                    overview
-                    if let error = model.errorMessage { errorView(error) }
+        GeometryReader { geometry in
+            ZStack(alignment: .top) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        hero
+                        VStack(alignment: .leading, spacing: 26) {
+                            if model.isSeries { seriesContent }
+                            overview
+                            castSection
+                            similarSection
+                            if let error = model.errorMessage { errorView(error) }
+                        }
+                        .padding(.top, 4)
+                        .padding(.bottom, 42)
+                    }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 18)
-                .padding(.bottom, 36)
+                .ignoresSafeArea(edges: .top)
+                .background(Color(uiColor: .systemBackground))
+
+                topBar
+                    .padding(.horizontal, 16)
+                    .padding(.top, geometry.safeAreaInsets.top + 8)
             }
         }
-        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .navigationTitle(model.item.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarHidden(false)
+        .navigationBarHidden(true)
         .task { await model.load() }
+        .sheet(isPresented: $showFullOverview) { overviewSheet }
         .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
     }
 
+    private var topBar: some View {
+        HStack {
+            Button { presentationMode.wrappedValue.dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 38, height: 38)
+                    .background(Color.black.opacity(0.52))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            if model.item.isFavorite {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 38, height: 38)
+                    .background(Color.black.opacity(0.52))
+                    .clipShape(Circle())
+            }
+        }
+    }
+
     private var hero: some View {
-        ZStack(alignment: .bottomLeading) {
-            EmbyDetailRemoteImage(
-                url: client.imageURL(
-                    itemId: model.item.id,
-                    imageType: model.item.backdropImageTags.isEmpty ? "Primary" : "Backdrop",
-                    maxWidth: 1400,
-                    tag: model.item.backdropImageTags.first ?? model.item.primaryImageTag
-                ),
-                contentMode: .fill
-            )
-            .frame(maxWidth: .infinity)
-            .frame(height: 285)
-            .clipped()
+        ZStack(alignment: .bottom) {
+            EmbyDetailRemoteImage(url: heroImageURL, contentMode: .fill)
+                .frame(maxWidth: .infinity)
+                .frame(height: 535)
+                .clipped()
 
             LinearGradient(
-                colors: [Color.black.opacity(0.04), Color.black.opacity(0.28), Color.black.opacity(0.92)],
+                colors: [
+                    Color.black.opacity(0.06),
+                    Color.black.opacity(0.08),
+                    Color(uiColor: .systemBackground).opacity(0.14),
+                    Color(uiColor: .systemBackground).opacity(0.82),
+                    Color(uiColor: .systemBackground),
+                ],
                 startPoint: .top,
                 endPoint: .bottom
             )
 
-            HStack(alignment: .bottom, spacing: 14) {
-                EmbyDetailRemoteImage(
-                    url: client.imageURL(itemId: model.item.id, maxWidth: 420, tag: model.item.primaryImageTag),
-                    contentMode: .fill
-                )
-                .frame(width: 92, height: 138)
-                .background(Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.white.opacity(0.18), lineWidth: 0.5))
-                .shadow(color: Color.black.opacity(0.28), radius: 8, x: 0, y: 4)
+            VStack(spacing: 12) {
+                Text(model.item.name)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .padding(.horizontal, 28)
 
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(model.item.name)
-                        .font(.system(size: 27, weight: .bold))
-                        .foregroundColor(.white)
-                        .lineLimit(3)
-                        .shadow(color: .black.opacity(0.4), radius: 2)
-                    Text(detailSubtitle(model.item))
+                Text(heroMetadataLine)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .padding(.horizontal, 24)
+
+                if !model.item.genres.isEmpty {
+                    Text(model.item.genres.prefix(4).joined(separator: "  ·  "))
                         .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.white.opacity(0.82))
-                    if let secondary = heroSecondaryLine {
-                        Text(secondary)
-                            .font(.caption.weight(.medium))
-                            .foregroundColor(.white.opacity(0.72))
-                            .lineLimit(1)
-                    }
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 24)
                 }
-                .padding(.bottom, 4)
-                Spacer(minLength: 0)
+
+                if let playableItem = model.primaryPlayableItem {
+                    Button { Task { await model.play(playableItem) } } label: {
+                        HStack(spacing: 9) {
+                            if model.isResolvingPlayback { ProgressView().tint(.white) }
+                            else { Image(systemName: "play.fill").font(.system(size: 16, weight: .bold)) }
+                            Text(model.primaryPlayButtonTitle)
+                                .font(.headline)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Color.blue)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.isResolvingPlayback)
+                    .padding(.horizontal, 56)
+                    .padding(.top, 4)
+                }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .padding(.bottom, 20)
         }
-        .frame(height: 285)
+        .frame(height: 535)
         .clipped()
     }
 
-    private var heroSecondaryLine: String? {
-        var parts: [String] = []
-        if let year = model.item.productionYear { parts.append(String(year)) }
-        if let rating = model.item.communityRating { parts.append("★ " + String(format: "%.1f", rating)) }
-        if let duration = model.item.durationSeconds, !model.isSeries { parts.append(formatDuration(duration)) }
-        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
+    private var heroImageURL: URL? {
+        if !model.item.backdropImageTags.isEmpty {
+            return client.imageURL(itemId: model.item.id, imageType: "Backdrop", maxWidth: 1600, tag: model.item.backdropImageTags.first)
+        }
+        return client.imageURL(itemId: model.item.preferredPrimaryImageItemId, maxWidth: 1200, tag: model.item.preferredPrimaryImageTag)
     }
 
-    private var metadata: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                detailPill(detailSubtitle(model.item), systemImage: mediaSymbol)
-                if let year = model.item.productionYear { detailPill(String(year)) }
-                if let rating = model.item.communityRating { detailPill(String(format: "%.1f", rating), systemImage: "star.fill") }
-                if let duration = model.item.durationSeconds, !model.isSeries { detailPill(formatDuration(duration), systemImage: "clock") }
-                if model.isSeries, !model.episodes.isEmpty { detailPill("\(model.episodes.count) 集", systemImage: "rectangle.stack") }
+    private var heroMetadataLine: String {
+        var parts: [String] = []
+        if let duration = model.item.durationSeconds, !model.isSeries { parts.append(formatDuration(duration)) }
+        if let year = model.item.productionYear { parts.append(String(year)) }
+        if let rating = model.item.communityRating { parts.append("★ " + String(format: "%.1f", rating)) }
+        if let official = model.item.officialRating, !official.isEmpty { parts.append(official) }
+        if model.isSeries, !model.episodes.isEmpty { parts.append("\(model.episodes.count) 集") }
+        return parts.isEmpty ? detailSubtitle(model.item) : parts.joined(separator: "   ")
+    }
+
+    @ViewBuilder
+    private var overview: some View {
+        if let text = model.item.overview, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("简介")
+                    .font(.title2.weight(.bold))
+                Button { showFullOverview = true } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(text)
+                            .font(.body)
+                            .foregroundColor(.primary.opacity(0.78))
+                            .lineLimit(4)
+                            .lineSpacing(4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: 4) {
+                            Text("查看完整简介")
+                            Image(systemName: "chevron.right")
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
+    private var overviewSheet: some View {
+        NavigationView {
+            ZStack {
+                EmbyDetailRemoteImage(url: heroImageURL, contentMode: .fill)
+                    .ignoresSafeArea()
+                    .blur(radius: 22)
+                    .overlay(Color(uiColor: .systemBackground).opacity(0.72).ignoresSafeArea())
+                ScrollView {
+                    Text(model.item.overview ?? "")
+                        .font(.body)
+                        .lineSpacing(5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(24)
+                }
+            }
+            .navigationTitle("简介")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("完成") { showFullOverview = false }
+                }
+            }
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+    }
+
+    @ViewBuilder
+    private var castSection: some View {
+        if !model.visiblePeople.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("演职人员")
+                    .font(.title2.weight(.bold))
+                    .padding(.horizontal, 20)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(model.visiblePeople) { person in personCard(person) }
+                    }
+                    .padding(.horizontal, 20)
+                }
             }
         }
     }
 
-    private var overview: some View {
-        Group {
-            if let overview = model.item.overview, !overview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                VStack(alignment: .leading, spacing: 9) {
-                    Text("简介").font(.title3.weight(.bold))
-                    Text(overview)
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .lineSpacing(3)
+    private func personCard(_ person: EmbyPerson) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            EmbyDetailRemoteImage(url: personImageURL(person), contentMode: .fill)
+                .frame(width: 108, height: 144)
+                .clipped()
+                .background(Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            Text(person.name)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .frame(width: 108, alignment: .leading)
+            if let role = person.role, !role.isEmpty {
+                Text("饰 " + role)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .frame(width: 108, alignment: .leading)
+            } else if let type = person.type, !type.isEmpty {
+                Text(personTypeTitle(type))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .frame(width: 108, alignment: .leading)
+            }
+        }
+    }
+
+    private func personImageURL(_ person: EmbyPerson) -> URL? {
+        guard let itemId = person.itemId, !itemId.isEmpty else { return nil }
+        return client.imageURL(itemId: itemId, maxWidth: 360, tag: person.primaryImageTag)
+    }
+
+    @ViewBuilder
+    private var similarSection: some View {
+        if !model.similarItems.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(model.isSeries ? "更多类似" : "相似作品")
+                    .font(.title2.weight(.bold))
+                    .padding(.horizontal, 20)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(model.similarItems) { similar in
+                            NavigationLink(destination: EmbyMediaDetailView(item: similar, client: client)) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    EmbyDetailRemoteImage(
+                                        url: client.imageURL(itemId: similar.preferredPrimaryImageItemId, maxWidth: 420, tag: similar.preferredPrimaryImageTag),
+                                        contentMode: .fill
+                                    )
+                                    .frame(width: 112, height: 168)
+                                    .clipped()
+                                    .background(Color(uiColor: .secondarySystemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    Text(similar.name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(.primary)
+                                        .lineLimit(1)
+                                        .frame(width: 112, alignment: .leading)
+                                    if let year = similar.productionYear {
+                                        Text(String(year))
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 20)
                 }
             }
         }
@@ -131,26 +299,23 @@ struct EmbyMediaDetailView: View {
     @ViewBuilder
     private var seriesContent: some View {
         if model.isLoadingEpisodes && model.episodes.isEmpty {
-            HStack { Spacer(); ProgressView("正在加载剧集…"); Spacer() }.padding(.vertical, 24)
+            HStack { Spacer(); ProgressView("正在加载剧集…"); Spacer() }
+                .padding(.vertical, 24)
+                .padding(.horizontal, 20)
         } else if !model.episodes.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 10) {
-                    Text("剧集").font(.title3.weight(.bold))
+                    Text("剧集").font(.title2.weight(.bold))
                     Spacer()
                     if model.seasonNumbers.count > 1 { seasonMenu }
-                    Text("\(model.visibleEpisodes.count) 集").font(.subheadline).foregroundColor(.secondary)
                 }
+                .padding(.horizontal, 20)
 
                 LazyVStack(spacing: 12) {
                     ForEach(model.visibleEpisodes) { episode in episodeRow(episode) }
                 }
+                .padding(.horizontal, 20)
             }
-        } else if model.hasLoaded {
-            Text("没有找到可播放的剧集。\n如果这是刚更新的媒体库，请先在 Emby 服务端确认剧集已完成扫描。")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 8)
         }
     }
 
@@ -169,7 +334,7 @@ struct EmbyMediaDetailView: View {
             }
             .font(.subheadline.weight(.semibold))
             .foregroundColor(.primary)
-            .padding(.horizontal, 11)
+            .padding(.horizontal, 12)
             .frame(height: 34)
             .background(Color(uiColor: .secondarySystemBackground))
             .clipShape(Capsule())
@@ -181,77 +346,41 @@ struct EmbyMediaDetailView: View {
             HStack(alignment: .top, spacing: 12) {
                 ZStack {
                     EmbyDetailRemoteImage(
-                        url: client.imageURL(itemId: episode.id, maxWidth: 520, tag: episode.primaryImageTag),
+                        url: client.imageURL(itemId: episode.preferredPrimaryImageItemId, maxWidth: 520, tag: episode.preferredPrimaryImageTag),
                         contentMode: .fill
                     )
-                    .frame(width: 122, height: 69)
+                    .frame(width: 126, height: 72)
                     .clipped()
-
                     Color.black.opacity(0.16)
                     Image(systemName: "play.fill")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(width: 34, height: 34)
-                        .background(Color.black.opacity(0.56))
+                        .background(Color.black.opacity(0.55))
                         .clipShape(Circle())
                 }
-                .frame(width: 122, height: 69)
+                .frame(width: 126, height: 72)
                 .background(Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 5) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(episodeIndexTitle(episode)).font(.caption.weight(.bold)).foregroundColor(.secondary)
-                        if episode.isPlayed { Image(systemName: "checkmark.circle.fill").font(.caption).foregroundColor(.green) }
+                    Text(episodeIndexTitle(episode))
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.secondary)
+                    Text(episode.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                    if let duration = episode.durationSeconds {
+                        Text(formatDuration(duration)).font(.caption).foregroundColor(.secondary)
                     }
-                    Text(episode.name).font(.subheadline.weight(.semibold)).foregroundColor(.primary).lineLimit(2)
-                    if let duration = episode.durationSeconds { Text(formatDuration(duration)).font(.caption).foregroundColor(.secondary) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(Color(uiColor: .tertiaryLabel))
-                    .padding(.top, 25)
             }
-            .padding(10)
-            .background(Color(uiColor: .secondarySystemBackground).opacity(0.72))
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(model.isResolvingPlayback)
-    }
-
-    private func playButton(_ mediaItem: LibraryItem) -> some View {
-        Button { Task { await model.play(mediaItem) } } label: {
-            HStack(spacing: 9) {
-                if model.isResolvingPlayback { ProgressView().tint(.white) }
-                else { Image(systemName: mediaItem.playbackProgress > 0.01 ? "play.fill" : "play.fill") }
-                Text(model.isResolvingPlayback ? "正在准备播放…" : (mediaItem.playbackProgress > 0.01 ? "继续播放" : "播放"))
-                    .font(.headline)
-            }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 50)
-            .background(Color.blue)
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(model.isResolvingPlayback)
-    }
-
-    private func detailPill(_ text: String, systemImage: String? = nil) -> some View {
-        HStack(spacing: 5) {
-            if let systemImage { Image(systemName: systemImage).font(.caption2.weight(.bold)) }
-            Text(text)
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundColor(.primary)
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(Color(uiColor: .secondarySystemBackground))
-        .clipShape(Capsule())
     }
 
     private func errorView(_ message: String) -> some View {
@@ -263,27 +392,26 @@ struct EmbyMediaDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(uiColor: .secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private var mediaSymbol: String {
-        switch model.item.type?.lowercased() {
-        case "movie": return "film"
-        case "series": return "tv"
-        case "episode": return "play.rectangle"
-        case "boxset": return "rectangle.stack"
-        default: return "play.rectangle"
-        }
+        .padding(.horizontal, 20)
     }
 
     private func detailSubtitle(_ item: LibraryItem) -> String {
         switch item.type?.lowercased() {
         case "movie": return "电影"
         case "series": return "电视剧"
-        case "episode":
-            if let season = item.parentIndexNumber, let episode = item.indexNumber { return "第 \(season) 季 · 第 \(episode) 集" }
-            return "剧集"
+        case "episode": return "剧集"
         case "boxset": return "合集"
         default: return item.type ?? "媒体"
+        }
+    }
+
+    private func personTypeTitle(_ value: String) -> String {
+        switch value.lowercased() {
+        case "actor": return "演员"
+        case "director": return "导演"
+        case "writer": return "编剧"
+        case "producer": return "制片"
+        default: return value
         }
     }
 
@@ -306,6 +434,7 @@ struct EmbyMediaDetailView: View {
 private final class EmbyMediaDetailViewModel: ObservableObject {
     @Published var item: LibraryItem
     @Published var episodes: [LibraryItem] = []
+    @Published var similarItems: [LibraryItem] = []
     @Published var selectedSeason: Int?
     @Published var errorMessage: String?
     @Published var isLoadingEpisodes = false
@@ -323,8 +452,24 @@ private final class EmbyMediaDetailViewModel: ObservableObject {
     var isPlayable: Bool { ["movie", "episode", "video"].contains(item.type?.lowercased() ?? "") }
     var seasonNumbers: [Int] { Array(Set(episodes.compactMap(\.parentIndexNumber))).sorted() }
     var visibleEpisodes: [LibraryItem] {
-        guard let selectedSeason else { return episodes }
-        return episodes.filter { $0.parentIndexNumber == selectedSeason }
+        guard let season = selectedSeason else { return episodes }
+        return episodes.filter { $0.parentIndexNumber == season }
+    }
+    var visiblePeople: [EmbyPerson] { Array(item.people.prefix(18)) }
+    var primaryPlayableItem: LibraryItem? {
+        if isPlayable { return item }
+        guard isSeries else { return nil }
+        if let resume = episodes.first(where: { $0.playbackProgress > 0.001 && !$0.isPlayed }) { return resume }
+        if let unplayed = episodes.first(where: { !$0.isPlayed }) { return unplayed }
+        return episodes.first
+    }
+    var primaryPlayButtonTitle: String {
+        if isResolvingPlayback { return "正在准备播放…" }
+        if isSeries, let episode = primaryPlayableItem {
+            let index = episode.indexNumber.map { "E\($0)" } ?? ""
+            return episode.playbackProgress > 0.001 ? "继续播放 \(index)" : "播放 \(index)"
+        }
+        return item.playbackProgress > 0.001 ? "继续播放" : "播放"
     }
 
     func load() async {
@@ -335,10 +480,14 @@ private final class EmbyMediaDetailViewModel: ObservableObject {
             item = refreshed
             if refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame {
                 isLoadingEpisodes = true
-                defer { isLoadingEpisodes = false }
-                episodes = try await client.seriesEpisodes(seriesId: refreshed.id)
+                do { episodes = try await client.seriesEpisodes(seriesId: refreshed.id) }
+                catch { if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription } }
+                isLoadingEpisodes = false
                 if selectedSeason == nil { selectedSeason = seasonNumbers.first }
             }
+            let similarTypes = refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame ? ["Series"] : ["Movie", "Video"]
+            do { similarItems = try await client.similarItems(itemId: refreshed.id, includeItemTypes: similarTypes) }
+            catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "similar items failed: \(error.localizedDescription)") } }
             hasLoaded = true
         } catch {
             if isEmbyRequestCancellation(error) { return }
@@ -380,7 +529,9 @@ private struct EmbyDetailRemoteImage: View {
     private var placeholder: some View {
         ZStack {
             Color(uiColor: .secondarySystemBackground)
-            Image(systemName: "play.rectangle").font(.system(size: 28)).foregroundColor(.secondary)
+            Image(systemName: "photo")
+                .font(.system(size: 26, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.6))
         }
     }
 }
