@@ -10,11 +10,6 @@ struct EmbyEpisodeRange: Identifiable, Hashable {
     var title: String { firstNumber == lastNumber ? String(firstNumber) : "\(firstNumber)-\(lastNumber)" }
 }
 
-private struct EmbyStillSelection: Identifiable {
-    let index: Int
-    var id: Int { index }
-}
-
 struct EmbyMediaDetailView: View {
     @Environment(\.presentationMode) private var presentationMode
     @Environment(\.colorScheme) private var colorScheme
@@ -23,7 +18,7 @@ struct EmbyMediaDetailView: View {
     @StateObject private var model: EmbyMediaDetailViewModel
     @State private var showFullOverview = false
     @State private var showAllEpisodes = false
-    @State private var selectedStill: EmbyStillSelection?
+    @State private var selectedStillIndex: Int?
 
     init(item: LibraryItem, client: EmbyAPIClient) {
         self.item = item
@@ -36,7 +31,7 @@ struct EmbyMediaDetailView: View {
             ZStack(alignment: .top) {
                 ImmersiveBackdrop(url: heroImageURL, overlayOpacity: colorScheme == .dark ? 0.44 : 0.55)
 
-                ScrollView(.vertical, showsIndicators: true) {
+                ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         hero(width: geometry.size.width)
                         VStack(alignment: .leading, spacing: 24) {
@@ -49,13 +44,13 @@ struct EmbyMediaDetailView: View {
                             if let error = model.errorMessage { errorView(error) }
                         }
                         .padding(.top, 2)
-                        .padding(.bottom, max(24, geometry.safeAreaInsets.bottom + 16))
+                        .padding(.bottom, max(88, geometry.safeAreaInsets.bottom + 70))
                     }
                     .frame(width: geometry.size.width)
                 }
-                .frame(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom)
+                .frame(width: geometry.size.width, height: geometry.size.height)
                 .background(Color.clear)
-                .ignoresSafeArea(edges: [.top, .bottom])
+                .ignoresSafeArea(edges: .top)
 
                 topBar
                     .padding(.horizontal, 14)
@@ -68,16 +63,14 @@ struct EmbyMediaDetailView: View {
                     .hidden()
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
-            .ignoresSafeArea(edges: [.top, .bottom])
+            .ignoresSafeArea(edges: .top)
         }
         .navigationBarHidden(true)
         .nativeInteractivePop()
         .task { await model.load() }
+        .background(EmbyStillViewerPresenter(selectedIndex: $selectedStillIndex, images: model.stillImages, itemId: model.item.id, client: client).frame(width: 0, height: 0))
         .fullScreenCover(isPresented: $showFullOverview) {
             EmbyOverviewOverlayView(text: model.normalizedOverview ?? "", backdropURL: heroImageURL)
-        }
-        .fullScreenCover(item: $selectedStill) { selection in
-            EmbyStillViewer(images: model.stillImages, initialIndex: selection.index, itemId: model.item.id, client: client)
         }
         .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
     }
@@ -168,18 +161,20 @@ struct EmbyMediaDetailView: View {
     }
 
     private func heroTagScroller(width: CGFloat) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        let contentWidth = max(0, width - 40)
+        return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 17) {
                 ForEach(model.detailFilters) { filter in
                     NavigationLink(destination: EmbyDetailFilterResultsView(filter: filter, client: client)) {
                         Text(filter.name)
                             .font(.system(size: 13.5, weight: .semibold))
-                            .foregroundColor(.secondary.opacity(0.92))
+                            .foregroundColor(.primary.opacity(0.66))
                             .lineLimit(1)
                     }
                     .buttonStyle(.plain)
                 }
             }
+            .frame(minWidth: contentWidth, alignment: .center)
             .padding(.horizontal, 20)
         }
         .frame(width: width, height: 25)
@@ -310,12 +305,14 @@ struct EmbyMediaDetailView: View {
                     }
                     .padding(.horizontal, 20)
                 }
+                .frame(height: 165, alignment: .top)
             }
         }
     }
 
     private func episodePreviewCard(_ episode: LibraryItem) -> some View {
-        Button { Task { await model.play(episode) } } label: {
+        let overview = model.normalizedOverview(for: episode) ?? ""
+        return Button { Task { await model.play(episode) } } label: {
             VStack(alignment: .leading, spacing: 5) {
                 ZStack {
                     EmbyDetailRemoteImage(url: client.imageURL(itemId: episode.preferredPrimaryImageItemId, maxWidth: 620, tag: episode.preferredPrimaryImageTag), contentMode: .fill)
@@ -336,17 +333,15 @@ struct EmbyMediaDetailView: View {
                     .truncationMode(.tail)
                     .frame(width: 174, alignment: .leading)
 
-                if let text = model.normalizedOverview(for: episode), !text.isEmpty {
-                    Text(text)
-                        .font(.system(size: 10.75))
-                        .foregroundColor(.secondary.opacity(0.72))
-                        .lineLimit(3)
-                        .lineSpacing(1.5)
-                        .frame(width: 174, alignment: .leading)
-                        .frame(minHeight: 41, alignment: .topLeading)
-                }
+                Text(overview.isEmpty ? " " : overview)
+                    .font(.system(size: 10.75))
+                    .foregroundColor(.secondary.opacity(0.72))
+                    .lineLimit(3)
+                    .lineSpacing(1.5)
+                    .frame(width: 174, height: 42, alignment: .topLeading)
+                    .opacity(overview.isEmpty ? 0 : 1)
             }
-            .frame(width: 174, alignment: .topLeading)
+            .frame(width: 174, height: 165, alignment: .topLeading)
         }
         .buttonStyle(.plain)
         .disabled(model.isResolvingPlayback)
@@ -458,7 +453,7 @@ struct EmbyMediaDetailView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(Array(model.stillImages.enumerated()), id: \.element.id) { index, info in
-                            Button { selectedStill = EmbyStillSelection(index: index) } label: {
+                            Button { selectedStillIndex = index } label: {
                                 EmbyDetailRemoteImage(url: client.imageURL(itemId: model.item.id, imageType: info.imageType, maxWidth: 900, index: info.imageIndex), contentMode: .fill)
                                     .frame(width: 248, height: 140)
                                     .clipped()
