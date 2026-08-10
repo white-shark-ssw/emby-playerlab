@@ -5,7 +5,7 @@ enum ImmersiveUIMetrics {
     static let pageHorizontalPadding: CGFloat = 20
     static let topControlVisualSize: CGFloat = 26
     static let topControlHitSize: CGFloat = 44
-    static let topControlPadding: CGFloat = 4
+    static let topControlPadding: CGFloat = 1
     static let quickJumpHitWidth: CGFloat = 96
 }
 
