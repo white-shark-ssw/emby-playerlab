@@ -41,15 +41,12 @@ struct EmbyEpisodePickerView: View {
                     topControls(geometry: geometry)
                         .zIndex(20)
 
-                    HStack {
-                        Spacer()
-                        quickJumpRail(proxy: proxy)
-                            .frame(width: ImmersiveUIMetrics.quickJumpHitWidth, height: min(590, geometry.size.height * 0.72))
-                    }
-                    .padding(.top, max(126, geometry.size.height * 0.13))
-                    .padding(.bottom, 54)
-                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
-                    .zIndex(30)
+                    let railHeight = min(590, geometry.size.height * 0.72)
+                    let railTop = max(126, geometry.size.height * 0.13)
+                    quickJumpRail(proxy: proxy)
+                        .frame(width: ImmersiveUIMetrics.quickJumpHitWidth, height: railHeight)
+                        .position(x: geometry.size.width - ImmersiveUIMetrics.quickJumpHitWidth / 2, y: railTop + railHeight / 2)
+                        .zIndex(30)
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .ignoresSafeArea(edges: [.top, .bottom])
