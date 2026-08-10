@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Patch poster card and release publishing
+      - name: Patch poster card source
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -72,29 +72,18 @@ jobs:
 
           '''
           path.write_text(text[:start] + new_block + text[end:])
-
-          build_path = Path('.github/workflows/build-unsigned-ipa.yml')
-          build = build_path.read_text()
-          old_condition = "if: github.event_name == 'push' && github.ref == 'refs/heads/main'"
-          new_condition = "if: github.ref == 'refs/heads/main'"
-          if old_condition in build:
-              build = build.replace(old_condition, new_condition, 1)
-          elif new_condition not in build:
-              raise SystemExit('::error::release publish condition not found')
-          build_path.write_text(build)
           PY
 
-      - name: Commit source fix
+      - name: Commit poster source fix
         run: |
           set -euo pipefail
-          git rm .github/workflows/apply-ui-alpha2.yml
           git config user.name 'os-player-ci'
           git config user.email 'actions@users.noreply.github.com'
-          git add Sources/UI/EmbyServerRootViewV3.swift .github/workflows/build-unsigned-ipa.yml
-          git commit -m 'fix: normalize poster card geometry and rounded corners'
+          git add Sources/UI/EmbyServerRootViewV3.swift
+          git commit -m 'fix: normalize poster geometry and rounded corners'
           git push origin HEAD:main
 
-      - name: Trigger final unsigned IPA build
+      - name: Trigger unsigned IPA build
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run build-unsigned-ipa.yml --ref main
