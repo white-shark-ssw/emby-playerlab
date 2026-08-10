@@ -54,6 +54,7 @@ struct EmbyEpisodePickerView: View {
         }
         .navigationBarHidden(true)
         .nativeInteractivePop()
+        .hidesServerDockWhileVisible()
     }
 
     private func topControls(geometry: GeometryProxy) -> some View {
@@ -136,12 +137,13 @@ struct EmbyEpisodePickerView: View {
                     VStack(spacing: 0) {
                         ForEach(Array(jumps.enumerated()), id: \.element.id) { _, jump in
                             Text(String(jump.label))
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.system(size: 9.5, weight: .semibold))
                                 .foregroundColor(.blue)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.55)
                                 .frame(width: geometry.size.width, height: geometry.size.height / CGFloat(jumps.count), alignment: .trailing)
                         }
                     }
-                    .padding(.trailing, 1)
                     .allowsHitTesting(false)
                 }
             }
