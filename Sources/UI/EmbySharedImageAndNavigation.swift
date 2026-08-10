@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
+import Foundation
 
-@MainActor
 private final class EmbyCachedImageLoader: ObservableObject {
     @Published var image: UIImage?
     @Published var isLoading = false
@@ -29,12 +29,17 @@ private final class EmbyCachedImageLoader: ObservableObject {
                 let (data, _) = try await URLSession.shared.data(from: url)
                 guard !Task.isCancelled, let loaded = UIImage(data: data) else { return }
                 EmbyImageMemoryCache.shared.setObject(loaded, forKey: url as NSURL)
-                guard self?.currentURL == url else { return }
-                self?.image = loaded
-                self?.isLoading = false
+                await MainActor.run {
+                    guard self?.currentURL == url else { return }
+                    self?.image = loaded
+                    self?.isLoading = false
+                }
             } catch {
-                guard !Task.isCancelled, self?.currentURL == url else { return }
-                self?.isLoading = false
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    guard self?.currentURL == url else { return }
+                    self?.isLoading = false
+                }
             }
         }
     }
