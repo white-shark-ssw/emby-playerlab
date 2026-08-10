@@ -62,6 +62,34 @@ private final class EmbyImageMemoryCache {
     }
 }
 
+private final class EmbyPosterNavigationGate {
+    static let shared = EmbyPosterNavigationGate()
+    private let lock = NSLock()
+    private var owner: String?
+    private var acquiredAt = Date.distantPast
+    private let timeout: TimeInterval = 1.25
+
+    private init() {}
+
+    func acquire(_ owner: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let now = Date()
+        if self.owner != nil && now.timeIntervalSince(acquiredAt) < timeout { return false }
+        self.owner = owner
+        acquiredAt = now
+        return true
+    }
+
+    func release(_ owner: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard self.owner == owner else { return }
+        self.owner = nil
+        acquiredAt = .distantPast
+    }
+}
+
 struct EmbyCachedRemoteImage: View {
     let url: URL?
     let contentMode: ContentMode
@@ -104,11 +132,18 @@ struct EmbyPosterDetailLink<Content: View>: View {
     var body: some View {
         content
             .contentShape(Rectangle())
-            .onTapGesture { isActive = true }
+            .onTapGesture {
+                guard !isActive, EmbyPosterNavigationGate.shared.acquire(item.id) else { return }
+                isActive = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { EmbyPosterNavigationGate.shared.release(item.id) }
+            }
             .background(
                 NavigationLink(destination: EmbyMediaDetailView(item: item, client: client), isActive: $isActive) { EmptyView() }
                     .frame(width: 0, height: 0)
                     .hidden()
             )
+            .onChange(of: isActive) { active in
+                if !active { EmbyPosterNavigationGate.shared.release(item.id) }
+            }
     }
 }
