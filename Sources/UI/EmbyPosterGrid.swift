@@ -22,10 +22,7 @@ final class EmbyPosterGridNavigationState: ObservableObject {
         selectedItem = item
         self.client = client
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.selectedItem?.id == item.id, !self.isActive else {
-                self?.cancelPendingOpenIfNeeded(itemID: item.id)
-                return
-            }
+            guard let self, self.selectedItem?.id == item.id, !self.isActive else { return }
             self.isActive = true
         }
     }
@@ -33,28 +30,19 @@ final class EmbyPosterGridNavigationState: ObservableObject {
     fileprivate func updateActive(_ active: Bool) {
         isActive = active
         guard !active else { return }
+        transitionLocked = false
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.isActive else { return }
             self.selectedItem = nil
             self.client = nil
-            self.transitionLocked = false
         }
     }
 
     fileprivate func prepareForGridAppearance() {
         guard !isActive else { return }
+        transitionLocked = false
         selectedItem = nil
         client = nil
-        transitionLocked = false
-    }
-
-    private func cancelPendingOpenIfNeeded(itemID: String?) {
-        guard !isActive else { return }
-        if itemID == nil || selectedItem?.id == itemID {
-            selectedItem = nil
-            client = nil
-            transitionLocked = false
-        }
     }
 }
 
@@ -73,16 +61,18 @@ private struct EmbyPosterGridNavigationHost: View {
     @ObservedObject var state: EmbyPosterGridNavigationState
 
     var body: some View {
-        Group {
-            if let item = state.selectedItem, let client = state.client {
-                NavigationLink(
-                    destination: EmbyMediaDetailView(item: item, client: client),
-                    isActive: Binding(get: { state.isActive }, set: { state.updateActive($0) })
-                ) { EmptyView() }
-                .frame(width: 0, height: 0)
-                .hidden()
-            }
-        }
+        NavigationLink(
+            destination: Group {
+                if let item = state.selectedItem, let client = state.client {
+                    EmbyMediaDetailView(item: item, client: client)
+                } else {
+                    EmptyView()
+                }
+            },
+            isActive: Binding(get: { state.isActive }, set: { state.updateActive($0) })
+        ) { EmptyView() }
+        .frame(width: 0, height: 0)
+        .hidden()
     }
 }
 
