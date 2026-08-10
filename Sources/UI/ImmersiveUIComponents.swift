@@ -51,6 +51,7 @@ private struct ServerDockHiddenWhileVisibleModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .ignoresSafeArea(.container, edges: .bottom)
             .onAppear { controller?.hide(owner: owner) }
             .onDisappear { controller?.show(owner: owner) }
     }
