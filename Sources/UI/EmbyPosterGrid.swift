@@ -9,6 +9,63 @@ enum EmbyPosterGridMetrics {
     static let posterAspectRatio: CGFloat = 2.0 / 3.0
 }
 
+final class EmbyPosterGridNavigationState: ObservableObject {
+    @Published fileprivate var selectedItem: LibraryItem?
+    @Published fileprivate var client: EmbyAPIClient?
+    @Published fileprivate var isActive = false
+    private var transitionLocked = false
+
+    func open(item: LibraryItem, client: EmbyAPIClient) {
+        guard !isActive, !transitionLocked else { return }
+        transitionLocked = true
+        selectedItem = item
+        self.client = client
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.selectedItem?.id == item.id, !self.isActive else { return }
+            self.isActive = true
+        }
+    }
+
+    fileprivate func updateActive(_ active: Bool) {
+        isActive = active
+        guard !active else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.isActive else { return }
+            self.selectedItem = nil
+            self.client = nil
+            self.transitionLocked = false
+        }
+    }
+}
+
+private struct EmbyPosterGridNavigationStateKey: EnvironmentKey {
+    static let defaultValue: EmbyPosterGridNavigationState? = nil
+}
+
+extension EnvironmentValues {
+    var embyPosterGridNavigationState: EmbyPosterGridNavigationState? {
+        get { self[EmbyPosterGridNavigationStateKey.self] }
+        set { self[EmbyPosterGridNavigationStateKey.self] = newValue }
+    }
+}
+
+private struct EmbyPosterGridNavigationHost: View {
+    @ObservedObject var state: EmbyPosterGridNavigationState
+
+    var body: some View {
+        Group {
+            if let item = state.selectedItem, let client = state.client {
+                NavigationLink(
+                    destination: EmbyMediaDetailView(item: item, client: client),
+                    isActive: Binding(get: { state.isActive }, set: { state.updateActive($0) })
+                ) { EmptyView() }
+                .frame(width: 0, height: 0)
+                .hidden()
+            }
+        }
+    }
+}
+
 private struct EmbyPosterGridWidthPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
 
@@ -35,6 +92,7 @@ struct EmbyPosterGrid<Content: View>: View {
     let onApproachingEnd: (() -> Void)?
     private let content: (LibraryItem) -> Content
     @State private var containerWidth: CGFloat = 0
+    @StateObject private var navigationState = EmbyPosterGridNavigationState()
 
     init(
         items: [LibraryItem],
@@ -67,6 +125,7 @@ struct EmbyPosterGrid<Content: View>: View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 content(item)
+                    .environment(\.embyPosterGridNavigationState, navigationState)
                     .environment(\.embyPosterGridCellWidth, cellWidth)
                     .frame(width: cellWidth, alignment: .topLeading)
                     .contentShape(Rectangle())
@@ -80,6 +139,7 @@ struct EmbyPosterGrid<Content: View>: View {
         .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(GeometryReader { proxy in Color.clear.preference(key: EmbyPosterGridWidthPreferenceKey.self, value: proxy.size.width) })
+        .background(EmbyPosterGridNavigationHost(state: navigationState))
         .onPreferenceChange(EmbyPosterGridWidthPreferenceKey.self) { width in
             if width > 0 && abs(containerWidth - width) > 0.5 { containerWidth = width }
         }
