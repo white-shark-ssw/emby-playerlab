@@ -38,7 +38,8 @@ struct EmbyServerRootViewV3: View {
                                 .allowsHitTesting(selectedTab == .settings)
                                 .accessibilityHidden(selectedTab != .settings)
                         }
-                        .frame(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom, alignment: .top)
+                        .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                        .ignoresSafeArea(.container, edges: .bottom)
 
                         serverTabBar
                             .zIndex(100)
