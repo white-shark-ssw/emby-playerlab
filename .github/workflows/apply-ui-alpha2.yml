@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Patch shared poster card
+      - name: Patch shared poster card and release publishing
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -95,6 +95,14 @@ jobs:
           if text.count(old) != 1:
               raise SystemExit(f'expected exactly one V3PosterCard block, found {text.count(old)}')
           path.write_text(text.replace(old, new))
+
+          build_path = Path('.github/workflows/build-unsigned-ipa.yml')
+          build = build_path.read_text()
+          old_condition = "if: github.event_name == 'push' && github.ref == 'refs/heads/main'"
+          new_condition = "if: github.ref == 'refs/heads/main'"
+          if build.count(old_condition) != 1:
+              raise SystemExit(f'expected release condition once, found {build.count(old_condition)}')
+          build_path.write_text(build.replace(old_condition, new_condition))
           PY
 
       - name: Commit final UI patch
@@ -103,6 +111,6 @@ jobs:
           git rm .github/workflows/apply-ui-alpha2.yml
           git config user.name 'os-player-ci'
           git config user.email 'actions@users.noreply.github.com'
-          git add Sources/UI/EmbyServerRootViewV3.swift
-          git commit -m 'fix: lock poster artwork geometry and fallback images'
+          git add Sources/UI/EmbyServerRootViewV3.swift .github/workflows/build-unsigned-ipa.yml
+          git commit -m 'fix: normalize poster geometry and publish main builds'
           git push
