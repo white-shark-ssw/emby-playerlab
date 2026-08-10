@@ -42,6 +42,15 @@ struct ImmersiveBackdrop: View {
     }
 }
 
+struct DetailPressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.90 : 1)
+            .opacity(configuration.isPressed ? 0.76 : 1)
+            .animation(.easeOut(duration: 0.055), value: configuration.isPressed)
+    }
+}
+
 private struct NativeNavigationPopBridge: UIViewControllerRepresentable {
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         weak var navigationController: UINavigationController?
