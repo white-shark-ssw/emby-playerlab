@@ -6,7 +6,54 @@ enum ImmersiveUIMetrics {
     static let topControlVisualSize: CGFloat = 26
     static let topControlHitSize: CGFloat = 44
     static let topControlPadding: CGFloat = 1
-    static let quickJumpHitWidth: CGFloat = 30
+    static let quickJumpHitWidth: CGFloat = 15
+}
+
+final class ServerDockVisibilityController: ObservableObject {
+    @Published private(set) var isHidden = false
+    private var hiddenOwners = Set<UUID>()
+    private var visibilityGeneration = 0
+
+    func hide(owner: UUID) {
+        precondition(Thread.isMainThread)
+        visibilityGeneration += 1
+        hiddenOwners.insert(owner)
+        if !isHidden { isHidden = true }
+    }
+
+    func show(owner: UUID) {
+        precondition(Thread.isMainThread)
+        hiddenOwners.remove(owner)
+        guard hiddenOwners.isEmpty else { return }
+        visibilityGeneration += 1
+        let generation = visibilityGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.hiddenOwners.isEmpty, self.visibilityGeneration == generation else { return }
+            self.isHidden = false
+        }
+    }
+}
+
+private struct ServerDockVisibilityControllerKey: EnvironmentKey {
+    static let defaultValue: ServerDockVisibilityController? = nil
+}
+
+extension EnvironmentValues {
+    var serverDockVisibilityController: ServerDockVisibilityController? {
+        get { self[ServerDockVisibilityControllerKey.self] }
+        set { self[ServerDockVisibilityControllerKey.self] = newValue }
+    }
+}
+
+private struct ServerDockHiddenWhileVisibleModifier: ViewModifier {
+    @Environment(\.serverDockVisibilityController) private var controller
+    @State private var owner = UUID()
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { controller?.hide(owner: owner) }
+            .onDisappear { controller?.show(owner: owner) }
+    }
 }
 
 struct ImmersiveBackdrop: View {
@@ -119,6 +166,7 @@ private struct NativeNavigationPopBridge: UIViewControllerRepresentable {
 
 extension View {
     func nativeInteractivePop() -> some View { background(NativeNavigationPopBridge().frame(width: 0, height: 0)) }
+    func hidesServerDockWhileVisible() -> some View { modifier(ServerDockHiddenWhileVisibleModifier()) }
 }
 
 enum DetailHaptics {
