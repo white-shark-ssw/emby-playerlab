@@ -17,7 +17,7 @@ struct EmbyServerRootViewV3: View {
         Group {
             if let client {
                 GeometryReader { geometry in
-                    ZStack(alignment: .bottom) {
+                    ZStack(alignment: .top) {
                         ZStack {
                             V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close)
                                 .opacity(selectedTab == .home ? 1 : 0)
@@ -44,11 +44,15 @@ struct EmbyServerRootViewV3: View {
                         .environment(\.serverDockVisibilityController, dockVisibility)
 
                         if !dockVisibility.isHidden {
-                            serverTabBar
-                                .zIndex(100)
+                            VStack(spacing: 0) {
+                                Spacer(minLength: 0)
+                                serverTabBar
+                            }
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .zIndex(100)
                         }
                     }
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
                     .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 }
             } else {
