@@ -21,28 +21,16 @@ final class EmbyPosterGridNavigationState: ObservableObject {
         transitionLocked = true
         selectedItem = item
         self.client = client
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.selectedItem?.id == item.id, !self.isActive else { return }
-            self.isActive = true
-        }
+        isActive = true
     }
 
     fileprivate func updateActive(_ active: Bool) {
         isActive = active
-        guard !active else { return }
-        transitionLocked = false
-        DispatchQueue.main.async { [weak self] in
-            guard let self, !self.isActive else { return }
-            self.selectedItem = nil
-            self.client = nil
-        }
+        if !active { transitionLocked = false }
     }
 
     fileprivate func prepareForGridAppearance() {
-        guard !isActive else { return }
-        transitionLocked = false
-        selectedItem = nil
-        client = nil
+        if !isActive { transitionLocked = false }
     }
 }
 
@@ -83,10 +71,7 @@ private final class EmbyPosterGridScrollBridgeViewController: UIViewController {
         super.viewDidAppear(animated)
         configureGridEnvironment()
         navigationState?.prepareForGridAppearance()
-        DispatchQueue.main.async { [weak self] in
-            self?.configureGridEnvironment()
-            self?.navigationState?.prepareForGridAppearance()
-        }
+        DispatchQueue.main.async { [weak self] in self?.configureGridEnvironment() }
     }
 
     override func viewDidLayoutSubviews() {
