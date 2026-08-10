@@ -6,8 +6,7 @@ enum ImmersiveUIMetrics {
     static let topControlVisualSize: CGFloat = 26
     static let topControlHitSize: CGFloat = 44
     static let topControlPadding: CGFloat = 1
-    static let quickJumpHitWidth: CGFloat = 58
-    static let backdropBottomOverscan: CGFloat = 28
+    static let quickJumpHitWidth: CGFloat = 30
 }
 
 struct ImmersiveBackdrop: View {
@@ -23,7 +22,6 @@ struct ImmersiveBackdrop: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let extendedHeight = geometry.size.height + ImmersiveUIMetrics.backdropBottomOverscan
             ZStack {
                 AsyncImage(url: url) { phase in
                     switch phase {
@@ -31,13 +29,14 @@ struct ImmersiveBackdrop: View {
                     default: Color(uiColor: .systemBackground)
                     }
                 }
-                .frame(width: geometry.size.width, height: extendedHeight)
+                .frame(width: geometry.size.width, height: geometry.size.height)
                 .clipped()
                 .scaleEffect(1.18)
                 .blur(radius: blurRadius)
                 Color(uiColor: .systemBackground).opacity(overlayOpacity)
             }
-            .frame(width: geometry.size.width, height: extendedHeight, alignment: .top)
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
         }
         .ignoresSafeArea()
     }
