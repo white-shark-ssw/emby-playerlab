@@ -8,11 +8,21 @@ enum EmbyPosterGridMetrics {
     static let loadAheadItemCount = 9
 }
 
+private struct EmbyPosterGridWidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 { value = next }
+    }
+}
+
 struct EmbyPosterGrid<Content: View>: View {
     let items: [LibraryItem]
     let horizontalPadding: CGFloat
     let onApproachingEnd: (() -> Void)?
     private let content: (LibraryItem) -> Content
+    @State private var containerWidth: CGFloat = 0
 
     init(
         items: [LibraryItem],
@@ -26,8 +36,27 @@ struct EmbyPosterGrid<Content: View>: View {
         self.content = content
     }
 
+    private var cellWidth: CGFloat? {
+        guard containerWidth > 0 else { return nil }
+        let spacing = EmbyPosterGridMetrics.columnSpacing * CGFloat(EmbyPosterGridMetrics.columnCount - 1)
+        let available = containerWidth - horizontalPadding * 2 - spacing
+        guard available > 0 else { return nil }
+        return floor(available / CGFloat(EmbyPosterGridMetrics.columnCount))
+    }
+
     private var columns: [GridItem] {
-        Array(
+        if let cellWidth = cellWidth {
+            return Array(
+                repeating: GridItem(
+                    .fixed(cellWidth),
+                    spacing: EmbyPosterGridMetrics.columnSpacing,
+                    alignment: .top
+                ),
+                count: EmbyPosterGridMetrics.columnCount
+            )
+        }
+
+        return Array(
             repeating: GridItem(
                 .flexible(minimum: 0, maximum: .infinity),
                 spacing: EmbyPosterGridMetrics.columnSpacing,
@@ -41,7 +70,7 @@ struct EmbyPosterGrid<Content: View>: View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 content(item)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(width: cellWidth, alignment: .topLeading)
                     .clipped()
                     .onAppear {
                         guard let handler = onApproachingEnd else { return }
@@ -51,5 +80,14 @@ struct EmbyPosterGrid<Content: View>: View {
             }
         }
         .padding(.horizontal, horizontalPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: EmbyPosterGridWidthPreferenceKey.self, value: proxy.size.width)
+            }
+        )
+        .onPreferenceChange(EmbyPosterGridWidthPreferenceKey.self) { width in
+            if width > 0 && abs(containerWidth - width) > 0.5 { containerWidth = width }
+        }
     }
 }
