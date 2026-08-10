@@ -45,7 +45,7 @@ struct EmbyEpisodePickerView: View {
                     let railTop = max(126, geometry.size.height * 0.13)
                     quickJumpRail(proxy: proxy)
                         .frame(width: ImmersiveUIMetrics.quickJumpHitWidth, height: railHeight)
-                        .position(x: geometry.size.width - ImmersiveUIMetrics.quickJumpHitWidth / 2, y: railTop + railHeight / 2)
+                        .position(x: geometry.size.width - ImmersiveUIMetrics.quickJumpHitWidth / 2 - 4, y: railTop + railHeight / 2)
                         .zIndex(30)
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height)
@@ -138,10 +138,10 @@ struct EmbyEpisodePickerView: View {
                             Text(String(jump.label))
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundColor(.blue)
-                                .frame(width: 38, height: geometry.size.height / CGFloat(jumps.count), alignment: .trailing)
+                                .frame(width: geometry.size.width, height: geometry.size.height / CGFloat(jumps.count), alignment: .trailing)
                         }
                     }
-                    .padding(.trailing, 2)
+                    .padding(.trailing, 1)
                     .allowsHitTesting(false)
                 }
             }
