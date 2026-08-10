@@ -105,8 +105,7 @@ private final class EmbyPosterGridScrollBridgeViewController: UIViewController, 
 
         let blocker = UILongPressGestureRecognizer(target: self, action: #selector(handleMultiTouchBlocker(_:)))
         blocker.minimumPressDuration = 0
-        blocker.minimumNumberOfTouches = 2
-        blocker.maximumNumberOfTouches = 2
+        blocker.numberOfTouchesRequired = 2
         blocker.allowableMovement = .greatestFiniteMagnitude
         blocker.cancelsTouchesInView = true
         blocker.delaysTouchesBegan = false
