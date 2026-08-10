@@ -15,13 +15,18 @@ final class EmbyPosterGridNavigationState: ObservableObject {
     @Published fileprivate var client: EmbyAPIClient?
     @Published fileprivate var isActive = false
     private var transitionLocked = false
+    private var navigationSuppressedUntil = Date.distantPast
 
     func open(item: LibraryItem, client: EmbyAPIClient) {
-        guard !isActive, !transitionLocked else { return }
+        guard Date() >= navigationSuppressedUntil, !isActive, !transitionLocked else { return }
         transitionLocked = true
         selectedItem = item
         self.client = client
         isActive = true
+    }
+
+    fileprivate func suppressNavigationForMultiTouch() {
+        navigationSuppressedUntil = Date().addingTimeInterval(0.30)
     }
 
     fileprivate func updateActive(_ active: Bool) {
@@ -64,8 +69,10 @@ private struct EmbyPosterGridNavigationHost: View {
     }
 }
 
-private final class EmbyPosterGridScrollBridgeViewController: UIViewController {
+private final class EmbyPosterGridScrollBridgeViewController: UIViewController, UIGestureRecognizerDelegate {
     weak var navigationState: EmbyPosterGridNavigationState?
+    private weak var configuredScrollView: UIScrollView?
+    private var multiTouchBlocker: UILongPressGestureRecognizer?
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -79,12 +86,48 @@ private final class EmbyPosterGridScrollBridgeViewController: UIViewController {
         configureGridEnvironment()
     }
 
+    deinit {
+        if let blocker = multiTouchBlocker { configuredScrollView?.removeGestureRecognizer(blocker) }
+    }
+
     private func configureGridEnvironment() {
         guard let scrollView = enclosingScrollView() else { return }
         scrollView.showsVerticalScrollIndicator = false
         scrollView.isMultipleTouchEnabled = false
         scrollView.panGestureRecognizer.minimumNumberOfTouches = 1
         scrollView.panGestureRecognizer.maximumNumberOfTouches = 1
+        installMultiTouchBlockerIfNeeded(on: scrollView)
+    }
+
+    private func installMultiTouchBlockerIfNeeded(on scrollView: UIScrollView) {
+        if configuredScrollView === scrollView, multiTouchBlocker != nil { return }
+        if let blocker = multiTouchBlocker { configuredScrollView?.removeGestureRecognizer(blocker) }
+
+        let blocker = UILongPressGestureRecognizer(target: self, action: #selector(handleMultiTouchBlocker(_:)))
+        blocker.minimumPressDuration = 0
+        blocker.minimumNumberOfTouches = 2
+        blocker.maximumNumberOfTouches = 2
+        blocker.allowableMovement = .greatestFiniteMagnitude
+        blocker.cancelsTouchesInView = true
+        blocker.delaysTouchesBegan = false
+        blocker.delaysTouchesEnded = false
+        blocker.delegate = self
+        scrollView.addGestureRecognizer(blocker)
+        configuredScrollView = scrollView
+        multiTouchBlocker = blocker
+    }
+
+    @objc private func handleMultiTouchBlocker(_ recognizer: UILongPressGestureRecognizer) {
+        switch recognizer.state {
+        case .began, .changed, .ended, .cancelled:
+            navigationState?.suppressNavigationForMultiTouch()
+        default:
+            break
+        }
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        gestureRecognizer === multiTouchBlocker || otherGestureRecognizer === multiTouchBlocker
     }
 
     private func enclosingScrollView() -> UIScrollView? {
