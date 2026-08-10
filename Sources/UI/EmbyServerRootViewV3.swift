@@ -875,15 +875,20 @@ private struct V3LandscapeCard: View {
 }
 
 private struct V3PosterCard: View {
+    @Environment(\.embyPosterGridCellWidth) private var gridCellWidth
     let item: LibraryItem
     let client: EmbyAPIClient
     let width: CGFloat?
+
+    private var resolvedWidth: CGFloat { width ?? gridCellWidth ?? 118 }
+    private var posterHeight: CGFloat { floor(resolvedWidth / EmbyPosterGridMetrics.posterAspectRatio) }
+    private var yearText: String { item.productionYear.map(String.init) ?? " " }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ZStack(alignment: .bottomLeading) {
-                V3RemoteImage(url: client.imageURL(itemId: item.id, maxWidth: 440, tag: item.primaryImageTag), contentMode: .fill)
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(2.0 / 3.0, contentMode: .fill)
+                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 440, tag: item.preferredPrimaryImageTag), contentMode: .fill)
+                    .frame(width: resolvedWidth, height: posterHeight)
                     .clipped()
                 if item.playbackProgress > 0 { GeometryReader { proxy in VStack { Spacer(); Rectangle().fill(Color.blue).frame(width: proxy.size.width * item.playbackProgress, height: 3) } } }
                 if let count = item.userData?.unplayedItemCount, count > 0 {
@@ -892,14 +897,17 @@ private struct V3PosterCard: View {
                     VStack { HStack { Spacer(); Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundColor(.white).padding(6).background(Color.green).clipShape(Circle()) }; Spacer() }.padding(5)
                 }
             }
+            .frame(width: resolvedWidth, height: posterHeight)
             .background(Color(uiColor: .secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            Text(item.name).font(.subheadline).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-            if let year = item.productionYear { Text(String(year)).font(.caption).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading) }
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name).font(.subheadline).lineLimit(1).frame(width: resolvedWidth, height: 20, alignment: .leading)
+                Text(yearText).font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: resolvedWidth, height: 16, alignment: .leading).opacity(item.productionYear == nil ? 0 : 1)
+            }
+            .frame(width: resolvedWidth, height: 38, alignment: .topLeading)
         }
-        .frame(width: width, alignment: .leading)
-        .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
-        .clipped()
+        .frame(width: resolvedWidth, alignment: .leading)
     }
 }
 
