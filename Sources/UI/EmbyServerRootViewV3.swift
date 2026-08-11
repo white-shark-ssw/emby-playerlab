@@ -15,29 +15,33 @@ struct EmbyServerRootViewV3: View {
     var body: some View {
         Group {
             if let client {
-                ZStack {
-                    V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, dock: AnyView(serverTabBar))
-                        .opacity(selectedTab == .home ? 1 : 0)
-                        .allowsHitTesting(selectedTab == .home)
-                        .accessibilityHidden(selectedTab != .home)
+                GeometryReader { geometry in
+                    let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom
+                    ZStack {
+                        V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, dock: AnyView(serverTabBar))
+                            .opacity(selectedTab == .home ? 1 : 0)
+                            .allowsHitTesting(selectedTab == .home)
+                            .accessibilityHidden(selectedTab != .home)
 
-                    V3EmbyFavoritesView(client: client, onClose: close, dock: AnyView(serverTabBar))
-                        .opacity(selectedTab == .favorites ? 1 : 0)
-                        .allowsHitTesting(selectedTab == .favorites)
-                        .accessibilityHidden(selectedTab != .favorites)
+                        V3EmbyFavoritesView(client: client, onClose: close, dock: AnyView(serverTabBar))
+                            .opacity(selectedTab == .favorites ? 1 : 0)
+                            .allowsHitTesting(selectedTab == .favorites)
+                            .accessibilityHidden(selectedTab != .favorites)
 
-                    V3EmbySearchView(client: client, onClose: close, dock: AnyView(serverTabBar))
-                        .opacity(selectedTab == .search ? 1 : 0)
-                        .allowsHitTesting(selectedTab == .search)
-                        .accessibilityHidden(selectedTab != .search)
+                        V3EmbySearchView(client: client, onClose: close, dock: AnyView(serverTabBar))
+                            .opacity(selectedTab == .search ? 1 : 0)
+                            .allowsHitTesting(selectedTab == .search)
+                            .accessibilityHidden(selectedTab != .search)
 
-                    V3EmbyServerSettingsView(session: session, onClose: close, dock: AnyView(serverTabBar))
-                        .opacity(selectedTab == .settings ? 1 : 0)
-                        .allowsHitTesting(selectedTab == .settings)
-                        .accessibilityHidden(selectedTab != .settings)
+                        V3EmbyServerSettingsView(session: session, onClose: close, dock: AnyView(serverTabBar))
+                            .opacity(selectedTab == .settings ? 1 : 0)
+                            .allowsHitTesting(selectedTab == .settings)
+                            .accessibilityHidden(selectedTab != .settings)
+                    }
+                    .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
+                    .ignoresSafeArea(.container, edges: .bottom)
+                    .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             } else {
                 ProgressView("连接 \(session.serverName)…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
