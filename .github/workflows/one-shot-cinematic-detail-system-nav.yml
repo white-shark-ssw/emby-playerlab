@@ -1,0 +1,35 @@
+name: One-shot cinematic detail system nav
+
+on:
+  push:
+    branches: [chatgpt/cinematic-detail-system-nav-20260812]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[cinematic-detail-fixed]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/cinematic-detail-system-nav-20260812
+          fetch-depth: 0
+      - name: Apply cinematic detail and system-navigation patch
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_cinematic_detail_system_nav.py
+          git diff --check
+          if grep -R "interactivePopGestureRecognizer.*delegate\|gesture.delegate\|interactivePopGestureRecognizer.*isEnabled" -n Sources/UI; then
+            echo "Custom system-pop ownership found" >&2
+            exit 1
+          fi
+      - name: Commit source changes
+        run: |
+          set -euo pipefail
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: cinematic detail visuals with system-owned navigation [cinematic-detail-fixed]'
+          git push origin HEAD:chatgpt/cinematic-detail-system-nav-20260812
