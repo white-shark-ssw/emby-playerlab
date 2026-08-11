@@ -143,3 +143,5 @@ struct EmbyPosterGrid<Content: View>: View {
         .onAppear { navigationState.prepareForGridAppearance() }
     }
 }
+
+// CI validation trigger only.
