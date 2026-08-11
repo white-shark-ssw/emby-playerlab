@@ -39,8 +39,6 @@ struct EmbyEpisodePickerView: View {
                     .background(Color.clear)
                     .ignoresSafeArea(edges: [.top, .bottom])
 
-                    topControls(geometry: geometry)
-                        .zIndex(20)
 
                     let railHeight = min(590, viewportHeight * 0.72)
                     let railTop = max(126, viewportHeight * 0.13)
@@ -54,39 +52,26 @@ struct EmbyEpisodePickerView: View {
                 .onAppear { DiagnosticsLogger.shared.log("ImmersiveViewport", "page=episode-picker geometry=\(geometry.size) safe=\(geometry.safeAreaInsets) viewportHeight=\(viewportHeight)") }
             }
         }
-        .navigationBarHidden(true)
+        .navigationBarHidden(false)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { sortAscending.toggle(); DetailHaptics.selection() } label: {
+                    Image(systemName: sortAscending ? "arrow.up" : "arrow.down")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 30, height: 30)
+                        .background(Color.black.opacity(0.50))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(sortAscending ? "改为倒序" : "改为正序")
+            }
+        }
+        .immersiveSystemNavigationAppearance()
         .nativeInteractivePop()
         .detailPagePresentation()
-    }
-
-    private func topControls(geometry: GeometryProxy) -> some View {
-        HStack {
-            Button { presentationMode.wrappedValue.dismiss() } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: ImmersiveUIMetrics.topControlVisualSize, height: ImmersiveUIMetrics.topControlVisualSize)
-                    .background(Color.black.opacity(0.50))
-                    .clipShape(Circle())
-                    .frame(width: ImmersiveUIMetrics.topControlHitSize, height: ImmersiveUIMetrics.topControlHitSize)
-            }
-            .buttonStyle(DetailPressButtonStyle())
-            Spacer()
-            Button { sortAscending.toggle(); DetailHaptics.selection() } label: {
-                Image(systemName: sortAscending ? "arrow.up" : "arrow.down")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: ImmersiveUIMetrics.topControlVisualSize, height: ImmersiveUIMetrics.topControlVisualSize)
-                    .background(Color.black.opacity(0.50))
-                    .clipShape(Circle())
-                    .frame(width: ImmersiveUIMetrics.topControlHitSize, height: ImmersiveUIMetrics.topControlHitSize)
-            }
-            .buttonStyle(DetailPressButtonStyle())
-            .accessibilityLabel(sortAscending ? "改为倒序" : "改为正序")
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, geometry.safeAreaInsets.top + ImmersiveUIMetrics.topControlPadding)
-        .frame(width: geometry.size.width)
     }
 
     private var displayedEpisodes: [LibraryItem] {
