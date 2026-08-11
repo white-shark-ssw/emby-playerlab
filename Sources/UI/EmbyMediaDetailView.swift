@@ -28,6 +28,7 @@ struct EmbyMediaDetailView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom
             ZStack(alignment: .top) {
                 ImmersiveBackdrop(url: heroImageURL, overlayOpacity: colorScheme == .dark ? 0.44 : 0.55)
 
@@ -48,7 +49,7 @@ struct EmbyMediaDetailView: View {
                     }
                     .frame(width: geometry.size.width)
                 }
-                .frame(width: geometry.size.width, height: geometry.size.height)
+                .frame(width: geometry.size.width, height: fullHeight)
                 .background(Color.clear)
                 .ignoresSafeArea(edges: [.top, .bottom])
 
@@ -62,7 +63,7 @@ struct EmbyMediaDetailView: View {
                     .frame(width: 0, height: 0)
                     .hidden()
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
+            .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
             .ignoresSafeArea(edges: [.top, .bottom])
         }
         .navigationBarHidden(true)
