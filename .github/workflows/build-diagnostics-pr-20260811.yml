@@ -35,6 +35,14 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/apply_runtime_diagnostics.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Sources/Diagnostics/LayoutDiagnostics.swift')
+          text = path.read_text()
+          text = text.replace('NSStringFromCGRect(', 'String(describing: ')
+          text = text.replace('NSStringFromUIEdgeInsets(', 'String(describing: ')
+          path.write_text(text)
+          PY
           git add -N Sources/Diagnostics/LayoutDiagnostics.swift
           git diff --check
           git diff > diagnostic-patch.diff
