@@ -1,0 +1,35 @@
+name: Observe Diagnostics IPA 20260811
+
+on:
+  workflow_run:
+    workflows: ["Build Diagnostics IPA 20260811"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Record diagnostics build result
+        run: |
+          set -euo pipefail
+          mkdir -p docs/diagnostics
+          cat > docs/diagnostics/DIAGNOSTICS_BUILD_20260811.txt <<EOF
+          workflow=Build Diagnostics IPA 20260811
+          conclusion=${{ github.event.workflow_run.conclusion }}
+          run_id=${{ github.event.workflow_run.id }}
+          run_number=${{ github.event.workflow_run.run_number }}
+          head_sha=${{ github.event.workflow_run.head_sha }}
+          release_tag=v0.13.3-build69-diagnostics
+          EOF
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add docs/diagnostics/DIAGNOSTICS_BUILD_20260811.txt
+          git commit -m "ci: record diagnostics IPA result [skip-ipa]" || exit 0
+          git push origin HEAD:main
