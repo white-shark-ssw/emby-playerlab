@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 enum EmbyPosterGridMetrics {
     static let columnCount = 3
@@ -15,18 +14,13 @@ final class EmbyPosterGridNavigationState: ObservableObject {
     @Published fileprivate var client: EmbyAPIClient?
     @Published fileprivate var isActive = false
     private var transitionLocked = false
-    private var navigationSuppressedUntil = Date.distantPast
 
     func open(item: LibraryItem, client: EmbyAPIClient) {
-        guard Date() >= navigationSuppressedUntil, !isActive, !transitionLocked else { return }
+        guard !isActive, !transitionLocked else { return }
         transitionLocked = true
         selectedItem = item
         self.client = client
         isActive = true
-    }
-
-    fileprivate func suppressNavigationForMultiTouch() {
-        navigationSuppressedUntil = Date().addingTimeInterval(0.30)
     }
 
     fileprivate func updateActive(_ active: Bool) {
@@ -66,92 +60,6 @@ private struct EmbyPosterGridNavigationHost: View {
         ) { EmptyView() }
         .frame(width: 0, height: 0)
         .hidden()
-    }
-}
-
-private final class EmbyPosterGridScrollBridgeViewController: UIViewController, UIGestureRecognizerDelegate {
-    weak var navigationState: EmbyPosterGridNavigationState?
-    private weak var configuredScrollView: UIScrollView?
-    private var multiTouchBlocker: UILongPressGestureRecognizer?
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        configureGridEnvironment()
-        navigationState?.prepareForGridAppearance()
-        DispatchQueue.main.async { [weak self] in self?.configureGridEnvironment() }
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        configureGridEnvironment()
-    }
-
-    deinit {
-        if let blocker = multiTouchBlocker { configuredScrollView?.removeGestureRecognizer(blocker) }
-    }
-
-    private func configureGridEnvironment() {
-        guard let scrollView = enclosingScrollView() else { return }
-        scrollView.showsVerticalScrollIndicator = false
-        scrollView.isMultipleTouchEnabled = false
-        scrollView.panGestureRecognizer.minimumNumberOfTouches = 1
-        scrollView.panGestureRecognizer.maximumNumberOfTouches = 1
-        installMultiTouchBlockerIfNeeded(on: scrollView)
-    }
-
-    private func installMultiTouchBlockerIfNeeded(on scrollView: UIScrollView) {
-        if configuredScrollView === scrollView, multiTouchBlocker != nil { return }
-        if let blocker = multiTouchBlocker { configuredScrollView?.removeGestureRecognizer(blocker) }
-
-        let blocker = UILongPressGestureRecognizer(target: self, action: #selector(handleMultiTouchBlocker(_:)))
-        blocker.minimumPressDuration = 0
-        blocker.numberOfTouchesRequired = 2
-        blocker.allowableMovement = .greatestFiniteMagnitude
-        blocker.cancelsTouchesInView = true
-        blocker.delaysTouchesBegan = false
-        blocker.delaysTouchesEnded = false
-        blocker.delegate = self
-        scrollView.addGestureRecognizer(blocker)
-        configuredScrollView = scrollView
-        multiTouchBlocker = blocker
-    }
-
-    @objc private func handleMultiTouchBlocker(_ recognizer: UILongPressGestureRecognizer) {
-        switch recognizer.state {
-        case .began, .changed, .ended, .cancelled:
-            navigationState?.suppressNavigationForMultiTouch()
-        default:
-            break
-        }
-    }
-
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        gestureRecognizer === multiTouchBlocker || otherGestureRecognizer === multiTouchBlocker
-    }
-
-    private func enclosingScrollView() -> UIScrollView? {
-        var current = view.superview
-        while let candidate = current {
-            if let scrollView = candidate as? UIScrollView { return scrollView }
-            current = candidate.superview
-        }
-        return nil
-    }
-}
-
-private struct EmbyPosterGridScrollBridge: UIViewControllerRepresentable {
-    let navigationState: EmbyPosterGridNavigationState
-
-    func makeUIViewController(context: Context) -> UIViewController {
-        let controller = EmbyPosterGridScrollBridgeViewController()
-        controller.navigationState = navigationState
-        return controller
-    }
-
-    func updateUIViewController(_ viewController: UIViewController, context: Context) {
-        guard let controller = viewController as? EmbyPosterGridScrollBridgeViewController else { return }
-        controller.navigationState = navigationState
-        DispatchQueue.main.async { controller.view.setNeedsLayout() }
     }
 }
 
@@ -229,9 +137,9 @@ struct EmbyPosterGrid<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(GeometryReader { proxy in Color.clear.preference(key: EmbyPosterGridWidthPreferenceKey.self, value: proxy.size.width) })
         .background(EmbyPosterGridNavigationHost(state: navigationState))
-        .background(EmbyPosterGridScrollBridge(navigationState: navigationState).frame(width: 0, height: 0))
         .onPreferenceChange(EmbyPosterGridWidthPreferenceKey.self) { width in
             if width > 0 && abs(containerWidth - width) > 0.5 { containerWidth = width }
         }
+        .onAppear { navigationState.prepareForGridAppearance() }
     }
 }
