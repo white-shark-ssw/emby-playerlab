@@ -39,6 +39,7 @@ struct EmbyServerRootViewV3: View {
                             .accessibilityHidden(selectedTab != .settings)
                     }
                     .environment(\.serverDockContent, AnyView(serverTabBar))
+                    .environment(\.serverDockBottomInset, geometry.safeAreaInsets.bottom)
                     .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
                     .ignoresSafeArea(.container, edges: .bottom)
                     .background(Color(uiColor: .systemBackground).ignoresSafeArea())
