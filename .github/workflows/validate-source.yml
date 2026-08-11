@@ -6,9 +6,6 @@ on:
   push:
     branches: [main, master]
 
-permissions:
-  contents: write
-
 concurrency:
   group: validate-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -20,120 +17,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref }}
-          fetch-depth: 0
-
-      - name: Stage single navigation refactor
-        id: navigation_refactor
-        if: github.event_name == 'pull_request' && github.head_ref == 'chatgpt/single-navigation-immersive-fix-20260811'
-        run: |
-          set -euo pipefail
-          if [[ -f docs/.single-navigation-layout-patched ]]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          python3 - <<'PY'
-          from pathlib import Path
-
-          server_path = Path('Sources/UI/EmbyServerRootViewV3.swift')
-          source = server_path.read_text()
-
-          old_root_start = '''            if let client {
-                GeometryReader { geometry in
-'''
-          new_root_start = '''            if let client {
-                NavigationView {
-                    GeometryReader { geometry in
-'''
-          if source.count(old_root_start) != 1:
-              raise SystemExit('unexpected EmbyServerRootViewV3 root start')
-          source = source.replace(old_root_start, new_root_start, 1)
-
-          old_root_end = '''                    .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-                }
-            } else {
-'''
-          new_root_end = '''                    .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-                }
-                .navigationBarHidden(true)
-                }
-                .navigationViewStyle(StackNavigationViewStyle())
-                .ignoresSafeArea(.container, edges: .bottom)
-            } else {
-'''
-          if source.count(old_root_end) != 1:
-              raise SystemExit('unexpected EmbyServerRootViewV3 root end')
-          source = source.replace(old_root_end, new_root_end, 1)
-
-          def matching_brace(text: str, open_index: int) -> int:
-              depth = 0
-              for index in range(open_index, len(text)):
-                  char = text[index]
-                  if char == '{':
-                      depth += 1
-                  elif char == '}':
-                      depth -= 1
-                      if depth == 0:
-                          return index
-              raise RuntimeError('unmatched brace')
-
-          def unwrap_navigation_view(text: str, struct_name: str) -> str:
-              struct_marker = f'private struct {struct_name}: View {{'
-              struct_start = text.index(struct_marker)
-              body_start = text.index('    var body: some View {', struct_start)
-              nav_line_start = text.index('        NavigationView {', body_start)
-              if nav_line_start - body_start > 80:
-                  raise RuntimeError(f'{struct_name}: NavigationView is not the body root')
-              open_brace = text.index('{', nav_line_start)
-              close_brace = matching_brace(text, open_brace)
-              nav_line_end = text.index('\n', nav_line_start) + 1
-              inner = text[nav_line_end:close_brace]
-              dedented = ''.join(line[4:] if line.startswith('    ') else line for line in inner.splitlines(True))
-              tail = '\n        .navigationViewStyle(StackNavigationViewStyle())\n        .ignoresSafeArea(.container, edges: .bottom)'
-              tail_start = close_brace + 1
-              if not text.startswith(tail, tail_start):
-                  preview = text[tail_start:tail_start + 180]
-                  raise RuntimeError(f'{struct_name}: unexpected NavigationView tail: {preview!r}')
-              return text[:nav_line_start] + dedented + text[tail_start + len(tail):]
-
-          for name in ('V3EmbyHomeView', 'V3EmbyFavoritesView', 'V3EmbySearchView', 'V3EmbyServerSettingsView'):
-              source = unwrap_navigation_view(source, name)
-          server_path.write_text(source)
-
-          for file_name in ('Sources/UI/EmbyMediaDetailView.swift', 'Sources/UI/EmbyEpisodePickerView.swift'):
-              path = Path(file_name)
-              text = path.read_text()
-              marker = '        .hidesServerDockWhileVisible()\n'
-              if text.count(marker) != 1:
-                  raise SystemExit(f'unexpected immersive dock modifier count in {file_name}: {text.count(marker)}')
-              path.write_text(text.replace(marker, '', 1))
-
-          immersive_path = Path('Sources/UI/ImmersiveUIComponents.swift')
-          immersive = immersive_path.read_text()
-          for token in ('ServerDockVisibilityController', 'serverDockVisibilityController', 'hidesServerDockWhileVisible()'):
-              external = []
-              for path in Path('Sources').rglob('*.swift'):
-                  if path == immersive_path:
-                      continue
-                  if token in path.read_text():
-                      external.append(str(path))
-              if external:
-                  raise SystemExit(f'{token} still used outside ImmersiveUIComponents: {external}')
-
-          obsolete_start = immersive.index('final class ServerDockVisibilityController: ObservableObject {')
-          backdrop_start = immersive.index('struct ImmersiveBackdrop: View {')
-          immersive = immersive[:obsolete_start] + immersive[backdrop_start:]
-          obsolete_extension = '    func hidesServerDockWhileVisible() -> some View { modifier(ServerDockHiddenWhileVisibleModifier()) }\n'
-          if immersive.count(obsolete_extension) != 1:
-              raise SystemExit('unexpected hidesServerDockWhileVisible extension count')
-          immersive_path.write_text(immersive.replace(obsolete_extension, '', 1))
-          Path('docs/.single-navigation-layout-patched').write_text('single shared Emby NavigationView\n')
-          PY
-
-          git diff --check
-          git diff -- Sources/UI/EmbyServerRootViewV3.swift Sources/UI/EmbyMediaDetailView.swift Sources/UI/EmbyEpisodePickerView.swift Sources/UI/ImmersiveUIComponents.swift
-          echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Initialize diagnostic logs
         run: |
@@ -292,16 +175,6 @@ jobs:
             CODE_SIGN_IDENTITY='' \
             DEVELOPMENT_TEAM='' \
             build 2>&1 | tee validate-build.log
-
-      - name: Commit validated navigation refactor
-        if: success() && steps.navigation_refactor.outputs.changed == 'true'
-        run: |
-          set -euo pipefail
-          git config user.name 'ChatGPT'
-          git config user.email 'chatgpt@users.noreply.github.com'
-          git add Sources/UI/EmbyServerRootViewV3.swift Sources/UI/EmbyMediaDetailView.swift Sources/UI/EmbyEpisodePickerView.swift Sources/UI/ImmersiveUIComponents.swift docs/.single-navigation-layout-patched
-          git commit -m 'refactor: unify Emby navigation host [layout-patched]'
-          git push origin HEAD:${{ github.head_ref }}
 
       - name: Summarize compiler errors
         if: failure()
