@@ -29,10 +29,18 @@ detail = Path("Sources/UI/EmbyMediaDetailView.swift")
 text = detail.read_text()
 if "let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom" in text:
     text = replace_once(text, "            let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom\n", "", "detail fullHeight declaration")
-    count = text.count(".frame(width: geometry.size.width, height: fullHeight)")
-    if count != 2:
-        raise SystemExit(f"detail fullHeight frames: expected 2 matches, got {count}")
-    text = text.replace(".frame(width: geometry.size.width, height: fullHeight)", ".frame(width: geometry.size.width, height: geometry.size.height)")
+    text = replace_once(
+        text,
+        ".frame(width: geometry.size.width, height: fullHeight)\n",
+        ".frame(width: geometry.size.width, height: geometry.size.height)\n",
+        "detail scroll frame",
+    )
+    text = replace_once(
+        text,
+        ".frame(width: geometry.size.width, height: fullHeight, alignment: .top)\n",
+        ".frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)\n",
+        "detail root frame",
+    )
 if ".hidesServerDockWhileVisible()" in text:
     text = replace_once(
         text,
