@@ -46,7 +46,9 @@ extension EnvironmentValues {
 }
 
 private struct ServerDockHiddenWhileVisibleModifier: ViewModifier {
-    func body(content: Content) -> some View { content }
+    func body(content: Content) -> some View {
+        content.ignoresSafeArea(.container, edges: .bottom)
+    }
 }
 
 struct ImmersiveBackdrop: View {
