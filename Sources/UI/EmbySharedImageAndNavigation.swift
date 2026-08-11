@@ -244,6 +244,26 @@ struct EmbyCachedRemoteImage: View {
     }
 }
 
+private struct EmbyGridPosterNavigationLink<Content: View>: View {
+    @ObservedObject var state: EmbyPosterGridNavigationState
+    let item: LibraryItem
+    let client: EmbyAPIClient
+    let content: Content
+
+    var body: some View {
+        NavigationLink(
+            destination: EmbyMediaDetailView(item: item, client: client)
+                .onAppear { state.destinationDidAppear(itemID: item.id) }
+                .onDisappear { state.destinationDidDisappear(itemID: item.id) },
+            tag: item.id,
+            selection: state.selectionBinding(for: item.id)
+        ) {
+            content.contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct EmbyPosterDetailLink<Content: View>: View {
     @Environment(\.embyPosterGridNavigationState) private var gridNavigationState
     let item: LibraryItem
@@ -260,9 +280,7 @@ struct EmbyPosterDetailLink<Content: View>: View {
     var body: some View {
         Group {
             if let gridNavigationState {
-                content
-                    .contentShape(Rectangle())
-                    .overlay(EmbyExclusivePosterTapControl { gridNavigationState.open(item: item, client: client) })
+                EmbyGridPosterNavigationLink(state: gridNavigationState, item: item, client: client, content: content)
             } else {
                 content
                     .contentShape(Rectangle())
