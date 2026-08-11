@@ -13,6 +13,7 @@ final class EmbyPosterGridNavigationState: ObservableObject {
     @Published fileprivate var selectedItem: LibraryItem?
     @Published fileprivate var client: EmbyAPIClient?
     @Published fileprivate var isActive = false
+    @Published fileprivate var sourceInteractionLocked = false
     private var transitionLocked = false
     private var destinationPresented = false
     private var acceptingNewOpenAfter = Date.distantPast
@@ -20,7 +21,8 @@ final class EmbyPosterGridNavigationState: ObservableObject {
 
     func open(item: LibraryItem, client: EmbyAPIClient) {
         let now = Date()
-        guard now >= acceptingNewOpenAfter, !isActive, !transitionLocked else { return }
+        guard now >= acceptingNewOpenAfter, !isActive, !transitionLocked, !sourceInteractionLocked else { return }
+        sourceInteractionLocked = true
         transitionLocked = true
         destinationPresented = false
         acceptingNewOpenAfter = now.addingTimeInterval(pushTapGuardInterval)
@@ -37,6 +39,7 @@ final class EmbyPosterGridNavigationState: ObservableObject {
         destinationPresented = false
         isActive = false
         transitionLocked = false
+        sourceInteractionLocked = false
     }
 
     fileprivate func updateActive(_ active: Bool) {
@@ -48,12 +51,14 @@ final class EmbyPosterGridNavigationState: ObservableObject {
         isActive = false
         transitionLocked = false
         destinationPresented = false
+        sourceInteractionLocked = false
     }
 
     fileprivate func prepareForGridAppearance() {
         if !isActive && Date() >= acceptingNewOpenAfter {
             transitionLocked = false
             destinationPresented = false
+            sourceInteractionLocked = false
         }
     }
 }
@@ -160,6 +165,7 @@ struct EmbyPosterGrid<Content: View>: View {
                     }
             }
         }
+        .allowsHitTesting(!navigationState.sourceInteractionLocked)
         .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(GeometryReader { proxy in Color.clear.preference(key: EmbyPosterGridWidthPreferenceKey.self, value: proxy.size.width) })
