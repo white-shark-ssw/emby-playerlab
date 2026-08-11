@@ -131,113 +131,136 @@ struct DetailPressButtonStyle: ButtonStyle {
     }
 }
 
-private final class ScopedInteractivePopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
+private final class ImmersiveNavigationAppearanceEntry {
     weak var navigationController: UINavigationController?
-
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let navigationController else { return false }
-        let allowed = navigationController.viewControllers.count > 1
-        DiagnosticsLogger.shared.log("NavigationRace", "event=scoped-pop-should-begin allowed=\(allowed) stack=\(navigationController.viewControllers.count)")
-        return allowed
-    }
-}
-
-private final class ScopedInteractivePopEntry {
-    weak var navigationController: UINavigationController?
-    let originalDelegate: UIGestureRecognizerDelegate?
-    let originalIsEnabled: Bool
-    let proxy: ScopedInteractivePopGestureDelegate
+    let standardAppearance: UINavigationBarAppearance
+    let scrollEdgeAppearance: UINavigationBarAppearance?
+    let compactAppearance: UINavigationBarAppearance?
+    let tintColor: UIColor?
+    let wasTranslucent: Bool
     var owners = Set<UUID>()
+    var generation = 0
 
-    init(navigationController: UINavigationController, gesture: UIGestureRecognizer) {
+    init(navigationController: UINavigationController) {
         self.navigationController = navigationController
-        originalDelegate = gesture.delegate
-        originalIsEnabled = gesture.isEnabled
-        proxy = ScopedInteractivePopGestureDelegate()
-        proxy.navigationController = navigationController
+        let bar = navigationController.navigationBar
+        standardAppearance = (bar.standardAppearance.copy() as? UINavigationBarAppearance) ?? bar.standardAppearance
+        scrollEdgeAppearance = bar.scrollEdgeAppearance?.copy() as? UINavigationBarAppearance
+        compactAppearance = bar.compactAppearance?.copy() as? UINavigationBarAppearance
+        tintColor = bar.tintColor
+        wasTranslucent = bar.isTranslucent
     }
 }
 
-private final class ScopedInteractivePopManager {
-    static let shared = ScopedInteractivePopManager()
-    private var entries: [ObjectIdentifier: ScopedInteractivePopEntry] = [:]
+private final class ImmersiveNavigationAppearanceManager {
+    static let shared = ImmersiveNavigationAppearanceManager()
+    private var entries: [ObjectIdentifier: ImmersiveNavigationAppearanceEntry] = [:]
 
     func acquire(navigationController: UINavigationController, owner: UUID) {
         precondition(Thread.isMainThread)
-        guard let gesture = navigationController.interactivePopGestureRecognizer else { return }
         let key = ObjectIdentifier(navigationController)
-        let entry: ScopedInteractivePopEntry
-        if let existing = entries[key] {
-            entry = existing
-        } else {
-            entry = ScopedInteractivePopEntry(navigationController: navigationController, gesture: gesture)
-            entries[key] = entry
-        }
-        let inserted = entry.owners.insert(owner).inserted
-        if gesture.delegate.map({ ($0 as AnyObject) !== entry.proxy }) ?? true { gesture.delegate = entry.proxy }
-        if !gesture.isEnabled { gesture.isEnabled = true }
-        if inserted { DiagnosticsLogger.shared.log("NavigationRace", "event=scoped-pop-acquire owners=\(entry.owners.count) stack=\(navigationController.viewControllers.count)") }
+        let entry = entries[key] ?? ImmersiveNavigationAppearanceEntry(navigationController: navigationController)
+        entries[key] = entry
+        entry.generation += 1
+        guard entry.owners.insert(owner).inserted else { return }
+        apply(to: navigationController)
+        DiagnosticsLogger.shared.log("NavigationVisual", "event=immersive-nav-acquire owners=\(entry.owners.count) stack=\(navigationController.viewControllers.count)")
     }
 
     func release(navigationController: UINavigationController, owner: UUID) {
         precondition(Thread.isMainThread)
         let key = ObjectIdentifier(navigationController)
         guard let entry = entries[key], entry.owners.remove(owner) != nil else { return }
-        DiagnosticsLogger.shared.log("NavigationRace", "event=scoped-pop-release owners=\(entry.owners.count) stack=\(navigationController.viewControllers.count)")
+        entry.generation += 1
+        let generation = entry.generation
+        DiagnosticsLogger.shared.log("NavigationVisual", "event=immersive-nav-release owners=\(entry.owners.count) stack=\(navigationController.viewControllers.count)")
         guard entry.owners.isEmpty else { return }
-        if let gesture = navigationController.interactivePopGestureRecognizer, gesture.delegate.map({ ($0 as AnyObject) === entry.proxy }) ?? false {
-            gesture.delegate = entry.originalDelegate
-            gesture.isEnabled = entry.originalIsEnabled
+        DispatchQueue.main.async { [weak self, weak navigationController] in
+            guard let self, let navigationController, let current = self.entries[key], current === entry, current.owners.isEmpty, current.generation == generation else { return }
+            self.restore(entry, on: navigationController)
+            self.entries.removeValue(forKey: key)
         }
-        entries.removeValue(forKey: key)
+    }
+
+    private func apply(to navigationController: UINavigationController) {
+        let bar = navigationController.navigationBar
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundColor = .clear
+        appearance.shadowColor = .clear
+        let backButton = UIBarButtonItemAppearance(style: .plain)
+        backButton.normal.titlePositionAdjustment = UIOffset(horizontal: -1000, vertical: 0)
+        backButton.highlighted.titlePositionAdjustment = UIOffset(horizontal: -1000, vertical: 0)
+        appearance.backButtonAppearance = backButton
+        bar.standardAppearance = appearance
+        bar.scrollEdgeAppearance = appearance
+        bar.compactAppearance = appearance
+        bar.tintColor = .white
+        bar.isTranslucent = true
+    }
+
+    private func restore(_ entry: ImmersiveNavigationAppearanceEntry, on navigationController: UINavigationController) {
+        let bar = navigationController.navigationBar
+        bar.standardAppearance = entry.standardAppearance
+        bar.scrollEdgeAppearance = entry.scrollEdgeAppearance
+        bar.compactAppearance = entry.compactAppearance
+        bar.tintColor = entry.tintColor
+        bar.isTranslucent = entry.wasTranslucent
+        DiagnosticsLogger.shared.log("NavigationVisual", "event=immersive-nav-restore stack=\(navigationController.viewControllers.count)")
     }
 }
 
-private final class ScopedNativeInteractivePopViewController: UIViewController {
+private final class ImmersiveNavigationAppearanceViewController: UIViewController {
     private let owner = UUID()
     private weak var acquiredNavigationController: UINavigationController?
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        acquireIfNeeded()
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        activateIfNeeded()
+        acquireIfNeeded()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        deactivate()
+        releaseIfNeeded()
     }
 
-    func activateIfNeeded() {
-        guard viewIfLoaded?.window != nil, let navigationController, navigationController.viewControllers.count > 1, navigationController.isNavigationBarHidden else { return }
-        if acquiredNavigationController !== navigationController { deactivate() }
+    func acquireIfNeeded() {
+        guard viewIfLoaded?.window != nil, let navigationController else { return }
+        if acquiredNavigationController !== navigationController { releaseIfNeeded() }
         acquiredNavigationController = navigationController
-        ScopedInteractivePopManager.shared.acquire(navigationController: navigationController, owner: owner)
+        ImmersiveNavigationAppearanceManager.shared.acquire(navigationController: navigationController, owner: owner)
     }
 
-    func deactivate() {
+    func releaseIfNeeded() {
         guard let navigationController = acquiredNavigationController else { return }
-        ScopedInteractivePopManager.shared.release(navigationController: navigationController, owner: owner)
+        ImmersiveNavigationAppearanceManager.shared.release(navigationController: navigationController, owner: owner)
         acquiredNavigationController = nil
     }
 }
 
-private struct ScopedNativeInteractivePopBridge: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> ScopedNativeInteractivePopViewController {
-        let controller = ScopedNativeInteractivePopViewController()
+private struct ImmersiveNavigationAppearanceBridge: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> ImmersiveNavigationAppearanceViewController {
+        let controller = ImmersiveNavigationAppearanceViewController()
         controller.view.isUserInteractionEnabled = false
         controller.view.backgroundColor = .clear
         return controller
     }
 
-    func updateUIViewController(_ uiViewController: ScopedNativeInteractivePopViewController, context: Context) {
-        DispatchQueue.main.async { uiViewController.activateIfNeeded() }
+    func updateUIViewController(_ uiViewController: ImmersiveNavigationAppearanceViewController, context: Context) {
+        DispatchQueue.main.async { uiViewController.acquireIfNeeded() }
     }
 
-    static func dismantleUIViewController(_ uiViewController: ScopedNativeInteractivePopViewController, coordinator: ()) { uiViewController.deactivate() }
+    static func dismantleUIViewController(_ uiViewController: ImmersiveNavigationAppearanceViewController, coordinator: ()) { uiViewController.releaseIfNeeded() }
 }
 
 extension View {
-    func nativeInteractivePop() -> some View { background(ScopedNativeInteractivePopBridge().frame(width: 0, height: 0)) }
+    func nativeInteractivePop() -> some View { self }
+    func immersiveSystemNavigationAppearance() -> some View { background(ImmersiveNavigationAppearanceBridge().frame(width: 0, height: 0)) }
     func detailPagePresentation() -> some View { modifier(DetailPagePresentationModifier()) }
     func hidesServerDockWhileVisible() -> some View { detailPagePresentation() }
 }

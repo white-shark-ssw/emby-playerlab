@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import UIKit
 
 struct EmbyEpisodeRange: Identifiable, Hashable {
     let startOffset: Int
@@ -11,7 +12,6 @@ struct EmbyEpisodeRange: Identifiable, Hashable {
 }
 
 struct EmbyMediaDetailView: View {
-    @Environment(\.presentationMode) private var presentationMode
     @Environment(\.colorScheme) private var colorScheme
     let item: LibraryItem
     let client: EmbyAPIClient
@@ -19,6 +19,8 @@ struct EmbyMediaDetailView: View {
     @State private var showFullOverview = false
     @State private var showAllEpisodes = false
     @State private var selectedStillIndex: Int?
+    @State private var heroImageSize: CGSize?
+    @State private var heroUsesLightForeground = true
 
     init(item: LibraryItem, client: EmbyAPIClient) {
         self.item = item
@@ -30,7 +32,7 @@ struct EmbyMediaDetailView: View {
         GeometryReader { geometry in
             let viewportHeight = geometry.size.height + geometry.safeAreaInsets.top
             ZStack(alignment: .top) {
-                ImmersiveBackdrop(url: heroImageURL, overlayOpacity: colorScheme == .dark ? 0.44 : 0.55)
+                persistentBackdrop
 
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -49,15 +51,11 @@ struct EmbyMediaDetailView: View {
                     }
                     .frame(width: geometry.size.width)
                 }
+                .coordinateSpace(name: "emby-detail-scroll")
                 .frame(width: geometry.size.width, height: viewportHeight)
                 .background(Color.clear)
                 .ignoresSafeArea(edges: [.top, .bottom])
 
-                topBar
-                    .padding(.horizontal, 14)
-                    .padding(.top, geometry.safeAreaInsets.top + ImmersiveUIMetrics.topControlPadding)
-                    .frame(width: geometry.size.width)
-                    .zIndex(20)
 
                 NavigationLink(destination: EmbyEpisodePickerView(model: model, client: client), isActive: $showAllEpisodes) { EmptyView() }
                     .frame(width: 0, height: 0)
@@ -67,7 +65,10 @@ struct EmbyMediaDetailView: View {
             .ignoresSafeArea(edges: [.top, .bottom])
             .onAppear { DiagnosticsLogger.shared.log("ImmersiveViewport", "page=detail geometry=\(geometry.size) safe=\(geometry.safeAreaInsets) viewportHeight=\(viewportHeight)") }
         }
-        .navigationBarHidden(true)
+        .navigationBarHidden(false)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("")
+        .immersiveSystemNavigationAppearance()
         .nativeInteractivePop()
         .detailPagePresentation()
         .onAppear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-appear item=\(model.item.id)") }
@@ -80,65 +81,77 @@ struct EmbyMediaDetailView: View {
         .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
     }
 
-    private var topBar: some View {
-        HStack {
-            Button { presentationMode.wrappedValue.dismiss() } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: ImmersiveUIMetrics.topControlVisualSize, height: ImmersiveUIMetrics.topControlVisualSize)
-                    .background(Color.black.opacity(0.50))
-                    .clipShape(Circle())
-                    .frame(width: ImmersiveUIMetrics.topControlHitSize, height: ImmersiveUIMetrics.topControlHitSize)
-            }
-            .buttonStyle(DetailPressButtonStyle())
-            Spacer()
-        }
-    }
-
     private func hero(width: CGFloat) -> some View {
-        let heroHeight = min(488, max(430, width * 1.08))
+        let baseHeight = min(488, max(430, width * 1.08))
         let contentWidth = max(0, width - 40)
-        return ZStack(alignment: .bottom) {
-            EmbyDetailRemoteImage(url: heroImageURL, contentMode: .fill)
-                .frame(width: width, height: heroHeight)
-                .clipped()
-                .mask(LinearGradient(colors: [.black, .black, .black.opacity(0.94), .black.opacity(0.52), .clear], startPoint: .top, endPoint: .bottom))
+        return GeometryReader { proxy in
+            let minY = proxy.frame(in: .named("emby-detail-scroll")).minY
+            let stretch = max(0, minY)
+            let upwardScroll = max(0, -minY)
+            let revealProgress = min(1, upwardScroll / 190)
+            let visualHeight = baseHeight + stretch
+            let imageScale = heroImageScale(width: width, height: baseHeight, revealProgress: revealProgress)
 
-            VStack(spacing: 9) {
-                heroIdentity(width: contentWidth)
+            ZStack(alignment: .bottom) {
+                EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fill)
+                    .frame(width: width, height: visualHeight)
+                    .clipped()
+                    .blur(radius: 13)
+                    .opacity(0.68)
 
-                Text(heroMetadataLine)
-                    .font(.system(size: 13.5, weight: .medium))
-                    .foregroundColor(.primary.opacity(0.70))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .frame(width: contentWidth)
+                EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fit, onImageLoaded: { image in updateHeroImageAnalysis(image) })
+                    .frame(width: width, height: visualHeight)
+                    .scaleEffect(imageScale, anchor: .center)
+                    .clipped()
 
-                if !model.detailFilters.isEmpty { heroTagScroller(width: width) }
+                LinearGradient(
+                    colors: [
+                        Color.clear,
+                        Color.clear,
+                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.12 : 0.18),
+                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.46 : 0.58)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
 
-                if let playableItem = model.primaryPlayableItem {
-                    Button { Task { await model.play(playableItem) } } label: {
-                        HStack(spacing: 9) {
-                            if model.isResolvingPlayback { ProgressView().tint(.white) }
-                            else { Image(systemName: "play.fill").font(.system(size: 15, weight: .bold)) }
-                            Text(model.primaryPlayButtonTitle).font(.headline)
+                VStack(spacing: 9) {
+                    heroIdentity(width: contentWidth)
+
+                    Text(heroMetadataLine)
+                        .font(.system(size: 13.5, weight: .medium))
+                        .foregroundColor(heroSecondaryForeground)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .frame(width: contentWidth)
+
+                    if !model.detailFilters.isEmpty { heroTagScroller(width: width) }
+
+                    if let playableItem = model.primaryPlayableItem {
+                        Button { Task { await model.play(playableItem) } } label: {
+                            HStack(spacing: 9) {
+                                if model.isResolvingPlayback { ProgressView().tint(.white) }
+                                else { Image(systemName: "play.fill").font(.system(size: 15, weight: .bold)) }
+                                Text(model.primaryPlayButtonTitle).font(.headline)
+                            }
+                            .foregroundColor(.white)
+                            .frame(width: contentWidth, height: 50)
+                            .background(Color.blue)
+                            .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
                         }
-                        .foregroundColor(.white)
-                        .frame(width: contentWidth, height: 50)
-                        .background(Color.blue)
-                        .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+                        .buttonStyle(DetailPressButtonStyle())
+                        .disabled(model.isResolvingPlayback)
                     }
-                    .buttonStyle(DetailPressButtonStyle())
-                    .disabled(model.isResolvingPlayback)
-                }
 
-                detailActionRow(width: contentWidth)
+                    detailActionRow(width: contentWidth)
+                }
+                .frame(width: width)
+                .padding(.bottom, 6)
             }
-            .frame(width: width)
-            .padding(.bottom, 6)
+            .frame(width: width, height: visualHeight)
+            .offset(y: stretch > 0 ? -stretch : 0)
         }
-        .frame(width: width, height: heroHeight)
+        .frame(width: width, height: baseHeight)
     }
 
     @ViewBuilder
@@ -155,6 +168,7 @@ struct EmbyMediaDetailView: View {
     private func fallbackHeroTitle(width: CGFloat) -> some View {
         Text(model.item.name)
             .font(.system(size: 27, weight: .bold, design: .rounded))
+            .foregroundColor(heroForeground)
             .multilineTextAlignment(.center)
             .lineLimit(2)
             .frame(width: width)
@@ -169,7 +183,7 @@ struct EmbyMediaDetailView: View {
                     NavigationLink(destination: EmbyDetailFilterResultsView(filter: filter, client: client)) {
                         Text(filter.name)
                             .font(.system(size: 13.5, weight: .semibold))
-                            .foregroundColor(.primary.opacity(0.66))
+                            .foregroundColor(heroSecondaryForeground)
                             .lineLimit(1)
                     }
                     .buttonStyle(.plain)
@@ -196,7 +210,7 @@ struct EmbyMediaDetailView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 19, weight: .regular))
-                .foregroundColor(active ? .blue : .secondary)
+                .foregroundColor(active ? .blue : heroSecondaryForeground)
                 .frame(width: 28, height: 28)
         }
         .buttonStyle(DetailPressButtonStyle())
@@ -206,9 +220,61 @@ struct EmbyMediaDetailView: View {
     private func deferredAction(systemName: String, label: String) -> some View {
         Image(systemName: systemName)
             .font(.system(size: 19, weight: .regular))
-            .foregroundColor(.secondary.opacity(0.46))
+            .foregroundColor(heroSecondaryForeground.opacity(0.56))
             .frame(width: 28, height: 28)
             .accessibilityLabel(label + "，后续实现")
+    }
+
+    private var persistentBackdrop: some View {
+        ZStack {
+            EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fill)
+                .scaleEffect(1.08)
+                .blur(radius: 34)
+            LinearGradient(
+                colors: [
+                    Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.20 : 0.34),
+                    Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.42 : 0.54),
+                    Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.58 : 0.66)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .ignoresSafeArea()
+    }
+
+    private var heroForeground: Color { heroUsesLightForeground ? .white : .black }
+    private var heroSecondaryForeground: Color { heroUsesLightForeground ? .white.opacity(0.78) : .black.opacity(0.72) }
+
+    private func heroImageScale(width: CGFloat, height: CGFloat, revealProgress: CGFloat) -> CGFloat {
+        guard let size = heroImageSize, size.width > 0, size.height > 0 else {
+            return 1.20 - 0.20 * easedReveal(revealProgress)
+        }
+        let imageAspect = size.width / size.height
+        let containerAspect = width / height
+        let coverScale: CGFloat
+        if imageAspect > containerAspect {
+            coverScale = height * imageAspect / width
+        } else {
+            coverScale = width / max(1, height * imageAspect)
+        }
+        let initialScale = min(2.35, max(1.12, coverScale * 1.02))
+        return initialScale + (1 - initialScale) * easedReveal(revealProgress)
+    }
+
+    private func easedReveal(_ value: CGFloat) -> CGFloat {
+        let clamped = min(1, max(0, value))
+        let remaining = 1 - clamped
+        return 1 - remaining * remaining
+    }
+
+    private func updateHeroImageAnalysis(_ image: UIImage) {
+        let size = image.size
+        let prefersLight = EmbyImageContrastAnalyzer.prefersLightForeground(for: image)
+        if heroImageSize != size { heroImageSize = size }
+        if heroUsesLightForeground != prefersLight {
+            withAnimation(.easeOut(duration: 0.18)) { heroUsesLightForeground = prefersLight }
+        }
     }
 
     private var heroImageURL: URL? {

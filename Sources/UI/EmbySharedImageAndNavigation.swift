@@ -1,6 +1,8 @@
 import SwiftUI
 import UIKit
 import Foundation
+import Combine
+import CoreImage
 
 private final class EmbyCachedImageLoader: ObservableObject {
     @Published var image: UIImage?
@@ -221,12 +223,15 @@ struct EmbyCachedRemoteImage: View {
     let url: URL?
     let contentMode: ContentMode
     let placeholderSystemImage: String
+    let onImageLoaded: ((UIImage) -> Void)?
     @StateObject private var loader = EmbyCachedImageLoader()
+    @State private var reportedImageIdentifier: ObjectIdentifier?
 
-    init(url: URL?, contentMode: ContentMode, placeholderSystemImage: String = "photo") {
+    init(url: URL?, contentMode: ContentMode, placeholderSystemImage: String = "photo", onImageLoaded: ((UIImage) -> Void)? = nil) {
         self.url = url
         self.contentMode = contentMode
         self.placeholderSystemImage = placeholderSystemImage
+        self.onImageLoaded = onImageLoaded
     }
 
     var body: some View {
@@ -240,7 +245,44 @@ struct EmbyCachedRemoteImage: View {
             }
         }
         .onAppear { loader.load(url) }
-        .onChange(of: url) { loader.load($0) }
+        .onChange(of: url) {
+            reportedImageIdentifier = nil
+            loader.load($0)
+        }
+        .onReceive(loader.$image.compactMap { $0 }) { image in
+            let identifier = ObjectIdentifier(image)
+            guard reportedImageIdentifier != identifier else { return }
+            reportedImageIdentifier = identifier
+            onImageLoaded?(image)
+        }
+    }
+}
+
+enum EmbyImageContrastAnalyzer {
+    private static let context = CIContext()
+
+    static func prefersLightForeground(for image: UIImage) -> Bool {
+        guard let input = CIImage(image: image) else { return true }
+        let extent = input.extent
+        guard extent.width > 1, extent.height > 1 else { return true }
+        let sample = CGRect(
+            x: extent.minX + extent.width * 0.14,
+            y: extent.minY + extent.height * 0.06,
+            width: extent.width * 0.72,
+            height: extent.height * 0.34
+        ).intersection(extent)
+        guard !sample.isNull, sample.width > 0, sample.height > 0,
+              let filter = CIFilter(name: "CIAreaAverage") else { return true }
+        filter.setValue(input, forKey: kCIInputImageKey)
+        filter.setValue(CIVector(cgRect: sample), forKey: kCIInputExtentKey)
+        guard let output = filter.outputImage else { return true }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        context.render(output, toBitmap: &pixel, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
+        let r = CGFloat(pixel[0]) / 255
+        let g = CGFloat(pixel[1]) / 255
+        let b = CGFloat(pixel[2]) / 255
+        let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return luminance < 0.56
     }
 }
 
