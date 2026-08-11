@@ -17,6 +17,7 @@ struct EmbyServerRootViewV3: View {
         Group {
             if let client {
                 GeometryReader { geometry in
+                    let contentHeight = geometry.size.height + (dockVisibility.isHidden ? geometry.safeAreaInsets.bottom : 0)
                     ZStack(alignment: .top) {
                         ZStack {
                             V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close)
@@ -39,7 +40,7 @@ struct EmbyServerRootViewV3: View {
                                 .allowsHitTesting(selectedTab == .settings)
                                 .accessibilityHidden(selectedTab != .settings)
                         }
-                        .frame(width: geometry.size.width, height: geometry.size.height + (dockVisibility.isHidden ? geometry.safeAreaInsets.bottom : 0), alignment: .top)
+                        .frame(width: geometry.size.width, height: contentHeight, alignment: .top)
                         .ignoresSafeArea(.container, edges: .bottom)
                         .environment(\.serverDockVisibilityController, dockVisibility)
 
@@ -52,7 +53,8 @@ struct EmbyServerRootViewV3: View {
                             .zIndex(100)
                         }
                     }
-                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                    .frame(width: geometry.size.width, height: contentHeight, alignment: .top)
+                    .ignoresSafeArea(.container, edges: .bottom)
                     .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 }
             } else {
