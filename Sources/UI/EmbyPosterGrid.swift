@@ -25,7 +25,7 @@ final class EmbyPosterGridNavigationState: ObservableObject {
 
     func destinationDidAppear(itemID: String) {
         guard selectedItemID == itemID else {
-            DiagnosticsLogger.shared.log("NavigationRace", "event=destination-did-appear-stale item=\(itemID) selected=\(selectedItemID ?? \"none\") generation=\(transitionGeneration)")
+            DiagnosticsLogger.shared.log("NavigationRace", "event=destination-did-appear-stale item=\(itemID) selected=\(selectedItemID ?? "none") generation=\(transitionGeneration)")
             return
         }
         pendingItemID = nil
@@ -33,11 +33,11 @@ final class EmbyPosterGridNavigationState: ObservableObject {
     }
 
     func destinationDidDisappear(itemID: String) {
-        DiagnosticsLogger.shared.log("NavigationRace", "event=destination-did-disappear item=\(itemID) selected=\(selectedItemID ?? \"none\") pending=\(pendingItemID ?? \"none\") generation=\(transitionGeneration)")
+        DiagnosticsLogger.shared.log("NavigationRace", "event=destination-did-disappear item=\(itemID) selected=\(selectedItemID ?? "none") pending=\(pendingItemID ?? "none") generation=\(transitionGeneration)")
     }
 
     func prepareForGridAppearance() {
-        DiagnosticsLogger.shared.log("NavigationRace", "event=grid-appear selected=\(selectedItemID ?? \"none\") pending=\(pendingItemID ?? \"none\") queued=\(queuedItemID ?? \"none\") generation=\(transitionGeneration)")
+        DiagnosticsLogger.shared.log("NavigationRace", "event=grid-appear selected=\(selectedItemID ?? "none") pending=\(pendingItemID ?? "none") queued=\(queuedItemID ?? "none") generation=\(transitionGeneration)")
     }
 
     private func updateSelection(_ value: String?, from itemID: String) {
@@ -56,7 +56,7 @@ final class EmbyPosterGridNavigationState: ObservableObject {
                 queuedItemID = itemID
                 DiagnosticsLogger.shared.log("NavigationRace", "event=poster-open-queued item=\(itemID) active=\(activeItemID) generation=\(transitionGeneration) reason=route-still-active")
             } else {
-                DiagnosticsLogger.shared.log("NavigationRace", "event=poster-open-rejected item=\(itemID) active=\(activeItemID) pending=\(pendingItemID ?? \"none\") queued=\(queuedItemID ?? \"none\") generation=\(transitionGeneration)")
+                DiagnosticsLogger.shared.log("NavigationRace", "event=poster-open-rejected item=\(itemID) active=\(activeItemID) pending=\(pendingItemID ?? "none") queued=\(queuedItemID ?? "none") generation=\(transitionGeneration)")
             }
             return
         }
@@ -74,7 +74,7 @@ final class EmbyPosterGridNavigationState: ObservableObject {
 
     private func completeReturn(_ itemID: String) {
         let queued = queuedItemID
-        DiagnosticsLogger.shared.log("NavigationRace", "event=route-returned item=\(itemID) generation=\(transitionGeneration) queued=\(queued ?? \"none\")")
+        DiagnosticsLogger.shared.log("NavigationRace", "event=route-returned item=\(itemID) generation=\(transitionGeneration) queued=\(queued ?? "none")")
         selectedItemID = nil
         pendingItemID = nil
         queuedItemID = nil
