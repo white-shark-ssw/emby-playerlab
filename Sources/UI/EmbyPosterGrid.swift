@@ -17,11 +17,18 @@ final class EmbyPosterGridNavigationState: ObservableObject {
     private var transitionLocked = false
     private var destinationPresented = false
     private var acceptingNewOpenAfter = Date.distantPast
+    private var transitionGeneration = 0
     private let pushTapGuardInterval: TimeInterval = 1.0
+    private let pushConfirmationTimeout: TimeInterval = 1.25
 
     func open(item: LibraryItem, client: EmbyAPIClient) {
         let now = Date()
-        guard now >= acceptingNewOpenAfter, !isActive, !transitionLocked, !sourceInteractionLocked else { return }
+        guard now >= acceptingNewOpenAfter, !isActive, !transitionLocked, !sourceInteractionLocked else {
+            DiagnosticsLogger.shared.log("NavigationRace", "event=poster-open-rejected item=\(item.id) active=\(isActive) transitionLocked=\(transitionLocked) sourceLocked=\(sourceInteractionLocked) destinationPresented=\(destinationPresented) guardRemainingMs=\(max(0, Int(acceptingNewOpenAfter.timeIntervalSince(now) * 1000)))")
+            return
+        }
+        transitionGeneration += 1
+        let generation = transitionGeneration
         sourceInteractionLocked = true
         transitionLocked = true
         destinationPresented = false
@@ -29,37 +36,73 @@ final class EmbyPosterGridNavigationState: ObservableObject {
         selectedItem = item
         self.client = client
         isActive = true
+        DiagnosticsLogger.shared.log("NavigationRace", "event=poster-open-accepted item=\(item.id) generation=\(generation)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + pushConfirmationTimeout) { [weak self] in
+            self?.expirePendingPush(generation: generation)
+        }
     }
 
     fileprivate func destinationDidAppear() {
         destinationPresented = true
+        DiagnosticsLogger.shared.log("NavigationRace", "event=destination-did-appear item=\(selectedItem?.id ?? "none") generation=\(transitionGeneration)")
     }
 
     fileprivate func destinationDidDisappear() {
+        DiagnosticsLogger.shared.log("NavigationRace", "event=destination-did-disappear item=\(selectedItem?.id ?? "none") generation=\(transitionGeneration)")
         destinationPresented = false
         isActive = false
         transitionLocked = false
         sourceInteractionLocked = false
+        selectedItem = nil
+        client = nil
     }
 
     fileprivate func updateActive(_ active: Bool) {
+        DiagnosticsLogger.shared.log("NavigationRace", "event=binding-update active=\(active) currentActive=\(isActive) transitionLocked=\(transitionLocked) destinationPresented=\(destinationPresented) sourceLocked=\(sourceInteractionLocked) generation=\(transitionGeneration)")
         if active {
             isActive = true
             return
         }
-        if transitionLocked && !destinationPresented { return }
+        if transitionLocked && !destinationPresented {
+            cancelPendingPush(reason: "binding-deactivated-before-appearance")
+            return
+        }
         isActive = false
         transitionLocked = false
         destinationPresented = false
         sourceInteractionLocked = false
+        selectedItem = nil
+        client = nil
     }
 
     fileprivate func prepareForGridAppearance() {
-        if !isActive && Date() >= acceptingNewOpenAfter {
+        DiagnosticsLogger.shared.log("NavigationRace", "event=grid-appear active=\(isActive) transitionLocked=\(transitionLocked) destinationPresented=\(destinationPresented) sourceLocked=\(sourceInteractionLocked) generation=\(transitionGeneration)")
+        if !isActive {
             transitionLocked = false
             destinationPresented = false
             sourceInteractionLocked = false
+            if Date() >= acceptingNewOpenAfter {
+                selectedItem = nil
+                client = nil
+            }
         }
+    }
+
+    private func expirePendingPush(generation: Int) {
+        guard generation == transitionGeneration, transitionLocked, !destinationPresented else { return }
+        DiagnosticsLogger.shared.log("NavigationRace", "event=push-confirmation-timeout item=\(selectedItem?.id ?? "none") generation=\(generation) active=\(isActive) sourceLocked=\(sourceInteractionLocked)")
+        cancelPendingPush(reason: "destination-did-not-appear")
+    }
+
+    private func cancelPendingPush(reason: String) {
+        DiagnosticsLogger.shared.log("NavigationRace", "event=cancel-pending-push reason=\(reason) item=\(selectedItem?.id ?? "none") generation=\(transitionGeneration)")
+        transitionGeneration += 1
+        isActive = false
+        transitionLocked = false
+        destinationPresented = false
+        sourceInteractionLocked = false
+        selectedItem = nil
+        client = nil
     }
 }
 
