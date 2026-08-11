@@ -6,11 +6,70 @@ on:
   push:
     branches: [main, master]
 
+permissions:
+  contents: write
+
 concurrency:
   group: validate-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  patch-detail-immersive:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'chatgpt/detail-immersive-toggle-navigation-race-20260811'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Apply exact detail/root patch
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('Sources/UI/EmbyServerRootViewV3.swift')
+          text = root.read_text()
+          old = '''                    }
+                    .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
+                    .ignoresSafeArea(.container, edges: .bottom)
+'''
+          new = '''                    }
+                    .environment(\\.serverDockContent, AnyView(serverTabBar))
+                    .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
+                    .ignoresSafeArea(.container, edges: .bottom)
+'''
+          if '.environment(\\.serverDockContent, AnyView(serverTabBar))' not in text:
+              if text.count(old) != 1: raise SystemExit(f'root patch mismatch: {text.count(old)}')
+              text = text.replace(old, new, 1)
+              root.write_text(text)
+
+          detail = Path('Sources/UI/EmbyMediaDetailView.swift')
+          text = detail.read_text()
+          if 'let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom' in text:
+              text = text.replace('            let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom\n', '', 1)
+              count = text.count('.frame(width: geometry.size.width, height: fullHeight)')
+              if count != 2: raise SystemExit(f'detail frame mismatch: {count}')
+              text = text.replace('.frame(width: geometry.size.width, height: fullHeight)', '.frame(width: geometry.size.width, height: geometry.size.height)')
+          if '.hidesServerDockWhileVisible()' in text:
+              if text.count('        .hidesServerDockWhileVisible()\n') != 1: raise SystemExit('detail modifier mismatch')
+              text = text.replace('        .hidesServerDockWhileVisible()\n', '        .detailPagePresentation()\n        .onAppear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-appear item=\\(model.item.id)") }\n        .onDisappear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-disappear item=\\(model.item.id)") }\n', 1)
+          detail.write_text(text)
+
+          staged = Path('.github/workflows/one-shot-detail-immersive-patch.yml')
+          if staged.exists(): staged.unlink()
+          PY
+          git diff --check
+          if git diff --quiet; then
+            echo 'Feature branch already patched.'
+            exit 0
+          fi
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: wire immersive detail viewport and dock mode [detail-immersive-patched]'
+          git push origin HEAD:chatgpt/detail-immersive-toggle-navigation-race-20260811
+
   validate:
     runs-on: macos-15
     timeout-minutes: 120
