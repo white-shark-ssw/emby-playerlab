@@ -18,10 +18,19 @@ private struct ServerDockContentKey: EnvironmentKey {
     static let defaultValue: AnyView? = nil
 }
 
+private struct ServerDockBottomInsetKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
 extension EnvironmentValues {
     var serverDockContent: AnyView? {
         get { self[ServerDockContentKey.self] }
         set { self[ServerDockContentKey.self] = newValue }
+    }
+
+    var serverDockBottomInset: CGFloat {
+        get { self[ServerDockBottomInsetKey.self] }
+        set { self[ServerDockBottomInsetKey.self] = newValue }
     }
 }
 
@@ -64,6 +73,7 @@ extension EnvironmentValues {
 private struct DetailPagePresentationModifier: ViewModifier {
     @AppStorage(DetailPresentationSettingsKey.fullyImmersive) private var fullyImmersive = true
     @Environment(\.serverDockContent) private var serverDockContent
+    @Environment(\.serverDockBottomInset) private var serverDockBottomInset
 
     func body(content: Content) -> some View {
         content
@@ -71,6 +81,7 @@ private struct DetailPagePresentationModifier: ViewModifier {
                 if !fullyImmersive, let serverDockContent {
                     serverDockContent
                         .frame(height: ImmersiveUIMetrics.serverDockHeight)
+                        .padding(.bottom, serverDockBottomInset)
                         .zIndex(100)
                 }
             }
