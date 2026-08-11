@@ -7,6 +7,22 @@ enum ImmersiveUIMetrics {
     static let topControlHitSize: CGFloat = 44
     static let topControlPadding: CGFloat = 1
     static let quickJumpHitWidth: CGFloat = 15
+    static let serverDockHeight: CGFloat = 40
+}
+
+enum DetailPresentationSettingsKey {
+    static let fullyImmersive = "ui.detailFullyImmersive"
+}
+
+private struct ServerDockContentKey: EnvironmentKey {
+    static let defaultValue: AnyView? = nil
+}
+
+extension EnvironmentValues {
+    var serverDockContent: AnyView? {
+        get { self[ServerDockContentKey.self] }
+        set { self[ServerDockContentKey.self] = newValue }
+    }
 }
 
 final class ServerDockVisibilityController: ObservableObject {
@@ -61,45 +77,61 @@ private final class ImmersiveBottomSafeAreaViewController: UIViewController {
 
 private struct ImmersiveBottomSafeAreaBridge: UIViewControllerRepresentable {
     final class Coordinator: NSObject {
-        private weak var targetNavigationController: UINavigationController?
+        private weak var targetHostingController: UIViewController?
         private var originalInsets: UIEdgeInsets?
         private var appliedInsets: UIEdgeInsets?
 
         func apply(from bridge: UIViewController) {
-            guard let navigationController = bridge.navigationController, navigationController.viewIfLoaded?.window != nil else { return }
-            if navigationController !== targetNavigationController {
+            guard let hostingController = hostingController(for: bridge), hostingController.viewIfLoaded?.window != nil else { return }
+            if hostingController !== targetHostingController {
                 restore()
-                targetNavigationController = navigationController
-                originalInsets = navigationController.additionalSafeAreaInsets
+                targetHostingController = hostingController
+                originalInsets = hostingController.additionalSafeAreaInsets
             }
 
             guard appliedInsets == nil else { return }
-            let bottomInset = navigationController.view.safeAreaInsets.bottom
-            guard bottomInset > 0.5 else { return }
+            let bottomInset = hostingController.view.safeAreaInsets.bottom
+            guard bottomInset > 0.5 else {
+                DiagnosticsLogger.shared.log("ImmersiveViewport", "action=apply-skip reason=no-bottom-safe-area controller=\(type(of: hostingController)) frame=\(hostingController.view.frame) safe=\(hostingController.view.safeAreaInsets)")
+                return
+            }
 
-            var desired = originalInsets ?? navigationController.additionalSafeAreaInsets
+            let before = hostingController.view.safeAreaInsets
+            var desired = originalInsets ?? hostingController.additionalSafeAreaInsets
             desired.bottom -= bottomInset
-            navigationController.additionalSafeAreaInsets = desired
+            hostingController.additionalSafeAreaInsets = desired
             appliedInsets = desired
-            navigationController.view.setNeedsLayout()
-            navigationController.view.layoutIfNeeded()
+            hostingController.view.setNeedsLayout()
+            hostingController.view.layoutIfNeeded()
+            DiagnosticsLogger.shared.log("ImmersiveViewport", "action=apply controller=\(type(of: hostingController)) frame=\(hostingController.view.frame) beforeSafe=\(before) afterSafe=\(hostingController.view.safeAreaInsets) additional=\(hostingController.additionalSafeAreaInsets)")
         }
 
         func restore() {
-            guard let navigationController = targetNavigationController, let originalInsets else {
-                targetNavigationController = nil
+            guard let hostingController = targetHostingController, let originalInsets else {
+                targetHostingController = nil
                 originalInsets = nil
                 appliedInsets = nil
                 return
             }
-            if appliedInsets == nil || navigationController.additionalSafeAreaInsets == appliedInsets {
-                navigationController.additionalSafeAreaInsets = originalInsets
-                navigationController.view.setNeedsLayout()
-                navigationController.view.layoutIfNeeded()
+            if appliedInsets == nil || hostingController.additionalSafeAreaInsets == appliedInsets {
+                let before = hostingController.view.safeAreaInsets
+                hostingController.additionalSafeAreaInsets = originalInsets
+                hostingController.view.setNeedsLayout()
+                hostingController.view.layoutIfNeeded()
+                DiagnosticsLogger.shared.log("ImmersiveViewport", "action=restore controller=\(type(of: hostingController)) frame=\(hostingController.view.frame) beforeSafe=\(before) afterSafe=\(hostingController.view.safeAreaInsets) additional=\(hostingController.additionalSafeAreaInsets)")
             }
-            targetNavigationController = nil
+            targetHostingController = nil
             self.originalInsets = nil
             appliedInsets = nil
+        }
+
+        private func hostingController(for bridge: UIViewController) -> UIViewController? {
+            var current = bridge.parent
+            while let controller = current {
+                if controller.parent is UINavigationController { return controller }
+                current = controller.parent
+            }
+            return bridge.navigationController?.topViewController
         }
     }
 
@@ -123,11 +155,23 @@ private struct ImmersiveBottomSafeAreaBridge: UIViewControllerRepresentable {
     }
 }
 
-private struct ServerDockHiddenWhileVisibleModifier: ViewModifier {
+private struct DetailPagePresentationModifier: ViewModifier {
+    @AppStorage(DetailPresentationSettingsKey.fullyImmersive) private var fullyImmersive = true
+    @Environment(\.serverDockContent) private var serverDockContent
+
     func body(content: Content) -> some View {
-        content
-            .ignoresSafeArea(.container, edges: .bottom)
-            .background(ImmersiveBottomSafeAreaBridge().frame(width: 0, height: 0))
+        ZStack(alignment: .bottom) {
+            content
+            if !fullyImmersive, let serverDockContent {
+                serverDockContent
+                    .frame(height: ImmersiveUIMetrics.serverDockHeight)
+                    .zIndex(100)
+            }
+        }
+        .ignoresSafeArea(.container, edges: .bottom)
+        .background(Group {
+            if fullyImmersive { ImmersiveBottomSafeAreaBridge().frame(width: 0, height: 0) }
+        })
     }
 }
 
@@ -219,7 +263,9 @@ private struct NativeNavigationPopBridge: UIViewControllerRepresentable {
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard let navigationController = navigationController(for: gestureRecognizer) else { return false }
-            return navigationController.viewControllers.count > 1 && navigationController.transitionCoordinator == nil
+            let allowed = navigationController.viewControllers.count > 1 && navigationController.transitionCoordinator == nil
+            DiagnosticsLogger.shared.log("NavigationRace", "event=interactive-pop-should-begin allowed=\(allowed) stack=\(navigationController.viewControllers.count) transition=\(navigationController.transitionCoordinator != nil) state=\(gestureRecognizer.state.rawValue)")
+            return allowed
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
@@ -241,7 +287,8 @@ private struct NativeNavigationPopBridge: UIViewControllerRepresentable {
 
 extension View {
     func nativeInteractivePop() -> some View { background(NativeNavigationPopBridge().frame(width: 0, height: 0)) }
-    func hidesServerDockWhileVisible() -> some View { modifier(ServerDockHiddenWhileVisibleModifier()) }
+    func detailPagePresentation() -> some View { modifier(DetailPagePresentationModifier()) }
+    func hidesServerDockWhileVisible() -> some View { detailPagePresentation() }
 }
 
 enum DetailHaptics {
