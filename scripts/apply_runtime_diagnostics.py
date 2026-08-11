@@ -13,11 +13,11 @@ path = Path("Sources/Diagnostics/DiagnosticsLogger.swift")
 text = path.read_text()
 text = replace_once(text, "    private let maximumPersistentBytes: UInt64 = 8 * 1024 * 1024\n", "    private let maximumPersistentBytes: UInt64 = 32 * 1024 * 1024\n", "DiagnosticsLogger maximumPersistentBytes")
 text = replace_once(text, "            if self.entries.count > 10_000 {\n                self.entries.removeFirst(self.entries.count - 10_000)\n            }\n", "            if self.entries.count > 40_000 {\n                self.entries.removeFirst(self.entries.count - 40_000)\n            }\n", "DiagnosticsLogger in-memory entries")
-text = replace_once(text, '        log("Lifecycle", "logger initialized bundle=\\(AppIdentity.version) source=\\(AppIdentity.sourceVersion)")\n', '        log("Lifecycle", "logger initialized bundle=\\(AppIdentity.version) source=\\(AppIdentity.sourceVersion)")\n        log("DiagnosticsProfile", "layout-safe-area + transport-race trace v1")\n', "DiagnosticsLogger profile marker")
+text = replace_once(text, '        log("Lifecycle", "logger initialized bundle=\\(AppIdentity.version) source=\\(AppIdentity.sourceVersion)")\n', '        log("Lifecycle", "logger initialized bundle=\\(AppIdentity.version) source=\\(AppIdentity.sourceVersion)")\n        log("DiagnosticsProfile", "layout-safe-area + transport-race trace v2")\n', "DiagnosticsLogger profile marker")
 path.write_text(text)
 
 
-# Log the actual UIKit ownership chain. This intentionally uses only iOS 15-era APIs.
+# Log the actual UIKit ownership chain. Uses only APIs available before iOS 15.
 Path("Sources/Diagnostics/LayoutDiagnostics.swift").write_text(r'''import Foundation
 import UIKit
 
@@ -79,7 +79,7 @@ enum LayoutDiagnostics {
 ''')
 
 
-# Trace the currently applied safe-area bridge before and after UIKit layout.
+# Trace the current safe-area bridge before and after UIKit layout.
 path = Path("Sources/UI/ImmersiveUIComponents.swift")
 text = path.read_text()
 text = replace_once(text, '''    override func viewDidAppear(_ animated: Bool) {
@@ -133,7 +133,7 @@ text = replace_once(text, '''            navigationController.view.setNeedsLayou
 path.write_text(text)
 
 
-# Expose the real URLSession lane state. This is needed because UnifiedMap only knows actor claims.
+# Expose real URLSession lane occupancy, not just actor-level slot claims.
 path = Path("Sources/Transport/RangeHTTPClient.swift")
 text = path.read_text()
 text = replace_once(text, '''    @discardableResult
@@ -230,7 +230,7 @@ text = replace_once(text, '''    private func cancel(taskIdentifier: Int, task: 
 path.write_text(text)
 
 
-# Trace every gate that can leave the actor's logical slots idle after a blocking read/seek.
+# Trace blocked reads plus the exact scheduler gates when no foreground lane is available.
 path = Path("Sources/Transport/UnifiedMediaTransportSession.swift")
 text = path.read_text()
 text = replace_once(text, '''    private var metricsValue = TransportMetricsSnapshot()
@@ -240,8 +240,6 @@ text = replace_once(text, '''    private var metricsValue = TransportMetricsSnap
     private var speedSamples: [SpeedSample] = []
     private var lastMetricsLogAt = Date.distantPast
     private var blockedReadSerial: UInt64 = 0
-    private var lastSchedulerTraceSignature = ""
-    private var lastSchedulerTraceAt = Date.distantPast
     private var lastDeadlockCandidateAt = Date.distantPast
 ''', "Unified scheduler diagnostic state")
 text = replace_once(text, '''        let available = store.availableLength(from: offset, maximumLength: Int64(requested))
@@ -300,69 +298,67 @@ text = replace_once(text, '''            installUrgent(range: offset..<demandEnd
         }
     }
 ''', "Unified blocked read retry")
-text = replace_once(text, '''        if let resolved = try? await resolve() {
+text = replace_once(text, '''    func metrics() async -> TransportMetricsSnapshot {
+        if let resolved = try? await resolve() {
             if slotTasks.isEmpty, Date() > pendingUserSeekUntil || pendingPlaybackUrgentRange != nil || pendingMetadataRange != nil {
                 scheduleSlots(reason: "metrics-idle-repair")
             }
             refreshMetrics(resource: resolved)
         }
-''', '''        if let resolved = try? await resolve() {
-            if slotTasks.isEmpty { traceSchedulerState(reason: "metrics-observe-idle", resource: resolved, force: true) }
-            if slotTasks.isEmpty, Date() > pendingUserSeekUntil || pendingPlaybackUrgentRange != nil || pendingMetadataRange != nil {
-                scheduleSlots(reason: "metrics-idle-repair")
-            }
-            refreshMetrics(resource: resolved)
-        }
-''', "Unified metrics idle trace")
-text = replace_once(text, '''    private func scheduleSlots(reason: String) {
-        guard !stopped, let resource, let store else { return }
-
-        if !startupMetadataQueue.isEmpty || slotClaims.values.contains(where: { $0.role == .startupMetadata }) {
-''', '''    private func scheduleSlots(reason: String) {
-        guard !stopped, let resource, let store else { return }
-        defer { traceSchedulerState(reason: reason, resource: resource, force: false) }
-
-        if !startupMetadataQueue.isEmpty || slotClaims.values.contains(where: { $0.role == .startupMetadata }) {
-''', "Unified schedule trace")
-anchor = "    private func firstIdleForegroundSlot() -> Int? {\n"
-if text.count(anchor) != 1:
-    raise SystemExit("Unified scheduler trace insertion anchor mismatch")
-helper = '''    private func traceSchedulerState(reason: String, resource: TransportResolvedResource, force: Bool) {
-        guard let store = store else { return }
-        let now = Date()
-        let map = rangeMap.snapshot(anchor: playbackAnchor, resourceLength: resource.contentLength)
-        let blockingAgeMs = lastBlockingPlaybackDemandAt == .distantPast ? -1 : Int(now.timeIntervalSince(lastBlockingPlaybackDemandAt) * 1000)
-        let pendingUrgent = pendingPlaybackUrgentRange.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "none"
-        let pendingMetadata = pendingMetadataRange.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "none"
-        let lastBlocking = lastBlockingPlaybackDemand.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "none"
-        func claimText(_ slot: Int) -> String {
-            guard let claim = slotClaims[slot] else { return "idle" }
-            return "\(claim.role.rawValue):\(claim.range.lowerBound)-\(claim.range.upperBound)"
-        }
-        let slot0 = "task=\(slotTasks[0] != nil) claim=\(claimText(0)) gen=\(slotGenerations[0] ?? 0) reset=\(liveLaneResetPending.contains(0)) refresh=\(liveLaneSourceRefreshPending.contains(0)) rotate=\(liveLaneRotationRequested.contains(0)) hedge=\(urgentHedgeRequested.contains(0)) raceReset=\(urgentRaceResetPending.contains(0)) http={\(client.diagnosticLaneSummary(worker: 0))}"
-        let slot1 = "task=\(slotTasks[1] != nil) claim=\(claimText(1)) gen=\(slotGenerations[1] ?? 0) reset=\(liveLaneResetPending.contains(1)) refresh=\(liveLaneSourceRefreshPending.contains(1)) rotate=\(liveLaneRotationRequested.contains(1)) hedge=\(urgentHedgeRequested.contains(1)) raceReset=\(urgentRaceResetPending.contains(1)) http={\(client.diagnosticLaneSummary(worker: 1))}"
-        let secondaryCooldownMs = max(0, Int(secondaryCooldownUntil.timeIntervalSince(now) * 1000))
-        let startupActive = slotClaims.values.filter { $0.role == .startupMetadata }.count
-        let signature = "anchor=\(playbackAnchor)|frontier=\(map.frontierByte)|holes=\(map.holeCount)|urgent=\(pendingUrgent)|meta=\(pendingMetadata)|startupQ=\(startupMetadataQueue.count)|startupActive=\(startupActive)|blocking=\(lastBlocking)|blockingAgeMs=\(blockingAgeMs)|secondary=\(secondaryEnabled)|cooldownMs=\(secondaryCooldownMs)|bulk=\(preferredBulkSlot)|s0={\(slot0)}|s1={\(slot1)}"
-        if force || signature != lastSchedulerTraceSignature || now.timeIntervalSince(lastSchedulerTraceAt) >= 2 {
-            lastSchedulerTraceSignature = signature
-            lastSchedulerTraceAt = now
-            DiagnosticsLogger.shared.log("UnifiedSchedulerTrace", "reason=\(reason) cache=\(store.uniqueBytes) \(signature)")
-        }
-        let freshBlocking = lastBlockingPlaybackDemand != nil && blockingAgeMs >= 0 && blockingAgeMs <= Int(stallBlockingDemandFreshSeconds * 1000)
-        let pendingForeground = pendingPlaybackUrgentRange != nil || pendingMetadataRange != nil
-        if slotTasks.isEmpty, (freshBlocking || pendingForeground), now.timeIntervalSince(lastDeadlockCandidateAt) >= 0.75 {
-            lastDeadlockCandidateAt = now
-            DiagnosticsLogger.shared.log("UnifiedDeadlockCandidate", "reason=\(reason) freshBlocking=\(freshBlocking) pendingForeground=\(pendingForeground) \(signature)")
-        }
+        return metricsValue
     }
-
-'''
-text = text.replace(anchor, helper + anchor, 1)
+''', '''    func metrics() async -> TransportMetricsSnapshot {
+        if let resolved = try? await resolve() {
+            if slotTasks.isEmpty {
+                let now = Date()
+                let urgent = pendingPlaybackUrgentRange.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "none"
+                let metadata = pendingMetadataRange.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "none"
+                let blocking = lastBlockingPlaybackDemand.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "none"
+                let blockingAgeMs = lastBlockingPlaybackDemandAt == .distantPast ? -1 : Int(now.timeIntervalSince(lastBlockingPlaybackDemandAt) * 1000)
+                let lane0 = client.diagnosticLaneSummary(worker: 0)
+                let lane1 = client.diagnosticLaneSummary(worker: 1)
+                DiagnosticsLogger.shared.log("UnifiedSchedulerTrace", "reason=metrics-idle anchor=\(playbackAnchor) urgent=\(urgent) metadata=\(metadata) blocking=\(blocking) blockingAgeMs=\(blockingAgeMs) seekPending=\(now <= pendingUserSeekUntil) reset0=\(liveLaneResetPending.contains(0)) reset1=\(liveLaneResetPending.contains(1)) refresh0=\(liveLaneSourceRefreshPending.contains(0)) refresh1=\(liveLaneSourceRefreshPending.contains(1)) rotate0=\(liveLaneRotationRequested.contains(0)) rotate1=\(liveLaneRotationRequested.contains(1)) hedge0=\(urgentHedgeRequested.contains(0)) hedge1=\(urgentHedgeRequested.contains(1)) raceReset0=\(urgentRaceResetPending.contains(0)) raceReset1=\(urgentRaceResetPending.contains(1)) lane0={\(lane0)} lane1={\(lane1)}")
+                let freshBlocking = lastBlockingPlaybackDemand != nil && blockingAgeMs >= 0 && blockingAgeMs <= Int(stallBlockingDemandFreshSeconds * 1000)
+                let pendingForeground = pendingPlaybackUrgentRange != nil || pendingMetadataRange != nil
+                if (freshBlocking || pendingForeground), now.timeIntervalSince(lastDeadlockCandidateAt) >= 0.75 {
+                    lastDeadlockCandidateAt = now
+                    DiagnosticsLogger.shared.log("UnifiedDeadlockCandidate", "freshBlocking=\(freshBlocking) pendingForeground=\(pendingForeground) urgent=\(urgent) metadata=\(metadata) blocking=\(blocking) lane0={\(lane0)} lane1={\(lane1)}")
+                }
+            }
+            if slotTasks.isEmpty, Date() > pendingUserSeekUntil || pendingPlaybackUrgentRange != nil || pendingMetadataRange != nil {
+                scheduleSlots(reason: "metrics-idle-repair")
+            }
+            refreshMetrics(resource: resolved)
+        }
+        return metricsValue
+    }
+''', "Unified metrics scheduler trace")
+text = replace_once(text, '''    private func firstIdleForegroundSlot() -> Int? {
+        let serviceSlot = preferredBulkSlot == 0 ? 1 : 0
+        let order = [serviceSlot, preferredBulkSlot]
+        for slot in order {
+            guard slotTasks[slot] == nil, !liveLaneResetPending.contains(slot), !liveLaneSourceRefreshPending.contains(slot) else { continue }
+            if slot == 1, Date() < secondaryCooldownUntil { continue }
+            return slot
+        }
+        return nil
+    }
+''', '''    private func firstIdleForegroundSlot() -> Int? {
+        let serviceSlot = preferredBulkSlot == 0 ? 1 : 0
+        let order = [serviceSlot, preferredBulkSlot]
+        for slot in order {
+            guard slotTasks[slot] == nil, !liveLaneResetPending.contains(slot), !liveLaneSourceRefreshPending.contains(slot) else { continue }
+            if slot == 1, Date() < secondaryCooldownUntil { continue }
+            return slot
+        }
+        DiagnosticsLogger.shared.log("UnifiedSchedulerGate", "no-foreground-slot preferredBulk=\(preferredBulkSlot) slot0Task=\(slotTasks[0] != nil) slot1Task=\(slotTasks[1] != nil) reset0=\(liveLaneResetPending.contains(0)) reset1=\(liveLaneResetPending.contains(1)) refresh0=\(liveLaneSourceRefreshPending.contains(0)) refresh1=\(liveLaneSourceRefreshPending.contains(1)) secondaryCooldownMs=\(max(0, Int(secondaryCooldownUntil.timeIntervalSince(Date()) * 1000))) lane0={\(client.diagnosticLaneSummary(worker: 0))} lane1={\(client.diagnosticLaneSummary(worker: 1))}")
+        return nil
+    }
+''', "Unified foreground scheduler gate")
 path.write_text(text)
 
 
-# Correlate PlayerController's watchdog decision with transport state.
+# Correlate PlayerController's watchdog with transport state.
 path = Path("Sources/Player/PlayerController.swift")
 text = path.read_text()
 text = replace_once(text, '''    private func evaluatePlaybackStall() {
