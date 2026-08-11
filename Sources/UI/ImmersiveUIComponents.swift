@@ -46,15 +46,7 @@ extension EnvironmentValues {
 }
 
 private struct ServerDockHiddenWhileVisibleModifier: ViewModifier {
-    @Environment(\.serverDockVisibilityController) private var controller
-    @State private var owner = UUID()
-
-    func body(content: Content) -> some View {
-        content
-            .ignoresSafeArea(.container, edges: .bottom)
-            .onAppear { controller?.hide(owner: owner) }
-            .onDisappear { controller?.show(owner: owner) }
-    }
+    func body(content: Content) -> some View { content }
 }
 
 struct ImmersiveBackdrop: View {
