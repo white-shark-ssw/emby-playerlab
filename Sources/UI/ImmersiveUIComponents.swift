@@ -45,9 +45,94 @@ extension EnvironmentValues {
     }
 }
 
+private final class ImmersiveBottomSafeAreaViewController: UIViewController {
+    weak var safeAreaCoordinator: ImmersiveBottomSafeAreaBridge.Coordinator?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        safeAreaCoordinator?.apply(from: self)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        safeAreaCoordinator?.apply(from: self)
+    }
+}
+
+private struct ImmersiveBottomSafeAreaBridge: UIViewControllerRepresentable {
+    final class Coordinator: NSObject {
+        private weak var targetViewController: UIViewController?
+        private var originalInsets: UIEdgeInsets?
+        private var appliedInsets: UIEdgeInsets?
+
+        func apply(from bridge: UIViewController) {
+            guard let target = hostingTarget(from: bridge), target.viewIfLoaded?.window != nil else { return }
+            if target !== targetViewController {
+                restore()
+                targetViewController = target
+                originalInsets = target.additionalSafeAreaInsets
+            }
+
+            guard appliedInsets == nil else { return }
+            let bottomInset = target.view.safeAreaInsets.bottom
+            guard bottomInset > 0.5 else { return }
+
+            var desired = originalInsets ?? target.additionalSafeAreaInsets
+            desired.bottom -= bottomInset
+            target.additionalSafeAreaInsets = desired
+            appliedInsets = desired
+            target.view.setNeedsLayout()
+        }
+
+        func restore() {
+            guard let target = targetViewController, let originalInsets else {
+                targetViewController = nil
+                originalInsets = nil
+                appliedInsets = nil
+                return
+            }
+            if appliedInsets == nil || target.additionalSafeAreaInsets == appliedInsets {
+                target.additionalSafeAreaInsets = originalInsets
+                target.view.setNeedsLayout()
+            }
+            targetViewController = nil
+            self.originalInsets = nil
+            appliedInsets = nil
+        }
+
+        private func hostingTarget(from bridge: UIViewController) -> UIViewController? {
+            guard let navigationController = bridge.navigationController else { return bridge.parent }
+            var current = bridge.parent
+            while let parent = current?.parent, parent !== navigationController { current = parent }
+            return current ?? navigationController.topViewController
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        let controller = ImmersiveBottomSafeAreaViewController()
+        controller.safeAreaCoordinator = context.coordinator
+        controller.view.isUserInteractionEnabled = false
+        controller.view.backgroundColor = .clear
+        return controller
+    }
+
+    func updateUIViewController(_ viewController: UIViewController, context: Context) {
+        context.coordinator.apply(from: viewController)
+        DispatchQueue.main.async { context.coordinator.apply(from: viewController) }
+    }
+
+    static func dismantleUIViewController(_ uiViewController: UIViewController, coordinator: Coordinator) {
+        coordinator.restore()
+    }
+}
+
 private struct ServerDockHiddenWhileVisibleModifier: ViewModifier {
     func body(content: Content) -> some View {
-        content.ignoresSafeArea(.container, edges: .bottom)
+        content
+            .ignoresSafeArea(.container, edges: .bottom)
+            .background(ImmersiveBottomSafeAreaBridge().frame(width: 0, height: 0))
     }
 }
 
