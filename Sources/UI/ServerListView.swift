@@ -5,7 +5,7 @@ struct ServerListView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var searchText = ""
     @State private var showingAddServer = false
-    @State private var selectedSession: EmbySession?
+    let onOpenServer: (EmbySession) -> Void
 
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
@@ -49,10 +49,7 @@ struct ServerListView: View {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(filteredSessions) { stored in
                             serverCard(stored)
-                                .onTapGesture {
-                                    sessionStore.activate(stored)
-                                    selectedSession = stored
-                                }
+                                .onTapGesture { onOpenServer(stored) }
                                 .contextMenu {
                                     Button {
                                         UIPasteboard.general.string = stored.serverURL.absoluteString
@@ -77,11 +74,6 @@ struct ServerListView: View {
         .sheet(isPresented: $showingAddServer) {
             AddServerView()
                 .environmentObject(sessionStore)
-        }
-        .fullScreenCover(item: $selectedSession, onDismiss: { sessionStore.leaveServer() }) { stored in
-            EmbyServerRootViewV3(session: stored)
-                .environmentObject(sessionStore)
-                .nativeInteractivePop()
         }
     }
 

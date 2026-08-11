@@ -1,19 +1,29 @@
 import SwiftUI
 
 struct AppShellView: View {
+    @EnvironmentObject private var sessionStore: SessionStore
     @State private var selection = 0
+    @State private var selectedSession: EmbySession?
 
     var body: some View {
         TabView(selection: $selection) {
-            ServerListView()
-                .tabItem { Label("服务器", systemImage: "externaldrive.connected.to.line.below") }
-                .tag(0)
+            ServerListView { stored in
+                sessionStore.activate(stored)
+                selectedSession = stored
+            }
+            .tabItem { Label("服务器", systemImage: "externaldrive.connected.to.line.below") }
+            .tag(0)
 
             GlobalSettingsView()
                 .tabItem { Label("设置", systemImage: "gearshape") }
                 .tag(1)
         }
         .accentColor(.blue)
+        .fullScreenCover(item: $selectedSession, onDismiss: { sessionStore.leaveServer() }) { stored in
+            EmbyServerRootViewV3(session: stored)
+                .environmentObject(sessionStore)
+                .nativeInteractivePop()
+        }
     }
 }
 
