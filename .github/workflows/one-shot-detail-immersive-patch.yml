@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
 
+# Temporary staging file; PR controller removes it after patching.
 jobs:
   patch:
     if: ${{ !contains(github.event.head_commit.message, '[detail-immersive-patched]') }}
