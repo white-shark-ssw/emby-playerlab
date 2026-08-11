@@ -93,20 +93,73 @@ private final class EmbyPosterNavigationGate {
 private final class EmbyPosterPressLock {
     static let shared = EmbyPosterPressLock()
     private var owner: UUID?
+    private var contaminated = false
+    private var acquiredAt = Date.distantPast
+    private let timeout: TimeInterval = 2.0
 
     private init() {}
 
-    func acquire(_ id: UUID) -> Bool {
+    func begin(_ id: UUID) -> Bool {
         precondition(Thread.isMainThread)
-        guard owner == nil else { return false }
+        let now = Date()
+        if let owner {
+            if now.timeIntervalSince(acquiredAt) >= timeout {
+                self.owner = id
+                contaminated = false
+                acquiredAt = now
+                return true
+            }
+            if owner != id { contaminated = true }
+            return owner == id
+        }
         owner = id
+        contaminated = false
+        acquiredAt = now
         return true
     }
 
-    func release(_ id: UUID) {
+    func contaminate() {
+        precondition(Thread.isMainThread)
+        if owner != nil { contaminated = true }
+    }
+
+    func end(_ id: UUID, trigger: Bool) -> Bool {
+        precondition(Thread.isMainThread)
+        guard owner == id else { return false }
+        let shouldTrigger = trigger && !contaminated
+        owner = nil
+        contaminated = false
+        acquiredAt = .distantPast
+        return shouldTrigger
+    }
+
+    func abandon(_ id: UUID) {
         precondition(Thread.isMainThread)
         guard owner == id else { return }
         owner = nil
+        contaminated = false
+        acquiredAt = .distantPast
+    }
+}
+
+private final class EmbyPosterTouchControl: UIControl {
+    var onActiveTouchCountChanged: ((Int) -> Void)?
+
+    private func reportTouchCount(_ event: UIEvent?) {
+        let count = event?.allTouches?.reduce(into: 0) { partialResult, touch in
+            if touch.phase != .ended && touch.phase != .cancelled { partialResult += 1 }
+        } ?? 1
+        onActiveTouchCountChanged?(count)
+    }
+
+    override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+        reportTouchCount(event)
+        return super.beginTracking(touch, with: event)
+    }
+
+    override func continueTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+        reportTouchCount(event)
+        return super.continueTracking(touch, with: event)
     }
 }
 
@@ -121,36 +174,40 @@ private struct EmbyExclusivePosterTapControl: UIViewRepresentable {
         init(action: @escaping () -> Void) { self.action = action }
 
         deinit {
-            if ownsPressLock { EmbyPosterPressLock.shared.release(id) }
+            if ownsPressLock { EmbyPosterPressLock.shared.abandon(id) }
         }
 
         @objc func touchDown() {
             guard !ownsPressLock else { return }
-            ownsPressLock = EmbyPosterPressLock.shared.acquire(id)
+            ownsPressLock = EmbyPosterPressLock.shared.begin(id)
         }
 
         @objc func touchUpInside() {
             guard ownsPressLock else { return }
             ownsPressLock = false
-            EmbyPosterPressLock.shared.release(id)
-            action()
+            if EmbyPosterPressLock.shared.end(id, trigger: true) { action() }
         }
 
         @objc func touchEnded() {
             guard ownsPressLock else { return }
             ownsPressLock = false
-            EmbyPosterPressLock.shared.release(id)
+            _ = EmbyPosterPressLock.shared.end(id, trigger: false)
+        }
+
+        func activeTouchCountChanged(_ count: Int) {
+            if count > 1 { EmbyPosterPressLock.shared.contaminate() }
         }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(action: action) }
 
     func makeUIView(context: Context) -> UIControl {
-        let control = UIControl(frame: .zero)
+        let control = EmbyPosterTouchControl(frame: .zero)
         control.backgroundColor = .clear
         control.isOpaque = false
-        control.isExclusiveTouch = true
+        control.isExclusiveTouch = false
         control.isMultipleTouchEnabled = false
+        control.onActiveTouchCountChanged = { [weak coordinator = context.coordinator] count in coordinator?.activeTouchCountChanged(count) }
         control.addTarget(context.coordinator, action: #selector(Coordinator.touchDown), for: .touchDown)
         control.addTarget(context.coordinator, action: #selector(Coordinator.touchUpInside), for: .touchUpInside)
         control.addTarget(context.coordinator, action: #selector(Coordinator.touchEnded), for: [.touchCancel, .touchUpOutside])
