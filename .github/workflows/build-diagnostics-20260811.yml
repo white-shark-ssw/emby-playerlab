@@ -1,0 +1,560 @@
+name: Build Diagnostics IPA 20260811
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-diagnostics-20260811.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-diagnostics-20260811
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize logs
+        run: |
+          : > build.log
+          : > package-resolution.log
+          : > pods-install.log
+          : > diagnostic-patch.diff
+          : > min-os-report.log
+          : > app-validation.log
+
+      - name: Apply runtime diagnostics instrumentation
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'::error::{label}: expected 1 match, got {count}')
+              return text.replace(old, new, 1)
+
+          # Larger persistent log window, with an unmistakable profile marker.
+          path = Path('Sources/Diagnostics/DiagnosticsLogger.swift')
+          text = path.read_text()
+          text = replace_once(text, '    private let maximumPersistentBytes: UInt64 = 8 * 1024 * 1024\n', '    private let maximumPersistentBytes: UInt64 = 32 * 1024 * 1024\n', 'DiagnosticsLogger max bytes')
+          text = replace_once(text, '            if self.entries.count > 10_000 {\n                self.entries.removeFirst(self.entries.count - 10_000)\n            }\n', '            if self.entries.count > 40_000 {\n                self.entries.removeFirst(self.entries.count - 40_000)\n            }\n', 'DiagnosticsLogger entry count')
+          text = replace_once(text, '        log("Lifecycle", "logger initialized bundle=\\(AppIdentity.version) source=\\(AppIdentity.sourceVersion)")\n', '        log("Lifecycle", "logger initialized bundle=\\(AppIdentity.version) source=\\(AppIdentity.sourceVersion)")\n        log("DiagnosticsProfile", "layout-safe-area + transport-race trace v1")\n', 'DiagnosticsLogger profile marker')
+          path.write_text(text)
+
+          # Standalone UIKit hierarchy logger. iOS 15 compatible.
+          Path('Sources/Diagnostics/LayoutDiagnostics.swift').write_text(r'''import Foundation
+import UIKit
+
+enum LayoutDiagnostics {
+    private static let lock = NSLock()
+    private static var lastSignature = ""
+    private static var lastLoggedAt = Date.distantPast
+
+    static func log(bridge: UIViewController, phase: String, force: Bool = false) {
+        guard let window = bridge.viewIfLoaded?.window else {
+            DiagnosticsLogger.shared.log("LayoutTrace", "phase=\(phase) window=nil bridge=\(type(of: bridge))")
+            return
+        }
+
+        let navigationController = bridge.navigationController
+        let top = navigationController?.topViewController
+        let root = window.rootViewController
+        var chain: [String] = []
+        var current: UIViewController? = bridge
+        var depth = 0
+        while let controller = current, depth < 10 {
+            let view = controller.viewIfLoaded
+            let frame = view.map { NSStringFromCGRect($0.frame) } ?? "nil"
+            let bounds = view.map { NSStringFromCGRect($0.bounds) } ?? "nil"
+            let safe = view.map { NSStringFromUIEdgeInsets($0.safeAreaInsets) } ?? "nil"
+            chain.append("\(depth):\(type(of: controller)) frame=\(frame) bounds=\(bounds) safe=\(safe) add=\(NSStringFromUIEdgeInsets(controller.additionalSafeAreaInsets))")
+            current = controller.parent
+            depth += 1
+        }
+
+        let windowText = "bounds=\(NSStringFromCGRect(window.bounds)) safe=\(NSStringFromUIEdgeInsets(window.safeAreaInsets))"
+        let navText: String
+        if let navigationController {
+            navText = "type=\(type(of: navigationController)) frame=\(NSStringFromCGRect(navigationController.view.frame)) bounds=\(NSStringFromCGRect(navigationController.view.bounds)) safe=\(NSStringFromUIEdgeInsets(navigationController.view.safeAreaInsets)) add=\(NSStringFromUIEdgeInsets(navigationController.additionalSafeAreaInsets))"
+        } else {
+            navText = "nil"
+        }
+        let topText: String
+        if let top, let view = top.viewIfLoaded {
+            topText = "type=\(type(of: top)) frame=\(NSStringFromCGRect(view.frame)) bounds=\(NSStringFromCGRect(view.bounds)) safe=\(NSStringFromUIEdgeInsets(view.safeAreaInsets)) add=\(NSStringFromUIEdgeInsets(top.additionalSafeAreaInsets))"
+        } else {
+            topText = "nil"
+        }
+        let signature = "window={\(windowText)} nav={\(navText)} top={\(topText)} chain=[\(chain.joined(separator: " > "))]"
+
+        let now = Date()
+        lock.lock()
+        let shouldLog = force || signature != lastSignature || now.timeIntervalSince(lastLoggedAt) >= 1.5
+        if shouldLog {
+            lastSignature = signature
+            lastLoggedAt = now
+        }
+        lock.unlock()
+        guard shouldLog else { return }
+
+        DiagnosticsLogger.shared.log("LayoutTrace", "phase=\(phase) root=\(root.map { String(describing: type(of: $0)) } ?? "nil") \(signature)")
+    }
+}
+''')
+
+          # Hook layout snapshots immediately after the current safe-area bridge runs.
+          path = Path('Sources/UI/ImmersiveUIComponents.swift')
+          text = path.read_text()
+          text = replace_once(text, '''    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        safeAreaCoordinator?.apply(from: self)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        safeAreaCoordinator?.apply(from: self)
+    }
+''', '''    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        safeAreaCoordinator?.apply(from: self)
+        LayoutDiagnostics.log(bridge: self, phase: "didAppear-after-apply", force: true)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        safeAreaCoordinator?.apply(from: self)
+        LayoutDiagnostics.log(bridge: self, phase: "layout-after-apply")
+    }
+''', 'ImmersiveBottomSafeAreaViewController hooks')
+          text = replace_once(text, '''            guard appliedInsets == nil else { return }
+            let bottomInset = navigationController.view.safeAreaInsets.bottom
+            guard bottomInset > 0.5 else { return }
+
+            var desired = originalInsets ?? navigationController.additionalSafeAreaInsets
+''', '''            guard appliedInsets == nil else { return }
+            LayoutDiagnostics.log(bridge: bridge, phase: "safe-area-apply-before", force: true)
+            let bottomInset = navigationController.view.safeAreaInsets.bottom
+            guard bottomInset > 0.5 else {
+                LayoutDiagnostics.log(bridge: bridge, phase: "safe-area-apply-no-bottom-inset", force: true)
+                return
+            }
+
+            var desired = originalInsets ?? navigationController.additionalSafeAreaInsets
+''', 'Immersive safe-area before trace')
+          text = replace_once(text, '''            navigationController.view.setNeedsLayout()
+            navigationController.view.layoutIfNeeded()
+        }
+
+        func restore() {
+''', '''            navigationController.view.setNeedsLayout()
+            navigationController.view.layoutIfNeeded()
+            LayoutDiagnostics.log(bridge: bridge, phase: "safe-area-apply-after", force: true)
+        }
+
+        func restore() {
+''', 'Immersive safe-area after trace')
+          path.write_text(text)
+
+          # Surface the underlying URLSession lane state so actor-level "idle" can be compared with real tasks.
+          path = Path('Sources/Transport/RangeHTTPClient.swift')
+          text = path.read_text()
+          text = replace_once(text, '''    @discardableResult
+    func resetStreamLane(worker: Int, reason: String) -> Bool {
+        let index = abs(worker) % streamLanes.count
+        return streamLanes[index].resetIfIdle(reason: reason)
+    }
+''', '''    @discardableResult
+    func resetStreamLane(worker: Int, reason: String) -> Bool {
+        let index = abs(worker) % streamLanes.count
+        return streamLanes[index].resetIfIdle(reason: reason)
+    }
+
+    func diagnosticLaneSummary(worker: Int) -> String {
+        let index = abs(worker) % streamLanes.count
+        return streamLanes[index].diagnosticSummary()
+    }
+''', 'RangeHTTPClient diagnostic summary API')
+          text = replace_once(text, '''    func resetIfIdle(reason: String) -> Bool {
+        lock.lock()
+        guard !invalidated, states.isEmpty else { lock.unlock(); return false }
+        let previous = session
+        session = makeSession()
+        lock.unlock()
+        previous.invalidateAndCancel()
+        DiagnosticsLogger.shared.log("TransportV3Health", "lane=\\(index) action=reset-idle-session reason=\\(reason)")
+        return true
+    }
+''', '''    func resetIfIdle(reason: String) -> Bool {
+        lock.lock()
+        let blockedSummary = states.map { taskIdentifier, state in
+            "task=\\(taskIdentifier):\\(state.range.lowerBound)-\\(state.range.upperBound):recv=\\(state.receivedBytes):accepted=\\(state.acceptedResponse):pending=\\(state.pending.count - state.pendingReadOffset)"
+        }.sorted().joined(separator: ",")
+        guard !invalidated, states.isEmpty else {
+            let invalidatedValue = invalidated
+            let stateCount = states.count
+            lock.unlock()
+            DiagnosticsLogger.shared.log("TransportV3Health", "lane=\\(index) action=reset-blocked reason=\\(reason) invalidated=\\(invalidatedValue) states=\\(stateCount) details=[\\(blockedSummary)]")
+            return false
+        }
+        let previous = session
+        session = makeSession()
+        lock.unlock()
+        previous.invalidateAndCancel()
+        DiagnosticsLogger.shared.log("TransportV3Health", "lane=\\(index) action=reset-idle-session reason=\\(reason)")
+        return true
+    }
+
+    func diagnosticSummary() -> String {
+        lock.lock()
+        let invalidatedValue = invalidated
+        let summary = states.map { taskIdentifier, state in
+            "task=\\(taskIdentifier):\\(state.range.lowerBound)-\\(state.range.upperBound):recv=\\(state.receivedBytes):accepted=\\(state.acceptedResponse):pending=\\(state.pending.count - state.pendingReadOffset)"
+        }.sorted().joined(separator: ",")
+        let stateCount = states.count
+        lock.unlock()
+        return "lane=\\(index) invalidated=\\(invalidatedValue) states=\\(stateCount) [\\(summary)]"
+    }
+''', 'PersistentRangeStreamLane diagnostics')
+          text = replace_once(text, '''        lock.lock()
+        guard let state = states.removeValue(forKey: task.taskIdentifier) else { lock.unlock(); return }
+        let terminal = state.terminalError
+''', '''        lock.lock()
+        guard let state = states.removeValue(forKey: task.taskIdentifier) else {
+            lock.unlock()
+            DiagnosticsLogger.shared.log("TransportV3Race", "lane=\\(index) task=\\(task.taskIdentifier) completion-without-state error=\\(error?.localizedDescription ?? \"none\")")
+            return
+        }
+        let terminal = state.terminalError
+''', 'RangeHTTP completion race')
+          text = replace_once(text, '''    private func cancel(taskIdentifier: Int, task: URLSessionTask?) {
+        lock.lock()
+        guard let state = states.removeValue(forKey: taskIdentifier) else { lock.unlock(); return }
+        lock.unlock()
+        task?.cancel()
+        state.continuation.finish(throwing: MediaTransportError.cancelled)
+        DiagnosticsLogger.shared.log("TransportV3", "lane=\\(index) task=\\(taskIdentifier) cancelled taskOnly=true sessionKept=true")
+    }
+''', '''    private func cancel(taskIdentifier: Int, task: URLSessionTask?) {
+        lock.lock()
+        guard let state = states.removeValue(forKey: taskIdentifier) else {
+            lock.unlock()
+            DiagnosticsLogger.shared.log("TransportV3Race", "lane=\\(index) task=\\(taskIdentifier) cancel-without-state")
+            return
+        }
+        let received = state.receivedBytes
+        let accepted = state.acceptedResponse
+        lock.unlock()
+        task?.cancel()
+        state.continuation.finish(throwing: MediaTransportError.cancelled)
+        DiagnosticsLogger.shared.log("TransportV3", "lane=\\(index) task=\\(taskIdentifier) cancelled taskOnly=true sessionKept=true received=\\(received) accepted=\\(accepted)")
+    }
+''', 'RangeHTTP cancel race')
+          path.write_text(text)
+
+          # Actor scheduler trace: captures all gates that can make both logical slots look idle.
+          path = Path('Sources/Transport/UnifiedMediaTransportSession.swift')
+          text = path.read_text()
+          text = replace_once(text, '''    private var metricsValue = TransportMetricsSnapshot()
+    private var speedSamples: [SpeedSample] = []
+    private var lastMetricsLogAt = Date.distantPast
+''', '''    private var metricsValue = TransportMetricsSnapshot()
+    private var speedSamples: [SpeedSample] = []
+    private var lastMetricsLogAt = Date.distantPast
+    private var blockedReadSerial: UInt64 = 0
+    private var lastSchedulerTraceSignature = ""
+    private var lastSchedulerTraceAt = Date.distantPast
+    private var lastDeadlockCandidateAt = Date.distantPast
+''', 'Unified scheduler trace state')
+          text = replace_once(text, '''        let available = store.availableLength(from: offset, maximumLength: Int64(requested))
+        metricsValue.bytesServed += Int64(requested)
+        if available >= Int64(requested) { metricsValue.cacheHitBytes += Int64(requested) }
+
+        if available == 0 {
+''', '''        let available = store.availableLength(from: offset, maximumLength: Int64(requested))
+        metricsValue.bytesServed += Int64(requested)
+        if available >= Int64(requested) { metricsValue.cacheHitBytes += Int64(requested) }
+        let blockedReadID: UInt64?
+        let blockedReadStartedAt: Date
+        if available == 0 {
+            blockedReadSerial &+= 1
+            blockedReadID = blockedReadSerial
+            blockedReadStartedAt = Date()
+            DiagnosticsLogger.shared.log("UnifiedReadWait", "id=\\(blockedReadSerial) begin offset=\\(offset) length=\\(requested) anchor=\\(playbackAnchor)")
+        } else {
+            blockedReadID = nil
+            blockedReadStartedAt = Date.distantPast
+        }
+
+        if available == 0 {
+''', 'Unified blocked read begin')
+          text = replace_once(text, '''            let data = try await store.readWhenAvailable(offset: offset, maximumLength: requested, timeout: 20)
+            refreshMetrics(resource: resolved)
+            return data
+        } catch let error as DownloadFirstSparseStore.StoreError {
+            guard case .timeout = error else { throw error }
+''', '''            let data = try await store.readWhenAvailable(offset: offset, maximumLength: requested, timeout: 20)
+            if let blockedReadID { DiagnosticsLogger.shared.log("UnifiedReadWait", "id=\\(blockedReadID) served-first bytes=\\(data.count) ms=\\(Int(Date().timeIntervalSince(blockedReadStartedAt) * 1000))") }
+            refreshMetrics(resource: resolved)
+            return data
+        } catch let error as DownloadFirstSparseStore.StoreError {
+            guard case .timeout = error else {
+                if let blockedReadID { DiagnosticsLogger.shared.log("UnifiedReadWait", "id=\\(blockedReadID) store-error=\\(error.localizedDescription) ms=\\(Int(Date().timeIntervalSince(blockedReadStartedAt) * 1000))") }
+                throw error
+            }
+            if let blockedReadID { DiagnosticsLogger.shared.log("UnifiedReadWait", "id=\\(blockedReadID) first-timeout ms=\\(Int(Date().timeIntervalSince(blockedReadStartedAt) * 1000))") }
+''', 'Unified blocked read first result')
+          text = replace_once(text, '''            installUrgent(range: offset..<demandEnd, metadata: metadata, reason: "read-timeout")
+            scheduleSlots(reason: "read-timeout")
+            return try await store.readWhenAvailable(offset: offset, maximumLength: requested, timeout: 25)
+        }
+    }
+''', '''            installUrgent(range: offset..<demandEnd, metadata: metadata, reason: "read-timeout")
+            scheduleSlots(reason: "read-timeout")
+            do {
+                let retryData = try await store.readWhenAvailable(offset: offset, maximumLength: requested, timeout: 25)
+                if let blockedReadID { DiagnosticsLogger.shared.log("UnifiedReadWait", "id=\\(blockedReadID) retry-served bytes=\\(retryData.count) ms=\\(Int(Date().timeIntervalSince(blockedReadStartedAt) * 1000))") }
+                return retryData
+            } catch {
+                if let blockedReadID { DiagnosticsLogger.shared.log("UnifiedReadWait", "id=\\(blockedReadID) retry-error=\\(error.localizedDescription) ms=\\(Int(Date().timeIntervalSince(blockedReadStartedAt) * 1000))") }
+                throw error
+            }
+        }
+    }
+''', 'Unified blocked read retry')
+          text = replace_once(text, '''        if let resolved = try? await resolve() {
+            if slotTasks.isEmpty, Date() > pendingUserSeekUntil || pendingPlaybackUrgentRange != nil || pendingMetadataRange != nil {
+                scheduleSlots(reason: "metrics-idle-repair")
+            }
+            refreshMetrics(resource: resolved)
+        }
+''', '''        if let resolved = try? await resolve() {
+            if slotTasks.isEmpty { traceSchedulerState(reason: "metrics-observe-idle", resource: resolved, force: true) }
+            if slotTasks.isEmpty, Date() > pendingUserSeekUntil || pendingPlaybackUrgentRange != nil || pendingMetadataRange != nil {
+                scheduleSlots(reason: "metrics-idle-repair")
+            }
+            refreshMetrics(resource: resolved)
+        }
+''', 'Unified metrics idle trace')
+          text = replace_once(text, '''    private func scheduleSlots(reason: String) {
+        guard !stopped, let resource, let store else { return }
+
+        if !startupMetadataQueue.isEmpty || slotClaims.values.contains(where: { $0.role == .startupMetadata }) {
+''', '''    private func scheduleSlots(reason: String) {
+        guard !stopped, let resource, let store else { return }
+        defer { traceSchedulerState(reason: reason, resource: resource, force: false) }
+
+        if !startupMetadataQueue.isEmpty || slotClaims.values.contains(where: { $0.role == .startupMetadata }) {
+''', 'Unified schedule trace defer')
+          anchor = '''    private func firstIdleForegroundSlot() -> Int? {
+'''
+          if text.count(anchor) != 1:
+              raise SystemExit('::error::Unified scheduler trace insertion anchor mismatch')
+          helper = '''    private func traceSchedulerState(reason: String, resource: TransportResolvedResource, force: Bool) {
+        guard let store else { return }
+        let now = Date()
+        let map = rangeMap.snapshot(anchor: playbackAnchor, resourceLength: resource.contentLength)
+        let blockingAgeMs = lastBlockingPlaybackDemandAt == .distantPast ? -1 : Int(now.timeIntervalSince(lastBlockingPlaybackDemandAt) * 1000)
+        let pendingUrgent = pendingPlaybackUrgentRange.map { "\\($0.lowerBound)-\\($0.upperBound)" } ?? "none"
+        let pendingMetadata = pendingMetadataRange.map { "\\($0.lowerBound)-\\($0.upperBound)" } ?? "none"
+        let lastBlocking = lastBlockingPlaybackDemand.map { "\\($0.lowerBound)-\\($0.upperBound)" } ?? "none"
+        func claimText(_ slot: Int) -> String {
+            guard let claim = slotClaims[slot] else { return "idle" }
+            return "\\(claim.role.rawValue):\\(claim.range.lowerBound)-\\(claim.range.upperBound)"
+        }
+        let slot0 = "task=\\(slotTasks[0] != nil) claim=\\(claimText(0)) gen=\\(slotGenerations[0] ?? 0) reset=\\(liveLaneResetPending.contains(0)) refresh=\\(liveLaneSourceRefreshPending.contains(0)) rotate=\\(liveLaneRotationRequested.contains(0)) hedge=\\(urgentHedgeRequested.contains(0)) raceReset=\\(urgentRaceResetPending.contains(0)) http={\\(client.diagnosticLaneSummary(worker: 0))}"
+        let slot1 = "task=\\(slotTasks[1] != nil) claim=\\(claimText(1)) gen=\\(slotGenerations[1] ?? 0) reset=\\(liveLaneResetPending.contains(1)) refresh=\\(liveLaneSourceRefreshPending.contains(1)) rotate=\\(liveLaneRotationRequested.contains(1)) hedge=\\(urgentHedgeRequested.contains(1)) raceReset=\\(urgentRaceResetPending.contains(1)) http={\\(client.diagnosticLaneSummary(worker: 1))}"
+        let secondaryCooldownMs = max(0, Int(secondaryCooldownUntil.timeIntervalSince(now) * 1000))
+        let startupActive = slotClaims.values.filter { $0.role == .startupMetadata }.count
+        let signature = "anchor=\\(playbackAnchor)|frontier=\\(map.frontierByte)|holes=\\(map.holeCount)|urgent=\\(pendingUrgent)|meta=\\(pendingMetadata)|startupQ=\\(startupMetadataQueue.count)|startupActive=\\(startupActive)|blocking=\\(lastBlocking)|blockingAgeMs=\\(blockingAgeMs)|secondary=\\(secondaryEnabled)|cooldownMs=\\(secondaryCooldownMs)|bulk=\\(preferredBulkSlot)|s0={\\(slot0)}|s1={\\(slot1)}"
+        if force || signature != lastSchedulerTraceSignature || now.timeIntervalSince(lastSchedulerTraceAt) >= 2 {
+            lastSchedulerTraceSignature = signature
+            lastSchedulerTraceAt = now
+            DiagnosticsLogger.shared.log("UnifiedSchedulerTrace", "reason=\\(reason) cache=\\(store.uniqueBytes) \\(signature)")
+        }
+        let freshBlocking = lastBlockingPlaybackDemand != nil && blockingAgeMs >= 0 && blockingAgeMs <= Int(stallBlockingDemandFreshSeconds * 1000)
+        let pendingForeground = pendingPlaybackUrgentRange != nil || pendingMetadataRange != nil
+        if slotTasks.isEmpty, (freshBlocking || pendingForeground), now.timeIntervalSince(lastDeadlockCandidateAt) >= 0.75 {
+            lastDeadlockCandidateAt = now
+            DiagnosticsLogger.shared.log("UnifiedDeadlockCandidate", "reason=\\(reason) freshBlocking=\\(freshBlocking) pendingForeground=\\(pendingForeground) \\(signature)")
+        }
+    }
+
+'''
+          text = text.replace(anchor, helper + anchor, 1)
+          path.write_text(text)
+
+          # Correlate the player-level stall with transport state.
+          path = Path('Sources/Player/PlayerController.swift')
+          text = path.read_text()
+          text = replace_once(text, '''    private func evaluatePlaybackStall() {
+        guard Date() >= stallWatchdogSuppressedUntil,
+''', '''    private func evaluatePlaybackStall() {
+        if let pending = pendingSeekTarget, snapshot.isBuffering || snapshot.waitingReason != nil {
+            DiagnosticsLogger.shared.log("StallTrace", "gate=pending-seek target=\\(pending) engine=\\(engineKind.title) position=\\(snapshot.position) buffering=\\(snapshot.isBuffering) waiting=\\(snapshot.waitingReason ?? \"none\")")
+        }
+        guard Date() >= stallWatchdogSuppressedUntil,
+''', 'PlayerController pending seek stall trace')
+          text = replace_once(text, '''        DiagnosticsLogger.shared.log(
+            "Stall",
+            "engine=\\(engineKind.title) recovery=\\(stallRecoveryCount) position=\\(snapshot.position) bufferedEnd=\\(bufferedEnd) duration=\\(effectiveDuration) waiting=\\(snapshot.waitingReason ?? \"none\")"
+        )
+
+        let action = orchestrator.actionForStall(
+''', '''        DiagnosticsLogger.shared.log(
+            "Stall",
+            "engine=\\(engineKind.title) recovery=\\(stallRecoveryCount) position=\\(snapshot.position) bufferedEnd=\\(bufferedEnd) duration=\\(effectiveDuration) waiting=\\(snapshot.waitingReason ?? \"none\")"
+        )
+        let traceMetrics = lastTransportMetrics
+        DiagnosticsLogger.shared.log(
+            "StallTrace",
+            "gate=recovery engine=\\(engineKind.title) playing=\\(snapshot.isPlaying) buffering=\\(snapshot.isBuffering) position=\\(snapshot.position) bufferedEnd=\\(bufferedEnd) waiting=\\(snapshot.waitingReason ?? \"none\") transportActive=\\(traceMetrics?.activeRequestCount ?? -1) networkBps=\\(Int(traceMetrics?.currentDownloadBytesPerSecond ?? -1)) anchor=\\(traceMetrics?.schedulerAnchorByte ?? -1) frontier=\\(traceMetrics?.schedulerFrontierByte ?? -1) holes=\\(traceMetrics?.cacheHoleCount ?? -1) cache=\\(traceMetrics?.cacheBytes ?? -1)"
+        )
+
+        let action = orchestrator.actionForStall(
+''', 'PlayerController stall transport trace')
+          path.write_text(text)
+
+          print('Runtime diagnostics instrumentation applied.')
+          PY
+
+          git add -N Sources/Diagnostics/LayoutDiagnostics.swift
+          git diff --check
+          git diff > diagnostic-patch.diff
+          echo '===== diagnostic patch stat ====='
+          git diff --stat
+          echo '===== diagnostic categories ====='
+          grep -R -nE 'LayoutTrace|UnifiedSchedulerTrace|UnifiedDeadlockCandidate|UnifiedReadWait|TransportV3Race|StallTrace|DiagnosticsProfile' Sources | head -120
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Prepare project
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_os_player_icons.py
+          python3 scripts/version_os_player_icons.py
+          xcodegen generate
+          pod install --repo-update 2>&1 | tee pods-install.log
+
+      - name: Restore Swift package cache
+        uses: actions/cache@v4
+        with:
+          path: .spm-cache
+          key: ${{ runner.os }}-mpvkit-1.0.0-ktv-3.1.0-${{ hashFiles('project.yml', 'Podfile') }}
+
+      - name: Resolve MPVKit
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Build diagnostics app
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.13.3" --build "69" 2>&1 | tee app-validation.log
+
+      - name: Validate minimum OS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" min-os-report.log build.log
+
+      - name: Package diagnostics IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA_NAME="OS-player-v0.13.3-build69-diagnostics-${GITHUB_SHA::7}-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME"
+          shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload diagnostics IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: OS-player-diagnostics-${{ github.sha }}
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            diagnostic-patch.diff
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish diagnostics prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v0.13.3-build69-diagnostics"
+          gh release delete "$TAG" --cleanup-tag -y >/dev/null 2>&1 || true
+          gh release create "$TAG" \
+            "$IPA_NAME" \
+            "$IPA_NAME.sha256" \
+            diagnostic-patch.diff \
+            --target "$GITHUB_SHA" \
+            --title "OS player v0.13.3 Build 69 Diagnostics" \
+            --notes "Diagnostic TrollStore build for persistent immersive bottom safe-area blank strip and UnifiedTransport post-seek race/stall. Deployment Target remains iOS 15.0; intended device test includes iOS 17.0." \
+            --prerelease
+
+      - name: Upload failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OS-player-diagnostics-build-logs-${{ github.sha }}
+          path: |
+            build.log
+            package-resolution.log
+            pods-install.log
+            diagnostic-patch.diff
+            min-os-report.log
+            app-validation.log
+          if-no-files-found: warn
+          retention-days: 30
