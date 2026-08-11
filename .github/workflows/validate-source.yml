@@ -21,11 +21,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.head_ref || github.ref }}
           fetch-depth: 0
 
       - name: Stage single navigation refactor
         id: navigation_refactor
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'pull_request' && github.head_ref == 'chatgpt/single-navigation-immersive-fix-20260811'
         run: |
           set -euo pipefail
           if [[ -f docs/.single-navigation-layout-patched ]]; then
@@ -300,7 +301,7 @@ jobs:
           git config user.email 'chatgpt@users.noreply.github.com'
           git add Sources/UI/EmbyServerRootViewV3.swift Sources/UI/EmbyMediaDetailView.swift Sources/UI/EmbyEpisodePickerView.swift Sources/UI/ImmersiveUIComponents.swift docs/.single-navigation-layout-patched
           git commit -m 'refactor: unify Emby navigation host [layout-patched]'
-          git push origin HEAD:main
+          git push origin HEAD:${{ github.head_ref }}
 
       - name: Summarize compiler errors
         if: failure()
