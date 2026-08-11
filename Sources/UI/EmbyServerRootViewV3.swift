@@ -11,52 +11,33 @@ struct EmbyServerRootViewV3: View {
     @State private var homeRefreshToken = 0
     @State private var homeScrollToTopToken = 0
     @State private var lastHomeTap = Date.distantPast
-    @StateObject private var dockVisibility = ServerDockVisibilityController()
 
     var body: some View {
         Group {
             if let client {
-                GeometryReader { geometry in
-                    let contentHeight = geometry.size.height + (dockVisibility.isHidden ? geometry.safeAreaInsets.bottom : 0)
-                    ZStack(alignment: .top) {
-                        ZStack {
-                            V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close)
-                                .opacity(selectedTab == .home ? 1 : 0)
-                                .allowsHitTesting(selectedTab == .home)
-                                .accessibilityHidden(selectedTab != .home)
+                ZStack {
+                    V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, dock: AnyView(serverTabBar))
+                        .opacity(selectedTab == .home ? 1 : 0)
+                        .allowsHitTesting(selectedTab == .home)
+                        .accessibilityHidden(selectedTab != .home)
 
-                            V3EmbyFavoritesView(client: client, onClose: close)
-                                .opacity(selectedTab == .favorites ? 1 : 0)
-                                .allowsHitTesting(selectedTab == .favorites)
-                                .accessibilityHidden(selectedTab != .favorites)
+                    V3EmbyFavoritesView(client: client, onClose: close, dock: AnyView(serverTabBar))
+                        .opacity(selectedTab == .favorites ? 1 : 0)
+                        .allowsHitTesting(selectedTab == .favorites)
+                        .accessibilityHidden(selectedTab != .favorites)
 
-                            V3EmbySearchView(client: client, onClose: close)
-                                .opacity(selectedTab == .search ? 1 : 0)
-                                .allowsHitTesting(selectedTab == .search)
-                                .accessibilityHidden(selectedTab != .search)
+                    V3EmbySearchView(client: client, onClose: close, dock: AnyView(serverTabBar))
+                        .opacity(selectedTab == .search ? 1 : 0)
+                        .allowsHitTesting(selectedTab == .search)
+                        .accessibilityHidden(selectedTab != .search)
 
-                            V3EmbyServerSettingsView(session: session, onClose: close)
-                                .opacity(selectedTab == .settings ? 1 : 0)
-                                .allowsHitTesting(selectedTab == .settings)
-                                .accessibilityHidden(selectedTab != .settings)
-                        }
-                        .frame(width: geometry.size.width, height: contentHeight, alignment: .top)
-                        .ignoresSafeArea(.container, edges: .bottom)
-                        .environment(\.serverDockVisibilityController, dockVisibility)
-
-                        if !dockVisibility.isHidden {
-                            VStack(spacing: 0) {
-                                Spacer(minLength: 0)
-                                serverTabBar
-                            }
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .zIndex(100)
-                        }
-                    }
-                    .frame(width: geometry.size.width, height: contentHeight, alignment: .top)
-                    .ignoresSafeArea(.container, edges: .bottom)
-                    .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+                    V3EmbyServerSettingsView(session: session, onClose: close, dock: AnyView(serverTabBar))
+                        .opacity(selectedTab == .settings ? 1 : 0)
+                        .allowsHitTesting(selectedTab == .settings)
+                        .accessibilityHidden(selectedTab != .settings)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             } else {
                 ProgressView("连接 \(session.serverName)…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -75,7 +56,7 @@ struct EmbyServerRootViewV3: View {
             serverTabButton(.search, title: "搜索", systemImage: "magnifyingglass")
             serverTabButton(.settings, title: "设置", systemImage: "gearshape")
         }
-        .frame(height: 34)
+        .frame(height: 40)
         .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea(edges: .bottom))
     }
 
@@ -95,14 +76,20 @@ struct EmbyServerRootViewV3: View {
                 if tab == .home { lastHomeTap = Date() }
             }
         } label: {
-            VStack(spacing: 0) {
-                Image(systemName: selectedTab == tab && tab != .search ? systemImage + ".fill" : systemImage).font(.system(size: 19))
-                Text(title).font(.system(size: 10))
+            ZStack {
+                Color.clear
+                VStack(spacing: 0) {
+                    Image(systemName: selectedTab == tab && tab != .search ? systemImage + ".fill" : systemImage).font(.system(size: 19))
+                    Text(title).font(.system(size: 10))
+                }
+                .foregroundColor(selectedTab == tab ? .blue : .secondary)
+                .offset(y: 7)
             }
-            .foregroundColor(selectedTab == tab ? .blue : .secondary)
-            .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
-            .offset(y: 10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
         }
+        .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
     }
 
@@ -129,17 +116,19 @@ private struct V3EmbyHomeView: View {
     let refreshToken: Int
     let scrollToTopToken: Int
     let onClose: () -> Void
+    let dock: AnyView
     @StateObject private var model: V3EmbyHomeViewModel
     @State private var isMediaManagementPresented = false
     @State private var carouselIndex = 0
     private let carouselTimer = Timer.publish(every: 6, on: .main, in: .common).autoconnect()
 
-    init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void) {
+    init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, dock: AnyView) {
         self.session = session
         self.client = client
         self.refreshToken = refreshToken
         self.scrollToTopToken = scrollToTopToken
         self.onClose = onClose
+        self.dock = dock
         _model = StateObject(wrappedValue: V3EmbyHomeViewModel(session: session, client: client))
     }
 
@@ -188,6 +177,7 @@ private struct V3EmbyHomeView: View {
             }
             .navigationBarHidden(true)
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+            .overlay(alignment: .bottom) { dock }
             .onAppear { if !model.hasLoaded { Task { await model.refresh() } } }
             .sheet(isPresented: $isMediaManagementPresented) {
                 V3MediaManagementView(preferences: model.preferences) { model.savePreferences($0) }
@@ -653,11 +643,13 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
 private struct V3EmbyFavoritesView: View {
     let client: EmbyAPIClient
     let onClose: () -> Void
+    let dock: AnyView
     @StateObject private var model: V3FavoritesViewModel
 
-    init(client: EmbyAPIClient, onClose: @escaping () -> Void) {
+    init(client: EmbyAPIClient, onClose: @escaping () -> Void, dock: AnyView) {
         self.client = client
         self.onClose = onClose
+        self.dock = dock
         _model = StateObject(wrappedValue: V3FavoritesViewModel(client: client))
     }
 
@@ -676,6 +668,7 @@ private struct V3EmbyFavoritesView: View {
                 .padding(.bottom, 86)
             }
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+            .overlay(alignment: .bottom) { dock }
             .refreshable { await model.load() }
             .onAppear { if !model.hasLoaded { Task { await model.load() } } }
             .navigationBarHidden(true)
@@ -742,12 +735,14 @@ private final class V3FavoritesViewModel: ObservableObject {
 private struct V3EmbySearchView: View {
     let client: EmbyAPIClient
     let onClose: () -> Void
+    let dock: AnyView
     @StateObject private var model: V3SearchViewModel
     @State private var searchText = ""
 
-    init(client: EmbyAPIClient, onClose: @escaping () -> Void) {
+    init(client: EmbyAPIClient, onClose: @escaping () -> Void, dock: AnyView) {
         self.client = client
         self.onClose = onClose
+        self.dock = dock
         _model = StateObject(wrappedValue: V3SearchViewModel(client: client))
     }
 
@@ -778,6 +773,7 @@ private struct V3EmbySearchView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+            .overlay(alignment: .bottom) { dock }
             .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
@@ -804,6 +800,7 @@ private final class V3SearchViewModel: ObservableObject {
 private struct V3EmbyServerSettingsView: View {
     let session: EmbySession
     let onClose: () -> Void
+    let dock: AnyView
     @State private var shareURL: URL?
 
     var body: some View {
@@ -831,6 +828,7 @@ private struct V3EmbyServerSettingsView: View {
                 .padding(.bottom, 86)
             }
             .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+            .overlay(alignment: .bottom) { dock }
             .navigationBarHidden(true)
             .sheet(isPresented: Binding(get: { shareURL != nil }, set: { if !$0 { shareURL = nil } })) { if let shareURL { ActivityView(items: [shareURL]) } }
         }
