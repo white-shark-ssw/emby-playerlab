@@ -61,50 +61,45 @@ private final class ImmersiveBottomSafeAreaViewController: UIViewController {
 
 private struct ImmersiveBottomSafeAreaBridge: UIViewControllerRepresentable {
     final class Coordinator: NSObject {
-        private weak var targetViewController: UIViewController?
+        private weak var targetNavigationController: UINavigationController?
         private var originalInsets: UIEdgeInsets?
         private var appliedInsets: UIEdgeInsets?
 
         func apply(from bridge: UIViewController) {
-            guard let target = hostingTarget(from: bridge), target.viewIfLoaded?.window != nil else { return }
-            if target !== targetViewController {
+            guard let navigationController = bridge.navigationController, navigationController.viewIfLoaded?.window != nil else { return }
+            if navigationController !== targetNavigationController {
                 restore()
-                targetViewController = target
-                originalInsets = target.additionalSafeAreaInsets
+                targetNavigationController = navigationController
+                originalInsets = navigationController.additionalSafeAreaInsets
             }
 
             guard appliedInsets == nil else { return }
-            let bottomInset = target.view.safeAreaInsets.bottom
+            let bottomInset = navigationController.view.safeAreaInsets.bottom
             guard bottomInset > 0.5 else { return }
 
-            var desired = originalInsets ?? target.additionalSafeAreaInsets
+            var desired = originalInsets ?? navigationController.additionalSafeAreaInsets
             desired.bottom -= bottomInset
-            target.additionalSafeAreaInsets = desired
+            navigationController.additionalSafeAreaInsets = desired
             appliedInsets = desired
-            target.view.setNeedsLayout()
+            navigationController.view.setNeedsLayout()
+            navigationController.view.layoutIfNeeded()
         }
 
         func restore() {
-            guard let target = targetViewController, let originalInsets else {
-                targetViewController = nil
+            guard let navigationController = targetNavigationController, let originalInsets else {
+                targetNavigationController = nil
                 originalInsets = nil
                 appliedInsets = nil
                 return
             }
-            if appliedInsets == nil || target.additionalSafeAreaInsets == appliedInsets {
-                target.additionalSafeAreaInsets = originalInsets
-                target.view.setNeedsLayout()
+            if appliedInsets == nil || navigationController.additionalSafeAreaInsets == appliedInsets {
+                navigationController.additionalSafeAreaInsets = originalInsets
+                navigationController.view.setNeedsLayout()
+                navigationController.view.layoutIfNeeded()
             }
-            targetViewController = nil
+            targetNavigationController = nil
             self.originalInsets = nil
             appliedInsets = nil
-        }
-
-        private func hostingTarget(from bridge: UIViewController) -> UIViewController? {
-            guard let navigationController = bridge.navigationController else { return bridge.parent }
-            var current = bridge.parent
-            while let parent = current?.parent, parent !== navigationController { current = parent }
-            return current ?? navigationController.topViewController
         }
     }
 
