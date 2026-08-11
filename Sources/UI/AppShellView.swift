@@ -2,12 +2,14 @@ import SwiftUI
 
 struct AppShellView: View {
     @EnvironmentObject private var sessionStore: SessionStore
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selection = 0
     @State private var selectedSession: EmbySession?
 
     var body: some View {
         TabView(selection: $selection) {
             ServerListView { stored in
+                DiagnosticsLogger.shared.log("NavigationRace", "event=open-server server=\(stored.serverName)")
                 sessionStore.activate(stored)
                 selectedSession = stored
             }
@@ -19,10 +21,25 @@ struct AppShellView: View {
                 .tag(1)
         }
         .accentColor(.blue)
-        .fullScreenCover(item: $selectedSession, onDismiss: { sessionStore.leaveServer() }) { stored in
+        .fullScreenCover(item: $selectedSession, onDismiss: {
+            DiagnosticsLogger.shared.log("NavigationRace", "event=server-cover-dismissed")
+            sessionStore.leaveServer()
+        }) { stored in
             EmbyServerRootViewV3(session: stored)
                 .environmentObject(sessionStore)
                 .nativeInteractivePop()
+        }
+        .onChange(of: scenePhase) { phase in
+            DiagnosticsLogger.shared.log("SceneLifecycle", "phase=\(scenePhaseName(phase)) serverOpen=\(selectedSession != nil) outerTab=\(selection)")
+        }
+    }
+
+    private func scenePhaseName(_ phase: ScenePhase) -> String {
+        switch phase {
+        case .active: return "active"
+        case .inactive: return "inactive"
+        case .background: return "background"
+        @unknown default: return "unknown"
         }
     }
 }
@@ -39,7 +56,7 @@ struct GlobalSettingsView: View {
                         .padding(.top, 14)
 
                     settingsGroup {
-                        NavigationLink(destination: PlaceholderSettingsView(title: "通用")) { settingsRow("通用", systemImage: "slider.horizontal.3") }
+                        NavigationLink(destination: GeneralSettingsView()) { settingsRow("通用", systemImage: "slider.horizontal.3") }
                         Divider().padding(.leading, 48)
                         NavigationLink(destination: PlayerSettingsView()) { settingsRow("播放", systemImage: "playpause") }
                         Divider().padding(.leading, 48)
@@ -97,6 +114,22 @@ struct GlobalSettingsView: View {
         .padding(.horizontal, 15)
         .frame(minHeight: 54)
         .contentShape(Rectangle())
+    }
+}
+
+private struct GeneralSettingsView: View {
+    @AppStorage(DetailPresentationSettingsKey.fullyImmersive) private var fullyImmersiveDetail = true
+
+    var body: some View {
+        Form {
+            Section(header: Text("详情页")) {
+                Toggle("详情页完全沉浸", isOn: $fullyImmersiveDetail)
+                Text(fullyImmersiveDetail ? "开启后，详情页和完整选集页使用整屏可视、滚动和操作区域，并隐藏服务器 Dock。" : "关闭后，详情页和完整选集页保留服务器 Dock，方便直接切换首页、收藏、搜索和设置。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .navigationTitle("通用")
     }
 }
 

@@ -38,6 +38,7 @@ struct EmbyServerRootViewV3: View {
                             .allowsHitTesting(selectedTab == .settings)
                             .accessibilityHidden(selectedTab != .settings)
                     }
+                    .environment(\.serverDockContent, AnyView(serverTabBar))
                     .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
                     .ignoresSafeArea(.container, edges: .bottom)
                     .background(Color(uiColor: .systemBackground).ignoresSafeArea())

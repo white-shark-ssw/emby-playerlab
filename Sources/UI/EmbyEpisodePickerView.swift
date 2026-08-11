@@ -17,7 +17,6 @@ struct EmbyEpisodePickerView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom
             ScrollViewReader { proxy in
                 ZStack(alignment: .top) {
                     ImmersiveBackdrop(url: pickerHeroURL, overlayOpacity: colorScheme == .dark ? 0.50 : 0.64)
@@ -35,7 +34,7 @@ struct EmbyEpisodePickerView: View {
                         }
                         .frame(width: geometry.size.width)
                     }
-                    .frame(width: geometry.size.width, height: fullHeight)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
                     .background(Color.clear)
                     .ignoresSafeArea(edges: [.top, .bottom])
 
@@ -49,13 +48,13 @@ struct EmbyEpisodePickerView: View {
                         .position(x: geometry.size.width - ImmersiveUIMetrics.quickJumpHitWidth / 2 - 4, y: railTop + railHeight / 2)
                         .zIndex(30)
                 }
-                .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
                 .ignoresSafeArea(edges: [.top, .bottom])
             }
         }
         .navigationBarHidden(true)
         .nativeInteractivePop()
-        .hidesServerDockWhileVisible()
+        .detailPagePresentation()
     }
 
     private func topControls(geometry: GeometryProxy) -> some View {
