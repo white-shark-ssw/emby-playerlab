@@ -17,6 +17,7 @@ struct EmbyEpisodePickerView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let viewportHeight = geometry.size.height + geometry.safeAreaInsets.top
             ScrollViewReader { proxy in
                 ZStack(alignment: .top) {
                     ImmersiveBackdrop(url: pickerHeroURL, overlayOpacity: colorScheme == .dark ? 0.50 : 0.64)
@@ -34,22 +35,23 @@ struct EmbyEpisodePickerView: View {
                         }
                         .frame(width: geometry.size.width)
                     }
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .frame(width: geometry.size.width, height: viewportHeight)
                     .background(Color.clear)
                     .ignoresSafeArea(edges: [.top, .bottom])
 
                     topControls(geometry: geometry)
                         .zIndex(20)
 
-                    let railHeight = min(590, geometry.size.height * 0.72)
-                    let railTop = max(126, geometry.size.height * 0.13)
+                    let railHeight = min(590, viewportHeight * 0.72)
+                    let railTop = max(126, viewportHeight * 0.13)
                     quickJumpRail(proxy: proxy)
                         .frame(width: ImmersiveUIMetrics.quickJumpHitWidth, height: railHeight)
                         .position(x: geometry.size.width - ImmersiveUIMetrics.quickJumpHitWidth / 2 - 4, y: railTop + railHeight / 2)
                         .zIndex(30)
                 }
-                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                .frame(width: geometry.size.width, height: viewportHeight, alignment: .top)
                 .ignoresSafeArea(edges: [.top, .bottom])
+                .onAppear { DiagnosticsLogger.shared.log("ImmersiveViewport", "page=episode-picker geometry=\(geometry.size) safe=\(geometry.safeAreaInsets) viewportHeight=\(viewportHeight)") }
             }
         }
         .navigationBarHidden(true)
