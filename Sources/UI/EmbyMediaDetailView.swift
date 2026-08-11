@@ -28,6 +28,7 @@ struct EmbyMediaDetailView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let viewportHeight = geometry.size.height + geometry.safeAreaInsets.top
             ZStack(alignment: .top) {
                 ImmersiveBackdrop(url: heroImageURL, overlayOpacity: colorScheme == .dark ? 0.44 : 0.55)
 
@@ -48,7 +49,7 @@ struct EmbyMediaDetailView: View {
                     }
                     .frame(width: geometry.size.width)
                 }
-                .frame(width: geometry.size.width, height: geometry.size.height)
+                .frame(width: geometry.size.width, height: viewportHeight)
                 .background(Color.clear)
                 .ignoresSafeArea(edges: [.top, .bottom])
 
@@ -62,8 +63,9 @@ struct EmbyMediaDetailView: View {
                     .frame(width: 0, height: 0)
                     .hidden()
             }
-            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+            .frame(width: geometry.size.width, height: viewportHeight, alignment: .top)
             .ignoresSafeArea(edges: [.top, .bottom])
+            .onAppear { DiagnosticsLogger.shared.log("ImmersiveViewport", "page=detail geometry=\(geometry.size) safe=\(geometry.safeAreaInsets) viewportHeight=\(viewportHeight)") }
         }
         .navigationBarHidden(true)
         .nativeInteractivePop()
