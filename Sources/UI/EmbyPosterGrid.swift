@@ -14,22 +14,47 @@ final class EmbyPosterGridNavigationState: ObservableObject {
     @Published fileprivate var client: EmbyAPIClient?
     @Published fileprivate var isActive = false
     private var transitionLocked = false
+    private var destinationPresented = false
+    private var acceptingNewOpenAfter = Date.distantPast
+    private let pushTapGuardInterval: TimeInterval = 1.0
 
     func open(item: LibraryItem, client: EmbyAPIClient) {
-        guard !isActive, !transitionLocked else { return }
+        let now = Date()
+        guard now >= acceptingNewOpenAfter, !isActive, !transitionLocked else { return }
         transitionLocked = true
+        destinationPresented = false
+        acceptingNewOpenAfter = now.addingTimeInterval(pushTapGuardInterval)
         selectedItem = item
         self.client = client
         isActive = true
     }
 
+    fileprivate func destinationDidAppear() {
+        destinationPresented = true
+    }
+
+    fileprivate func destinationDidDisappear() {
+        destinationPresented = false
+        isActive = false
+        transitionLocked = false
+    }
+
     fileprivate func updateActive(_ active: Bool) {
-        isActive = active
-        if !active { transitionLocked = false }
+        if active {
+            isActive = true
+            return
+        }
+        if transitionLocked && !destinationPresented { return }
+        isActive = false
+        transitionLocked = false
+        destinationPresented = false
     }
 
     fileprivate func prepareForGridAppearance() {
-        if !isActive { transitionLocked = false }
+        if !isActive && Date() >= acceptingNewOpenAfter {
+            transitionLocked = false
+            destinationPresented = false
+        }
     }
 }
 
@@ -52,6 +77,8 @@ private struct EmbyPosterGridNavigationHost: View {
             destination: Group {
                 if let item = state.selectedItem, let client = state.client {
                     EmbyMediaDetailView(item: item, client: client)
+                        .onAppear { state.destinationDidAppear() }
+                        .onDisappear { state.destinationDidDisappear() }
                 } else {
                     EmptyView()
                 }
