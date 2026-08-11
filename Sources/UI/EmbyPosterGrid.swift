@@ -10,131 +10,87 @@ enum EmbyPosterGridMetrics {
 }
 
 final class EmbyPosterGridNavigationState: ObservableObject {
-    @Published fileprivate var selectedItem: LibraryItem?
-    @Published fileprivate var client: EmbyAPIClient?
-    @Published fileprivate var isActive = false
-    @Published fileprivate var sourceInteractionLocked = false
-    private var transitionLocked = false
-    private var destinationPresented = false
+    @Published private var selectedItemID: String?
+    private var pendingItemID: String?
+    private var queuedItemID: String?
     private var transitionGeneration = 0
-    private var queuedItem: LibraryItem?
-    private var queuedClient: EmbyAPIClient?
     private let pushConfirmationTimeout: TimeInterval = 1.25
-    private let returnSettleInterval: TimeInterval = 0.36
-    fileprivate var transitionIdentity: Int { transitionGeneration }
 
-    func open(item: LibraryItem, client: EmbyAPIClient) {
-        if !isActive, transitionLocked, !destinationPresented {
-            if queuedItem == nil {
-                queuedItem = item
-                queuedClient = client
-                DiagnosticsLogger.shared.log("NavigationRace", "event=poster-open-queued item=\(item.id) generation=\(transitionGeneration) reason=return-settling")
+    func selectionBinding(for itemID: String) -> Binding<String?> {
+        Binding(
+            get: { self.selectedItemID },
+            set: { [weak self] value in self?.updateSelection(value, from: itemID) }
+        )
+    }
+
+    func destinationDidAppear(itemID: String) {
+        guard selectedItemID == itemID else {
+            DiagnosticsLogger.shared.log("NavigationRace", "event=destination-did-appear-stale item=\(itemID) selected=\(selectedItemID ?? \"none\") generation=\(transitionGeneration)")
+            return
+        }
+        pendingItemID = nil
+        DiagnosticsLogger.shared.log("NavigationRace", "event=destination-did-appear item=\(itemID) generation=\(transitionGeneration)")
+    }
+
+    func destinationDidDisappear(itemID: String) {
+        DiagnosticsLogger.shared.log("NavigationRace", "event=destination-did-disappear item=\(itemID) selected=\(selectedItemID ?? \"none\") pending=\(pendingItemID ?? \"none\") generation=\(transitionGeneration)")
+    }
+
+    func prepareForGridAppearance() {
+        DiagnosticsLogger.shared.log("NavigationRace", "event=grid-appear selected=\(selectedItemID ?? \"none\") pending=\(pendingItemID ?? \"none\") queued=\(queuedItemID ?? \"none\") generation=\(transitionGeneration)")
+    }
+
+    private func updateSelection(_ value: String?, from itemID: String) {
+        precondition(Thread.isMainThread)
+        if value == itemID {
+            requestOpen(itemID)
+        } else if value == nil, selectedItemID == itemID {
+            completeReturn(itemID)
+        }
+    }
+
+    private func requestOpen(_ itemID: String) {
+        if selectedItemID == itemID { return }
+        if let activeItemID = selectedItemID {
+            if pendingItemID == nil, queuedItemID == nil {
+                queuedItemID = itemID
+                DiagnosticsLogger.shared.log("NavigationRace", "event=poster-open-queued item=\(itemID) active=\(activeItemID) generation=\(transitionGeneration) reason=route-still-active")
             } else {
-                DiagnosticsLogger.shared.log("NavigationRace", "event=poster-open-rejected item=\(item.id) active=\(isActive) transitionLocked=\(transitionLocked) sourceLocked=\(sourceInteractionLocked) destinationPresented=\(destinationPresented) reason=queue-occupied")
+                DiagnosticsLogger.shared.log("NavigationRace", "event=poster-open-rejected item=\(itemID) active=\(activeItemID) pending=\(pendingItemID ?? \"none\") queued=\(queuedItemID ?? \"none\") generation=\(transitionGeneration)")
             }
             return
         }
-        guard !isActive, !transitionLocked, !sourceInteractionLocked else {
-            DiagnosticsLogger.shared.log("NavigationRace", "event=poster-open-rejected item=\(item.id) active=\(isActive) transitionLocked=\(transitionLocked) sourceLocked=\(sourceInteractionLocked) destinationPresented=\(destinationPresented) reason=transition-active")
-            return
-        }
+
         transitionGeneration += 1
         let generation = transitionGeneration
-        sourceInteractionLocked = true
-        transitionLocked = true
-        destinationPresented = false
-        queuedItem = nil
-        queuedClient = nil
-        selectedItem = item
-        self.client = client
-        isActive = true
-        DiagnosticsLogger.shared.log("NavigationRace", "event=poster-open-accepted item=\(item.id) generation=\(generation)")
+        pendingItemID = itemID
+        queuedItemID = nil
+        selectedItemID = itemID
+        DiagnosticsLogger.shared.log("NavigationRace", "event=poster-open-accepted item=\(itemID) generation=\(generation) route=cell-link")
         DispatchQueue.main.asyncAfter(deadline: .now() + pushConfirmationTimeout) { [weak self] in
-            self?.expirePendingPush(generation: generation)
+            self?.expirePendingPush(itemID: itemID, generation: generation)
         }
     }
 
-    fileprivate func destinationDidAppear() {
-        destinationPresented = true
-        DiagnosticsLogger.shared.log("NavigationRace", "event=destination-did-appear item=\(selectedItem?.id ?? "none") generation=\(transitionGeneration)")
-    }
-
-    fileprivate func destinationDidDisappear() {
-        DiagnosticsLogger.shared.log("NavigationRace", "event=destination-did-disappear item=\(selectedItem?.id ?? "none") active=\(isActive) transitionLocked=\(transitionLocked) generation=\(transitionGeneration)")
-    }
-
-    fileprivate func updateActive(_ active: Bool) {
-        DiagnosticsLogger.shared.log("NavigationRace", "event=binding-update active=\(active) currentActive=\(isActive) transitionLocked=\(transitionLocked) destinationPresented=\(destinationPresented) sourceLocked=\(sourceInteractionLocked) generation=\(transitionGeneration)")
-        if active {
-            isActive = true
-            return
-        }
-        if !isActive, transitionLocked, !destinationPresented {
-            DiagnosticsLogger.shared.log("NavigationRace", "event=binding-update-duplicate-false generation=\(transitionGeneration)")
-            return
-        }
-        if transitionLocked && !destinationPresented {
-            cancelPendingPush(reason: "binding-deactivated-before-appearance")
-            return
-        }
-        if destinationPresented {
-            beginReturnSettlement()
-            return
-        }
-        isActive = false
-        transitionLocked = false
-        sourceInteractionLocked = false
-    }
-
-    fileprivate func prepareForGridAppearance() {
-        DiagnosticsLogger.shared.log("NavigationRace", "event=grid-appear active=\(isActive) transitionLocked=\(transitionLocked) destinationPresented=\(destinationPresented) sourceLocked=\(sourceInteractionLocked) generation=\(transitionGeneration)")
-        if !isActive && !transitionLocked {
-            destinationPresented = false
-            sourceInteractionLocked = false
+    private func completeReturn(_ itemID: String) {
+        let queued = queuedItemID
+        DiagnosticsLogger.shared.log("NavigationRace", "event=route-returned item=\(itemID) generation=\(transitionGeneration) queued=\(queued ?? \"none\")")
+        selectedItemID = nil
+        pendingItemID = nil
+        queuedItemID = nil
+        guard let queued else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.selectedItemID == nil else { return }
+            self.requestOpen(queued)
         }
     }
 
-    private func beginReturnSettlement() {
-        let generation = transitionGeneration
-        isActive = false
-        destinationPresented = false
-        transitionLocked = true
-        sourceInteractionLocked = false
-        DiagnosticsLogger.shared.log("NavigationRace", "event=return-settle-begin item=\(selectedItem?.id ?? "none") generation=\(generation) delayMs=\(Int(returnSettleInterval * 1000))")
-        DispatchQueue.main.asyncAfter(deadline: .now() + returnSettleInterval) { [weak self] in
-            self?.finishReturnSettlement(generation: generation)
-        }
-    }
-
-    private func finishReturnSettlement(generation: Int) {
-        guard generation == transitionGeneration, !isActive, transitionLocked, !destinationPresented else { return }
-        transitionLocked = false
-        sourceInteractionLocked = false
-        let queued = queuedItem
-        let queuedClient = self.queuedClient
-        queuedItem = nil
-        self.queuedClient = nil
-        DiagnosticsLogger.shared.log("NavigationRace", "event=return-settle-end item=\(selectedItem?.id ?? "none") generation=\(generation) queued=\(queued?.id ?? "none")")
-        if let queued, let queuedClient { open(item: queued, client: queuedClient) }
-    }
-
-    private func expirePendingPush(generation: Int) {
-        guard generation == transitionGeneration, transitionLocked, isActive, !destinationPresented else { return }
-        DiagnosticsLogger.shared.log("NavigationRace", "event=push-confirmation-timeout item=\(selectedItem?.id ?? "none") generation=\(generation) active=\(isActive) sourceLocked=\(sourceInteractionLocked)")
-        cancelPendingPush(reason: "destination-did-not-appear")
-    }
-
-    private func cancelPendingPush(reason: String) {
-        DiagnosticsLogger.shared.log("NavigationRace", "event=cancel-pending-push reason=\(reason) item=\(selectedItem?.id ?? "none") generation=\(transitionGeneration)")
-        transitionGeneration += 1
-        isActive = false
-        transitionLocked = false
-        destinationPresented = false
-        sourceInteractionLocked = false
-        queuedItem = nil
-        queuedClient = nil
-        selectedItem = nil
-        client = nil
+    private func expirePendingPush(itemID: String, generation: Int) {
+        guard generation == transitionGeneration, selectedItemID == itemID, pendingItemID == itemID else { return }
+        DiagnosticsLogger.shared.log("NavigationRace", "event=push-confirmation-timeout item=\(itemID) generation=\(generation) route=cell-link")
+        selectedItemID = nil
+        pendingItemID = nil
+        queuedItemID = nil
     }
 }
 
@@ -146,28 +102,6 @@ extension EnvironmentValues {
     var embyPosterGridNavigationState: EmbyPosterGridNavigationState? {
         get { self[EmbyPosterGridNavigationStateKey.self] }
         set { self[EmbyPosterGridNavigationStateKey.self] = newValue }
-    }
-}
-
-private struct EmbyPosterGridNavigationHost: View {
-    @ObservedObject var state: EmbyPosterGridNavigationState
-
-    var body: some View {
-        NavigationLink(
-            destination: Group {
-                if let item = state.selectedItem, let client = state.client {
-                    EmbyMediaDetailView(item: item, client: client)
-                        .id(state.transitionIdentity)
-                        .onAppear { state.destinationDidAppear() }
-                        .onDisappear { state.destinationDidDisappear() }
-                } else {
-                    EmptyView()
-                }
-            },
-            isActive: Binding(get: { state.isActive }, set: { state.updateActive($0) })
-        ) { EmptyView() }
-        .frame(width: 0, height: 0)
-        .hidden()
     }
 }
 
@@ -241,11 +175,9 @@ struct EmbyPosterGrid<Content: View>: View {
                     }
             }
         }
-        .allowsHitTesting(!navigationState.sourceInteractionLocked)
         .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(GeometryReader { proxy in Color.clear.preference(key: EmbyPosterGridWidthPreferenceKey.self, value: proxy.size.width) })
-        .background(EmbyPosterGridNavigationHost(state: navigationState))
         .onPreferenceChange(EmbyPosterGridWidthPreferenceKey.self) { width in
             if width > 0 && abs(containerWidth - width) > 0.5 { containerWidth = width }
         }
