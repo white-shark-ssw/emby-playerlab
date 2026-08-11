@@ -157,7 +157,7 @@ private struct V3EmbyHomeView: View {
                                         HStack(spacing: 8) {
                                             sectionTitle(library.name)
                                             Spacer()
-                                            NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client))
+                                            NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client, dock: dock))
                                                 .font(.subheadline)
                                                 .foregroundColor(.blue)
                                                 .padding(.trailing, 16)
@@ -253,7 +253,7 @@ private struct V3EmbyHomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(model.visibleLibraries) { library in
-                    NavigationLink(destination: V3LibraryBrowserView(library: library, client: client)) { V3LibraryTile(item: library, client: client) }.buttonStyle(.plain)
+                    NavigationLink(destination: V3LibraryBrowserView(library: library, client: client, dock: dock)) { V3LibraryTile(item: library, client: client) }.buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
@@ -513,11 +513,13 @@ private struct V3HeroCard: View {
 private struct V3LibraryBrowserView: View {
     let library: LibraryItem
     let client: EmbyAPIClient
+    let dock: AnyView
     @StateObject private var model: V3LibraryBrowserViewModel
 
-    init(library: LibraryItem, client: EmbyAPIClient) {
+    init(library: LibraryItem, client: EmbyAPIClient, dock: AnyView) {
         self.library = library
         self.client = client
+        self.dock = dock
         _model = StateObject(wrappedValue: V3LibraryBrowserViewModel(library: library, client: client))
     }
 
@@ -560,6 +562,7 @@ private struct V3LibraryBrowserView: View {
         .navigationTitle(library.name)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .overlay(alignment: .bottom) { dock }
         .nativeInteractivePop()
         .onAppear { if !model.hasLoaded { Task { await model.reload() } } }
     }
