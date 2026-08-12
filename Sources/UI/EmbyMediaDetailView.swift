@@ -36,26 +36,24 @@ struct EmbyMediaDetailView: View {
                 persistentBackdrop
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        hero(width: geometry.size.width)
-                        VStack(alignment: .leading, spacing: 24) {
-                            overview
-                            if model.isSeries { seriesContent }
-                            castSection
-                            tagSection
-                            stillsSection
-                            similarSection
-                            if let error = model.errorMessage { errorView(error) }
+                    VStack(alignment: .leading, spacing: 0) {
+                        AdaptiveHeroRawScrollSentinel(coordinateSpaceName: "emby-detail-scroll")
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            hero(width: geometry.size.width)
+                            VStack(alignment: .leading, spacing: 24) {
+                                overview
+                                if model.isSeries { seriesContent }
+                                castSection
+                                tagSection
+                                stillsSection
+                                similarSection
+                                if let error = model.errorMessage { errorView(error) }
+                            }
+                            .padding(.top, 2)
+                            .padding(.bottom, max(88, geometry.safeAreaInsets.bottom + 70))
                         }
-                        .padding(.top, 2)
-                        .padding(.bottom, max(88, geometry.safeAreaInsets.bottom + 70))
                     }
                     .frame(width: geometry.size.width)
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear.preference(key: AdaptiveHeroRawScrollPreferenceKey.self, value: proxy.frame(in: .named("emby-detail-scroll")).minY)
-                        }
-                    )
                 }
                 .coordinateSpace(name: "emby-detail-scroll")
                 .onPreferenceChange(AdaptiveHeroRawScrollPreferenceKey.self) { value in

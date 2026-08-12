@@ -25,22 +25,20 @@ struct EmbyEpisodePickerView: View {
                     ImmersiveBackdrop(url: pickerHeroURL, overlayOpacity: colorScheme == .dark ? 0.50 : 0.64)
 
                     ScrollView(.vertical, showsIndicators: false) {
-                        LazyVStack(spacing: 0) {
-                            pickerHero(width: geometry.size.width)
-                            LazyVStack(spacing: 16) {
-                                ForEach(displayedEpisodes) { episode in episodeRow(episode).id(episode.id) }
+                        VStack(spacing: 0) {
+                            AdaptiveHeroRawScrollSentinel(coordinateSpaceName: "emby-episode-picker-scroll")
+                            LazyVStack(spacing: 0) {
+                                pickerHero(width: geometry.size.width)
+                                LazyVStack(spacing: 16) {
+                                    ForEach(displayedEpisodes) { episode in episodeRow(episode).id(episode.id) }
+                                }
+                                .padding(.leading, 18)
+                                .padding(.trailing, 48)
+                                .padding(.top, 12)
+                                .padding(.bottom, 92)
                             }
-                            .padding(.leading, 18)
-                            .padding(.trailing, 48)
-                            .padding(.top, 12)
-                            .padding(.bottom, 92)
                         }
                         .frame(width: geometry.size.width)
-                        .background(
-                            GeometryReader { rawScrollProxy in
-                                Color.clear.preference(key: AdaptiveHeroRawScrollPreferenceKey.self, value: rawScrollProxy.frame(in: .named("emby-episode-picker-scroll")).minY)
-                            }
-                        )
                     }
                     .frame(width: geometry.size.width, height: viewportHeight)
                     .background(Color.clear)

@@ -185,6 +185,17 @@ struct AdaptiveHeroRawScrollPreferenceKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
+struct AdaptiveHeroRawScrollSentinel: View {
+    let coordinateSpaceName: String
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(key: AdaptiveHeroRawScrollPreferenceKey.self, value: proxy.frame(in: .named(coordinateSpaceName)).minY)
+        }
+        .frame(height: 0)
+    }
+}
+
 struct DetailPressButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
