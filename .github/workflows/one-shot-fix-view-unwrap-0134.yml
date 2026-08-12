@@ -1,0 +1,53 @@
+name: One-shot fix source snapshot view unwrap
+
+on:
+  push:
+    branches:
+      - "fix/detail-hero-pop-0134"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch and push source only
+        run: |
+          set -euo pipefail
+          if git log -1 --pretty=%B | grep -Fq '[snapshot-view-unwrapped]'; then
+            echo 'Snapshot source fix already applied; no-op.'
+            exit 0
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Sources/UI/ImmersiveUIComponents.swift')
+          text = path.read_text()
+          old = '''        let sourceView = source.view
+        sourceView.setNeedsLayout()
+        sourceView.layoutIfNeeded()
+'''
+          new = '''        source.loadViewIfNeeded()
+        guard let sourceView = source.viewIfLoaded else {
+            DiagnosticsLogger.shared.log("NavigationVisual", "event=source-snapshot-skip reason=view-not-loaded stack=\\(navigationController.viewControllers.count)")
+            return
+        }
+        sourceView.setNeedsLayout()
+        sourceView.layoutIfNeeded()
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one sourceView block, got {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          python3 scripts/check_v0134_detail_navigation.py
+          git diff --check
+          git diff --stat
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add Sources/UI/ImmersiveUIComponents.swift
+          git commit -m 'fix: safely unwrap source view for pop snapshot [snapshot-view-unwrapped]'
+          git push origin HEAD:fix/detail-hero-pop-0134
