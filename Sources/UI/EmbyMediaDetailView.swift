@@ -19,7 +19,6 @@ struct EmbyMediaDetailView: View {
     @State private var showFullOverview = false
     @State private var showAllEpisodes = false
     @State private var selectedStillIndex: Int?
-    @State private var heroImageSize: CGSize?
     @State private var heroUsesLightForeground = true
 
     init(item: LibraryItem, client: EmbyAPIClient) {
@@ -90,26 +89,35 @@ struct EmbyMediaDetailView: View {
             let upwardScroll = max(0, -minY)
             let revealProgress = min(1, upwardScroll / 190)
             let visualHeight = baseHeight + stretch
-            let imageScale = heroImageScale(width: width, height: baseHeight, revealProgress: revealProgress)
+            let revealScale = 1.10 - 0.10 * easedReveal(revealProgress)
+            let contrastScrim = heroUsesLightForeground ? Color.black.opacity(0.22) : Color.white.opacity(0.16)
 
             ZStack(alignment: .bottom) {
-                EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fill)
+                EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fill, onImageLoaded: { image in updateHeroImageAnalysis(image) })
                     .frame(width: width, height: visualHeight)
+                    .scaleEffect(revealScale, anchor: .center)
                     .clipped()
-                    .blur(radius: 13)
-                    .opacity(0.68)
-
-                EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fit, onImageLoaded: { image in updateHeroImageAnalysis(image) })
-                    .frame(width: width, height: visualHeight)
-                    .scaleEffect(imageScale, anchor: .center)
-                    .clipped()
+                    .mask(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .black, location: 0.00),
+                                .init(color: .black, location: 0.66),
+                                .init(color: .black.opacity(0.92), location: 0.76),
+                                .init(color: .black.opacity(0.52), location: 0.90),
+                                .init(color: .clear, location: 1.00)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
 
                 LinearGradient(
-                    colors: [
-                        Color.clear,
-                        Color.clear,
-                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.12 : 0.18),
-                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.46 : 0.58)
+                    stops: [
+                        .init(color: .clear, location: 0.00),
+                        .init(color: .clear, location: 0.48),
+                        .init(color: contrastScrim.opacity(0.48), location: 0.67),
+                        .init(color: contrastScrim, location: 0.82),
+                        .init(color: .clear, location: 1.00)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -226,41 +234,31 @@ struct EmbyMediaDetailView: View {
     }
 
     private var persistentBackdrop: some View {
-        ZStack {
-            EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fill)
-                .scaleEffect(1.08)
-                .blur(radius: 34)
-            LinearGradient(
-                colors: [
-                    Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.20 : 0.34),
-                    Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.42 : 0.54),
-                    Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.58 : 0.66)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+        GeometryReader { proxy in
+            ZStack {
+                EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fill)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+                    .scaleEffect(1.06)
+                    .blur(radius: 30)
+                LinearGradient(
+                    colors: [
+                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.18 : 0.28),
+                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.40 : 0.50),
+                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.60 : 0.68)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
         .ignoresSafeArea()
     }
 
     private var heroForeground: Color { heroUsesLightForeground ? .white : .black }
     private var heroSecondaryForeground: Color { heroUsesLightForeground ? .white.opacity(0.78) : .black.opacity(0.72) }
-
-    private func heroImageScale(width: CGFloat, height: CGFloat, revealProgress: CGFloat) -> CGFloat {
-        guard let size = heroImageSize, size.width > 0, size.height > 0 else {
-            return 1.20 - 0.20 * easedReveal(revealProgress)
-        }
-        let imageAspect = size.width / size.height
-        let containerAspect = width / height
-        let coverScale: CGFloat
-        if imageAspect > containerAspect {
-            coverScale = height * imageAspect / width
-        } else {
-            coverScale = width / max(1, height * imageAspect)
-        }
-        let initialScale = min(2.35, max(1.12, coverScale * 1.02))
-        return initialScale + (1 - initialScale) * easedReveal(revealProgress)
-    }
 
     private func easedReveal(_ value: CGFloat) -> CGFloat {
         let clamped = min(1, max(0, value))
@@ -269,9 +267,7 @@ struct EmbyMediaDetailView: View {
     }
 
     private func updateHeroImageAnalysis(_ image: UIImage) {
-        let size = image.size
         let prefersLight = EmbyImageContrastAnalyzer.prefersLightForeground(for: image)
-        if heroImageSize != size { heroImageSize = size }
         if heroUsesLightForeground != prefersLight {
             withAnimation(.easeOut(duration: 0.18)) { heroUsesLightForeground = prefersLight }
         }

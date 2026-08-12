@@ -131,59 +131,63 @@ struct DetailPressButtonStyle: ButtonStyle {
     }
 }
 
-private final class ImmersiveNavigationAppearanceEntry {
-    weak var navigationController: UINavigationController?
-    let standardAppearance: UINavigationBarAppearance
-    let scrollEdgeAppearance: UINavigationBarAppearance?
-    let compactAppearance: UINavigationBarAppearance?
-    let tintColor: UIColor?
-    let wasTranslucent: Bool
-    var owners = Set<UUID>()
-    var generation = 0
+private final class ImmersiveNavigationAppearanceViewController: UIViewController {
+    private weak var appearanceOwner: UIViewController?
+    private var originalStandardAppearance: UINavigationBarAppearance?
+    private var originalScrollEdgeAppearance: UINavigationBarAppearance?
+    private var originalCompactAppearance: UINavigationBarAppearance?
+    private var originalCompactScrollEdgeAppearance: UINavigationBarAppearance?
+    private var sourceSnapshot: UIView?
+    private var sourceControllerIdentifier: ObjectIdentifier?
 
-    init(navigationController: UINavigationController) {
-        self.navigationController = navigationController
-        let bar = navigationController.navigationBar
-        standardAppearance = (bar.standardAppearance.copy() as? UINavigationBarAppearance) ?? bar.standardAppearance
-        scrollEdgeAppearance = bar.scrollEdgeAppearance?.copy() as? UINavigationBarAppearance
-        compactAppearance = bar.compactAppearance?.copy() as? UINavigationBarAppearance
-        tintColor = bar.tintColor
-        wasTranslucent = bar.isTranslucent
-    }
-}
-
-private final class ImmersiveNavigationAppearanceManager {
-    static let shared = ImmersiveNavigationAppearanceManager()
-    private var entries: [ObjectIdentifier: ImmersiveNavigationAppearanceEntry] = [:]
-
-    func acquire(navigationController: UINavigationController, owner: UUID) {
-        precondition(Thread.isMainThread)
-        let key = ObjectIdentifier(navigationController)
-        let entry = entries[key] ?? ImmersiveNavigationAppearanceEntry(navigationController: navigationController)
-        entries[key] = entry
-        entry.generation += 1
-        guard entry.owners.insert(owner).inserted else { return }
-        apply(to: navigationController)
-        DiagnosticsLogger.shared.log("NavigationVisual", "event=immersive-nav-acquire owners=\(entry.owners.count) stack=\(navigationController.viewControllers.count)")
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        refreshVisualOwnership()
     }
 
-    func release(navigationController: UINavigationController, owner: UUID) {
-        precondition(Thread.isMainThread)
-        let key = ObjectIdentifier(navigationController)
-        guard let entry = entries[key], entry.owners.remove(owner) != nil else { return }
-        entry.generation += 1
-        let generation = entry.generation
-        DiagnosticsLogger.shared.log("NavigationVisual", "event=immersive-nav-release owners=\(entry.owners.count) stack=\(navigationController.viewControllers.count)")
-        guard entry.owners.isEmpty else { return }
-        DispatchQueue.main.async { [weak self, weak navigationController] in
-            guard let self, let navigationController, let current = self.entries[key], current === entry, current.owners.isEmpty, current.generation == generation else { return }
-            self.restore(entry, on: navigationController)
-            self.entries.removeValue(forKey: key)
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        refreshVisualOwnership()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        restoreNavigationItemAppearance()
+        removeSourceSnapshot(reason: "destination-disappeared")
+    }
+
+    func refreshVisualOwnership() {
+        guard viewIfLoaded?.window != nil else { return }
+        applyNavigationItemAppearance()
+        installSourceSnapshotIfNeeded()
+    }
+
+    func tearDown() {
+        restoreNavigationItemAppearance()
+        removeSourceSnapshot(reason: "bridge-dismantled")
+    }
+
+    private func owningNavigationController() -> UINavigationController? { navigationController }
+
+    private func owningDestinationController() -> UIViewController? {
+        guard let navigationController = owningNavigationController() else { return parent }
+        var current: UIViewController = self
+        while let next = current.parent, next !== navigationController { current = next }
+        if current.parent === navigationController { return current }
+        return navigationController.topViewController
+    }
+
+    private func applyNavigationItemAppearance() {
+        guard let owner = owningDestinationController() else { return }
+        if appearanceOwner !== owner {
+            restoreNavigationItemAppearance()
+            appearanceOwner = owner
+            originalStandardAppearance = owner.navigationItem.standardAppearance
+            originalScrollEdgeAppearance = owner.navigationItem.scrollEdgeAppearance
+            originalCompactAppearance = owner.navigationItem.compactAppearance
+            originalCompactScrollEdgeAppearance = owner.navigationItem.compactScrollEdgeAppearance
         }
-    }
 
-    private func apply(to navigationController: UINavigationController) {
-        let bar = navigationController.navigationBar
         let appearance = UINavigationBarAppearance()
         appearance.configureWithTransparentBackground()
         appearance.backgroundColor = .clear
@@ -192,54 +196,68 @@ private final class ImmersiveNavigationAppearanceManager {
         backButton.normal.titlePositionAdjustment = UIOffset(horizontal: -1000, vertical: 0)
         backButton.highlighted.titlePositionAdjustment = UIOffset(horizontal: -1000, vertical: 0)
         appearance.backButtonAppearance = backButton
-        bar.standardAppearance = appearance
-        bar.scrollEdgeAppearance = appearance
-        bar.compactAppearance = appearance
-        bar.tintColor = .white
-        bar.isTranslucent = true
+        owner.navigationItem.standardAppearance = appearance
+        owner.navigationItem.scrollEdgeAppearance = appearance
+        owner.navigationItem.compactAppearance = appearance
+        owner.navigationItem.compactScrollEdgeAppearance = appearance
+        DiagnosticsLogger.shared.log("NavigationVisual", "event=destination-nav-appearance stack=\(owningNavigationController()?.viewControllers.count ?? 0)")
     }
 
-    private func restore(_ entry: ImmersiveNavigationAppearanceEntry, on navigationController: UINavigationController) {
-        let bar = navigationController.navigationBar
-        bar.standardAppearance = entry.standardAppearance
-        bar.scrollEdgeAppearance = entry.scrollEdgeAppearance
-        bar.compactAppearance = entry.compactAppearance
-        bar.tintColor = entry.tintColor
-        bar.isTranslucent = entry.wasTranslucent
-        DiagnosticsLogger.shared.log("NavigationVisual", "event=immersive-nav-restore stack=\(navigationController.viewControllers.count)")
-    }
-}
-
-private final class ImmersiveNavigationAppearanceViewController: UIViewController {
-    private let owner = UUID()
-    private weak var acquiredNavigationController: UINavigationController?
-
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        acquireIfNeeded()
+    private func restoreNavigationItemAppearance() {
+        guard let owner = appearanceOwner else { return }
+        owner.navigationItem.standardAppearance = originalStandardAppearance
+        owner.navigationItem.scrollEdgeAppearance = originalScrollEdgeAppearance
+        owner.navigationItem.compactAppearance = originalCompactAppearance
+        owner.navigationItem.compactScrollEdgeAppearance = originalCompactScrollEdgeAppearance
+        DiagnosticsLogger.shared.log("NavigationVisual", "event=destination-nav-restore stack=\(owner.navigationController?.viewControllers.count ?? 0)")
+        appearanceOwner = nil
+        originalStandardAppearance = nil
+        originalScrollEdgeAppearance = nil
+        originalCompactAppearance = nil
+        originalCompactScrollEdgeAppearance = nil
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        acquireIfNeeded()
+    private func installSourceSnapshotIfNeeded() {
+        guard let navigationController = owningNavigationController(), let destination = owningDestinationController(),
+              let index = navigationController.viewControllers.firstIndex(where: { $0 === destination }), index > 0 else { return }
+        let source = navigationController.viewControllers[index - 1]
+        let identifier = ObjectIdentifier(source)
+        if sourceControllerIdentifier == identifier, sourceSnapshot != nil { return }
+        removeSourceSnapshot(reason: "source-changed")
+
+        let sourceView = source.view
+        sourceView.setNeedsLayout()
+        sourceView.layoutIfNeeded()
+        guard sourceView.bounds.width > 1, sourceView.bounds.height > 1 else {
+            DiagnosticsLogger.shared.log("NavigationVisual", "event=source-snapshot-skip reason=empty-bounds stack=\(navigationController.viewControllers.count)")
+            return
+        }
+
+        let snapshot: UIView
+        if let hierarchySnapshot = sourceView.snapshotView(afterScreenUpdates: false) {
+            snapshot = hierarchySnapshot
+        } else {
+            let renderer = UIGraphicsImageRenderer(bounds: sourceView.bounds)
+            let image = renderer.image { _ in sourceView.drawHierarchy(in: sourceView.bounds, afterScreenUpdates: false) }
+            snapshot = UIImageView(image: image)
+        }
+        snapshot.frame = sourceView.bounds
+        snapshot.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        snapshot.isUserInteractionEnabled = false
+        snapshot.accessibilityElementsHidden = true
+        sourceView.addSubview(snapshot)
+        sourceView.bringSubviewToFront(snapshot)
+        sourceSnapshot = snapshot
+        sourceControllerIdentifier = identifier
+        DiagnosticsLogger.shared.log("NavigationVisual", "event=source-snapshot-install stack=\(navigationController.viewControllers.count) source=\(type(of: source)) destination=\(type(of: destination))")
     }
 
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        releaseIfNeeded()
-    }
-
-    func acquireIfNeeded() {
-        guard viewIfLoaded?.window != nil, let navigationController else { return }
-        if acquiredNavigationController !== navigationController { releaseIfNeeded() }
-        acquiredNavigationController = navigationController
-        ImmersiveNavigationAppearanceManager.shared.acquire(navigationController: navigationController, owner: owner)
-    }
-
-    func releaseIfNeeded() {
-        guard let navigationController = acquiredNavigationController else { return }
-        ImmersiveNavigationAppearanceManager.shared.release(navigationController: navigationController, owner: owner)
-        acquiredNavigationController = nil
+    private func removeSourceSnapshot(reason: String) {
+        guard let snapshot = sourceSnapshot else { return }
+        snapshot.removeFromSuperview()
+        sourceSnapshot = nil
+        sourceControllerIdentifier = nil
+        DiagnosticsLogger.shared.log("NavigationVisual", "event=source-snapshot-remove reason=\(reason)")
     }
 }
 
@@ -252,10 +270,10 @@ private struct ImmersiveNavigationAppearanceBridge: UIViewControllerRepresentabl
     }
 
     func updateUIViewController(_ uiViewController: ImmersiveNavigationAppearanceViewController, context: Context) {
-        DispatchQueue.main.async { uiViewController.acquireIfNeeded() }
+        DispatchQueue.main.async { uiViewController.refreshVisualOwnership() }
     }
 
-    static func dismantleUIViewController(_ uiViewController: ImmersiveNavigationAppearanceViewController, coordinator: ()) { uiViewController.releaseIfNeeded() }
+    static func dismantleUIViewController(_ uiViewController: ImmersiveNavigationAppearanceViewController, coordinator: ()) { uiViewController.tearDown() }
 }
 
 extension View {
