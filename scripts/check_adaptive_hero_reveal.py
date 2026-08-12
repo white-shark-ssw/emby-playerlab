@@ -56,4 +56,15 @@ for forbidden in ["interactivePopGestureRecognizer", "UIGestureRecognizerDelegat
     require(forbidden not in metrics, f"Hero visual geometry must never own native navigation: {forbidden}")
 require("nativeInteractivePop() -> some View { self }" in nav, "native interactive pop compatibility modifier must remain a no-op")
 require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
+
+# Detail foreground placement is independent from the already calibrated clear-backdrop geometry.
+require("detailPlaybackCenterReserve: CGFloat = 72" in metrics, "detail playback center reserve missing")
+require("detailForegroundBaseHeight(width: CGFloat, viewportHeight: CGFloat)" in metrics, "detail foreground height helper missing")
+require("viewportHeight) * 0.5 + detailPlaybackCenterReserve" in metrics, "detail foreground no longer targets the viewport midpoint")
+require("hero(width: geometry.size.width, viewportHeight: viewportHeight)" in detail, "detail Hero is not receiving viewport height")
+require("let backdropBaseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width)" in detail, "detail backdrop base height is no longer independent")
+require("let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight)" in detail, "detail foreground height is not independent")
+require("viewportHeight: backdropVisualHeight" in detail, "detail clear-backdrop mask was coupled back to foreground height")
+require("detailForegroundBaseHeight" not in picker, "Episode Picker must remain frozen and must not use detail foreground positioning")
+
 print("synchronous Hero crop and container motion invariants: OK")

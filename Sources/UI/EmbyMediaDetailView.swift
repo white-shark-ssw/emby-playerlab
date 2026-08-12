@@ -37,7 +37,7 @@ struct EmbyMediaDetailView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                            hero(width: geometry.size.width)
+                            hero(width: geometry.size.width, viewportHeight: viewportHeight)
                             VStack(alignment: .leading, spacing: 24) {
                                 overview
                                 if model.isSeries { seriesContent }
@@ -86,8 +86,9 @@ struct EmbyMediaDetailView: View {
         .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
     }
 
-    private func hero(width: CGFloat) -> some View {
-        let baseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width)
+    private func hero(width: CGFloat, viewportHeight: CGFloat) -> some View {
+        let backdropBaseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width)
+        let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight)
         let contentWidth = max(0, width - 40)
         let backdropViewportHeight = AdaptiveHeroRevealMetrics.detailBackdropViewportHeight(width: width)
         let backdropViewport = CGSize(width: width, height: backdropViewportHeight)
@@ -96,10 +97,11 @@ struct EmbyMediaDetailView: View {
         let upwardScroll = max(0, -heroRawScrollMinY)
         let consumedCropScroll = AdaptiveHeroRevealMetrics.consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel, responseFactor: AdaptiveHeroRevealMetrics.detailCropResponseFactor)
         let backdropPinOffset = AdaptiveHeroRevealMetrics.backdropPinOffset(upwardScroll: upwardScroll, cropTravel: cropTravel, responseFactor: AdaptiveHeroRevealMetrics.detailCropResponseFactor)
+        let backdropVisualHeight = backdropBaseHeight + stretch
         let visualHeight = baseHeight + stretch
         let stretchedBackdropViewport = CGSize(width: width, height: backdropViewportHeight + stretch)
         let renderedImageSize = stretch > 0 ? AdaptiveHeroRevealMetrics.stretchedImageSize(imageSize: heroSourceSize, viewportSize: stretchedBackdropViewport) : AdaptiveHeroRevealMetrics.renderedImageSize(imageSize: heroSourceSize, viewportSize: backdropViewport, consumedCropScroll: consumedCropScroll)
-        let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(renderedImageSize: renderedImageSize, viewportHeight: visualHeight)
+        let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(renderedImageSize: renderedImageSize, viewportHeight: backdropVisualHeight)
         let maskFadeSpan = min(0.34, clearImageBottom * 0.46)
         let maskStart = max(0.10, clearImageBottom - maskFadeSpan)
         let maskFirstMid = maskStart + (clearImageBottom - maskStart) * 0.29
@@ -111,7 +113,7 @@ struct EmbyMediaDetailView: View {
                 EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fill, onImageLoaded: { image in updateHeroImageMetrics(image) })
                     .frame(width: renderedImageSize.width, height: renderedImageSize.height)
             }
-            .frame(width: width, height: visualHeight, alignment: .top)
+            .frame(width: width, height: backdropVisualHeight, alignment: .top)
             .clipped()
             .mask(
                 LinearGradient(
