@@ -225,7 +225,11 @@ private final class ImmersiveNavigationAppearanceViewController: UIViewControlle
         if sourceControllerIdentifier == identifier, sourceSnapshot != nil { return }
         removeSourceSnapshot(reason: "source-changed")
 
-        let sourceView = source.view
+        source.loadViewIfNeeded()
+        guard let sourceView = source.viewIfLoaded else {
+            DiagnosticsLogger.shared.log("NavigationVisual", "event=source-snapshot-skip reason=view-not-loaded stack=\(navigationController.viewControllers.count)")
+            return
+        }
         sourceView.setNeedsLayout()
         sourceView.layoutIfNeeded()
         guard sourceView.bounds.width > 1, sourceView.bounds.height > 1 else {
