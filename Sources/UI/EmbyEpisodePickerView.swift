@@ -15,7 +15,7 @@ struct EmbyEpisodePickerView: View {
     @State private var lastHapticIndex: Int?
     @State private var lastHapticTime: TimeInterval = 0
     @State private var pickerHeroSourceSize: CGSize?
-    @State private var pickerHeroConsumedCropScroll: CGFloat = 0
+    @State private var pickerHeroRawScrollMinY: CGFloat = 0
 
     var body: some View {
         GeometryReader { geometry in
@@ -36,10 +36,18 @@ struct EmbyEpisodePickerView: View {
                             .padding(.bottom, 92)
                         }
                         .frame(width: geometry.size.width)
+                        .background(
+                            GeometryReader { rawScrollProxy in
+                                Color.clear.preference(key: AdaptiveHeroRawScrollPreferenceKey.self, value: rawScrollProxy.frame(in: .named("emby-episode-picker-scroll")).minY)
+                            }
+                        )
                     }
                     .frame(width: geometry.size.width, height: viewportHeight)
                     .background(Color.clear)
                     .coordinateSpace(name: "emby-episode-picker-scroll")
+                    .onPreferenceChange(AdaptiveHeroRawScrollPreferenceKey.self) { value in
+                        if abs(pickerHeroRawScrollMinY - value) > 0.10 { pickerHeroRawScrollMinY = value }
+                    }
                     .ignoresSafeArea(edges: [.top, .bottom])
 
 
@@ -94,59 +102,48 @@ struct EmbyEpisodePickerView: View {
         let baseHeight = AdaptiveHeroRevealMetrics.compactBaseHeight(width: width)
         let heroViewport = CGSize(width: width, height: baseHeight)
         let cropTravel = AdaptiveHeroRevealMetrics.cropTravel(imageSize: pickerHeroSourceSize, viewportSize: heroViewport)
-        return GeometryReader { proxy in
-            let minY = proxy.frame(in: .named("emby-episode-picker-scroll")).minY
-            let stretch = max(0, minY)
-            let upwardScroll = max(0, -minY)
-            let consumedCropScroll = AdaptiveHeroRevealMetrics.consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel)
-            let visualHeight = baseHeight + stretch
-            let revealScale = AdaptiveHeroRevealMetrics.scale(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, consumedCropScroll: consumedCropScroll)
-            let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, scale: revealScale)
-            let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, scale: revealScale)
-            let maskFadeSpan = min(0.67, clearImageBottom * 0.67)
-            let maskStart = max(0.08, clearImageBottom - maskFadeSpan)
-            let maskMid = maskStart + (clearImageBottom - maskStart) * 0.50
+        let stretch = max(0, pickerHeroRawScrollMinY)
+        let upwardScroll = max(0, -pickerHeroRawScrollMinY)
+        let consumedCropScroll = AdaptiveHeroRevealMetrics.consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel)
+        let visualHeight = baseHeight + stretch
+        let renderedImageSize = stretch > 0 ? AdaptiveHeroRevealMetrics.stretchedImageSize(imageSize: pickerHeroSourceSize, viewportSize: CGSize(width: width, height: visualHeight)) : AdaptiveHeroRevealMetrics.renderedImageSize(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, consumedCropScroll: consumedCropScroll)
+        let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(renderedImageSize: renderedImageSize, viewportHeight: visualHeight)
+        let maskFadeSpan = min(0.67, clearImageBottom * 0.67)
+        let maskStart = max(0.08, clearImageBottom - maskFadeSpan)
+        let maskMid = maskStart + (clearImageBottom - maskStart) * 0.50
 
-            ZStack(alignment: .bottomLeading) {
-                ZStack {
-                    EmbyCachedRemoteImage(url: pickerHeroURL, contentMode: .fill, onImageLoaded: { image in
-                        if pickerHeroSourceSize != image.size { pickerHeroSourceSize = image.size }
-                    })
-                    .frame(width: width, height: visualHeight)
-                    .scaleEffect(revealScale, anchor: .center)
-                    .offset(y: topPinOffset)
-                }
-                .frame(width: width, height: visualHeight)
-                .clipped()
-                .mask(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black, location: 0.00),
-                            .init(color: .black, location: maskStart),
-                            .init(color: .black.opacity(0.80), location: maskMid),
-                            .init(color: .clear, location: clearImageBottom)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(model.item.name).font(.headline).lineLimit(1)
-                    Text(model.selectedSeasonTitle).font(.title2.weight(.bold))
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 14)
+        return ZStack(alignment: .bottomLeading) {
+            ZStack(alignment: .top) {
+                EmbyCachedRemoteImage(url: pickerHeroURL, contentMode: .fill, onImageLoaded: { image in
+                    if pickerHeroSourceSize != image.size { pickerHeroSourceSize = image.size }
+                })
+                .frame(width: renderedImageSize.width, height: renderedImageSize.height)
             }
-            .frame(width: width, height: visualHeight)
-            .offset(y: stretch > 0 ? -stretch : consumedCropScroll)
-            .preference(key: AdaptiveHeroConsumedScrollPreferenceKey.self, value: consumedCropScroll)
+            .frame(width: width, height: visualHeight, alignment: .top)
+            .clipped()
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0.00),
+                        .init(color: .black, location: maskStart),
+                        .init(color: .black.opacity(0.80), location: maskMid),
+                        .init(color: .clear, location: clearImageBottom)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.item.name).font(.headline).lineLimit(1)
+                Text(model.selectedSeasonTitle).font(.title2.weight(.bold))
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 14)
         }
-        .frame(width: width, height: baseHeight + pickerHeroConsumedCropScroll)
-        .onPreferenceChange(AdaptiveHeroConsumedScrollPreferenceKey.self) { value in
-            guard abs(pickerHeroConsumedCropScroll - value) > 0.25 else { return }
-            pickerHeroConsumedCropScroll = value
-        }
+        .frame(width: width, height: visualHeight)
+        .offset(y: stretch > 0 ? -stretch : consumedCropScroll)
+        .frame(width: width, height: baseHeight + consumedCropScroll, alignment: .top)
     }
 
     private var pickerHeroURL: URL? {

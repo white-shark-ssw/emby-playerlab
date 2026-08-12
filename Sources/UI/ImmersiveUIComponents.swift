@@ -127,58 +127,60 @@ struct AdaptiveHeroRevealMetrics {
     static func detailBaseHeight(width: CGFloat) -> CGFloat { min(488, max(430, width * 1.08)) }
     static func compactBaseHeight(width: CGFloat) -> CGFloat { min(252, max(206, width * 0.51)) }
 
-    static func fullRevealScale(imageSize: CGSize?, viewportSize: CGSize) -> CGFloat {
-        guard let coverSize = coverSize(imageSize: imageSize, viewportSize: viewportSize), coverSize.width > 1, coverSize.height > 1 else { return 1 }
-        let widthScale = viewportSize.width / coverSize.width
-        let heightScale = viewportSize.height / coverSize.height
-        return min(1, min(widthScale, heightScale))
-    }
-
-    // One point of native vertical scroll removes one point from the rendered image height.
-    // The Hero does not start leaving the screen until this real crop distance is fully consumed.
     static func cropTravel(imageSize: CGSize?, viewportSize: CGSize) -> CGFloat {
-        guard let coverSize = coverSize(imageSize: imageSize, viewportSize: viewportSize) else { return max(0, viewportSize.height * (initialScale - 1)) }
-        let fullScale = fullRevealScale(imageSize: imageSize, viewportSize: viewportSize)
-        return max(0, coverSize.height * (initialScale - fullScale))
+        let initialSize = initialRenderedImageSize(imageSize: imageSize, viewportSize: viewportSize)
+        let fullSize = fullRevealImageSize(imageSize: imageSize, viewportSize: viewportSize)
+        return max(0, initialSize.height - fullSize.height)
     }
 
     static func consumedCropScroll(upwardScroll: CGFloat, cropTravel: CGFloat) -> CGFloat {
         min(max(0, upwardScroll), max(0, cropTravel))
     }
 
-    static func scale(imageSize: CGSize?, viewportSize: CGSize, consumedCropScroll: CGFloat) -> CGFloat {
-        guard let coverSize = coverSize(imageSize: imageSize, viewportSize: viewportSize), coverSize.height > 1 else {
-            return max(1, initialScale - consumedCropScroll / max(1, viewportSize.height))
+    // The raw native scroll displacement directly changes rendered image height.
+    // Width follows the source aspect ratio naturally; there is no percentage or easing timeline.
+    static func renderedImageSize(imageSize: CGSize?, viewportSize: CGSize, consumedCropScroll: CGFloat) -> CGSize {
+        let initialSize = initialRenderedImageSize(imageSize: imageSize, viewportSize: viewportSize)
+        let fullSize = fullRevealImageSize(imageSize: imageSize, viewportSize: viewportSize)
+        guard let imageSize, imageSize.width > 1, imageSize.height > 1 else {
+            let height = max(fullSize.height, initialSize.height - max(0, consumedCropScroll))
+            let ratio = initialSize.height > 1 ? initialSize.width / initialSize.height : 1
+            return CGSize(width: height * ratio, height: height)
         }
-        let fullScale = fullRevealScale(imageSize: imageSize, viewportSize: viewportSize)
-        return max(fullScale, initialScale - consumedCropScroll / coverSize.height)
+        let aspect = imageSize.width / imageSize.height
+        let height = max(fullSize.height, initialSize.height - max(0, consumedCropScroll))
+        return CGSize(width: height * aspect, height: height)
     }
 
-    static func topPinOffset(imageSize: CGSize?, viewportSize: CGSize, scale: CGFloat) -> CGFloat {
-        guard let coverSize = coverSize(imageSize: imageSize, viewportSize: viewportSize) else { return -max(0, viewportSize.height * (1 - scale) * 0.5) }
-        let coverTop = (viewportSize.height - coverSize.height) * 0.5
-        let scaledTop = viewportSize.height * 0.5 + scale * (coverTop - viewportSize.height * 0.5)
-        return -max(0, scaledTop)
+    static func stretchedImageSize(imageSize: CGSize?, viewportSize: CGSize) -> CGSize {
+        let cover = coverSize(imageSize: imageSize, viewportSize: viewportSize) ?? viewportSize
+        return CGSize(width: cover.width * initialScale, height: cover.height * initialScale)
     }
 
-    static func clearImageBottom(imageSize: CGSize?, viewportSize: CGSize, scale: CGFloat) -> CGFloat {
-        guard let coverSize = coverSize(imageSize: imageSize, viewportSize: viewportSize), viewportSize.height > 1 else { return 1 }
-        let offset = topPinOffset(imageSize: imageSize, viewportSize: viewportSize, scale: scale)
-        let coverBottom = (viewportSize.height + coverSize.height) * 0.5
-        let scaledBottom = viewportSize.height * 0.5 + scale * (coverBottom - viewportSize.height * 0.5) + offset
-        return min(1, max(0.05, scaledBottom / viewportSize.height))
+    static func clearImageBottom(renderedImageSize: CGSize, viewportHeight: CGFloat) -> CGFloat {
+        guard viewportHeight > 1 else { return 1 }
+        return min(1, max(0.05, renderedImageSize.height / viewportHeight))
+    }
+
+    private static func initialRenderedImageSize(imageSize: CGSize?, viewportSize: CGSize) -> CGSize {
+        let cover = coverSize(imageSize: imageSize, viewportSize: viewportSize) ?? viewportSize
+        return CGSize(width: cover.width * initialScale, height: cover.height * initialScale)
+    }
+
+    private static func fullRevealImageSize(imageSize: CGSize?, viewportSize: CGSize) -> CGSize {
+        guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1, viewportSize.height > 1 else { return viewportSize }
+        let scale = min(viewportSize.width / imageSize.width, viewportSize.height / imageSize.height)
+        return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
     }
 
     private static func coverSize(imageSize: CGSize?, viewportSize: CGSize) -> CGSize? {
         guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1, viewportSize.height > 1 else { return nil }
-        let imageAspect = imageSize.width / imageSize.height
-        let viewportAspect = viewportSize.width / viewportSize.height
-        if imageAspect >= viewportAspect { return CGSize(width: viewportSize.height * imageAspect, height: viewportSize.height) }
-        return CGSize(width: viewportSize.width, height: viewportSize.width / imageAspect)
+        let scale = max(viewportSize.width / imageSize.width, viewportSize.height / imageSize.height)
+        return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
     }
 }
 
-struct AdaptiveHeroConsumedScrollPreferenceKey: PreferenceKey {
+struct AdaptiveHeroRawScrollPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
