@@ -145,21 +145,18 @@ metrics_path.write_text(metrics)
 
 check_path = Path("scripts/check_adaptive_hero_reveal.py")
 check = check_path.read_text()
+old_metrics_checks = '''require("struct AdaptiveHeroRawScrollPreferenceKey" in metrics, "raw ScrollView displacement preference key is missing")\nrequire("struct AdaptiveHeroRawScrollSentinel" in metrics and ".frame(height: 0)" in metrics, "independent zero-height raw scroll sentinel is missing")\nrequire("proxy.frame(in: .named(coordinateSpaceName)).minY" in metrics, "sentinel must read its own uncompensated position in the named ScrollView coordinate space")'''
+new_metrics_checks = '''require("struct AdaptiveHeroNativeScrollObserver: UIViewRepresentable" in metrics, "native ScrollView observer is missing")\nrequire("contentOffset.y + scrollView.adjustedContentInset.top" in metrics, "native raw ScrollView displacement formula is missing")\nrequire("AdaptiveHeroRawScrollPreferenceKey" not in metrics and "AdaptiveHeroRawScrollSentinel" not in metrics, "GeometryReader/PreferenceKey raw scroll path must stay removed")'''
+check = replace_once(check, old_metrics_checks, new_metrics_checks, "metrics checks")
 check = replace_once(
     check,
-    'require("struct AdaptiveHeroRawScrollPreferenceKey" in metrics, "raw ScrollView displacement preference key is missing")',
-    'require("struct AdaptiveHeroNativeScrollObserver: UIViewRepresentable" in metrics, "native ScrollView observer is missing")\nrequire("contentOffset.y + scrollView.adjustedContentInset.top" in metrics, "native raw ScrollView displacement formula is missing")',
-    "metrics check",
-)
-check = replace_once(
-    check,
-    'require(\'AdaptiveHeroRawScrollSentinel(coordinateSpaceName: "emby-detail-scroll")\' in detail, "detail must use an independent top sentinel")',
+    'require(\'AdaptiveHeroRawScrollSentinel(coordinateSpaceName: "emby-detail-scroll")\' in detail, "detail must use the independent top sentinel")',
     'require("AdaptiveHeroNativeScrollObserver" in detail, "detail must observe native ScrollView content offset")',
     "detail check",
 )
 check = replace_once(
     check,
-    'require(\'AdaptiveHeroRawScrollSentinel(coordinateSpaceName: "emby-episode-picker-scroll")\' in picker, "episode picker must use an independent top sentinel")',
+    'require(\'AdaptiveHeroRawScrollSentinel(coordinateSpaceName: "emby-episode-picker-scroll")\' in picker, "episode picker must use the independent top sentinel")',
     'require("AdaptiveHeroNativeScrollObserver" in picker, "episode picker must observe native ScrollView content offset")',
     "picker check",
 )
