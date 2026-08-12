@@ -138,8 +138,8 @@ struct EmbyEpisodePickerView: View {
             .padding(.bottom, 14)
         }
         .frame(width: width, height: visualHeight)
-        .offset(y: stretch > 0 ? -stretch : consumedCropScroll)
-        .frame(width: width, height: baseHeight + consumedCropScroll, alignment: .top)
+        .offset(y: stretch > 0 ? -stretch : 0)
+        .frame(width: width, height: baseHeight, alignment: .top)
     }
 
     private var pickerHeroURL: URL? {
