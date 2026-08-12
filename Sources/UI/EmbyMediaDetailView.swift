@@ -21,7 +21,7 @@ struct EmbyMediaDetailView: View {
     @State private var selectedStillIndex: Int?
     @State private var heroUsesLightForeground = true
     @State private var heroSourceSize: CGSize?
-    @State private var heroConsumedCropScroll: CGFloat = 0
+    @State private var heroRawScrollMinY: CGFloat = 0
 
     init(item: LibraryItem, client: EmbyAPIClient) {
         self.item = item
@@ -51,8 +51,16 @@ struct EmbyMediaDetailView: View {
                         .padding(.bottom, max(88, geometry.safeAreaInsets.bottom + 70))
                     }
                     .frame(width: geometry.size.width)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: AdaptiveHeroRawScrollPreferenceKey.self, value: proxy.frame(in: .named("emby-detail-scroll")).minY)
+                        }
+                    )
                 }
                 .coordinateSpace(name: "emby-detail-scroll")
+                .onPreferenceChange(AdaptiveHeroRawScrollPreferenceKey.self) { value in
+                    if abs(heroRawScrollMinY - value) > 0.10 { heroRawScrollMinY = value }
+                }
                 .frame(width: geometry.size.width, height: viewportHeight)
                 .background(Color.clear)
                 .ignoresSafeArea(edges: [.top, .bottom])
@@ -87,98 +95,87 @@ struct EmbyMediaDetailView: View {
         let contentWidth = max(0, width - 40)
         let heroViewport = CGSize(width: width, height: baseHeight)
         let cropTravel = AdaptiveHeroRevealMetrics.cropTravel(imageSize: heroSourceSize, viewportSize: heroViewport)
-        return GeometryReader { proxy in
-            let minY = proxy.frame(in: .named("emby-detail-scroll")).minY
-            let stretch = max(0, minY)
-            let upwardScroll = max(0, -minY)
-            let consumedCropScroll = AdaptiveHeroRevealMetrics.consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel)
-            let visualHeight = baseHeight + stretch
-            let revealScale = AdaptiveHeroRevealMetrics.scale(imageSize: heroSourceSize, viewportSize: heroViewport, consumedCropScroll: consumedCropScroll)
-            let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(imageSize: heroSourceSize, viewportSize: heroViewport, scale: revealScale)
-            let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(imageSize: heroSourceSize, viewportSize: heroViewport, scale: revealScale)
-            let maskFadeSpan = min(0.34, clearImageBottom * 0.46)
-            let maskStart = max(0.10, clearImageBottom - maskFadeSpan)
-            let maskFirstMid = maskStart + (clearImageBottom - maskStart) * 0.29
-            let maskSecondMid = maskStart + (clearImageBottom - maskStart) * 0.71
-            let contrastScrim = heroUsesLightForeground ? Color.black.opacity(0.22) : Color.white.opacity(0.16)
+        let stretch = max(0, heroRawScrollMinY)
+        let upwardScroll = max(0, -heroRawScrollMinY)
+        let consumedCropScroll = AdaptiveHeroRevealMetrics.consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel)
+        let visualHeight = baseHeight + stretch
+        let renderedImageSize = stretch > 0 ? AdaptiveHeroRevealMetrics.stretchedImageSize(imageSize: heroSourceSize, viewportSize: CGSize(width: width, height: visualHeight)) : AdaptiveHeroRevealMetrics.renderedImageSize(imageSize: heroSourceSize, viewportSize: heroViewport, consumedCropScroll: consumedCropScroll)
+        let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(renderedImageSize: renderedImageSize, viewportHeight: visualHeight)
+        let maskFadeSpan = min(0.34, clearImageBottom * 0.46)
+        let maskStart = max(0.10, clearImageBottom - maskFadeSpan)
+        let maskFirstMid = maskStart + (clearImageBottom - maskStart) * 0.29
+        let maskSecondMid = maskStart + (clearImageBottom - maskStart) * 0.71
+        let contrastScrim = heroUsesLightForeground ? Color.black.opacity(0.22) : Color.white.opacity(0.16)
 
-            ZStack(alignment: .bottom) {
-                ZStack {
-                    EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fill, onImageLoaded: { image in updateHeroImageMetrics(image) })
-                        .frame(width: width, height: visualHeight)
-                        .scaleEffect(revealScale, anchor: .center)
-                        .offset(y: topPinOffset)
-                }
-                .frame(width: width, height: visualHeight)
-                .clipped()
-                .mask(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black, location: 0.00),
-                            .init(color: .black, location: maskStart),
-                            .init(color: .black.opacity(0.92), location: maskFirstMid),
-                            .init(color: .black.opacity(0.52), location: maskSecondMid),
-                            .init(color: .clear, location: clearImageBottom)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-
+        return ZStack(alignment: .bottom) {
+            ZStack(alignment: .top) {
+                EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fill, onImageLoaded: { image in updateHeroImageMetrics(image) })
+                    .frame(width: renderedImageSize.width, height: renderedImageSize.height)
+            }
+            .frame(width: width, height: visualHeight, alignment: .top)
+            .clipped()
+            .mask(
                 LinearGradient(
                     stops: [
-                        .init(color: .clear, location: 0.00),
-                        .init(color: .clear, location: 0.48),
-                        .init(color: contrastScrim.opacity(0.48), location: 0.67),
-                        .init(color: contrastScrim, location: 0.82),
-                        .init(color: .clear, location: 1.00)
+                        .init(color: .black, location: 0.00),
+                        .init(color: .black, location: maskStart),
+                        .init(color: .black.opacity(0.92), location: maskFirstMid),
+                        .init(color: .black.opacity(0.52), location: maskSecondMid),
+                        .init(color: .clear, location: clearImageBottom)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
+            )
 
-                VStack(spacing: 9) {
-                    heroIdentity(width: contentWidth)
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.00),
+                    .init(color: .clear, location: 0.48),
+                    .init(color: contrastScrim.opacity(0.48), location: 0.67),
+                    .init(color: contrastScrim, location: 0.82),
+                    .init(color: .clear, location: 1.00)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
 
-                    Text(heroMetadataLine)
-                        .font(.system(size: 13.5, weight: .medium))
-                        .foregroundColor(heroSecondaryForeground)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .frame(width: contentWidth)
+            VStack(spacing: 9) {
+                heroIdentity(width: contentWidth)
 
-                    if !model.detailFilters.isEmpty { heroTagScroller(width: width) }
+                Text(heroMetadataLine)
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundColor(heroSecondaryForeground)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .frame(width: contentWidth)
 
-                    if let playableItem = model.primaryPlayableItem {
-                        Button { Task { await model.play(playableItem) } } label: {
-                            HStack(spacing: 9) {
-                                if model.isResolvingPlayback { ProgressView().tint(.white) }
-                                else { Image(systemName: "play.fill").font(.system(size: 15, weight: .bold)) }
-                                Text(model.primaryPlayButtonTitle).font(.headline)
-                            }
-                            .foregroundColor(.white)
-                            .frame(width: contentWidth, height: 50)
-                            .background(Color.blue)
-                            .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+                if !model.detailFilters.isEmpty { heroTagScroller(width: width) }
+
+                if let playableItem = model.primaryPlayableItem {
+                    Button { Task { await model.play(playableItem) } } label: {
+                        HStack(spacing: 9) {
+                            if model.isResolvingPlayback { ProgressView().tint(.white) }
+                            else { Image(systemName: "play.fill").font(.system(size: 15, weight: .bold)) }
+                            Text(model.primaryPlayButtonTitle).font(.headline)
                         }
-                        .buttonStyle(DetailPressButtonStyle())
-                        .disabled(model.isResolvingPlayback)
+                        .foregroundColor(.white)
+                        .frame(width: contentWidth, height: 50)
+                        .background(Color.blue)
+                        .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
                     }
-
-                    detailActionRow(width: contentWidth)
+                    .buttonStyle(DetailPressButtonStyle())
+                    .disabled(model.isResolvingPlayback)
                 }
-                .frame(width: width)
-                .padding(.bottom, 6)
+
+                detailActionRow(width: contentWidth)
             }
-            .frame(width: width, height: visualHeight)
-            .offset(y: stretch > 0 ? -stretch : consumedCropScroll)
-            .preference(key: AdaptiveHeroConsumedScrollPreferenceKey.self, value: consumedCropScroll)
+            .frame(width: width)
+            .padding(.bottom, 6)
         }
-        .frame(width: width, height: baseHeight + heroConsumedCropScroll)
-        .onPreferenceChange(AdaptiveHeroConsumedScrollPreferenceKey.self) { value in
-            guard abs(heroConsumedCropScroll - value) > 0.25 else { return }
-            heroConsumedCropScroll = value
-        }
+        .frame(width: width, height: visualHeight)
+        .offset(y: stretch > 0 ? -stretch : consumedCropScroll)
+        .frame(width: width, height: baseHeight + consumedCropScroll, alignment: .top)
     }
 
     @ViewBuilder
