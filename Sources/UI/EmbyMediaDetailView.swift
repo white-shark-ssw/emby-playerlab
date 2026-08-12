@@ -36,9 +36,7 @@ struct EmbyMediaDetailView: View {
                 persistentBackdrop
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        AdaptiveHeroRawScrollSentinel(coordinateSpaceName: "emby-detail-scroll")
-                        LazyVStack(alignment: .leading, spacing: 0) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
                             hero(width: geometry.size.width)
                             VStack(alignment: .leading, spacing: 24) {
                                 overview
@@ -51,13 +49,13 @@ struct EmbyMediaDetailView: View {
                             }
                             .padding(.top, 2)
                             .padding(.bottom, max(88, geometry.safeAreaInsets.bottom + 70))
-                        }
                     }
                     .frame(width: geometry.size.width)
-                }
-                .coordinateSpace(name: "emby-detail-scroll")
-                .onPreferenceChange(AdaptiveHeroRawScrollPreferenceKey.self) { value in
-                    if abs(heroRawScrollMinY - value) > 0.10 { heroRawScrollMinY = value }
+                    .background(
+                        AdaptiveHeroNativeScrollObserver { value in
+                            if abs(heroRawScrollMinY - value) > 0.10 { heroRawScrollMinY = value }
+                        }
+                    )
                 }
                 .frame(width: geometry.size.width, height: viewportHeight)
                 .background(Color.clear)
