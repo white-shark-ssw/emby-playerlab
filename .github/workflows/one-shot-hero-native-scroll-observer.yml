@@ -1,0 +1,35 @@
+name: Apply native Hero scroll observer
+
+on:
+  push:
+    branches:
+      - fix/hero-native-scroll-observer
+    paths:
+      - '.github/workflows/one-shot-hero-native-scroll-observer.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[hero-native-scroll-observer-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/hero-native-scroll-observer
+          fetch-depth: 0
+      - name: Apply native scroll observer patch
+        run: |
+          git apply --check .github/hero-native-scroll-observer.patch
+          git apply .github/hero-native-scroll-observer.patch
+          python scripts/check_adaptive_hero_reveal.py
+          python scripts/check_v0134_detail_navigation.py
+          git diff --check
+      - name: Commit source changes
+        run: |
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add Sources/UI/EmbyMediaDetailView.swift Sources/UI/EmbyEpisodePickerView.swift Sources/UI/ImmersiveUIComponents.swift scripts/check_adaptive_hero_reveal.py
+          git commit -m 'fix: observe native ScrollView content offset for Hero motion [hero-native-scroll-observer-applied]'
+          git push origin HEAD:fix/hero-native-scroll-observer
