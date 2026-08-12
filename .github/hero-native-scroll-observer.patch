@@ -1,0 +1,188 @@
+--- a/Sources/UI/EmbyMediaDetailView.swift
++++ b/Sources/UI/EmbyMediaDetailView.swift
+@@ -36,9 +36,7 @@
+                 persistentBackdrop
+ 
+                 ScrollView(.vertical, showsIndicators: false) {
+-                    VStack(alignment: .leading, spacing: 0) {
+-                        AdaptiveHeroRawScrollSentinel(coordinateSpaceName: "emby-detail-scroll")
+-                        LazyVStack(alignment: .leading, spacing: 0) {
++                    LazyVStack(alignment: .leading, spacing: 0) {
+                             hero(width: geometry.size.width)
+                             VStack(alignment: .leading, spacing: 24) {
+                                 overview
+@@ -53,15 +51,15 @@
+                             .padding(.top, 2)
+                             .padding(.bottom, max(88, geometry.safeAreaInsets.bottom + 70))
+-                        }
+                     }
+                     .frame(width: geometry.size.width)
++                    .background(
++                        AdaptiveHeroNativeScrollObserver { value in
++                            if abs(heroRawScrollMinY - value) > 0.10 { heroRawScrollMinY = value }
++                        }
++                    )
+                 }
+-                .coordinateSpace(name: "emby-detail-scroll")
+-                .onPreferenceChange(AdaptiveHeroRawScrollPreferenceKey.self) { value in
+-                    if abs(heroRawScrollMinY - value) > 0.10 { heroRawScrollMinY = value }
+-                }
+                 .frame(width: geometry.size.width, height: viewportHeight)
+                 .background(Color.clear)
+                 .ignoresSafeArea(edges: [.top, .bottom])
+--- a/Sources/UI/EmbyEpisodePickerView.swift
++++ b/Sources/UI/EmbyEpisodePickerView.swift
+@@ -29,9 +29,7 @@
+                     ImmersiveBackdrop(url: pickerHeroURL, overlayOpacity: colorScheme == .dark ? 0.50 : 0.64)
+ 
+                     ScrollView(.vertical, showsIndicators: false) {
+-                        VStack(spacing: 0) {
+-                            AdaptiveHeroRawScrollSentinel(coordinateSpaceName: "emby-episode-picker-scroll")
+-                            LazyVStack(spacing: 0) {
++                        LazyVStack(spacing: 0) {
+                                 pickerHero(width: geometry.size.width)
+                                 LazyVStack(spacing: 16) {
+                                     ForEach(displayedEpisodes) { episode in episodeRow(episode).id(episode.id) }
+@@ -42,15 +40,15 @@
+                                 .padding(.top, 12)
+                                 .padding(.bottom, 92)
+-                            }
+                         }
+                         .frame(width: geometry.size.width)
++                        .background(
++                            AdaptiveHeroNativeScrollObserver { value in
++                                if abs(pickerHeroRawScrollMinY - value) > 0.10 { pickerHeroRawScrollMinY = value }
++                            }
++                        )
+                     }
+                     .frame(width: geometry.size.width, height: viewportHeight)
+                     .background(Color.clear)
+-                    .coordinateSpace(name: "emby-episode-picker-scroll")
+-                    .onPreferenceChange(AdaptiveHeroRawScrollPreferenceKey.self) { value in
+-                        if abs(pickerHeroRawScrollMinY - value) > 0.10 { pickerHeroRawScrollMinY = value }
+-                    }
+                     .ignoresSafeArea(edges: [.top, .bottom])
+--- a/Sources/UI/ImmersiveUIComponents.swift
++++ b/Sources/UI/ImmersiveUIComponents.swift
+@@ -181,20 +181,84 @@
+     }
+ }
+ 
+-struct AdaptiveHeroRawScrollPreferenceKey: PreferenceKey {
+-    static var defaultValue: CGFloat = 0
+-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
++private final class AdaptiveHeroScrollProbeUIView: UIView {
++    var hierarchyDidChange: ((UIView) -> Void)?
++
++    override func didMoveToSuperview() {
++        super.didMoveToSuperview()
++        hierarchyDidChange?(self)
++    }
++
++    override func didMoveToWindow() {
++        super.didMoveToWindow()
++        hierarchyDidChange?(self)
++    }
++
++    override func layoutSubviews() {
++        super.layoutSubviews()
++        hierarchyDidChange?(self)
++    }
+ }
+ 
+-struct AdaptiveHeroRawScrollSentinel: View {
+-    let coordinateSpaceName: String
++struct AdaptiveHeroNativeScrollObserver: UIViewRepresentable {
++    let onChange: (CGFloat) -> Void
++
++    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
+ 
+-    var body: some View {
+-        GeometryReader { proxy in
+-            Color.clear.preference(key: AdaptiveHeroRawScrollPreferenceKey.self, value: proxy.frame(in: .named(coordinateSpaceName)).minY)
++    func makeUIView(context: Context) -> AdaptiveHeroScrollProbeUIView {
++        let view = AdaptiveHeroScrollProbeUIView(frame: .zero)
++        view.backgroundColor = .clear
++        view.isUserInteractionEnabled = false
++        view.hierarchyDidChange = { [weak coordinator = context.coordinator] probe in coordinator?.attach(from: probe) }
++        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak view] in
++            guard let view else { return }
++            coordinator?.attach(from: view)
+         }
+-        .frame(height: 0)
++        return view
++    }
++
++    func updateUIView(_ uiView: AdaptiveHeroScrollProbeUIView, context: Context) {
++        context.coordinator.onChange = onChange
++        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
++            guard let uiView else { return }
++            coordinator?.attach(from: uiView)
++        }
++    }
++
++    static func dismantleUIView(_ uiView: AdaptiveHeroScrollProbeUIView, coordinator: Coordinator) {
++        uiView.hierarchyDidChange = nil
++        coordinator.detach()
++    }
++
++    final class Coordinator {
++        var onChange: (CGFloat) -> Void
++        private weak var scrollView: UIScrollView?
++        private var contentOffsetObservation: NSKeyValueObservation?
++
++        init(onChange: @escaping (CGFloat) -> Void) { self.onChange = onChange }
++
++        func attach(from probe: UIView) {
++            guard let scrollView = ancestorScrollView(from: probe) else { return }
++            guard self.scrollView !== scrollView else {
++                emit(scrollView)
++                return
++            }
++            contentOffsetObservation?.invalidate()
++            self.scrollView = scrollView
++            contentOffsetObservation = scrollView.observe(\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in self?.emit(scrollView) }
++        }
++
++        func detach() {
++            contentOffsetObservation?.invalidate()
++            contentOffsetObservation = nil
++            scrollView = nil
++        }
++
++        private func ancestorScrollView(from probe: UIView) -> UIScrollView? {
++            var current: UIView? = probe
++            while let view = current {
++                if let scrollView = view as? UIScrollView { return scrollView }
++                current = view.superview
++            }
++            return nil
++        }
++
++        private func emit(_ scrollView: UIScrollView) {
++            let rawDisplacement = -(scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
++            if Thread.isMainThread { onChange(rawDisplacement) }
++            else { DispatchQueue.main.async { [weak self] in self?.onChange(rawDisplacement) } }
++        }
+     }
+ }
+--- a/scripts/check_adaptive_hero_reveal.py
++++ b/scripts/check_adaptive_hero_reveal.py
+@@ -13,7 +13,8 @@
+ require("initialSize.height - fullSize.height" in metrics, "crop travel must equal the real rendered-height delta")
+ require("initialSize.height - max(0, consumedCropScroll)" in metrics, "rendered image height must subtract raw consumed scroll directly")
+ require("width: height * aspect" in metrics, "rendered image width must follow source aspect ratio from the changing height")
+-require("struct AdaptiveHeroRawScrollPreferenceKey" in metrics, "raw ScrollView displacement preference key is missing")
++require("struct AdaptiveHeroNativeScrollObserver: UIViewRepresentable" in metrics, "native ScrollView observer is missing")
++require("contentOffset.y + scrollView.adjustedContentInset.top" in metrics, "native raw ScrollView displacement formula is missing")
+ require("eased(" not in metrics and "revealDistance(" not in metrics and "progress(upwardScroll:" not in metrics, "percentage/easing reveal timeline must stay removed")
+ require("UIScreen.main.bounds" not in metrics and "iPhone 15" not in metrics, "Hero geometry must not depend on a device model or physical resolution")
+ require("initialScale: CGFloat = 1.10" in metrics, "tested 0% Hero crop must remain unchanged")
+@@ -21,7 +22,8 @@
+ require("heroRawScrollMinY" in detail, "detail must read raw ScrollView displacement outside the compensated Hero")
+-require('AdaptiveHeroRawScrollSentinel(coordinateSpaceName: "emby-detail-scroll")' in detail, "detail must use an independent top sentinel")
++require("AdaptiveHeroNativeScrollObserver" in detail, "detail must observe the native ScrollView content offset")
+ require("renderedImageSize.width, height: renderedImageSize.height" in detail, "detail must render the image at the explicitly computed natural size")
+@@ -31,7 +33,7 @@
+-require('AdaptiveHeroRawScrollSentinel(coordinateSpaceName: "emby-episode-picker-scroll")' in picker, "episode picker must use an independent top sentinel")
++require("AdaptiveHeroNativeScrollObserver" in picker, "episode picker must observe the native ScrollView content offset")
