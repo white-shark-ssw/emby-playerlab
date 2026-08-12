@@ -1,0 +1,216 @@
+name: Apply Hero crop response and picker bounds tuning
+
+on:
+  push:
+    branches:
+      - fix/hero-crop-response-picker-bounds
+    paths:
+      - '.github/workflows/one-shot-hero-crop-response-picker-bounds.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/hero-crop-response-picker-bounds
+          fetch-depth: 0
+      - name: Apply tuning
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('Sources/UI/ImmersiveUIComponents.swift')
+          s = p.read_text()
+
+          old = '''struct AdaptiveHeroRevealMetrics {
+    static let initialScale: CGFloat = 1.10
+'''
+          new = '''struct AdaptiveHeroRevealMetrics {
+    static let initialScale: CGFloat = 1.10
+    static let cropResponseFactor: CGFloat = 0.65
+'''
+          if old not in s: raise SystemExit('metrics header not found')
+          s = s.replace(old, new, 1)
+
+          old = '''    static func consumedCropScroll(upwardScroll: CGFloat, cropTravel: CGFloat) -> CGFloat {
+        min(max(0, upwardScroll), max(0, cropTravel))
+    }
+
+    // The raw native scroll displacement directly changes rendered image height.
+    // Width follows the source aspect ratio naturally; there is no percentage or easing timeline.
+'''
+          new = '''    static func consumedCropScroll(upwardScroll: CGFloat, cropTravel: CGFloat) -> CGFloat {
+        min(max(0, upwardScroll) * cropResponseFactor, max(0, cropTravel))
+    }
+
+    // Native container motion remains 1:1 with UIScrollView. The clear backdrop releases crop
+    // at a softer response rate so image geometry changes do not outrun the user's finger.
+'''
+          if old not in s: raise SystemExit('crop response block not found')
+          s = s.replace(old, new, 1)
+
+          old = '''    private static func fullRevealImageSize(imageSize: CGSize?, viewportSize: CGSize) -> CGSize {
+        guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1, viewportSize.height > 1 else { return viewportSize }
+        let scale = min(viewportSize.width / imageSize.width, viewportSize.height / imageSize.height)
+        return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+    }
+'''
+          new = '''    private static func fullRevealImageSize(imageSize: CGSize?, viewportSize: CGSize) -> CGSize {
+        guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1, viewportSize.height > 1 else { return viewportSize }
+        // Width is the hard reveal floor. Never shrink the clear backdrop narrower than the viewport,
+        // even when a compact Hero is wider than the source aspect ratio.
+        let scale = viewportSize.width / imageSize.width
+        return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+    }
+'''
+          if old not in s: raise SystemExit('full reveal block not found')
+          s = s.replace(old, new, 1)
+
+          old = '''struct AdaptiveHeroNativeScrollObserver: UIViewRepresentable {
+    let onChange: (CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
+'''
+          new = '''struct AdaptiveHeroNativeScrollObserver: UIViewRepresentable {
+    let forceVerticalBounce: Bool
+    let onChange: (CGFloat) -> Void
+
+    init(forceVerticalBounce: Bool = false, onChange: @escaping (CGFloat) -> Void) {
+        self.forceVerticalBounce = forceVerticalBounce
+        self.onChange = onChange
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(forceVerticalBounce: forceVerticalBounce, onChange: onChange) }
+'''
+          if old not in s: raise SystemExit('observer header not found')
+          s = s.replace(old, new, 1)
+
+          old = '''    func updateUIView(_ uiView: AdaptiveHeroScrollProbeUIView, context: Context) {
+        context.coordinator.onChange = onChange
+        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
+'''
+          new = '''    func updateUIView(_ uiView: AdaptiveHeroScrollProbeUIView, context: Context) {
+        context.coordinator.forceVerticalBounce = forceVerticalBounce
+        context.coordinator.onChange = onChange
+        context.coordinator.applyBouncePolicy()
+        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
+'''
+          if old not in s: raise SystemExit('observer update block not found')
+          s = s.replace(old, new, 1)
+
+          old = '''    final class Coordinator {
+        var onChange: (CGFloat) -> Void
+        private weak var scrollView: UIScrollView?
+        private var contentOffsetObservation: NSKeyValueObservation?
+
+        init(onChange: @escaping (CGFloat) -> Void) { self.onChange = onChange }
+
+        func attach(from probe: UIView) {
+            guard let scrollView = ancestorScrollView(from: probe) else { return }
+            guard self.scrollView !== scrollView else {
+                emit(scrollView)
+                return
+            }
+            contentOffsetObservation?.invalidate()
+            self.scrollView = scrollView
+            contentOffsetObservation = scrollView.observe(\\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in self?.emit(scrollView) }
+        }
+
+        func detach() {
+            contentOffsetObservation?.invalidate()
+            contentOffsetObservation = nil
+            scrollView = nil
+        }
+'''
+          new = '''    final class Coordinator {
+        var forceVerticalBounce: Bool
+        var onChange: (CGFloat) -> Void
+        private weak var scrollView: UIScrollView?
+        private var contentOffsetObservation: NSKeyValueObservation?
+        private var originalBounces: Bool?
+        private var originalAlwaysBounceVertical: Bool?
+
+        init(forceVerticalBounce: Bool, onChange: @escaping (CGFloat) -> Void) {
+            self.forceVerticalBounce = forceVerticalBounce
+            self.onChange = onChange
+        }
+
+        func attach(from probe: UIView) {
+            guard let scrollView = ancestorScrollView(from: probe) else { return }
+            guard self.scrollView !== scrollView else {
+                applyBouncePolicy()
+                emit(scrollView)
+                return
+            }
+            restoreBouncePolicy()
+            contentOffsetObservation?.invalidate()
+            self.scrollView = scrollView
+            originalBounces = scrollView.bounces
+            originalAlwaysBounceVertical = scrollView.alwaysBounceVertical
+            applyBouncePolicy()
+            contentOffsetObservation = scrollView.observe(\\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in self?.emit(scrollView) }
+        }
+
+        func detach() {
+            contentOffsetObservation?.invalidate()
+            contentOffsetObservation = nil
+            restoreBouncePolicy()
+            scrollView = nil
+            originalBounces = nil
+            originalAlwaysBounceVertical = nil
+        }
+
+        func applyBouncePolicy() {
+            guard forceVerticalBounce, let scrollView else { return }
+            scrollView.bounces = true
+            scrollView.alwaysBounceVertical = true
+        }
+
+        private func restoreBouncePolicy() {
+            guard let scrollView else { return }
+            if let originalBounces { scrollView.bounces = originalBounces }
+            if let originalAlwaysBounceVertical { scrollView.alwaysBounceVertical = originalAlwaysBounceVertical }
+        }
+'''
+          if old not in s: raise SystemExit('coordinator block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('Sources/UI/EmbyEpisodePickerView.swift')
+          s = p.read_text()
+          old = '''AdaptiveHeroNativeScrollObserver { value in
+                                if abs(pickerHeroRawScrollMinY - value) > 0.10 { pickerHeroRawScrollMinY = value }
+                            }'''
+          new = '''AdaptiveHeroNativeScrollObserver(forceVerticalBounce: true) { value in
+                                if abs(pickerHeroRawScrollMinY - value) > 0.10 { pickerHeroRawScrollMinY = value }
+                            }'''
+          if s.count(old) != 1: raise SystemExit(f'picker observer match count={s.count(old)}')
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path('scripts/check_adaptive_hero_reveal.py')
+          s = p.read_text()
+          s = s.replace('require("initialSize.height - max(0, consumedCropScroll)" in metrics, "rendered image height must subtract raw consumed scroll directly")', 'require("initialSize.height - max(0, consumedCropScroll)" in metrics, "rendered image height must subtract the softened crop response directly")')
+          marker = 'require("initialSize.height - fullSize.height" in metrics, "crop travel must equal the real rendered-height delta")\n'
+          insertion = marker + 'require("cropResponseFactor: CGFloat = 0.65" in metrics and "upwardScroll) * cropResponseFactor" in metrics, "crop response must stay 35 percent softer than native container travel")\nrequire("let scale = viewportSize.width / imageSize.width" in metrics, "full reveal must stop at the viewport width edge to prevent side gaps")\n'
+          if marker not in s: raise SystemExit('checker metrics marker missing')
+          s = s.replace(marker, insertion, 1)
+          picker_marker = 'require("AdaptiveHeroNativeScrollObserver" in picker, "episode picker must observe native ScrollView content offset")\n'
+          picker_insert = picker_marker + 'require("AdaptiveHeroNativeScrollObserver(forceVerticalBounce: true)" in picker, "episode picker must keep native vertical bounce tracking available at the top edge")\n'
+          if picker_marker not in s: raise SystemExit('checker picker marker missing')
+          s = s.replace(picker_marker, picker_insert, 1)
+          p.write_text(s)
+          PY
+          python scripts/check_adaptive_hero_reveal.py
+          python scripts/check_v0134_detail_navigation.py
+          git diff --check
+      - name: Commit source changes
+        run: |
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add Sources/UI/ImmersiveUIComponents.swift Sources/UI/EmbyEpisodePickerView.swift scripts/check_adaptive_hero_reveal.py
+          git commit -m 'fix: soften Hero crop and stabilize picker bounds'
+          git push origin HEAD:fix/hero-crop-response-picker-bounds
