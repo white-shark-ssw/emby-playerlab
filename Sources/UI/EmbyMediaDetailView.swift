@@ -176,46 +176,46 @@ struct EmbyMediaDetailView: View {
     }
 
     private func primaryPlayButtonLabel(width: CGFloat) -> some View {
-        let progress = model.primaryPlayButtonProgress
-        let iconOffset = -min(82, max(54, width * 0.21))
-        return ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: 17, style: .continuous).fill(Color.blue)
-
-            if progress > 0 {
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.18))
-                        Capsule().fill(Color.white.opacity(0.84))
-                            .frame(width: proxy.size.width * CGFloat(min(max(0, progress), 1)))
+        let progress = CGFloat(min(max(0, model.primaryPlayButtonProgress), 1))
+        let foreground = Color.black.opacity(0.82)
+        let shape = RoundedRectangle(cornerRadius: 25, style: .continuous)
+        return ZStack {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    shape.fill(Color.white.opacity(0.82))
+                    if model.primaryPlayButtonShowsResume && progress > 0 {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.24))
+                            .frame(width: proxy.size.width * progress)
                     }
                 }
-                .frame(height: 3)
-                .padding(.horizontal, 13)
-                .padding(.bottom, 4)
+                .clipShape(shape)
             }
 
-            ZStack {
-                if model.isResolvingPlayback { ProgressView().tint(.white).offset(x: iconOffset) }
-                else { Image(systemName: "play.fill").font(.system(size: 15, weight: .bold)).offset(x: iconOffset) }
+            HStack(spacing: 12) {
+                if model.isResolvingPlayback {
+                    ProgressView().tint(foreground)
+                } else {
+                    Image(systemName: "play.fill").font(.system(size: 15, weight: .bold))
+                }
 
                 if model.isResolvingPlayback {
-                    Text(model.primaryPlayButtonTitle).font(.headline)
+                    Text(model.primaryPlayButtonTitle).font(.system(size: 18, weight: .semibold))
                 } else if model.primaryPlayButtonShowsResume {
-                    VStack(spacing: 1) {
+                    VStack(alignment: .leading, spacing: 0) {
                         Text("继续播放").font(.system(size: 18, weight: .bold))
                         if let position = model.primaryPlayButtonPositionText {
-                            Text("上次播放到：\(position)").font(.system(size: 11.5, weight: .medium)).opacity(0.90)
+                            Text("上次播放到：\(position)").font(.system(size: 12.5, weight: .medium))
                         }
                     }
                 } else {
-                    Text(model.primaryPlayButtonTitle).font(.headline)
+                    Text("播放").font(.system(size: 18, weight: .semibold))
                 }
             }
-            .foregroundColor(.white)
-            .frame(width: width, height: 50)
+            .foregroundColor(foreground)
         }
         .frame(width: width, height: 50)
-        .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .clipShape(shape)
     }
 
     @ViewBuilder
