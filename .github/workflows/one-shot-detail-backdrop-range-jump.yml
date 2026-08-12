@@ -1,0 +1,33 @@
+name: Apply detail backdrop and range jump fix
+
+on:
+  push:
+    branches:
+      - fix/detail-backdrop-top-and-range-jump
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/detail-backdrop-top-and-range-jump
+          fetch-depth: 0
+      - name: Apply patch
+        run: python3 .github/apply_detail_backdrop_range_jump.py
+      - name: Run focused regression checks
+        run: |
+          python3 scripts/check_v0134_detail_navigation.py
+          python3 scripts/check_adaptive_hero_reveal.py
+          python3 scripts/check_detail_episode_range_jump.py
+      - name: Commit formal source changes
+        run: |
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add Sources/UI/EmbyMediaDetailView.swift scripts/check_adaptive_hero_reveal.py scripts/check_detail_episode_range_jump.py
+          git commit -m "fix: restore detail backdrop top coverage and range jumps"
+          git push origin HEAD:fix/detail-backdrop-top-and-range-jump
