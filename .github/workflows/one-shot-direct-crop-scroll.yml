@@ -23,6 +23,7 @@ jobs:
             echo 'Patch already applied.'
             exit 0
           fi
+          printf '\n' >> .github/direct-crop-scroll.patch
           git apply --check .github/direct-crop-scroll.patch
           git apply .github/direct-crop-scroll.patch
           cat > scripts/check_adaptive_hero_reveal.py <<'PY'
