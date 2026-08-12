@@ -178,14 +178,15 @@ struct EmbyMediaDetailView: View {
     private func primaryPlayButtonLabel(width: CGFloat) -> some View {
         let progress = CGFloat(min(max(0, model.primaryPlayButtonProgress), 1))
         let foreground = Color.black.opacity(0.82)
+        let baseOpacity = model.primaryPlayButtonShowsResume ? 0.56 : 0.82
         let shape = RoundedRectangle(cornerRadius: 25, style: .continuous)
         return ZStack {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
-                    shape.fill(Color.white.opacity(0.82))
+                    shape.fill(Color.white.opacity(baseOpacity))
                     if model.primaryPlayButtonShowsResume && progress > 0 {
                         Rectangle()
-                            .fill(Color.white.opacity(0.24))
+                            .fill(Color.white.opacity(0.42))
                             .frame(width: proxy.size.width * progress)
                     }
                 }

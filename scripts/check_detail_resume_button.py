@@ -22,8 +22,9 @@ require('var primaryPlayButtonPositionText: String?' in detail and 'playbackPosi
 require('return primaryPlayButtonShowsResume ? "继续播放" : "播放"' in detail, "primary play title must refresh immediately between resume and plain play")
 play_button = detail.split('private func primaryPlayButtonLabel(width: CGFloat) -> some View {', 1)[1].split('@ViewBuilder\n    private func heroIdentity', 1)[0]
 require('RoundedRectangle(cornerRadius: 25' in play_button, "primary play button must use the competitor pill radius")
-require('Color.white.opacity(0.82)' in play_button and 'Color.black.opacity(0.82)' in play_button, "primary play button must use translucent white with dark foreground")
-require('Rectangle()' in play_button and '.fill(Color.white.opacity(0.24))' in play_button, "resume progress must fill the full button body")
+require('let baseOpacity = model.primaryPlayButtonShowsResume ? 0.56 : 0.82' in play_button and 'Color.black.opacity(0.82)' in play_button, "resume state must lower the button base opacity while plain play keeps the existing white treatment")
+require('shape.fill(Color.white.opacity(baseOpacity))' in play_button, "primary play button base fill must use the resume-aware opacity")
+require('Rectangle()' in play_button and '.fill(Color.white.opacity(0.42))' in play_button, "resume progress must fill the full button body")
 require('proxy.size.width * progress' in play_button, "resume fill width must follow the actual playback percentage")
 require('.frame(height: 3)' not in play_button and 'Color.blue' not in play_button, "old bottom progress bar and blue button treatment must be removed")
 require('.frame(width: width, height: 50)' in play_button, "competitor treatment must not change the frozen Hero button height")
