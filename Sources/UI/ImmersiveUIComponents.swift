@@ -124,7 +124,7 @@ struct ImmersiveBackdrop: View {
 
 struct AdaptiveHeroRevealMetrics {
     static let initialScale: CGFloat = 1.10
-    static let cropResponseFactor: CGFloat = 0.65
+    static let cropResponseFactor: CGFloat = 0.45
     static func detailBaseHeight(width: CGFloat) -> CGFloat { min(488, max(430, width * 1.08)) }
     static func compactBaseHeight(width: CGFloat) -> CGFloat { min(252, max(206, width * 0.51)) }
 
@@ -136,6 +136,15 @@ struct AdaptiveHeroRevealMetrics {
 
     static func consumedCropScroll(upwardScroll: CGFloat, cropTravel: CGFloat) -> CGFloat {
         min(max(0, upwardScroll) * cropResponseFactor, max(0, cropTravel))
+    }
+
+    static func cropPhaseScrollDistance(cropTravel: CGFloat) -> CGFloat {
+        guard cropResponseFactor > 0 else { return 0 }
+        return max(0, cropTravel) / cropResponseFactor
+    }
+
+    static func backdropPinOffset(upwardScroll: CGFloat, cropTravel: CGFloat) -> CGFloat {
+        min(max(0, upwardScroll), cropPhaseScrollDistance(cropTravel: cropTravel))
     }
 
     // Native container motion remains 1:1 with UIScrollView. The clear backdrop releases crop
@@ -203,15 +212,9 @@ final class AdaptiveHeroScrollProbeUIView: UIView {
 }
 
 struct AdaptiveHeroNativeScrollObserver: UIViewRepresentable {
-    let forceVerticalBounce: Bool
     let onChange: (CGFloat) -> Void
 
-    init(forceVerticalBounce: Bool = false, onChange: @escaping (CGFloat) -> Void) {
-        self.forceVerticalBounce = forceVerticalBounce
-        self.onChange = onChange
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(forceVerticalBounce: forceVerticalBounce, onChange: onChange) }
+    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
 
     func makeUIView(context: Context) -> AdaptiveHeroScrollProbeUIView {
         let view = AdaptiveHeroScrollProbeUIView(frame: .zero)
@@ -226,9 +229,7 @@ struct AdaptiveHeroNativeScrollObserver: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: AdaptiveHeroScrollProbeUIView, context: Context) {
-        context.coordinator.forceVerticalBounce = forceVerticalBounce
         context.coordinator.onChange = onChange
-        context.coordinator.applyBouncePolicy()
         DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
             guard let uiView else { return }
             coordinator?.attach(from: uiView)
@@ -241,53 +242,27 @@ struct AdaptiveHeroNativeScrollObserver: UIViewRepresentable {
     }
 
     final class Coordinator {
-        var forceVerticalBounce: Bool
         var onChange: (CGFloat) -> Void
         private weak var scrollView: UIScrollView?
         private var contentOffsetObservation: NSKeyValueObservation?
-        private var originalBounces: Bool?
-        private var originalAlwaysBounceVertical: Bool?
 
-        init(forceVerticalBounce: Bool, onChange: @escaping (CGFloat) -> Void) {
-            self.forceVerticalBounce = forceVerticalBounce
-            self.onChange = onChange
-        }
+        init(onChange: @escaping (CGFloat) -> Void) { self.onChange = onChange }
 
         func attach(from probe: UIView) {
             guard let scrollView = ancestorScrollView(from: probe) else { return }
             guard self.scrollView !== scrollView else {
-                applyBouncePolicy()
                 emit(scrollView)
                 return
             }
-            restoreBouncePolicy()
             contentOffsetObservation?.invalidate()
             self.scrollView = scrollView
-            originalBounces = scrollView.bounces
-            originalAlwaysBounceVertical = scrollView.alwaysBounceVertical
-            applyBouncePolicy()
             contentOffsetObservation = scrollView.observe(\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in self?.emit(scrollView) }
         }
 
         func detach() {
             contentOffsetObservation?.invalidate()
             contentOffsetObservation = nil
-            restoreBouncePolicy()
             scrollView = nil
-            originalBounces = nil
-            originalAlwaysBounceVertical = nil
-        }
-
-        func applyBouncePolicy() {
-            guard forceVerticalBounce, let scrollView else { return }
-            scrollView.bounces = true
-            scrollView.alwaysBounceVertical = true
-        }
-
-        private func restoreBouncePolicy() {
-            guard let scrollView else { return }
-            if let originalBounces { scrollView.bounces = originalBounces }
-            if let originalAlwaysBounceVertical { scrollView.alwaysBounceVertical = originalAlwaysBounceVertical }
         }
 
         private func ancestorScrollView(from probe: UIView) -> UIScrollView? {
