@@ -1,0 +1,193 @@
+name: One-shot refine adaptive Hero blend
+
+on:
+  push:
+    branches:
+      - "feat/adaptive-hero-reveal"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refine source blend geometry
+        run: |
+          set -euo pipefail
+          if git log -1 --pretty=%B | grep -Fq '[adaptive-blend-refined]'; then exit 0; fi
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_between(text, start, end, replacement, label):
+              a = text.find(start)
+              if a < 0: raise SystemExit(f'{label}: start marker missing')
+              b = text.find(end, a)
+              if b < 0: raise SystemExit(f'{label}: end marker missing')
+              return text[:a] + replacement + text[b:]
+
+          # Shared geometry: only landscape/wider-than-viewport sources fully reveal; calculate the real clear-image edges.
+          path = Path('Sources/UI/ImmersiveUIComponents.swift')
+          text = path.read_text()
+          helper = '''struct AdaptiveHeroRevealMetrics {
+              static let initialScale: CGFloat = 1.10
+              private static let minimumRevealScale: CGFloat = 0.30
+
+              static func detailBaseHeight(width: CGFloat) -> CGFloat { min(488, max(430, width * 1.08)) }
+              static func compactBaseHeight(width: CGFloat) -> CGFloat { min(252, max(206, width * 0.51)) }
+
+              static func revealDistance(heroHeight: CGFloat, viewportHeight: CGFloat) -> CGFloat {
+                  let geometryDriven = min(heroHeight * 0.16, viewportHeight * 0.085)
+                  return min(96, max(56, geometryDriven))
+              }
+
+              static func fullRevealScale(imageSize: CGSize?, viewportSize: CGSize) -> CGFloat {
+                  guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1, viewportSize.height > 1 else { return 1 }
+                  let imageAspect = imageSize.width / imageSize.height
+                  let viewportAspect = viewportSize.width / viewportSize.height
+                  guard imageAspect > viewportAspect else { return 1 }
+                  return min(1, max(minimumRevealScale, viewportAspect / imageAspect))
+              }
+
+              static func progress(upwardScroll: CGFloat, revealDistance: CGFloat) -> CGFloat {
+                  guard revealDistance > 0 else { return 1 }
+                  return min(1, max(0, upwardScroll / revealDistance))
+              }
+
+              static func scale(fullRevealScale: CGFloat, progress: CGFloat) -> CGFloat {
+                  initialScale + (fullRevealScale - initialScale) * eased(progress)
+              }
+
+              static func topPinOffset(imageSize: CGSize?, viewportSize: CGSize, scale: CGFloat) -> CGFloat {
+                  guard let coverHeight = coverHeight(imageSize: imageSize, viewportSize: viewportSize) else { return -max(0, viewportSize.height * (1 - scale) * 0.5) }
+                  let coverTop = (viewportSize.height - coverHeight) * 0.5
+                  let scaledTop = viewportSize.height * 0.5 + scale * (coverTop - viewportSize.height * 0.5)
+                  return -max(0, scaledTop)
+              }
+
+              static func clearImageBottom(imageSize: CGSize?, viewportSize: CGSize, scale: CGFloat) -> CGFloat {
+                  guard let coverHeight = coverHeight(imageSize: imageSize, viewportSize: viewportSize), viewportSize.height > 1 else { return 1 }
+                  let offset = topPinOffset(imageSize: imageSize, viewportSize: viewportSize, scale: scale)
+                  let coverBottom = (viewportSize.height + coverHeight) * 0.5
+                  let scaledBottom = viewportSize.height * 0.5 + scale * (coverBottom - viewportSize.height * 0.5) + offset
+                  return min(1, max(0.05, scaledBottom / viewportSize.height))
+              }
+
+              private static func coverHeight(imageSize: CGSize?, viewportSize: CGSize) -> CGFloat? {
+                  guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1, viewportSize.height > 1 else { return nil }
+                  let imageAspect = imageSize.width / imageSize.height
+                  let viewportAspect = viewportSize.width / viewportSize.height
+                  return imageAspect >= viewportAspect ? viewportSize.height : viewportSize.width / imageAspect
+              }
+
+              private static func eased(_ value: CGFloat) -> CGFloat {
+                  let clamped = min(1, max(0, value))
+                  let remaining = 1 - clamped
+                  return 1 - remaining * remaining
+              }
+          }
+
+          '''
+          text = replace_between(text, 'struct AdaptiveHeroRevealMetrics {', 'struct DetailPressButtonStyle: ButtonStyle {', helper, 'shared reveal metrics')
+          path.write_text(text)
+
+          # Detail: derive top pin and fade stops from actual clear-image geometry. At scale 1.10 this reproduces 0.66/0.76/0.90/1.00.
+          path = Path('Sources/UI/EmbyMediaDetailView.swift')
+          text = path.read_text()
+          old = '''            let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: heroSourceSize, viewportSize: CGSize(width: width, height: baseHeight))
+              let revealScale = AdaptiveHeroRevealMetrics.scale(fullRevealScale: fullRevealScale, progress: revealProgress)
+              let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(heroHeight: baseHeight, scale: revealScale)
+              let contrastScrim = heroUsesLightForeground ? Color.black.opacity(0.22) : Color.white.opacity(0.16)
+          '''
+          new = '''            let heroViewport = CGSize(width: width, height: baseHeight)
+              let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: heroSourceSize, viewportSize: heroViewport)
+              let revealScale = AdaptiveHeroRevealMetrics.scale(fullRevealScale: fullRevealScale, progress: revealProgress)
+              let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(imageSize: heroSourceSize, viewportSize: heroViewport, scale: revealScale)
+              let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(imageSize: heroSourceSize, viewportSize: heroViewport, scale: revealScale)
+              let maskFadeSpan = min(0.34, clearImageBottom * 0.46)
+              let maskStart = max(0.10, clearImageBottom - maskFadeSpan)
+              let maskFirstMid = maskStart + (clearImageBottom - maskStart) * 0.29
+              let maskSecondMid = maskStart + (clearImageBottom - maskStart) * 0.71
+              let contrastScrim = heroUsesLightForeground ? Color.black.opacity(0.22) : Color.white.opacity(0.16)
+          '''
+          if text.count(old) != 1: raise SystemExit(f'detail metric block matches={text.count(old)}')
+          text = text.replace(old, new, 1)
+          old_mask = '''                        stops: [
+                                  .init(color: .black, location: 0.00),
+                                  .init(color: .black, location: 0.66),
+                                  .init(color: .black.opacity(0.92), location: 0.76),
+                                  .init(color: .black.opacity(0.52), location: 0.90),
+                                  .init(color: .clear, location: 1.00)
+                              ],
+          '''
+          new_mask = '''                        stops: [
+                                  .init(color: .black, location: 0.00),
+                                  .init(color: .black, location: maskStart),
+                                  .init(color: .black.opacity(0.92), location: maskFirstMid),
+                                  .init(color: .black.opacity(0.52), location: maskSecondMid),
+                                  .init(color: .clear, location: clearImageBottom)
+                              ],
+          '''
+          if text.count(old_mask) != 1: raise SystemExit(f'detail mask matches={text.count(old_mask)}')
+          text = text.replace(old_mask, new_mask, 1)
+          path.write_text(text)
+
+          # Picker: preserve its old 0% mask (roughly 0.33/0.67/1.00) while moving the fade with the revealed image edge.
+          path = Path('Sources/UI/EmbyEpisodePickerView.swift')
+          text = path.read_text()
+          old = '''            let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: pickerHeroSourceSize, viewportSize: CGSize(width: width, height: baseHeight))
+              let revealScale = AdaptiveHeroRevealMetrics.scale(fullRevealScale: fullRevealScale, progress: revealProgress)
+              let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(heroHeight: baseHeight, scale: revealScale)
+          '''
+          new = '''            let heroViewport = CGSize(width: width, height: baseHeight)
+              let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: pickerHeroSourceSize, viewportSize: heroViewport)
+              let revealScale = AdaptiveHeroRevealMetrics.scale(fullRevealScale: fullRevealScale, progress: revealProgress)
+              let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, scale: revealScale)
+              let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, scale: revealScale)
+              let maskFadeSpan = min(0.67, clearImageBottom * 0.67)
+              let maskStart = max(0.08, clearImageBottom - maskFadeSpan)
+              let maskMid = maskStart + (clearImageBottom - maskStart) * 0.50
+          '''
+          if text.count(old) != 1: raise SystemExit(f'picker metric block matches={text.count(old)}')
+          text = text.replace(old, new, 1)
+          old_mask = '''                        stops: [
+                                  .init(color: .black, location: 0.00),
+                                  .init(color: .black, location: 0.64),
+                                  .init(color: .black.opacity(0.82), location: 0.80),
+                                  .init(color: .clear, location: 1.00)
+                              ],
+          '''
+          new_mask = '''                        stops: [
+                                  .init(color: .black, location: 0.00),
+                                  .init(color: .black, location: maskStart),
+                                  .init(color: .black.opacity(0.80), location: maskMid),
+                                  .init(color: .clear, location: clearImageBottom)
+                              ],
+          '''
+          if text.count(old_mask) != 1: raise SystemExit(f'picker mask matches={text.count(old_mask)}')
+          text = text.replace(old_mask, new_mask, 1)
+          path.write_text(text)
+
+          # Strengthen regression checks for continuous blending and useful landscape-only reveal.
+          path = Path('scripts/check_adaptive_hero_reveal.py')
+          text = path.read_text()
+          text = text.replace('require("imageAspect" in metrics and "viewportAspect" in metrics and "fitFromFillScale" in metrics, "reveal endpoint must use source and viewport aspect ratios")', 'require("imageAspect" in metrics and "viewportAspect" in metrics and "viewportAspect / imageAspect" in metrics, "reveal endpoint must use source and viewport aspect ratios")')
+          text = text.replace('require("AdaptiveHeroRevealMetrics.topPinOffset" in detail, "detail Hero reveal must remain attached to the top edge")', 'require("AdaptiveHeroRevealMetrics.topPinOffset" in detail and "AdaptiveHeroRevealMetrics.clearImageBottom" in detail, "detail Hero reveal and fade must follow actual clear-image geometry")')
+          text = text.replace('require("AdaptiveHeroRevealMetrics.fullRevealScale" in picker, "episode picker must share adaptive crop-release")', 'require("AdaptiveHeroRevealMetrics.fullRevealScale" in picker and "AdaptiveHeroRevealMetrics.clearImageBottom" in picker, "episode picker must share adaptive crop-release and continuous blending")')
+          text += '\nrequire("guard imageAspect > viewportAspect else { return 1 }" in metrics, "portrait/narrow sources must not shrink into side gutters")\nrequire("location: clearImageBottom" in detail and "location: clearImageBottom" in picker, "clear image must fade before its real bottom edge")\n'
+          path.write_text(text)
+          PY
+
+          python3 scripts/check_v0134_detail_navigation.py
+          python3 scripts/check_adaptive_hero_reveal.py
+          git diff --check
+          git diff --stat
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add Sources/UI/ImmersiveUIComponents.swift Sources/UI/EmbyMediaDetailView.swift Sources/UI/EmbyEpisodePickerView.swift scripts/check_adaptive_hero_reveal.py
+          git commit -m 'fix: keep adaptive reveal blended into backdrop [adaptive-blend-refined]'
+          git push origin HEAD:feat/adaptive-hero-reveal
