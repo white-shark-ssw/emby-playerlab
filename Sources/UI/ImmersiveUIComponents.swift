@@ -126,7 +126,13 @@ struct AdaptiveHeroRevealMetrics {
     static let initialScale: CGFloat = 1.10
     static let cropResponseFactor: CGFloat = 0.45
     static let detailCropResponseFactor: CGFloat = 0.90
+    static let detailPlaybackCenterReserve: CGFloat = 72
     static func detailBaseHeight(width: CGFloat) -> CGFloat { min(488, max(430, width * 1.08)) }
+    static func detailForegroundBaseHeight(width: CGFloat, viewportHeight: CGFloat) -> CGFloat {
+        let legacyHeight = detailBaseHeight(width: width)
+        let centeredPlaybackHeight = max(0, viewportHeight) * 0.5 + detailPlaybackCenterReserve
+        return min(560, max(legacyHeight, centeredPlaybackHeight))
+    }
     static func detailBackdropViewportHeight(width: CGFloat) -> CGFloat { min(410, max(340, width * 0.88)) }
     static func compactBaseHeight(width: CGFloat) -> CGFloat { min(252, max(206, width * 0.51)) }
 
