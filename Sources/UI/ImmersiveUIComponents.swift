@@ -122,6 +122,44 @@ struct ImmersiveBackdrop: View {
     }
 }
 
+struct AdaptiveHeroRevealMetrics {
+    static let initialScale: CGFloat = 1.10
+    private static let minimumRevealScale: CGFloat = 0.30
+
+    static func detailBaseHeight(width: CGFloat) -> CGFloat { min(488, max(430, width * 1.08)) }
+    static func compactBaseHeight(width: CGFloat) -> CGFloat { min(252, max(206, width * 0.51)) }
+
+    static func revealDistance(heroHeight: CGFloat, viewportHeight: CGFloat) -> CGFloat {
+        let geometryDriven = min(heroHeight * 0.16, viewportHeight * 0.085)
+        return min(96, max(56, geometryDriven))
+    }
+
+    static func fullRevealScale(imageSize: CGSize?, viewportSize: CGSize) -> CGFloat {
+        guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1, viewportSize.height > 1 else { return 1 }
+        let imageAspect = imageSize.width / imageSize.height
+        let viewportAspect = viewportSize.width / viewportSize.height
+        let fitFromFillScale = min(viewportAspect / imageAspect, imageAspect / viewportAspect)
+        return min(1, max(minimumRevealScale, fitFromFillScale))
+    }
+
+    static func progress(upwardScroll: CGFloat, revealDistance: CGFloat) -> CGFloat {
+        guard revealDistance > 0 else { return 1 }
+        return min(1, max(0, upwardScroll / revealDistance))
+    }
+
+    static func scale(fullRevealScale: CGFloat, progress: CGFloat) -> CGFloat {
+        initialScale + (fullRevealScale - initialScale) * eased(progress)
+    }
+
+    static func topPinOffset(heroHeight: CGFloat, scale: CGFloat) -> CGFloat { -max(0, heroHeight * (1 - scale) * 0.5) }
+
+    private static func eased(_ value: CGFloat) -> CGFloat {
+        let clamped = min(1, max(0, value))
+        let remaining = 1 - clamped
+        return 1 - remaining * remaining
+    }
+}
+
 struct DetailPressButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
