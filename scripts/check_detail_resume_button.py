@@ -17,8 +17,8 @@ require('.clipped()' in media_section, "expanded media stream content must be cl
 require('private func primaryPlayButtonLabel(width: CGFloat) -> some View' in detail, "detail must use the dedicated resume-aware play button label")
 require('Text("继续播放")' in detail and 'Text("上次播放到：\\(position)")' in detail, "resume button must use the requested two-line copy")
 require('var primaryPlayButtonShowsResume: Bool' in detail and 'guard !displayedPlayed' in detail, "watched state must immediately suppress resume presentation")
-require('var primaryPlayButtonProgress: Double' in detail and 'playable.playbackProgress' in detail, "resume button progress must come from the actual playback percentage")
-require('var primaryPlayButtonPositionText: String?' in detail and 'playbackPositionTicks' in detail, "resume subtitle must come from the actual Emby playback position")
+require('var primaryPlayButtonProgress: Double' in detail and 'effectivePlaybackProgress(for: playable)' in detail and 'Double(position) / Double(runTimeTicks)' in detail, "resume button progress must come from the effective Emby playback position percentage")
+require('var primaryPlayButtonPositionText: String?' in detail and 'effectivePlaybackPositionTicks(for: playable)' in detail, "resume subtitle must come from the effective Emby playback position")
 require('return primaryPlayButtonShowsResume ? "继续播放" : "播放"' in detail, "primary play title must refresh immediately between resume and plain play")
 play_button = detail.split('private func primaryPlayButtonLabel(width: CGFloat) -> some View {', 1)[1].split('@ViewBuilder\n    private func heroIdentity', 1)[0]
 require('RoundedRectangle(cornerRadius: 25' in play_button, "primary play button must use the competitor pill radius")
