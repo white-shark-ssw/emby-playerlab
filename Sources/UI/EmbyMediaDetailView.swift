@@ -21,6 +21,7 @@ struct EmbyMediaDetailView: View {
     @State private var selectedStillIndex: Int?
     @State private var heroUsesLightForeground = true
     @State private var heroSourceSize: CGSize?
+    @State private var heroConsumedCropScroll: CGFloat = 0
 
     init(item: LibraryItem, client: EmbyAPIClient) {
         self.item = item
@@ -36,7 +37,7 @@ struct EmbyMediaDetailView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        hero(width: geometry.size.width, viewportHeight: viewportHeight)
+                        hero(width: geometry.size.width)
                         VStack(alignment: .leading, spacing: 24) {
                             overview
                             if model.isSeries { seriesContent }
@@ -81,19 +82,18 @@ struct EmbyMediaDetailView: View {
         .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
     }
 
-    private func hero(width: CGFloat, viewportHeight: CGFloat) -> some View {
+    private func hero(width: CGFloat) -> some View {
         let baseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width)
         let contentWidth = max(0, width - 40)
-        let revealDistance = AdaptiveHeroRevealMetrics.revealDistance(heroHeight: baseHeight, viewportHeight: viewportHeight)
+        let heroViewport = CGSize(width: width, height: baseHeight)
+        let cropTravel = AdaptiveHeroRevealMetrics.cropTravel(imageSize: heroSourceSize, viewportSize: heroViewport)
         return GeometryReader { proxy in
             let minY = proxy.frame(in: .named("emby-detail-scroll")).minY
             let stretch = max(0, minY)
             let upwardScroll = max(0, -minY)
-            let revealProgress = AdaptiveHeroRevealMetrics.progress(upwardScroll: upwardScroll, revealDistance: revealDistance)
+            let consumedCropScroll = AdaptiveHeroRevealMetrics.consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel)
             let visualHeight = baseHeight + stretch
-            let heroViewport = CGSize(width: width, height: baseHeight)
-            let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: heroSourceSize, viewportSize: heroViewport)
-            let revealScale = AdaptiveHeroRevealMetrics.scale(fullRevealScale: fullRevealScale, progress: revealProgress)
+            let revealScale = AdaptiveHeroRevealMetrics.scale(imageSize: heroSourceSize, viewportSize: heroViewport, consumedCropScroll: consumedCropScroll)
             let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(imageSize: heroSourceSize, viewportSize: heroViewport, scale: revealScale)
             let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(imageSize: heroSourceSize, viewportSize: heroViewport, scale: revealScale)
             let maskFadeSpan = min(0.34, clearImageBottom * 0.46)
@@ -171,9 +171,14 @@ struct EmbyMediaDetailView: View {
                 .padding(.bottom, 6)
             }
             .frame(width: width, height: visualHeight)
-            .offset(y: stretch > 0 ? -stretch : 0)
+            .offset(y: stretch > 0 ? -stretch : consumedCropScroll)
+            .preference(key: AdaptiveHeroConsumedScrollPreferenceKey.self, value: consumedCropScroll)
         }
-        .frame(width: width, height: baseHeight)
+        .frame(width: width, height: baseHeight + heroConsumedCropScroll)
+        .onPreferenceChange(AdaptiveHeroConsumedScrollPreferenceKey.self) { value in
+            guard abs(heroConsumedCropScroll - value) > 0.25 else { return }
+            heroConsumedCropScroll = value
+        }
     }
 
     @ViewBuilder
