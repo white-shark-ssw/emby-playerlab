@@ -180,7 +180,7 @@ struct AdaptiveHeroRevealMetrics {
     }
 }
 
-private final class AdaptiveHeroScrollProbeUIView: UIView {
+final class AdaptiveHeroScrollProbeUIView: UIView {
     var hierarchyDidChange: ((UIView) -> Void)?
 
     override func didMoveToSuperview() {
