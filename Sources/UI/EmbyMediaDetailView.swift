@@ -20,6 +20,7 @@ struct EmbyMediaDetailView: View {
     @State private var showAllEpisodes = false
     @State private var selectedStillIndex: Int?
     @State private var heroUsesLightForeground = true
+    @State private var heroSourceSize: CGSize?
 
     init(item: LibraryItem, client: EmbyAPIClient) {
         self.item = item
@@ -35,7 +36,7 @@ struct EmbyMediaDetailView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        hero(width: geometry.size.width)
+                        hero(width: geometry.size.width, viewportHeight: viewportHeight)
                         VStack(alignment: .leading, spacing: 24) {
                             overview
                             if model.isSeries { seriesContent }
@@ -80,36 +81,49 @@ struct EmbyMediaDetailView: View {
         .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
     }
 
-    private func hero(width: CGFloat) -> some View {
-        let baseHeight = min(488, max(430, width * 1.08))
+    private func hero(width: CGFloat, viewportHeight: CGFloat) -> some View {
+        let baseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width)
         let contentWidth = max(0, width - 40)
+        let revealDistance = AdaptiveHeroRevealMetrics.revealDistance(heroHeight: baseHeight, viewportHeight: viewportHeight)
         return GeometryReader { proxy in
             let minY = proxy.frame(in: .named("emby-detail-scroll")).minY
             let stretch = max(0, minY)
             let upwardScroll = max(0, -minY)
-            let revealProgress = min(1, upwardScroll / 190)
+            let revealProgress = AdaptiveHeroRevealMetrics.progress(upwardScroll: upwardScroll, revealDistance: revealDistance)
             let visualHeight = baseHeight + stretch
-            let revealScale = 1.10 - 0.10 * easedReveal(revealProgress)
+            let heroViewport = CGSize(width: width, height: baseHeight)
+            let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: heroSourceSize, viewportSize: heroViewport)
+            let revealScale = AdaptiveHeroRevealMetrics.scale(fullRevealScale: fullRevealScale, progress: revealProgress)
+            let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(imageSize: heroSourceSize, viewportSize: heroViewport, scale: revealScale)
+            let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(imageSize: heroSourceSize, viewportSize: heroViewport, scale: revealScale)
+            let maskFadeSpan = min(0.34, clearImageBottom * 0.46)
+            let maskStart = max(0.10, clearImageBottom - maskFadeSpan)
+            let maskFirstMid = maskStart + (clearImageBottom - maskStart) * 0.29
+            let maskSecondMid = maskStart + (clearImageBottom - maskStart) * 0.71
             let contrastScrim = heroUsesLightForeground ? Color.black.opacity(0.22) : Color.white.opacity(0.16)
 
             ZStack(alignment: .bottom) {
-                EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fill, onImageLoaded: { image in updateHeroImageAnalysis(image) })
-                    .frame(width: width, height: visualHeight)
-                    .scaleEffect(revealScale, anchor: .center)
-                    .clipped()
-                    .mask(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .black, location: 0.00),
-                                .init(color: .black, location: 0.66),
-                                .init(color: .black.opacity(0.92), location: 0.76),
-                                .init(color: .black.opacity(0.52), location: 0.90),
-                                .init(color: .clear, location: 1.00)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
+                ZStack {
+                    EmbyCachedRemoteImage(url: heroImageURL, contentMode: .fill, onImageLoaded: { image in updateHeroImageMetrics(image) })
+                        .frame(width: width, height: visualHeight)
+                        .scaleEffect(revealScale, anchor: .center)
+                        .offset(y: topPinOffset)
+                }
+                .frame(width: width, height: visualHeight)
+                .clipped()
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black, location: 0.00),
+                            .init(color: .black, location: maskStart),
+                            .init(color: .black.opacity(0.92), location: maskFirstMid),
+                            .init(color: .black.opacity(0.52), location: maskSecondMid),
+                            .init(color: .clear, location: clearImageBottom)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
+                )
 
                 LinearGradient(
                     stops: [
@@ -260,13 +274,8 @@ struct EmbyMediaDetailView: View {
     private var heroForeground: Color { heroUsesLightForeground ? .white : .black }
     private var heroSecondaryForeground: Color { heroUsesLightForeground ? .white.opacity(0.78) : .black.opacity(0.72) }
 
-    private func easedReveal(_ value: CGFloat) -> CGFloat {
-        let clamped = min(1, max(0, value))
-        let remaining = 1 - clamped
-        return 1 - remaining * remaining
-    }
-
-    private func updateHeroImageAnalysis(_ image: UIImage) {
+    private func updateHeroImageMetrics(_ image: UIImage) {
+        if heroSourceSize != image.size { heroSourceSize = image.size }
         let prefersLight = EmbyImageContrastAnalyzer.prefersLightForeground(for: image)
         if heroUsesLightForeground != prefersLight {
             withAnimation(.easeOut(duration: 0.18)) { heroUsesLightForeground = prefersLight }

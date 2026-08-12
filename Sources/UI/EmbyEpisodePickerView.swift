@@ -14,6 +14,7 @@ struct EmbyEpisodePickerView: View {
     @State private var sortAscending = true
     @State private var lastHapticIndex: Int?
     @State private var lastHapticTime: TimeInterval = 0
+    @State private var pickerHeroSourceSize: CGSize?
 
     var body: some View {
         GeometryReader { geometry in
@@ -24,7 +25,7 @@ struct EmbyEpisodePickerView: View {
 
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(spacing: 0) {
-                            pickerHero(width: geometry.size.width)
+                            pickerHero(width: geometry.size.width, viewportHeight: viewportHeight)
                             LazyVStack(spacing: 16) {
                                 ForEach(displayedEpisodes) { episode in episodeRow(episode).id(episode.id) }
                             }
@@ -37,6 +38,7 @@ struct EmbyEpisodePickerView: View {
                     }
                     .frame(width: geometry.size.width, height: viewportHeight)
                     .background(Color.clear)
+                    .coordinateSpace(name: "emby-episode-picker-scroll")
                     .ignoresSafeArea(edges: [.top, .bottom])
 
 
@@ -87,26 +89,59 @@ struct EmbyEpisodePickerView: View {
         return offsets.map { offset in EmbyEpisodeJump(label: items[offset].indexNumber ?? offset + 1, episode: items[offset]) }
     }
 
-    private func pickerHero(width: CGFloat) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            AsyncImage(url: pickerHeroURL) { phase in
-                switch phase {
-                case .success(let image): image.resizable().aspectRatio(contentMode: .fill)
-                default: Color.clear
-                }
-            }
-            .frame(width: width, height: 218)
-            .clipped()
-            .mask(LinearGradient(colors: [.black, .black, .black.opacity(0.80), .clear], startPoint: .top, endPoint: .bottom))
+    private func pickerHero(width: CGFloat, viewportHeight: CGFloat) -> some View {
+        let baseHeight = AdaptiveHeroRevealMetrics.compactBaseHeight(width: width)
+        let revealDistance = AdaptiveHeroRevealMetrics.revealDistance(heroHeight: baseHeight, viewportHeight: viewportHeight)
+        return GeometryReader { proxy in
+            let minY = proxy.frame(in: .named("emby-episode-picker-scroll")).minY
+            let stretch = max(0, minY)
+            let upwardScroll = max(0, -minY)
+            let revealProgress = AdaptiveHeroRevealMetrics.progress(upwardScroll: upwardScroll, revealDistance: revealDistance)
+            let visualHeight = baseHeight + stretch
+            let heroViewport = CGSize(width: width, height: baseHeight)
+            let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: pickerHeroSourceSize, viewportSize: heroViewport)
+            let revealScale = AdaptiveHeroRevealMetrics.scale(fullRevealScale: fullRevealScale, progress: revealProgress)
+            let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, scale: revealScale)
+            let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, scale: revealScale)
+            let maskFadeSpan = min(0.67, clearImageBottom * 0.67)
+            let maskStart = max(0.08, clearImageBottom - maskFadeSpan)
+            let maskMid = maskStart + (clearImageBottom - maskStart) * 0.50
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(model.item.name).font(.headline).lineLimit(1)
-                Text(model.selectedSeasonTitle).font(.title2.weight(.bold))
+            ZStack(alignment: .bottomLeading) {
+                ZStack {
+                    EmbyCachedRemoteImage(url: pickerHeroURL, contentMode: .fill, onImageLoaded: { image in
+                        if pickerHeroSourceSize != image.size { pickerHeroSourceSize = image.size }
+                    })
+                    .frame(width: width, height: visualHeight)
+                    .scaleEffect(revealScale, anchor: .center)
+                    .offset(y: topPinOffset)
+                }
+                .frame(width: width, height: visualHeight)
+                .clipped()
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black, location: 0.00),
+                            .init(color: .black, location: maskStart),
+                            .init(color: .black.opacity(0.80), location: maskMid),
+                            .init(color: .clear, location: clearImageBottom)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.item.name).font(.headline).lineLimit(1)
+                    Text(model.selectedSeasonTitle).font(.title2.weight(.bold))
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 14)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 14)
+            .frame(width: width, height: visualHeight)
+            .offset(y: stretch > 0 ? -stretch : 0)
         }
-        .frame(width: width, height: 218)
+        .frame(width: width, height: baseHeight)
     }
 
     private var pickerHeroURL: URL? {
