@@ -1,0 +1,33 @@
+name: Apply Hero pin crop and Picker stability patch
+
+on:
+  push:
+    branches:
+      - fix/hero-pin-crop-picker-scroll-stability
+    paths:
+      - '.github/workflows/one-shot-hero-pin-crop-picker-stability.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/hero-pin-crop-picker-scroll-stability
+          fetch-depth: 0
+      - name: Apply source patch
+        run: |
+          python .github/apply_hero_pin_crop_picker_stability.py
+          python scripts/check_adaptive_hero_reveal.py
+          python scripts/check_v0134_detail_navigation.py
+          git diff --check
+      - name: Commit source changes
+        run: |
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add Sources/UI/ImmersiveUIComponents.swift Sources/UI/EmbyMediaDetailView.swift Sources/UI/EmbyEpisodePickerView.swift scripts/check_adaptive_hero_reveal.py
+          git commit -m 'fix: pin Hero backdrop through crop and isolate picker scroll state'
+          git push origin HEAD:fix/hero-pin-crop-picker-scroll-stability
