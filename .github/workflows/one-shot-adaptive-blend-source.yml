@@ -1,0 +1,31 @@
+name: One-shot adaptive blend source patch
+
+on:
+  push:
+    branches:
+      - feat/adaptive-hero-reveal
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply refinement
+        run: python3 scripts/refine_adaptive_hero_blend.py
+      - name: Check invariants
+        run: |
+          python3 scripts/check_v0134_detail_navigation.py
+          python3 scripts/check_adaptive_hero_reveal.py
+          git diff --check
+      - name: Commit source
+        run: |
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add Sources/UI/ImmersiveUIComponents.swift Sources/UI/EmbyMediaDetailView.swift Sources/UI/EmbyEpisodePickerView.swift scripts/check_adaptive_hero_reveal.py
+          git commit -m 'fix: keep adaptive reveal blended into backdrop [adaptive-blend-refined]'
+          git push origin HEAD:feat/adaptive-hero-reveal
