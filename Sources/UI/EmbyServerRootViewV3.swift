@@ -176,19 +176,23 @@ private struct V3EmbyHomeView: View {
                         }
                         .padding(.bottom, 86)
                     }
-                    .refreshable { await model.refresh() }
-                    .onChange(of: refreshToken) { _ in Task { await model.refresh() } }
+                    .refreshable { await model.refresh(userInitiated: true) }
+                    .onChange(of: refreshToken) { _ in Task { await model.refresh(userInitiated: true) } }
                     .onChange(of: scrollToTopToken) { _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("v3-home-top", anchor: .top) } }
                 }
             }
             .navigationBarHidden(true)
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             .overlay(alignment: .bottom) { dock }
-            .onAppear { if !model.hasLoaded { Task { await model.refresh() } } }
+            .onAppear {
+                Task {
+                    if !model.hasLoaded { await model.refresh() }
+                    else { await model.refreshResumeIfNeeded() }
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: EmbyUserDataChange.notification)) { notification in
                 guard let source = notification.object as? EmbyAPIClient, source === client, let itemID = notification.userInfo?[EmbyUserDataChange.itemIDKey] as? String else { return }
-                model.invalidateResumeItem(itemID)
-                Task { await model.refresh() }
+                model.markResumeDirty(itemID)
             }
             .sheet(isPresented: $isMediaManagementPresented) {
                 V3MediaManagementView(preferences: model.preferences) { model.savePreferences($0) }
@@ -208,7 +212,7 @@ private struct V3EmbyHomeView: View {
     private var header: some View {
         HStack(spacing: 12) {
             Menu {
-                Button { Task { await model.refresh() } } label: { Label("刷新首页", systemImage: "arrow.clockwise") }
+                Button { Task { await model.refresh(userInitiated: true) } } label: { Label("刷新首页", systemImage: "arrow.clockwise") }
                 Button { isMediaManagementPresented = true } label: { Label("媒体管理", systemImage: "slider.horizontal.3") }
                 Divider()
                 Text("当前服务器：\(session.serverName)")
@@ -305,6 +309,8 @@ private final class V3EmbyHomeViewModel: ObservableObject {
     private let client: EmbyAPIClient
     private let preferenceKey: String
     private(set) var hasLoaded = false
+    private var resumeDirty = false
+    private var dirtyResumeItemIDs = Set<String>()
 
     init(session: EmbySession, client: EmbyAPIClient) {
         self.client = client
@@ -335,11 +341,27 @@ private final class V3EmbyHomeViewModel: ObservableObject {
         return Array((backdrop + fallback).prefix(6))
     }
 
-    func invalidateResumeItem(_ itemID: String) {
-        resumeItems.removeAll { $0.id == itemID || $0.seriesId == itemID }
+    func markResumeDirty(_ itemID: String) {
+        resumeDirty = true
+        dirtyResumeItemIDs.insert(itemID)
+        DiagnosticsLogger.shared.log("HomeRefresh", "resume dirty item=\(itemID)")
     }
 
-    func refresh() async {
+    func refreshResumeIfNeeded() async {
+        guard resumeDirty else { return }
+        await refresh(userInitiated: true)
+    }
+
+    func refresh(userInitiated: Bool = false) async {
+        if isLoading {
+            guard userInitiated else { return }
+            DiagnosticsLogger.shared.log("HomeRefresh", "user refresh waiting for active refresh")
+            while isLoading { try? await Task.sleep(nanoseconds: 50_000_000) }
+        }
+        if userInitiated {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            await refreshResumeOnly()
+        }
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
@@ -350,6 +372,8 @@ private final class V3EmbyHomeViewModel: ObservableObject {
             let (views, resume) = try await (viewsRequest, resumeRequest)
             libraries = uniqueItems(views)
             resumeItems = uniqueItems(resume).filter { ["movie", "episode"].contains($0.type?.lowercased() ?? "") }
+            resumeDirty = false
+            dirtyResumeItemIDs.removeAll()
             preferences = reconcilePreferences(libraries)
             persistPreferences(preferences)
 
@@ -370,6 +394,18 @@ private final class V3EmbyHomeViewModel: ObservableObject {
                 for await result in group { if let items = result.1 { latest[result.0] = uniqueItems(items) } }
             }
             latestByLibrary = latest
+        } catch {
+            if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func refreshResumeOnly() async {
+        do {
+            let resume = try await client.resumeItems(limit: 18)
+            resumeItems = uniqueItems(resume).filter { ["movie", "episode"].contains($0.type?.lowercased() ?? "") }
+            DiagnosticsLogger.shared.log("HomeRefresh", "resume refreshed count=\(resumeItems.count) dirty=\(resumeDirty) ids=\(dirtyResumeItemIDs.sorted().joined(separator: ","))")
+            resumeDirty = false
+            dirtyResumeItemIDs.removeAll()
         } catch {
             if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
         }

@@ -180,8 +180,21 @@ final class PlayerController: ObservableObject {
         engine.stop()
         transportContext?.stop()
 
+        let stoppedSource = source
+        let stoppedClient = client
         Task {
-            await client.reportStopped(source: source, position: position)
+            let succeeded = await stoppedClient.reportStopped(source: stoppedSource, position: position)
+            guard succeeded else { return }
+            await MainActor.run {
+                NotificationCenter.default.post(
+                    name: EmbyUserDataChange.notification,
+                    object: stoppedClient,
+                    userInfo: [
+                        EmbyUserDataChange.itemIDKey: stoppedSource.itemId,
+                        EmbyUserDataChange.reasonKey: EmbyUserDataChange.playbackStoppedReason,
+                    ]
+                )
+            }
         }
 
         pendingSeekTarget = nil
@@ -621,7 +634,23 @@ final class PlayerController: ObservableObject {
 
         guard decision.isPremature else {
             userWantsPlayback = false
-            Task { await client.reportStopped(source: source, position: snapshot.position) }
+            let stoppedSource = source
+            let stoppedClient = client
+            let stoppedPosition = snapshot.position
+            Task {
+                let succeeded = await stoppedClient.reportStopped(source: stoppedSource, position: stoppedPosition)
+                guard succeeded else { return }
+                await MainActor.run {
+                    NotificationCenter.default.post(
+                        name: EmbyUserDataChange.notification,
+                        object: stoppedClient,
+                        userInfo: [
+                            EmbyUserDataChange.itemIDKey: stoppedSource.itemId,
+                            EmbyUserDataChange.reasonKey: EmbyUserDataChange.playbackStoppedReason,
+                        ]
+                    )
+                }
+            }
             return
         }
 
