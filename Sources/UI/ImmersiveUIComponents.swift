@@ -125,7 +125,9 @@ struct ImmersiveBackdrop: View {
 struct AdaptiveHeroRevealMetrics {
     static let initialScale: CGFloat = 1.10
     static let cropResponseFactor: CGFloat = 0.45
+    static let detailCropResponseFactor: CGFloat = 0.90
     static func detailBaseHeight(width: CGFloat) -> CGFloat { min(488, max(430, width * 1.08)) }
+    static func detailBackdropViewportHeight(width: CGFloat) -> CGFloat { min(410, max(340, width * 0.88)) }
     static func compactBaseHeight(width: CGFloat) -> CGFloat { min(252, max(206, width * 0.51)) }
 
     static func cropTravel(imageSize: CGSize?, viewportSize: CGSize) -> CGFloat {
@@ -135,16 +137,28 @@ struct AdaptiveHeroRevealMetrics {
     }
 
     static func consumedCropScroll(upwardScroll: CGFloat, cropTravel: CGFloat) -> CGFloat {
-        min(max(0, upwardScroll) * cropResponseFactor, max(0, cropTravel))
+        consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel, responseFactor: cropResponseFactor)
+    }
+
+    static func consumedCropScroll(upwardScroll: CGFloat, cropTravel: CGFloat, responseFactor: CGFloat) -> CGFloat {
+        min(max(0, upwardScroll) * max(0, responseFactor), max(0, cropTravel))
     }
 
     static func cropPhaseScrollDistance(cropTravel: CGFloat) -> CGFloat {
-        guard cropResponseFactor > 0 else { return 0 }
-        return max(0, cropTravel) / cropResponseFactor
+        cropPhaseScrollDistance(cropTravel: cropTravel, responseFactor: cropResponseFactor)
+    }
+
+    static func cropPhaseScrollDistance(cropTravel: CGFloat, responseFactor: CGFloat) -> CGFloat {
+        guard responseFactor > 0 else { return 0 }
+        return max(0, cropTravel) / responseFactor
     }
 
     static func backdropPinOffset(upwardScroll: CGFloat, cropTravel: CGFloat) -> CGFloat {
-        min(max(0, upwardScroll), cropPhaseScrollDistance(cropTravel: cropTravel))
+        backdropPinOffset(upwardScroll: upwardScroll, cropTravel: cropTravel, responseFactor: cropResponseFactor)
+    }
+
+    static func backdropPinOffset(upwardScroll: CGFloat, cropTravel: CGFloat, responseFactor: CGFloat) -> CGFloat {
+        min(max(0, upwardScroll), cropPhaseScrollDistance(cropTravel: cropTravel, responseFactor: responseFactor))
     }
 
     // Native container motion remains 1:1 with UIScrollView. The clear backdrop releases crop
