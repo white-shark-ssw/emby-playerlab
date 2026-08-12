@@ -1,0 +1,219 @@
+--- a/Sources/UI/ImmersiveUIComponents.swift
++++ b/Sources/UI/ImmersiveUIComponents.swift
+@@ -124,60 +124,63 @@
+ 
+ struct AdaptiveHeroRevealMetrics {
+     static let initialScale: CGFloat = 1.10
+-    private static let minimumRevealScale: CGFloat = 0.30
+-
+     static func detailBaseHeight(width: CGFloat) -> CGFloat { min(488, max(430, width * 1.08)) }
+     static func compactBaseHeight(width: CGFloat) -> CGFloat { min(252, max(206, width * 0.51)) }
+ 
+-    static func revealDistance(heroHeight: CGFloat, viewportHeight: CGFloat) -> CGFloat {
+-        let geometryDriven = min(heroHeight * 0.16, viewportHeight * 0.085)
+-        return min(96, max(56, geometryDriven))
+-    }
+-
+     static func fullRevealScale(imageSize: CGSize?, viewportSize: CGSize) -> CGFloat {
+-        guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1, viewportSize.height > 1 else { return 1 }
+-        let imageAspect = imageSize.width / imageSize.height
+-        let viewportAspect = viewportSize.width / viewportSize.height
+-        guard imageAspect > viewportAspect else { return 1 }
+-        return min(1, max(minimumRevealScale, viewportAspect / imageAspect))
+-    }
+-
+-    static func progress(upwardScroll: CGFloat, revealDistance: CGFloat) -> CGFloat {
+-        guard revealDistance > 0 else { return 1 }
+-        return min(1, max(0, upwardScroll / revealDistance))
+-    }
+-
+-    static func scale(fullRevealScale: CGFloat, progress: CGFloat) -> CGFloat {
+-        initialScale + (fullRevealScale - initialScale) * eased(progress)
++        guard let coverSize = coverSize(imageSize: imageSize, viewportSize: viewportSize), coverSize.width > 1, coverSize.height > 1 else { return 1 }
++        let widthScale = viewportSize.width / coverSize.width
++        let heightScale = viewportSize.height / coverSize.height
++        return min(1, min(widthScale, heightScale))
++    }
++
++    // One point of native vertical scroll removes one point from the rendered image height.
++    // The Hero does not start leaving the screen until this real crop distance is fully consumed.
++    static func cropTravel(imageSize: CGSize?, viewportSize: CGSize) -> CGFloat {
++        guard let coverSize = coverSize(imageSize: imageSize, viewportSize: viewportSize) else { return max(0, viewportSize.height * (initialScale - 1)) }
++        let fullScale = fullRevealScale(imageSize: imageSize, viewportSize: viewportSize)
++        return max(0, coverSize.height * (initialScale - fullScale))
++    }
++
++    static func consumedCropScroll(upwardScroll: CGFloat, cropTravel: CGFloat) -> CGFloat {
++        min(max(0, upwardScroll), max(0, cropTravel))
++    }
++
++    static func scale(imageSize: CGSize?, viewportSize: CGSize, consumedCropScroll: CGFloat) -> CGFloat {
++        guard let coverSize = coverSize(imageSize: imageSize, viewportSize: viewportSize), coverSize.height > 1 else {
++            return max(1, initialScale - consumedCropScroll / max(1, viewportSize.height))
++        }
++        let fullScale = fullRevealScale(imageSize: imageSize, viewportSize: viewportSize)
++        return max(fullScale, initialScale - consumedCropScroll / coverSize.height)
+     }
+ 
+     static func topPinOffset(imageSize: CGSize?, viewportSize: CGSize, scale: CGFloat) -> CGFloat {
+-        guard let coverHeight = coverHeight(imageSize: imageSize, viewportSize: viewportSize) else { return -max(0, viewportSize.height * (1 - scale) * 0.5) }
+-        let coverTop = (viewportSize.height - coverHeight) * 0.5
++        guard let coverSize = coverSize(imageSize: imageSize, viewportSize: viewportSize) else { return -max(0, viewportSize.height * (1 - scale) * 0.5) }
++        let coverTop = (viewportSize.height - coverSize.height) * 0.5
+         let scaledTop = viewportSize.height * 0.5 + scale * (coverTop - viewportSize.height * 0.5)
+         return -max(0, scaledTop)
+     }
+ 
+     static func clearImageBottom(imageSize: CGSize?, viewportSize: CGSize, scale: CGFloat) -> CGFloat {
+-        guard let coverHeight = coverHeight(imageSize: imageSize, viewportSize: viewportSize), viewportSize.height > 1 else { return 1 }
++        guard let coverSize = coverSize(imageSize: imageSize, viewportSize: viewportSize), viewportSize.height > 1 else { return 1 }
+         let offset = topPinOffset(imageSize: imageSize, viewportSize: viewportSize, scale: scale)
+-        let coverBottom = (viewportSize.height + coverHeight) * 0.5
++        let coverBottom = (viewportSize.height + coverSize.height) * 0.5
+         let scaledBottom = viewportSize.height * 0.5 + scale * (coverBottom - viewportSize.height * 0.5) + offset
+         return min(1, max(0.05, scaledBottom / viewportSize.height))
+     }
+ 
+-    private static func coverHeight(imageSize: CGSize?, viewportSize: CGSize) -> CGFloat? {
++    private static func coverSize(imageSize: CGSize?, viewportSize: CGSize) -> CGSize? {
+         guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1, viewportSize.height > 1 else { return nil }
+         let imageAspect = imageSize.width / imageSize.height
+         let viewportAspect = viewportSize.width / viewportSize.height
+-        return imageAspect >= viewportAspect ? viewportSize.height : viewportSize.width / imageAspect
++        if imageAspect >= viewportAspect { return CGSize(width: viewportSize.height * imageAspect, height: viewportSize.height) }
++        return CGSize(width: viewportSize.width, height: viewportSize.width / imageAspect)
+     }
++}
+ 
+-    private static func eased(_ value: CGFloat) -> CGFloat {
+-        let clamped = min(1, max(0, value))
+-        let remaining = 1 - clamped
+-        return 1 - remaining * remaining
+-    }
++struct AdaptiveHeroConsumedScrollPreferenceKey: PreferenceKey {
++    static var defaultValue: CGFloat = 0
++    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+ }
+ 
+ struct DetailPressButtonStyle: ButtonStyle {
+--- a/Sources/UI/EmbyMediaDetailView.swift
++++ b/Sources/UI/EmbyMediaDetailView.swift
+@@ -21,6 +21,7 @@
+     @State private var selectedStillIndex: Int?
+     @State private var heroUsesLightForeground = true
+     @State private var heroSourceSize: CGSize?
++    @State private var heroConsumedCropScroll: CGFloat = 0
+ 
+     init(item: LibraryItem, client: EmbyAPIClient) {
+         self.item = item
+@@ -36,7 +37,7 @@
+ 
+                 ScrollView(.vertical, showsIndicators: false) {
+                     LazyVStack(alignment: .leading, spacing: 0) {
+-                        hero(width: geometry.size.width, viewportHeight: viewportHeight)
++                        hero(width: geometry.size.width)
+                         VStack(alignment: .leading, spacing: 24) {
+                             overview
+                             if model.isSeries { seriesContent }
+@@ -81,19 +82,18 @@
+         .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
+     }
+ 
+-    private func hero(width: CGFloat, viewportHeight: CGFloat) -> some View {
++    private func hero(width: CGFloat) -> some View {
+         let baseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width)
+         let contentWidth = max(0, width - 40)
+-        let revealDistance = AdaptiveHeroRevealMetrics.revealDistance(heroHeight: baseHeight, viewportHeight: viewportHeight)
++        let heroViewport = CGSize(width: width, height: baseHeight)
++        let cropTravel = AdaptiveHeroRevealMetrics.cropTravel(imageSize: heroSourceSize, viewportSize: heroViewport)
+         return GeometryReader { proxy in
+             let minY = proxy.frame(in: .named("emby-detail-scroll")).minY
+             let stretch = max(0, minY)
+             let upwardScroll = max(0, -minY)
+-            let revealProgress = AdaptiveHeroRevealMetrics.progress(upwardScroll: upwardScroll, revealDistance: revealDistance)
++            let consumedCropScroll = AdaptiveHeroRevealMetrics.consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel)
+             let visualHeight = baseHeight + stretch
+-            let heroViewport = CGSize(width: width, height: baseHeight)
+-            let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: heroSourceSize, viewportSize: heroViewport)
+-            let revealScale = AdaptiveHeroRevealMetrics.scale(fullRevealScale: fullRevealScale, progress: revealProgress)
++            let revealScale = AdaptiveHeroRevealMetrics.scale(imageSize: heroSourceSize, viewportSize: heroViewport, consumedCropScroll: consumedCropScroll)
+             let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(imageSize: heroSourceSize, viewportSize: heroViewport, scale: revealScale)
+             let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(imageSize: heroSourceSize, viewportSize: heroViewport, scale: revealScale)
+             let maskFadeSpan = min(0.34, clearImageBottom * 0.46)
+@@ -171,9 +171,14 @@
+                 .padding(.bottom, 6)
+             }
+             .frame(width: width, height: visualHeight)
+-            .offset(y: stretch > 0 ? -stretch : 0)
++            .offset(y: stretch > 0 ? -stretch : consumedCropScroll)
++            .preference(key: AdaptiveHeroConsumedScrollPreferenceKey.self, value: consumedCropScroll)
++        }
++        .frame(width: width, height: baseHeight + heroConsumedCropScroll)
++        .onPreferenceChange(AdaptiveHeroConsumedScrollPreferenceKey.self) { value in
++            guard abs(heroConsumedCropScroll - value) > 0.25 else { return }
++            heroConsumedCropScroll = value
+         }
+-        .frame(width: width, height: baseHeight)
+     }
+ 
+     @ViewBuilder
+--- a/Sources/UI/EmbyEpisodePickerView.swift
++++ b/Sources/UI/EmbyEpisodePickerView.swift
+@@ -15,6 +15,7 @@
+     @State private var lastHapticIndex: Int?
+     @State private var lastHapticTime: TimeInterval = 0
+     @State private var pickerHeroSourceSize: CGSize?
++    @State private var pickerHeroConsumedCropScroll: CGFloat = 0
+ 
+     var body: some View {
+         GeometryReader { geometry in
+@@ -25,7 +26,7 @@
+ 
+                     ScrollView(.vertical, showsIndicators: false) {
+                         LazyVStack(spacing: 0) {
+-                            pickerHero(width: geometry.size.width, viewportHeight: viewportHeight)
++                            pickerHero(width: geometry.size.width)
+                             LazyVStack(spacing: 16) {
+                                 ForEach(displayedEpisodes) { episode in episodeRow(episode).id(episode.id) }
+                             }
+@@ -89,18 +90,17 @@
+         return offsets.map { offset in EmbyEpisodeJump(label: items[offset].indexNumber ?? offset + 1, episode: items[offset]) }
+     }
+ 
+-    private func pickerHero(width: CGFloat, viewportHeight: CGFloat) -> some View {
++    private func pickerHero(width: CGFloat) -> some View {
+         let baseHeight = AdaptiveHeroRevealMetrics.compactBaseHeight(width: width)
+-        let revealDistance = AdaptiveHeroRevealMetrics.revealDistance(heroHeight: baseHeight, viewportHeight: viewportHeight)
++        let heroViewport = CGSize(width: width, height: baseHeight)
++        let cropTravel = AdaptiveHeroRevealMetrics.cropTravel(imageSize: pickerHeroSourceSize, viewportSize: heroViewport)
+         return GeometryReader { proxy in
+             let minY = proxy.frame(in: .named("emby-episode-picker-scroll")).minY
+             let stretch = max(0, minY)
+             let upwardScroll = max(0, -minY)
+-            let revealProgress = AdaptiveHeroRevealMetrics.progress(upwardScroll: upwardScroll, revealDistance: revealDistance)
++            let consumedCropScroll = AdaptiveHeroRevealMetrics.consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel)
+             let visualHeight = baseHeight + stretch
+-            let heroViewport = CGSize(width: width, height: baseHeight)
+-            let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: pickerHeroSourceSize, viewportSize: heroViewport)
+-            let revealScale = AdaptiveHeroRevealMetrics.scale(fullRevealScale: fullRevealScale, progress: revealProgress)
++            let revealScale = AdaptiveHeroRevealMetrics.scale(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, consumedCropScroll: consumedCropScroll)
+             let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, scale: revealScale)
+             let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, scale: revealScale)
+             let maskFadeSpan = min(0.67, clearImageBottom * 0.67)
+@@ -139,9 +139,14 @@
+                 .padding(.bottom, 14)
+             }
+             .frame(width: width, height: visualHeight)
+-            .offset(y: stretch > 0 ? -stretch : 0)
++            .offset(y: stretch > 0 ? -stretch : consumedCropScroll)
++            .preference(key: AdaptiveHeroConsumedScrollPreferenceKey.self, value: consumedCropScroll)
++        }
++        .frame(width: width, height: baseHeight + pickerHeroConsumedCropScroll)
++        .onPreferenceChange(AdaptiveHeroConsumedScrollPreferenceKey.self) { value in
++            guard abs(pickerHeroConsumedCropScroll - value) > 0.25 else { return }
++            pickerHeroConsumedCropScroll = value
+         }
+-        .frame(width: width, height: baseHeight)
+     }
+ 
+     private var pickerHeroURL: URL? {
