@@ -98,9 +98,14 @@ struct EmbyEpisodePickerView: View {
             let upwardScroll = max(0, -minY)
             let revealProgress = AdaptiveHeroRevealMetrics.progress(upwardScroll: upwardScroll, revealDistance: revealDistance)
             let visualHeight = baseHeight + stretch
-            let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: pickerHeroSourceSize, viewportSize: CGSize(width: width, height: baseHeight))
+            let heroViewport = CGSize(width: width, height: baseHeight)
+            let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: pickerHeroSourceSize, viewportSize: heroViewport)
             let revealScale = AdaptiveHeroRevealMetrics.scale(fullRevealScale: fullRevealScale, progress: revealProgress)
-            let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(heroHeight: baseHeight, scale: revealScale)
+            let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, scale: revealScale)
+            let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, scale: revealScale)
+            let maskFadeSpan = min(0.67, clearImageBottom * 0.67)
+            let maskStart = max(0.08, clearImageBottom - maskFadeSpan)
+            let maskMid = maskStart + (clearImageBottom - maskStart) * 0.50
 
             ZStack(alignment: .bottomLeading) {
                 ZStack {
@@ -117,9 +122,9 @@ struct EmbyEpisodePickerView: View {
                     LinearGradient(
                         stops: [
                             .init(color: .black, location: 0.00),
-                            .init(color: .black, location: 0.64),
-                            .init(color: .black.opacity(0.82), location: 0.80),
-                            .init(color: .clear, location: 1.00)
+                            .init(color: .black, location: maskStart),
+                            .init(color: .black.opacity(0.80), location: maskMid),
+                            .init(color: .clear, location: clearImageBottom)
                         ],
                         startPoint: .top,
                         endPoint: .bottom

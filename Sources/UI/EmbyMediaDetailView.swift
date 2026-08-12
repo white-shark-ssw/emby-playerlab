@@ -91,9 +91,15 @@ struct EmbyMediaDetailView: View {
             let upwardScroll = max(0, -minY)
             let revealProgress = AdaptiveHeroRevealMetrics.progress(upwardScroll: upwardScroll, revealDistance: revealDistance)
             let visualHeight = baseHeight + stretch
-            let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: heroSourceSize, viewportSize: CGSize(width: width, height: baseHeight))
+            let heroViewport = CGSize(width: width, height: baseHeight)
+            let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: heroSourceSize, viewportSize: heroViewport)
             let revealScale = AdaptiveHeroRevealMetrics.scale(fullRevealScale: fullRevealScale, progress: revealProgress)
-            let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(heroHeight: baseHeight, scale: revealScale)
+            let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(imageSize: heroSourceSize, viewportSize: heroViewport, scale: revealScale)
+            let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(imageSize: heroSourceSize, viewportSize: heroViewport, scale: revealScale)
+            let maskFadeSpan = min(0.34, clearImageBottom * 0.46)
+            let maskStart = max(0.10, clearImageBottom - maskFadeSpan)
+            let maskFirstMid = maskStart + (clearImageBottom - maskStart) * 0.29
+            let maskSecondMid = maskStart + (clearImageBottom - maskStart) * 0.71
             let contrastScrim = heroUsesLightForeground ? Color.black.opacity(0.22) : Color.white.opacity(0.16)
 
             ZStack(alignment: .bottom) {
@@ -109,10 +115,10 @@ struct EmbyMediaDetailView: View {
                     LinearGradient(
                         stops: [
                             .init(color: .black, location: 0.00),
-                            .init(color: .black, location: 0.66),
-                            .init(color: .black.opacity(0.92), location: 0.76),
-                            .init(color: .black.opacity(0.52), location: 0.90),
-                            .init(color: .clear, location: 1.00)
+                            .init(color: .black, location: maskStart),
+                            .init(color: .black.opacity(0.92), location: maskFirstMid),
+                            .init(color: .black.opacity(0.52), location: maskSecondMid),
+                            .init(color: .clear, location: clearImageBottom)
                         ],
                         startPoint: .top,
                         endPoint: .bottom

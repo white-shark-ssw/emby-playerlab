@@ -138,8 +138,8 @@ struct AdaptiveHeroRevealMetrics {
         guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1, viewportSize.height > 1 else { return 1 }
         let imageAspect = imageSize.width / imageSize.height
         let viewportAspect = viewportSize.width / viewportSize.height
-        let fitFromFillScale = min(viewportAspect / imageAspect, imageAspect / viewportAspect)
-        return min(1, max(minimumRevealScale, fitFromFillScale))
+        guard imageAspect > viewportAspect else { return 1 }
+        return min(1, max(minimumRevealScale, viewportAspect / imageAspect))
     }
 
     static func progress(upwardScroll: CGFloat, revealDistance: CGFloat) -> CGFloat {
@@ -151,7 +151,27 @@ struct AdaptiveHeroRevealMetrics {
         initialScale + (fullRevealScale - initialScale) * eased(progress)
     }
 
-    static func topPinOffset(heroHeight: CGFloat, scale: CGFloat) -> CGFloat { -max(0, heroHeight * (1 - scale) * 0.5) }
+    static func topPinOffset(imageSize: CGSize?, viewportSize: CGSize, scale: CGFloat) -> CGFloat {
+        guard let coverHeight = coverHeight(imageSize: imageSize, viewportSize: viewportSize) else { return -max(0, viewportSize.height * (1 - scale) * 0.5) }
+        let coverTop = (viewportSize.height - coverHeight) * 0.5
+        let scaledTop = viewportSize.height * 0.5 + scale * (coverTop - viewportSize.height * 0.5)
+        return -max(0, scaledTop)
+    }
+
+    static func clearImageBottom(imageSize: CGSize?, viewportSize: CGSize, scale: CGFloat) -> CGFloat {
+        guard let coverHeight = coverHeight(imageSize: imageSize, viewportSize: viewportSize), viewportSize.height > 1 else { return 1 }
+        let offset = topPinOffset(imageSize: imageSize, viewportSize: viewportSize, scale: scale)
+        let coverBottom = (viewportSize.height + coverHeight) * 0.5
+        let scaledBottom = viewportSize.height * 0.5 + scale * (coverBottom - viewportSize.height * 0.5) + offset
+        return min(1, max(0.05, scaledBottom / viewportSize.height))
+    }
+
+    private static func coverHeight(imageSize: CGSize?, viewportSize: CGSize) -> CGFloat? {
+        guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1, viewportSize.height > 1 else { return nil }
+        let imageAspect = imageSize.width / imageSize.height
+        let viewportAspect = viewportSize.width / viewportSize.height
+        return imageAspect >= viewportAspect ? viewportSize.height : viewportSize.width / imageAspect
+    }
 
     private static func eased(_ value: CGFloat) -> CGFloat {
         let clamped = min(1, max(0, value))
