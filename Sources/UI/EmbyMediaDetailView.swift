@@ -94,6 +94,7 @@ struct EmbyMediaDetailView: View {
         let stretch = max(0, heroRawScrollMinY)
         let upwardScroll = max(0, -heroRawScrollMinY)
         let consumedCropScroll = AdaptiveHeroRevealMetrics.consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel)
+        let backdropPinOffset = AdaptiveHeroRevealMetrics.backdropPinOffset(upwardScroll: upwardScroll, cropTravel: cropTravel)
         let visualHeight = baseHeight + stretch
         let renderedImageSize = stretch > 0 ? AdaptiveHeroRevealMetrics.stretchedImageSize(imageSize: heroSourceSize, viewportSize: CGSize(width: width, height: visualHeight)) : AdaptiveHeroRevealMetrics.renderedImageSize(imageSize: heroSourceSize, viewportSize: heroViewport, consumedCropScroll: consumedCropScroll)
         let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(renderedImageSize: renderedImageSize, viewportHeight: visualHeight)
@@ -123,6 +124,7 @@ struct EmbyMediaDetailView: View {
                     endPoint: .bottom
                 )
             )
+            .offset(y: stretch > 0 ? 0 : backdropPinOffset)
 
             LinearGradient(
                 stops: [
