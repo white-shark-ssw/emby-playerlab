@@ -4,11 +4,13 @@ final class EmbyAPIClient {
     let baseURL: URL
     let accessToken: String?
     let userId: String?
+    let serverName: String?
 
-    init(baseURL: URL, accessToken: String? = nil, userId: String? = nil) {
+    init(baseURL: URL, accessToken: String? = nil, userId: String? = nil, serverName: String? = nil) {
         self.baseURL = baseURL
         self.accessToken = accessToken
         self.userId = userId
+        self.serverName = serverName
     }
 
     func publicInfo() async throws -> PublicSystemInfo {

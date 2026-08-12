@@ -107,6 +107,7 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
     let communityRating: Double?
     let officialRating: String?
     let premiereDate: String?
+    let dateCreated: String?
     let seriesName: String?
     let seriesId: String?
     let indexNumber: Int?
@@ -133,6 +134,7 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
         case communityRating = "CommunityRating"
         case officialRating = "OfficialRating"
         case premiereDate = "PremiereDate"
+        case dateCreated = "DateCreated"
         case seriesName = "SeriesName"
         case seriesId = "SeriesId"
         case indexNumber = "IndexNumber"
@@ -161,6 +163,7 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
         communityRating = try? container.decode(Double.self, forKey: .communityRating)
         officialRating = try? container.decode(String.self, forKey: .officialRating)
         premiereDate = try? container.decode(String.self, forKey: .premiereDate)
+        dateCreated = try? container.decode(String.self, forKey: .dateCreated)
         seriesName = try? container.decode(String.self, forKey: .seriesName)
         seriesId = try? container.decode(String.self, forKey: .seriesId)
         indexNumber = try? container.decode(Int.self, forKey: .indexNumber)
@@ -270,6 +273,29 @@ struct MediaStream: Decodable, Hashable {
     let codec: String?
     let language: String?
     let displayTitle: String?
+    let title: String?
+    let profile: String?
+    let level: Double?
+    let width: Int?
+    let height: Int?
+    let aspectRatio: String?
+    let isInterlaced: Bool?
+    let realFrameRate: Double?
+    let averageFrameRate: Double?
+    let bitRate: Int?
+    let videoRange: String?
+    let videoRangeType: String?
+    let colorPrimaries: String?
+    let colorSpace: String?
+    let colorTransfer: String?
+    let bitDepth: Int?
+    let pixelFormat: String?
+    let refFrames: Int?
+    let channels: Int?
+    let channelLayout: String?
+    let sampleRate: Int?
+    let isDefault: Bool?
+    let isForced: Bool?
     let isExternal: Bool?
 
     enum CodingKeys: String, CodingKey {
@@ -278,7 +304,63 @@ struct MediaStream: Decodable, Hashable {
         case codec = "Codec"
         case language = "Language"
         case displayTitle = "DisplayTitle"
+        case title = "Title"
+        case profile = "Profile"
+        case level = "Level"
+        case width = "Width"
+        case height = "Height"
+        case aspectRatio = "AspectRatio"
+        case isInterlaced = "IsInterlaced"
+        case realFrameRate = "RealFrameRate"
+        case averageFrameRate = "AverageFrameRate"
+        case bitRate = "BitRate"
+        case videoRange = "VideoRange"
+        case videoRangeType = "VideoRangeType"
+        case colorPrimaries = "ColorPrimaries"
+        case colorSpace = "ColorSpace"
+        case colorTransfer = "ColorTransfer"
+        case bitDepth = "BitDepth"
+        case pixelFormat = "PixelFormat"
+        case refFrames = "RefFrames"
+        case channels = "Channels"
+        case channelLayout = "ChannelLayout"
+        case sampleRate = "SampleRate"
+        case isDefault = "IsDefault"
+        case isForced = "IsForced"
         case isExternal = "IsExternal"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        index = try? container.decode(Int.self, forKey: .index)
+        type = try? container.decode(String.self, forKey: .type)
+        codec = try? container.decode(String.self, forKey: .codec)
+        language = try? container.decode(String.self, forKey: .language)
+        displayTitle = try? container.decode(String.self, forKey: .displayTitle)
+        title = try? container.decode(String.self, forKey: .title)
+        profile = try? container.decode(String.self, forKey: .profile)
+        level = try? container.decode(Double.self, forKey: .level)
+        width = try? container.decode(Int.self, forKey: .width)
+        height = try? container.decode(Int.self, forKey: .height)
+        aspectRatio = try? container.decode(String.self, forKey: .aspectRatio)
+        isInterlaced = try? container.decode(Bool.self, forKey: .isInterlaced)
+        realFrameRate = try? container.decode(Double.self, forKey: .realFrameRate)
+        averageFrameRate = try? container.decode(Double.self, forKey: .averageFrameRate)
+        bitRate = try? container.decode(Int.self, forKey: .bitRate)
+        videoRange = try? container.decode(String.self, forKey: .videoRange)
+        videoRangeType = try? container.decode(String.self, forKey: .videoRangeType)
+        colorPrimaries = try? container.decode(String.self, forKey: .colorPrimaries)
+        colorSpace = try? container.decode(String.self, forKey: .colorSpace)
+        colorTransfer = try? container.decode(String.self, forKey: .colorTransfer)
+        bitDepth = try? container.decode(Int.self, forKey: .bitDepth)
+        pixelFormat = try? container.decode(String.self, forKey: .pixelFormat)
+        refFrames = try? container.decode(Int.self, forKey: .refFrames)
+        channels = try? container.decode(Int.self, forKey: .channels)
+        channelLayout = try? container.decode(String.self, forKey: .channelLayout)
+        sampleRate = try? container.decode(Int.self, forKey: .sampleRate)
+        isDefault = try? container.decode(Bool.self, forKey: .isDefault)
+        isForced = try? container.decode(Bool.self, forKey: .isForced)
+        isExternal = try? container.decode(Bool.self, forKey: .isExternal)
     }
 }
 
