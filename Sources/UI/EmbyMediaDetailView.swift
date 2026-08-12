@@ -129,6 +129,7 @@ struct EmbyMediaDetailView: View {
                 )
             )
             .offset(y: stretch > 0 ? 0 : backdropPinOffset)
+            .frame(width: width, height: visualHeight, alignment: .top)
 
             LinearGradient(
                 stops: [
@@ -352,12 +353,7 @@ struct EmbyMediaDetailView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 7) {
                             ForEach(model.episodeRanges) { range in
-                                Button {
-                                    model.selectEpisodeRange(range.startOffset)
-                                    if let target = model.episode(at: range.startOffset) {
-                                        withAnimation(.easeInOut(duration: 0.32)) { proxy.scrollTo(target.id, anchor: .leading) }
-                                    }
-                                } label: {
+                                Button { jumpToEpisodeRange(range, proxy: proxy) } label: {
                                     Text(range.title)
                                         .font(.caption.weight(.semibold))
                                         .foregroundColor(model.selectedEpisodeRangeOffset == range.startOffset ? .white : .primary)
@@ -365,8 +361,11 @@ struct EmbyMediaDetailView: View {
                                         .frame(height: 31)
                                         .background(model.selectedEpisodeRangeOffset == range.startOffset ? Color.blue : Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.06))
                                         .clipShape(Capsule())
+                                        .frame(minHeight: 44)
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
+                                .contentShape(Rectangle())
                             }
                         }
                     }
@@ -383,6 +382,16 @@ struct EmbyMediaDetailView: View {
                 }
                 .frame(height: 165, alignment: .top)
             }
+        }
+    }
+
+    private func jumpToEpisodeRange(_ range: EmbyEpisodeRange, proxy: ScrollViewProxy) {
+        model.selectEpisodeRange(range.startOffset)
+        guard let target = model.episode(at: range.startOffset) else { return }
+        DispatchQueue.main.async {
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) { proxy.scrollTo(target.id, anchor: .leading) }
         }
     }
 

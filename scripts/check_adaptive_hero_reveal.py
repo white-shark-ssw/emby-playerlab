@@ -65,6 +65,7 @@ require("hero(width: geometry.size.width, viewportHeight: viewportHeight)" in de
 require("let backdropBaseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width)" in detail, "detail backdrop base height is no longer independent")
 require("let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight)" in detail, "detail foreground height is not independent")
 require("viewportHeight: backdropVisualHeight" in detail, "detail clear-backdrop mask was coupled back to foreground height")
+require(".offset(y: stretch > 0 ? 0 : backdropPinOffset)\n            .frame(width: width, height: visualHeight, alignment: .top)" in detail, "detail clear backdrop must occupy the taller Hero layout while staying top-aligned")
 require("detailForegroundBaseHeight" not in picker, "Episode Picker must remain frozen and must not use detail foreground positioning")
 
 print("synchronous Hero crop and container motion invariants: OK")
