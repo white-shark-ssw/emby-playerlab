@@ -1,0 +1,60 @@
+name: Apply synchronous Hero crop motion
+
+on:
+  push:
+    branches:
+      - fix/hero-synchronous-crop-motion
+    paths:
+      - '.github/workflows/one-shot-hero-synchronous-crop.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/hero-synchronous-crop-motion
+          fetch-depth: 0
+      - name: Apply synchronous crop and container motion
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          for path in [Path('Sources/UI/EmbyMediaDetailView.swift'), Path('Sources/UI/EmbyEpisodePickerView.swift')]:
+              s = path.read_text()
+              old = '.offset(y: stretch > 0 ? -stretch : consumedCropScroll)\n        .frame(width: width, height: baseHeight + consumedCropScroll, alignment: .top)'
+              new = '.offset(y: stretch > 0 ? -stretch : 0)\n        .frame(width: width, height: baseHeight, alignment: .top)'
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one pin compensation block, found {count}')
+              path.write_text(s.replace(old, new, 1))
+
+          path = Path('scripts/check_adaptive_hero_reveal.py')
+          s = path.read_text()
+          replacements = {
+              'require("baseHeight + consumedCropScroll" in detail, "detail content must stay below the pinned Hero until crop reaches zero")': 'require("baseHeight + consumedCropScroll" not in detail, "detail must not extend layout height to pin Hero during crop release")',
+              'require("stretch > 0 ? -stretch : consumedCropScroll" in detail, "detail Hero must pin during crop release and preserve elastic overscroll")': 'require("stretch > 0 ? -stretch : 0" in detail, "detail Hero crop and native container motion must run simultaneously while preserving elastic overscroll")',
+              'require("baseHeight + consumedCropScroll" in picker, "episode list must stay below pinned Hero until crop reaches zero")': 'require("baseHeight + consumedCropScroll" not in picker, "episode picker must not extend layout height to pin Hero during crop release")',
+              'require("stretch > 0 ? -stretch : consumedCropScroll" in picker, "episode picker must share pin-then-exit and elastic behavior")': 'require("stretch > 0 ? -stretch : 0" in picker, "episode picker crop and native container motion must run simultaneously while preserving elastic overscroll")',
+          }
+          for old, new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f'missing expected invariant: {old}')
+              s = s.replace(old, new, 1)
+          s = s.replace('outside the compensated Hero', 'from the native ScrollView')
+          s = s.replace('raw one-to-one Hero scroll invariants: OK', 'synchronous Hero crop and container motion invariants: OK')
+          path.write_text(s)
+          PY
+          python scripts/check_adaptive_hero_reveal.py
+          python scripts/check_v0134_detail_navigation.py
+          git diff --check
+      - name: Commit source changes
+        run: |
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add Sources/UI/EmbyMediaDetailView.swift Sources/UI/EmbyEpisodePickerView.swift scripts/check_adaptive_hero_reveal.py
+          git commit -m 'fix: move Hero container while crop releases'
+          git push origin HEAD:fix/hero-synchronous-crop-motion
