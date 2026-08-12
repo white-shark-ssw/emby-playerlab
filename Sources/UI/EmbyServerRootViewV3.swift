@@ -185,6 +185,11 @@ private struct V3EmbyHomeView: View {
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             .overlay(alignment: .bottom) { dock }
             .onAppear { if !model.hasLoaded { Task { await model.refresh() } } }
+            .onReceive(NotificationCenter.default.publisher(for: EmbyUserDataChange.notification)) { notification in
+                guard let source = notification.object as? EmbyAPIClient, source === client, let itemID = notification.userInfo?[EmbyUserDataChange.itemIDKey] as? String else { return }
+                model.invalidateResumeItem(itemID)
+                Task { await model.refresh() }
+            }
             .sheet(isPresented: $isMediaManagementPresented) {
                 V3MediaManagementView(preferences: model.preferences) { model.savePreferences($0) }
             }
@@ -328,6 +333,10 @@ private final class V3EmbyHomeViewModel: ObservableObject {
         let backdrop = pool.filter { !$0.backdropImageTags.isEmpty }
         let fallback = pool.filter { $0.backdropImageTags.isEmpty }
         return Array((backdrop + fallback).prefix(6))
+    }
+
+    func invalidateResumeItem(_ itemID: String) {
+        resumeItems.removeAll { $0.id == itemID || $0.seriesId == itemID }
     }
 
     func refresh() async {

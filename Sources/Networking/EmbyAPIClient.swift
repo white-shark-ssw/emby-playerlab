@@ -258,6 +258,11 @@ final class EmbyAPIClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = 30
+        if method.caseInsensitiveCompare("GET") == .orderedSame {
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
+            request.setValue("no-cache", forHTTPHeaderField: "Pragma")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(authorizationHeader, forHTTPHeaderField: "X-Emby-Authorization")

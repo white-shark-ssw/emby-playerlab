@@ -1041,6 +1041,8 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     @Published var mediaMetadataItem: LibraryItem?
     @Published private var desiredFavorite: Bool
     @Published private var desiredPlayed: Bool
+    @Published private var hasPlaybackPositionOverride = false
+    @Published private var playbackPositionOverrideTicks: Int64?
     private var syncedFavorite: Bool
     private var syncedPlayed: Bool
     private var favoriteSyncTask: Task<Void, Never>?
@@ -1157,22 +1159,32 @@ final class EmbyMediaDetailViewModel: ObservableObject {
 
     var primaryPlayButtonShowsResume: Bool {
         guard !displayedPlayed, let playable = primaryPlayableItem else { return false }
-        return playable.playbackProgress > 0.001
+        return effectivePlaybackProgress(for: playable) > 0.001
     }
 
     var primaryPlayButtonProgress: Double {
         guard primaryPlayButtonShowsResume, let playable = primaryPlayableItem else { return 0 }
-        return min(1, max(0, playable.playbackProgress))
+        return min(1, max(0, effectivePlaybackProgress(for: playable)))
     }
 
     var primaryPlayButtonPositionText: String? {
-        guard primaryPlayButtonShowsResume, let ticks = primaryPlayableItem?.userData?.playbackPositionTicks, ticks > 0 else { return nil }
+        guard primaryPlayButtonShowsResume, let playable = primaryPlayableItem, let ticks = effectivePlaybackPositionTicks(for: playable), ticks > 0 else { return nil }
         let total = max(0, Int(Double(ticks) / AppIdentity.ticksPerSecond))
         let hours = total / 3600
         let minutes = (total % 3600) / 60
         let seconds = total % 60
         if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, seconds) }
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private func effectivePlaybackPositionTicks(for playable: LibraryItem) -> Int64? {
+        if playable.id == item.id && hasPlaybackPositionOverride { return playbackPositionOverrideTicks }
+        return playable.userData?.playbackPositionTicks
+    }
+
+    private func effectivePlaybackProgress(for playable: LibraryItem) -> Double {
+        guard let runTimeTicks = playable.runTimeTicks, runTimeTicks > 0, let position = effectivePlaybackPositionTicks(for: playable), position > 0 else { return 0 }
+        return min(1, max(0, Double(position) / Double(runTimeTicks)))
     }
 
     var primaryPlayButtonTitle: String {
@@ -1284,6 +1296,10 @@ final class EmbyMediaDetailViewModel: ObservableObject {
 
     func togglePlayed() {
         desiredPlayed.toggle()
+        if !desiredPlayed {
+            hasPlaybackPositionOverride = true
+            playbackPositionOverrideTicks = 0
+        }
         DetailHaptics.selection()
         startPlayedSyncIfNeeded()
     }
@@ -1318,8 +1334,18 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         while desiredPlayed != syncedPlayed {
             let target = desiredPlayed
             do {
-                try await client.setPlayed(itemId: item.id, played: target)
+                let changedItemID = item.id
+                try await client.setPlayed(itemId: changedItemID, played: target)
                 syncedPlayed = target
+                if let refreshed = try? await client.libraryItem(itemId: changedItemID) { item = refreshed }
+                if !target || !desiredPlayed {
+                    hasPlaybackPositionOverride = true
+                    playbackPositionOverrideTicks = 0
+                } else {
+                    hasPlaybackPositionOverride = false
+                    playbackPositionOverrideTicks = nil
+                }
+                NotificationCenter.default.post(name: EmbyUserDataChange.notification, object: client, userInfo: [EmbyUserDataChange.itemIDKey: changedItemID])
             } catch {
                 desiredPlayed = syncedPlayed
                 if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
