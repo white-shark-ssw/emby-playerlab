@@ -32,3 +32,5 @@ jobs:
           git add Sources/UI/EmbyMediaDetailView.swift Sources/UI/EmbyEpisodePickerView.swift Sources/UI/ImmersiveUIComponents.swift scripts/check_adaptive_hero_reveal.py
           git commit -m 'fix: observe native ScrollView content offset for Hero motion [hero-native-scroll-observer-applied]'
           git push origin HEAD:fix/hero-native-scroll-observer
+
+# retry after invariant patch
