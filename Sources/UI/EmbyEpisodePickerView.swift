@@ -37,7 +37,7 @@ struct EmbyEpisodePickerView: View {
                         }
                         .frame(width: geometry.size.width)
                         .background(
-                            AdaptiveHeroNativeScrollObserver { value in
+                            AdaptiveHeroNativeScrollObserver(forceVerticalBounce: true) { value in
                                 if abs(pickerHeroRawScrollMinY - value) > 0.10 { pickerHeroRawScrollMinY = value }
                             }
                         )
