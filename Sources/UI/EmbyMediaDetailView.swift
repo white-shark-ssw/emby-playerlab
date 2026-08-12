@@ -22,6 +22,8 @@ struct EmbyMediaDetailView: View {
     @State private var heroUsesLightForeground = true
     @State private var heroSourceSize: CGSize?
     @State private var heroRawScrollMinY: CGFloat = 0
+    @State private var mediaInfoExpanded = false
+    @State private var showRawMediaPath = false
 
     init(item: LibraryItem, client: EmbyAPIClient) {
         self.item = item
@@ -42,9 +44,11 @@ struct EmbyMediaDetailView: View {
                                 overview
                                 if model.isSeries { seriesContent }
                                 castSection
+                                mediaStreamInfoSection
                                 tagSection
                                 stillsSection
                                 similarSection
+                                mediaSourceSummarySection
                                 if let error = model.errorMessage { errorView(error) }
                             }
                             .padding(.top, 2)
@@ -507,6 +511,236 @@ struct EmbyMediaDetailView: View {
     }
 
     @ViewBuilder
+    private var mediaStreamInfoSection: some View {
+        if !model.mediaStreams.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.34)) { mediaInfoExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 10) {
+                        Text("音视频字幕信息").font(.title2.weight(.bold)).foregroundColor(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .rotationEffect(.degrees(mediaInfoExpanded ? 180 : 0))
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 20)
+
+                if mediaInfoExpanded {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(Array(model.mediaStreams.enumerated()), id: \.offset) { index, stream in
+                                mediaStreamCard(stream, ordinal: index)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+        }
+    }
+
+    private func mediaStreamCard(_ stream: MediaStream, ordinal: Int) -> some View {
+        let rows = mediaInfoRows(for: stream)
+        let style = mediaStreamStyle(stream, ordinal: ordinal)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 9) {
+                Image(systemName: style.icon).font(.system(size: 16, weight: .semibold))
+                Text(style.title).font(.headline)
+            }
+            .foregroundColor(.primary)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(rows) { row in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(row.label)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(width: 72, alignment: .leading)
+                        Text(row.value)
+                            .font(.caption)
+                            .foregroundColor(.primary.opacity(0.86))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .frame(width: 308, alignment: .topLeading)
+        .background(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.045))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.primary.opacity(colorScheme == .dark ? 0.13 : 0.08), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func mediaStreamStyle(_ stream: MediaStream, ordinal: Int) -> (title: String, icon: String) {
+        let type = stream.type?.lowercased() ?? ""
+        let base: (String, String)
+        switch type {
+        case "video": base = ("视频", "video.fill")
+        case "audio": base = ("音频", "music.note")
+        case "subtitle": base = ("字幕", "captions.bubble.fill")
+        default: base = (stream.type ?? "媒体流", "waveform")
+        }
+        let sameType = model.mediaStreams.filter { ($0.type?.lowercased() ?? "") == type }
+        guard sameType.count > 1 else { return base }
+        let number = model.mediaStreams.prefix(ordinal + 1).filter { ($0.type?.lowercased() ?? "") == type }.count
+        return ("\(base.0) #\(number)", base.1)
+    }
+
+    private func mediaInfoRows(for stream: MediaStream) -> [DetailMediaInfoRow] {
+        var rows: [DetailMediaInfoRow] = []
+        func add(_ label: String, _ value: String?) {
+            guard let value else { return }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { rows.append(DetailMediaInfoRow(label: label, value: trimmed)) }
+        }
+        add("标题", stream.displayTitle)
+        if let title = stream.title, title != stream.displayTitle { add("内嵌标题", title) }
+        add("语言", stream.language)
+        add("编解码器", stream.codec?.uppercased())
+        let type = stream.type?.lowercased() ?? ""
+        if type == "video" {
+            add("配置", stream.profile)
+            add("等级", stream.level.map(formatMediaDecimal))
+            if let width = stream.width, let height = stream.height {
+                add("分辨率", "\(width)×\(height)\(width >= 3500 ? " [4K]" : "")")
+            }
+            add("长宽比", stream.aspectRatio)
+            add("交错", stream.isInterlaced.map(yesNo))
+            add("帧率", (stream.realFrameRate ?? stream.averageFrameRate).map { "\(formatMediaDecimal($0)) fps" })
+            add("比特率", stream.bitRate.map(formatMediaBitRate))
+            add("视频范围", stream.videoRange ?? stream.videoRangeType)
+            add("基色", stream.colorPrimaries)
+            add("色域", stream.colorSpace)
+            add("色偏", stream.colorTransfer)
+            add("位深度", stream.bitDepth.map { "\($0) bit" })
+            add("像素格式", stream.pixelFormat)
+            add("参考帧", stream.refFrames.map(String.init))
+        } else if type == "audio" {
+            add("配置", stream.profile)
+            add("布局", stream.channelLayout)
+            add("频道", stream.channels.map { "\($0) ch" })
+            add("比特率", stream.bitRate.map(formatMediaBitRate))
+            add("采样率", stream.sampleRate.map { "\($0) Hz" })
+            add("默认", stream.isDefault.map(yesNo))
+            add("外部", stream.isExternal.map(yesNo))
+        } else if type == "subtitle" {
+            add("默认", stream.isDefault.map(yesNo))
+            add("强制", stream.isForced.map(yesNo))
+            add("外部", stream.isExternal.map(yesNo))
+        } else {
+            add("默认", stream.isDefault.map(yesNo))
+            add("外部", stream.isExternal.map(yesNo))
+        }
+        return rows
+    }
+
+    @ViewBuilder
+    private var mediaSourceSummarySection: some View {
+        if let source = model.primaryMediaSource, let mediaItem = model.mediaMetadataItem {
+            Button {
+                guard let path = source.path, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                withAnimation(.easeInOut(duration: 0.20)) { showRawMediaPath.toggle() }
+            } label: {
+                VStack(spacing: 7) {
+                    if showRawMediaPath, let path = source.path, !path.isEmpty {
+                        Text(path)
+                            .font(.system(size: 12.5, weight: .medium, design: .monospaced))
+                            .foregroundColor(.primary.opacity(0.84))
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("点击返回媒体信息")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text(mediaSourceDisplayName(source, item: mediaItem))
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(.primary.opacity(0.86))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                        Text(mediaSourceSecondaryLine(source, item: mediaItem))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity, minHeight: 72)
+                .background(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.035))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.primary.opacity(colorScheme == .dark ? 0.14 : 0.09), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 20)
+        }
+    }
+
+    private func mediaSourceDisplayName(_ source: MediaSource, item: LibraryItem) -> String {
+        if let path = source.path?.removingPercentEncoding, !path.isEmpty {
+            let last = path.split(separator: "/", omittingEmptySubsequences: true).last.map(String.init) ?? ""
+            let withoutQuery = last.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? last
+            if withoutQuery.contains(".") && !withoutQuery.isEmpty { return withoutQuery }
+        }
+        if let name = source.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty { return name }
+        if let container = source.container?.trimmingCharacters(in: .whitespacesAndNewlines), !container.isEmpty { return "\(item.name).\(container.lowercased())" }
+        return item.name
+    }
+
+    private func mediaSourceSecondaryLine(_ source: MediaSource, item: LibraryItem) -> String {
+        var parts: [String] = []
+        parts.append(client.serverName ?? client.baseURL.host ?? "Emby")
+        if let date = formatMediaDate(item.dateCreated) { parts.append(date) }
+        if let size = source.size, size > 0 { parts.append(formatMediaSize(size)) }
+        return parts.joined(separator: "  ")
+    }
+
+    private func formatMediaDate(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var date = iso.date(from: value)
+        if date == nil {
+            iso.formatOptions = [.withInternetDateTime]
+            date = iso.date(from: value)
+        }
+        guard let date else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy年M月d日"
+        return formatter.string(from: date)
+    }
+
+    private func formatMediaSize(_ bytes: Int64) -> String {
+        let gb = Double(bytes) / 1_073_741_824
+        if gb >= 1 { return String(format: "%.2f GB", gb) }
+        let mb = Double(bytes) / 1_048_576
+        if mb >= 1 { return String(format: "%.1f MB", mb) }
+        return "\(bytes) B"
+    }
+
+    private func formatMediaBitRate(_ bitsPerSecond: Int) -> String {
+        if bitsPerSecond >= 1_000_000 { return String(format: "%.2f Mbps", Double(bitsPerSecond) / 1_000_000) }
+        return "\(max(0, bitsPerSecond / 1_000)) kbps"
+    }
+
+    private func formatMediaDecimal(_ value: Double) -> String {
+        if abs(value.rounded() - value) < 0.0001 { return String(Int(value.rounded())) }
+        return String(format: "%.2f", value).replacingOccurrences(of: "0+$", with: "", options: .regularExpression).replacingOccurrences(of: "\\.$", with: "", options: .regularExpression)
+    }
+
+    private func yesNo(_ value: Bool) -> String { value ? "是" : "否" }
+
+    @ViewBuilder
     private var tagSection: some View {
         if !model.detailFilters.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
@@ -629,6 +863,12 @@ struct EmbyMediaDetailView: View {
         if hours > 0 { return minutes > 0 ? "\(hours)小时\(minutes)分钟" : "\(hours)小时" }
         return "\(minutes)分钟"
     }
+}
+
+private struct DetailMediaInfoRow: Identifiable {
+    let label: String
+    let value: String
+    var id: String { "\(label)|\(value)" }
 }
 
 struct EmbyDetailFilter: Identifiable, Hashable {
@@ -759,6 +999,8 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     @Published var isLoadingEpisodes = false
     @Published var isResolvingPlayback = false
     @Published var selectedSource: ResolvedPlaybackSource?
+    @Published var mediaSources: [MediaSource] = []
+    @Published var mediaMetadataItem: LibraryItem?
     @Published private var desiredFavorite: Bool
     @Published private var desiredPlayed: Bool
     private var syncedFavorite: Bool
@@ -782,6 +1024,23 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     var displayedFavorite: Bool { desiredFavorite }
     var displayedPlayed: Bool { desiredPlayed }
     var normalizedOverview: String? { normalizedOverview(for: item) }
+    var primaryMediaSource: MediaSource? { mediaSources.first(where: { $0.supportsDirectPlay == true }) ?? mediaSources.first }
+    var mediaStreams: [MediaStream] {
+        let streams = primaryMediaSource?.mediaStreams ?? []
+        func priority(_ stream: MediaStream) -> Int {
+            switch stream.type?.lowercased() {
+            case "video": return 0
+            case "audio": return 1
+            case "subtitle": return 2
+            default: return 3
+            }
+        }
+        return streams.sorted { lhs, rhs in
+            let lp = priority(lhs), rp = priority(rhs)
+            if lp != rp { return lp < rp }
+            return (lhs.index ?? Int.max) < (rhs.index ?? Int.max)
+        }
+    }
 
     func normalizedOverview(for item: LibraryItem) -> String? {
         guard let overview = item.overview else { return nil }
@@ -932,6 +1191,8 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                 }
             }
 
+            await loadMediaMetadata(for: primaryPlayableItem)
+
             do { imageInfos = try await client.imageInfos(itemId: refreshed.id) }
             catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "image info failed: \(error.localizedDescription)") } }
 
@@ -943,6 +1204,21 @@ final class EmbyMediaDetailViewModel: ObservableObject {
             if isEmbyRequestCancellation(error) { return }
             hasLoaded = true
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadMediaMetadata(for mediaItem: LibraryItem?) async {
+        guard let mediaItem else {
+            mediaSources = []
+            mediaMetadataItem = nil
+            return
+        }
+        do {
+            let info = try await client.playbackInfo(itemId: mediaItem.id)
+            mediaSources = info.mediaSources
+            mediaMetadataItem = mediaItem
+        } catch {
+            if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "media metadata failed: \(error.localizedDescription)") }
         }
     }
 

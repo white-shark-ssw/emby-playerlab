@@ -93,7 +93,7 @@ final class SessionStore: ObservableObject {
 
     func client(for stored: EmbySession) throws -> EmbyAPIClient {
         guard let token = KeychainStore.get(account: stored.tokenAccount) else { throw EmbyAPIError.missingSession }
-        return EmbyAPIClient(baseURL: stored.serverURL, accessToken: token, userId: stored.user.id)
+        return EmbyAPIClient(baseURL: stored.serverURL, accessToken: token, userId: stored.user.id, serverName: stored.serverName)
     }
 
     func remove(_ stored: EmbySession) async {
