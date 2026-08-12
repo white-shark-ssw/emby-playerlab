@@ -14,7 +14,9 @@ project = Path("project.yml").read_text()
 
 require("struct AdaptiveHeroRevealMetrics" in metrics, "shared adaptive Hero reveal metrics are missing")
 require("initialSize.height - fullSize.height" in metrics, "crop travel must equal the real rendered-height delta")
-require("initialSize.height - max(0, consumedCropScroll)" in metrics, "rendered image height must subtract raw consumed scroll directly")
+require("cropResponseFactor: CGFloat = 0.65" in metrics and "upwardScroll) * cropResponseFactor" in metrics, "crop response must stay 35 percent softer than native container travel")
+require("let scale = viewportSize.width / imageSize.width" in metrics, "full reveal must stop at the viewport width edge to prevent side gaps")
+require("initialSize.height - max(0, consumedCropScroll)" in metrics, "rendered image height must subtract the softened crop response directly")
 require("width: height * aspect" in metrics, "rendered image width must follow source aspect ratio from the changing height")
 require("struct AdaptiveHeroNativeScrollObserver: UIViewRepresentable" in metrics, "native ScrollView observer is missing")
 require("contentOffset.y + scrollView.adjustedContentInset.top" in metrics, "native raw ScrollView displacement formula is missing")
@@ -34,6 +36,7 @@ require("location: clearImageBottom" in detail, "detail clear image must keep co
 
 require("pickerHeroRawScrollMinY" in picker, "episode picker must read raw ScrollView displacement from the native ScrollView")
 require("AdaptiveHeroNativeScrollObserver" in picker, "episode picker must observe native ScrollView content offset")
+require("AdaptiveHeroNativeScrollObserver(forceVerticalBounce: true)" in picker, "episode picker must keep native vertical bounce tracking available at the top edge")
 require("rawScrollProxy.frame" not in picker, "episode picker must not sample raw scroll from the compensated content background")
 require("renderedImageSize.width, height: renderedImageSize.height" in picker, "episode picker must render the image at the explicitly computed natural size")
 require("baseHeight + consumedCropScroll" not in picker, "episode picker must not extend layout height to pin Hero during crop release")
