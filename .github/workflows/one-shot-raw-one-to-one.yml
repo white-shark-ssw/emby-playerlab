@@ -1,0 +1,47 @@
+name: Apply raw one-to-one Hero scroll
+
+on:
+  push:
+    branches:
+      - "fix/raw-scroll-hero-one-to-one"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply exact source files
+        run: |
+          set -euo pipefail
+          if git log -1 --pretty=%B | grep -Fq '[raw-one-to-one-applied]'; then exit 0; fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, gzip
+          mapping = {
+              '.github/raw-one-to-one/metrics.b64': 'Sources/UI/ImmersiveUIComponents.swift',
+              '.github/raw-one-to-one/detail.b64': 'Sources/UI/EmbyMediaDetailView.swift',
+              '.github/raw-one-to-one/picker.b64': 'Sources/UI/EmbyEpisodePickerView.swift',
+              '.github/raw-one-to-one/check.b64': 'scripts/check_adaptive_hero_reveal.py',
+          }
+          for source, target in mapping.items():
+              payload = Path(source).read_text().strip()
+              Path(target).write_bytes(gzip.decompress(base64.b64decode(payload)))
+          PY
+          python3 scripts/check_v0134_detail_navigation.py
+          python3 scripts/check_adaptive_hero_reveal.py
+          git diff --check
+          git diff --stat
+      - name: Commit source changes
+        run: |
+          set -euo pipefail
+          if git log -1 --pretty=%B | grep -Fq '[raw-one-to-one-applied]'; then exit 0; fi
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add Sources/UI/ImmersiveUIComponents.swift Sources/UI/EmbyMediaDetailView.swift Sources/UI/EmbyEpisodePickerView.swift scripts/check_adaptive_hero_reveal.py
+          git commit -m 'fix: bind Hero rendered height to raw scroll displacement [raw-one-to-one-applied]'
+          git push origin HEAD:fix/raw-scroll-hero-one-to-one
