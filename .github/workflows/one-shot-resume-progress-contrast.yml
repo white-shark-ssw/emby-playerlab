@@ -1,0 +1,70 @@
+name: Tune resume progress contrast
+
+on:
+  push:
+    branches:
+      - tune/resume-progress-contrast
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tune/resume-progress-contrast
+          fetch-depth: 0
+      - name: Apply focused contrast tune
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          detail_path = Path('Sources/UI/EmbyMediaDetailView.swift')
+          detail = detail_path.read_text()
+          old = '''        let progress = CGFloat(min(max(0, model.primaryPlayButtonProgress), 1))
+                  let foreground = Color.black.opacity(0.82)
+                  let shape = RoundedRectangle(cornerRadius: 25, style: .continuous)'''
+          new = '''        let progress = CGFloat(min(max(0, model.primaryPlayButtonProgress), 1))
+                  let foreground = Color.black.opacity(0.82)
+                  let baseOpacity = model.primaryPlayButtonShowsResume ? 0.56 : 0.82
+                  let shape = RoundedRectangle(cornerRadius: 25, style: .continuous)'''
+          if old not in detail:
+              raise SystemExit('primary play button header not found')
+          detail = detail.replace(old, new, 1)
+          if 'shape.fill(Color.white.opacity(0.82))' not in detail:
+              raise SystemExit('primary play button base fill not found')
+          detail = detail.replace('shape.fill(Color.white.opacity(0.82))', 'shape.fill(Color.white.opacity(baseOpacity))', 1)
+          if '.fill(Color.white.opacity(0.24))' not in detail:
+              raise SystemExit('resume progress fill not found')
+          detail = detail.replace('.fill(Color.white.opacity(0.24))', '.fill(Color.white.opacity(0.42))', 1)
+          detail_path.write_text(detail)
+
+          test_path = Path('scripts/check_detail_resume_button.py')
+          test = test_path.read_text()
+          old_test = '''require('Color.white.opacity(0.82)' in play_button and 'Color.black.opacity(0.82)' in play_button, "primary play button must use translucent white with dark foreground")'''
+          new_test = '''require('let baseOpacity = model.primaryPlayButtonShowsResume ? 0.56 : 0.82' in play_button and 'Color.black.opacity(0.82)' in play_button, "resume state must lower the button base opacity while plain play keeps the existing white treatment")
+          require('shape.fill(Color.white.opacity(baseOpacity))' in play_button, "primary play button base fill must use the resume-aware opacity")'''
+          if old_test not in test:
+              raise SystemExit('base opacity regression assertion not found')
+          test = test.replace(old_test, new_test, 1)
+          if "'.fill(Color.white.opacity(0.24))'" not in test:
+              raise SystemExit('progress opacity regression assertion not found')
+          test = test.replace("'.fill(Color.white.opacity(0.24))'", "'.fill(Color.white.opacity(0.42))'", 1)
+          test_path.write_text(test)
+          PY
+      - name: Run focused regression
+        run: |
+          python3 scripts/check_detail_resume_button.py
+          python3 scripts/check_v0134_detail_navigation.py
+          python3 scripts/check_adaptive_hero_reveal.py
+      - name: Commit formal changes and remove one-shot workflow
+        run: |
+          git config user.name "ChatGPT"
+          git config user.email "chatgpt@users.noreply.github.com"
+          git add Sources/UI/EmbyMediaDetailView.swift scripts/check_detail_resume_button.py
+          git rm .github/workflows/one-shot-resume-progress-contrast.yml
+          git commit -m "tune: increase resume progress contrast"
+          git push origin HEAD:tune/resume-progress-contrast
