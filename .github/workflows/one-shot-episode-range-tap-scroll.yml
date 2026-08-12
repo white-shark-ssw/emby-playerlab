@@ -1,0 +1,33 @@
+name: Apply episode range tap and scroll fix
+
+on:
+  push:
+    branches:
+      - fix/episode-range-tap-and-native-scroll
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/episode-range-tap-and-native-scroll
+          fetch-depth: 0
+      - name: Apply patch
+        run: python3 .github/apply_episode_range_tap_scroll.py
+      - name: Run focused regressions
+        run: |
+          python3 scripts/check_detail_episode_range_jump.py
+          python3 scripts/check_adaptive_hero_reveal.py
+          python3 scripts/check_v0134_detail_navigation.py
+      - name: Commit formal changes
+        run: |
+          git config user.name "ChatGPT"
+          git config user.email "chatgpt@users.noreply.github.com"
+          git add Sources/UI/EmbyMediaDetailView.swift scripts/check_detail_episode_range_jump.py
+          git commit -m "fix: prioritize episode range taps and restore animated scrolling"
+          git push origin HEAD:fix/episode-range-tap-and-native-scroll
