@@ -203,9 +203,9 @@ final class EmbyAPIClient {
         return ResolvedPlaybackSource(itemId: itemId, itemName: itemName, mediaSource: mediaSource, playSessionId: playSessionId, url: finalURL, headers: safeMediaHeaders(mediaSource.requiredHTTPHeaders ?? [:]))
     }
 
-    func reportStart(source: ResolvedPlaybackSource, position: Double, paused: Bool) async { await report(path: "Sessions/Playing", eventName: nil, source: source, position: position, paused: paused) }
-    func reportProgress(source: ResolvedPlaybackSource, position: Double, paused: Bool, eventName: String? = nil) async { await report(path: "Sessions/Playing/Progress", eventName: eventName, source: source, position: position, paused: paused) }
-    func reportStopped(source: ResolvedPlaybackSource, position: Double) async { await report(path: "Sessions/Playing/Stopped", eventName: nil, source: source, position: position, paused: true) }
+    func reportStart(source: ResolvedPlaybackSource, position: Double, paused: Bool) async { _ = await report(path: "Sessions/Playing", eventName: nil, source: source, position: position, paused: paused) }
+    func reportProgress(source: ResolvedPlaybackSource, position: Double, paused: Bool, eventName: String? = nil) async { _ = await report(path: "Sessions/Playing/Progress", eventName: eventName, source: source, position: position, paused: paused) }
+    @discardableResult func reportStopped(source: ResolvedPlaybackSource, position: Double) async -> Bool { await report(path: "Sessions/Playing/Stopped", eventName: nil, source: source, position: position, paused: true) }
 
     func logout() async {
         do { let _: EmptyResponse = try await send(path: "Sessions/Logout", method: "POST") }
@@ -225,7 +225,7 @@ final class EmbyAPIClient {
         [URLQueryItem(name: "Fields", value: "Overview,PrimaryImageAspectRatio,DateCreated,CommunityRating,OfficialRating,PremiereDate,RunTimeTicks,UserData,ProductionYear,SeriesName,SeriesId,IndexNumber,ParentIndexNumber,ChildCount,Genres,Tags,People,Studios,Taglines,ProviderIds")] + imageBrowseOptions
     }
 
-    private func report(path: String, eventName: String?, source: ResolvedPlaybackSource, position: Double, paused: Bool) async {
+    private func report(path: String, eventName: String?, source: ResolvedPlaybackSource, position: Double, paused: Bool) async -> Bool {
         struct Body: Encodable {
             let ItemId: String
             let MediaSourceId: String
@@ -238,8 +238,13 @@ final class EmbyAPIClient {
             let EventName: String?
         }
         let body = Body(ItemId: source.itemId, MediaSourceId: source.mediaSource.id, PlaySessionId: source.playSessionId, PositionTicks: Int64(max(0, position) * AppIdentity.ticksPerSecond), IsPaused: paused, IsMuted: false, CanSeek: true, PlayMethod: "DirectPlay", EventName: eventName)
-        do { let _: EmptyResponse = try await send(path: path, method: "POST", body: body) }
-        catch { DiagnosticsLogger.shared.log("Emby", "Report \(path) failed: \(error.localizedDescription)") }
+        do {
+            let _: EmptyResponse = try await send(path: path, method: "POST", body: body)
+            return true
+        } catch {
+            DiagnosticsLogger.shared.log("Emby", "Report \(path) failed: \(error.localizedDescription)")
+            return false
+        }
     }
 
     private func send<Response: Decodable>(path: String, method: String, query: [URLQueryItem] = [], authenticated: Bool = true) async throws -> Response {

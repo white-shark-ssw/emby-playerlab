@@ -83,6 +83,12 @@ struct EmbyMediaDetailView: View {
         .onAppear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-appear item=\(model.item.id)") }
         .onDisappear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-disappear item=\(model.item.id)") }
         .task { await model.load() }
+        .onReceive(NotificationCenter.default.publisher(for: EmbyUserDataChange.notification)) { notification in
+            guard let source = notification.object as? EmbyAPIClient, source === client,
+                  notification.userInfo?[EmbyUserDataChange.reasonKey] as? String == EmbyUserDataChange.playbackStoppedReason,
+                  let itemID = notification.userInfo?[EmbyUserDataChange.itemIDKey] as? String else { return }
+            Task { await model.refreshPlaybackUserData(itemID: itemID) }
+        }
         .background(EmbyStillViewerPresenter(selectedIndex: $selectedStillIndex, images: model.stillImages, itemId: model.item.id, client: client).frame(width: 0, height: 0))
         .fullScreenCover(isPresented: $showFullOverview) {
             EmbyOverviewOverlayView(text: model.normalizedOverview ?? "", backdropURL: heroImageURL)
@@ -1345,7 +1351,14 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                     hasPlaybackPositionOverride = false
                     playbackPositionOverrideTicks = nil
                 }
-                NotificationCenter.default.post(name: EmbyUserDataChange.notification, object: client, userInfo: [EmbyUserDataChange.itemIDKey: changedItemID])
+                NotificationCenter.default.post(
+                    name: EmbyUserDataChange.notification,
+                    object: client,
+                    userInfo: [
+                        EmbyUserDataChange.itemIDKey: changedItemID,
+                        EmbyUserDataChange.reasonKey: EmbyUserDataChange.manualPlayedReason,
+                    ]
+                )
             } catch {
                 desiredPlayed = syncedPlayed
                 if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
@@ -1354,6 +1367,24 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         }
         playedSyncTask = nil
         if desiredPlayed != syncedPlayed { startPlayedSyncIfNeeded() }
+    }
+
+    func refreshPlaybackUserData(itemID: String) async {
+        do {
+            let refreshed = try await client.libraryItem(itemId: itemID)
+            if item.id == itemID {
+                item = refreshed
+                hasPlaybackPositionOverride = false
+                playbackPositionOverrideTicks = nil
+                syncedPlayed = refreshed.isPlayed
+                desiredPlayed = refreshed.isPlayed
+            } else if let index = episodes.firstIndex(where: { $0.id == itemID }) {
+                episodes[index] = refreshed
+            }
+            DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refreshed item=\(itemID) positionTicks=\(refreshed.userData?.playbackPositionTicks ?? 0)")
+        } catch {
+            if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refresh failed item=\(itemID): \(error.localizedDescription)") }
+        }
     }
 
     func play(_ mediaItem: LibraryItem) async {
