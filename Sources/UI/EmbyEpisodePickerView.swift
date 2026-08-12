@@ -15,6 +15,7 @@ struct EmbyEpisodePickerView: View {
     @State private var lastHapticIndex: Int?
     @State private var lastHapticTime: TimeInterval = 0
     @State private var pickerHeroSourceSize: CGSize?
+    @State private var pickerHeroConsumedCropScroll: CGFloat = 0
 
     var body: some View {
         GeometryReader { geometry in
@@ -25,7 +26,7 @@ struct EmbyEpisodePickerView: View {
 
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(spacing: 0) {
-                            pickerHero(width: geometry.size.width, viewportHeight: viewportHeight)
+                            pickerHero(width: geometry.size.width)
                             LazyVStack(spacing: 16) {
                                 ForEach(displayedEpisodes) { episode in episodeRow(episode).id(episode.id) }
                             }
@@ -89,18 +90,17 @@ struct EmbyEpisodePickerView: View {
         return offsets.map { offset in EmbyEpisodeJump(label: items[offset].indexNumber ?? offset + 1, episode: items[offset]) }
     }
 
-    private func pickerHero(width: CGFloat, viewportHeight: CGFloat) -> some View {
+    private func pickerHero(width: CGFloat) -> some View {
         let baseHeight = AdaptiveHeroRevealMetrics.compactBaseHeight(width: width)
-        let revealDistance = AdaptiveHeroRevealMetrics.revealDistance(heroHeight: baseHeight, viewportHeight: viewportHeight)
+        let heroViewport = CGSize(width: width, height: baseHeight)
+        let cropTravel = AdaptiveHeroRevealMetrics.cropTravel(imageSize: pickerHeroSourceSize, viewportSize: heroViewport)
         return GeometryReader { proxy in
             let minY = proxy.frame(in: .named("emby-episode-picker-scroll")).minY
             let stretch = max(0, minY)
             let upwardScroll = max(0, -minY)
-            let revealProgress = AdaptiveHeroRevealMetrics.progress(upwardScroll: upwardScroll, revealDistance: revealDistance)
+            let consumedCropScroll = AdaptiveHeroRevealMetrics.consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel)
             let visualHeight = baseHeight + stretch
-            let heroViewport = CGSize(width: width, height: baseHeight)
-            let fullRevealScale = AdaptiveHeroRevealMetrics.fullRevealScale(imageSize: pickerHeroSourceSize, viewportSize: heroViewport)
-            let revealScale = AdaptiveHeroRevealMetrics.scale(fullRevealScale: fullRevealScale, progress: revealProgress)
+            let revealScale = AdaptiveHeroRevealMetrics.scale(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, consumedCropScroll: consumedCropScroll)
             let topPinOffset = AdaptiveHeroRevealMetrics.topPinOffset(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, scale: revealScale)
             let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(imageSize: pickerHeroSourceSize, viewportSize: heroViewport, scale: revealScale)
             let maskFadeSpan = min(0.67, clearImageBottom * 0.67)
@@ -139,9 +139,14 @@ struct EmbyEpisodePickerView: View {
                 .padding(.bottom, 14)
             }
             .frame(width: width, height: visualHeight)
-            .offset(y: stretch > 0 ? -stretch : 0)
+            .offset(y: stretch > 0 ? -stretch : consumedCropScroll)
+            .preference(key: AdaptiveHeroConsumedScrollPreferenceKey.self, value: consumedCropScroll)
         }
-        .frame(width: width, height: baseHeight)
+        .frame(width: width, height: baseHeight + pickerHeroConsumedCropScroll)
+        .onPreferenceChange(AdaptiveHeroConsumedScrollPreferenceKey.self) { value in
+            guard abs(pickerHeroConsumedCropScroll - value) > 0.25 else { return }
+            pickerHeroConsumedCropScroll = value
+        }
     }
 
     private var pickerHeroURL: URL? {
