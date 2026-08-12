@@ -180,19 +180,93 @@ struct AdaptiveHeroRevealMetrics {
     }
 }
 
-struct AdaptiveHeroRawScrollPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+private final class AdaptiveHeroScrollProbeUIView: UIView {
+    var hierarchyDidChange: ((UIView) -> Void)?
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        hierarchyDidChange?(self)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        hierarchyDidChange?(self)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        hierarchyDidChange?(self)
+    }
 }
 
-struct AdaptiveHeroRawScrollSentinel: View {
-    let coordinateSpaceName: String
+struct AdaptiveHeroNativeScrollObserver: UIViewRepresentable {
+    let onChange: (CGFloat) -> Void
 
-    var body: some View {
-        GeometryReader { proxy in
-            Color.clear.preference(key: AdaptiveHeroRawScrollPreferenceKey.self, value: proxy.frame(in: .named(coordinateSpaceName)).minY)
+    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
+
+    func makeUIView(context: Context) -> AdaptiveHeroScrollProbeUIView {
+        let view = AdaptiveHeroScrollProbeUIView(frame: .zero)
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+        view.hierarchyDidChange = { [weak coordinator = context.coordinator] probe in coordinator?.attach(from: probe) }
+        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak view] in
+            guard let view else { return }
+            coordinator?.attach(from: view)
         }
-        .frame(height: 0)
+        return view
+    }
+
+    func updateUIView(_ uiView: AdaptiveHeroScrollProbeUIView, context: Context) {
+        context.coordinator.onChange = onChange
+        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
+            guard let uiView else { return }
+            coordinator?.attach(from: uiView)
+        }
+    }
+
+    static func dismantleUIView(_ uiView: AdaptiveHeroScrollProbeUIView, coordinator: Coordinator) {
+        uiView.hierarchyDidChange = nil
+        coordinator.detach()
+    }
+
+    final class Coordinator {
+        var onChange: (CGFloat) -> Void
+        private weak var scrollView: UIScrollView?
+        private var contentOffsetObservation: NSKeyValueObservation?
+
+        init(onChange: @escaping (CGFloat) -> Void) { self.onChange = onChange }
+
+        func attach(from probe: UIView) {
+            guard let scrollView = ancestorScrollView(from: probe) else { return }
+            guard self.scrollView !== scrollView else {
+                emit(scrollView)
+                return
+            }
+            contentOffsetObservation?.invalidate()
+            self.scrollView = scrollView
+            contentOffsetObservation = scrollView.observe(\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in self?.emit(scrollView) }
+        }
+
+        func detach() {
+            contentOffsetObservation?.invalidate()
+            contentOffsetObservation = nil
+            scrollView = nil
+        }
+
+        private func ancestorScrollView(from probe: UIView) -> UIScrollView? {
+            var current: UIView? = probe
+            while let view = current {
+                if let scrollView = view as? UIScrollView { return scrollView }
+                current = view.superview
+            }
+            return nil
+        }
+
+        private func emit(_ scrollView: UIScrollView) {
+            let rawDisplacement = -(scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
+            if Thread.isMainThread { onChange(rawDisplacement) }
+            else { DispatchQueue.main.async { [weak self] in self?.onChange(rawDisplacement) } }
+        }
     }
 }
 
