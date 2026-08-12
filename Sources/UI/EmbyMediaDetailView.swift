@@ -160,19 +160,9 @@ struct EmbyMediaDetailView: View {
                 if !model.detailFilters.isEmpty { heroTagScroller(width: width) }
 
                 if let playableItem = model.primaryPlayableItem {
-                    Button { Task { await model.play(playableItem) } } label: {
-                        HStack(spacing: 9) {
-                            if model.isResolvingPlayback { ProgressView().tint(.white) }
-                            else { Image(systemName: "play.fill").font(.system(size: 15, weight: .bold)) }
-                            Text(model.primaryPlayButtonTitle).font(.headline)
-                        }
-                        .foregroundColor(.white)
-                        .frame(width: contentWidth, height: 50)
-                        .background(Color.blue)
-                        .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-                    }
-                    .buttonStyle(DetailPressButtonStyle())
-                    .disabled(model.isResolvingPlayback)
+                    Button { Task { await model.play(playableItem) } } label: { primaryPlayButtonLabel(width: contentWidth) }
+                        .buttonStyle(DetailPressButtonStyle())
+                        .disabled(model.isResolvingPlayback)
                 }
 
                 detailActionRow(width: contentWidth)
@@ -183,6 +173,49 @@ struct EmbyMediaDetailView: View {
         .frame(width: width, height: visualHeight)
         .offset(y: stretch > 0 ? -stretch : 0)
         .frame(width: width, height: baseHeight, alignment: .top)
+    }
+
+    private func primaryPlayButtonLabel(width: CGFloat) -> some View {
+        let progress = model.primaryPlayButtonProgress
+        let iconOffset = -min(82, max(54, width * 0.21))
+        return ZStack(alignment: .bottomLeading) {
+            RoundedRectangle(cornerRadius: 17, style: .continuous).fill(Color.blue)
+
+            if progress > 0 {
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.18))
+                        Capsule().fill(Color.white.opacity(0.84))
+                            .frame(width: proxy.size.width * CGFloat(min(max(0, progress), 1)))
+                    }
+                }
+                .frame(height: 3)
+                .padding(.horizontal, 13)
+                .padding(.bottom, 4)
+            }
+
+            ZStack {
+                if model.isResolvingPlayback { ProgressView().tint(.white).offset(x: iconOffset) }
+                else { Image(systemName: "play.fill").font(.system(size: 15, weight: .bold)).offset(x: iconOffset) }
+
+                if model.isResolvingPlayback {
+                    Text(model.primaryPlayButtonTitle).font(.headline)
+                } else if model.primaryPlayButtonShowsResume {
+                    VStack(spacing: 1) {
+                        Text("继续播放").font(.system(size: 18, weight: .bold))
+                        if let position = model.primaryPlayButtonPositionText {
+                            Text("上次播放到：\(position)").font(.system(size: 11.5, weight: .medium)).opacity(0.90)
+                        }
+                    }
+                } else {
+                    Text(model.primaryPlayButtonTitle).font(.headline)
+                }
+            }
+            .foregroundColor(.white)
+            .frame(width: width, height: 50)
+        }
+        .frame(width: width, height: 50)
+        .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
 
     @ViewBuilder
@@ -531,17 +564,21 @@ struct EmbyMediaDetailView: View {
                 .buttonStyle(.plain)
                 .padding(.horizontal, 20)
 
-                if mediaInfoExpanded {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: 12) {
-                            ForEach(Array(model.mediaStreams.enumerated()), id: \.offset) { index, stream in
-                                mediaStreamCard(stream, ordinal: index)
+                VStack(spacing: 0) {
+                    if mediaInfoExpanded {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(alignment: .top, spacing: 12) {
+                                ForEach(Array(model.mediaStreams.enumerated()), id: \.offset) { index, stream in
+                                    mediaStreamCard(stream, ordinal: index)
+                                }
                             }
+                            .padding(.horizontal, 20)
                         }
-                        .padding(.horizontal, 20)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
             }
         }
     }
@@ -1117,13 +1154,29 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         return episodes.first
     }
 
+    var primaryPlayButtonShowsResume: Bool {
+        guard !displayedPlayed, let playable = primaryPlayableItem else { return false }
+        return playable.playbackProgress > 0.001
+    }
+
+    var primaryPlayButtonProgress: Double {
+        guard primaryPlayButtonShowsResume, let playable = primaryPlayableItem else { return 0 }
+        return min(1, max(0, playable.playbackProgress))
+    }
+
+    var primaryPlayButtonPositionText: String? {
+        guard primaryPlayButtonShowsResume, let ticks = primaryPlayableItem?.userData?.playbackPositionTicks, ticks > 0 else { return nil }
+        let total = max(0, Int(Double(ticks) / AppIdentity.ticksPerSecond))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
+        if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, seconds) }
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
     var primaryPlayButtonTitle: String {
         if isResolvingPlayback { return "正在准备播放…" }
-        if isSeries, let episode = primaryPlayableItem {
-            let index = episode.indexNumber.map { "E\($0)" } ?? ""
-            return episode.playbackProgress > 0.001 ? "继续播放 \(index)" : "播放 \(index)"
-        }
-        return item.playbackProgress > 0.001 ? "继续播放" : "播放"
+        return primaryPlayButtonShowsResume ? "继续播放" : "播放"
     }
 
     func seasonItem(number: Int) -> LibraryItem? { seasons.first { $0.indexNumber == number } }
