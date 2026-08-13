@@ -18,21 +18,20 @@ struct EmbyServerRootViewV3: View {
         Group {
             if let client {
                 GeometryReader { geometry in
-                    let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom
+                    let dock = AnyView(serverTabBar(bottomInset: geometry.safeAreaInsets.bottom))
                     ZStack {
-                        V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, onCarouselActiveChanged: { active in homeCarouselActive = active }, dock: AnyView(serverTabBar))
+                        V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, onCarouselActiveChanged: { active in homeCarouselActive = active }, dock: dock)
                             .opacity(selectedTab == .home ? 1 : 0)
                             .allowsHitTesting(selectedTab == .home)
                             .accessibilityHidden(selectedTab != .home)
 
-                        if selectedTab == .favorites { V3EmbyFavoritesView(client: client, onClose: close, dock: AnyView(serverTabBar)) }
-                        if selectedTab == .search { V3EmbySearchView(client: client, onClose: close, dock: AnyView(serverTabBar)) }
-                        if selectedTab == .settings { V3EmbyServerSettingsView(session: session, onClose: close, dock: AnyView(serverTabBar)) }
+                        if selectedTab == .favorites { V3EmbyFavoritesView(client: client, onClose: close, dock: dock) }
+                        if selectedTab == .search { V3EmbySearchView(client: client, onClose: close, dock: dock) }
+                        if selectedTab == .settings { V3EmbyServerSettingsView(session: session, onClose: close, dock: dock) }
                     }
-                    .environment(\.serverDockContent, AnyView(serverTabBar))
+                    .environment(\.serverDockContent, dock)
                     .environment(\.serverDockBottomInset, geometry.safeAreaInsets.bottom)
-                    .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
-                    .ignoresSafeArea(.container, edges: .bottom)
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
                     .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 }
             } else {
@@ -46,14 +45,18 @@ struct EmbyServerRootViewV3: View {
         }
     }
 
-    private var serverTabBar: some View {
-        HStack(spacing: 0) {
-            serverTabButton(.home, title: "首页", systemImage: "house")
-            serverTabButton(.favorites, title: "收藏", systemImage: "heart")
-            serverTabButton(.search, title: "搜索", systemImage: "magnifyingglass")
-            serverTabButton(.settings, title: "设置", systemImage: "gearshape")
+    private func serverTabBar(bottomInset: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                serverTabButton(.home, title: "首页", systemImage: "house")
+                serverTabButton(.favorites, title: "收藏", systemImage: "heart")
+                serverTabButton(.search, title: "搜索", systemImage: "magnifyingglass")
+                serverTabButton(.settings, title: "设置", systemImage: "gearshape")
+            }
+            .frame(height: 46)
+            Color.clear.frame(height: bottomInset)
         }
-        .frame(height: 40)
+        .frame(height: 46 + bottomInset)
         .background(
             Group {
                 if selectedTab == .home && homeCarouselActive {
@@ -64,7 +67,6 @@ struct EmbyServerRootViewV3: View {
                     Color(uiColor: .secondarySystemBackground)
                 }
             }
-            .ignoresSafeArea(edges: .bottom)
         )
     }
 
@@ -86,17 +88,16 @@ struct EmbyServerRootViewV3: View {
         } label: {
             ZStack {
                 Color.clear
-                VStack(spacing: 0) {
+                VStack(spacing: 2) {
                     Image(systemName: selectedTab == tab && tab != .search ? systemImage + ".fill" : systemImage).font(.system(size: 19))
                     Text(title).font(.system(size: 10))
                 }
                 .foregroundColor(selectedTab == tab ? .blue : .secondary)
-                .offset(y: 7)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+        .frame(maxWidth: .infinity, minHeight: 46, maxHeight: 46)
         .contentShape(Rectangle())
         .buttonStyle(.plain)
     }
@@ -132,7 +133,9 @@ private struct V3EmbyHomeView: View {
     @State private var carouselIndex = 0
     @State private var carouselPageOffset: CGFloat = 0
     @State private var homeScrollOffset: CGFloat = 0
+    @State private var carouselLightForegroundByID: [String: Bool] = [:]
     @State private var isHomeRefreshing = false
+    @State private var isHomeActive = false
     private let carouselTimer = Timer.publish(every: 6, on: .main, in: .common).autoconnect()
 
     init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, onCarouselActiveChanged: @escaping (Bool) -> Void, dock: AnyView) {
@@ -169,7 +172,7 @@ private struct V3EmbyHomeView: View {
                 .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 .overlay(alignment: .bottom) { dock }
                 .onAppear {
-                    homeScrollOffset = 0
+                    isHomeActive = true
                     carouselPageOffset = 0
                     onCarouselActiveChanged(immersive)
                     Task {
@@ -190,18 +193,17 @@ private struct V3EmbyHomeView: View {
                     let count = model.carouselItems.count
                     guard count > 1, abs(carouselPageOffset) < 0.02 else { return }
                     let next = (carouselIndex + 1) % count
-                    withAnimation(.easeInOut(duration: 0.55)) { carouselIndex = next }
+                    withAnimation(.easeInOut(duration: 0.62)) { carouselIndex = next }
                 }
-                .onChange(of: carouselIndex) { _ in DispatchQueue.main.async { carouselPageOffset = 0 } }
+                .onChange(of: carouselIndex) { _ in carouselPageOffset = 0 }
                 .onChange(of: model.carouselItems.count) { count in
                     if count == 0 || carouselIndex >= count { carouselIndex = 0 }
                     carouselPageOffset = 0
                     onCarouselActiveChanged(count > 0)
                 }
                 .onDisappear {
-                    homeScrollOffset = 0
+                    isHomeActive = false
                     carouselPageOffset = 0
-                    isHomeRefreshing = false
                     onCarouselActiveChanged(false)
                 }
             }
@@ -220,47 +222,51 @@ private struct V3EmbyHomeView: View {
                     }
                     .frame(height: 0)
 
-                    LazyVStack(alignment: .leading, spacing: 22) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
                         Group {
                             if !model.carouselItems.isEmpty { heroCarousel(height: heroHeight) }
                             else { Color.clear.frame(height: 1) }
                         }
                         .id("v3-home-top")
 
-                        if model.isLoading && model.libraries.isEmpty {
-                            ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
-                        } else {
-                            if !model.visibleLibraries.isEmpty {
-                                sectionTitle("我的媒体")
-                                libraryRow
-                            }
-                            if !model.resumeItems.isEmpty {
-                                sectionTitle("继续观看")
-                                landscapeRow(model.resumeItems)
-                            }
-                            ForEach(model.visibleLibraries) { library in
-                                if let items = model.latestByLibrary[library.id], !items.isEmpty {
-                                    HStack(spacing: 8) {
-                                        sectionTitle(library.name)
-                                        Spacer()
-                                        NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client, dock: dock))
-                                            .font(.subheadline).foregroundColor(.blue).padding(.trailing, 16)
-                                    }
-                                    posterRow(items)
+                        VStack(alignment: .leading, spacing: 22) {
+                            if model.isLoading && model.libraries.isEmpty {
+                                ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
+                            } else {
+                                if !model.visibleLibraries.isEmpty {
+                                    sectionTitle("我的媒体")
+                                    libraryRow
                                 }
+                                if !model.resumeItems.isEmpty {
+                                    sectionTitle("继续观看")
+                                    landscapeRow(model.resumeItems)
+                                }
+                                ForEach(model.visibleLibraries) { library in
+                                    if let items = model.latestByLibrary[library.id], !items.isEmpty {
+                                        HStack(spacing: 8) {
+                                            sectionTitle(library.name)
+                                            Spacer()
+                                            NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client, dock: dock))
+                                                .font(.subheadline).foregroundColor(.blue).padding(.trailing, 16)
+                                        }
+                                        posterRow(items)
+                                    }
+                                }
+                                if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
                             }
-                            if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
                         }
+                        .padding(.top, 18)
+                        .padding(.bottom, 86)
+                        .background(homeContentMaterial)
                     }
-                    .padding(.bottom, 86)
                 }
             }
             .coordinateSpace(name: "v3-home-scroll")
             .background(Color.clear)
             .onPreferenceChange(V3HomeScrollOffsetPreferenceKey.self) { value in
-                if immersive {
+                if immersive && isHomeActive {
                     if abs(homeScrollOffset - value) > 0.10 { homeScrollOffset = value }
-                } else if homeScrollOffset != 0 {
+                } else if !immersive && homeScrollOffset != 0 {
                     homeScrollOffset = 0
                 }
             }
@@ -349,7 +355,7 @@ private struct V3EmbyHomeView: View {
         TabView(selection: $carouselIndex) {
             ForEach(Array(model.carouselItems.enumerated()), id: \.element.id) { index, item in
                 NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
-                    V3HeroCard(item: item, client: client)
+                    V3HeroCard(item: item, client: client, usesLightForeground: carouselLightForegroundByID[item.id] ?? true)
                         .background(V3HomeCarouselPageOffsetObserver { updateCarouselPageOffset($0, pageIndex: index) })
                 }
                 .buttonStyle(.plain)
@@ -375,10 +381,17 @@ private struct V3EmbyHomeView: View {
         let verticalOffset = -min(52, upward * 0.12)
         return ZStack {
             ForEach(Array(model.carouselItems.enumerated()), id: \.element.id) { index, item in
-                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 1400, tag: item.preferredPrimaryImageTag), contentMode: .fill)
+                EmbyCachedRemoteImage(
+                    url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 1400, tag: item.preferredPrimaryImageTag),
+                    contentMode: .fill,
+                    placeholderSystemImage: "photo",
+                    showsLoadingIndicator: false,
+                    onImageLoaded: { image in updateCarouselForeground(image, itemID: item.id) }
+                )
                     .frame(width: size.width, height: size.height)
                     .clipped()
                     .opacity(carouselBackgroundOpacity(for: index))
+                    .animation(abs(carouselPageOffset) < 0.01 ? .easeInOut(duration: 0.62) : nil, value: carouselIndex)
             }
         }
         .frame(width: size.width, height: size.height)
@@ -387,6 +400,24 @@ private struct V3EmbyHomeView: View {
         .clipped()
         .ignoresSafeArea()
         .allowsHitTesting(false)
+    }
+
+    private func updateCarouselForeground(_ image: UIImage, itemID: String) {
+        let prefersLight = EmbyImageContrastAnalyzer.prefersLightForeground(for: image)
+        guard carouselLightForegroundByID[itemID] != prefersLight else { return }
+        withAnimation(.easeOut(duration: 0.18)) { carouselLightForegroundByID[itemID] = prefersLight }
+    }
+
+    private var homeContentMaterial: some View {
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .overlay(Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.18 : 0.14))
+            .mask(
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [.black.opacity(0.45), .black.opacity(0.82), .black], startPoint: .top, endPoint: .bottom).frame(height: 64)
+                    Rectangle().fill(Color.black)
+                }
+            )
     }
 
     private func carouselBackgroundOpacity(for index: Int) -> Double {
@@ -710,16 +741,21 @@ private struct V3MediaManagementView: View {
 private struct V3HeroCard: View {
     let item: LibraryItem
     let client: EmbyAPIClient
+    let usesLightForeground: Bool
+
+    private var primaryForeground: Color { usesLightForeground ? .white : .black }
+    private var secondaryForeground: Color { usesLightForeground ? .white.opacity(0.90) : .black.opacity(0.80) }
+    private var foregroundShadow: Color { usesLightForeground ? .black.opacity(0.52) : .white.opacity(0.24) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Spacer()
             Text(heroTitle)
                 .font(.system(size: 30, weight: .bold))
-                .foregroundColor(.white)
+                .foregroundColor(primaryForeground)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .shadow(color: Color.black.opacity(0.55), radius: 3, y: 1)
+                .shadow(color: foregroundShadow, radius: 3, y: 1)
 
             HStack(spacing: 8) {
                 if let rating = item.communityRating { Text("★ " + String(format: "%.1f", rating)).foregroundColor(.yellow) }
@@ -728,16 +764,16 @@ private struct V3HeroCard: View {
                 Text(v3MediaTypeTitle(item))
             }
             .font(.subheadline.weight(.semibold))
-            .foregroundColor(.white.opacity(0.95))
+            .foregroundColor(secondaryForeground)
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if let overview = item.overview, !overview.isEmpty {
                 Text(overview)
                     .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.92))
+                    .foregroundColor(secondaryForeground)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .shadow(color: Color.black.opacity(0.45), radius: 2, y: 1)
+                    .shadow(color: foregroundShadow, radius: 2, y: 1)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
@@ -751,7 +787,6 @@ private struct V3HeroCard: View {
         return item.name
     }
 }
-
 
 private struct V3LibraryBrowserView: View {
     let library: LibraryItem
@@ -1109,8 +1144,8 @@ private struct V3HomeCarouselBackgroundTint: View {
             stops: [
                 .init(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.08), location: 0.00),
                 .init(color: Color.clear, location: 0.26),
-                .init(color: Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.24 : 0.22), location: 0.56),
-                .init(color: Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.46 : 0.48), location: 1.00)
+                .init(color: Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.08 : 0.06), location: 0.56),
+                .init(color: Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.16 : 0.14), location: 1.00)
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -1219,7 +1254,6 @@ private struct V3HomeCarouselPageOffsetObserver: UIViewRepresentable {
         }
     }
 }
-
 
 private struct V3PageHeader: View {
     let title: String
