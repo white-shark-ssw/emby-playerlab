@@ -18,6 +18,7 @@ assert 'parentIndex={' in detail
 assert 'seasonId={' in detail
 assert 'parentId={' in detail
 assert 'sampleFirst[' in detail and 'sampleLast[' in detail
+assert 'episodes.reduce(0) { subtotal, episode in' in detail
 assert 'episodes.filter { $0.parentIndexNumber == season }' in detail
 assert 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' in project
 print("series episode diagnostics checks passed")
