@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import UIKit
 
 struct EmbyServerRootViewV3: View {
     @EnvironmentObject private var sessionStore: SessionStore
@@ -118,6 +119,7 @@ private struct V3HomeLibraryPreference: Codable, Identifiable, Equatable {
 }
 
 private struct V3EmbyHomeView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let session: EmbySession
     let client: EmbyAPIClient
     let refreshToken: Int
@@ -128,6 +130,7 @@ private struct V3EmbyHomeView: View {
     @StateObject private var model: V3EmbyHomeViewModel
     @State private var isMediaManagementPresented = false
     @State private var carouselIndex = 0
+    @State private var homeRawScrollMinY: CGFloat = 0
     private let carouselTimer = Timer.publish(every: 6, on: .main, in: .common).autoconnect()
 
     init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, onCarouselActiveChanged: @escaping (Bool) -> Void, dock: AnyView) {
@@ -149,14 +152,18 @@ private struct V3EmbyHomeView: View {
                 Group {
                     if immersive {
                         ZStack(alignment: .top) {
-                            homeScroll(heroHeight: heroHeight)
+                            if let item = currentCarouselItem { homePersistentBackdrop(item: item).allowsHitTesting(false) }
+                            homeScroll(heroHeight: heroHeight, immersive: true)
+                                .background(Color.clear)
                                 .ignoresSafeArea(.container, edges: .top)
+                                .zIndex(1)
                             header(immersive: true)
+                                .zIndex(30)
                         }
                     } else {
                         VStack(spacing: 0) {
                             header(immersive: false)
-                            homeScroll(heroHeight: heroHeight)
+                            homeScroll(heroHeight: heroHeight, immersive: false)
                         }
                     }
                 }
@@ -194,7 +201,7 @@ private struct V3EmbyHomeView: View {
         .ignoresSafeArea(.container, edges: .bottom)
     }
 
-    private func homeScroll(heroHeight: CGFloat) -> some View {
+    private func homeScroll(heroHeight: CGFloat, immersive: Bool) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 22) {
@@ -232,7 +239,18 @@ private struct V3EmbyHomeView: View {
                     }
                 }
                 .padding(.bottom, 86)
+                .background(
+                    Group {
+                        if immersive {
+                            AdaptiveHeroNativeScrollObserver { value in
+                                if abs(homeRawScrollMinY - value) > 0.10 { homeRawScrollMinY = value }
+                            }
+                        }
+                    }
+                )
+                .background(Group { if immersive { V3HomeRefreshControlLayerBridge() } })
             }
+            .background(Color.clear)
             .refreshable { await model.refresh(userInitiated: true) }
             .onChange(of: refreshToken) { _ in Task { await model.refresh(userInitiated: true) } }
             .onChange(of: scrollToTopToken) { _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("v3-home-top", anchor: .top) } }
@@ -287,31 +305,25 @@ private struct V3EmbyHomeView: View {
     }
 
     private func heroCarousel(height: CGFloat) -> some View {
-        TabView(selection: $carouselIndex) {
+        let stretch = max(0, homeRawScrollMinY)
+        let upwardScroll = max(0, -homeRawScrollMinY)
+        let resistanceSpan: CGFloat = 176
+        let pinCompensation = min(upwardScroll, resistanceSpan)
+        let visualHeight = height + stretch
+        let heroOffset = stretch > 0 ? -stretch : pinCompensation
+
+        return TabView(selection: $carouselIndex) {
             ForEach(Array(model.carouselItems.enumerated()), id: \.element.id) { index, item in
                 NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
                     V3HeroCard(item: item, client: client)
                 }
                 .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .tag(index)
             }
         }
         .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-        .frame(height: height)
-        .overlay(alignment: .bottom) {
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0.00),
-                    .init(color: .clear, location: 0.34),
-                    .init(color: Color(uiColor: .systemBackground).opacity(0.72), location: 0.78),
-                    .init(color: Color(uiColor: .systemBackground), location: 1.00),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 118)
-            .allowsHitTesting(false)
-        }
+        .frame(height: visualHeight)
         .overlay(alignment: .bottomTrailing) {
             HStack(spacing: 6) {
                 ForEach(model.carouselItems.indices, id: \.self) { index in
@@ -324,10 +336,43 @@ private struct V3EmbyHomeView: View {
             .frame(height: 24)
             .background(Capsule().fill(Color.black.opacity(0.22)))
             .padding(.trailing, 16)
-            .padding(.bottom, 14)
+            .padding(.bottom, 18)
             .animation(.easeInOut(duration: 0.2), value: carouselIndex)
         }
-        .padding(.bottom, -8)
+        .offset(y: heroOffset)
+        .frame(height: height, alignment: .top)
+        .allowsHitTesting(upwardScroll < 8)
+        .zIndex(0)
+    }
+
+    private var currentCarouselItem: LibraryItem? {
+        let items = model.carouselItems
+        guard !items.isEmpty else { return nil }
+        return items[min(max(0, carouselIndex), items.count - 1)]
+    }
+
+    private func homePersistentBackdrop(item: LibraryItem) -> some View {
+        GeometryReader { proxy in
+            ZStack {
+                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 1600, tag: item.preferredPrimaryImageTag), contentMode: .fill)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+                    .scaleEffect(1.08)
+                    .blur(radius: 30)
+                LinearGradient(
+                    colors: [
+                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.18 : 0.28),
+                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.40 : 0.50),
+                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.60 : 0.68)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+        .ignoresSafeArea()
     }
 
     private func sectionTitle(_ title: String) -> some View { Text(title).font(.title2.weight(.bold)).padding(.horizontal, 16) }
@@ -347,7 +392,9 @@ private struct V3EmbyHomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
                 ForEach(items) { item in
-                    NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { V3LandscapeCard(item: item, client: client) }.buttonStyle(.plain)
+                    EmbyPosterDetailLink(item: item, client: client) { V3LandscapeCard(item: item, client: client) }
+                        .frame(width: 212, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
             }
             .padding(.horizontal, 16)
@@ -358,7 +405,12 @@ private struct V3EmbyHomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(alignment: .top, spacing: 12) {
                 ForEach(items) { item in
-                    NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { V3PosterCard(item: item, client: client, width: 118) }.buttonStyle(.plain)
+                    EmbyPosterDetailLink(item: item, client: client) {
+                        V3PosterCard(item: item, client: client, width: 118)
+                            .contentShape(Rectangle())
+                    }
+                    .frame(width: 118, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
             }
             .padding(.horizontal, 16)
@@ -410,9 +462,7 @@ private final class V3EmbyHomeViewModel: ObservableObject {
         for library in orderedLibraries where enabled.contains(library.id) {
             for item in latestByLibrary[library.id] ?? [] where seen.insert(item.id).inserted { pool.append(item) }
         }
-        let backdrop = pool.filter { !$0.backdropImageTags.isEmpty }
-        let fallback = pool.filter { $0.backdropImageTags.isEmpty }
-        return Array((backdrop + fallback).prefix(6))
+        return Array(pool.prefix(6))
     }
 
     func markResumeDirty(_ itemID: String) {
@@ -585,29 +635,34 @@ private struct V3MediaManagementView: View {
                     Section {
                         ForEach($draft) { $preference in
                             HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(preference.name).font(.body).lineLimit(1)
-                                    if let type = preference.collectionType, !type.isEmpty { Text(v3CollectionTypeTitle(type)).font(.caption2).foregroundColor(.secondary) }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                Text(preference.name)
+                                    .font(.body)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                                VStack(spacing: 3) {
-                                    Text("首页").font(.caption2).foregroundColor(.secondary)
-                                    Toggle("首页", isOn: $preference.showOnHome).labelsHidden().tint(.green)
-                                }
-                                .frame(width: 62)
+                                Toggle("首页", isOn: $preference.showOnHome)
+                                    .labelsHidden()
+                                    .tint(.green)
+                                    .frame(width: 62)
 
-                                VStack(spacing: 3) {
-                                    Text("轮播").font(.caption2).foregroundColor(carouselEnabled ? .secondary : .secondary.opacity(0.55))
-                                    Toggle("轮播", isOn: $preference.includeInCarousel).labelsHidden().tint(.green)
-                                }
-                                .frame(width: 62)
-                                .opacity(carouselEnabled ? 1 : 0.55)
+                                Toggle("轮播", isOn: $preference.includeInCarousel)
+                                    .labelsHidden()
+                                    .tint(.green)
+                                    .frame(width: 62)
+                                    .opacity(carouselEnabled ? 1 : 0.55)
                             }
                             .frame(minHeight: 44)
                             .listRowInsets(EdgeInsets(top: 6, leading: 18, bottom: 6, trailing: 12))
                         }
                         .onMove { source, destination in draft.move(fromOffsets: source, toOffset: destination) }
+                    } header: {
+                        HStack(spacing: 12) {
+                            Spacer(minLength: 0)
+                            Text("首页").font(.caption2).foregroundColor(.secondary).frame(width: 62)
+                            Text("轮播").font(.caption2).foregroundColor(.secondary).frame(width: 62)
+                            Spacer().frame(width: 30)
+                        }
+                        .textCase(nil)
                     }
                 }
                 .listStyle(InsetGroupedListStyle())
@@ -626,21 +681,42 @@ private struct V3HeroCard: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            V3RemoteImage(url: client.imageURL(itemId: item.id, imageType: item.backdropImageTags.isEmpty ? "Primary" : "Backdrop", maxWidth: 1280, tag: item.backdropImageTags.first ?? item.primaryImageTag), contentMode: .fill)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
-            LinearGradient(
-                stops: [
-                    .init(color: Color.black.opacity(0.32), location: 0.00),
-                    .init(color: Color.black.opacity(0.05), location: 0.28),
-                    .init(color: Color.black.opacity(0.16), location: 0.56),
-                    .init(color: Color.black.opacity(0.86), location: 1.00),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
+            ZStack {
+                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 1400, tag: item.preferredPrimaryImageTag), contentMode: .fill)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                LinearGradient(
+                    stops: [
+                        .init(color: Color.black.opacity(0.26), location: 0.00),
+                        .init(color: Color.black.opacity(0.04), location: 0.30),
+                        .init(color: Color.black.opacity(0.18), location: 0.58),
+                        .init(color: Color.black.opacity(0.64), location: 0.88),
+                        .init(color: Color.black.opacity(0.10), location: 1.00),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0.00),
+                        .init(color: .black, location: 0.86),
+                        .init(color: .black.opacity(0.72), location: 0.93),
+                        .init(color: .clear, location: 1.00),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
             )
+
             VStack(alignment: .leading, spacing: 9) {
-                Text(heroTitle).font(.system(size: 30, weight: .bold)).foregroundColor(.white).lineLimit(2).shadow(radius: 2)
+                Text(heroTitle)
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .shadow(radius: 2)
                 HStack(spacing: 8) {
                     if let rating = item.communityRating { Text("★ " + String(format: "%.1f", rating)).foregroundColor(.yellow) }
                     if let year = item.productionYear { Text(String(year)) }
@@ -648,11 +724,21 @@ private struct V3HeroCard: View {
                 }
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(.white.opacity(0.95))
-                if let overview = item.overview, !overview.isEmpty { Text(overview).font(.subheadline).foregroundColor(.white.opacity(0.88)).lineLimit(2) }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if let overview = item.overview, !overview.isEmpty {
+                    Text(overview)
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.88))
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 88)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 86)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
         .contentShape(Rectangle())
     }
 
@@ -1009,6 +1095,54 @@ private struct V3SettingsCard<Content: View>: View {
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View { VStack(spacing: 0) { content }.background(Color(uiColor: .secondarySystemGroupedBackground)).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous)) }
+}
+
+private final class V3HomeRefreshControlProbeView: UIView {
+    var hierarchyDidChange: ((UIView) -> Void)?
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        hierarchyDidChange?(self)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        hierarchyDidChange?(self)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        hierarchyDidChange?(self)
+    }
+}
+
+private struct V3HomeRefreshControlLayerBridge: UIViewRepresentable {
+    func makeUIView(context: Context) -> V3HomeRefreshControlProbeView {
+        let view = V3HomeRefreshControlProbeView(frame: .zero)
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+        view.hierarchyDidChange = { probe in elevateRefreshControl(from: probe) }
+        DispatchQueue.main.async { [weak view] in if let view { elevateRefreshControl(from: view) } }
+        return view
+    }
+
+    func updateUIView(_ uiView: V3HomeRefreshControlProbeView, context: Context) {
+        DispatchQueue.main.async { [weak uiView] in if let uiView { elevateRefreshControl(from: uiView) } }
+    }
+
+    private func elevateRefreshControl(from probe: UIView) {
+        var current: UIView? = probe
+        while let view = current {
+            if let scrollView = view as? UIScrollView {
+                guard let refreshControl = scrollView.refreshControl else { return }
+                refreshControl.tintColor = .label
+                refreshControl.layer.zPosition = 1_000
+                scrollView.bringSubviewToFront(refreshControl)
+                return
+            }
+            current = view.superview
+        }
+    }
 }
 
 private struct V3PageHeader: View {

@@ -10,11 +10,12 @@ assert 'guard carouselEnabled else { return [] }' in s
 assert 'osplayer.home.carousel-enabled.' in s
 assert 'UserDefaults.standard.set(carouselEnabled, forKey: carouselEnabledKey)' in s
 assert 'Text("一键控制首页沉浸轮播，关闭不会清除下方媒体库选择")' in s
-assert 'Text("媒体库").font(.headline)' not in s
-assert 'Text("首页").font(.caption2)' in s
-assert 'Text("轮播").font(.caption2)' in s
-assert '.frame(height: 118)' in s
-assert '.padding(.bottom, 88)' in s
-assert '.padding(.bottom, -8)' in s
+media = s[s.index('private struct V3MediaManagementView'):s.index('private struct V3HeroCard')]
+assert 'if let type = preference.collectionType' not in media
+assert media.count('Text("首页").font(.caption2).foregroundColor(.secondary)') == 1
+assert media.count('Text("轮播").font(.caption2).foregroundColor(.secondary)') == 1
+assert '} header: {' in media
+assert 'Toggle("首页", isOn: $preference.showOnHome)' in media
+assert 'Toggle("轮播", isOn: $preference.includeInCarousel)' in media
 assert 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' in project
 print("Home UI polish checks passed")
