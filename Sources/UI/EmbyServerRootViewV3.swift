@@ -174,7 +174,9 @@ private struct V3EmbyHomeView: View {
                     model.markResumeDirty(itemID)
                 }
                 .sheet(isPresented: $isMediaManagementPresented) {
-                    V3MediaManagementView(preferences: model.preferences) { model.savePreferences($0) }
+                    V3MediaManagementView(preferences: model.preferences, carouselEnabled: model.carouselEnabled) { preferences, carouselEnabled in
+                        model.savePreferences(preferences, carouselEnabled: carouselEnabled)
+                    }
                 }
                 .onReceive(carouselTimer) { _ in
                     guard model.carouselItems.count > 1 else { return }
@@ -296,6 +298,20 @@ private struct V3EmbyHomeView: View {
         }
         .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
         .frame(height: height)
+        .overlay(alignment: .bottom) {
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.00),
+                    .init(color: .clear, location: 0.34),
+                    .init(color: Color(uiColor: .systemBackground).opacity(0.72), location: 0.78),
+                    .init(color: Color(uiColor: .systemBackground), location: 1.00),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 118)
+            .allowsHitTesting(false)
+        }
         .overlay(alignment: .bottomTrailing) {
             HStack(spacing: 6) {
                 ForEach(model.carouselItems.indices, id: \.self) { index in
@@ -311,6 +327,7 @@ private struct V3EmbyHomeView: View {
             .padding(.bottom, 14)
             .animation(.easeInOut(duration: 0.2), value: carouselIndex)
         }
+        .padding(.bottom, -8)
     }
 
     private func sectionTitle(_ title: String) -> some View { Text(title).font(.title2.weight(.bold)).padding(.horizontal, 16) }
@@ -355,10 +372,12 @@ private final class V3EmbyHomeViewModel: ObservableObject {
     @Published var resumeItems: [LibraryItem] = []
     @Published var latestByLibrary: [String: [LibraryItem]] = [:]
     @Published var preferences: [V3HomeLibraryPreference] = []
+    @Published var carouselEnabled: Bool
     @Published var isLoading = false
     @Published var errorMessage: String?
     private let client: EmbyAPIClient
     private let preferenceKey: String
+    private let carouselEnabledKey: String
     private(set) var hasLoaded = false
     private var resumeDirty = false
     private var dirtyResumeItemIDs = Set<String>()
@@ -366,6 +385,9 @@ private final class V3EmbyHomeViewModel: ObservableObject {
     init(session: EmbySession, client: EmbyAPIClient) {
         self.client = client
         preferenceKey = "osplayer.home.library-preferences.\(session.serverId).\(session.user.id)"
+        let carouselKey = "osplayer.home.carousel-enabled.\(session.serverId).\(session.user.id)"
+        carouselEnabledKey = carouselKey
+        carouselEnabled = UserDefaults.standard.object(forKey: carouselKey) as? Bool ?? true
     }
 
     var orderedLibraries: [LibraryItem] {
@@ -381,6 +403,7 @@ private final class V3EmbyHomeViewModel: ObservableObject {
     }
 
     var carouselItems: [LibraryItem] {
+        guard carouselEnabled else { return [] }
         let enabled = Set(preferences.filter(\.includeInCarousel).map(\.libraryID))
         var seen = Set<String>()
         var pool: [LibraryItem] = []
@@ -477,10 +500,12 @@ private final class V3EmbyHomeViewModel: ObservableObject {
         return items.filter { seen.insert($0.id).inserted }
     }
 
-    func savePreferences(_ next: [V3HomeLibraryPreference]) {
+    func savePreferences(_ next: [V3HomeLibraryPreference], carouselEnabled: Bool) {
         let validIDs = Set(libraries.map(\.id))
         preferences = next.filter { validIDs.contains($0.libraryID) }
+        self.carouselEnabled = carouselEnabled
         persistPreferences(preferences)
+        UserDefaults.standard.set(carouselEnabled, forKey: carouselEnabledKey)
     }
 
     private func reconcilePreferences(_ views: [LibraryItem]) -> [V3HomeLibraryPreference] {
@@ -521,56 +546,72 @@ private final class V3EmbyHomeViewModel: ObservableObject {
 private struct V3MediaManagementView: View {
     @Environment(\.presentationMode) private var presentationMode
     @State private var draft: [V3HomeLibraryPreference]
-    let onSave: ([V3HomeLibraryPreference]) -> Void
+    @State private var carouselEnabled: Bool
+    let onSave: ([V3HomeLibraryPreference], Bool) -> Void
 
-    init(preferences: [V3HomeLibraryPreference], onSave: @escaping ([V3HomeLibraryPreference]) -> Void) {
+    init(preferences: [V3HomeLibraryPreference], carouselEnabled: Bool, onSave: @escaping ([V3HomeLibraryPreference], Bool) -> Void) {
         _draft = State(initialValue: preferences)
+        _carouselEnabled = State(initialValue: carouselEnabled)
         self.onSave = onSave
     }
 
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                HStack {
-                    Button { presentationMode.wrappedValue.dismiss() } label: { Image(systemName: "xmark").font(.system(size: 22, weight: .medium)).frame(width: 44, height: 44) }
-                    Spacer()
-                    Text("媒体管理").font(.title2.weight(.bold))
-                    Spacer()
-                    Button("保存") { onSave(draft); presentationMode.wrappedValue.dismiss() }.font(.headline)
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
+  HStack {
+      Button { presentationMode.wrappedValue.dismiss() } label: { Image(systemName: "xmark").font(.system(size: 22, weight: .medium)).frame(width: 44, height: 44) }
+      Spacer()
+      Text("媒体管理").font(.title2.weight(.bold))
+      Spacer()
+      Button("保存") { onSave(draft, carouselEnabled); presentationMode.wrappedValue.dismiss() }.font(.headline)
+  }
+  .padding(.horizontal, 14)
+  .padding(.top, 8)
 
-                Text("长按拖动可调整首页顺序").font(.subheadline).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24).padding(.top, 12)
+  Text("长按拖动可调整首页顺序").font(.subheadline).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 8)
 
-                HStack {
-                    Text("媒体库").font(.headline)
-                    Spacer()
-                    Text("展示").font(.headline).frame(width: 66)
-                    Text("轮播图").font(.headline).frame(width: 72)
-                    Spacer().frame(width: 34)
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
+  List {
+      Section {
+          Toggle(isOn: $carouselEnabled) {
+              VStack(alignment: .leading, spacing: 3) {
+                  Text("轮播图").font(.body.weight(.semibold))
+                  Text("一键控制首页沉浸轮播，关闭不会清除下方媒体库选择").font(.caption).foregroundColor(.secondary)
+              }
+          }
+          .tint(.green)
+          .padding(.vertical, 3)
+      }
 
-                List {
-                    ForEach($draft) { $preference in
-                        HStack(spacing: 10) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(preference.name).font(.body).lineLimit(1)
-                                if let type = preference.collectionType, !type.isEmpty { Text(v3CollectionTypeTitle(type)).font(.caption2).foregroundColor(.secondary) }
-                            }
-                            Spacer(minLength: 6)
-                            Toggle("展示", isOn: $preference.showOnHome).labelsHidden().frame(width: 66)
-                            Toggle("轮播图", isOn: $preference.includeInCarousel).labelsHidden().frame(width: 72)
-                        }
-                        .frame(minHeight: 50)
-                    }
-                    .onMove { source, destination in draft.move(fromOffsets: source, toOffset: destination) }
-                }
-                .listStyle(InsetGroupedListStyle())
-                .environment(\.editMode, .constant(.active))
+      Section {
+          ForEach($draft) { $preference in
+              HStack(spacing: 12) {
+                  VStack(alignment: .leading, spacing: 2) {
+                      Text(preference.name).font(.body).lineLimit(1)
+                      if let type = preference.collectionType, !type.isEmpty { Text(v3CollectionTypeTitle(type)).font(.caption2).foregroundColor(.secondary) }
+                  }
+                  .frame(maxWidth: .infinity, alignment: .leading)
+
+                  VStack(spacing: 3) {
+                      Text("首页").font(.caption2).foregroundColor(.secondary)
+                      Toggle("首页", isOn: $preference.showOnHome).labelsHidden().tint(.green)
+                  }
+                  .frame(width: 62)
+
+                  VStack(spacing: 3) {
+                      Text("轮播").font(.caption2).foregroundColor(carouselEnabled ? .secondary : .secondary.opacity(0.55))
+                      Toggle("轮播", isOn: $preference.includeInCarousel).labelsHidden().tint(.green)
+                  }
+                  .frame(width: 62)
+                  .opacity(carouselEnabled ? 1 : 0.55)
+              }
+              .frame(minHeight: 44)
+              .listRowInsets(EdgeInsets(top: 6, leading: 18, bottom: 6, trailing: 12))
+          }
+          .onMove { source, destination in draft.move(fromOffsets: source, toOffset: destination) }
+      }
+  }
+  .listStyle(InsetGroupedListStyle())
+  .environment(\.editMode, .constant(.active))
             }
             .navigationBarHidden(true)
             .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
@@ -610,7 +651,7 @@ private struct V3HeroCard: View {
                 if let overview = item.overview, !overview.isEmpty { Text(overview).font(.subheadline).foregroundColor(.white.opacity(0.88)).lineLimit(2) }
             }
             .padding(.horizontal, 18)
-            .padding(.bottom, 18)
+            .padding(.bottom, 88)
         }
         .contentShape(Rectangle())
     }
