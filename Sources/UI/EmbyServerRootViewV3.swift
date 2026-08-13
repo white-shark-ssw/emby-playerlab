@@ -558,60 +558,60 @@ private struct V3MediaManagementView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-  HStack {
-      Button { presentationMode.wrappedValue.dismiss() } label: { Image(systemName: "xmark").font(.system(size: 22, weight: .medium)).frame(width: 44, height: 44) }
-      Spacer()
-      Text("媒体管理").font(.title2.weight(.bold))
-      Spacer()
-      Button("保存") { onSave(draft, carouselEnabled); presentationMode.wrappedValue.dismiss() }.font(.headline)
-  }
-  .padding(.horizontal, 14)
-  .padding(.top, 8)
+                HStack {
+                    Button { presentationMode.wrappedValue.dismiss() } label: { Image(systemName: "xmark").font(.system(size: 22, weight: .medium)).frame(width: 44, height: 44) }
+                    Spacer()
+                    Text("媒体管理").font(.title2.weight(.bold))
+                    Spacer()
+                    Button("保存") { onSave(draft, carouselEnabled); presentationMode.wrappedValue.dismiss() }.font(.headline)
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
 
-  Text("长按拖动可调整首页顺序").font(.subheadline).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 8)
+                Text("长按拖动可调整首页顺序").font(.subheadline).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 8)
 
-  List {
-      Section {
-          Toggle(isOn: $carouselEnabled) {
-              VStack(alignment: .leading, spacing: 3) {
-                  Text("轮播图").font(.body.weight(.semibold))
-                  Text("一键控制首页沉浸轮播，关闭不会清除下方媒体库选择").font(.caption).foregroundColor(.secondary)
-              }
-          }
-          .tint(.green)
-          .padding(.vertical, 3)
-      }
+                List {
+                    Section {
+                        Toggle(isOn: $carouselEnabled) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("轮播图").font(.body.weight(.semibold))
+                                Text("一键控制首页沉浸轮播，关闭不会清除下方媒体库选择").font(.caption).foregroundColor(.secondary)
+                            }
+                        }
+                        .tint(.green)
+                        .padding(.vertical, 3)
+                    }
 
-      Section {
-          ForEach($draft) { $preference in
-              HStack(spacing: 12) {
-                  VStack(alignment: .leading, spacing: 2) {
-                      Text(preference.name).font(.body).lineLimit(1)
-                      if let type = preference.collectionType, !type.isEmpty { Text(v3CollectionTypeTitle(type)).font(.caption2).foregroundColor(.secondary) }
-                  }
-                  .frame(maxWidth: .infinity, alignment: .leading)
+                    Section {
+                        ForEach($draft) { $preference in
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(preference.name).font(.body).lineLimit(1)
+                                    if let type = preference.collectionType, !type.isEmpty { Text(v3CollectionTypeTitle(type)).font(.caption2).foregroundColor(.secondary) }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
-                  VStack(spacing: 3) {
-                      Text("首页").font(.caption2).foregroundColor(.secondary)
-                      Toggle("首页", isOn: $preference.showOnHome).labelsHidden().tint(.green)
-                  }
-                  .frame(width: 62)
+                                VStack(spacing: 3) {
+                                    Text("首页").font(.caption2).foregroundColor(.secondary)
+                                    Toggle("首页", isOn: $preference.showOnHome).labelsHidden().tint(.green)
+                                }
+                                .frame(width: 62)
 
-                  VStack(spacing: 3) {
-                      Text("轮播").font(.caption2).foregroundColor(carouselEnabled ? .secondary : .secondary.opacity(0.55))
-                      Toggle("轮播", isOn: $preference.includeInCarousel).labelsHidden().tint(.green)
-                  }
-                  .frame(width: 62)
-                  .opacity(carouselEnabled ? 1 : 0.55)
-              }
-              .frame(minHeight: 44)
-              .listRowInsets(EdgeInsets(top: 6, leading: 18, bottom: 6, trailing: 12))
-          }
-          .onMove { source, destination in draft.move(fromOffsets: source, toOffset: destination) }
-      }
-  }
-  .listStyle(InsetGroupedListStyle())
-  .environment(\.editMode, .constant(.active))
+                                VStack(spacing: 3) {
+                                    Text("轮播").font(.caption2).foregroundColor(carouselEnabled ? .secondary : .secondary.opacity(0.55))
+                                    Toggle("轮播", isOn: $preference.includeInCarousel).labelsHidden().tint(.green)
+                                }
+                                .frame(width: 62)
+                                .opacity(carouselEnabled ? 1 : 0.55)
+                            }
+                            .frame(minHeight: 44)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 18, bottom: 6, trailing: 12))
+                        }
+                        .onMove { source, destination in draft.move(fromOffsets: source, toOffset: destination) }
+                    }
+                }
+                .listStyle(InsetGroupedListStyle())
+                .environment(\.editMode, .constant(.active))
             }
             .navigationBarHidden(true)
             .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
