@@ -1,0 +1,44 @@
+private struct V3HeroCard: View {
+    let item: LibraryItem
+    let client: EmbyAPIClient
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Spacer()
+            Text(heroTitle)
+                .font(.system(size: 30, weight: .bold))
+                .foregroundColor(.white)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .shadow(color: Color.black.opacity(0.55), radius: 3, y: 1)
+
+            HStack(spacing: 8) {
+                if let rating = item.communityRating { Text("★ " + String(format: "%.1f", rating)).foregroundColor(.yellow) }
+                if let year = item.productionYear { Text(String(year)) }
+                if let official = item.officialRating, !official.isEmpty { Text(official) }
+                Text(v3MediaTypeTitle(item))
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundColor(.white.opacity(0.95))
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let overview = item.overview, !overview.isEmpty {
+                Text(overview)
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.92))
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .shadow(color: Color.black.opacity(0.45), radius: 2, y: 1)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 58)
+        .contentShape(Rectangle())
+    }
+
+    private var heroTitle: String {
+        if item.type?.caseInsensitiveCompare("Episode") == .orderedSame, let seriesName = item.seriesName, !seriesName.isEmpty { return seriesName }
+        return item.name
+    }
+}
