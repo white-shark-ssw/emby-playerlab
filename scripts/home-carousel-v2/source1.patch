@@ -1,0 +1,209 @@
+diff --git a/Sources/UI/EmbyServerRootViewV3.swift b/Sources/UI/EmbyServerRootViewV3.swift
+index 5688658..6b4b129 100644
+--- a/Sources/UI/EmbyServerRootViewV3.swift
++++ b/Sources/UI/EmbyServerRootViewV3.swift
+@@ -130,7 +130,9 @@ private struct V3EmbyHomeView: View {
+     @StateObject private var model: V3EmbyHomeViewModel
+     @State private var isMediaManagementPresented = false
+     @State private var carouselIndex = 0
+-    @State private var homeRawScrollMinY: CGFloat = 0
++    @State private var carouselPageOffset: CGFloat = 0
++    @State private var homeScrollOffset: CGFloat = 0
++    @State private var isHomeRefreshing = false
+     private let carouselTimer = Timer.publish(every: 6, on: .main, in: .common).autoconnect()
+ 
+     init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, onCarouselActiveChanged: @escaping (Bool) -> Void, dock: AnyView) {
+@@ -148,17 +150,14 @@ private struct V3EmbyHomeView: View {
+         NavigationView {
+             GeometryReader { geometry in
+                 let immersive = !model.carouselItems.isEmpty
+-                let heroHeight = min(430, max(390, geometry.size.width * 0.94))
++                let heroHeight = min(560, max(510, geometry.size.width * 1.22))
+                 Group {
+                     if immersive {
+                         ZStack(alignment: .top) {
+-                            if let item = currentCarouselItem { homePersistentBackdrop(item: item).allowsHitTesting(false) }
+-                            homeScroll(heroHeight: heroHeight, immersive: true)
+-                                .background(Color.clear)
+-                                .ignoresSafeArea(.container, edges: .top)
+-                                .zIndex(1)
+-                            header(immersive: true)
+-                                .zIndex(30)
++                            carouselBackgroundStack(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom)).zIndex(0)
++                            homeScroll(heroHeight: heroHeight, immersive: true).background(Color.clear).ignoresSafeArea(.container, edges: .top).zIndex(1)
++                            header(immersive: true).zIndex(30)
++                            homeRefreshIndicator(topInset: geometry.safeAreaInsets.top).zIndex(50)
+                         }
+                     } else {
+                         VStack(spacing: 0) {
+@@ -170,6 +169,8 @@ private struct V3EmbyHomeView: View {
+                 .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+                 .overlay(alignment: .bottom) { dock }
+                 .onAppear {
++                    homeScrollOffset = 0
++                    carouselPageOffset = 0
+                     onCarouselActiveChanged(immersive)
+                     Task {
+                         if !model.hasLoaded { await model.refresh() }
+@@ -186,14 +187,23 @@ private struct V3EmbyHomeView: View {
+                     }
+                 }
+                 .onReceive(carouselTimer) { _ in
+-                    guard model.carouselItems.count > 1 else { return }
+-                    withAnimation(.easeInOut(duration: 0.35)) { carouselIndex = (carouselIndex + 1) % model.carouselItems.count }
++                    let count = model.carouselItems.count
++                    guard count > 1, abs(carouselPageOffset) < 0.02 else { return }
++                    let next = (carouselIndex + 1) % count
++                    withAnimation(.easeInOut(duration: 0.55)) { carouselIndex = next }
+                 }
++                .onChange(of: carouselIndex) { _ in DispatchQueue.main.async { carouselPageOffset = 0 } }
+                 .onChange(of: model.carouselItems.count) { count in
+                     if count == 0 || carouselIndex >= count { carouselIndex = 0 }
++                    carouselPageOffset = 0
+                     onCarouselActiveChanged(count > 0)
+                 }
+-                .onDisappear { onCarouselActiveChanged(false) }
++                .onDisappear {
++                    homeScrollOffset = 0
++                    carouselPageOffset = 0
++                    isHomeRefreshing = false
++                    onCarouselActiveChanged(false)
++                }
+             }
+             .navigationBarHidden(true)
+         }
+@@ -204,63 +214,94 @@ private struct V3EmbyHomeView: View {
+     private func homeScroll(heroHeight: CGFloat, immersive: Bool) -> some View {
+         ScrollViewReader { proxy in
+             ScrollView(.vertical, showsIndicators: false) {
+-                LazyVStack(alignment: .leading, spacing: 22) {
+-                    Group {
+-                        if !model.carouselItems.isEmpty { heroCarousel(height: heroHeight) }
+-                        else { Color.clear.frame(height: 1) }
++                VStack(spacing: 0) {
++                    GeometryReader { geometry in
++                        Color.clear.preference(key: V3HomeScrollOffsetPreferenceKey.self, value: geometry.frame(in: .named("v3-home-scroll")).minY)
+                     }
+-                    .id("v3-home-top")
++                    .frame(height: 0)
+ 
+-                    if model.isLoading && model.libraries.isEmpty {
+-                        ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
+-                    } else {
+-                        if !model.visibleLibraries.isEmpty {
+-                            sectionTitle("我的媒体")
+-                            libraryRow
+-                        }
+-                        if !model.resumeItems.isEmpty {
+-                            sectionTitle("继续观看")
+-                            landscapeRow(model.resumeItems)
++                    LazyVStack(alignment: .leading, spacing: 22) {
++                        Group {
++                            if !model.carouselItems.isEmpty { heroCarousel(height: heroHeight) }
++                            else { Color.clear.frame(height: 1) }
+                         }
+-                        ForEach(model.visibleLibraries) { library in
+-                            if let items = model.latestByLibrary[library.id], !items.isEmpty {
+-                                HStack(spacing: 8) {
+-                                    sectionTitle(library.name)
+-                                    Spacer()
+-                                    NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client, dock: dock))
+-                                        .font(.subheadline)
+-                                        .foregroundColor(.blue)
+-                                        .padding(.trailing, 16)
++                        .id("v3-home-top")
++
++                        if model.isLoading && model.libraries.isEmpty {
++                            ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
++                        } else {
++                            if !model.visibleLibraries.isEmpty {
++                                sectionTitle("我的媒体")
++                                libraryRow
++                            }
++                            if !model.resumeItems.isEmpty {
++                                sectionTitle("继续观看")
++                                landscapeRow(model.resumeItems)
++                            }
++                            ForEach(model.visibleLibraries) { library in
++                                if let items = model.latestByLibrary[library.id], !items.isEmpty {
++                                    HStack(spacing: 8) {
++                                        sectionTitle(library.name)
++                                        Spacer()
++                                        NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client, dock: dock))
++                                            .font(.subheadline).foregroundColor(.blue).padding(.trailing, 16)
++                                    }
++                                    posterRow(items)
+                                 }
+-                                posterRow(items)
+                             }
++                            if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
+                         }
+-                        if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
+                     }
++                    .padding(.bottom, 86)
+                 }
+-                .padding(.bottom, 86)
+-                .background(
+-                    Group {
+-                        if immersive {
+-                            AdaptiveHeroNativeScrollObserver { value in
+-                                if abs(homeRawScrollMinY - value) > 0.10 { homeRawScrollMinY = value }
+-                            }
+-                        }
+-                    }
+-                )
+-                .background(Group { if immersive { V3HomeRefreshControlLayerBridge() } })
+             }
++            .coordinateSpace(name: "v3-home-scroll")
+             .background(Color.clear)
+-            .refreshable { await model.refresh(userInitiated: true) }
+-            .onChange(of: refreshToken) { _ in Task { await model.refresh(userInitiated: true) } }
++            .onPreferenceChange(V3HomeScrollOffsetPreferenceKey.self) { value in
++                if immersive {
++                    if abs(homeScrollOffset - value) > 0.10 { homeScrollOffset = value }
++                } else if homeScrollOffset != 0 {
++                    homeScrollOffset = 0
++                }
++            }
++            .refreshable { await refreshHome() }
++            .onChange(of: refreshToken) { _ in Task { await refreshHome() } }
+             .onChange(of: scrollToTopToken) { _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("v3-home-top", anchor: .top) } }
+         }
+     }
+ 
++    @MainActor
++    private func refreshHome() async {
++        guard !isHomeRefreshing else { return }
++        isHomeRefreshing = true
++        await model.refresh(userInitiated: true)
++        isHomeRefreshing = false
++    }
++
++    @ViewBuilder
++    private func homeRefreshIndicator(topInset: CGFloat) -> some View {
++        let pull = max(0, homeScrollOffset)
++        if isHomeRefreshing || pull > 12 {
++            VStack {
++                ProgressView()
++                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
++                    .scaleEffect(isHomeRefreshing ? 1 : min(1, 0.72 + pull / 90))
++                    .frame(width: 34, height: 34)
++                    .background(Circle().fill(.ultraThinMaterial).overlay(Circle().fill(Color.black.opacity(0.18))))
++                    .shadow(color: Color.black.opacity(0.18), radius: 5, y: 2)
++                    .opacity(isHomeRefreshing ? 1 : min(1, Double((pull - 12) / 28)))
++                    .padding(.top, max(46, topInset + 6))
++                Spacer()
++            }
++            .frame(maxWidth: .infinity, maxHeight: .infinity)
++            .allowsHitTesting(false)
++        }
++    }
++
+     private func header(immersive: Bool) -> some View {
+         HStack(spacing: 12) {
+             Menu {
+-                Button { Task { await model.refresh(userInitiated: true) } } label: { Label("刷新首页", systemImage: "arrow.clockwise") }
++                Button { Task { await refreshHome() } } label: { Label("刷新首页", systemImage: "arrow.clockwise") }
+                 Button { isMediaManagementPresented = true } label: { Label("媒体管理", systemImage: "slider.horizontal.3") }
+                 Divider()
+                 Text("当前服务器：\(session.serverName)")
