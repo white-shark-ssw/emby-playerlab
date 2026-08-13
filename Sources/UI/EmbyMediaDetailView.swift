@@ -1261,6 +1261,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                 } else if selectedSeason == nil {
                     selectedSeason = seasonNumbers.first
                 }
+                logEpisodeDiagnostics(seriesID: refreshed.id)
             }
 
             await loadMediaMetadata(for: primaryPlayableItem)
@@ -1277,6 +1278,54 @@ final class EmbyMediaDetailViewModel: ObservableObject {
             hasLoaded = true
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func logEpisodeDiagnostics(seriesID: String) {
+        func countByOptionalInt(_ values: [Int?]) -> String {
+            var counts: [String: Int] = [:]
+            for value in values { counts[value.map(String.init) ?? "nil", default: 0] += 1 }
+            return counts.sorted { lhs, rhs in
+                if lhs.key == "nil" { return true }
+                if rhs.key == "nil" { return false }
+                return (Int(lhs.key) ?? Int.max) < (Int(rhs.key) ?? Int.max)
+            }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+        }
+
+        func countByOptionalString(_ values: [String?]) -> String {
+            var counts: [String: Int] = [:]
+            for value in values { counts[value ?? "nil", default: 0] += 1 }
+            let sorted = counts.sorted { lhs, rhs in
+                if lhs.key == "nil" { return true }
+                if rhs.key == "nil" { return false }
+                if lhs.value != rhs.value { return lhs.value > rhs.value }
+                return lhs.key < rhs.key
+            }
+            let visible = sorted.prefix(12).map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+            return sorted.count > 12 ? visible + ",...groups=\(sorted.count)" : visible
+        }
+
+        func sample(_ episode: LibraryItem) -> String {
+            let compactName = episode.name.replacingOccurrences(of: "|", with: "/").replacingOccurrences(of: "\n", with: " ")
+            let name = String(compactName.prefix(48))
+            return "id=\(episode.id)|name=\(name)|index=\(episode.indexNumber.map(String.init) ?? \"nil\")|parentIndex=\(episode.parentIndexNumber.map(String.init) ?? \"nil\")|seasonId=\(episode.seasonId ?? \"nil\")|parentId=\(episode.parentId ?? \"nil\")|seriesId=\(episode.seriesId ?? \"nil\")"
+        }
+
+        let selectedCount = selectedSeason.map { season in episodes.reduce(0) { $1.parentIndexNumber == season ? $0 + 1 : $0 } } ?? episodes.count
+        let unmatchedCount = selectedSeason.map { season in episodes.reduce(0) { $1.parentIndexNumber == season ? $0 : $0 + 1 } } ?? 0
+        let nilIndexCount = episodes.reduce(0) { $1.indexNumber == nil ? $0 + 1 : $0 }
+        let wrongSeriesCount = episodes.reduce(0) { episode in
+            guard let episodeSeriesID = episode.seriesId else { return $0 }
+            return episodeSeriesID == seriesID ? $0 : $0 + 1
+        }
+
+        DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) episodesTotal=\(episodes.count) seasonsTotal=\(seasons.count) selectedSeason=\(selectedSeason.map(String.init) ?? \"nil\") selectedCount=\(selectedCount) unmatched=\(unmatchedCount) nilIndex=\(nilIndexCount) wrongSeries=\(wrongSeriesCount)")
+        DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) parentIndex={\(countByOptionalInt(episodes.map(\.parentIndexNumber)))}")
+        DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) seasonId={\(countByOptionalString(episodes.map(\.seasonId)))}")
+        DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) parentId={\(countByOptionalString(episodes.map(\.parentId)))}")
+        DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) seasonIndex={\(countByOptionalInt(seasons.map(\.indexNumber)))}")
+        for (index, episode) in episodes.prefix(5).enumerated() { DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) sampleFirst[\(index)]=\(sample(episode))") }
+        let tail = Array(episodes.suffix(5))
+        for (index, episode) in tail.enumerated() { DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) sampleLast[\(index)]=\(sample(episode))") }
     }
 
     private func loadMediaMetadata(for mediaItem: LibraryItem?) async {
