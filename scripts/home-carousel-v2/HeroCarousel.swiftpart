@@ -2,7 +2,7 @@
         TabView(selection: $carouselIndex) {
             ForEach(Array(model.carouselItems.enumerated()), id: \.element.id) { index, item in
                 NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
-                    V3HeroCard(item: item, client: client, logo: model.carouselLogoByItemID[item.id])
+                    V3HeroCard(item: item, client: client)
                         .background(V3HomeCarouselPageOffsetObserver { updateCarouselPageOffset($0, pageIndex: index) })
                 }
                 .buttonStyle(.plain)
