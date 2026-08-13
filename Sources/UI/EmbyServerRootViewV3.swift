@@ -152,7 +152,6 @@ private struct V3EmbyHomeView: View {
                             homeScroll(heroHeight: heroHeight)
                                 .ignoresSafeArea(.container, edges: .top)
                             header(immersive: true)
-                                .padding(.top, geometry.safeAreaInsets.top)
                         }
                     } else {
                         VStack(spacing: 0) {
