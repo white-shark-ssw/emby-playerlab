@@ -161,17 +161,17 @@ struct EmbyPosterGrid<Content: View>: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing) {
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+        let loadAheadIDs = Set(items.suffix(EmbyPosterGridMetrics.loadAheadItemCount).map(\.id))
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing) {
+            ForEach(items) { item in
                 content(item)
                     .environment(\.embyPosterGridNavigationState, navigationState)
                     .environment(\.embyPosterGridCellWidth, cellWidth)
                     .frame(width: cellWidth, alignment: .topLeading)
                     .contentShape(Rectangle())
                     .onAppear {
-                        guard let handler = onApproachingEnd else { return }
-                        let threshold = max(0, items.count - EmbyPosterGridMetrics.loadAheadItemCount)
-                        if index >= threshold { handler() }
+                        guard let handler = onApproachingEnd, loadAheadIDs.contains(item.id) else { return }
+                        handler()
                     }
             }
         }

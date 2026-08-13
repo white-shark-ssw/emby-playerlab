@@ -3,6 +3,7 @@ import UIKit
 import Foundation
 import Combine
 import CoreImage
+import ImageIO
 
 private final class EmbyCachedImageLoader: ObservableObject {
     @Published var image: UIImage?
@@ -29,7 +30,9 @@ private final class EmbyCachedImageLoader: ObservableObject {
         task = Task { [weak self] in
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
-                guard !Task.isCancelled, let loaded = UIImage(data: data) else { return }
+                guard !Task.isCancelled else { return }
+                let loaded = await Task.detached(priority: .utility) { EmbyImageDecoder.decode(data: data, url: url) }.value
+                guard !Task.isCancelled, let loaded else { return }
                 EmbyImageMemoryCache.shared.setObject(loaded, forKey: url as NSURL)
                 await MainActor.run {
                     guard self?.currentURL == url else { return }
@@ -44,6 +47,38 @@ private final class EmbyCachedImageLoader: ObservableObject {
                 }
             }
         }
+    }
+
+    func cancel() {
+        task?.cancel()
+        task = nil
+        if image == nil { isLoading = false }
+    }
+}
+
+private enum EmbyImageDecoder {
+    static func decode(data: Data, url: URL) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return UIImage(data: data) }
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        let pixelWidth = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue ?? 0
+        let pixelHeight = (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue ?? 0
+        let requestedWidth = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name.caseInsensitiveCompare("MaxWidth") == .orderedSame }).flatMap { Double($0.value ?? "") }
+        let sourceMax = max(pixelWidth, pixelHeight)
+        let targetMax: Double
+        if let requestedWidth, requestedWidth > 0, pixelWidth > 0, pixelHeight > 0 {
+            let scale = min(1, requestedWidth / pixelWidth)
+            targetMax = max(1, ceil(sourceMax * scale))
+        } else {
+            targetMax = max(1, sourceMax)
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int(targetMax),
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return UIImage(data: data) }
+        return UIImage(cgImage: cgImage, scale: 1, orientation: .up)
     }
 }
 
@@ -223,14 +258,16 @@ struct EmbyCachedRemoteImage: View {
     let url: URL?
     let contentMode: ContentMode
     let placeholderSystemImage: String
+    let showsLoadingIndicator: Bool
     let onImageLoaded: ((UIImage) -> Void)?
     @StateObject private var loader = EmbyCachedImageLoader()
     @State private var reportedImageIdentifier: ObjectIdentifier?
 
-    init(url: URL?, contentMode: ContentMode, placeholderSystemImage: String = "photo", onImageLoaded: ((UIImage) -> Void)? = nil) {
+    init(url: URL?, contentMode: ContentMode, placeholderSystemImage: String = "photo", showsLoadingIndicator: Bool = true, onImageLoaded: ((UIImage) -> Void)? = nil) {
         self.url = url
         self.contentMode = contentMode
         self.placeholderSystemImage = placeholderSystemImage
+        self.showsLoadingIndicator = showsLoadingIndicator
         self.onImageLoaded = onImageLoaded
     }
 
@@ -241,10 +278,11 @@ struct EmbyCachedRemoteImage: View {
             } else {
                 Color(uiColor: .secondarySystemBackground)
                 Image(systemName: placeholderSystemImage).font(.system(size: 24, weight: .medium)).foregroundColor(.secondary.opacity(0.62))
-                if loader.isLoading { ProgressView() }
+                if showsLoadingIndicator && loader.isLoading { ProgressView() }
             }
         }
         .onAppear { loader.load(url) }
+        .onDisappear { loader.cancel() }
         .onChange(of: url) {
             reportedImageIdentifier = nil
             loader.load($0)
