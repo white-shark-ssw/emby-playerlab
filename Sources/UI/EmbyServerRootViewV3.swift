@@ -130,7 +130,9 @@ private struct V3EmbyHomeView: View {
     @StateObject private var model: V3EmbyHomeViewModel
     @State private var isMediaManagementPresented = false
     @State private var carouselIndex = 0
-    @State private var homeRawScrollMinY: CGFloat = 0
+    @State private var carouselPageOffset: CGFloat = 0
+    @State private var homeScrollOffset: CGFloat = 0
+    @State private var isHomeRefreshing = false
     private let carouselTimer = Timer.publish(every: 6, on: .main, in: .common).autoconnect()
 
     init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, onCarouselActiveChanged: @escaping (Bool) -> Void, dock: AnyView) {
@@ -148,17 +150,14 @@ private struct V3EmbyHomeView: View {
         NavigationView {
             GeometryReader { geometry in
                 let immersive = !model.carouselItems.isEmpty
-                let heroHeight = min(430, max(390, geometry.size.width * 0.94))
+                let heroHeight = min(560, max(510, geometry.size.width * 1.22))
                 Group {
                     if immersive {
                         ZStack(alignment: .top) {
-                            if let item = currentCarouselItem { homePersistentBackdrop(item: item).allowsHitTesting(false) }
-                            homeScroll(heroHeight: heroHeight, immersive: true)
-                                .background(Color.clear)
-                                .ignoresSafeArea(.container, edges: .top)
-                                .zIndex(1)
-                            header(immersive: true)
-                                .zIndex(30)
+                            carouselBackgroundStack(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom)).overlay(V3HomeCarouselBackgroundTint(colorScheme: colorScheme)).zIndex(0)
+                            homeScroll(heroHeight: heroHeight, immersive: true).background(Color.clear).ignoresSafeArea(.container, edges: .top).zIndex(1)
+                            header(immersive: true).zIndex(30)
+                            homeRefreshIndicator(topInset: geometry.safeAreaInsets.top).zIndex(50)
                         }
                     } else {
                         VStack(spacing: 0) {
@@ -170,6 +169,8 @@ private struct V3EmbyHomeView: View {
                 .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 .overlay(alignment: .bottom) { dock }
                 .onAppear {
+                    homeScrollOffset = 0
+                    carouselPageOffset = 0
                     onCarouselActiveChanged(immersive)
                     Task {
                         if !model.hasLoaded { await model.refresh() }
@@ -186,14 +187,23 @@ private struct V3EmbyHomeView: View {
                     }
                 }
                 .onReceive(carouselTimer) { _ in
-                    guard model.carouselItems.count > 1 else { return }
-                    withAnimation(.easeInOut(duration: 0.35)) { carouselIndex = (carouselIndex + 1) % model.carouselItems.count }
+                    let count = model.carouselItems.count
+                    guard count > 1, abs(carouselPageOffset) < 0.02 else { return }
+                    let next = (carouselIndex + 1) % count
+                    withAnimation(.easeInOut(duration: 0.55)) { carouselIndex = next }
                 }
+                .onChange(of: carouselIndex) { _ in DispatchQueue.main.async { carouselPageOffset = 0 } }
                 .onChange(of: model.carouselItems.count) { count in
                     if count == 0 || carouselIndex >= count { carouselIndex = 0 }
+                    carouselPageOffset = 0
                     onCarouselActiveChanged(count > 0)
                 }
-                .onDisappear { onCarouselActiveChanged(false) }
+                .onDisappear {
+                    homeScrollOffset = 0
+                    carouselPageOffset = 0
+                    isHomeRefreshing = false
+                    onCarouselActiveChanged(false)
+                }
             }
             .navigationBarHidden(true)
         }
@@ -204,63 +214,94 @@ private struct V3EmbyHomeView: View {
     private func homeScroll(heroHeight: CGFloat, immersive: Bool) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 22) {
-                    Group {
-                        if !model.carouselItems.isEmpty { heroCarousel(height: heroHeight) }
-                        else { Color.clear.frame(height: 1) }
+                VStack(spacing: 0) {
+                    GeometryReader { geometry in
+                        Color.clear.preference(key: V3HomeScrollOffsetPreferenceKey.self, value: geometry.frame(in: .named("v3-home-scroll")).minY)
                     }
-                    .id("v3-home-top")
+                    .frame(height: 0)
 
-                    if model.isLoading && model.libraries.isEmpty {
-                        ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
-                    } else {
-                        if !model.visibleLibraries.isEmpty {
-                            sectionTitle("我的媒体")
-                            libraryRow
+                    LazyVStack(alignment: .leading, spacing: 22) {
+                        Group {
+                            if !model.carouselItems.isEmpty { heroCarousel(height: heroHeight) }
+                            else { Color.clear.frame(height: 1) }
                         }
-                        if !model.resumeItems.isEmpty {
-                            sectionTitle("继续观看")
-                            landscapeRow(model.resumeItems)
-                        }
-                        ForEach(model.visibleLibraries) { library in
-                            if let items = model.latestByLibrary[library.id], !items.isEmpty {
-                                HStack(spacing: 8) {
-                                    sectionTitle(library.name)
-                                    Spacer()
-                                    NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client, dock: dock))
-                                        .font(.subheadline)
-                                        .foregroundColor(.blue)
-                                        .padding(.trailing, 16)
+                        .id("v3-home-top")
+
+                        if model.isLoading && model.libraries.isEmpty {
+                            ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
+                        } else {
+                            if !model.visibleLibraries.isEmpty {
+                                sectionTitle("我的媒体")
+                                libraryRow
+                            }
+                            if !model.resumeItems.isEmpty {
+                                sectionTitle("继续观看")
+                                landscapeRow(model.resumeItems)
+                            }
+                            ForEach(model.visibleLibraries) { library in
+                                if let items = model.latestByLibrary[library.id], !items.isEmpty {
+                                    HStack(spacing: 8) {
+                                        sectionTitle(library.name)
+                                        Spacer()
+                                        NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client, dock: dock))
+                                            .font(.subheadline).foregroundColor(.blue).padding(.trailing, 16)
+                                    }
+                                    posterRow(items)
                                 }
-                                posterRow(items)
                             }
+                            if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
                         }
-                        if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
                     }
+                    .padding(.bottom, 86)
                 }
-                .padding(.bottom, 86)
-                .background(
-                    Group {
-                        if immersive {
-                            AdaptiveHeroNativeScrollObserver { value in
-                                if abs(homeRawScrollMinY - value) > 0.10 { homeRawScrollMinY = value }
-                            }
-                        }
-                    }
-                )
-                .background(Group { if immersive { V3HomeRefreshControlLayerBridge() } })
             }
+            .coordinateSpace(name: "v3-home-scroll")
             .background(Color.clear)
-            .refreshable { await model.refresh(userInitiated: true) }
-            .onChange(of: refreshToken) { _ in Task { await model.refresh(userInitiated: true) } }
+            .onPreferenceChange(V3HomeScrollOffsetPreferenceKey.self) { value in
+                if immersive {
+                    if abs(homeScrollOffset - value) > 0.10 { homeScrollOffset = value }
+                } else if homeScrollOffset != 0 {
+                    homeScrollOffset = 0
+                }
+            }
+            .refreshable { await refreshHome() }
+            .onChange(of: refreshToken) { _ in Task { await refreshHome() } }
             .onChange(of: scrollToTopToken) { _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("v3-home-top", anchor: .top) } }
+        }
+    }
+
+    @MainActor
+    private func refreshHome() async {
+        guard !isHomeRefreshing else { return }
+        isHomeRefreshing = true
+        await model.refresh(userInitiated: true)
+        isHomeRefreshing = false
+    }
+
+    @ViewBuilder
+    private func homeRefreshIndicator(topInset: CGFloat) -> some View {
+        let pull = max(0, homeScrollOffset)
+        if isHomeRefreshing || pull > 12 {
+            VStack {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(isHomeRefreshing ? 1 : min(1, 0.72 + pull / 90))
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(.ultraThinMaterial).overlay(Circle().fill(Color.black.opacity(0.18))))
+                    .shadow(color: Color.black.opacity(0.18), radius: 5, y: 2)
+                    .opacity(isHomeRefreshing ? 1 : min(1, Double((pull - 12) / 28)))
+                    .padding(.top, max(46, topInset + 6))
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
         }
     }
 
     private func header(immersive: Bool) -> some View {
         HStack(spacing: 12) {
             Menu {
-                Button { Task { await model.refresh(userInitiated: true) } } label: { Label("刷新首页", systemImage: "arrow.clockwise") }
+                Button { Task { await refreshHome() } } label: { Label("刷新首页", systemImage: "arrow.clockwise") }
                 Button { isMediaManagementPresented = true } label: { Label("媒体管理", systemImage: "slider.horizontal.3") }
                 Divider()
                 Text("当前服务器：\(session.serverName)")
@@ -305,74 +346,65 @@ private struct V3EmbyHomeView: View {
     }
 
     private func heroCarousel(height: CGFloat) -> some View {
-        let stretch = max(0, homeRawScrollMinY)
-        let upwardScroll = max(0, -homeRawScrollMinY)
-        let resistanceSpan: CGFloat = 176
-        let pinCompensation = min(upwardScroll, resistanceSpan)
-        let visualHeight = height + stretch
-        let heroOffset = stretch > 0 ? -stretch : pinCompensation
-
-        return TabView(selection: $carouselIndex) {
+        TabView(selection: $carouselIndex) {
             ForEach(Array(model.carouselItems.enumerated()), id: \.element.id) { index, item in
                 NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
                     V3HeroCard(item: item, client: client)
+                        .background(V3HomeCarouselPageOffsetObserver { updateCarouselPageOffset($0, pageIndex: index) })
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
                 .tag(index)
             }
         }
         .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-        .frame(height: visualHeight)
-        .overlay(alignment: .bottomTrailing) {
-            HStack(spacing: 6) {
-                ForEach(model.carouselItems.indices, id: \.self) { index in
-                    Capsule()
-                        .fill(index == carouselIndex ? Color.white : Color.white.opacity(0.42))
-                        .frame(width: index == carouselIndex ? 16 : 6, height: 6)
-                }
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 24)
-            .background(Capsule().fill(Color.black.opacity(0.22)))
-            .padding(.trailing, 16)
-            .padding(.bottom, 18)
-            .animation(.easeInOut(duration: 0.2), value: carouselIndex)
-        }
-        .offset(y: heroOffset)
-        .frame(height: height, alignment: .top)
-        .allowsHitTesting(upwardScroll < 8)
-        .zIndex(0)
+        .frame(height: height)
     }
 
-    private var currentCarouselItem: LibraryItem? {
-        let items = model.carouselItems
-        guard !items.isEmpty else { return nil }
-        return items[min(max(0, carouselIndex), items.count - 1)]
+    private func updateCarouselPageOffset(_ value: CGFloat, pageIndex: Int) {
+        guard pageIndex == carouselIndex || abs(value) > 0.001 else { return }
+        let clamped = min(1, max(-1, value))
+        if abs(carouselPageOffset - clamped) > 0.002 { carouselPageOffset = clamped }
     }
 
-    private func homePersistentBackdrop(item: LibraryItem) -> some View {
-        GeometryReader { proxy in
-            ZStack {
-                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 1600, tag: item.preferredPrimaryImageTag), contentMode: .fill)
-                    .frame(width: proxy.size.width, height: proxy.size.height)
+    private func carouselBackgroundStack(size: CGSize) -> some View {
+        let pull = max(0, homeScrollOffset)
+        let upward = max(0, -homeScrollOffset)
+        let scale = 1 + min(0.075, pull / 1800)
+        let verticalOffset = -min(52, upward * 0.12)
+        return ZStack {
+            ForEach(Array(model.carouselItems.enumerated()), id: \.element.id) { index, item in
+                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 1400, tag: item.preferredPrimaryImageTag), contentMode: .fill)
+                    .frame(width: size.width, height: size.height)
                     .clipped()
-                    .scaleEffect(1.08)
-                    .blur(radius: 30)
-                LinearGradient(
-                    colors: [
-                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.18 : 0.28),
-                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.40 : 0.50),
-                        Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.60 : 0.68)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                    .opacity(carouselBackgroundOpacity(for: index))
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
         }
+        .frame(width: size.width, height: size.height)
+        .scaleEffect(scale)
+        .offset(y: verticalOffset)
+        .clipped()
         .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    private func carouselBackgroundOpacity(for index: Int) -> Double {
+        let count = model.carouselItems.count
+        guard count > 0 else { return 0 }
+        let current = min(max(0, carouselIndex), count - 1)
+        let fraction = min(1, max(0, abs(carouselPageOffset)))
+        if carouselPageOffset > 0.001, current + 1 < count {
+            if index == current { return Double(1 - fraction) }
+            if index == current + 1 { return Double(fraction) }
+            return 0
+        }
+        if carouselPageOffset < -0.001, current - 1 >= 0 {
+            if index == current { return Double(1 - fraction) }
+            if index == current - 1 { return Double(fraction) }
+            return 0
+        }
+        return index == current ? 1 : 0
     }
 
     private func sectionTitle(_ title: String) -> some View { Text(title).font(.title2.weight(.bold)).padding(.horizontal, 16) }
@@ -680,65 +712,37 @@ private struct V3HeroCard: View {
     let client: EmbyAPIClient
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            ZStack {
-                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 1400, tag: item.preferredPrimaryImageTag), contentMode: .fill)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                LinearGradient(
-                    stops: [
-                        .init(color: Color.black.opacity(0.26), location: 0.00),
-                        .init(color: Color.black.opacity(0.04), location: 0.30),
-                        .init(color: Color.black.opacity(0.18), location: 0.58),
-                        .init(color: Color.black.opacity(0.64), location: 0.88),
-                        .init(color: Color.black.opacity(0.10), location: 1.00),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-            .mask(
-                LinearGradient(
-                    stops: [
-                        .init(color: .black, location: 0.00),
-                        .init(color: .black, location: 0.86),
-                        .init(color: .black.opacity(0.72), location: 0.93),
-                        .init(color: .clear, location: 1.00),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+        VStack(alignment: .leading, spacing: 10) {
+            Spacer()
+            Text(heroTitle)
+                .font(.system(size: 30, weight: .bold))
+                .foregroundColor(.white)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .shadow(color: Color.black.opacity(0.55), radius: 3, y: 1)
 
-            VStack(alignment: .leading, spacing: 9) {
-                Text(heroTitle)
-                    .font(.system(size: 30, weight: .bold))
-                    .foregroundColor(.white)
+            HStack(spacing: 8) {
+                if let rating = item.communityRating { Text("★ " + String(format: "%.1f", rating)).foregroundColor(.yellow) }
+                if let year = item.productionYear { Text(String(year)) }
+                if let official = item.officialRating, !official.isEmpty { Text(official) }
+                Text(v3MediaTypeTitle(item))
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundColor(.white.opacity(0.95))
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let overview = item.overview, !overview.isEmpty {
+                Text(overview)
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.92))
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .shadow(radius: 2)
-                HStack(spacing: 8) {
-                    if let rating = item.communityRating { Text("★ " + String(format: "%.1f", rating)).foregroundColor(.yellow) }
-                    if let year = item.productionYear { Text(String(year)) }
-                    Text(v3MediaTypeTitle(item))
-                }
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(.white.opacity(0.95))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                if let overview = item.overview, !overview.isEmpty {
-                    Text(overview)
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.88))
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                    .shadow(color: Color.black.opacity(0.45), radius: 2, y: 1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 86)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 58)
         .contentShape(Rectangle())
     }
 
@@ -747,6 +751,7 @@ private struct V3HeroCard: View {
         return item.name
     }
 }
+
 
 private struct V3LibraryBrowserView: View {
     let library: LibraryItem
@@ -1097,7 +1102,28 @@ private struct V3SettingsCard<Content: View>: View {
     var body: some View { VStack(spacing: 0) { content }.background(Color(uiColor: .secondarySystemGroupedBackground)).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous)) }
 }
 
-private final class V3HomeRefreshControlProbeView: UIView {
+private struct V3HomeCarouselBackgroundTint: View {
+    let colorScheme: ColorScheme
+    var body: some View {
+        LinearGradient(
+            stops: [
+                .init(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.08), location: 0.00),
+                .init(color: Color.clear, location: 0.26),
+                .init(color: Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.24 : 0.22), location: 0.56),
+                .init(color: Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.46 : 0.48), location: 1.00)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+}
+
+private struct V3HomeScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+private final class V3HomeCarouselPageOffsetProbeView: UIView {
     var hierarchyDidChange: ((UIView) -> Void)?
 
     override func didMoveToSuperview() {
@@ -1116,34 +1142,84 @@ private final class V3HomeRefreshControlProbeView: UIView {
     }
 }
 
-private struct V3HomeRefreshControlLayerBridge: UIViewRepresentable {
-    func makeUIView(context: Context) -> V3HomeRefreshControlProbeView {
-        let view = V3HomeRefreshControlProbeView(frame: .zero)
+private struct V3HomeCarouselPageOffsetObserver: UIViewRepresentable {
+    let onChange: (CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
+
+    func makeUIView(context: Context) -> V3HomeCarouselPageOffsetProbeView {
+        let view = V3HomeCarouselPageOffsetProbeView(frame: .zero)
         view.backgroundColor = .clear
         view.isUserInteractionEnabled = false
-        view.hierarchyDidChange = { probe in elevateRefreshControl(from: probe) }
-        DispatchQueue.main.async { [weak view] in if let view { elevateRefreshControl(from: view) } }
+        view.hierarchyDidChange = { [weak coordinator = context.coordinator] probe in coordinator?.attach(from: probe) }
+        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak view] in
+            guard let view else { return }
+            coordinator?.attach(from: view)
+        }
         return view
     }
 
-    func updateUIView(_ uiView: V3HomeRefreshControlProbeView, context: Context) {
-        DispatchQueue.main.async { [weak uiView] in if let uiView { elevateRefreshControl(from: uiView) } }
+    func updateUIView(_ uiView: V3HomeCarouselPageOffsetProbeView, context: Context) {
+        context.coordinator.onChange = onChange
+        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
+            guard let uiView else { return }
+            coordinator?.attach(from: uiView)
+        }
     }
 
-    private func elevateRefreshControl(from probe: UIView) {
-        var current: UIView? = probe
-        while let view = current {
-            if let scrollView = view as? UIScrollView {
-                guard let refreshControl = scrollView.refreshControl else { return }
-                refreshControl.tintColor = .label
-                refreshControl.layer.zPosition = 1_000
-                scrollView.bringSubviewToFront(refreshControl)
+    static func dismantleUIView(_ uiView: V3HomeCarouselPageOffsetProbeView, coordinator: Coordinator) {
+        uiView.hierarchyDidChange = nil
+        coordinator.detach()
+    }
+
+    final class Coordinator {
+        var onChange: (CGFloat) -> Void
+        private weak var scrollView: UIScrollView?
+        private var contentOffsetObservation: NSKeyValueObservation?
+
+        init(onChange: @escaping (CGFloat) -> Void) { self.onChange = onChange }
+
+        func attach(from probe: UIView) {
+            guard let scrollView = ancestorPagingScrollView(from: probe) else { return }
+            guard self.scrollView !== scrollView else {
+                emit(scrollView)
                 return
             }
-            current = view.superview
+            contentOffsetObservation?.invalidate()
+            self.scrollView = scrollView
+            contentOffsetObservation = scrollView.observe(\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in self?.emit(scrollView) }
+        }
+
+        func detach() {
+            contentOffsetObservation?.invalidate()
+            contentOffsetObservation = nil
+            scrollView = nil
+        }
+
+        private func ancestorPagingScrollView(from probe: UIView) -> UIScrollView? {
+            var current: UIView? = probe
+            while let view = current {
+                if let scrollView = view as? UIScrollView,
+                   scrollView.isPagingEnabled,
+                   scrollView.bounds.width > 1,
+                   scrollView.contentSize.width >= scrollView.bounds.width * 2 {
+                    return scrollView
+                }
+                current = view.superview
+            }
+            return nil
+        }
+
+        private func emit(_ scrollView: UIScrollView) {
+            let width = max(1, scrollView.bounds.width)
+            let centerOffset = width
+            let value = min(1, max(-1, (scrollView.contentOffset.x - centerOffset) / width))
+            if Thread.isMainThread { onChange(value) }
+            else { DispatchQueue.main.async { [weak self] in self?.onChange(value) } }
         }
     }
 }
+
 
 private struct V3PageHeader: View {
     let title: String
