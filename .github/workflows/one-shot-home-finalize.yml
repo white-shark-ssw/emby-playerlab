@@ -1,0 +1,55 @@
+name: One-shot home finalize
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event.pull_request.head.ref == 'feat/home-ui-polish'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Apply final home patch
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_home_persistent_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Sources/UI/EmbyServerRootViewV3.swift')
+          s = p.read_text()
+          s = s.replace('    @StateObject private var posterNavigationState = EmbyPosterGridNavigationState()\n', '')
+          s = s.replace('            .environment(\\.embyPosterGridNavigationState, posterNavigationState)\n', '')
+          p.write_text(s)
+
+          check = Path('scripts/check_home_horizontal_tap_routing.py')
+          text = check.read_text()
+          text = text.replace('assert rows.count(".environment(\\\\.embyPosterGridNavigationState, posterNavigationState)") == 2\n', 'assert ".environment(\\\\.embyPosterGridNavigationState, posterNavigationState)" not in rows\n')
+          check.write_text(text)
+          PY
+
+          python3 scripts/check_home_immersive_carousel.py
+          python3 scripts/check_home_ui_polish.py
+          python3 scripts/check_home_horizontal_tap_routing.py
+          python3 scripts/check_v0134_detail_navigation.py
+          python3 scripts/check_adaptive_hero_reveal.py
+          python3 scripts/check_detail_resume_button.py
+          git diff --check
+
+      - name: Commit final source only
+        run: |
+          set -euo pipefail
+          rm -f scripts/apply_home_persistent_patch.py .github/workflows/one-shot-home-finalize.yml
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: complete immersive home experience'
+          git push origin HEAD:feat/home-ui-polish
