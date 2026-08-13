@@ -222,7 +222,7 @@ final class EmbyAPIClient {
     }
 
     private var commonBrowseFields: [URLQueryItem] {
-        [URLQueryItem(name: "Fields", value: "Overview,PrimaryImageAspectRatio,DateCreated,CommunityRating,OfficialRating,PremiereDate,RunTimeTicks,UserData,ProductionYear,SeriesName,SeriesId,IndexNumber,ParentIndexNumber,ChildCount,Genres,Tags,People,Studios,Taglines,ProviderIds")] + imageBrowseOptions
+        [URLQueryItem(name: "Fields", value: "Overview,PrimaryImageAspectRatio,DateCreated,CommunityRating,OfficialRating,PremiereDate,RunTimeTicks,UserData,ProductionYear,SeriesName,SeriesId,SeasonId,ParentId,IndexNumber,ParentIndexNumber,ChildCount,Genres,Tags,People,Studios,Taglines,ProviderIds")] + imageBrowseOptions
     }
 
     private func report(path: String, eventName: String?, source: ResolvedPlaybackSource, position: Double, paused: Bool) async -> Bool {

@@ -110,6 +110,8 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
     let dateCreated: String?
     let seriesName: String?
     let seriesId: String?
+    let seasonId: String?
+    let parentId: String?
     let indexNumber: Int?
     let parentIndexNumber: Int?
     let childCount: Int?
@@ -137,6 +139,8 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
         case dateCreated = "DateCreated"
         case seriesName = "SeriesName"
         case seriesId = "SeriesId"
+        case seasonId = "SeasonId"
+        case parentId = "ParentId"
         case indexNumber = "IndexNumber"
         case parentIndexNumber = "ParentIndexNumber"
         case childCount = "ChildCount"
@@ -166,6 +170,8 @@ struct LibraryItem: Decodable, Identifiable, Hashable {
         dateCreated = try? container.decode(String.self, forKey: .dateCreated)
         seriesName = try? container.decode(String.self, forKey: .seriesName)
         seriesId = try? container.decode(String.self, forKey: .seriesId)
+        seasonId = try? container.decode(String.self, forKey: .seasonId)
+        parentId = try? container.decode(String.self, forKey: .parentId)
         indexNumber = try? container.decode(Int.self, forKey: .indexNumber)
         parentIndexNumber = try? container.decode(Int.self, forKey: .parentIndexNumber)
         childCount = try? container.decode(Int.self, forKey: .childCount)
