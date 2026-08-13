@@ -1,0 +1,22 @@
+    private func heroCarousel(height: CGFloat) -> some View {
+        TabView(selection: $carouselIndex) {
+            ForEach(Array(model.carouselItems.enumerated()), id: \.element.id) { index, item in
+                NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
+                    V3HeroCard(item: item, client: client, logo: model.carouselLogoByItemID[item.id])
+                        .background(V3HomeCarouselPageOffsetObserver { updateCarouselPageOffset($0, pageIndex: index) })
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .tag(index)
+            }
+        }
+        .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+        .frame(height: height)
+    }
+
+    private func updateCarouselPageOffset(_ value: CGFloat, pageIndex: Int) {
+        guard pageIndex == carouselIndex || abs(value) > 0.001 else { return }
+        let clamped = min(1, max(-1, value))
+        if abs(carouselPageOffset - clamped) > 0.002 { carouselPageOffset = clamped }
+    }
