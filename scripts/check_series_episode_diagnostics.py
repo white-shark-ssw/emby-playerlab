@@ -9,8 +9,11 @@ assert 'let seasonId: String?' in models
 assert 'let parentId: String?' in models
 assert 'case seasonId = "SeasonId"' in models
 assert 'case parentId = "ParentId"' in models
+assert 'seasonId = try? container.decode(String.self, forKey: .seasonId)' in models
+assert 'parentId = try? container.decode(String.self, forKey: .parentId)' in models
 assert 'SeriesName,SeriesId,SeasonId,ParentId,IndexNumber,ParentIndexNumber' in api
 assert 'DiagnosticsLogger.shared.log("EpisodeDiagnostic"' in detail
+assert 'episodesTotal=' in detail and 'selectedCount=' in detail and 'unmatched=' in detail
 assert 'parentIndex={' in detail
 assert 'seasonId={' in detail
 assert 'parentId={' in detail
