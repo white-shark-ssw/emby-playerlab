@@ -1117,13 +1117,14 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     var logoImage: EmbyImageInfo? { imageInfos.first { $0.imageType.caseInsensitiveCompare("Logo") == .orderedSame } }
 
     var seasonNumbers: [Int] {
-        let values = Set(episodes.compactMap(\.parentIndexNumber) + seasons.compactMap(\.indexNumber))
-        return values.sorted()
+        let explicitSeasons = Set(seasons.compactMap(\.indexNumber))
+        if !explicitSeasons.isEmpty { return explicitSeasons.sorted() }
+        return Set(episodes.compactMap(\.parentIndexNumber)).sorted()
     }
 
     var selectedSeasonEpisodes: [LibraryItem] {
         guard let season = selectedSeason else { return episodes }
-        return episodes.filter { $0.parentIndexNumber == season }
+        return episodes.filter { episodeBelongsToSeason($0, season: season) }
     }
 
     var episodeRanges: [EmbyEpisodeRange] {
@@ -1199,7 +1200,18 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     }
 
     func seasonItem(number: Int) -> LibraryItem? { seasons.first { $0.indexNumber == number } }
-    func seasonEpisodeCount(_ season: Int) -> Int { episodes.reduce(0) { $1.parentIndexNumber == season ? $0 + 1 : $0 } }
+
+    private func seasonNumber(for episode: LibraryItem) -> Int? {
+        if let seasonID = episode.seasonId, let season = seasons.first(where: { $0.id == seasonID }), let number = season.indexNumber { return number }
+        return episode.parentIndexNumber
+    }
+
+    private func episodeBelongsToSeason(_ episode: LibraryItem, season number: Int) -> Bool {
+        if let episodeSeasonID = episode.seasonId, let season = seasonItem(number: number) { return episodeSeasonID == season.id }
+        return episode.parentIndexNumber == number
+    }
+
+    func seasonEpisodeCount(_ season: Int) -> Int { episodes.reduce(0) { episodeBelongsToSeason($1, season: season) ? $0 + 1 : $0 } }
     func episode(at offset: Int) -> LibraryItem? { selectedSeasonEpisodes.indices.contains(offset) ? selectedSeasonEpisodes[offset] : nil }
 
     func selectSeason(_ season: Int) {
@@ -1255,7 +1267,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                 catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "seasons failed: \(error.localizedDescription)") } }
                 isLoadingEpisodes = false
 
-                if let playable = primaryPlayableItem, let season = playable.parentIndexNumber {
+                if let playable = primaryPlayableItem, let season = seasonNumber(for: playable) {
                     selectedSeason = season
                     if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == playable.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
                 } else if selectedSeason == nil {
@@ -1310,8 +1322,8 @@ final class EmbyMediaDetailViewModel: ObservableObject {
             return "id=\(episode.id)|name=\(name)|index=\(episode.indexNumber.map(String.init) ?? "nil")|parentIndex=\(episode.parentIndexNumber.map(String.init) ?? "nil")|seasonId=\(episode.seasonId ?? "nil")|parentId=\(episode.parentId ?? "nil")|seriesId=\(episode.seriesId ?? "nil")"
         }
 
-        let selectedCount = selectedSeason.map { season in episodes.reduce(0) { subtotal, episode in episode.parentIndexNumber == season ? subtotal + 1 : subtotal } } ?? episodes.count
-        let unmatchedCount = selectedSeason.map { season in episodes.reduce(0) { subtotal, episode in episode.parentIndexNumber == season ? subtotal : subtotal + 1 } } ?? 0
+        let selectedCount = selectedSeason.map { season in episodes.reduce(0) { subtotal, episode in episodeBelongsToSeason(episode, season: season) ? subtotal + 1 : subtotal } } ?? episodes.count
+        let unmatchedCount = selectedSeason.map { season in episodes.reduce(0) { subtotal, episode in episodeBelongsToSeason(episode, season: season) ? subtotal : subtotal + 1 } } ?? 0
         let nilIndexCount = episodes.reduce(0) { subtotal, episode in episode.indexNumber == nil ? subtotal + 1 : subtotal }
         let wrongSeriesCount = episodes.reduce(0) { subtotal, episode in
             guard let episodeSeriesID = episode.seriesId else { return subtotal }
