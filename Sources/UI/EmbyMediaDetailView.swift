@@ -1310,12 +1310,12 @@ final class EmbyMediaDetailViewModel: ObservableObject {
             return "id=\(episode.id)|name=\(name)|index=\(episode.indexNumber.map(String.init) ?? "nil")|parentIndex=\(episode.parentIndexNumber.map(String.init) ?? "nil")|seasonId=\(episode.seasonId ?? "nil")|parentId=\(episode.parentId ?? "nil")|seriesId=\(episode.seriesId ?? "nil")"
         }
 
-        let selectedCount = selectedSeason.map { season in episodes.reduce(0) { $1.parentIndexNumber == season ? $0 + 1 : $0 } } ?? episodes.count
-        let unmatchedCount = selectedSeason.map { season in episodes.reduce(0) { $1.parentIndexNumber == season ? $0 : $0 + 1 } } ?? 0
-        let nilIndexCount = episodes.reduce(0) { $1.indexNumber == nil ? $0 + 1 : $0 }
-        let wrongSeriesCount = episodes.reduce(0) { episode in
-            guard let episodeSeriesID = episode.seriesId else { return $0 }
-            return episodeSeriesID == seriesID ? $0 : $0 + 1
+        let selectedCount = selectedSeason.map { season in episodes.reduce(0) { subtotal, episode in episode.parentIndexNumber == season ? subtotal + 1 : subtotal } } ?? episodes.count
+        let unmatchedCount = selectedSeason.map { season in episodes.reduce(0) { subtotal, episode in episode.parentIndexNumber == season ? subtotal : subtotal + 1 } } ?? 0
+        let nilIndexCount = episodes.reduce(0) { subtotal, episode in episode.indexNumber == nil ? subtotal + 1 : subtotal }
+        let wrongSeriesCount = episodes.reduce(0) { subtotal, episode in
+            guard let episodeSeriesID = episode.seriesId else { return subtotal }
+            return episodeSeriesID == seriesID ? subtotal : subtotal + 1
         }
 
         DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) episodesTotal=\(episodes.count) seasonsTotal=\(seasons.count) selectedSeason=\(selectedSeason.map(String.init) ?? "nil") selectedCount=\(selectedCount) unmatched=\(unmatchedCount) nilIndex=\(nilIndexCount) wrongSeries=\(wrongSeriesCount)")
