@@ -2,7 +2,8 @@ name: Temp Apply SeasonId Episode Grouping
 
 on:
   push:
-    branches: [fix/season-id-episode-grouping]
+    branches:
+      - fix/season-id-episode-grouping
     paths:
       - '.github/workflows/temp-apply-season-id-grouping.yml'
 
@@ -17,124 +18,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Patch season grouping semantics
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
+      - name: Apply patch
+        run: python3 scripts/temp_apply_season_id_grouping.py
 
-          path = Path('Sources/UI/EmbyMediaDetailView.swift')
-          text = path.read_text()
-
-          old = '''    var seasonNumbers: [Int] {
-        let values = Set(episodes.compactMap(\\.parentIndexNumber) + seasons.compactMap(\\.indexNumber))
-        return values.sorted()
-    }
-
-    var selectedSeasonEpisodes: [LibraryItem] {
-        guard let season = selectedSeason else { return episodes }
-        return episodes.filter { $0.parentIndexNumber == season }
-    }
-'''
-          new = '''    var seasonNumbers: [Int] {
-        let explicitSeasons = Set(seasons.compactMap(\\.indexNumber))
-        if !explicitSeasons.isEmpty { return explicitSeasons.sorted() }
-        return Set(episodes.compactMap(\\.parentIndexNumber)).sorted()
-    }
-
-    var selectedSeasonEpisodes: [LibraryItem] {
-        guard let season = selectedSeason else { return episodes }
-        return episodes.filter { episodeBelongsToSeason($0, season: season) }
-    }
-'''
-          if old not in text:
-              raise SystemExit('::error::seasonNumbers/selectedSeasonEpisodes block not found')
-          text = text.replace(old, new, 1)
-
-          old = '''    func seasonItem(number: Int) -> LibraryItem? { seasons.first { $0.indexNumber == number } }
-    func seasonEpisodeCount(_ season: Int) -> Int { episodes.reduce(0) { $1.parentIndexNumber == season ? $0 + 1 : $0 } }
-    func episode(at offset: Int) -> LibraryItem? { selectedSeasonEpisodes.indices.contains(offset) ? selectedSeasonEpisodes[offset] : nil }
-'''
-          new = '''    func seasonItem(number: Int) -> LibraryItem? { seasons.first { $0.indexNumber == number } }
-
-    private func seasonNumber(for episode: LibraryItem) -> Int? {
-        if let seasonID = episode.seasonId, let season = seasons.first(where: { $0.id == seasonID }), let number = season.indexNumber { return number }
-        return episode.parentIndexNumber
-    }
-
-    private func episodeBelongsToSeason(_ episode: LibraryItem, season number: Int) -> Bool {
-        if let episodeSeasonID = episode.seasonId, let season = seasonItem(number: number) { return episodeSeasonID == season.id }
-        return episode.parentIndexNumber == number
-    }
-
-    func seasonEpisodeCount(_ season: Int) -> Int { episodes.reduce(0) { episodeBelongsToSeason($1, season: season) ? $0 + 1 : $0 } }
-    func episode(at offset: Int) -> LibraryItem? { selectedSeasonEpisodes.indices.contains(offset) ? selectedSeasonEpisodes[offset] : nil }
-'''
-          if old not in text:
-              raise SystemExit('::error::season helper block not found')
-          text = text.replace(old, new, 1)
-
-          old = '''                if let playable = primaryPlayableItem, let season = playable.parentIndexNumber {
-                    selectedSeason = season
-                    if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == playable.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
-                } else if selectedSeason == nil {
-                    selectedSeason = seasonNumbers.first
-                }
-'''
-          new = '''                if let playable = primaryPlayableItem, let season = seasonNumber(for: playable) {
-                    selectedSeason = season
-                    if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == playable.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
-                } else if selectedSeason == nil {
-                    selectedSeason = seasonNumbers.first
-                }
-'''
-          if old not in text:
-              raise SystemExit('::error::playable season selection block not found')
-          text = text.replace(old, new, 1)
-
-          old = '''        let selectedCount = selectedSeason.map { season in episodes.reduce(0) { subtotal, episode in episode.parentIndexNumber == season ? subtotal + 1 : subtotal } } ?? episodes.count
-        let unmatchedCount = selectedSeason.map { season in episodes.reduce(0) { subtotal, episode in episode.parentIndexNumber == season ? subtotal : subtotal + 1 } } ?? 0
-'''
-          new = '''        let selectedCount = selectedSeason.map { season in episodes.reduce(0) { subtotal, episode in episodeBelongsToSeason(episode, season: season) ? subtotal + 1 : subtotal } } ?? episodes.count
-        let unmatchedCount = selectedSeason.map { season in episodes.reduce(0) { subtotal, episode in episodeBelongsToSeason(episode, season: season) ? subtotal : subtotal + 1 } } ?? 0
-'''
-          if old not in text:
-              raise SystemExit('::error::diagnostic selected-count block not found')
-          text = text.replace(old, new, 1)
-
-          path.write_text(text)
-
-          checker = Path('scripts/check_season_id_episode_grouping.py')
-          checker.write_text(r'''from pathlib import Path
-
-detail = Path("Sources/UI/EmbyMediaDetailView.swift").read_text()
-project = Path("project.yml").read_text()
-
-assert "let explicitSeasons = Set(seasons.compactMap(\\.indexNumber))" in detail
-assert "if !explicitSeasons.isEmpty { return explicitSeasons.sorted() }" in detail
-assert "return Set(episodes.compactMap(\\.parentIndexNumber)).sorted()" in detail
-assert "private func seasonNumber(for episode: LibraryItem) -> Int?" in detail
-assert "if let seasonID = episode.seasonId, let season = seasons.first(where: { $0.id == seasonID }), let number = season.indexNumber { return number }" in detail
-assert "private func episodeBelongsToSeason(_ episode: LibraryItem, season number: Int) -> Bool" in detail
-assert "if let episodeSeasonID = episode.seasonId, let season = seasonItem(number: number) { return episodeSeasonID == season.id }" in detail
-assert "return episodes.filter { episodeBelongsToSeason($0, season: season) }" in detail
-assert "func seasonEpisodeCount(_ season: Int) -> Int { episodes.reduce(0) { episodeBelongsToSeason($1, season: season) ? $0 + 1 : $0 } }" in detail
-assert "if let playable = primaryPlayableItem, let season = seasonNumber(for: playable)" in detail
-assert "return episodes.filter { $0.parentIndexNumber == season }" not in detail
-assert 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' in project
-print("SeasonId episode grouping checks passed")
-''')
-          PY
-
-      - name: Run grouping regression check
+      - name: Run regression check
         run: python3 scripts/check_season_id_episode_grouping.py
 
-      - name: Commit source fix and remove temporary workflow
+      - name: Commit source fix
         run: |
           set -euo pipefail
           git config user.name 'os-player-ci'
           git config user.email 'actions@users.noreply.github.com'
-          git rm .github/workflows/temp-apply-season-id-grouping.yml
+          git rm .github/workflows/temp-apply-season-id-grouping.yml scripts/temp_apply_season_id_grouping.py
           git add Sources/UI/EmbyMediaDetailView.swift scripts/check_season_id_episode_grouping.py
           git commit -m 'fix: group episodes by Emby season id'
           git push origin HEAD:fix/season-id-episode-grouping
