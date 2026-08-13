@@ -1,0 +1,15 @@
+private struct V3HomeCarouselBackgroundTint: View {
+    let colorScheme: ColorScheme
+    var body: some View {
+        LinearGradient(
+            stops: [
+                .init(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.08), location: 0.00),
+                .init(color: Color.clear, location: 0.26),
+                .init(color: Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.24 : 0.22), location: 0.56),
+                .init(color: Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.46 : 0.48), location: 1.00)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+}
