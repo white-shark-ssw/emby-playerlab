@@ -10,7 +10,7 @@ assert "Rectangle().fill(.ultraThinMaterial)" in v3
 assert "homeScroll(heroHeight: heroHeight)" in v3
 assert ".ignoresSafeArea(.container, edges: .top)" in v3
 assert "header(immersive: true)" in v3
-assert ".padding(.top, geometry.safeAreaInsets.top)" in v3
+assert "header(immersive: true)\n                                .padding(.top, geometry.safeAreaInsets.top)" not in v3
 assert "private func heroCarousel(height: CGFloat)" in v3
 assert ".frame(height: height)" in v3
 assert ".clipShape(RoundedRectangle(cornerRadius: 18" not in v3
