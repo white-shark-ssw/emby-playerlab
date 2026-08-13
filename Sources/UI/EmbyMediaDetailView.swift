@@ -1307,7 +1307,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         func sample(_ episode: LibraryItem) -> String {
             let compactName = episode.name.replacingOccurrences(of: "|", with: "/").replacingOccurrences(of: "\n", with: " ")
             let name = String(compactName.prefix(48))
-            return "id=\(episode.id)|name=\(name)|index=\(episode.indexNumber.map(String.init) ?? \"nil\")|parentIndex=\(episode.parentIndexNumber.map(String.init) ?? \"nil\")|seasonId=\(episode.seasonId ?? \"nil\")|parentId=\(episode.parentId ?? \"nil\")|seriesId=\(episode.seriesId ?? \"nil\")"
+            return "id=\(episode.id)|name=\(name)|index=\(episode.indexNumber.map(String.init) ?? "nil")|parentIndex=\(episode.parentIndexNumber.map(String.init) ?? "nil")|seasonId=\(episode.seasonId ?? "nil")|parentId=\(episode.parentId ?? "nil")|seriesId=\(episode.seriesId ?? "nil")"
         }
 
         let selectedCount = selectedSeason.map { season in episodes.reduce(0) { $1.parentIndexNumber == season ? $0 + 1 : $0 } } ?? episodes.count
@@ -1318,7 +1318,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
             return episodeSeriesID == seriesID ? $0 : $0 + 1
         }
 
-        DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) episodesTotal=\(episodes.count) seasonsTotal=\(seasons.count) selectedSeason=\(selectedSeason.map(String.init) ?? \"nil\") selectedCount=\(selectedCount) unmatched=\(unmatchedCount) nilIndex=\(nilIndexCount) wrongSeries=\(wrongSeriesCount)")
+        DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) episodesTotal=\(episodes.count) seasonsTotal=\(seasons.count) selectedSeason=\(selectedSeason.map(String.init) ?? "nil") selectedCount=\(selectedCount) unmatched=\(unmatchedCount) nilIndex=\(nilIndexCount) wrongSeries=\(wrongSeriesCount)")
         DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) parentIndex={\(countByOptionalInt(episodes.map(\.parentIndexNumber)))}")
         DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) seasonId={\(countByOptionalString(episodes.map(\.seasonId)))}")
         DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) parentId={\(countByOptionalString(episodes.map(\.parentId)))}")
