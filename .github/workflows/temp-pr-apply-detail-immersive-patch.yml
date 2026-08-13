@@ -1,66 +1,167 @@
-name: Temp PR apply detail immersive patch
+name: Temp Home UI Polish
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
+  push:
+    branches: [feat/home-ui-polish]
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.event.pull_request.head.ref == 'chatgpt/detail-immersive-toggle-navigation-race-20260811'
+    if: github.actor != 'actions'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-      - name: Apply exact source patch
+      - name: Apply home UI polish
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          root = Path('Sources/UI/EmbyServerRootViewV3.swift')
-          text = root.read_text()
-          old = '''                    }
-                    .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
-                    .ignoresSafeArea(.container, edges: .bottom)
-'''
-          new = '''                    }
-                    .environment(\\.serverDockContent, AnyView(serverTabBar))
-                    .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
-                    .ignoresSafeArea(.container, edges: .bottom)
-'''
-          if '.environment(\\.serverDockContent, AnyView(serverTabBar))' not in text:
-              if text.count(old) != 1: raise SystemExit(f'root patch mismatch: {text.count(old)}')
-              text = text.replace(old, new, 1)
-              root.write_text(text)
+          p = Path('Sources/UI/EmbyServerRootViewV3.swift')
+          s = p.read_text()
 
-          detail = Path('Sources/UI/EmbyMediaDetailView.swift')
-          text = detail.read_text()
-          if 'let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom' in text:
-              text = text.replace('            let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom\n', '', 1)
-              count = text.count('.frame(width: geometry.size.width, height: fullHeight)')
-              if count != 2: raise SystemExit(f'detail frame mismatch: {count}')
-              text = text.replace('.frame(width: geometry.size.width, height: fullHeight)', '.frame(width: geometry.size.width, height: geometry.size.height)')
-          if '.hidesServerDockWhileVisible()' in text:
-              if text.count('        .hidesServerDockWhileVisible()\n') != 1: raise SystemExit('detail modifier mismatch')
-              text = text.replace('        .hidesServerDockWhileVisible()\n', '        .detailPagePresentation()\n        .onAppear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-appear item=\\(model.item.id)") }\n        .onDisappear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-disappear item=\\(model.item.id)") }\n', 1)
-          detail.write_text(text)
+          replacements = [
+              (
+                  '''                .sheet(isPresented: $isMediaManagementPresented) {\n                    V3MediaManagementView(preferences: model.preferences) { model.savePreferences($0) }\n                }''',
+                  '''                .sheet(isPresented: $isMediaManagementPresented) {\n                    V3MediaManagementView(preferences: model.preferences, carouselEnabled: model.carouselEnabled) { preferences, carouselEnabled in\n                        model.savePreferences(preferences, carouselEnabled: carouselEnabled)\n                    }\n                }''',
+              ),
+              (
+                  '''        .frame(height: height)\n        .overlay(alignment: .bottomTrailing) {''',
+                  '''        .frame(height: height)\n        .overlay(alignment: .bottom) {\n            LinearGradient(\n                stops: [\n                    .init(color: .clear, location: 0.00),\n                    .init(color: .clear, location: 0.34),\n                    .init(color: Color(uiColor: .systemBackground).opacity(0.72), location: 0.78),\n                    .init(color: Color(uiColor: .systemBackground), location: 1.00),\n                ],\n                startPoint: .top,\n                endPoint: .bottom\n            )\n            .frame(height: 118)\n            .allowsHitTesting(false)\n        }\n        .overlay(alignment: .bottomTrailing) {''',
+              ),
+              (
+                  '''            .animation(.easeInOut(duration: 0.2), value: carouselIndex)\n        }\n    }\n\n    private func sectionTitle''',
+                  '''            .animation(.easeInOut(duration: 0.2), value: carouselIndex)\n        }\n        .padding(.bottom, -8)\n    }\n\n    private func sectionTitle''',
+              ),
+              (
+                  '''    @Published var latestByLibrary: [String: [LibraryItem]] = [:]\n    @Published var preferences: [V3HomeLibraryPreference] = []\n    @Published var isLoading = false''',
+                  '''    @Published var latestByLibrary: [String: [LibraryItem]] = [:]\n    @Published var preferences: [V3HomeLibraryPreference] = []\n    @Published var carouselEnabled: Bool\n    @Published var isLoading = false''',
+              ),
+              (
+                  '''    private let client: EmbyAPIClient\n    private let preferenceKey: String\n    private(set) var hasLoaded = false''',
+                  '''    private let client: EmbyAPIClient\n    private let preferenceKey: String\n    private let carouselEnabledKey: String\n    private(set) var hasLoaded = false''',
+              ),
+              (
+                  '''    init(session: EmbySession, client: EmbyAPIClient) {\n        self.client = client\n        preferenceKey = "osplayer.home.library-preferences.\\(session.serverId).\\(session.user.id)"\n    }''',
+                  '''    init(session: EmbySession, client: EmbyAPIClient) {\n        self.client = client\n        preferenceKey = "osplayer.home.library-preferences.\\(session.serverId).\\(session.user.id)"\n        let carouselKey = "osplayer.home.carousel-enabled.\\(session.serverId).\\(session.user.id)"\n        carouselEnabledKey = carouselKey\n        carouselEnabled = UserDefaults.standard.object(forKey: carouselKey) as? Bool ?? true\n    }''',
+              ),
+              (
+                  '''    var carouselItems: [LibraryItem] {\n        let enabled = Set(preferences.filter(\\.includeInCarousel).map(\\.libraryID))''',
+                  '''    var carouselItems: [LibraryItem] {\n        guard carouselEnabled else { return [] }\n        let enabled = Set(preferences.filter(\\.includeInCarousel).map(\\.libraryID))''',
+              ),
+              (
+                  '''    func savePreferences(_ next: [V3HomeLibraryPreference]) {\n        let validIDs = Set(libraries.map(\\.id))\n        preferences = next.filter { validIDs.contains($0.libraryID) }\n        persistPreferences(preferences)\n    }''',
+                  '''    func savePreferences(_ next: [V3HomeLibraryPreference], carouselEnabled: Bool) {\n        let validIDs = Set(libraries.map(\\.id))\n        preferences = next.filter { validIDs.contains($0.libraryID) }\n        self.carouselEnabled = carouselEnabled\n        persistPreferences(preferences)\n        UserDefaults.standard.set(carouselEnabled, forKey: carouselEnabledKey)\n    }''',
+              ),
+              (
+                  '''            .padding(.horizontal, 18)\n            .padding(.bottom, 18)''',
+                  '''            .padding(.horizontal, 18)\n            .padding(.bottom, 88)''',
+              ),
+          ]
 
-          staged = Path('.github/workflows/one-shot-detail-immersive-patch.yml')
-          if staged.exists(): staged.unlink()
+          for old, new in replacements:
+              if old not in s:
+                  raise SystemExit('source pattern missing: ' + old[:100].replace('\n', ' | '))
+              s = s.replace(old, new, 1)
+
+          start = s.index('private struct V3MediaManagementView: View {')
+          end = s.index('\nprivate struct V3HeroCard: View {', start)
+          media = r'''private struct V3MediaManagementView: View {
+              @Environment(\.presentationMode) private var presentationMode
+              @State private var draft: [V3HomeLibraryPreference]
+              @State private var carouselEnabled: Bool
+              let onSave: ([V3HomeLibraryPreference], Bool) -> Void
+
+              init(preferences: [V3HomeLibraryPreference], carouselEnabled: Bool, onSave: @escaping ([V3HomeLibraryPreference], Bool) -> Void) {
+                  _draft = State(initialValue: preferences)
+                  _carouselEnabled = State(initialValue: carouselEnabled)
+                  self.onSave = onSave
+              }
+
+              var body: some View {
+                  NavigationView {
+                      VStack(spacing: 0) {
+                          HStack {
+                              Button { presentationMode.wrappedValue.dismiss() } label: { Image(systemName: "xmark").font(.system(size: 22, weight: .medium)).frame(width: 44, height: 44) }
+                              Spacer()
+                              Text("媒体管理").font(.title2.weight(.bold))
+                              Spacer()
+                              Button("保存") { onSave(draft, carouselEnabled); presentationMode.wrappedValue.dismiss() }.font(.headline)
+                          }
+                          .padding(.horizontal, 14)
+                          .padding(.top, 8)
+
+                          Text("长按拖动可调整首页顺序").font(.subheadline).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 8)
+
+                          List {
+                              Section {
+                                  Toggle(isOn: $carouselEnabled) {
+                                      VStack(alignment: .leading, spacing: 3) {
+                                          Text("轮播图").font(.body.weight(.semibold))
+                                          Text("一键控制首页沉浸轮播，关闭不会清除下方媒体库选择").font(.caption).foregroundColor(.secondary)
+                                      }
+                                  }
+                                  .tint(.green)
+                                  .padding(.vertical, 3)
+                              }
+
+                              Section {
+                                  ForEach($draft) { $preference in
+                                      HStack(spacing: 12) {
+                                          VStack(alignment: .leading, spacing: 2) {
+                                              Text(preference.name).font(.body).lineLimit(1)
+                                              if let type = preference.collectionType, !type.isEmpty { Text(v3CollectionTypeTitle(type)).font(.caption2).foregroundColor(.secondary) }
+                                          }
+                                          .frame(maxWidth: .infinity, alignment: .leading)
+
+                                          VStack(spacing: 3) {
+                                              Text("首页").font(.caption2).foregroundColor(.secondary)
+                                              Toggle("首页", isOn: $preference.showOnHome).labelsHidden().tint(.green)
+                                          }
+                                          .frame(width: 62)
+
+                                          VStack(spacing: 3) {
+                                              Text("轮播").font(.caption2).foregroundColor(carouselEnabled ? .secondary : .secondary.opacity(0.55))
+                                              Toggle("轮播", isOn: $preference.includeInCarousel).labelsHidden().tint(.green)
+                                          }
+                                          .frame(width: 62)
+                                          .opacity(carouselEnabled ? 1 : 0.55)
+                                      }
+                                      .frame(minHeight: 44)
+                                      .listRowInsets(EdgeInsets(top: 6, leading: 18, bottom: 6, trailing: 12))
+                                  }
+                                  .onMove { source, destination in draft.move(fromOffsets: source, toOffset: destination) }
+                              }
+                          }
+                          .listStyle(InsetGroupedListStyle())
+                          .environment(\.editMode, .constant(.active))
+                      }
+                      .navigationBarHidden(true)
+                      .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+                  }
+                  .navigationViewStyle(StackNavigationViewStyle())
+              }
+          }
+          '''
+          # Remove the indentation used to keep the workflow YAML readable.
+          media = '\n'.join(line[14:] if line.startswith('              ') else line for line in media.splitlines()) + '\n'
+          s = s[:start] + media + s[end:]
+          p.write_text(s)
           PY
+          python3 scripts/check_home_ui_polish.py
+          python3 scripts/check_home_immersive_carousel.py
+          python3 scripts/check_scroll_performance.py
           git diff --check
-          if git diff --quiet; then
-            echo 'Already patched.'
-            exit 0
-          fi
-          git config user.name 'ChatGPT'
-          git config user.email 'chatgpt@users.noreply.github.com'
+      - name: Restore workflow and commit
+        run: |
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/temp-pr-apply-detail-immersive-patch.yml
+          git config user.name os-player-ci
+          git config user.email actions@users.noreply.github.com
           git add -A
-          git commit -m 'feat: wire immersive detail viewport and dock mode [detail-immersive-patched]'
-          git push origin HEAD:chatgpt/detail-immersive-toggle-navigation-race-20260811
+          git commit -m 'feat: polish immersive home carousel controls' || exit 0
+          git push
