@@ -23,20 +23,9 @@ struct EmbyServerRootViewV3: View {
                             .allowsHitTesting(selectedTab == .home)
                             .accessibilityHidden(selectedTab != .home)
 
-                        V3EmbyFavoritesView(client: client, onClose: close, dock: AnyView(serverTabBar))
-                            .opacity(selectedTab == .favorites ? 1 : 0)
-                            .allowsHitTesting(selectedTab == .favorites)
-                            .accessibilityHidden(selectedTab != .favorites)
-
-                        V3EmbySearchView(client: client, onClose: close, dock: AnyView(serverTabBar))
-                            .opacity(selectedTab == .search ? 1 : 0)
-                            .allowsHitTesting(selectedTab == .search)
-                            .accessibilityHidden(selectedTab != .search)
-
-                        V3EmbyServerSettingsView(session: session, onClose: close, dock: AnyView(serverTabBar))
-                            .opacity(selectedTab == .settings ? 1 : 0)
-                            .allowsHitTesting(selectedTab == .settings)
-                            .accessibilityHidden(selectedTab != .settings)
+                        if selectedTab == .favorites { V3EmbyFavoritesView(client: client, onClose: close, dock: AnyView(serverTabBar)) }
+                        if selectedTab == .search { V3EmbySearchView(client: client, onClose: close, dock: AnyView(serverTabBar)) }
+                        if selectedTab == .settings { V3EmbyServerSettingsView(session: session, onClose: close, dock: AnyView(serverTabBar)) }
                     }
                     .environment(\.serverDockContent, AnyView(serverTabBar))
                     .environment(\.serverDockBottomInset, geometry.safeAreaInsets.bottom)
@@ -266,7 +255,7 @@ private struct V3EmbyHomeView: View {
 
     private var libraryRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            LazyHStack(spacing: 12) {
                 ForEach(model.visibleLibraries) { library in
                     NavigationLink(destination: V3LibraryBrowserView(library: library, client: client, dock: dock)) { V3LibraryTile(item: library, client: client) }.buttonStyle(.plain)
                 }
@@ -277,7 +266,7 @@ private struct V3EmbyHomeView: View {
 
     private func landscapeRow(_ items: [LibraryItem]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            LazyHStack(spacing: 12) {
                 ForEach(items) { item in
                     NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { V3LandscapeCard(item: item, client: client) }.buttonStyle(.plain)
                 }
@@ -288,7 +277,7 @@ private struct V3EmbyHomeView: View {
 
     private func posterRow(_ items: [LibraryItem]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 12) {
+            LazyHStack(alignment: .top, spacing: 12) {
                 ForEach(items) { item in
                     NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { V3PosterCard(item: item, client: client, width: 118) }.buttonStyle(.plain)
                 }
@@ -993,7 +982,7 @@ private struct V3PosterCard: View {
 private struct V3RemoteImage: View {
     let url: URL?
     let contentMode: ContentMode
-    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode, placeholderSystemImage: "play.rectangle") }
+    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode, placeholderSystemImage: "play.rectangle", showsLoadingIndicator: false) }
 }
 
 private func v3MediaSubtitle(_ item: LibraryItem) -> String {
