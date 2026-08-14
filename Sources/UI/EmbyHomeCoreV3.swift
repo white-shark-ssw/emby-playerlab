@@ -47,7 +47,9 @@ struct V3EmbyHomeView: View {
         carouselDisplayRangeKey = rangeKey
         let savedRange = UserDefaults.standard.object(forKey: rangeKey) as? Double ?? 0.30
         _carouselDisplayRange = State(initialValue: min(1, max(0, savedRange)))
-        _model = StateObject(wrappedValue: V3EmbyHomeViewModel(session: session, client: client))
+        let homeModel = V3EmbyHomeViewModel(session: session, client: client)
+        _model = StateObject(wrappedValue: homeModel)
+        _currentCarouselItemID = State(initialValue: homeModel.carouselItems.first?.id)
     }
 
     var body: some View {

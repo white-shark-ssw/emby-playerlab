@@ -54,6 +54,7 @@ struct V3HomeScrollOffsetObserver: UIViewRepresentable {
         var onChange: (CGFloat) -> Void
         private weak var scrollView: UIScrollView?
         private var contentOffsetObservation: NSKeyValueObservation?
+        private var restingAdjustedTopInset: CGFloat?
 
         init(onChange: @escaping (CGFloat) -> Void) { self.onChange = onChange }
 
@@ -65,6 +66,7 @@ struct V3HomeScrollOffsetObserver: UIViewRepresentable {
             }
             contentOffsetObservation?.invalidate()
             self.scrollView = scrollView
+            restingAdjustedTopInset = scrollView.adjustedContentInset.top
             scrollView.alwaysBounceVertical = true
             contentOffsetObservation = scrollView.observe(\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in self?.emit(scrollView) }
         }
@@ -73,6 +75,7 @@ struct V3HomeScrollOffsetObserver: UIViewRepresentable {
             contentOffsetObservation?.invalidate()
             contentOffsetObservation = nil
             scrollView = nil
+            restingAdjustedTopInset = nil
         }
 
         private func ancestorVerticalScrollView(from probe: UIView) -> UIScrollView? {
@@ -85,7 +88,8 @@ struct V3HomeScrollOffsetObserver: UIViewRepresentable {
         }
 
         private func emit(_ scrollView: UIScrollView) {
-            let rawDisplacement = -(scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
+            let topInset = restingAdjustedTopInset ?? scrollView.adjustedContentInset.top
+            let rawDisplacement = -(scrollView.contentOffset.y + topInset)
             if Thread.isMainThread { onChange(rawDisplacement) }
             else { DispatchQueue.main.async { [weak self] in self?.onChange(rawDisplacement) } }
         }

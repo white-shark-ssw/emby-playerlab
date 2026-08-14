@@ -23,6 +23,9 @@ final class V3EmbyHomeViewModel: ObservableObject {
     private let client: EmbyAPIClient
     private let preferenceKey: String
     private let carouselEnabledKey: String
+    private let carouselSnapshotKey: String
+    private var cachedCarouselItems: [LibraryItem]
+    private var hasResolvedLiveCarouselMetadata = false
     private(set) var hasLoaded = false
     private var resumeDirty = false
     private var dirtyResumeItemIDs = Set<String>()
@@ -32,6 +35,9 @@ final class V3EmbyHomeViewModel: ObservableObject {
         preferenceKey = "osplayer.home.library-preferences.\(session.serverId).\(session.user.id)"
         let carouselKey = "osplayer.home.carousel-enabled.\(session.serverId).\(session.user.id)"
         carouselEnabledKey = carouselKey
+        let snapshotKey = "osplayer.home.carousel-snapshot.v1.\(session.serverId).\(session.user.id)"
+        carouselSnapshotKey = snapshotKey
+        cachedCarouselItems = Self.loadCarouselSnapshot(forKey: snapshotKey)
         carouselEnabled = UserDefaults.standard.object(forKey: carouselKey) as? Bool ?? true
     }
 
@@ -49,6 +55,12 @@ final class V3EmbyHomeViewModel: ObservableObject {
 
     var carouselItems: [LibraryItem] {
         guard carouselEnabled else { return [] }
+        let live = liveCarouselItems()
+        if hasResolvedLiveCarouselMetadata || !live.isEmpty { return live }
+        return cachedCarouselItems
+    }
+
+    private func liveCarouselItems() -> [LibraryItem] {
         let enabled = Set(preferences.filter(\.includeInCarousel).map(\.libraryID))
         var seen = Set<String>()
         var pool: [LibraryItem] = []
@@ -95,6 +107,8 @@ final class V3EmbyHomeViewModel: ObservableObject {
             persistPreferences(preferences)
 
             var latest: [String: [LibraryItem]] = [:]
+            var publishedFirstCarouselLibrary = false
+            let carouselLibraryIDs = Set(preferences.filter(\.includeInCarousel).map(\.libraryID))
             await withTaskGroup(of: (String, [LibraryItem]?).self) { group in
                 for library in libraries {
                     let types = Self.browseItemTypes(for: library)
@@ -108,9 +122,23 @@ final class V3EmbyHomeViewModel: ObservableObject {
                         }
                     }
                 }
-                for await result in group { if let items = result.1 { latest[result.0] = uniqueItems(items) } }
+                for await result in group {
+                    guard let items = result.1 else { continue }
+                    let unique = uniqueItems(items)
+                    latest[result.0] = unique
+                    if cachedCarouselItems.isEmpty, !publishedFirstCarouselLibrary, carouselLibraryIDs.contains(result.0), !unique.isEmpty {
+                        latestByLibrary = latest
+                        publishedFirstCarouselLibrary = true
+                    }
+                }
             }
             latestByLibrary = latest
+            let freshCarouselItems = liveCarouselItems()
+            hasResolvedLiveCarouselMetadata = !freshCarouselItems.isEmpty || latest.count == libraries.count
+            if latest.count == libraries.count {
+                cachedCarouselItems = freshCarouselItems
+                persistCarouselSnapshot(freshCarouselItems)
+            }
         } catch {
             if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
         }
@@ -149,6 +177,10 @@ final class V3EmbyHomeViewModel: ObservableObject {
         self.carouselEnabled = carouselEnabled
         persistPreferences(preferences)
         UserDefaults.standard.set(carouselEnabled, forKey: carouselEnabledKey)
+        if !carouselEnabled || !preferences.contains(where: \.includeInCarousel) {
+            cachedCarouselItems = []
+            persistCarouselSnapshot([])
+        }
     }
 
     private func reconcilePreferences(_ views: [LibraryItem]) -> [V3HomeLibraryPreference] {
@@ -183,6 +215,63 @@ final class V3EmbyHomeViewModel: ObservableObject {
     private func persistPreferences(_ value: [V3HomeLibraryPreference]) {
         guard let data = try? JSONEncoder().encode(value) else { return }
         UserDefaults.standard.set(data, forKey: preferenceKey)
+    }
+
+    private func persistCarouselSnapshot(_ items: [LibraryItem]) {
+        let snapshot = items.map(V3HomeCarouselSnapshotItem.init)
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        UserDefaults.standard.set(data, forKey: carouselSnapshotKey)
+    }
+
+    private static func loadCarouselSnapshot(forKey key: String) -> [LibraryItem] {
+        guard let data = UserDefaults.standard.data(forKey: key), let snapshot = try? JSONDecoder().decode([V3HomeCarouselSnapshotItem].self, from: data) else { return [] }
+        return snapshot.compactMap(\.libraryItem)
+    }
+}
+
+private struct V3HomeCarouselSnapshotItem: Codable {
+    let id: String
+    let name: String
+    let type: String?
+    let overview: String?
+    let productionYear: Int?
+    let communityRating: Double?
+    let officialRating: String?
+    let seriesName: String?
+    let seriesId: String?
+    let primaryImageTag: String?
+    let primaryImageItemId: String?
+    let seriesPrimaryImageTag: String?
+
+    init(_ item: LibraryItem) {
+        id = item.id
+        name = item.name
+        type = item.type
+        overview = item.overview
+        productionYear = item.productionYear
+        communityRating = item.communityRating
+        officialRating = item.officialRating
+        seriesName = item.seriesName
+        seriesId = item.seriesId
+        primaryImageTag = item.primaryImageTag
+        primaryImageItemId = item.primaryImageItemId
+        seriesPrimaryImageTag = item.seriesPrimaryImageTag
+    }
+
+    var libraryItem: LibraryItem? {
+        var payload: [String: Any] = ["Id": id, "Name": name]
+        if let type { payload["Type"] = type }
+        if let overview { payload["Overview"] = overview }
+        if let productionYear { payload["ProductionYear"] = productionYear }
+        if let communityRating { payload["CommunityRating"] = communityRating }
+        if let officialRating { payload["OfficialRating"] = officialRating }
+        if let seriesName { payload["SeriesName"] = seriesName }
+        if let seriesId { payload["SeriesId"] = seriesId }
+        if let primaryImageTag { payload["ImageTags"] = ["Primary": primaryImageTag] }
+        if let primaryImageItemId { payload["PrimaryImageItemId"] = primaryImageItemId }
+        if let seriesPrimaryImageTag { payload["SeriesPrimaryImageTag"] = seriesPrimaryImageTag }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
+        return try? JSONDecoder().decode(LibraryItem.self, from: data)
     }
 }
 
