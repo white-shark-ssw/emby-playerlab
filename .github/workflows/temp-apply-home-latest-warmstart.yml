@@ -1,0 +1,65 @@
+name: Temp Apply Home Latest Warmstart
+
+on:
+  push:
+    branches:
+      - fix/home-latest-warmstart-refresh-tint
+    paths:
+      - .github/workflows/temp-apply-home-latest-warmstart.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/home-latest-warmstart-refresh-tint
+          fetch-depth: 0
+      - name: Apply exact source edits
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text()
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f"{path}: expected {count} matches, found {actual}")
+              p.write_text(text.replace(old, new, count))
+
+          replace("Sources/UI/EmbyHomeCoreV3.swift", "V3HomeRefreshControlStyler()", "V3HomeRefreshControlStyler(immersive: immersive)")
+
+          path = "Sources/UI/EmbyHomeRefreshControlStylerV3.swift"
+          replace(path, "struct V3HomeRefreshControlStyler: UIViewRepresentable {\n    func makeCoordinator() -> Coordinator { Coordinator() }", "struct V3HomeRefreshControlStyler: UIViewRepresentable {\n    let immersive: Bool\n\n    func makeCoordinator() -> Coordinator { Coordinator(immersive: immersive) }")
+          replace(path, "    func updateUIView(_ uiView: V3HomeRefreshStyleProbeView, context: Context) {\n        DispatchQueue.main.async", "    func updateUIView(_ uiView: V3HomeRefreshStyleProbeView, context: Context) {\n        context.coordinator.immersive = immersive\n        DispatchQueue.main.async")
+          replace(path, "    final class Coordinator: NSObject {\n        private weak var refreshControl: UIRefreshControl?", "    final class Coordinator: NSObject {\n        var immersive: Bool\n        private weak var refreshControl: UIRefreshControl?\n\n        init(immersive: Bool) { self.immersive = immersive }")
+          replace(path, "            refreshControl.tintColor = UIColor.white.withAlphaComponent(0.96)", "            refreshControl.tintColor = immersive ? UIColor.white.withAlphaComponent(0.96) : UIColor.label")
+
+          path = "Sources/UI/EmbyHomeModelV3.swift"
+          replace(path, "    private let carouselSnapshotKey: String\n    private var cachedCarouselItems: [LibraryItem]", "    private let carouselSnapshotKey: String\n    private let latestSnapshotKey: String\n    private var cachedCarouselItems: [LibraryItem]")
+          replace(path, "        let snapshotKey = \"osplayer.home.carousel-snapshot.v1.\\(session.serverId).\\(session.user.id)\"\n        carouselSnapshotKey = snapshotKey\n        cachedCarouselItems = Self.loadCarouselSnapshot(forKey: snapshotKey)", "        let snapshotKey = \"osplayer.home.carousel-snapshot.v1.\\(session.serverId).\\(session.user.id)\"\n        carouselSnapshotKey = snapshotKey\n        let latestKey = \"osplayer.home.latest-snapshot.v1.\\(session.serverId).\\(session.user.id)\"\n        latestSnapshotKey = latestKey\n        latestByLibrary = Self.loadLatestSnapshot(forKey: latestKey)\n        cachedCarouselItems = Self.loadCarouselSnapshot(forKey: snapshotKey)")
+          replace(path, "            if latest.count == libraries.count {\n                cachedCarouselItems = freshCarouselItems\n                persistCarouselSnapshot(freshCarouselItems)\n            }", "            if latest.count == libraries.count {\n                cachedCarouselItems = freshCarouselItems\n                persistCarouselSnapshot(freshCarouselItems)\n                persistLatestSnapshot(latest)\n            }")
+          replace(path, "    private func persistCarouselSnapshot(_ items: [LibraryItem]) {", "    private func persistLatestSnapshot(_ latest: [String: [LibraryItem]]) {\n        let snapshot = latest.mapValues { Array($0.prefix(16)).map(V3HomeItemSnapshot.init) }\n        guard let data = try? JSONEncoder().encode(snapshot) else { return }\n        UserDefaults.standard.set(data, forKey: latestSnapshotKey)\n    }\n\n    private static func loadLatestSnapshot(forKey key: String) -> [String: [LibraryItem]] {\n        guard let data = UserDefaults.standard.data(forKey: key), let snapshot = try? JSONDecoder().decode([String: [V3HomeItemSnapshot]].self, from: data) else { return [:] }\n        return snapshot.mapValues { $0.compactMap(\\.libraryItem) }.filter { !$0.value.isEmpty }\n    }\n\n    private func persistCarouselSnapshot(_ items: [LibraryItem]) {")
+          replace(path, "V3HomeCarouselSnapshotItem.init", "V3HomeItemSnapshot.init", count=1)
+          replace(path, "[V3HomeCarouselSnapshotItem].self", "[V3HomeItemSnapshot].self", count=1)
+          replace(path, "private struct V3HomeCarouselSnapshotItem: Codable {", "private struct V3HomeItemSnapshot: Codable {")
+          replace(path, "    let productionYear: Int?\n    let communityRating: Double?", "    let productionYear: Int?\n    let runTimeTicks: Int64?\n    let communityRating: Double?")
+          replace(path, "    let seriesPrimaryImageTag: String?\n", "    let seriesPrimaryImageTag: String?\n    let playbackPositionTicks: Int64?\n    let played: Bool?\n    let unplayedItemCount: Int?\n")
+          replace(path, "        productionYear = item.productionYear\n        communityRating = item.communityRating", "        productionYear = item.productionYear\n        runTimeTicks = item.runTimeTicks\n        communityRating = item.communityRating")
+          replace(path, "        seriesPrimaryImageTag = item.seriesPrimaryImageTag\n", "        seriesPrimaryImageTag = item.seriesPrimaryImageTag\n        playbackPositionTicks = item.userData?.playbackPositionTicks\n        played = item.userData?.played\n        unplayedItemCount = item.userData?.unplayedItemCount\n")
+          replace(path, "        if let productionYear { payload[\"ProductionYear\"] = productionYear }\n        if let communityRating", "        if let productionYear { payload[\"ProductionYear\"] = productionYear }\n        if let runTimeTicks { payload[\"RunTimeTicks\"] = runTimeTicks }\n        if let communityRating")
+          replace(path, "        if let seriesPrimaryImageTag { payload[\"SeriesPrimaryImageTag\"] = seriesPrimaryImageTag }\n        guard let data", "        if let seriesPrimaryImageTag { payload[\"SeriesPrimaryImageTag\"] = seriesPrimaryImageTag }\n        if playbackPositionTicks != nil || played != nil || unplayedItemCount != nil {\n            var userData: [String: Any] = [:]\n            if let playbackPositionTicks { userData[\"PlaybackPositionTicks\"] = playbackPositionTicks }\n            if let played { userData[\"Played\"] = played }\n            if let unplayedItemCount { userData[\"UnplayedItemCount\"] = unplayedItemCount }\n            payload[\"UserData\"] = userData\n        }\n        guard let data")
+          PY
+
+          rm -f .github/workflows/temp-apply-home-latest-warmstart.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: warm-start Home latest rows and refresh tint"
+          git push origin HEAD:fix/home-latest-warmstart-refresh-tint
