@@ -122,6 +122,7 @@ struct V3EmbyHomeView: View {
 
     private func homeScroll(width: CGFloat, viewportHeight: CGFloat, immersive: Bool) -> some View {
         ScrollViewReader { proxy in
+            let heroTrackingLimit = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + min(132, viewportHeight * 0.16) + 24
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     Group {
@@ -169,8 +170,9 @@ struct V3EmbyHomeView: View {
                 .background(
                     ZStack {
                         V3HomeScrollOffsetObserver { value in
-                            guard isHomeActive else { return }
-                            if abs(homeRawScrollMinY - value) > 0.10 { homeRawScrollMinY = value }
+                            guard immersive, isHomeActive else { return }
+                            let clampedValue = max(-heroTrackingLimit, value)
+                            if abs(homeRawScrollMinY - clampedValue) > 0.10 { homeRawScrollMinY = clampedValue }
                         }
                         V3HomeRefreshControlStyler()
                     }
