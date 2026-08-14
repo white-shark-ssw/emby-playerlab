@@ -9,6 +9,7 @@ extension V3EmbyHomeView {
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
                 guard abs(horizontal) > abs(vertical) * 1.08, abs(horizontal) > 4 else { return }
+                suppressCarouselTap()
                 guard transitionToID == nil || isCarouselDragging else { return }
                 guard let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: horizontal < 0 ? 1 : -1) else { return }
                 if !isCarouselDragging || transitionFromID != currentID || transitionToID != targetID {
@@ -21,12 +22,23 @@ extension V3EmbyHomeView {
             }
             .onEnded { value in
                 guard isCarouselDragging, let targetID = transitionToID else { return }
+                suppressCarouselTap()
                 let predicted = abs(value.predictedEndTranslation.width)
                 let shouldCommit = transitionProgress >= 0.28 || predicted >= width * 0.48
                 isCarouselDragging = false
                 if shouldCommit { completeInteractiveTransition(to: targetID) }
                 else { cancelInteractiveTransition() }
             }
+    }
+
+    func suppressCarouselTap() {
+        carouselTapSuppressedUntil = Date().addingTimeInterval(0.30)
+    }
+
+    func openCurrentCarouselDetailIfAllowed() {
+        guard transitionToID == nil, !isCarouselDragging, Date() >= carouselTapSuppressedUntil, let item = currentCarouselItem else { return }
+        carouselDetailItem = item
+        isCarouselDetailPresented = true
     }
 
     func completeInteractiveTransition(to targetID: String) {
