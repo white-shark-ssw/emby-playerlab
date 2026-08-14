@@ -22,8 +22,9 @@ final class V3HomeRefreshStyleProbeView: UIView {
 
 struct V3HomeRefreshControlStyler: UIViewRepresentable {
     let immersive: Bool
+    let lifecycleGeneration: Int
 
-    func makeCoordinator() -> Coordinator { Coordinator(immersive: immersive) }
+    func makeCoordinator() -> Coordinator { Coordinator(immersive: immersive, lifecycleGeneration: lifecycleGeneration) }
 
     func makeUIView(context: Context) -> V3HomeRefreshStyleProbeView {
         let view = V3HomeRefreshStyleProbeView(frame: .zero)
@@ -38,7 +39,7 @@ struct V3HomeRefreshControlStyler: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: V3HomeRefreshStyleProbeView, context: Context) {
-        context.coordinator.immersive = immersive
+        context.coordinator.update(immersive: immersive, lifecycleGeneration: lifecycleGeneration)
         DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
             guard let uiView else { return }
             coordinator?.attach(from: uiView)
@@ -52,9 +53,21 @@ struct V3HomeRefreshControlStyler: UIViewRepresentable {
 
     final class Coordinator: NSObject {
         var immersive: Bool
+        private var lifecycleGeneration: Int
         private weak var refreshControl: UIRefreshControl?
 
-        init(immersive: Bool) { self.immersive = immersive }
+        init(immersive: Bool, lifecycleGeneration: Int) {
+            self.immersive = immersive
+            self.lifecycleGeneration = lifecycleGeneration
+        }
+
+        func update(immersive: Bool, lifecycleGeneration: Int) {
+            self.immersive = immersive
+            guard self.lifecycleGeneration != lifecycleGeneration else { return }
+            self.lifecycleGeneration = lifecycleGeneration
+            refreshControl?.removeTarget(self, action: #selector(refreshTriggered), for: .valueChanged)
+            refreshControl = nil
+        }
 
         func attach(from probe: UIView) {
             guard let scrollView = ancestorVerticalScrollView(from: probe), let refreshControl = scrollView.refreshControl else { return }
