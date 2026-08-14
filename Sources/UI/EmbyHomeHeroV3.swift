@@ -17,11 +17,16 @@ extension V3EmbyHomeView {
                     .allowsHitTesting(false)
             }
 
-            if let item = currentCarouselItem {
-                NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { Color.clear.contentShape(Rectangle()) }
-                    .buttonStyle(.plain)
-                    .allowsHitTesting(transitionToID == nil)
-            }
+            NavigationLink(
+                destination: Group {
+                    if let item = carouselDetailItem { EmbyMediaDetailView(item: item, client: client) }
+                    else { EmptyView() }
+                },
+                isActive: $isCarouselDetailPresented
+            ) { EmptyView() }
+            .frame(width: 0, height: 0)
+            .hidden()
+            .allowsHitTesting(false)
 
             carouselPageIndicators
                 .padding(.bottom, 12)
@@ -29,6 +34,7 @@ extension V3EmbyHomeView {
         }
         .frame(width: width, height: baseHeight)
         .contentShape(Rectangle())
+        .onTapGesture { openCurrentCarouselDetailIfAllowed() }
         .simultaneousGesture(carouselDragGesture(width: width))
     }
 

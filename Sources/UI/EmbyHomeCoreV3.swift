@@ -21,6 +21,9 @@ struct V3EmbyHomeView: View {
     @State var carouselLastSettledAt = Date()
     @State var carouselLightForegroundByID: [String: Bool] = [:]
     @State var carouselSourceSizeByID: [String: CGSize] = [:]
+    @State var carouselDetailItem: LibraryItem?
+    @State var isCarouselDetailPresented = false
+    @State var carouselTapSuppressedUntil = Date.distantPast
     @State var homeRawScrollMinY: CGFloat = 0
     @State var isHomeRefreshing = false
     @State var isHomeActive = false
@@ -93,6 +96,7 @@ struct V3EmbyHomeView: View {
             .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 
     private func homeScroll(width: CGFloat, viewportHeight: CGFloat, immersive: Bool) -> some View {
