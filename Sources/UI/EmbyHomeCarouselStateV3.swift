@@ -11,11 +11,13 @@ extension V3EmbyHomeView {
                 guard abs(horizontal) > abs(vertical) * 1.08, abs(horizontal) > 4 else { return }
                 suppressCarouselTap()
                 guard transitionToID == nil || isCarouselDragging else { return }
-                guard let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: horizontal < 0 ? 1 : -1) else { return }
+                let direction = horizontal < 0 ? 1 : -1
+                guard let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: direction) else { return }
                 if !isCarouselDragging || transitionFromID != currentID || transitionToID != targetID {
                     transitionFromID = currentID
                     transitionToID = targetID
                     transitionProgress = 0
+                    transitionDirection = direction
                     isCarouselDragging = true
                 }
                 transitionProgress = min(1, max(0, abs(horizontal) / max(1, width)))
@@ -58,6 +60,7 @@ extension V3EmbyHomeView {
             guard transitionFromID == fromID, transitionToID == toID, transitionProgress <= 0.001 else { return }
             transitionFromID = nil
             transitionToID = nil
+            transitionDirection = 1
             carouselLastSettledAt = Date()
         }
     }
@@ -69,6 +72,7 @@ extension V3EmbyHomeView {
         transitionFromID = currentID
         transitionToID = targetID
         transitionProgress = 0
+        transitionDirection = 1
         withAnimation(.easeInOut(duration: 0.62)) { transitionProgress = 1 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.63) {
             guard transitionFromID == currentID, transitionToID == targetID else { return }
@@ -81,6 +85,7 @@ extension V3EmbyHomeView {
         transitionFromID = nil
         transitionToID = nil
         transitionProgress = 0
+        transitionDirection = 1
         isCarouselDragging = false
         carouselLastSettledAt = Date()
         DiagnosticsLogger.shared.log("HomeCarousel", "settled item=\(itemID)")
@@ -94,6 +99,7 @@ extension V3EmbyHomeView {
             transitionFromID = nil
             transitionToID = nil
             transitionProgress = 0
+            transitionDirection = 1
             isCarouselDragging = false
             onCarouselActiveChanged(false)
             return
@@ -113,10 +119,33 @@ extension V3EmbyHomeView {
             transitionFromID = nil
             transitionToID = nil
             transitionProgress = 0
+            transitionDirection = 1
             isCarouselDragging = false
             carouselLastSettledAt = Date()
         }
+        carouselLogoByID = carouselLogoByID.filter { ids.contains($0.key) }
+        carouselLogoResolvedIDs.formIntersection(ids)
+        resolveCarouselLogosIfNeeded()
         onCarouselActiveChanged(true)
+    }
+
+    func resolveCarouselLogosIfNeeded() {
+        for item in model.carouselItems where !carouselLogoResolvedIDs.contains(item.id) {
+            let itemID = item.id
+            carouselLogoResolvedIDs.insert(itemID)
+            Task {
+                do {
+                    let infos = try await client.imageInfos(itemId: itemID)
+                    guard let logo = infos.first(where: { $0.imageType.caseInsensitiveCompare("Logo") == .orderedSame }) else { return }
+                    await MainActor.run {
+                        guard model.carouselItems.contains(where: { $0.id == itemID }) else { return }
+                        carouselLogoByID[itemID] = logo
+                    }
+                } catch {
+                    if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("HomeCarousel", "logo lookup failed item=\(itemID): \(error.localizedDescription)") }
+                }
+            }
+        }
     }
 
     var currentCarouselItem: LibraryItem? {
@@ -143,6 +172,15 @@ extension V3EmbyHomeView {
         return itemID == currentCarouselItemID ? 1 : 0
     }
 
+    func carouselForegroundOffset(for itemID: String, width: CGFloat) -> CGFloat {
+        guard let fromID = transitionFromID, let toID = transitionToID else { return 0 }
+        let direction = CGFloat(transitionDirection)
+        let progress = min(1, max(0, transitionProgress))
+        if itemID == fromID { return -direction * progress * width }
+        if itemID == toID { return direction * (1 - progress) * width }
+        return 0
+    }
+
     func neighborCarouselItemID(from itemID: String, direction: Int) -> String? {
         let items = model.carouselItems
         guard items.count > 1, let index = items.firstIndex(where: { $0.id == itemID }) else { return nil }
@@ -152,6 +190,11 @@ extension V3EmbyHomeView {
 
     func carouselImageURL(_ item: LibraryItem) -> URL? {
         client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 1400, tag: item.preferredPrimaryImageTag)
+    }
+
+    func carouselLogoURL(_ item: LibraryItem) -> URL? {
+        guard let logo = carouselLogoByID[item.id] else { return nil }
+        return client.imageURL(itemId: item.id, imageType: "Logo", maxWidth: 900, index: logo.imageIndex)
     }
 
     func updateCarouselImageMetrics(_ image: UIImage, itemID: String) {

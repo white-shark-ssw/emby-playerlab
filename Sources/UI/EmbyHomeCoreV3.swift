@@ -17,10 +17,13 @@ struct V3EmbyHomeView: View {
     @State var transitionFromID: String?
     @State var transitionToID: String?
     @State var transitionProgress: CGFloat = 0
+    @State var transitionDirection = 1
     @State var isCarouselDragging = false
     @State var carouselLastSettledAt = Date()
     @State var carouselLightForegroundByID: [String: Bool] = [:]
     @State var carouselSourceSizeByID: [String: CGSize] = [:]
+    @State var carouselLogoByID: [String: EmbyImageInfo] = [:]
+    @State var carouselLogoResolvedIDs = Set<String>()
     @State var carouselDetailItem: LibraryItem?
     @State var isCarouselDetailPresented = false
     @State var carouselTapSuppressedUntil = Date.distantPast
@@ -140,14 +143,17 @@ struct V3EmbyHomeView: View {
                 }
                 .frame(width: width)
                 .background(
-                    V3HomeNativeScrollObserver(
-                        isRefreshing: isHomeRefreshing,
-                        onOffsetChanged: { value in
-                            guard isHomeActive else { return }
-                            if abs(homeRawScrollMinY - value) > 0.10 { homeRawScrollMinY = value }
-                        },
-                        onRefresh: { Task { await refreshHome() } }
-                    )
+                    ZStack {
+                        V3HomeNativeScrollObserver(
+                            isRefreshing: isHomeRefreshing,
+                            onOffsetChanged: { value in
+                                guard isHomeActive else { return }
+                                if abs(homeRawScrollMinY - value) > 0.10 { homeRawScrollMinY = value }
+                            },
+                            onRefresh: { Task { await refreshHome() } }
+                        )
+                        V3HomeRefreshControlStyler()
+                    }
                 )
             }
             .frame(width: width)
