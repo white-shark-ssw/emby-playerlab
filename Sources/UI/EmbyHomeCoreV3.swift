@@ -4,6 +4,7 @@ import UIKit
 
 struct V3EmbyHomeView: View {
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.serverDockBottomInset) private var serverDockBottomInset
     let session: EmbySession
     let client: EmbyAPIClient
     let refreshToken: Int
@@ -68,7 +69,10 @@ struct V3EmbyHomeView: View {
                     }
                 }
                 .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-                .overlay(alignment: .bottom) { dock }
+                .overlay(alignment: .bottom) {
+                    if immersive { dock.padding(.bottom, serverDockBottomInset) }
+                    else { dock }
+                }
                 .onAppear {
                     isHomeActive = true
                     synchronizeCarouselItems()
