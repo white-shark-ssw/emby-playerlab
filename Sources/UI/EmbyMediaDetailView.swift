@@ -456,14 +456,9 @@ struct EmbyMediaDetailView: View {
         let overview = model.normalizedOverview(for: episode) ?? ""
         return Button { model.selectEpisode(episode); Task { await model.play(episode) } } label: {
             VStack(alignment: .leading, spacing: 5) {
-                ZStack {
-                    EmbyDetailRemoteImage(url: client.imageURL(itemId: episode.preferredPrimaryImageItemId, maxWidth: 620, tag: episode.preferredPrimaryImageTag), contentMode: .fill)
-                        .frame(width: 174, height: 98)
-                        .clipped()
-                    if episode.playbackProgress > 0 {
-                        VStack { Spacer(); GeometryReader { proxy in Rectangle().fill(Color.blue).frame(width: proxy.size.width * episode.playbackProgress, height: 3) } }
-                    }
-                }
+                EmbyDetailRemoteImage(url: client.imageURL(itemId: episode.preferredPrimaryImageItemId, maxWidth: 620, tag: episode.preferredPrimaryImageTag), contentMode: .fill)
+                    .frame(width: 174, height: 98)
+                    .clipped()
                 .frame(width: 174, height: 98)
                 .background(Color(uiColor: .secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))

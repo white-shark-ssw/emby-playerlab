@@ -20,20 +20,34 @@ private final class EmbyCachedImageLoader: ObservableObject {
             isLoading = false
             return
         }
-        if let cached = EmbyImageMemoryCache.shared.object(forKey: url as NSURL) {
-            image = cached
-            isLoading = false
-            return
-        }
         image = nil
         isLoading = true
         task = Task { [weak self] in
             do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                guard !Task.isCancelled else { return }
+                var data = await EmbyImageDiskCache.shared.data(for: url)
+                if let cachedData = data {
+                    let cachedImage = await Task.detached(priority: .utility) { EmbyImageDecoder.decode(data: cachedData, url: url) }.value
+                    if let cachedImage {
+                        guard !Task.isCancelled else { return }
+                        await MainActor.run {
+                            guard self?.currentURL == url else { return }
+                            self?.image = cachedImage
+                            self?.isLoading = false
+                        }
+                        return
+                    }
+                    await EmbyImageDiskCache.shared.remove(url)
+                    data = nil
+                }
+
+                if data == nil {
+                    let response = try await URLSession.shared.data(from: url)
+                    data = response.0
+                    await EmbyImageDiskCache.shared.store(response.0, for: url)
+                }
+                guard !Task.isCancelled, let data else { return }
                 let loaded = await Task.detached(priority: .utility) { EmbyImageDecoder.decode(data: data, url: url) }.value
                 guard !Task.isCancelled, let loaded else { return }
-                EmbyImageMemoryCache.shared.setObject(loaded, forKey: url as NSURL)
                 await MainActor.run {
                     guard self?.currentURL == url else { return }
                     self?.image = loaded
@@ -79,23 +93,6 @@ private enum EmbyImageDecoder {
         ]
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return UIImage(data: data) }
         return UIImage(cgImage: cgImage, scale: 1, orientation: .up)
-    }
-}
-
-private final class EmbyImageMemoryCache {
-    static let shared = EmbyImageMemoryCache()
-    private let cache = NSCache<NSURL, UIImage>()
-
-    private init() {
-        cache.countLimit = 420
-        cache.totalCostLimit = 180 * 1024 * 1024
-    }
-
-    func object(forKey key: NSURL) -> UIImage? { cache.object(forKey: key) }
-
-    func setObject(_ image: UIImage, forKey key: NSURL) {
-        let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
-        cache.setObject(image, forKey: key, cost: cost)
     }
 }
 

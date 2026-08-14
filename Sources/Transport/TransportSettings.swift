@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 enum TransportStrategy: String, CaseIterable, Identifiable {
@@ -51,6 +52,38 @@ enum TransportSettingsKey {
     static let ktvPreloadOnCellular = "transport.ktvPreloadOnCellular"
 }
 
+enum VideoCacheCapacity: Int, CaseIterable, Identifiable {
+    case disabled = 0
+    case mb256 = 256
+    case mb512 = 512
+    case gb1 = 1024
+    case gb2 = 2048
+    case gb3 = 3072
+    case gb4 = 4096
+    case gb5 = 5120
+    case gb6 = 6144
+    case gb7 = 7168
+    case gb8 = 8192
+    case gb9 = 9216
+    case gb10 = 10240
+
+    static let defaultWiFiMB = 2048
+    static let defaultCellularMB = 512
+
+    var id: Int { rawValue }
+    var title: String { Self.title(for: rawValue) }
+
+    static func title(for mb: Int) -> String {
+        if mb <= 0 { return "不缓存" }
+        if mb < 1024 { return "\(mb) MB" }
+        return "\(mb / 1024) GB"
+    }
+
+    static func normalizedMB(_ value: Int, defaultValue: Int) -> Int {
+        allCases.contains(where: { $0.rawValue == value }) ? value : defaultValue
+    }
+}
+
 struct MediaTransportConfiguration: Equatable {
     let strategy: TransportStrategy
     let cacheMode: TransportCacheMode
@@ -65,25 +98,17 @@ struct MediaTransportConfiguration: Equatable {
     let ktvContinuousPreloadEnabled: Bool
     let ktvPreloadOnCellular: Bool
 
-    var usesMemoryCache: Bool {
-        cacheMode == .memory || cacheMode == .automatic
-    }
-
-    var usesDiskCache: Bool {
-        cacheMode == .disk || cacheMode == .automatic
-    }
+    var usesMemoryCache: Bool { cacheMode == .memory || cacheMode == .automatic }
+    var usesDiskCache: Bool { cacheMode == .disk || cacheMode == .automatic }
 
     func resourceLoaderProfile() -> MediaTransportConfiguration {
-        let wifiWindow = min(max(wifiPreloadBytes, Int64(32 * 1_048_576)), Int64(128 * 1_048_576))
-        let cellularWindow = min(max(cellularPreloadBytes, Int64(16 * 1_048_576)), Int64(64 * 1_048_576))
-        let memoryCap = memoryLimitBytes > 0 ? min(memoryLimitBytes, Int64(128 * 1_048_576)) : 0
-        return MediaTransportConfiguration(
+        MediaTransportConfiguration(
             strategy: .legacyMultiRange,
             cacheMode: cacheMode,
-            memoryLimitBytes: memoryCap,
+            memoryLimitBytes: 0,
             diskLimitBytes: diskLimitBytes,
-            wifiPreloadBytes: wifiWindow,
-            cellularPreloadBytes: cellularWindow,
+            wifiPreloadBytes: wifiPreloadBytes,
+            cellularPreloadBytes: cellularPreloadBytes,
             segmentSizeBytes: min(max(segmentSizeBytes, Int64(1_048_576)), Int64(4 * 1_048_576)),
             upstreamBlockSizeBytes: Int64(32 * 1_048_576),
             maximumConcurrentRequests: 2,
@@ -96,57 +121,115 @@ struct MediaTransportConfiguration: Equatable {
     static func current(defaults: UserDefaults = .standard) -> MediaTransportConfiguration {
         defaults.register(defaults: [
             TransportSettingsKey.strategy: TransportStrategy.unified.rawValue,
-            TransportSettingsKey.cacheMode: TransportCacheMode.automatic.rawValue,
-            TransportSettingsKey.memoryCacheMB: 256,
+            TransportSettingsKey.cacheMode: TransportCacheMode.disk.rawValue,
+            TransportSettingsKey.memoryCacheMB: 0,
             TransportSettingsKey.diskCacheGB: 2,
-            TransportSettingsKey.wifiPreloadMB: 128,
-            TransportSettingsKey.cellularPreloadMB: 64,
+            TransportSettingsKey.wifiPreloadMB: VideoCacheCapacity.defaultWiFiMB,
+            TransportSettingsKey.cellularPreloadMB: VideoCacheCapacity.defaultCellularMB,
             TransportSettingsKey.segmentSizeMB: 1,
             TransportSettingsKey.upstreamBlockSizeMB: 32,
             TransportSettingsKey.concurrentRequests: 2,
-            TransportSettingsKey.keepLastCache: false,
+            TransportSettingsKey.keepLastCache: true,
             TransportSettingsKey.ktvContinuousPreload: true,
-            TransportSettingsKey.ktvPreloadOnCellular: false,
+            TransportSettingsKey.ktvPreloadOnCellular: true,
         ])
 
         let strategy = TransportStrategy(rawValue: defaults.string(forKey: TransportSettingsKey.strategy) ?? "") ?? .unified
-        let mode = TransportCacheMode(rawValue: defaults.string(forKey: TransportSettingsKey.cacheMode) ?? "") ?? .automatic
-        let memoryMB = max(0, defaults.integer(forKey: TransportSettingsKey.memoryCacheMB))
-        let diskGB = max(0, defaults.integer(forKey: TransportSettingsKey.diskCacheGB))
-        let wifiMB = max(0, defaults.integer(forKey: TransportSettingsKey.wifiPreloadMB))
-        let cellularMB = max(0, defaults.integer(forKey: TransportSettingsKey.cellularPreloadMB))
-        let segmentMB = [1, 2, 4, 8, 16].contains(defaults.integer(forKey: TransportSettingsKey.segmentSizeMB))
-            ? defaults.integer(forKey: TransportSettingsKey.segmentSizeMB)
-            : 1
-        let upstreamBlockMB = [4, 8, 16, 32, 64].contains(defaults.integer(forKey: TransportSettingsKey.upstreamBlockSizeMB))
-            ? defaults.integer(forKey: TransportSettingsKey.upstreamBlockSizeMB)
-            : 32
-        let concurrent = min(max(2, defaults.integer(forKey: TransportSettingsKey.concurrentRequests)), 8)
+        let wifiMB = VideoCacheCapacity.normalizedMB(defaults.integer(forKey: TransportSettingsKey.wifiPreloadMB), defaultValue: VideoCacheCapacity.defaultWiFiMB)
+        let cellularMB = VideoCacheCapacity.normalizedMB(defaults.integer(forKey: TransportSettingsKey.cellularPreloadMB), defaultValue: VideoCacheCapacity.defaultCellularMB)
+        let activeMB = NetworkPathMonitor.shared.isCellular ? cellularMB : wifiMB
+        let segmentMB = [1, 2, 4].contains(defaults.integer(forKey: TransportSettingsKey.segmentSizeMB)) ? defaults.integer(forKey: TransportSettingsKey.segmentSizeMB) : 1
+        let upstreamBlockMB = [4, 8, 16, 32, 64].contains(defaults.integer(forKey: TransportSettingsKey.upstreamBlockSizeMB)) ? defaults.integer(forKey: TransportSettingsKey.upstreamBlockSizeMB) : 32
+        let activeBytes = Int64(activeMB) * 1_048_576
+        let keepLast = defaults.bool(forKey: TransportSettingsKey.keepLastCache) && activeMB > 0
 
         return MediaTransportConfiguration(
             strategy: strategy,
-            cacheMode: mode,
-            memoryLimitBytes: Int64(memoryMB) * 1_048_576,
-            diskLimitBytes: Int64(diskGB) * 1_073_741_824,
+            cacheMode: activeMB > 0 ? .disk : .disabled,
+            memoryLimitBytes: 0,
+            diskLimitBytes: activeBytes,
             wifiPreloadBytes: Int64(wifiMB) * 1_048_576,
             cellularPreloadBytes: Int64(cellularMB) * 1_048_576,
             segmentSizeBytes: Int64(segmentMB) * 1_048_576,
             upstreamBlockSizeBytes: Int64(upstreamBlockMB) * 1_048_576,
-            maximumConcurrentRequests: concurrent,
-            keepLastCache: defaults.bool(forKey: TransportSettingsKey.keepLastCache),
-            ktvContinuousPreloadEnabled: defaults.bool(forKey: TransportSettingsKey.ktvContinuousPreload),
-            ktvPreloadOnCellular: defaults.bool(forKey: TransportSettingsKey.ktvPreloadOnCellular)
+            maximumConcurrentRequests: 2,
+            keepLastCache: keepLast,
+            ktvContinuousPreloadEnabled: activeMB > 0,
+            ktvPreloadOnCellular: cellularMB > 0
         )
     }
 }
 
+struct CacheStorageUsage: Equatable, Sendable {
+    let bytes: Int64
+    let fileCount: Int
+    static let zero = CacheStorageUsage(bytes: 0, fileCount: 0)
+}
+
+enum CacheStorageFormatter {
+    static func string(bytes: Int64) -> String {
+        guard bytes > 0 else { return "0 MB" }
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
 enum TransportCacheMaintenance {
-    static func clearAll() throws {
-        let cacheRoot = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        EPLKTVCacheBridge.clearAllCaches()
-        for name in ["EmbyPlayerLabTransport", "EmbyPlayerLabDownloadFirst"] {
-            let root = cacheRoot.appendingPathComponent(name, isDirectory: true)
-            if FileManager.default.fileExists(atPath: root.path) { try FileManager.default.removeItem(at: root) }
+    private static let fileManager = FileManager.default
+    private static var cacheRoot: URL { fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0] }
+    private static var unifiedRoot: URL { cacheRoot.appendingPathComponent("EmbyPlayerLabDownloadFirst", isDirectory: true) }
+    private static var legacyRoot: URL { cacheRoot.appendingPathComponent("EmbyPlayerLabTransport", isDirectory: true) }
+
+    static func stableVideoCacheKey(for source: ResolvedPlaybackSource) -> String {
+        let scheme = source.url.scheme?.lowercased() ?? "https"
+        let host = source.url.host?.lowercased() ?? "unknown"
+        let port = source.url.port.map { ":\($0)" } ?? ""
+        let size = source.mediaSource.size ?? 0
+        let container = source.mediaSource.normalizedContainer
+        return "unified-v2|\(scheme)://\(host)\(port)|\(source.itemId)|\(source.mediaSource.id)|\(size)|\(container)"
+    }
+
+    static func preparePersistentVideoCache(cacheKey: String) {
+        let keepName = digest(cacheKey)
+        guard let directories = try? fileManager.contentsOfDirectory(at: unifiedRoot, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { return }
+        for directory in directories where directory.lastPathComponent != keepName { try? fileManager.removeItem(at: directory) }
+    }
+
+    static func clearPersistentUnifiedVideoCaches() {
+        if fileManager.fileExists(atPath: unifiedRoot.path) { try? fileManager.removeItem(at: unifiedRoot) }
+    }
+
+    static func videoUsage() -> CacheStorageUsage {
+        var bytes: Int64 = 0
+        var fileCount = 0
+
+        if let directories = try? fileManager.contentsOfDirectory(at: unifiedRoot, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+            for directory in directories {
+                let rangesURL = directory.appendingPathComponent("ranges.json")
+                guard let data = try? Data(contentsOf: rangesURL), let ranges = try? JSONDecoder().decode([SparseStoredRange].self, from: data) else { continue }
+                let itemBytes = ranges.reduce(Int64(0)) { $0 + max(0, $1.upperBound - $1.lowerBound) }
+                if itemBytes > 0 { bytes += itemBytes; fileCount += 1 }
+            }
         }
+
+        if let directories = try? fileManager.contentsOfDirectory(at: legacyRoot, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+            for directory in directories {
+                let files = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles])) ?? []
+                let itemBytes = files.filter { $0.lastPathComponent.hasPrefix("segment-") }.reduce(Int64(0)) { result, file in
+                    let values = try? file.resourceValues(forKeys: [.fileSizeKey])
+                    return result + Int64(values?.fileSize ?? 0)
+                }
+                if itemBytes > 0 { bytes += itemBytes; fileCount += 1 }
+            }
+        }
+        return CacheStorageUsage(bytes: bytes, fileCount: fileCount)
+    }
+
+    static func clearVideoCaches() throws {
+        EPLKTVCacheBridge.clearAllCaches()
+        for root in [unifiedRoot, legacyRoot] where fileManager.fileExists(atPath: root.path) { try fileManager.removeItem(at: root) }
+    }
+
+    private static func digest(_ value: String) -> String {
+        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }

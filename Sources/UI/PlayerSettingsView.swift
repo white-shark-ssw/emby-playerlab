@@ -6,22 +6,8 @@ struct PlayerSettingsView: View {
     @AppStorage("seek.screenPanEnabled") private var screenPanEnabled = true
     @AppStorage("buffer.preset") private var bufferPreset = BufferPreset.balanced.rawValue
 
-    @AppStorage(TransportSettingsKey.strategy) private var transportStrategy = TransportStrategy.unified.rawValue
-    @AppStorage(TransportSettingsKey.cacheMode) private var cacheMode = TransportCacheMode.automatic.rawValue
-    @AppStorage(TransportSettingsKey.memoryCacheMB) private var memoryCacheMB = 256
-    @AppStorage(TransportSettingsKey.diskCacheGB) private var diskCacheGB = 2
-    @AppStorage(TransportSettingsKey.wifiPreloadMB) private var wifiWindowMB = 128
-    @AppStorage(TransportSettingsKey.cellularPreloadMB) private var cellularWindowMB = 64
-    @AppStorage(TransportSettingsKey.segmentSizeMB) private var segmentSizeMB = 1
-    @AppStorage(TransportSettingsKey.keepLastCache) private var keepLastCache = false
-    @AppStorage(TransportSettingsKey.ktvContinuousPreload) private var ktvContinuousPreload = true
-    @AppStorage(TransportSettingsKey.ktvPreloadOnCellular) private var ktvPreloadOnCellular = false
-
     @Environment(\.presentationMode) private var presentationMode
-    @State private var cacheMaintenanceMessage: String?
-
     private let intervals = [5, 10, 15, 20, 30, 60]
-    private let segmentSizes = [1, 2, 4]
 
     var body: some View {
         NavigationView {
@@ -42,44 +28,6 @@ struct PlayerSettingsView: View {
                     Toggle("横向滑动屏幕调整进度", isOn: $screenPanEnabled)
                 }
 
-                Section(header: Text("115 持续缓存实验")) {
-                    Picker("传输实现（诊断/旧引擎）", selection: $transportStrategy) {
-                        ForEach(TransportStrategy.allCases) { strategy in
-                            Text(strategy.title).tag(strategy.rawValue)
-                        }
-                    }
-                    Picker("缓存位置", selection: $cacheMode) {
-                        ForEach(TransportCacheMode.allCases) { mode in
-                            Text(mode.title).tag(mode.rawValue)
-                        }
-                    }
-                    Stepper("内存缓存：\(memoryCacheMB) MB", value: $memoryCacheMB, in: 64...2048, step: 64)
-                    Stepper("磁盘缓存预算：\(diskCacheGB) GB", value: $diskCacheGB, in: 0...50, step: 1)
-                    Stepper("Wi-Fi 最小预取窗口：\(normalizedWiFiWindow) MB", value: wifiWindowBinding, in: 32...512, step: 32)
-                    Stepper("蜂窝播放窗口：\(normalizedCellularWindow) MB", value: cellularWindowBinding, in: 16...64, step: 16)
-                    Picker("缓存分片", selection: $segmentSizeMB) {
-                        ForEach(segmentSizes, id: \.self) { size in Text("\(size) MB").tag(size) }
-                    }
-                    Toggle("持续预取到缓存上限或文件结尾", isOn: $ktvContinuousPreload)
-                    Toggle("蜂窝网络也持续预取", isOn: $ktvPreloadOnCellular)
-                    Toggle("退出后保留磁盘缓存", isOn: $keepLastCache)
-                    Text("v0.9 自动模式固定使用统一双槽 Range：AVPlayer 与 MPV 共用同一 ByteStore 和 115 连接池。Wi‑Fi 开启持续预取时会优先使用磁盘缓存预算作为连续下载上限；蜂窝是否持续预取仍由上方开关控制。KTV/旧多 Range 仅保留给诊断引擎。")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-
-                    Button("清空已保留的传输缓存", role: .destructive) {
-                        do {
-                            try TransportCacheMaintenance.clearAll()
-                            cacheMaintenanceMessage = "缓存已清空"
-                        } catch {
-                            cacheMaintenanceMessage = error.localizedDescription
-                        }
-                    }
-                    if let cacheMaintenanceMessage {
-                        Text(cacheMaintenanceMessage).font(.footnote).foregroundColor(.secondary)
-                    }
-                }
-
                 Section(header: Text("原生前向缓冲")) {
                     Picker("缓冲策略", selection: $bufferPreset) {
                         ForEach(BufferPreset.allCases) { preset in
@@ -94,11 +42,6 @@ struct PlayerSettingsView: View {
                 }
             }
             .navigationTitle("播放设置")
-            .onAppear {
-                wifiWindowMB = normalizedWiFiWindow
-                cellularWindowMB = normalizedCellularWindow
-                if !segmentSizes.contains(segmentSizeMB) { segmentSizeMB = 1 }
-            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { presentationMode.wrappedValue.dismiss() }
@@ -106,9 +49,4 @@ struct PlayerSettingsView: View {
             }
         }
     }
-
-    private var normalizedWiFiWindow: Int { min(max(wifiWindowMB, 32), 512) }
-    private var normalizedCellularWindow: Int { min(max(cellularWindowMB, 16), 64) }
-    private var wifiWindowBinding: Binding<Int> { Binding(get: { normalizedWiFiWindow }, set: { wifiWindowMB = $0 }) }
-    private var cellularWindowBinding: Binding<Int> { Binding(get: { normalizedCellularWindow }, set: { cellularWindowMB = $0 }) }
 }
