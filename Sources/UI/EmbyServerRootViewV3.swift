@@ -18,6 +18,7 @@ struct EmbyServerRootViewV3: View {
         Group {
             if let client {
                 GeometryReader { geometry in
+                    let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom
                     let dock = AnyView(serverTabBar)
                     ZStack {
                         V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, onCarouselActiveChanged: { active in homeCarouselActive = active }, dock: dock)
@@ -31,7 +32,8 @@ struct EmbyServerRootViewV3: View {
                     }
                     .environment(\.serverDockContent, dock)
                     .environment(\.serverDockBottomInset, geometry.safeAreaInsets.bottom)
-                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                    .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
+                    .ignoresSafeArea(.container, edges: .bottom)
                     .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 }
             } else {
