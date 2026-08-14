@@ -2,7 +2,7 @@ import SwiftUI
 import Combine
 import UIKit
 
-private final class V3HomeNativeScrollProbeView: UIView {
+final class V3HomeNativeScrollProbeView: UIView {
     var hierarchyDidChange: ((UIView) -> Void)?
 
     override func didMoveToSuperview() {
