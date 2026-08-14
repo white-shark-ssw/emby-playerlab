@@ -17,13 +17,9 @@ extension V3EmbyHomeView {
                     .allowsHitTesting(false)
             }
 
-            if let item = currentCarouselItem {
+            ForEach(model.carouselItems) { item in
                 carouselHeroForeground(item: item, width: width, viewportHeight: viewportHeight)
-                    .offset(x: carouselForegroundOffset(for: item.id, width: width))
-                    .allowsHitTesting(false)
-            }
-            if let item = transitionTargetCarouselItem {
-                carouselHeroForeground(item: item, width: width, viewportHeight: viewportHeight)
+                    .opacity(carouselForegroundOpacity(for: item.id))
                     .offset(x: carouselForegroundOffset(for: item.id, width: width))
                     .allowsHitTesting(false)
             }
