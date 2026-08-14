@@ -18,10 +18,8 @@ struct EmbyServerRootViewV3: View {
         Group {
             if let client {
                 GeometryReader { geometry in
-                    let bottomInset = geometry.safeAreaInsets.bottom
-                    let fullHeight = geometry.size.height + bottomInset
-                    let dock = AnyView(serverTabBar(bottomInset: bottomInset))
-                    let detailDock = AnyView(serverTabBar(bottomInset: 0))
+                    let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom
+                    let dock = AnyView(serverTabBar)
                     ZStack {
                         V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, onCarouselActiveChanged: { active in homeCarouselActive = active }, dock: dock)
                             .opacity(selectedTab == .home ? 1 : 0)
@@ -32,8 +30,8 @@ struct EmbyServerRootViewV3: View {
                         if selectedTab == .search { V3EmbySearchView(client: client, onClose: close, dock: dock) }
                         if selectedTab == .settings { V3EmbyServerSettingsView(session: session, onClose: close, dock: dock) }
                     }
-                    .environment(\.serverDockContent, detailDock)
-                    .environment(\.serverDockBottomInset, bottomInset)
+                    .environment(\.serverDockContent, dock)
+                    .environment(\.serverDockBottomInset, geometry.safeAreaInsets.bottom)
                     .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
                     .ignoresSafeArea(.container, edges: .bottom)
                     .background(Color(uiColor: .systemBackground).ignoresSafeArea())
@@ -49,18 +47,14 @@ struct EmbyServerRootViewV3: View {
         }
     }
 
-    private func serverTabBar(bottomInset: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                serverTabButton(.home, title: "首页", systemImage: "house")
-                serverTabButton(.favorites, title: "收藏", systemImage: "heart")
-                serverTabButton(.search, title: "搜索", systemImage: "magnifyingglass")
-                serverTabButton(.settings, title: "设置", systemImage: "gearshape")
-            }
-            .frame(height: ImmersiveUIMetrics.serverDockHeight)
-            Color.clear.frame(height: bottomInset)
+    private var serverTabBar: some View {
+        HStack(spacing: 0) {
+            serverTabButton(.home, title: "首页", systemImage: "house")
+            serverTabButton(.favorites, title: "收藏", systemImage: "heart")
+            serverTabButton(.search, title: "搜索", systemImage: "magnifyingglass")
+            serverTabButton(.settings, title: "设置", systemImage: "gearshape")
         }
-        .frame(height: ImmersiveUIMetrics.serverDockHeight + bottomInset)
+        .frame(height: ImmersiveUIMetrics.serverDockHeight)
         .background(
             Group {
                 if selectedTab == .home && homeCarouselActive {
@@ -71,6 +65,7 @@ struct EmbyServerRootViewV3: View {
                     Color(uiColor: .secondarySystemBackground)
                 }
             }
+            .ignoresSafeArea(edges: .bottom)
         )
     }
 
