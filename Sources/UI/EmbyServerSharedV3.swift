@@ -172,12 +172,18 @@ struct V3PosterCard: View {
 
     private var resolvedWidth: CGFloat { width ?? gridCellWidth ?? 118 }
     private var posterHeight: CGFloat { floor(resolvedWidth / EmbyPosterGridMetrics.posterAspectRatio) }
+    private var posterImageMaxWidth: Int {
+        guard width == nil else { return 440 }
+        let available = UIScreen.main.bounds.width - EmbyPosterGridMetrics.horizontalPadding * 2 - EmbyPosterGridMetrics.columnSpacing * CGFloat(EmbyPosterGridMetrics.columnCount - 1)
+        let gridWidth = floor(max(1, available) / CGFloat(EmbyPosterGridMetrics.columnCount))
+        return min(440, max(1, Int(ceil(gridWidth * UIScreen.main.scale))))
+    }
     private var yearText: String { item.productionYear.map(String.init) ?? " " }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ZStack(alignment: .bottomLeading) {
-                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 440, tag: item.preferredPrimaryImageTag), contentMode: .fill)
+                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: posterImageMaxWidth, tag: item.preferredPrimaryImageTag), contentMode: .fill)
                     .frame(width: resolvedWidth, height: posterHeight)
                     .clipped()
                 if item.playbackProgress > 0 { GeometryReader { proxy in VStack { Spacer(); Rectangle().fill(Color.blue).frame(width: proxy.size.width * item.playbackProgress, height: 3) } } }
