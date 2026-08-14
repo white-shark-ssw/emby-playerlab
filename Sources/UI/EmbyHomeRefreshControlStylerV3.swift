@@ -21,7 +21,9 @@ final class V3HomeRefreshStyleProbeView: UIView {
 }
 
 struct V3HomeRefreshControlStyler: UIViewRepresentable {
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    let immersive: Bool
+
+    func makeCoordinator() -> Coordinator { Coordinator(immersive: immersive) }
 
     func makeUIView(context: Context) -> V3HomeRefreshStyleProbeView {
         let view = V3HomeRefreshStyleProbeView(frame: .zero)
@@ -36,6 +38,7 @@ struct V3HomeRefreshControlStyler: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: V3HomeRefreshStyleProbeView, context: Context) {
+        context.coordinator.immersive = immersive
         DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
             guard let uiView else { return }
             coordinator?.attach(from: uiView)
@@ -48,7 +51,10 @@ struct V3HomeRefreshControlStyler: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject {
+        var immersive: Bool
         private weak var refreshControl: UIRefreshControl?
+
+        init(immersive: Bool) { self.immersive = immersive }
 
         func attach(from probe: UIView) {
             guard let scrollView = ancestorVerticalScrollView(from: probe), let refreshControl = scrollView.refreshControl else { return }
@@ -57,7 +63,7 @@ struct V3HomeRefreshControlStyler: UIViewRepresentable {
                 self.refreshControl = refreshControl
                 refreshControl.addTarget(self, action: #selector(refreshTriggered), for: .valueChanged)
             }
-            refreshControl.tintColor = UIColor.white.withAlphaComponent(0.96)
+            refreshControl.tintColor = immersive ? UIColor.white.withAlphaComponent(0.96) : UIColor.label
             refreshControl.backgroundColor = .clear
             refreshControl.layer.zPosition = 1000
             scrollView.bringSubviewToFront(refreshControl)

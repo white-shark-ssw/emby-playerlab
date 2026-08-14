@@ -24,6 +24,7 @@ final class V3EmbyHomeViewModel: ObservableObject {
     private let preferenceKey: String
     private let carouselEnabledKey: String
     private let carouselSnapshotKey: String
+    private let latestSnapshotKey: String
     private var cachedCarouselItems: [LibraryItem]
     private var hasResolvedLiveCarouselMetadata = false
     private(set) var hasLoaded = false
@@ -37,6 +38,9 @@ final class V3EmbyHomeViewModel: ObservableObject {
         carouselEnabledKey = carouselKey
         let snapshotKey = "osplayer.home.carousel-snapshot.v1.\(session.serverId).\(session.user.id)"
         carouselSnapshotKey = snapshotKey
+        let latestKey = "osplayer.home.latest-snapshot.v1.\(session.serverId).\(session.user.id)"
+        latestSnapshotKey = latestKey
+        latestByLibrary = Self.loadLatestSnapshot(forKey: latestKey)
         cachedCarouselItems = Self.loadCarouselSnapshot(forKey: snapshotKey)
         carouselEnabled = UserDefaults.standard.object(forKey: carouselKey) as? Bool ?? true
     }
@@ -138,6 +142,7 @@ final class V3EmbyHomeViewModel: ObservableObject {
             if latest.count == libraries.count {
                 cachedCarouselItems = freshCarouselItems
                 persistCarouselSnapshot(freshCarouselItems)
+                persistLatestSnapshot(latest)
             }
         } catch {
             if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
@@ -217,24 +222,36 @@ final class V3EmbyHomeViewModel: ObservableObject {
         UserDefaults.standard.set(data, forKey: preferenceKey)
     }
 
+    private func persistLatestSnapshot(_ latest: [String: [LibraryItem]]) {
+        let snapshot = latest.mapValues { Array($0.prefix(16)).map(V3HomeItemSnapshot.init) }
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        UserDefaults.standard.set(data, forKey: latestSnapshotKey)
+    }
+
+    private static func loadLatestSnapshot(forKey key: String) -> [String: [LibraryItem]] {
+        guard let data = UserDefaults.standard.data(forKey: key), let snapshot = try? JSONDecoder().decode([String: [V3HomeItemSnapshot]].self, from: data) else { return [:] }
+        return snapshot.mapValues { $0.compactMap(\.libraryItem) }.filter { !$0.value.isEmpty }
+    }
+
     private func persistCarouselSnapshot(_ items: [LibraryItem]) {
-        let snapshot = items.map(V3HomeCarouselSnapshotItem.init)
+        let snapshot = items.map(V3HomeItemSnapshot.init)
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         UserDefaults.standard.set(data, forKey: carouselSnapshotKey)
     }
 
     private static func loadCarouselSnapshot(forKey key: String) -> [LibraryItem] {
-        guard let data = UserDefaults.standard.data(forKey: key), let snapshot = try? JSONDecoder().decode([V3HomeCarouselSnapshotItem].self, from: data) else { return [] }
+        guard let data = UserDefaults.standard.data(forKey: key), let snapshot = try? JSONDecoder().decode([V3HomeItemSnapshot].self, from: data) else { return [] }
         return snapshot.compactMap(\.libraryItem)
     }
 }
 
-private struct V3HomeCarouselSnapshotItem: Codable {
+private struct V3HomeItemSnapshot: Codable {
     let id: String
     let name: String
     let type: String?
     let overview: String?
     let productionYear: Int?
+    let runTimeTicks: Int64?
     let communityRating: Double?
     let officialRating: String?
     let seriesName: String?
@@ -242,6 +259,9 @@ private struct V3HomeCarouselSnapshotItem: Codable {
     let primaryImageTag: String?
     let primaryImageItemId: String?
     let seriesPrimaryImageTag: String?
+    let playbackPositionTicks: Int64?
+    let played: Bool?
+    let unplayedItemCount: Int?
 
     init(_ item: LibraryItem) {
         id = item.id
@@ -249,6 +269,7 @@ private struct V3HomeCarouselSnapshotItem: Codable {
         type = item.type
         overview = item.overview
         productionYear = item.productionYear
+        runTimeTicks = item.runTimeTicks
         communityRating = item.communityRating
         officialRating = item.officialRating
         seriesName = item.seriesName
@@ -256,6 +277,9 @@ private struct V3HomeCarouselSnapshotItem: Codable {
         primaryImageTag = item.primaryImageTag
         primaryImageItemId = item.primaryImageItemId
         seriesPrimaryImageTag = item.seriesPrimaryImageTag
+        playbackPositionTicks = item.userData?.playbackPositionTicks
+        played = item.userData?.played
+        unplayedItemCount = item.userData?.unplayedItemCount
     }
 
     var libraryItem: LibraryItem? {
@@ -263,6 +287,7 @@ private struct V3HomeCarouselSnapshotItem: Codable {
         if let type { payload["Type"] = type }
         if let overview { payload["Overview"] = overview }
         if let productionYear { payload["ProductionYear"] = productionYear }
+        if let runTimeTicks { payload["RunTimeTicks"] = runTimeTicks }
         if let communityRating { payload["CommunityRating"] = communityRating }
         if let officialRating { payload["OfficialRating"] = officialRating }
         if let seriesName { payload["SeriesName"] = seriesName }
@@ -270,6 +295,13 @@ private struct V3HomeCarouselSnapshotItem: Codable {
         if let primaryImageTag { payload["ImageTags"] = ["Primary": primaryImageTag] }
         if let primaryImageItemId { payload["PrimaryImageItemId"] = primaryImageItemId }
         if let seriesPrimaryImageTag { payload["SeriesPrimaryImageTag"] = seriesPrimaryImageTag }
+        if playbackPositionTicks != nil || played != nil || unplayedItemCount != nil {
+            var userData: [String: Any] = [:]
+            if let playbackPositionTicks { userData["PlaybackPositionTicks"] = playbackPositionTicks }
+            if let played { userData["Played"] = played }
+            if let unplayedItemCount { userData["UnplayedItemCount"] = unplayedItemCount }
+            payload["UserData"] = userData
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
         return try? JSONDecoder().decode(LibraryItem.self, from: data)
     }
