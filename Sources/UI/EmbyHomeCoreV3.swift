@@ -143,14 +143,17 @@ struct V3EmbyHomeView: View {
                 }
                 .frame(width: width)
                 .background(
-                    V3HomeNativeScrollObserver(
-                        isRefreshing: isHomeRefreshing,
-                        onOffsetChanged: { value in
-                            guard isHomeActive else { return }
-                            if abs(homeRawScrollMinY - value) > 0.10 { homeRawScrollMinY = value }
-                        },
-                        onRefresh: { Task { await refreshHome() } }
-                    )
+                    ZStack {
+                        V3HomeNativeScrollObserver(
+                            isRefreshing: isHomeRefreshing,
+                            onOffsetChanged: { value in
+                                guard isHomeActive else { return }
+                                if abs(homeRawScrollMinY - value) > 0.10 { homeRawScrollMinY = value }
+                            },
+                            onRefresh: { Task { await refreshHome() } }
+                        )
+                        V3HomeRefreshControlStyler()
+                    }
                 )
             }
             .frame(width: width)
