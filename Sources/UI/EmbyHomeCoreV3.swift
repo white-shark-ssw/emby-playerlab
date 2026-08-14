@@ -30,7 +30,7 @@ struct V3EmbyHomeView: View {
     @State var carouselDetailItem: LibraryItem?
     @State var isCarouselDetailPresented = false
     @State var carouselTapSuppressedUntil = Date.distantPast
-    @State var homeRawScrollMinY: CGFloat = 0
+    @State var heroScrollState = V3HomeHeroScrollState()
     @State var isHomeRefreshing = false
     @State var isHomeActive = false
     private let carouselTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -126,7 +126,7 @@ struct V3EmbyHomeView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     Group {
-                        if immersive { immersiveCarouselHero(width: width, viewportHeight: viewportHeight) }
+                        if immersive { V3HomeHeroScrollScope(state: heroScrollState) { immersiveCarouselHero(width: width, viewportHeight: viewportHeight) } }
                         else { Color.clear.frame(height: 1) }
                     }
                     .id("v3-home-top")
@@ -172,7 +172,7 @@ struct V3EmbyHomeView: View {
                         V3HomeScrollOffsetObserver { value in
                             guard immersive, isHomeActive else { return }
                             let clampedValue = max(-heroTrackingLimit, value)
-                            if abs(homeRawScrollMinY - clampedValue) > 0.10 { homeRawScrollMinY = clampedValue }
+                            heroScrollState.update(clampedValue)
                         }
                         V3HomeRefreshControlStyler()
                     }
