@@ -4,7 +4,7 @@ import UIKit
 
 extension V3EmbyHomeView {
     func immersiveCarouselHero(width: CGFloat, viewportHeight: CGFloat) -> some View {
-        let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight)
+        let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + homeCarouselDisplayHeightAdjustment(viewportHeight: viewportHeight)
         return ZStack(alignment: .bottom) {
             if let item = currentCarouselItem {
                 carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
@@ -46,13 +46,15 @@ extension V3EmbyHomeView {
     }
 
     func carouselHeroArtwork(item: LibraryItem, width: CGFloat, viewportHeight: CGFloat) -> some View {
-        let backdropBaseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width)
-        let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight)
+        let displayHeightAdjustment = homeCarouselDisplayHeightAdjustment(viewportHeight: viewportHeight)
+        let backdropBaseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width) + displayHeightAdjustment
+        let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + displayHeightAdjustment
         let backdropViewportHeight = AdaptiveHeroRevealMetrics.detailBackdropViewportHeight(width: width)
         let backdropViewport = CGSize(width: width, height: backdropViewportHeight)
         let sourceSize = carouselSourceSizeByID[item.id]
-        let initialArtworkSize = homeInitialArtworkSize(imageSize: sourceSize, viewportSize: backdropViewport)
+        let defaultArtworkSize = homeInitialArtworkSize(imageSize: sourceSize, viewportSize: backdropViewport)
         let fullRevealSize = homeFullRevealArtworkSize(imageSize: sourceSize, viewportSize: backdropViewport)
+        let initialArtworkSize = homeDisplayRangeArtworkSize(defaultSize: defaultArtworkSize, fullRevealSize: fullRevealSize)
         let cropTravel = max(0, initialArtworkSize.height - fullRevealSize.height)
         let stretch = max(0, homeRawScrollMinY)
         let upwardScroll = max(0, -homeRawScrollMinY)
@@ -119,7 +121,7 @@ extension V3EmbyHomeView {
     }
 
     func carouselHeroForeground(item: LibraryItem, width: CGFloat, viewportHeight: CGFloat) -> some View {
-        let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight)
+        let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + homeCarouselDisplayHeightAdjustment(viewportHeight: viewportHeight)
         let stretch = max(0, homeRawScrollMinY)
         let visualHeight = baseHeight + stretch
         let contentWidth = max(0, width - 56)
@@ -245,5 +247,29 @@ extension V3EmbyHomeView {
         }
         let scale = viewportSize.width / imageSize.width
         return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+    }
+
+    private func homeCarouselDisplayHeightAdjustment(viewportHeight: CGFloat) -> CGFloat {
+        let value = CGFloat(min(1, max(0, carouselDisplayRange)))
+        if value >= 0.30 {
+            let progress = (value - 0.30) / 0.70
+            return min(132, viewportHeight * 0.16) * progress
+        }
+        let progress = (0.30 - value) / 0.30
+        return -min(52, viewportHeight * 0.06) * progress
+    }
+
+    private func homeDisplayRangeArtworkSize(defaultSize: CGSize, fullRevealSize: CGSize) -> CGSize {
+        let value = CGFloat(min(1, max(0, carouselDisplayRange)))
+        if value >= 0.30 {
+            let progress = min(1, ((value - 0.30) / 0.70) * 0.82)
+            return CGSize(
+                width: defaultSize.width + (fullRevealSize.width - defaultSize.width) * progress,
+                height: defaultSize.height + (fullRevealSize.height - defaultSize.height) * progress
+            )
+        }
+        let progress = (0.30 - value) / 0.30
+        let scale = 1 + 0.12 * progress
+        return CGSize(width: defaultSize.width * scale, height: defaultSize.height * scale)
     }
 }
