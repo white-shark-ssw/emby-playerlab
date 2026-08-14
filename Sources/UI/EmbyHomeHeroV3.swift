@@ -40,7 +40,7 @@ extension V3EmbyHomeView {
             .allowsHitTesting(false)
 
             carouselPageIndicators
-                .padding(.bottom, 4)
+                .padding(.bottom, 18)
                 .allowsHitTesting(false)
         }
         .frame(width: width, height: baseHeight)
@@ -55,21 +55,24 @@ extension V3EmbyHomeView {
         let backdropViewportHeight = AdaptiveHeroRevealMetrics.detailBackdropViewportHeight(width: width)
         let backdropViewport = CGSize(width: width, height: backdropViewportHeight)
         let sourceSize = carouselSourceSizeByID[item.id]
-        let cropTravel = AdaptiveHeroRevealMetrics.cropTravel(imageSize: sourceSize, viewportSize: backdropViewport)
+        let initialArtworkSize = homeInitialArtworkSize(imageSize: sourceSize, viewportSize: backdropViewport)
+        let fullRevealSize = homeFullRevealArtworkSize(imageSize: sourceSize, viewportSize: backdropViewport)
+        let cropTravel = max(0, initialArtworkSize.height - fullRevealSize.height)
         let stretch = max(0, homeRawScrollMinY)
         let upwardScroll = max(0, -homeRawScrollMinY)
-        let consumedCropScroll = AdaptiveHeroRevealMetrics.consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel, responseFactor: AdaptiveHeroRevealMetrics.detailCropResponseFactor)
-        let backdropPinOffset = AdaptiveHeroRevealMetrics.backdropPinOffset(upwardScroll: upwardScroll, cropTravel: cropTravel, responseFactor: AdaptiveHeroRevealMetrics.detailCropResponseFactor)
+        let consumedCropScroll = min(upwardScroll * AdaptiveHeroRevealMetrics.detailCropResponseFactor, cropTravel)
+        let cropPhaseDistance = cropTravel / AdaptiveHeroRevealMetrics.detailCropResponseFactor
+        let backdropPinOffset = min(upwardScroll, cropPhaseDistance)
         let backdropVisualHeight = backdropBaseHeight + stretch
         let visualHeight = baseHeight + stretch
-        let stretchedBackdropViewport = CGSize(width: width, height: backdropViewportHeight + stretch)
         let renderedImageSize: CGSize
         if stretch > 0 {
-            let detailStretchSize = AdaptiveHeroRevealMetrics.stretchedImageSize(imageSize: sourceSize, viewportSize: stretchedBackdropViewport)
-            let overscrollScale = 1 + min(0.18, stretch / 520)
-            renderedImageSize = CGSize(width: detailStretchSize.width * overscrollScale, height: detailStretchSize.height * overscrollScale)
+            let overscrollScale = 1 + min(0.22, stretch / 420)
+            renderedImageSize = CGSize(width: initialArtworkSize.width * overscrollScale, height: initialArtworkSize.height * overscrollScale)
         } else {
-            renderedImageSize = AdaptiveHeroRevealMetrics.renderedImageSize(imageSize: sourceSize, viewportSize: backdropViewport, consumedCropScroll: consumedCropScroll)
+            let targetHeight = max(fullRevealSize.height, initialArtworkSize.height - consumedCropScroll)
+            let aspect = initialArtworkSize.height > 1 ? initialArtworkSize.width / initialArtworkSize.height : 1
+            renderedImageSize = CGSize(width: targetHeight * aspect, height: targetHeight)
         }
         let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(renderedImageSize: renderedImageSize, viewportHeight: backdropVisualHeight)
         let maskFadeSpan = min(0.34, clearImageBottom * 0.46)
@@ -123,23 +126,24 @@ extension V3EmbyHomeView {
         let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight)
         let stretch = max(0, homeRawScrollMinY)
         let visualHeight = baseHeight + stretch
+        let contentWidth = max(0, width - 56)
         let usesLight = carouselLightForegroundByID[item.id] ?? true
         let primaryForeground = usesLight ? Color.white : Color.black
         let secondaryForeground = usesLight ? Color.white.opacity(0.90) : Color.black.opacity(0.80)
         let foregroundShadow = usesLight ? Color.black.opacity(0.52) : Color.white.opacity(0.24)
 
-        return VStack(alignment: .leading, spacing: 10) {
-            Spacer()
+        return VStack(alignment: .center, spacing: 10) {
             if let logoURL = carouselLogoURL(item) {
                 EmbyCachedRemoteImage(url: logoURL, contentMode: .fit, showsLoadingIndicator: false)
-                    .frame(width: min(300, max(0, width - 40)), height: 76, alignment: .leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: min(300, contentWidth), height: 76, alignment: .center)
+                    .frame(width: contentWidth, alignment: .center)
             } else {
                 Text(carouselHeroTitle(item))
                     .font(.system(size: 30, weight: .bold))
                     .foregroundColor(primaryForeground)
+                    .multilineTextAlignment(.center)
                     .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: contentWidth, alignment: .center)
                     .shadow(color: foregroundShadow, radius: 3, y: 1)
             }
 
@@ -151,20 +155,19 @@ extension V3EmbyHomeView {
             }
             .font(.subheadline.weight(.semibold))
             .foregroundColor(secondaryForeground)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: contentWidth, alignment: .center)
 
             if let overview = item.overview, !overview.isEmpty {
                 Text(overview)
                     .font(.subheadline)
                     .foregroundColor(secondaryForeground)
                     .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: contentWidth, alignment: .leading)
                     .shadow(color: foregroundShadow, radius: 2, y: 1)
             }
         }
-        .frame(width: width, height: visualHeight, alignment: .bottomLeading)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 40)
+        .frame(width: contentWidth, height: max(0, visualHeight - 56), alignment: .bottom)
+        .frame(width: width, height: visualHeight, alignment: .top)
         .offset(y: stretch > 0 ? -stretch : 0)
         .frame(width: width, height: baseHeight, alignment: .top)
     }
@@ -232,4 +235,19 @@ extension V3EmbyHomeView {
         .allowsHitTesting(false)
     }
 
+    private func homeInitialArtworkSize(imageSize: CGSize?, viewportSize: CGSize) -> CGSize {
+        guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1, viewportSize.height > 1 else {
+            return CGSize(width: viewportSize.width, height: max(viewportSize.height, viewportSize.width * 1.5))
+        }
+        let scale = max(viewportSize.width / imageSize.width, viewportSize.height / imageSize.height)
+        return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+    }
+
+    private func homeFullRevealArtworkSize(imageSize: CGSize?, viewportSize: CGSize) -> CGSize {
+        guard let imageSize, imageSize.width > 1, imageSize.height > 1, viewportSize.width > 1 else {
+            return homeInitialArtworkSize(imageSize: imageSize, viewportSize: viewportSize)
+        }
+        let scale = viewportSize.width / imageSize.width
+        return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+    }
 }
