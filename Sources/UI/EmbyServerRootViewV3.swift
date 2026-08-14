@@ -18,7 +18,7 @@ struct EmbyServerRootViewV3: View {
         Group {
             if let client {
                 GeometryReader { geometry in
-                    let dock = AnyView(serverTabBar(bottomInset: geometry.safeAreaInsets.bottom))
+                    let dock = AnyView(serverTabBar)
                     ZStack {
                         V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, onCarouselActiveChanged: { active in homeCarouselActive = active }, dock: dock)
                             .opacity(selectedTab == .home ? 1 : 0)
@@ -45,18 +45,14 @@ struct EmbyServerRootViewV3: View {
         }
     }
 
-    private func serverTabBar(bottomInset: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                serverTabButton(.home, title: "é¦–é¡µ", systemImage: "house")
-                serverTabButton(.favorites, title: "æ”¶è—", systemImage: "heart")
-                serverTabButton(.search, title: "æœç´¢", systemImage: "magnifyingglass")
-                serverTabButton(.settings, title: "è®¾ç½®", systemImage: "gearshape")
-            }
-            .frame(height: 46)
-            Color.clear.frame(height: bottomInset)
+    private var serverTabBar: some View {
+        HStack(spacing: 0) {
+            serverTabButton(.home, title: "é¦–é¡µ", systemImage: "house")
+            serverTabButton(.favorites, title: "æ”¶è—", systemImage: "heart")
+            serverTabButton(.search, title: "æœç´¢", systemImage: "magnifyingglass")
+            serverTabButton(.settings, title: "è®¾ç½®", systemImage: "gearshape")
         }
-        .frame(height: 46 + bottomInset)
+        .frame(height: ImmersiveUIMetrics.serverDockHeight)
         .background(
             Group {
                 if selectedTab == .home && homeCarouselActive {
@@ -67,6 +63,7 @@ struct EmbyServerRootViewV3: View {
                     Color(uiColor: .secondarySystemBackground)
                 }
             }
+            .ignoresSafeArea(edges: .bottom)
         )
     }
 
@@ -88,16 +85,17 @@ struct EmbyServerRootViewV3: View {
         } label: {
             ZStack {
                 Color.clear
-                VStack(spacing: 2) {
+                VStack(spacing: 0) {
                     Image(systemName: selectedTab == tab && tab != .search ? systemImage + ".fill" : systemImage).font(.system(size: 19))
                     Text(title).font(.system(size: 10))
                 }
                 .foregroundColor(selectedTab == tab ? .blue : .secondary)
+                .offset(y: 7)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, minHeight: 46, maxHeight: 46)
+        .frame(maxWidth: .infinity, minHeight: ImmersiveUIMetrics.serverDockHeight, maxHeight: ImmersiveUIMetrics.serverDockHeight)
         .contentShape(Rectangle())
         .buttonStyle(.plain)
     }
@@ -130,13 +128,18 @@ private struct V3EmbyHomeView: View {
     let dock: AnyView
     @StateObject private var model: V3EmbyHomeViewModel
     @State private var isMediaManagementPresented = false
-    @State private var carouselIndex = 0
-    @State private var carouselPageOffset: CGFloat = 0
-    @State private var homeScrollOffset: CGFloat = 0
+    @State private var currentCarouselItemID: String?
+    @State private var transitionFromID: String?
+    @State private var transitionToID: String?
+    @State private var transitionProgress: CGFloat = 0
+    @State private var isCarouselDragging = false
+    @State private var carouselLastSettledAt = Date()
     @State private var carouselLightForegroundByID: [String: Bool] = [:]
+    @State private var carouselSourceSizeByID: [String: CGSize] = [:]
+    @State private var homeRawScrollMinY: CGFloat = 0
     @State private var isHomeRefreshing = false
     @State private var isHomeActive = false
-    private let carouselTimer = Timer.publish(every: 6, on: .main, in: .common).autoconnect()
+    private let carouselTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, onCarouselActiveChanged: @escaping (Bool) -> Void, dock: AnyView) {
         self.session = session
@@ -153,27 +156,32 @@ private struct V3EmbyHomeView: View {
         NavigationView {
             GeometryReader { geometry in
                 let immersive = !model.carouselItems.isEmpty
-                let heroHeight = min(560, max(510, geometry.size.width * 1.22))
-                Group {
+                let viewportHeight = geometry.size.height + geometry.safeAreaInsets.top
+                ZStack(alignment: .top) {
+                    if immersive { persistentCarouselBackdrop(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom)) }
+                    else { Color(uiColor: .systemBackground).ignoresSafeArea() }
+                    if immersive { carouselPreloadLayer }
+
                     if immersive {
-                        ZStack(alignment: .top) {
-                            carouselBackgroundStack(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom)).overlay(V3HomeCarouselBackgroundTint(colorScheme: colorScheme)).zIndex(0)
-                            homeScroll(heroHeight: heroHeight, immersive: true).background(Color.clear).ignoresSafeArea(.container, edges: .top).zIndex(1)
-                            header(immersive: true).zIndex(30)
-                            homeRefreshIndicator(topInset: geometry.safeAreaInsets.top).zIndex(50)
-                        }
+                        homeScroll(width: geometry.size.width, viewportHeight: viewportHeight, immersive: true)
+                            .background(Color.clear)
+                            .ignoresSafeArea(.container, edges: .top)
+                            .zIndex(1)
+                        header(immersive: true).zIndex(30)
                     } else {
                         VStack(spacing: 0) {
                             header(immersive: false)
-                            homeScroll(heroHeight: heroHeight, immersive: false)
+                            homeScroll(width: geometry.size.width, viewportHeight: viewportHeight, immersive: false)
                         }
+                        .zIndex(1)
                     }
                 }
                 .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 .overlay(alignment: .bottom) { dock }
                 .onAppear {
                     isHomeActive = true
-                    carouselPageOffset = 0
+                    synchronizeCarouselItems()
+                    carouselLastSettledAt = Date()
                     onCarouselActiveChanged(immersive)
                     Task {
                         if !model.hasLoaded { await model.refresh() }
@@ -189,88 +197,72 @@ private struct V3EmbyHomeView: View {
                         model.savePreferences(preferences, carouselEnabled: carouselEnabled)
                     }
                 }
-                .onReceive(carouselTimer) { _ in
-                    let count = model.carouselItems.count
-                    guard count > 1, abs(carouselPageOffset) < 0.02 else { return }
-                    let next = (carouselIndex + 1) % count
-                    withAnimation(.easeInOut(duration: 0.62)) { carouselIndex = next }
-                }
-                .onChange(of: carouselIndex) { _ in carouselPageOffset = 0 }
-                .onChange(of: model.carouselItems.count) { count in
-                    if count == 0 || carouselIndex >= count { carouselIndex = 0 }
-                    carouselPageOffset = 0
-                    onCarouselActiveChanged(count > 0)
-                }
+                .onReceive(carouselTimer) { _ in autoAdvanceCarouselIfNeeded() }
+                .onChange(of: model.carouselItems.map(\.id)) { _ in synchronizeCarouselItems() }
                 .onDisappear {
                     isHomeActive = false
-                    carouselPageOffset = 0
+                    isCarouselDragging = false
                     onCarouselActiveChanged(false)
                 }
             }
             .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
-        .ignoresSafeArea(.container, edges: .bottom)
     }
 
-    private func homeScroll(heroHeight: CGFloat, immersive: Bool) -> some View {
+    private func homeScroll(width: CGFloat, viewportHeight: CGFloat, immersive: Bool) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    GeometryReader { geometry in
-                        Color.clear.preference(key: V3HomeScrollOffsetPreferenceKey.self, value: geometry.frame(in: .named("v3-home-scroll")).minY)
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    Group {
+                        if immersive { immersiveCarouselHero(width: width, viewportHeight: viewportHeight) }
+                        else { Color.clear.frame(height: 1) }
                     }
-                    .frame(height: 0)
+                    .id("v3-home-top")
 
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        Group {
-                            if !model.carouselItems.isEmpty { heroCarousel(height: heroHeight) }
-                            else { Color.clear.frame(height: 1) }
-                        }
-                        .id("v3-home-top")
-
-                        VStack(alignment: .leading, spacing: 22) {
-                            if model.isLoading && model.libraries.isEmpty {
-                                ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
-                            } else {
-                                if !model.visibleLibraries.isEmpty {
-                                    sectionTitle("æˆ‘çš„åª’ä½“")
-                                    libraryRow
-                                }
-                                if !model.resumeItems.isEmpty {
-                                    sectionTitle("ç»§ç»­è§‚çœ‹")
-                                    landscapeRow(model.resumeItems)
-                                }
-                                ForEach(model.visibleLibraries) { library in
-                                    if let items = model.latestByLibrary[library.id], !items.isEmpty {
-                                        HStack(spacing: 8) {
-                                            sectionTitle(library.name)
-                                            Spacer()
-                                            NavigationLink("æ›´å¤š", destination: V3LibraryBrowserView(library: library, client: client, dock: dock))
-                                                .font(.subheadline).foregroundColor(.blue).padding(.trailing, 16)
-                                        }
-                                        posterRow(items)
-                                    }
-                                }
-                                if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
+                    VStack(alignment: .leading, spacing: 22) {
+                        if model.isLoading && model.libraries.isEmpty {
+                            ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
+                        } else {
+                            if !model.visibleLibraries.isEmpty {
+                                sectionTitle("æˆ‘çš„åª’ä½“")
+                                libraryRow
                             }
+                            if !model.resumeItems.isEmpty {
+                                sectionTitle("ç»§ç»­è§‚çœ‹")
+                                landscapeRow(model.resumeItems)
+                            }
+                            ForEach(model.visibleLibraries) { library in
+                                if let items = model.latestByLibrary[library.id], !items.isEmpty {
+                                    HStack(spacing: 8) {
+                                        sectionTitle(library.name)
+                                        Spacer()
+                                        NavigationLink("æ›´å¤š", destination: V3LibraryBrowserView(library: library, client: client, dock: dock))
+                                            .font(.subheadline).foregroundColor(.blue).padding(.trailing, 16)
+                                    }
+                                    posterRow(items)
+                                }
+                            }
+                            if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
                         }
-                        .padding(.top, 18)
-                        .padding(.bottom, 86)
-                        .background(homeContentMaterial)
                     }
+                    .padding(.top, immersive ? 2 : 18)
+                    .padding(.bottom, 86)
                 }
+                .frame(width: width)
+                .background(
+                    V3HomeNativeScrollObserver(
+                        isRefreshing: isHomeRefreshing,
+                        onOffsetChanged: { value in
+                            guard isHomeActive else { return }
+                            if abs(homeRawScrollMinY - value) > 0.10 { homeRawScrollMinY = value }
+                        },
+                        onRefresh: { Task { await refreshHome() } }
+                    )
+                )
             }
-            .coordinateSpace(name: "v3-home-scroll")
+            .frame(width: width)
             .background(Color.clear)
-            .onPreferenceChange(V3HomeScrollOffsetPreferenceKey.self) { value in
-                if immersive && isHomeActive {
-                    if abs(homeScrollOffset - value) > 0.10 { homeScrollOffset = value }
-                } else if !immersive && homeScrollOffset != 0 {
-                    homeScrollOffset = 0
-                }
-            }
-            .refreshable { await refreshHome() }
             .onChange(of: refreshToken) { _ in Task { await refreshHome() } }
             .onChange(of: scrollToTopToken) { _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("v3-home-top", anchor: .top) } }
         }
@@ -282,26 +274,6 @@ private struct V3EmbyHomeView: View {
         isHomeRefreshing = true
         await model.refresh(userInitiated: true)
         isHomeRefreshing = false
-    }
-
-    @ViewBuilder
-    private func homeRefreshIndicator(topInset: CGFloat) -> some View {
-        let pull = max(0, homeScrollOffset)
-        if isHomeRefreshing || pull > 12 {
-            VStack {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .scaleEffect(isHomeRefreshing ? 1 : min(1, 0.72 + pull / 90))
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(.ultraThinMaterial).overlay(Circle().fill(Color.black.opacity(0.18))))
-                    .shadow(color: Color.black.opacity(0.18), radius: 5, y: 2)
-                    .opacity(isHomeRefreshing ? 1 : min(1, Double((pull - 12) / 28)))
-                    .padding(.top, max(46, topInset + 6))
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .allowsHitTesting(false)
-        }
     }
 
     private func header(immersive: Bool) -> some View {
@@ -321,11 +293,8 @@ private struct V3EmbyHomeView: View {
                 .frame(height: 38)
                 .background(
                     Group {
-                        if immersive {
-                            Capsule().fill(.ultraThinMaterial).overlay(Capsule().fill(Color.black.opacity(0.18)))
-                        } else {
-                            Capsule().fill(Color(uiColor: .secondarySystemBackground))
-                        }
+                        if immersive { Capsule().fill(.ultraThinMaterial).overlay(Capsule().fill(Color.black.opacity(0.18))) }
+                        else { Capsule().fill(Color(uiColor: .secondarySystemBackground)) }
                     }
                 )
                 .clipShape(Capsule())
@@ -336,11 +305,8 @@ private struct V3EmbyHomeView: View {
                     .frame(width: 36, height: 36)
                     .background(
                         Group {
-                            if immersive {
-                                Circle().fill(.ultraThinMaterial).overlay(Circle().fill(Color.black.opacity(0.18)))
-                            } else {
-                                Circle().fill(Color(uiColor: .secondarySystemBackground))
-                            }
+                            if immersive { Circle().fill(.ultraThinMaterial).overlay(Circle().fill(Color.black.opacity(0.18))) }
+                            else { Circle().fill(Color(uiColor: .secondarySystemBackground)) }
                         }
                     )
                     .clipShape(Circle())
@@ -351,1019 +317,42 @@ private struct V3EmbyHomeView: View {
         .padding(.bottom, 6)
     }
 
-    private func heroCarousel(height: CGFloat) -> some View {
-        TabView(selection: $carouselIndex) {
-            ForEach(Array(model.carouselItems.enumerated()), id: \.element.id) { index, item in
-                NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) {
-                    V3HeroCard(item: item, client: client, usesLightForeground: carouselLightForegroundByID[item.id] ?? true)
-                        .background(V3HomeCarouselPageOffsetObserver { updateCarouselPageOffset($0, pageIndex: index) })
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .tag(index)
+    private func immersiveCarouselHero(width: CGFloat, viewportHeight: CGFloat) -> some View {
+        let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight)
+        return ZStack(alignment: .bottom) {
+            if let item = currentCarouselItem {
+                carouselHeroSlide(item: item, width: width, viewportHeight: viewportHeight)
+                    .opacity(carouselOpacity(for: item.id))
+                    .allowsHitTesting(false)
             }
-        }
-        .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-        .frame(height: height)
-    }
-
-    private func updateCarouselPageOffset(_ value: CGFloat, pageIndex: Int) {
-        guard pageIndex == carouselIndex || abs(value) > 0.001 else { return }
-        let clamped = min(1, max(-1, value))
-        if abs(carouselPageOffset - clamped) > 0.002 { carouselPageOffset = clamped }
-    }
-
-    private func carouselBackgroundStack(size: CGSize) -> some View {
-        let pull = max(0, homeScrollOffset)
-        let upward = max(0, -homeScrollOffset)
-        let scale = 1 + min(0.075, pull / 1800)
-        let verticalOffset = -min(52, upward * 0.12)
-        return ZStack {
-            ForEach(Array(model.carouselItems.enumerated()), id: \.element.id) { index, item in
-                EmbyCachedRemoteImage(
-                    url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 1400, tag: item.preferredPrimaryImageTag),
-                    contentMode: .fill,
-                    placeholderSystemImage: "photo",
-                    showsLoadingIndicator: false,
-                    onImageLoaded: { image in updateCarouselForeground(image, itemID: item.id) }
-                )
-                    .frame(width: size.width, height: size.height)
-                    .clipped()
-                    .opacity(carouselBackgroundOpacity(for: index))
-                    .animation(abs(carouselPageOffset) < 0.01 ? .easeInOut(duration: 0.62) : nil, value: carouselIndex)
+            if let item = transitionTargetCarouselItem {
+                carouselHeroSlide(item: item, width: width, viewportHeight: viewportHeight)
+                    .opacity(carouselOpacity(for: item.id))
+                    .allowsHitTesting(false)
             }
-        }
-        .frame(width: size.width, height: size.height)
-        .scaleEffect(scale)
-        .offset(y: verticalOffset)
-        .clipped()
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-    }
 
-    private func updateCarouselForeground(_ image: UIImage, itemID: String) {
-        let prefersLight = EmbyImageContrastAnalyzer.prefersLightForeground(for: image)
-        guard carouselLightForegroundByID[itemID] != prefersLight else { return }
-        withAnimation(.easeOut(duration: 0.18)) { carouselLightForegroundByID[itemID] = prefersLight }
-    }
-
-    private var homeContentMaterial: some View {
-        Rectangle()
-            .fill(.ultraThinMaterial)
-            .overlay(Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.18 : 0.14))
-            .mask(
-                VStack(spacing: 0) {
-                    LinearGradient(colors: [.black.opacity(0.45), .black.opacity(0.82), .black], startPoint: .top, endPoint: .bottom).frame(height: 64)
-                    Rectangle().fill(Color.black)
-                }
-            )
-    }
-
-    private func carouselBackgroundOpacity(for index: Int) -> Double {
-        let count = model.carouselItems.count
-        guard count > 0 else { return 0 }
-        let current = min(max(0, carouselIndex), count - 1)
-        let fraction = min(1, max(0, abs(carouselPageOffset)))
-        if carouselPageOffset > 0.001, current + 1 < count {
-            if index == current { return Double(1 - fraction) }
-            if index == current + 1 { return Double(fraction) }
-            return 0
-        }
-        if carouselPageOffset < -0.001, current - 1 >= 0 {
-            if index == current { return Double(1 - fraction) }
-            if index == current - 1 { return Double(fraction) }
-            return 0
-        }
-        return index == current ? 1 : 0
-    }
-
-    private func sectionTitle(_ title: String) -> some View { Text(title).font(.title2.weight(.bold)).padding(.horizontal, 16) }
-
-    private var libraryRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 12) {
-                ForEach(model.visibleLibraries) { library in
-                    NavigationLink(destination: V3LibraryBrowserView(library: library, client: client, dock: dock)) { V3LibraryTile(item: library, client: client) }.buttonStyle(.plain)
-                }
+            if let item = currentCarouselItem {
+                NavigationLink(destination: EmbyMediaDetailView(item: item, client: client)) { Color.clear.contentShape(Rectangle()) }
+                    .buttonStyle(.plain)
+                    .allowsHitTesting( transitionToID == nil)
             }
-            .padding(.horizontal, 16)
+
+            carouselPageIndicators
+                .padding(.bottom, 12)
+                .allowsHitTesting(false)
         }
-    }
-
-    private func landscapeRow(_ items: [LibraryItem]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 12) {
-                ForEach(items) { item in
-                    EmbyPosterDetailLink(item: item, client: client) { V3LandscapeCard(item: item, client: client) }
-                        .frame(width: 212, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
-    private func posterRow(_ items: [LibraryItem]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(alignment: .top, spacing: 12) {
-                ForEach(items) { item in
-                    EmbyPosterDetailLink(item: item, client: client) {
-                        V3PosterCard(item: item, client: client, width: 118)
-                            .contentShape(Rectangle())
-                    }
-                    .frame(width: 118, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-}
-
-@MainActor
-private final class V3EmbyHomeViewModel: ObservableObject {
-    @Published var libraries: [LibraryItem] = []
-    @Published var resumeItems: [LibraryItem] = []
-    @Published var latestByLibrary: [String: [LibraryItem]] = [:]
-    @Published var preferences: [V3HomeLibraryPreference] = []
-    @Published var carouselEnabled: Bool
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-    private let client: EmbyAPIClient
-    private let preferenceKey: String
-    private let carouselEnabledKey: String
-    private(set) var hasLoaded = false
-    private var resumeDirty = false
-    private var dirtyResumeItemIDs = Set<String>()
-
-    init(session: EmbySession, client: EmbyAPIClient) {
-        self.client = client
-        preferenceKey = "osplayer.home.library-preferences.\(session.serverId).\(session.user.id)"
-        let carouselKey = "osplayer.home.carousel-enabled.\(session.serverId).\(session.user.id)"
-        carouselEnabledKey = carouselKey
-        carouselEnabled = UserDefaults.standard.object(forKey: carouselKey) as? Bool ?? true
-    }
-
-    var orderedLibraries: [LibraryItem] {
-        let byID = Dictionary(uniqueKeysWithValues: libraries.map { ($0.id, $0) })
-        let ordered = preferences.compactMap { byID[$0.libraryID] }
-        let known = Set(ordered.map(\.id))
-        return ordered + libraries.filter { !known.contains($0.id) }
-    }
-
-    var visibleLibraries: [LibraryItem] {
-        let visible = Dictionary(uniqueKeysWithValues: preferences.map { ($0.libraryID, $0.showOnHome) })
-        return orderedLibraries.filter { visible[$0.id] ?? true }
-    }
-
-    var carouselItems: [LibraryItem] {
-        guard carouselEnabled else { return [] }
-        let enabled = Set(preferences.filter(\.includeInCarousel).map(\.libraryID))
-        var seen = Set<String>()
-        var pool: [LibraryItem] = []
-        for library in orderedLibraries where enabled.contains(library.id) {
-            for item in latestByLibrary[library.id] ?? [] where seen.insert(item.id).inserted { pool.append(item) }
-        }
-        return Array(pool.prefix(6))
-    }
-
-    func markResumeDirty(_ itemID: String) {
-        resumeDirty = true
-        dirtyResumeItemIDs.insert(itemID)
-        DiagnosticsLogger.shared.log("HomeRefresh", "resume dirty item=\(itemID)")
-    }
-
-    func refreshResumeIfNeeded() async {
-        guard resumeDirty else { return }
-        await refresh(userInitiated: true)
-    }
-
-    func refresh(userInitiated: Bool = false) async {
-        if isLoading {
-            guard userInitiated else { return }
-            DiagnosticsLogger.shared.log("HomeRefresh", "user refresh waiting for active refresh")
-            while isLoading { try? await Task.sleep(nanoseconds: 50_000_000) }
-        }
-        if userInitiated {
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            await refreshResumeOnly()
-        }
-        guard !isLoading else { return }
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false; hasLoaded = true }
-        do {
-            async let viewsRequest = client.userViews()
-            async let resumeRequest = client.resumeItems(limit: 18)
-            let (views, resume) = try await (viewsRequest, resumeRequest)
-            libraries = uniqueItems(views)
-            resumeItems = uniqueItems(resume).filter { ["movie", "episode"].contains($0.type?.lowercased() ?? "") }
-            resumeDirty = false
-            dirtyResumeItemIDs.removeAll()
-            preferences = reconcilePreferences(libraries)
-            persistPreferences(preferences)
-
-            var latest: [String: [LibraryItem]] = [:]
-            await withTaskGroup(of: (String, [LibraryItem]?).self) { group in
-                for library in libraries {
-                    let types = Self.browseItemTypes(for: library)
-                    group.addTask {
-                        do {
-                            if types.isEmpty { return (library.id, try await self.client.latestItems(parentId: library.id, limit: 16)) }
-                            let page = try await self.client.libraryItems(parentId: library.id, limit: 16, sortBy: "DateCreated", sortOrder: "Descending", includeItemTypes: types)
-                            return (library.id, page.items)
-                        } catch {
-                            return (library.id, nil)
-                        }
-                    }
-                }
-                for await result in group { if let items = result.1 { latest[result.0] = uniqueItems(items) } }
-            }
-            latestByLibrary = latest
-        } catch {
-            if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
-        }
-    }
-
-    private func refreshResumeOnly() async {
-        do {
-            let resume = try await client.resumeItems(limit: 18)
-            resumeItems = uniqueItems(resume).filter { ["movie", "episode"].contains($0.type?.lowercased() ?? "") }
-            DiagnosticsLogger.shared.log("HomeRefresh", "resume refreshed count=\(resumeItems.count) dirty=\(resumeDirty) ids=\(dirtyResumeItemIDs.sorted().joined(separator: ","))")
-            resumeDirty = false
-            dirtyResumeItemIDs.removeAll()
-        } catch {
-            if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
-        }
-    }
-
-    private static func browseItemTypes(for library: LibraryItem) -> [String] {
-        switch library.collectionType?.lowercased() {
-        case "movies": return ["Movie"]
-        case "tvshows": return ["Series"]
-        case "homevideos": return ["Video"]
-        case "mixed": return ["Movie", "Series", "Video"]
-        default: return []
-        }
-    }
-
-    private func uniqueItems(_ items: [LibraryItem]) -> [LibraryItem] {
-        var seen = Set<String>()
-        return items.filter { seen.insert($0.id).inserted }
-    }
-
-    func savePreferences(_ next: [V3HomeLibraryPreference], carouselEnabled: Bool) {
-        let validIDs = Set(libraries.map(\.id))
-        preferences = next.filter { validIDs.contains($0.libraryID) }
-        self.carouselEnabled = carouselEnabled
-        persistPreferences(preferences)
-        UserDefaults.standard.set(carouselEnabled, forKey: carouselEnabledKey)
-    }
-
-    private func reconcilePreferences(_ views: [LibraryItem]) -> [V3HomeLibraryPreference] {
-        let saved = loadPreferences()
-        let byID = Dictionary(uniqueKeysWithValues: views.map { ($0.id, $0) })
-        var next = saved.compactMap { preference -> V3HomeLibraryPreference? in
-            guard let library = byID[preference.libraryID] else { return nil }
-            var updated = preference
-            updated.name = library.name
-            updated.collectionType = library.collectionType
-            return updated
-        }
-        let known = Set(next.map(\.libraryID))
-        for library in views where !known.contains(library.id) {
-            next.append(V3HomeLibraryPreference(libraryID: library.id, name: library.name, collectionType: library.collectionType, showOnHome: true, includeInCarousel: defaultCarouselEnabled(library)))
-        }
-        return next
-    }
-
-    private func defaultCarouselEnabled(_ library: LibraryItem) -> Bool {
-        switch library.collectionType?.lowercased() {
-        case "movies", "tvshows", "mixed", "homevideos": return true
-        default: return false
-        }
-    }
-
-    private func loadPreferences() -> [V3HomeLibraryPreference] {
-        guard let data = UserDefaults.standard.data(forKey: preferenceKey), let value = try? JSONDecoder().decode([V3HomeLibraryPreference].self, from: data) else { return [] }
-        return value
-    }
-
-    private func persistPreferences(_ value: [V3HomeLibraryPreference]) {
-        guard let data = try? JSONEncoder().encode(value) else { return }
-        UserDefaults.standard.set(data, forKey: preferenceKey)
-    }
-}
-
-private struct V3MediaManagementView: View {
-    @Environment(\.presentationMode) private var presentationMode
-    @State private var draft: [V3HomeLibraryPreference]
-    @State private var carouselEnabled: Bool
-    let onSave: ([V3HomeLibraryPreference], Bool) -> Void
-
-    init(preferences: [V3HomeLibraryPreference], carouselEnabled: Bool, onSave: @escaping ([V3HomeLibraryPreference], Bool) -> Void) {
-        _draft = State(initialValue: preferences)
-        _carouselEnabled = State(initialValue: carouselEnabled)
-        self.onSave = onSave
-    }
-
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                HStack {
-                    Button { presentationMode.wrappedValue.dismiss() } label: { Image(systemName: "xmark").font(.system(size: 22, weight: .medium)).frame(width: 44, height: 44) }
-                    Spacer()
-                    Text("åª’ä½“ç®¡ç†").font(.title2.weight(.bold))
-                    Spacer()
-                    Button("ä¿å­˜") { onSave(draft, carouselEnabled); presentationMode.wrappedValue.dismiss() }.font(.headline)
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
-
-                Text("é•¿æŒ‰æ‹–åŠ¨å¯è°ƒæ•´é¦–é¡µé¡ºåº").font(.subheadline).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 8)
-
-                List {
-                    Section {
-                        Toggle(isOn: $carouselEnabled) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("è½®æ’­å›¾").font(.body.weight(.semibold))
-                                Text("ä¸€é”®æ§åˆ¶é¦–é¡µæ²‰æµ¸è½®æ’­ï¼Œå…³é—­ä¸ä¼šæ¸…é™¤ä¸‹æ–¹åª’ä½“åº“é€‰æ‹©").font(.caption).foregroundColor(.secondary)
-                            }
-                        }
-                        .tint(.green)
-                        .padding(.vertical, 3)
-                    }
-
-                    Section {
-                        ForEach($draft) { $preference in
-                            HStack(spacing: 12) {
-                                Text(preference.name)
-                                    .font(.body)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                                Toggle("é¦–é¡µ", isOn: $preference.showOnHome)
-                                    .labelsHidden()
-                                    .tint(.green)
-                                    .frame(width: 62)
-
-                                Toggle("è½®æ’­", isOn: $preference.includeInCarousel)
-                                    .labelsHidden()
-                                    .tint(.green)
-                                    .frame(width: 62)
-                                    .opacity(carouselEnabled ? 1 : 0.55)
-                            }
-                            .frame(minHeight: 44)
-                            .listRowInsets(EdgeInsets(top: 6, leading: 18, bottom: 6, trailing: 12))
-                        }
-                        .onMove { source, destination in draft.move(fromOffsets: source, toOffset: destination) }
-                    } header: {
-                        HStack(spacing: 12) {
-                            Spacer(minLength: 0)
-                            Text("é¦–é¡µ").font(.caption2).foregroundColor(.secondary).frame(width: 62)
-                            Text("è½®æ’­").font(.caption2).foregroundColor(.secondary).frame(width: 62)
-                            Spacer().frame(width: 30)
-                        }
-                        .textCase(nil)
-                    }
-                }
-                .listStyle(InsetGroupedListStyle())
-                .environment(\.editMode, .constant(.active))
-            }
-            .navigationBarHidden(true)
-            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
-        }
-        .navigationViewStyle(StackNavigationViewStyle())
-    }
-}
-
-private struct V3HeroCard: View {
-    let item: LibraryItem
-    let client: EmbyAPIClient
-    let usesLightForeground: Bool
-
-    private var primaryForeground: Color { usesLightForeground ? .white : .black }
-    private var secondaryForeground: Color { usesLightForeground ? .white.opacity(0.90) : .black.opacity(0.80) }
-    private var foregroundShadow: Color { usesLightForeground ? .black.opacity(0.52) : .white.opacity(0.24) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Spacer()
-            Text(heroTitle)
-                .font(.system(size: 30, weight: .bold))
-                .foregroundColor(primaryForeground)
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .shadow(color: foregroundShadow, radius: 3, y: 1)
-
-            HStack(spacing: 8) {
-                if let rating = item.communityRating { Text("â˜… " + String(format: "%.1f", rating)).foregroundColor(.yellow) }
-                if let year = item.productionYear { Text(String(year)) }
-                if let official = item.officialRating, !official.isEmpty { Text(official) }
-                Text(v3MediaTypeTitle(item))
-            }
-            .font(.subheadline.weight(.semibold))
-            .foregroundColor(secondaryForeground)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            if let overview = item.overview, !overview.isEmpty {
-                Text(overview)
-                    .font(.subheadline)
-                    .foregroundColor(secondaryForeground)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .shadow(color: foregroundShadow, radius: 2, y: 1)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 58)
+        .frame(width: width, height: baseHeight)
         .contentShape(Rectangle())
+        .simultaneousGesture(carouselDragGesture(width: width))
     }
 
-    private var heroTitle: String {
-        if item.type?.caseInsensitiveCompare("Episode") == .orderedSame, let seriesName = item.seriesName, !seriesName.isEmpty { return seriesName }
-        return item.name
-    }
-}
-
-private struct V3LibraryBrowserView: View {
-    let library: LibraryItem
-    let client: EmbyAPIClient
-    let dock: AnyView
-    @StateObject private var model: V3LibraryBrowserViewModel
-
-    init(library: LibraryItem, client: EmbyAPIClient, dock: AnyView) {
-        self.library = library
-        self.client = client
-        self.dock = dock
-        _model = StateObject(wrappedValue: V3LibraryBrowserViewModel(library: library, client: client))
-    }
-
-    var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text(contentTitle).font(.headline).foregroundColor(.blue)
-                    Spacer()
-                    Menu {
-                        sortButton("åŠ å…¥æ—¥æœŸ", key: "DateCreated")
-                        sortButton("æ ‡é¢˜", key: "SortName")
-                        sortButton("å‘è¡Œæ—¥æœŸ", key: "PremiereDate")
-                        sortButton("æ’­æ”¾æ—¥æœŸ", key: "DatePlayed")
-                        sortButton("æ’­æ”¾æ¬¡æ•°", key: "PlayCount")
-                        sortButton("æ’­æ”¾æ—¶é•¿", key: "Runtime")
-                        sortButton("éšæœº", key: "Random")
-                    } label: { Image(systemName: "arrow.up.arrow.down").font(.system(size: 20)) }
-                }
-                .padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding)
-
-                if model.isLoading && model.items.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
-                } else {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
-                        guard model.hasMore else { return }
-                        Task { await model.loadNextPage() }
-                    }) { item in
-                        EmbyPosterDetailLink(item: item, client: client) {
-                            V3PosterCard(item: item, client: client, width: nil)
-                        }
-                    }
-                }
-
-                if model.isLoading && !model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12) }
-                if let error = model.errorMessage { Text(error).foregroundColor(.red).font(.footnote).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
-            }
-            .padding(.bottom, 86)
-        }
-        .navigationTitle(library.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .overlay(alignment: .bottom) { dock }
-        .nativeInteractivePop()
-        .onAppear { if !model.hasLoaded { Task { await model.reload() } } }
-    }
-
-    private var contentTitle: String {
-        switch library.collectionType?.lowercased() { case "tvshows": return "èŠ‚ç›®"; case "movies": return "ç”µå½±"; default: return "å†…å®¹" }
-    }
-
-    private func sortButton(_ title: String, key: String) -> some View {
-        Button { Task { await model.changeSort(to: key) } } label: { if model.sortBy == key { Label(title, systemImage: "checkmark") } else { Text(title) } }
-    }
-}
-
-@MainActor
-private final class V3LibraryBrowserViewModel: ObservableObject {
-    @Published var items: [LibraryItem] = []
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-    @Published private(set) var hasMore = true
-    @Published var sortBy = "DateCreated"
-    private let library: LibraryItem
-    private let client: EmbyAPIClient
-    private let pageSize = 60
-    private var nextStartIndex = 0
-    private(set) var hasLoaded = false
-
-    init(library: LibraryItem, client: EmbyAPIClient) { self.library = library; self.client = client }
-
-    func reload() async {
-        guard !isLoading else { return }
-        items = []
-        nextStartIndex = 0
-        hasMore = true
-        hasLoaded = false
-        await fetchNextPage()
-    }
-
-    func loadNextPage() async {
-        guard hasLoaded, hasMore, !isLoading else { return }
-        await fetchNextPage()
-    }
-
-    func changeSort(to key: String) async {
-        guard key != sortBy else { return }
-        sortBy = key
-        await reload()
-    }
-
-    private func fetchNextPage() async {
-        guard !isLoading, hasMore else { return }
-        isLoading = true
-        errorMessage = nil
-        let requestedStartIndex = nextStartIndex
-        defer { isLoading = false; hasLoaded = true }
-        do {
-            let expectedTypes: [String]
-            switch library.collectionType?.lowercased() {
-            case "movies": expectedTypes = ["Movie"]
-            case "tvshows": expectedTypes = ["Series"]
-            case "homevideos": expectedTypes = ["Video"]
-            case "mixed": expectedTypes = ["Movie", "Series", "Video"]
-            default: expectedTypes = []
-            }
-            let page = try await client.libraryItems(parentId: library.id, limit: pageSize, startIndex: requestedStartIndex, sortBy: sortBy, includeItemTypes: expectedTypes)
-            let allowed = Set(expectedTypes.map { $0.lowercased() })
-            let filtered = page.items.filter { allowed.isEmpty || allowed.contains($0.type?.lowercased() ?? "") }
-            var seen = Set(items.map(\.id))
-            items.append(contentsOf: filtered.filter { seen.insert($0.id).inserted })
-            nextStartIndex = requestedStartIndex + page.items.count
-            if let totalRecordCount = page.totalRecordCount {
-                hasMore = nextStartIndex < totalRecordCount
-            } else {
-                hasMore = page.items.count == pageSize
-            }
-        } catch {
-            if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
-        }
-    }
-}
-
-private struct V3EmbyFavoritesView: View {
-    let client: EmbyAPIClient
-    let onClose: () -> Void
-    let dock: AnyView
-    @StateObject private var model: V3FavoritesViewModel
-
-    init(client: EmbyAPIClient, onClose: @escaping () -> Void, dock: AnyView) {
-        self.client = client
-        self.onClose = onClose
-        self.dock = dock
-        _model = StateObject(wrappedValue: V3FavoritesViewModel(client: client))
-    }
-
-    var body: some View {
-        NavigationView {
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 22) {
-                    V3PageHeader(title: "æ”¶è—", onClose: onClose)
-                    favoriteSection("ç”µå½±", items: model.movies)
-                    favoriteSection("å‰§é›†", items: model.series)
-                    favoritePeople
-                    favoriteSection("åˆé›†", items: model.collections)
-                    if model.isLoading { ProgressView().frame(maxWidth: .infinity) }
-                    if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
-                }
-                .padding(.bottom, 86)
-            }
-            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-            .overlay(alignment: .bottom) { dock }
-            .refreshable { await model.load() }
-            .onAppear { if !model.hasLoaded { Task { await model.load() } } }
-            .navigationBarHidden(true)
-        }
-        .navigationViewStyle(StackNavigationViewStyle())
-        .ignoresSafeArea(.container, edges: .bottom)
-    }
-
-    @ViewBuilder
-    private func favoriteSection(_ title: String, items: [LibraryItem]) -> some View {
-        if !items.isEmpty {
-            Text(title).font(.title2.weight(.bold)).padding(.horizontal, 16)
-            EmbyPosterGrid(items: items) { item in
-                EmbyPosterDetailLink(item: item, client: client) {
-                    V3PosterCard(item: item, client: client, width: nil)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var favoritePeople: some View {
-        if !model.people.isEmpty {
-            Text("æ¼”å‘˜").font(.title2.weight(.bold)).padding(.horizontal, 16)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 16) {
-                    ForEach(model.people) { person in
-                        VStack(spacing: 6) {
-                            V3RemoteImage(url: client.imageURL(itemId: person.id, maxWidth: 260, tag: person.primaryImageTag), contentMode: .fill).frame(width: 92, height: 92).clipShape(Circle())
-                            Text(person.name).font(.subheadline).lineLimit(1).frame(width: 102)
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-        }
-    }
-}
-
-@MainActor
-private final class V3FavoritesViewModel: ObservableObject {
-    @Published var items: [LibraryItem] = []
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-    private let client: EmbyAPIClient
-    private(set) var hasLoaded = false
-
-    init(client: EmbyAPIClient) { self.client = client }
-    var movies: [LibraryItem] { items.filter { $0.type?.caseInsensitiveCompare("Movie") == .orderedSame } }
-    var series: [LibraryItem] { items.filter { $0.type?.caseInsensitiveCompare("Series") == .orderedSame } }
-    var people: [LibraryItem] { items.filter { $0.type?.caseInsensitiveCompare("Person") == .orderedSame } }
-    var collections: [LibraryItem] { items.filter { ["boxset", "collectionfolder"].contains($0.type?.lowercased() ?? "") } }
-
-    func load() async {
-        guard !isLoading else { return }
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false; hasLoaded = true }
-        do { items = try await client.favoriteItems() }
-        catch { if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription } }
-    }
-}
-
-private struct V3EmbySearchView: View {
-    let client: EmbyAPIClient
-    let onClose: () -> Void
-    let dock: AnyView
-    @StateObject private var model: V3SearchViewModel
-    @State private var searchText = ""
-
-    init(client: EmbyAPIClient, onClose: @escaping () -> Void, dock: AnyView) {
-        self.client = client
-        self.onClose = onClose
-        self.dock = dock
-        _model = StateObject(wrappedValue: V3SearchViewModel(client: client))
-    }
-
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 10) {
-                V3PageHeader(title: "æœç´¢", onClose: onClose)
-                HStack(spacing: 9) {
-                    Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                    TextField("æœç´¢å½“å‰ Emby", text: $searchText, onCommit: { Task { await model.search(searchText) } }).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    if !searchText.isEmpty { Button { searchText = ""; model.items = [] } label: { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary) } }
-                }
-                .padding(.horizontal, 12)
-                .frame(height: 42)
-                .background(Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .padding(.horizontal, 16)
-
-                ScrollView(.vertical, showsIndicators: false) {
-                    EmbyPosterGrid(items: model.items) { item in
-                        EmbyPosterDetailLink(item: item, client: client) {
-                            V3PosterCard(item: item, client: client, width: nil)
-                        }
-                    }
-                    .padding(.bottom, 86)
-                }
-                if model.isLoading { ProgressView().padding(.bottom, 8) }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-            .overlay(alignment: .bottom) { dock }
-            .navigationBarHidden(true)
-        }
-        .navigationViewStyle(StackNavigationViewStyle())
-        .ignoresSafeArea(.container, edges: .bottom)
-    }
-}
-
-@MainActor
-private final class V3SearchViewModel: ObservableObject {
-    @Published var items: [LibraryItem] = []
-    @Published var isLoading = false
-    private let client: EmbyAPIClient
-    init(client: EmbyAPIClient) { self.client = client }
-
-    func search(_ term: String) async {
-        guard !isLoading else { return }
-        isLoading = true
-        defer { isLoading = false }
-        do { items = try await client.searchItems(term: term) }
-        catch { if !isEmbyRequestCancellation(error) { items = [] } }
-    }
-}
-
-private struct V3EmbyServerSettingsView: View {
-    let session: EmbySession
-    let onClose: () -> Void
-    let dock: AnyView
-    @State private var shareURL: URL?
-
-    var body: some View {
-        NavigationView {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
-                    V3PageHeader(title: "è®¾ç½®", onClose: onClose)
-                    V3SettingsCard {
-                        settingRow("æœåŠ¡å™¨", value: session.serverName, systemImage: "externaldrive")
-                        Divider().padding(.leading, 46)
-                        settingRow("ç”¨æˆ·", value: session.user.name, systemImage: "person")
-                        Divider().padding(.leading, 46)
-                        settingRow("ç‰ˆæœ¬", value: session.serverVersion, systemImage: "info.circle")
-                    }
-                    V3SettingsCard {
-                        NavigationLink(destination: PlayerSettingsView()) { settingRow("æ’­æ”¾è®¾ç½®", value: nil, systemImage: "playpause") }
-                        Divider().padding(.leading, 46)
-                        NavigationLink(destination: PlaybackLabView()) { settingRow("æ’­æ”¾å™¨å®éªŒå®¤", value: nil, systemImage: "wrench.and.screwdriver") }
-                    }
-                    V3SettingsCard {
-                        Button { do { shareURL = try DiagnosticsLogger.shared.export() } catch {} } label: { settingRow("å¯¼å‡ºæ’­æ”¾æ—¥å¿—", value: nil, systemImage: "doc.text") }.buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 86)
-            }
-            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
-            .overlay(alignment: .bottom) { dock }
-            .navigationBarHidden(true)
-            .sheet(isPresented: Binding(get: { shareURL != nil }, set: { if !$0 { shareURL = nil } })) { if let shareURL { ActivityView(items: [shareURL]) } }
-        }
-        .navigationViewStyle(StackNavigationViewStyle())
-        .ignoresSafeArea(.container, edges: .bottom)
-    }
-
-    private func settingRow(_ title: String, value: String?, systemImage: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage).foregroundColor(.blue).frame(width: 26)
-            Text(title).foregroundColor(.primary)
-            Spacer()
-            if let value { Text(value).foregroundColor(.secondary).lineLimit(1) }
-            Image(systemName: "chevron.right").font(.caption2).foregroundColor(Color(uiColor: .tertiaryLabel))
-        }
-        .padding(.horizontal, 13)
-        .frame(minHeight: 54)
-        .contentShape(Rectangle())
-    }
-}
-
-private struct V3SettingsCard<Content: View>: View {
-    let content: Content
-    init(@ViewBuilder content: () -> Content) { self.content = content() }
-    var body: some View { VStack(spacing: 0) { content }.background(Color(uiColor: .secondarySystemGroupedBackground)).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous)) }
-}
-
-private struct V3HomeCarouselBackgroundTint: View {
-    let colorScheme: ColorScheme
-    var body: some View {
-        LinearGradient(
-            stops: [
-                .init(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.08), location: 0.00),
-                .init(color: Color.clear, location: 0.26),
-                .init(color: Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.08 : 0.06), location: 0.56),
-                .init(color: Color(uiColor: .systemBackground).opacity(colorScheme == .dark ? 0.16 : 0.14), location: 1.00)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
-}
-
-private struct V3HomeScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
-private final class V3HomeCarouselPageOffsetProbeView: UIView {
-    var hierarchyDidChange: ((UIView) -> Void)?
-
-    override func didMoveToSuperview() {
-        super.didMoveToSuperview()
-        hierarchyDidChange?(self)
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        hierarchyDidChange?(self)
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        hierarchyDidChange?(self)
-    }
-}
-
-private struct V3HomeCarouselPageOffsetObserver: UIViewRepresentable {
-    let onChange: (CGFloat) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
-
-    func makeUIView(context: Context) -> V3HomeCarouselPageOffsetProbeView {
-        let view = V3HomeCarouselPageOffsetProbeView(frame: .zero)
-        view.backgroundColor = .clear
-        view.isUserInteractionEnabled = false
-        view.hierarchyDidChange = { [weak coordinator = context.coordinator] probe in coordinator?.attach(from: probe) }
-        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak view] in
-            guard let view else { return }
-            coordinator?.attach(from: view)
-        }
-        return view
-    }
-
-    func updateUIView(_ uiView: V3HomeCarouselPageOffsetProbeView, context: Context) {
-        context.coordinator.onChange = onChange
-        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
-            guard let uiView else { return }
-            coordinator?.attach(from: uiView)
-        }
-    }
-
-    static func dismantleUIView(_ uiView: V3HomeCarouselPageOffsetProbeView, coordinator: Coordinator) {
-        uiView.hierarchyDidChange = nil
-        coordinator.detach()
-    }
-
-    final class Coordinator {
-        var onChange: (CGFloat) -> Void
-        private weak var scrollView: UIScrollView?
-        private var contentOffsetObservation: NSKeyValueObservation?
-
-        init(onChange: @escaping (CGFloat) -> Void) { self.onChange = onChange }
-
-        func attach(from probe: UIView) {
-            guard let scrollView = ancestorPagingScrollView(from: probe) else { return }
-            guard self.scrollView !== scrollView else {
-                emit(scrollView)
-                return
-            }
-            contentOffsetObservation?.invalidate()
-            self.scrollView = scrollView
-            contentOffsetObservation = scrollView.observe(\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in self?.emit(scrollView) }
-        }
-
-        func detach() {
-            contentOffsetObservation?.invalidate()
-            contentOffsetObservation = nil
-            scrollView = nil
-        }
-
-        private func ancestorPagingScrollView(from probe: UIView) -> UIScrollView? {
-            var current: UIView? = probe
-            while let view = current {
-                if let scrollView = view as? UIScrollView,
-                   scrollView.isPagingEnabled,
-                   scrollView.bounds.width > 1,
-                   scrollView.contentSize.width >= scrollView.bounds.width * 2 {
-                    return scrollView
-                }
-                current = view.superview
-            }
-            return nil
-        }
-
-        private func emit(_ scrollView: UIScrollView) {
-            let width = max(1, scrollView.bounds.width)
-            let centerOffset = width
-            let value = min(1, max(-1, (scrollView.contentOffset.x - centerOffset) / width))
-            if Thread.isMainThread { onChange(value) }
-            else { DispatchQueue.main.async { [weak self] in self?.onChange(value) } }
-        }
-    }
-}
-
-private struct V3PageHeader: View {
-    let title: String
-    let onClose: () -> Void
-    var body: some View {
-        HStack {
-            Spacer().frame(width: 36)
-            Spacer()
-            Text(title).font(.title2.weight(.bold))
-            Spacer()
-            Button(action: onClose) { Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundColor(.primary).frame(width: 36, height: 36).background(Color(uiColor: .secondarySystemBackground)).clipShape(Circle()) }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 5)
-    }
-}
-
-private struct V3LibraryTile: View {
-    let item: LibraryItem
-    let client: EmbyAPIClient
-    var body: some View {
-        VStack(spacing: 6) {
-            V3RemoteImage(url: client.imageURL(itemId: item.id, maxWidth: 480, tag: item.primaryImageTag), contentMode: .fill).frame(width: 164, height: 92).clipped().clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            Text(item.name).font(.subheadline.weight(.medium)).foregroundColor(.primary).lineLimit(1).frame(width: 164)
-        }
-    }
-}
-
-private struct V3LandscapeCard: View {
-    let item: LibraryItem
-    let client: EmbyAPIClient
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            ZStack(alignment: .bottomLeading) {
-                V3RemoteImage(url: client.imageURL(itemId: item.id, imageType: item.backdropImageTags.isEmpty ? "Primary" : "Backdrop", maxWidth: 650, tag: item.backdropImageTags.first ?? item.primaryImageTag), contentMode: .fill).frame(width: 212, height: 120).clipped()
-                if item.playbackProgress > 0 { GeometryReader { proxy in VStack { Spacer(); Rectangle().fill(Color.blue).frame(width: proxy.size.width * item.playbackProgress, height: 3) } } }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            Text(item.name).font(.subheadline.weight(.semibold)).lineLimit(1).frame(width: 212, alignment: .leading)
-            Text(v3MediaSubtitle(item)).font(.caption).foregroundColor(.secondary).lineLimit(1)
-        }
-    }
-}
-
-private struct V3PosterCard: View {
-    @Environment(\.embyPosterGridCellWidth) private var gridCellWidth
-    let item: LibraryItem
-    let client: EmbyAPIClient
-    let width: CGFloat?
-
-    private var resolvedWidth: CGFloat { width ?? gridCellWidth ?? 118 }
-    private var posterHeight: CGFloat { floor(resolvedWidth / EmbyPosterGridMetrics.posterAspectRatio) }
-    private var yearText: String { item.productionYear.map(String.init) ?? " " }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ZStack(alignment: .bottomLeading) {
-                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 440, tag: item.preferredPrimaryImageTag), contentMode: .fill)
-                    .frame(width: resolvedWidth, height: posterHeight)
-                    .clipped()
-                if item.playbackProgress > 0 { GeometryReader { proxy in VStack { Spacer(); Rectangle().fill(Color.blue).frame(width: proxy.size.width * item.playbackProgress, height: 3) } } }
-                if let count = item.userData?.unplayedItemCount, count > 0 {
-                    VStack { HStack { Spacer(); Text("\(count)").font(.caption2.weight(.bold)).foregroundColor(.white).padding(6).background(Color.blue).clipShape(Circle()) }; Spacer() }.padding(5)
-                } else if item.isPlayed {
-                    VStack { HStack { Spacer(); Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundColor(.white).padding(6).background(Color.green).clipShape(Circle()) }; Spacer() }.padding(5)
-                }
-            }
-            .frame(width: resolvedWidth, height: posterHeight)
-            .background(Color(uiColor: .secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name).font(.subheadline).lineLimit(1).frame(width: resolvedWidth, height: 20, alignment: .leading)
-                Text(yearText).font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: resolvedWidth, height: 16, alignment: .leading).opacity(item.productionYear == nil ? 0 : 1)
-            }
-            .frame(width: resolvedWidth, height: 38, alignment: .topLeading)
-        }
-        .frame(width: resolvedWidth, alignment: .leading)
-    }
-}
-
-private struct V3RemoteImage: View {
-    let url: URL?
-    let contentMode: ContentMode
-    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode, placeholderSystemImage: "play.rectangle", showsLoadingIndicator: false) }
-}
-
-private func v3MediaSubtitle(_ item: LibraryItem) -> String {
-    if let seriesName = item.seriesName, let season = item.parentIndexNumber, let episode = item.indexNumber { return "\(seriesName) Â· S\(season):E\(episode)" }
-    if let year = item.productionYear { return String(year) }
-    return item.type ?? ""
-}
-
-private func v3MediaTypeTitle(_ item: LibraryItem) -> String {
-    switch item.type?.lowercased() {
-    case "movie": return "ç”µå½±"
-    case "series": return "å‰§é›†"
-    case "episode": return "å‰§é›†"
-    case "video": return "è§†é¢‘"
-    default: return item.type ?? ""
-    }
-}
-
-private func v3CollectionTypeTitle(_ value: String) -> String {
-    switch value.lowercased() {
-    case "movies": return "ç”µå½±"
-    case "tvshows": return "ç”µè§†å‰§"
-    case "music": return "éŸ³ä¹"
-    case "homevideos": return "å®¶åº­è§†é¢‘"
-    case "mixed": return "æ··åˆå†…å®¹"
-    default: return value
-    }
-}
+    private func carouselHeroSlide(item: LibraryItem, width: CGFloat, viewportHeight: CGFloat) -> some View {
+        let backdropBaseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width)
+        let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight)
+        let backdropViewportHeight = AdaptiveHeroRevealMetrics.detailBackdropViewportHeight(width: width)
+        let backdropViewport = CGSize(width: width, height: backdropViewportHeight)
+        let sourceSize = carouselSourceSizeByID[item.id]
+        let cropTravel = AdaptiveHeroRevealMetrics.cropTravel(imageSize: sourceSize, viewportSize: backdropViewport)
+        let stretch = max(0, homeRawScrollMinY)
+        let upwardScroll = max(0, -a½µ•I…İMÉ½±±5¥¹d¤(€€€€€€€±•Ğ½¹ÍÕµ•‘É½ÁMÉ½±°€ô‘…ÁÑ¥Ù•!•É½I•Ù•…±5•ÑÉ¥Ì¹½¹ÍÕµ•‘É½ÁMÉ½±°¡ÕÁİ…É‘MÉ½±°èÕÁİ…É‘MÉ½±°°É½ÁQÉ…Ù•°èÉ½ÁQÉ…Ù•°°É•ÍÁ½¹Í•…Ñ½Èè‘…ÁÑ¥Ù•!•É½I•Ù•…±5•ÑÉ¥Ì¹‘•Ñ…¥±É½ÁI•ÍÁ½¹Í•…Ñ½È¤(€€€€€€€±•Ğ‰…­‘É½ÁA¥¹=™™Í•Ğ€ô‘…ÁÑ¥Ù•!•É½I•Ù•…±5•ÑÉ¥Ì¹‰…­‘É½ÁA¥¹=™™Í•Ğ¡ÕÁİ…É‘MÉ½±°èÕÁİ…É‘MÉ½±°°É½ÁQÉ…Ù•°èÉ½ÁQÉ…Ù•°°É•ÍÁ½¹Í•…Ñ½Èè‘…ÁÑ¥Ù•!•É½I•Ù•…±5•ÑÉ¥Ì¹‘•Ñ…¥±É½ÁI•ÍÁ½¹Í•…Ñ½È¤(€€€€€€€±•Ğ‰…­‘É½ÁY¥ÍÕ…±!•¥¡Ğ€ô‰…­‘É½Á	…Í•!•¥¡Ğ€¬ÍÑÉ•Ñ (€€€€€€€±•ĞÙ¥ÍÕ…±!•¥¡Ğ€ô‰…Í•!•¥¡Ğ€¬ÍÑÉ•Ñ (€€€€€€€±•ĞÍÑÉ•Ñ¡•‘	…­‘É½ÁY¥•İÁ½ÉĞ€ôM¥é”¡İ¥‘Ñ èİ¥‘Ñ °¡•¥¡Ğè‰…­‘É½ÁY¥•İÁ½ÉÑ!•¥¡Ğ€¬ÍÑÉ•Ñ ¤(€€€€€€€±•ĞÉ•¹‘•É•‘%µ…•M¥é”€ôÍÑÉ•Ñ €ø€À€ü‘…ÁÑ¥Ù•!•É½I•Ù•…±5•ÑÉ¥Ì¹ÍÑÉ•Ñ¡•‘%µ…•M¥é”¡¥µ…•M¥é”èÍ½ÕÉ•M¥é”°Ù¥•İÁ½ÉÑM¥é”èÍÑÉ•Ñ¡•‘	…­‘É½ÁY¥•İÁ½ÉĞ¤€è‘…ÁÑ¥Ù•!•É½I•Ù•…±5•ÑÉ¥Ì¹É•¹‘•É•‘%µ…•M¥é”¡¥µ…•M¥é”èÍ½ÕÉ•M¥é”°Ù¥•İÁ½ÉÑM¥é”è‰…­‘É½ÁY¥•İÁ½ÉĞ°½¹ÍÕµ•‘É½ÁMÉ½±°è½¹ÍÕµ•‘É½ÁMÉ½±°¤(€€€€€€€±•Ğ±•…É%µ…•	½ÑÑ½´€ô‘…ÁÑ¥Ù•!•É½I•Ù•…±5•ÑÉ¥Ì¹±•…É%µ…•	½ÑÑ½´¡É•¹‘•É•‘%µ…•M¥é”èÉ•¹‘•É•‘%µ…•M¥é”°Ù¥•İÁ½ÉÑ!•¥¡Ğè‰…­‘É½ÁY¥ÍÕ…±!•¥¡Ğ¤(€€€€€€€±•Ğµ…Í­…‘•MÁ…¸€ôµ¥¸ À¸ÌĞ°±•…É%µ…•	½ÑÑ½´€¨€À¸ĞØ¤(€€€€€€€±•Ğµ…Í­MÑ…ÉĞ€ôµ…à À¸ÄÀ°±•…É%µ…•	½ÑÑ½´€´µ…Í­…‘•MÁ…¸¤(€€€€€€€±•Ğµ…Í­¥ÉÍÑ5¥€ôµ…Í­MÑ…ÉĞ€¬€¡±•…É%µ…•	½ÑÑ½´€´µ…Í­MÑ…ÉĞ¤€¨€À¸Èä(€€€€€€€±•Ğµ…Í­M•½¹‘5¥€ôµ…Í­MÑ…ÉĞ€¬€¡±•…É%µ…•	½ÑÑ½´€´µ…Í­MÑ…ÉĞ¤€¨€À¸ÜÄ(€€€€€€€±•ĞÕÍ•Í1¥¡Ğ€ô…É½ÕÍ•±1¥¡Ñ½É•É½Õ¹‘	å%m¥Ñ•´¹¥‘t€üüÑÉÕ”(€€€€€€€±•Ğ½¹ÑÉ…ÍÑMÉ¥´€ôÕÍ•Í1¥¡Ğ€ü½±½È¹‰±…¬¹½Á…¥Ñä À¸ÈÈ¤€è½±½È¹İ¡¥Ñ”¹½Á…¥Ñä À¸ÄØ¤((€€€€€€€É•ÑÕÉ¸iMÑ…¬¡…±¥¹µ•¹Ğè€¹‰½ÑÑ½´¤ì(€€€€€€€€€€€iMÑ…¬¡…±¥¹µ•¹Ğè€¹Ñ½À¤ì(€€€€€€€€€€€€€€€µ‰å…¡•‘I•µ½Ñ•%µ…”¡ÕÉ°è…É½ÕÍ•±%µ…•UI0¡¥Ñ•´¤°½¹Ñ•¹Ñ5½‘”è€¹™¥±°°Á±…•¡½±‘•ÉMåÍÑ•µ%µ…”è€‰Á¡½Ñ¼ˆ°Í¡½İÍ1½…‘¥¹%¹‘¥…Ñ½Èè™…±Í”°½¹%µ…•1½…‘•èì¥µ…”¥¸ÕÁ‘…Ñ•…É½ÕÍ•±%µ…•5•ÑÉ¥Ì¡¥µ…”°¥Ñ•µ%è¥Ñ•´¹¥¤ô¤(€€€€€€€€€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ èÉ•¹‘•É•‘%µ…•M¥é”¹İ¥‘Ñ °¡•¥¡ĞèÉ•¹‘•É•‘%µ…•M¥é”¹¡•¥¡Ğ¤(€€€€€€€€€€€ô(€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ èİ¥‘Ñ °¡•¥¡Ğè‰…­‘É½ÁY¥ÍÕ…±!•¥¡Ğ°…±¥¹µ•¹Ğè€¹Ñ½À¤(€€€€€€€€€€€€¹±¥ÁÁ• ¤(€€€€€€€€€€€€¹µ…Í¬ (€€€€€€€€€€€€€€€1¥¹•…ÉÉ…‘¥•¹Ğ (€€€€€€€€€€€€€€€€€€€ÍÑ½ÁÌèl(€€€€€€€€€€€€€€€€€€€€€€€€¹¥¹¥Ğ¡½±½Èè€¹‰±…¬°±½…Ñ¥½¸è€À¸ÀÀ¤°(€€€€€€€€€€€€€€€€€€€€€€€€¹¥¹¥Ğ¡½±½Èè€¹‰±…¬°±½…Ñ¥½¸èµ…Í­MÑ…ÉĞ¤°(€€€€€€€€€€€€€€€€€€€€€€€€¹¥¹¥Ğ¡½±½Èè€¹‰±…¬¹½Á…¥Ñä À¸äÈ¤°±½…Ñ¥½¸èµ…Í­¥ÉÍÑ5¥¤°(€€€€€€€€€€€€€€€€€€€€€€€€¹¥¹¥Ğ¡½±½Èè€¹‰±…¬¹½Á…¥Ñä À¸ÔÈ¤°±½…Ñ¥½¸èµ…Í­M•½¹‘5¥¤°(€€€€€€€€€€€€€€€€€€€€€€€€¹¥¹¥Ğ¡½±½Èè€¹±•…È°±½…Ñ¥½¸è±•…É%µ…•	½ÑÑ½´¤(€€€€€€€€€€€€€€€€€€€t°(€€€€€€€€€€€€€€€€€€€ÍÑ…ÉÑA½¥¹Ğè€¹Ñ½À°(€€€€€€€€€€€€€€€€€€€•¹‘A½¥¹Ğè€¹‰½ÑÑ½´(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€¤(€€€€€€€€€€€€¹½™™Í•Ğ¡äèÍÑÉ•Ñ €ø€À€ü€À€è‰…­‘É½ÁA¥¹=™™Í•Ğ¤(€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ èİ¥‘Ñ °¡•¥¡ĞèÙ¥ÍÕ…±!•¥¡Ğ°…±¥¹µ•¹Ğè€¹Ñ½À¤((€€€€€€€€€€€1¥¹•…ÉÉ…‘¥•¹Ğ (€€€€€€€€€€€€€€€ÍÑ½ÁÌèl(€€€€€€€€€€€€€€€€€€€€¹¥¹¥Ğ¡½±½Èè€¹±•…È°±½…Ñ¥½¸è€À¸ÀÀ¤°(€€€€€€€€€€€€€€€€€€€€¹¥¹¥Ğ¡½±½Èè€¹±•…È°±½…Ñ¥½¸è€À¸ĞØ¤°(€€€€€€€€€€€€€€€€€€€€¹¥¹¥Ğ¡½±½Èè½¹ÑÉ…ÍÑMÉ¥´¹½Á…¥Ñä À¸ĞÈ¤°±½…Ñ¥½¸è€À¸ØØ¤°(€€€€€€€€€€€€€€€€€€€€¹¥¹¥Ğ¡½±½Èè½¹ÑÉ…ÍÑMÉ¥´°±½…Ñ¥½¸è€À¸àÈ¤°(€€€€€€€€€€€€€€€€€€€€¹¥¹¥Ğ¡½±½Èè€¹±•…È°±½…Ñ¥½¸è€Ä¸ÀÀ¤(€€€€€€€€€€€€€€€t°(€€€€€€€€€€€€€€€ÍÑ…ÉÑA½¥¹Ğè€¹Ñ½À°(€€€€€€€€€€€€€€€•¹‘A½¥¹Ğè€¹‰½ÑÑ½´(€€€€€€€€€€€€¤((€€€€€€€€€€€XÍ!•É½…É¡¥Ñ•´è¥Ñ•´°±¥•¹Ğè±¥•¹Ğ°ÕÍ•Í1¥¡Ñ½É•É½Õ¹èÕÍ•Í1¥¡Ğ¤(€€€€€€€ô(€€€€€€€€¹™É…µ”¡İ¥‘Ñ èİ¥‘Ñ °¡•¥¡ĞèÙ¥ÍÕ…±!•¥¡Ğ¤(€€€€€€€€¹½™™Í•Ğ¡äèÍÑÉ•Ñ €ø€À€ü€µÍÑÉ•Ñ €è€À¤(€€€€€€€€¹™É…µ”¡İ¥‘Ñ èİ¥‘Ñ °¡•¥¡Ğè‰…Í•!•¥¡Ğ°…±¥¹µ•¹Ğè€¹Ñ½À¤(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù…È…É½ÕÍ•±A…•%¹‘¥…Ñ½ÉÌèÍ½µ”Y¥•Üì(€€€€€€€!MÑ…¬¡ÍÁ…¥¹œè€à¤ì(€€€€€€€€€€€½É… ¡µ½‘•°¹…É½ÕÍ•±%Ñ•µÌ¤ì¥Ñ•´¥¸(€€€€€€€€€€€€€€€¥É±” ¤(€€€€€€€€€€€€€€€€€€€€¹™¥±°¡¥Ñ•´¹¥€ôô‘¥ÍÁ±…å•‘…É½ÕÍ•±%Ñ•µ%€ü½±½È¹ÁÉ¥µ…Éä¹½Á…¥Ñä À¸àà¤€è½±½È¹ÁÉ¥µ…Éä¹½Á…¥Ñä À¸ÈØ¤¤(€€€€€€€€€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ è¥Ñ•´¹¥€ôô‘¥ÍÁ±…å•‘…É½ÕÍ•±%Ñ•µ%€ü€Ü€è€Ø°¡•¥¡Ğè¥Ñ•´¹¥€ôô‘¥ÍÁ±…å•‘…É½ÕÍ•±%Ñ•µ%€ü€Ü€è€Ø¤(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄÈ¤(€€€€€€€€¹™É…µ”¡¡•¥¡Ğè€Äà¤(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÁ•ÉÍ¥ÍÑ•¹Ñ…É½ÕÍ•±	…­‘É½À¡Í¥é”èM¥é”¤€´øÍ½µ”Y¥•Üì(€€€€€€€iMÑ…¬ì(€€€€€€€€€€€¥˜±•Ğ¥Ñ•´€ôÕÉÉ•¹Ñ…É½ÕÍ•±%Ñ•´ì(€€€€€€€€€€€€€€€…É½ÕÍ•±A•ÉÍ¥ÍÑ•¹Ñ%µ…”¡¥Ñ•´è¥Ñ•´°Í¥é”èÍ¥é”¤¹½Á…¥Ñä¡…É½ÕÍ•±=Á…¥Ñä¡™½Èè¥Ñ•´¹¥¤¤(€€€€€€€€€€€ô(€€€€€€€€€€€¥˜±•Ğ¥Ñ•´€ôÑÉ…¹Í¥Ñ¥½¹Q…É•Ñ…É½ÕÍ•±%Ñ•´ì(€€€€€€€€€€€€€€€…É½ÕÍ•±A•ÉÍ¥ÍÑ•¹Ñ%µ…”¡¥Ñ•´è¥Ñ•´°Í¥é”èÍ¥é”¤¹½Á…¥Ñä¡…É½ÕÍ•±=Á…¥Ñä¡™½Èè¥Ñ•´¹¥¤¤(€€€€€€€€€€€ô((€€€€€€€€€€€1¥¹•…ÉÉ…‘¥•¹Ğ (€€€€€€€€€€€€€€€½±½ÉÌèl(€€€€€€€€€€€€€€€€€€€½±½È¡Õ¥½±½Èè€¹ÍåÍÑ•µ	…­É½Õ¹¤¹½Á…¥Ñä¡½±½ÉM¡•µ”€ôô€¹‘…É¬€ü€À¸Äà€è€À¸ÈØ¤°(€€€€€€€€€€€€€€€€€€€½±½È¡Õ¥½±½Èè€¹ÍåÍÑ•µ	…­É½Õ¹¤¹½Á…¥Ñä¡½±½ÉM¡•µ”€ôô€¹‘…É¬€ü€À¸Ìà€è€À¸ĞØ¤°(€€€€€€€€€€€€€€€€€€€½±½È¡Õ¥½±½Èè€¹ÍåÍÑ•µ	…­É½Õ¹¤¹½Á…¥Ñä¡½±½ÉM¡•µ”€ôô€¹‘…É¬€ü€À¸Ôà€è€À¸ØĞ¤(€€€€€€€€€€€€€€€t°(€€€€€€€€€€€€€€€ÍÑ…ÉÑA½¥¹Ğè€¹Ñ½À°(€€€€€€€€€€€€€€€•¹‘A½¥¹Ğè€¹‰½ÑÑ½´(€€€€€€€€€€€€¤(€€€€€€€ô(€€€€€€€€¹™É…µ”¡İ¥‘Ñ èÍ¥é”¹İ¥‘Ñ °¡•¥¡ĞèÍ¥é”¹¡•¥¡Ğ¤(€€€€€€€€¹±¥ÁÁ• ¤(€€€€€€€€¹¥¹½É•ÍM…™•É•„ ¤(€€€€€€€€¹…±±½İÍ!¥ÑQ•ÍÑ¥¹œ¡™…±Í”¤(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹Œ…É½ÕÍ•±A•ÉÍ¥ÍÑ•¹Ñ%µ…”¡¥Ñ•´è1¥‰É…Éå%Ñ•´°Í¥é”èM¥é”¤€´øÍ½µ”Y¥•Üì(€€€€€€€µ‰å…¡•‘I•µ½Ñ•%µ…”¡ÕÉ°è…É½ÕÍ•±%µ…•UI0¡¥Ñ•´¤°½¹Ñ•¹Ñ5½‘”è€¹™¥±°°Á±…•¡½±‘•ÉMåÍÑ•µ%µ…”è€‰Á¡½Ñ¼ˆ°Í¡½İÍ1½…‘¥¹%¹‘¥…Ñ½Èè™…±Í”°½¹%µ…•1½…‘•èì¥µ…”¥¸ÕÁ‘…Ñ•…É½ÕÍ•±%µ…•5•ÑÉ¥Ì¡¥µ…”°¥Ñ•µ%è¥Ñ•´¹¥¤ô¤(€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ èÍ¥é”¹İ¥‘Ñ °¡•¥¡ĞèÍ¥é”¹¡•¥¡Ğ¤(€€€€€€€€€€€€¹±¥ÁÁ• ¤(€€€€€€€€€€€€¹Í…±•™™•Ğ Ä¸ÄÈ¤(€€€€€€€€€€€€¹‰±ÕÈ¡É…‘¥ÕÌè€ÌÀ¤(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù…È…É½ÕÍ•±AÉ•±½…‘1…å•ÈèÍ½µ”Y¥•Üì(€€€€€€€iMÑ…¬ì(€€€€€€€€€€€½É… ¡µ½‘•°¹…É½ÕÍ•±%Ñ•µÌ¤ì¥Ñ•´¥¸(€€€€€€€€€€€€€€€µ‰å…¡•‘I•µ½Ñ•%µ…”¡ÕÉ°è…É½ÕÍ•±%µ…•UI0¡¥Ñ•´¤°½¹Ñ•¹Ñ5½‘”è€¹™¥±°°Á±…•¡½±‘•ÉMåÍÑ•µ%µ…”è€‰Á¡½Ñ¼ˆ°Í¡½İÍ1½…‘¥¹%¹‘¥…Ñ½Èè™…±Í”°½¹%µ…•1½…‘•èì¥µ…”¥¸ÕÁ‘…Ñ•…É½ÕÍ•±%µ…•5•ÑÉ¥Ì¡¥µ…”°¥Ñ•µ%è¥Ñ•´¹¥¤ô¤(€€€€€€€€€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ è€Ä°¡•¥¡Ğè€Ä¤(€€€€€€€€€€€€€€€€€€€€¹±¥ÁÁ• ¤(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€€¹™É…µ”¡İ¥‘Ñ è€Ä°¡•¥¡Ğè€Ä¤(€€€€€€€€¹½Á…¥Ñä À¸ÀÀÄ¤(€€€€€€€€¹…±±½İÍ!¥ÑQ•ÍÑ¥¹œ¡™…±Í”¤(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹Œ…É½ÕÍ•±É…•ÍÑÕÉ”¡İ¥‘Ñ è±½…Ğ¤€´øÍ½µ”•ÍÑÕÉ”ì(€€€€€€€É…•ÍÑÕÉ”¡µ¥¹¥µÕµ¥ÍÑ…¹”è€ÄÈ°½½É‘¥¹…Ñ•MÁ…”è€¹±½…°¤(€€€€€€€€€€€€¹½¹¡…¹•ìÙ…±Õ”¥¸(€€€€€€€€€€€€€€€±•Ğ¡½É¥é½¹Ñ…°€ôÙ…±Õ”¹ÑÉ…¹Í±…Ñ¥½¸¹İ¥‘Ñ (€€€€€€€€€€€€€€€±•ĞÙ•ÉÑ¥…°€ôÙ…±Õ”¹ÑÉ…¹Í±…Ñ¥½¸¹¡•¥¡Ğ(€€€€€€€€€€€€€€€Õ…É…‰Ì¡¡½É¥é½¹Ñ…°¤€ø…‰Ì¡Ù•ÉÑ¥…°¤€¨€Ä¸Àà°…‰Ì¡¡½É¥é½¹Ñ…°¤€ø€Ğ•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€€€€€Õ…ÉÑÉ…¹Í¥Ñ¥½¹Q½%€ôô¹¥°ñğ¥Í…É½ÕÍ•±É…¥¹œ•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€€€€€Õ…É±•ĞÕÉÉ•¹Ñ%€ôÕÉÉ•¹Ñ…É½ÕÍ•±%Ñ•µ%°±•ĞÑ…É•Ñ%€ô¹•¥¡‰½É…É½ÕÍ•±%Ñ•µ%¡™É½´èÕÉÉ•¹Ñ%°‘¥É•Ñ¥½¸è¡½É¥é½¹Ñ…°€ğ€À€ü€Ä€è€´Ä¤•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€€€€€¥˜€…¥Í…É½ÕÍ•±É…¥¹œñğÑÉ…¹Í¥Ñ¥½¹É½µ%€„ôÕÉÉ•¹Ñ%ñğÑÉ…¹Í¥Ñ¥½¹Q½%€„ôÑ…É•Ñ%ì(€€€€€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹É½µ%€ôÕÉÉ•¹Ñ%(€€€€€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹Q½%€ôÑ…É•Ñ%(€€€€€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ€ô€À(€€€€€€€€€€€€€€€€€€€¥Í…É½ÕÍ•±É…¥¹œ€ôÑÉÕ”(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ€ôµ¥¸ Ä°µ…à À°…‰Ì¡¡½É¥é½¹Ñ…°¤€¼µ…à Ä°İ¥‘Ñ ¤¤¤(€€€€€€€€€€€ô(€€€€€€€€€€€€¹½¹¹‘•ìÙ…±Õ”¥¸(€€€€€€€€€€€€€€€Õ…É¥Í…É½ÕÍ•±É…¥¹œ°±•ĞÑ…É•Ñ%€ôÑÉ…¹Í¥Ñ¥½¹Q½%•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€€€€€±•ĞÁÉ•‘¥Ñ•€ô…‰Ì¡Ù…±Õ”¹ÁÉ•‘¥Ñ•‘¹‘QÉ…¹Í±…Ñ¥½¸¹İ¥‘Ñ ¤(€€€€€€€€€€€€€€€±•ĞÍ¡½Õ±‘½µµ¥Ğ€ôÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ€øô€À¸ÈàñğÁÉ•‘¥Ñ•€øôİ¥‘Ñ €¨€À¸Ğà(€€€€€€€€€€€€€€€¥Í…É½ÕÍ•±É…¥¹œ€ô™…±Í”(€€€€€€€€€€€€€€€¥˜Í¡½Õ±‘½µµ¥Ğì½µÁ±•Ñ•%¹Ñ•É…Ñ¥Ù•QÉ…¹Í¥Ñ¥½¸¡Ñ¼èÑ…É•Ñ%¤ô(€€€€€€€€€€€€€€€•±Í”ì…¹•±%¹Ñ•É…Ñ¥Ù•QÉ…¹Í¥Ñ¥½¸ ¤ô(€€€€€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹Œ½µÁ±•Ñ•%¹Ñ•É…Ñ¥Ù•QÉ…¹Í¥Ñ¥½¸¡Ñ¼Ñ…É•Ñ%èMÑÉ¥¹œ¤ì(€€€€€€€±•Ğ™É½µ%€ôÑÉ…¹Í¥Ñ¥½¹É½µ%(€€€€€€€İ¥Ñ¡¹¥µ…Ñ¥½¸ ¹•…Í•=ÕĞ¡‘ÕÉ…Ñ¥½¸è€À¸ÈÈ¤¤ìÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ€ô€Äô(€€€€€€€¥ÍÁ…Ñ¡EÕ•Õ”¹µ…¥¸¹…Íå¹™Ñ•È¡‘•…‘±¥¹”è€¹¹½Ü ¤€¬€À¸ÈÌ¤ì(€€€€€€€€€€€Õ…ÉÑÉ…¹Í¥Ñ¥½¹É½µ%€ôô™É½µ%°ÑÉ…¹Í¥Ñ¥½¹Q½%€ôôÑ…É•Ñ%•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€Í•ÑÑ±•…É½ÕÍ•°¡½¸èÑ…É•Ñ%¤(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹Œ…¹•±%¹Ñ•É…Ñ¥Ù•QÉ…¹Í¥Ñ¥½¸ ¤ì(€€€€€€€±•Ğ™É½µ%€ôÑÉ…¹Í¥Ñ¥½¹É½µ%(€€€€€€€±•ĞÑ½%€ôÑÉ…¹Í¥Ñ¥½¹Q½%(€€€€€€€İ¥Ñ¡¹¥µ…Ñ¥½¸ ¹•…Í•=ÕĞ¡‘ÕÉ…Ñ¥½¸è€À¸Äà¤¤ìÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ€ô€Àô(€€€€€€€¥ÍÁ…Ñ¡EÕ•Õ”¹µ…¥¸¹…Íå¹™Ñ•È¡‘•…‘±¥¹”è€¹¹½Ü ¤€¬€À¸Ää¤ì(€€€€€€€€€€€Õ…ÉÑÉ…¹Í¥Ñ¥½¹É½µ%€ôô™É½µ%°ÑÉ…¹Í¥Ñ¥½¹Q½%€ôôÑ½%°ÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ€ğô€À¸ÀÀÄ•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹É½µ%€ô¹¥°(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹Q½%€ô¹¥°(€€€€€€€€€€€…É½ÕÍ•±1…ÍÑM•ÑÑ±•‘Ğ€ô…Ñ” ¤(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹Œ…ÕÑ½‘Ù…¹•…É½ÕÍ•±%™9••‘• ¤ì(€€€€€€€Õ…É¥Í!½µ•Ñ¥Ù”°€…¥Í…É½ÕÍ•±É…¥¹œ°ÑÉ…¹Í¥Ñ¥½¹Q½%€ôô¹¥°°µ½‘•°¹…É½ÕÍ•±%Ñ•µÌ¹½Õ¹Ğ€ø€Ä•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€Õ…É…Ñ” ¤¹Ñ¥µ•%¹Ñ•ÉÙ…±M¥¹”¡…É½ÕÍ•±1…ÍÑM•ÑÑ±•‘Ğ¤€øô€Ø•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€Õ…É±•ĞÕÉÉ•¹Ñ%€ôÕÉÉ•¹Ñ…É½ÕÍ•±%Ñ•µ%°±•ĞÑ…É•Ñ%€ô¹•¥¡‰½É…É½ÕÍ•±%Ñ•µ%¡™É½´èÕÉÉ•¹Ñ%°‘¥É•Ñ¥½¸è€Ä¤•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€ÑÉ…¹Í¥Ñ¥½¹É½µ%€ôÕÉÉ•¹Ñ%(€€€€€€€ÑÉ…¹Í¥Ñ¥½¹Q½%€ôÑ…É•Ñ%(€€€€€€€ÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ€ô€À(€€€€€€€İ¥Ñ¡¹¥µ…Ñ¥½¸ ¹•…Í•%¹=ÕĞ¡‘ÕÉ…Ñ¥½¸è€À¸ØÈ¤¤ìÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ€ô€Äô(€€€€€€€¥ÍÁ…Ñ¡EÕ•Õ”¹µ…¥¸¹…Íå¹™Ñ•È¡‘•…‘±¥¹”è€¹¹½Ü ¤€¬€À¸ØÌ¤ì(€€€€€€€€€€€Õ…ÉÑÉ…¹Í¥Ñ¥½¹É½µ%€ôôÕÉÉ•¹Ñ%°ÑÉ…¹Í¥Ñ¥½¹Q½%€ôôÑ…É•Ñ%•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€Í•ÑÑ±•…É½ÕÍ•°¡½¸èÑ…É•Ñ%¤(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÍ•ÑÑ±•…É½ÕÍ•°¡½¸¥Ñ•µ%èMÑÉ¥¹œ¤ì(€€€€€€€ÕÉÉ•¹Ñ…É½ÕÍ•±%Ñ•µ%€ô¥Ñ•µ%(€€€€€€€ÑÉ…¹Í¥Ñ¥½¹É½µ%€ô¹¥°(€€€€€€€ÑÉ…¹Í¥Ñ¥½¹Q½%€ô¹¥°(€€€€€€€ÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ€ô€À(€€€€€€€¥Í…É½ÕÍ•±É…¥¹œ€ô™…±Í”(€€€€€€€…É½ÕÍ•±1…ÍÑM•ÑÑ±•‘Ğ€ô…Ñ” ¤(€€€€€€€¥…¹½ÍÑ¥Í1½•È¹Í¡…É•¹±½œ ‰!½µ•…É½ÕÍ•°ˆ°€‰Í•ÑÑ±•¥Ñ•´õp¡¥Ñ•µ%¤ˆ¤(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÍå¹¡É½¹¥é•…É½ÕÍ•±%Ñ•µÌ ¤ì(€€€€€€€±•Ğ¥Ñ•µÌ€ôµ½‘•°¹…É½ÕÍ•±%Ñ•µÌ(€€€€€€€±•Ğ¥‘Ì€ôM•Ğ¡¥Ñ•µÌ¹µ…À¡p¹¥¤¤(€€€€€€€¥˜¥Ñ•µÌ¹¥ÍµÁÑäì(€€€€€€€€€€€ÕÉÉ•¹Ñ…É½ÕÍ•±%Ñ•µ%€ô¹¥°(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹É½µ%€ô¹¥°(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹Q½%€ô¹¥°(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ€ô€À(€€€€€€€€€€€¥Í…É½ÕÍ•±É…¥¹œ€ô™…±Í”(€€€€€€€€€€€½¹…É½ÕÍ•±Ñ¥Ù•¡…¹•¡™…±Í”¤(€€€€€€€€€€€É•ÑÕÉ¸(€€€€€€€ô((€€€€€€€Ù…È¹••‘ÍQÉ…¹Í¥Ñ¥½¹I•Í•Ğ€ô™…±Í”(€€€€€€€¥˜±•ĞÕÉÉ•¹Ñ%€ôÕÉÉ•¹Ñ…É½ÕÍ•±%Ñ•µ%°¥‘Ì¹½¹Ñ…¥¹Ì¡ÕÉÉ•¹Ñ%¤ì(€€€€€€€ô•±Í”ì(€€€€€€€€€€€ÕÉÉ•¹Ñ…É½ÕÍ•±%Ñ•µ%€ô¥Ñ•µÍlÁt¹¥(€€€€€€€€€€€¹••‘ÍQÉ…¹Í¥Ñ¥½¹I•Í•Ğ€ôÑÉÕ”(€€€€€€€ô(€€€€€€€¥˜±•Ğ™É½µ%€ôÑÉ…¹Í¥Ñ¥½¹É½µ%°€…¥‘Ì¹½¹Ñ…¥¹Ì¡™É½µ%¤ì¹••‘ÍQÉ…¹Í¥Ñ¥½¹I•Í•Ğ€ôÑÉÕ”ô(€€€€€€€¥˜±•ĞÑ½%€ôÑÉ…¹Í¥Ñ¥½¹Q½%°€…¥‘Ì¹½¹Ñ…¥¹Ì¡Ñ½%¤ì¹••‘ÍQÉ…¹Í¥Ñ¥½¹I•Í•Ğ€ôÑÉÕ”ô(€€€€€€€¥˜€¡ÑÉ…¹Í¥Ñ¥½¹É½µ%€ôô¹¥°¤€„ô€¡ÑÉ…¹Í¥Ñ¥½¹Q½%€ôô¹¥°¤ì¹••‘ÍQÉ…¹Í¥Ñ¥½¹I•Í•Ğ€ôÑÉÕ”ô(€€€€€€€¥˜±•Ğ™É½µ%€ôÑÉ…¹Í¥Ñ¥½¹É½µ%°™É½µ%€„ôÕÉÉ•¹Ñ…É½ÕÍ•±%Ñ•µ%ì¹••‘ÍQÉ…¹Í¥Ñ¥½¹I•Í•Ğ€ôÑÉÕ”ô(€€€€€€€¥˜¹••‘ÍQÉ…¹Í¥Ñ¥½¹I•Í•Ğì(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹É½µ%€ô¹¥°(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹Q½%€ô¹¥°(€€€€€€€€€€€ÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ€ô€À(€€€€€€€€€€€¥Í…É½ÕÍ•±É…¥¹œ€ô™…±Í”(€€€€€€€€€€€…É½ÕÍ•±1…ÍÑM•ÑÑ±•‘Ğ€ô…Ñ” ¤(€€€€€€€ô(€€€€€€€½¹…É½ÕÍ•±Ñ¥Ù•¡…¹•¡ÑÉÕ”¤(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù…ÈÕÉÉ•¹Ñ…É½ÕÍ•±%Ñ•´è1¥‰É…Éå%Ñ•´üì(€€€€€€€Õ…É±•Ğ¥€ôÕÉÉ•¹Ñ…É½ÕÍ•±%Ñ•µ%•±Í”ìÉ•ÑÕÉ¸¹¥°ô(€€€€€€€É•ÑÕÉ¸µ½‘•°¹…É½ÕÍ•±%Ñ•µÌ¹™¥ÉÍĞì€À¹¥€ôô¥ô(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù…ÈÑÉ…¹Í¥Ñ¥½¹Q…É•Ñ…É½ÕÍ•±%Ñ•´è1¥‰É…Éå%Ñ•´üì(€€€€€€€Õ…É±•Ğ¥€ôÑÉ…¹Í¥Ñ¥½¹Q½%•±Í”ìÉ•ÑÕÉ¸¹¥°ô(€€€€€€€É•ÑÕÉ¸µ½‘•°¹…É½ÕÍ•±%Ñ•µÌ¹™¥ÉÍĞì€À¹¥€ôô¥ô(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù…È‘¥ÍÁ±…å•‘…É½ÕÍ•±%Ñ•µ%èMÑÉ¥¹œüì(€€€€€€€¥˜±•ĞÑ½%€ôÑÉ…¹Í¥Ñ¥½¹Q½%°ÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ€øô€À¸ÔìÉ•ÑÕÉ¸Ñ½%ô(€€€€€€€É•ÑÕÉ¸ÕÉÉ•¹Ñ…É½ÕÍ•±%Ñ•µ%(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹Œ…É½ÕÍ•±=Á…¥Ñä¡™½È¥Ñ•µ%èMÑÉ¥¹œ¤€´ø½Õ‰±”ì(€€€€€€€¥˜±•Ğ™É½µ%€ôÑÉ…¹Í¥Ñ¥½¹É½µ%°±•ĞÑ½%€ôÑÉ…¹Í¥Ñ¥½¹Q½%ì(€€€€€€€€€€€¥˜¥Ñ•µ%€ôô™É½µ%ìÉ•ÑÕÉ¸½Õ‰±” Ä€´µ¥¸ Ä°µ…à À°ÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ¤¤¤ô(€€€€€€€€€€€¥˜¥Ñ•µ%€ôôÑ½%ìÉ•ÑÕÉ¸½Õ‰±”¡µ¥¸ Ä°µ…à À°ÑÉ…¹Í¥Ñ¥½¹AÉ½É•ÍÌ¤¤¤ô(€€€€€€€€€€€É•ÑÕÉ¸€À(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸¥Ñ•µ%€ôôÕÉÉ•¹Ñ…É½ÕÍ•±%Ñ•µ%€ü€Ä€è€À(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹Œ¹•¥¡‰½É…É½ÕÍ•±%Ñ•µ%¡™É½´¥Ñ•µ%èMÑÉ¥¹œ°‘¥É•Ñ¥½¸è%¹Ğ¤€´øMÑÉ¥¹œüì(€€€€€€€±•Ğ¥Ñ•µÌ€ôµ½‘•°¹…É½ÕÍ•±%Ñ•µÌ(€€€€€€€Õ…É¥Ñ•µÌ¹½Õ¹Ğ€ø€Ä°±•Ğ¥¹‘•à€ô¥Ñ•µÌ¹™¥ÉÍÑ%¹‘•à¡İ¡•É”èì€À¹¥€ôô¥Ñ•µ%ô¤•±Í”ìÉ•ÑÕÉ¸¹¥°ô(€€€€€€€±•Ğ¹•áĞ€ô€¡¥¹‘•à€¬‘¥É•Ñ¥½¸€¬¥Ñ•µÌ¹½Õ¹Ğ¤€”¥Ñ•µÌ¹½Õ¹Ğ(€€€€€€€É•ÑÕÉ¸¥Ñ•µÍm¹•áÑt¹¥(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹Œ…É½ÕÍ•±%µ…•UI0¡|¥Ñ•´è1¥‰É…Éå%Ñ•´¤€´øUI0üì(€€€€€€€±¥•¹Ğ¹¥µ…•UI0¡¥Ñ•µ%è¥Ñ•´¹ÁÉ•™•ÉÉ•‘AÉ¥µ…Éå%µ…•%Ñ•µ%°µ…á]¥‘Ñ è€ÄĞÀÀ°Ñ…œè¥Ñ•´¹ÁÉ•™•ÉÉ•‘AÉ¥µ…Éå%µ…•Q…œ¤(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÕÁ‘…Ñ•…É½ÕÍ•±%µ…•5•ÑÉ¥Ì¡|¥µ…”èU%%µ…”°¥Ñ•µ%èMÑÉ¥¹œ¤ì(€€€€€€€¥˜…É½ÕÍ•±M½ÕÉ•M¥é•	å%m¥Ñ•µ%t€„ô¥µ…”¹Í¥é”ì…É½ÕÍ•±M½ÕÉ•M¥é•	å%m¥Ñ•µ%t€ô¥µ…”¹Í¥é”ô(€€€€€€€±•ĞÁÉ•™•ÉÍ1¥¡Ğ€ôµ‰å%µ…•½¹ÑÉ…ÍÑ¹…±åé•È¹ÁÉ•™•ÉÍ1¥¡Ñ½É•É½Õ¹¡™½Èè¥µ…”¤(€€€€€€€Õ…É…É½ÕÍ•±1¥¡Ñ½É•É½Õ¹‘	å%m¥Ñ•µ%t€„ôÁÉ•™•ÉÍ1¥¡Ğ•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€İ¥Ñ¡¹¥µ…Ñ¥½¸ ¹•…Í•=ÕĞ¡‘ÕÉ…Ñ¥½¸è€À¸Äà¤¤ì…É½ÕÍ•±1¥¡Ñ½É•É½Õ¹‘	å%m¥Ñ•µ%t€ôÁÉ•™•ÉÍ1¥¡Ğô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÍ•Ñ¥½¹Q¥Ñ±”¡|Ñ¥Ñ±”èMÑÉ¥¹œ¤€´øÍ½µ”Y¥•ÜìQ•áĞ¡Ñ¥Ñ±”¤¹™½¹Ğ ¹Ñ¥Ñ±”È¹İ•¥¡Ğ ¹‰½±¤¤¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄØ¤ô((€€€ÁÉ¥Ù…Ñ”Ù…È±¥‰É…ÉåI½ÜèÍ½µ”Y¥•Üì(€€€€€€€MÉ½±±Y¥•Ü ¹¡½É¥é½¹Ñ…°°Í¡½İÍ%¹‘¥…Ñ½ÉÌè™…±Í”¤ì(€€€€€€€€€€€1…éå!MÑ…¬¡ÍÁ…¥¹œè€ÄÈ¤ì(€€€€€€€€€€€€€€€½É… ¡µ½‘•°¹Ù¥Í¥‰±•1¥‰É…É¥•Ì¤ì±¥‰É…Éä¥¸(€€€€€€€€€€€€€€€€€€€9…Ù¥…Ñ¥½¹1¥¹¬¡‘•ÍÑ¥¹…Ñ¥½¸èXÍ1¥‰É…Éå	É½İÍ•ÉY¥•Ü¡±¥‰É…Éäè±¥‰É…Éä°±¥•¹Ğè±¥•¹Ğ°‘½¬è‘½¬¤¤ìXÍ1¥‰É…ÉåQ¥±”¡¥Ñ•´è±¥‰É…Éä°±¥•¹Ğè±¥•¹Ğ¤ô¹‰ÕÑÑ½¹MÑå±” ¹Á±…¥¸¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄØ¤(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹Œ±…¹‘Í…Á•I½Ü¡|¥Ñ•µÌèm1¥‰É…Éå%Ñ•µt¤€´øÍ½µ”Y¥•Üì(€€€€€€€MÉ½±±Y¥•Ü ¹¡½É¥é½¹Ñ…°°Í¡½İÍ%¹‘¥…Ñ½ÉÌè™…±Í”¤ì(€€€€€€€€€€€1…éå!MÑ…¬¡ÍÁ…¥¹œè€ÄÈ¤ì(€€€€€€€€€€€€€€€½É… ¡¥Ñ•µÌ¤ì¥Ñ•´¥¸(€€€€€€€€€€€€€€€€€€€µ‰åA½ÍÑ•É•Ñ…¥±1¥¹¬¡¥Ñ•´è¥Ñ•´°±¥•¹Ğè±¥•¹Ğ¤ìXÍ1…¹‘Í…Á•…É¡¥Ñ•´è¥Ñ•´°±¥•¹Ğè±¥•¹Ğ¤ô(€€€€€€€€€€€€€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ è€ÈÄÈ°…±¥¹µ•¹Ğè€¹±•…‘¥¹œ¤(€€€€€€€€€€€€€€€€€€€€€€€€¹½¹Ñ•¹ÑM¡…Á”¡I•Ñ…¹±” ¤¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄØ¤(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÁ½ÍÑ•ÉI½Ü¡|¥Ñ•µÌèm1¥‰É…Éå%Ñ•µt¤€´øÍ½µ”Y¥•Üì(€€€€€€€MÉ½±±Y¥•Ü ¹¡½É¥é½¹Ñ…°°Í¡½İÍ%¹‘¥…Ñ½ÉÌè™…±Í”¤ì(€€€€€€€€€€€1…éå!MÑ…¬¡…±¥¹µ•¹Ğè€¹Ñ½À°ÍÁ…¥¹œè€ÄÈ¤ì(€€€€€€€€€€€€€€€½É… ¡¥Ñ•µÌ¤ì¥Ñ•´¥¸(€€€€€€€€€€€€€€€€€€€µ‰åA½ÍÑ•É•Ñ…¥±1¥¹¬¡¥Ñ•´è¥Ñ•´°±¥•¹Ğè±¥•¹Ğ¤ì(€€€€€€€€€€€€€€€€€€€€€€€XÍA½ÍÑ•É…É¡¥Ñ•´è¥Ñ•´°±¥•¹Ğè±¥•¹Ğ°İ¥‘Ñ è€ÄÄà¤¹½¹Ñ•¹ÑM¡…Á”¡I•Ñ…¹±” ¤¤(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ è€ÄÄà°…±¥¹µ•¹Ğè€¹±•…‘¥¹œ¤(€€€€€€€€€€€€€€€€€€€€¹½¹Ñ•¹ÑM¡…Á”¡I•Ñ…¹±” ¤¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄØ¤(€€€€€€€ô(€€€ô)ô()5…¥¹Ñ½È)ÁÉ¥Ù…Ñ”™¥¹…°±…ÍÌXÍµ‰å!½µ•Y¥•İ5½‘•°è=‰Í•ÉÙ…‰±•=‰©•Ğì(€€€AÕ‰±¥Í¡•Ù…È±¥‰É…É¥•Ìèm1¥‰É…Éå%Ñ•µt€ômt(€€€AÕ‰±¥Í¡•Ù…ÈÉ•ÍÕµ•%Ñ•µÌèm1¥‰É…Éå%Ñ•µt€ômt(€€€AÕ‰±¥Í¡•Ù…È±…Ñ•ÍÑ	å1¥‰É…ÉäèmMÑÉ¥¹œèm1¥‰É…Éå%Ñ•µut€ôlét(€€€AÕ‰±¥Í¡•Ù…ÈÁÉ•™•É•¹•ÌèmXÍ!½µ•1¥‰É…ÉåAÉ•™•É•¹•t€ômt(€€€AÕ‰±¥Í¡•Ù…È…É½ÕÍ•±¹…‰±•è	½½°(€€€AÕ‰±¥Í¡•Ù…È¥Í1½…‘¥¹œ€ô™…±Í”(€€€AÕ‰±¥Í¡•Ù…È•ÉÉ½É5•ÍÍ…”èMÑÉ¥¹œü(€€€ÁÉ¥Ù…Ñ”±•Ğ±¥•¹Ğèµ‰åA%±¥•¹Ğ(€€€ÁÉ¥Ù…Ñ”±•ĞÁÉ•™•É•¹•-•äèMÑÉ¥¹œ(€€€ÁÉ¥Ù…Ñ”±•Ğ…É½ÕÍ•±¹…‰±•‘-•äèMÑÉ¥¹œ(€€€ÁÉ¥Ù…Ñ”¡Í•Ğ¤Ù…È¡…Í1½…‘•€ô™…±Í”(€€€ÁÉ¥Ù…Ñ”Ù…ÈÉ•ÍÕµ•¥ÉÑä€ô™…±Í”(€€€ÁÉ¥Ù…Ñ”Ù…È‘¥ÉÑåI•ÍÕµ•%Ñ•µ%Ì€ôM•ĞñMÑÉ¥¹œø ¤((€€€¥¹¥Ğ¡Í•ÍÍ¥½¸èµ‰åM•ÍÍ¥½¸°±¥•¹Ğèµ‰åA%±¥•¹Ğ¤ì(€€€€€€€Í•±˜¹±¥•¹Ğ€ô±¥•¹Ğ(€€€€€€€ÁÉ•™•É•¹•-•ä€ô€‰½ÍÁ±…å•È¹¡½µ”¹±¥‰É…ÉäµÁÉ•™•É•¹•Ì¹p¡Í•ÍÍ¥½¸¹Í•ÉÙ•É%¤¹p¡Í•ÍÍ¥½¸¹ÕÍ•È¹¥¤ˆ(€€€€€€€±•Ğ…É½ÕÍ•±-•ä€ô€‰½ÍÁ±…å•È¹¡½µ”¹…É½ÕÍ•°µ•¹…‰±•¹p¡Í•ÍÍ¥½¸¹Í•ÉÙ•É%¤¹p¡Í•ÍÍ¥½¸¹ÕÍ•È¹¥¤ˆ(€€€€€€€…É½ÕÍ•±¹…‰±•‘-•ä€ô…É½ÕÍ•±-•ä(€€€€€€€…É½ÕÍ•±¹…‰±•€ôUÍ•É•™…Õ±ÑÌ¹ÍÑ…¹‘…É¹½‰©•Ğ¡™½É-•äè…É½ÕÍ•±-•ä¤…Ìü	½½°€üüÑÉÕ”(€€€ô((€€€Ù…È½É‘•É•‘1¥‰É…É¥•Ìèm1¥‰É…Éå%Ñ•µtì(€€€€€€€±•Ğ‰å%€ô¥Ñ¥½¹…Éä¡Õ¹¥ÅÕ•-•åÍ]¥Ñ¡Y…±Õ•Ìè±¥‰É…É¥•Ì¹µ…Àì€ À¹¥°€À¤ô¤(€€€€€€€±•Ğ½É‘•É•€ôÁÉ•™•É•¹•Ì¹½µÁ…Ñ5…Àì‰å%lÀ¹±¥‰É…Éå%tô(€€€€€€€±•Ğ­¹½İ¸€ôM•Ğ¡½É‘•É•¹µ…À¡p¹¥¤¤(€€€€€€€É•ÑÕÉ¸½É‘•É•€¬±¥‰É…É¥•Ì¹™¥±Ñ•Èì€…­¹½İ¸¹½¹Ñ…¥¹Ì À¹¥¤ô(€€€ô((€€€Ù…ÈÙ¥Í¥‰±•1¥‰É…É¥•Ìèm1¥‰É…Éå%Ñ•µtì(€€€€€€€±•ĞÙ¥Í¥‰±”€ô¥Ñ¥½¹…Éä¡Õ¹¥ÅÕ•-•åÍ]¥Ñ¡Y…±Õ•ÌèÁÉ•™•É•¹•Ì¹µ…Àì€ À¹±¥‰É…Éå%°€À¹Í¡½İ=¹!½µ”¤ô¤(€€€€€€€É•ÑÕÉ¸½É‘•É•‘1¥‰É…É¥•Ì¹™¥±Ñ•ÈìÙ¥Í¥‰±•lÀ¹¥‘t€üüÑÉÕ”ô(€€€ô((€€€Ù…È…É½ÕÍ•±%Ñ•µÌèm1¥‰É…Éå%Ñ•µtì(€€€€€€€Õ…É…É½ÕÍ•±¹…‰±••±Í”ìÉ•ÑÕÉ¸mtô(€€€€€€€±•Ğ•¹…‰±•€ôM•Ğ¡ÁÉ•™•É•¹•Ì¹™¥±Ñ•È¡p¹¥¹±Õ‘•%¹…É½ÕÍ•°¤¹µ…À¡p¹±¥‰É…Éå%¤¤(€€€€€€€Ù…ÈÍ••¸€ôM•ĞñMÑÉ¥¹œø ¤(€€€€€€€Ù…ÈÁ½½°èm1¥‰É…Éå%Ñ•µt€ômt(€€€€€€€™½È±¥‰É…Éä¥¸½É‘•É•‘1¥‰É…É¥•Ìİ¡•É”•¹…‰±•¹½¹Ñ…¥¹Ì¡±¥‰É…Éä¹¥¤ì(€€€€€€€€€€€™½È¥Ñ•´¥¸±…Ñ•ÍÑ	å1¥‰É…Éåm±¥‰É…Éä¹¥‘t€üümtİ¡•É”Í••¸¹¥¹Í•ÉĞ¡¥Ñ•´¹¥¤¹¥¹Í•ÉÑ•ìÁ½½°¹…ÁÁ•¹¡¥Ñ•´¤ô(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸ÉÉ…ä¡Á½½°¹ÁÉ•™¥à Ø¤¤(€€€ô((€€€™Õ¹Œµ…É­I•ÍÕµ•¥ÉÑä¡|¥Ñ•µ%èMÑÉ¥¹œ¤ì(€€€€€€€É•ÍÕµ•¥ÉÑä€ôÑÉÕ”(€€€€€€€‘¥ÉÑåI•ÍÕµ•%Ñ•µ%Ì¹¥¹Í•ÉĞ¡¥Ñ•µ%¤(€€€€€€€¥…¹½ÍÑ¥Í1½•È¹Í¡…É•¹±½œ ‰!½µ•I•™É•Í ˆ°€‰É•ÍÕµ”‘¥ÉÑä¥Ñ•´õp¡¥Ñ•µ%¤ˆ¤(€€€ô((€€€™Õ¹ŒÉ•™É•Í¡I•ÍÕµ•%™9••‘• ¤…Íå¹Œì(€€€€€€€Õ…ÉÉ•ÍÕµ•¥ÉÑä•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€…İ…¥ĞÉ•™É•Í ¡ÕÍ•É%¹¥Ñ¥…Ñ•èÑÉÕ”¤(€€€ô((€€€™Õ¹ŒÉ•™É•Í ¡ÕÍ•É%¹¥Ñ¥…Ñ•è	½½°€ô™…±Í”¤…Íå¹Œì(€€€€€€€¥˜¥Í1½…‘¥¹œì(€€€€€€€€€€€Õ…ÉÕÍ•É%¹¥Ñ¥…Ñ••±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€¥…¹½ÍÑ¥Í1½•È¹Í¡…É•¹±½œ ‰!½µ•I•™É•Í ˆ°€‰ÕÍ•ÈÉ•™É•Í İ…¥Ñ¥¹œ™½È…Ñ¥Ù”É•™É•Í ˆ¤(€€€€€€€€€€€İ¡¥±”¥Í1½…‘¥¹œìÑÉäü…İ…¥ĞQ…Í¬¹Í±••À¡¹…¹½Í•½¹‘Ìè€ÔÁ|ÀÀÁ|ÀÀÀ¤ô(€€€€€€€ô(€€€€€€€¥˜ÕÍ•É%¹¥Ñ¥…Ñ•ì(€€€€€€€€€€€ÑÉäü…İ…¥ĞQ…Í¬¹Í±••À¡¹…¹½Í•½¹‘Ìè€ÈÔÁ|ÀÀÁ|ÀÀÀ¤(€€€€€€€€€€€…İ…¥ĞÉ•™É•Í¡I•ÍÕµ•=¹±ä ¤(€€€€€€€ô(€€€€€€€Õ…É€…¥Í1½…‘¥¹œ•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€¥Í1½…‘¥¹œ€ôÑÉÕ”(€€€€€€€•ÉÉ½É5•ÍÍ…”€ô¹¥°(€€€€€€€‘•™•Èì¥Í1½…‘¥¹œ€ô™…±Í”ì¡…Í1½…‘•€ôÑÉÕ”ô(€€€€€€€‘¼ì(€€€€€€€€€€€…Íå¹Œ±•ĞÙ¥•İÍI•ÅÕ•ÍĞ€ô±¥•¹Ğ¹ÕÍ•ÉY¥•İÌ ¤(€€€€€€€€€€€…Íå¹Œ±•ĞÉ•ÍÕµ•I•ÅÕ•ÍĞ€ô±¥•¹Ğ¹É•ÍÕµ•%Ñ•µÌ¡±¥µ¥Ğè€Äà¤(€€€€€€€€€€€±•Ğ€¡Ù¥•İÌ°É•ÍÕµ”¤€ôÑÉä…İ…¥Ğ€¡Ù¥•İÍI•ÅÕ•ÍĞ°É•ÍÕµ•I•ÅÕ•ÍĞ¤(€€€€€€€€€€€±¥‰É…É¥•Ì€ôÕ¹¥ÅÕ•%Ñ•µÌ¡Ù¥•İÌ¤(€€€€€€€€€€€É•ÍÕµ•%Ñ•µÌ€ôÕ¹¥ÅÕ•%Ñ•µÌ¡É•ÍÕµ”¤¹™¥±Ñ•Èìl‰µ½Ù¥”ˆ°€‰•Á¥Í½‘”‰t¹½¹Ñ…¥¹Ì À¹ÑåÁ”ü¹±½İ•É…Í• ¤€üü€ˆˆ¤ô(€€€€€€€€€€€É•ÍÕµ•¥ÉÑä€ô™…±Í”(€€€€€€€€€€€‘¥ÉÑåI•ÍÕµ•%Ñ•µ%Ì¹É•µ½Ù•±° ¤(€€€€€€€€€€€ÁÉ•™•É•¹•Ì€ôÉ•½¹¥±•AÉ•™•É•¹•Ì¡±¥‰É…É¥•Ì¤(€€€€€€€€€€€Á•ÉÍ¥ÍÑAÉ•™•É•¹•Ì¡ÁÉ•™•É•¹•Ì¤((€€€€€€€€€€€Ù…È±…Ñ•ÍĞèmMÑÉ¥¹œèm1¥‰É…Éå%Ñ•µut€ôlét(€€€€€€€€€€€…İ…¥Ğİ¥Ñ¡Q…Í­É½ÕÀ¡½˜è€¡MÑÉ¥¹œ°m1¥‰É…Éå%Ñ•µtü¤¹Í•±˜¤ìÉ½ÕÀ¥¸(€€€€€€€€€€€€€€€™½È±¥‰É…Éä¥¸±¥‰É…É¥•Ìì(€€€€€€€€€€€€€€€€€€€±•ĞÑåÁ•Ì€ôM•±˜¹‰É½İÍ•%Ñ•µQåÁ•Ì¡™½Èè±¥‰É…Éä¤(€€€€€€€€€€€€€€€€€€€É½ÕÀ¹…‘‘Q…Í¬ì(€€€€€€€€€€€€€€€€€€€€€€€‘¼ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€¥˜ÑåÁ•Ì¹¥ÍµÁÑäìÉ•ÑÕÉ¸€¡±¥‰É…Éä¹¥°ÑÉä…İ…¥ĞÍ•±˜¹±¥•¹Ğ¹±…Ñ•ÍÑ%Ñ•µÌ¡Á…É•¹Ñ%è±¥‰É…Éä¹¥°±¥µ¥Ğè€ÄØ¤¤ô(€€€€€€€€€€€€€€€€€€€€€€€€€€€±•ĞÁ…”€ôÑÉä…İ…¥ĞÍ•±˜¹±¥•¹Ğ¹±¥‰É…Éå%Ñ•µÌ¡Á…É•¹Ñ%è±¥‰É…Éä¹¥°±¥µ¥Ğè€ÄØ°Í½ÉÑ	äè€‰…Ñ•É•…Ñ•ˆ°Í½ÉÑ=É‘•Èè€‰•Í•¹‘¥¹œˆ°¥¹±Õ‘•%Ñ•µQåÁ•ÌèÑåÁ•Ì¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸€¡±¥‰É…Éä¹¥°Á…”¹¥Ñ•µÌ¤(€€€€€€€€€€€€€€€€€€€€€€€ô…Ñ ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸€¡±¥‰É…Éä¹¥°¹¥°¤(€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€™½È…İ…¥ĞÉ•ÍÕ±Ğ¥¸É½ÕÀì¥˜±•Ğ¥Ñ•µÌ€ôÉ•ÍÕ±Ğ¸Äì±…Ñ•ÍÑmÉ•ÍÕ±Ğ¸Át€ôÕ¹¥ÅÕ•%Ñ•µÌ¡¥Ñ•µÌ¤ôô(€€€€€€€€€€€ô(€€€€€€€€€€€±…Ñ•ÍÑ	å1¥‰É…Éä€ô±…Ñ•ÍĞ(€€€€€€€ô…Ñ ì(€€€€€€€€€€€¥˜€…¥Íµ‰åI•ÅÕ•ÍÑ…¹•±±…Ñ¥½¸¡•ÉÉ½È¤ì•ÉÉ½É5•ÍÍ…”€ô•ÉÉ½È¹±½…±¥é•‘•ÍÉ¥ÁÑ¥½¸ô(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÉ•™É•Í¡I•ÍÕµ•=¹±ä ¤…Íå¹Œì(€€€€€€€‘¼ì(€€€€€€€€€€€±•ĞÉ•ÍÕµ”€ôÑÉä…İ…¥Ğ±¥•¹Ğ¹É•ÍÕµ•%Ñ•µÌ¡±¥µ¥Ğè€Äà¤(€€€€€€€€€€€É•ÍÕµ•%Ñ•µÌ€ôÕ¹¥ÅÕ•%Ñ•µÌ¡É•ÍÕµ”¤¹™¥±Ñ•Èìl‰µ½Ù¥”ˆ°€‰•Á¥Í½‘”‰t¹½¹Ñ…¥¹Ì À¹ÑåÁ”ü¹±½İ•É…Í• ¤€üü€ˆˆ¤ô(€€€€€€€€€€€¥…¹½ÍÑ¥Í1½•È¹Í¡…É•¹±½œ ‰!½µ•I•™É•Í ˆ°€‰É•ÍÕµ”É•™É•Í¡•½Õ¹Ğõp¡É•ÍÕµ•%Ñ•µÌ¹½Õ¹Ğ¤‘¥ÉÑäõp¡É•ÍÕµ•¥ÉÑä¤¥‘Ìõp¡‘¥ÉÑåI•ÍÕµ•%Ñ•µ%Ì¹Í½ÉÑ• ¤¹©½¥¹•¡Í•Á…É…Ñ½Èè€ˆ°ˆ¤¤ˆ¤(€€€€€€€€€€€É•ÍÕµ•¥ÉÑä€ô™…±Í”(€€€€€€€€€€€‘¥ÉÑåI•ÍÕµ•%Ñ•µ%Ì¹É•µ½Ù•±° ¤(€€€€€€€ô…Ñ ì(€€€€€€€€€€€¥˜€…¥Íµ‰åI•ÅÕ•ÍÑ…¹•±±…Ñ¥½¸¡•ÉÉ½È¤ì•ÉÉ½É5•ÍÍ…”€ô•ÉÉ½È¹±½…±¥é•‘•ÍÉ¥ÁÑ¥½¸ô(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ™Õ¹Œ‰É½İÍ•%Ñ•µQåÁ•Ì¡™½È±¥‰É…Éäè1¥‰É…Éå%Ñ•´¤€´ømMÑÉ¥¹tì(€€€€€€€Íİ¥Ñ ±¥‰É…Éä¹½±±•Ñ¥½¹QåÁ”ü¹±½İ•É…Í• ¤ì(€€€€€€€…Í”€‰µ½Ù¥•ÌˆèÉ•ÑÕÉ¸l‰5½Ù¥”‰t(€€€€€€€…Í”€‰ÑÙÍ¡½İÌˆèÉ•ÑÕÉ¸l‰M•É¥•Ì‰t(€€€€€€€…Í”€‰¡½µ•Ù¥‘•½ÌˆèÉ•ÑÕÉ¸l‰Y¥‘•¼‰t(€€€€€€€…Í”€‰µ¥á•ˆèÉ•ÑÕÉ¸l‰5½Ù¥”ˆ°€‰M•É¥•Ìˆ°€‰Y¥‘•¼‰t(€€€€€€€‘•™…Õ±ĞèÉ•ÑÕÉ¸mt(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÕ¹¥ÅÕ•%Ñ•µÌ¡|¥Ñ•µÌèm1¥‰É…Éå%Ñ•µt¤€´øm1¥‰É…Éå%Ñ•µtì(€€€€€€€Ù…ÈÍ••¸€ôM•ĞñMÑÉ¥¹œø ¤(€€€€€€€É•ÑÕÉ¸¥Ñ•µÌ¹™¥±Ñ•ÈìÍ••¸¹¥¹Í•ÉĞ À¹¥¤¹¥¹Í•ÉÑ•ô(€€€ô((€€€™Õ¹ŒÍ…Ù•AÉ•™•É•¹•Ì¡|¹•áĞèmXÍ!½µ•1¥‰É…ÉåAÉ•™•É•¹•t°…É½ÕÍ•±¹…‰±•è	½½°¤ì(€€€€€€€±•ĞÙ…±¥‘%Ì€ôM•Ğ¡±¥‰É…É¥•Ì¹µ…À¡p¹¥¤¤(€€€€€€€ÁÉ•™•É•¹•Ì€ô¹•áĞ¹™¥±Ñ•ÈìÙ…±¥‘%Ì¹½¹Ñ…¥¹Ì À¹±¥‰É…Éå%¤ô(€€€€€€€Í•±˜¹…É½ÕÍ•±¹…‰±•€ô…É½ÕÍ•±¹…‰±•(€€€€€€€Á•ÉÍ¥ÍÑAÉ•™•É•¹•Ì¡ÁÉ•™•É•¹•Ì¤(€€€€€€€UÍ•É•™…Õ±ÑÌ¹ÍÑ…¹‘…É¹Í•Ğ¡…É½ÕÍ•±¹…‰±•°™½É-•äè…É½ÕÍ•±¹…‰±•‘-•ä¤(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÉ•½¹¥±•AÉ•™•É•¹•Ì¡|Ù¥•İÌèm1¥‰É…Éå%Ñ•µt¤€´ømXÍ!½µ•1¥‰É…ÉåAÉ•™•É•¹•tì(€€€€€€€±•ĞÍ…Ù•€ô±½…‘AÉ•™•É•¹•Ì ¤(€€€€€€€±•Ğ‰å%€ô¥Ñ¥½¹…Éä¡Õ¹¥ÅÕ•-•åÍ]¥Ñ¡Y…±Õ•ÌèÙ¥•İÌ¹µ…Àì€ À¹¥°€À¤ô¤(€€€€€€€Ù…È¹•áĞ€ôÍ…Ù•¹½µÁ…Ñ5…ÀìÁÉ•™•É•¹”€´øXÍ!½µ•1¥‰É…ÉåAÉ•™•É•¹”ü¥¸(€€€€€€€€€€€Õ…É±•Ğ±¥‰É…Éä€ô‰å%mÁÉ•™•É•¹”¹±¥‰É…Éå%t•±Í”ìÉ•ÑÕÉ¸¹¥°ô(€€€€€€€€€€€Ù…ÈÕÁ‘…Ñ•€ôÁÉ•™•É•¹”(€€€€€€€€€€€ÕÁ‘…Ñ•¹¹…µ”€ô±¥‰É…Éä¹¹…µ”(€€€€€€€€€€€ÕÁ‘…Ñ•¹½±±•Ñ¥½¹QåÁ”€ô±¥‰É…Éä¹½±±•Ñ¥½¹QåÁ”(€€€€€€€€€€€É•ÑÕÉ¸ÕÁ‘…Ñ•(€€€€€€€ô(€€€€€€€±•Ğ­¹½İ¸€ôM•Ğ¡¹•áĞ¹µ…À¡p¹±¥‰É…Éå%¤¤(€€€€€€€™½È±¥‰É…Éä¥¸Ù¥•İÌİ¡•É”€…­¹½İ¸¹½¹Ñ…¥¹Ì¡±¥‰É…Éä¹¥¤ì(€€€€€€€€€€€¹•áĞ¹…ÁÁ•¹¡XÍ!½µ•1¥‰É…ÉåAÉ•™•É•¹”¡±¥‰É…Éå%è±¥‰É…Éä¹¥°¹…µ”è±¥‰É…Éä¹¹…µ”°½±±•Ñ¥½¹QåÁ”è±¥‰É…Éä¹½±±•Ñ¥½¹QåÁ”°Í¡½İ=¹!½µ”èÑÉÕ”°¥¹±Õ‘•%¹…É½ÕÍ•°è‘•™…Õ±Ñ…É½ÕÍ•±¹…‰±•¡±¥‰É…Éä¤¤¤(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸¹•áĞ(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹Œ‘•™…Õ±Ñ…É½ÕÍ•±¹…‰±•¡|±¥‰É…Éäè1¥‰É…Éå%Ñ•´¤€´ø	½½°ì(€€€€€€€Íİ¥Ñ ±¥‰É…Éä¹½±±•Ñ¥½¹QåÁ”ü¹±½İ•É…Í• ¤ì(€€€€€€€…Í”€‰µ½Ù¥•Ìˆ°€‰ÑÙÍ¡½İÌˆ°€‰µ¥á•ˆ°€‰¡½µ•Ù¥‘•½ÌˆèÉ•ÑÕÉ¸ÑÉÕ”(€€€€€€€‘•™…Õ±ĞèÉ•ÑÕÉ¸™…±Í”(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹Œ±½…‘AÉ•™•É•¹•Ì ¤€´ømXÍ!½µ•1¥‰É…ÉåAÉ•™•É•¹•tì(€€€€€€€Õ…É±•Ğ‘…Ñ„€ôUÍ•É•™…Õ±ÑÌ¹ÍÑ…¹‘…É¹‘…Ñ„¡™½É-•äèÁÉ•™•É•¹•-•ä¤°±•ĞÙ…±Õ”€ôÑÉäü)M=9•½‘•È ¤¹‘•½‘”¡mXÍ!½µ•1¥‰É…ÉåAÉ•™•É•¹•t¹Í•±˜°™É½´è‘…Ñ„¤•±Í”ìÉ•ÑÕÉ¸mtô(€€€€€€€É•ÑÕÉ¸Ù…±Õ”(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÁ•ÉÍ¥ÍÑAÉ•™•É•¹•Ì¡|Ù…±Õ”èmXÍ!½µ•1¥‰É…ÉåAÉ•™•É•¹•t¤ì(€€€€€€€Õ…É±•Ğ‘…Ñ„€ôÑÉäü)M=9¹½‘•È ¤¹•¹½‘”¡Ù…±Õ”¤•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€UÍ•É•™…Õ±ÑÌ¹ÍÑ…¹‘…É¹Í•Ğ¡‘…Ñ„°™½É-•äèÁÉ•™•É•¹•-•ä¤(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍ5•‘¥…5…¹…•µ•¹ÑY¥•ÜèY¥•Üì(€€€¹Ù¥É½¹µ•¹Ğ¡p¹ÁÉ•Í•¹Ñ…Ñ¥½¹5½‘”¤ÁÉ¥Ù…Ñ”Ù…ÈÁÉ•Í•¹Ñ…Ñ¥½¹5½‘”(€€€MÑ…Ñ”ÁÉ¥Ù…Ñ”Ù…È‘É…™ĞèmXÍ!½µ•1¥‰É…ÉåAÉ•™•É•¹•t(€€€MÑ…Ñ”ÁÉ¥Ù…Ñ”Ù…È…É½ÕÍ•±¹…‰±•è	½½°(€€€±•Ğ½¹M…Ù”è€¡mXÍ!½µ•1¥‰É…ÉåAÉ•™•É•¹•t°	½½°¤€´øY½¥((€€€¥¹¥Ğ¡ÁÉ•™•É•¹•ÌèmXÍ!½µ•1¥‰É…ÉåAÉ•™•É•¹•t°…É½ÕÍ•±¹…‰±•è	½½°°½¹M…Ù”è•Í…Á¥¹œ€¡mXÍ!½µ•1¥‰É…ÉåAÉ•™•É•¹•t°	½½°¤€´øY½¥¤ì(€€€€€€€}‘É…™Ğ€ôMÑ…Ñ”¡¥¹¥Ñ¥…±Y…±Õ”èÁÉ•™•É•¹•Ì¤(€€€€€€€}…É½ÕÍ•±¹…‰±•€ôMÑ…Ñ”¡¥¹¥Ñ¥…±Y…±Õ”è…É½ÕÍ•±¹…‰±•¤(€€€€€€€Í•±˜¹½¹M…Ù”€ô½¹M…Ù”(€€€ô((€€€Ù…È‰½‘äèÍ½µ”Y¥•Üì(€€€€€€€9…Ù¥…Ñ¥½¹Y¥•Üì(€€€€€€€€€€€YMÑ…¬¡ÍÁ…¥¹œè€À¤ì(€€€€€€€€€€€€€€€!MÑ…¬ì(€€€€€€€€€€€€€€€€€€€	ÕÑÑ½¸ìÁÉ•Í•¹Ñ…Ñ¥½¹5½‘”¹İÉ…ÁÁ•‘Y…±Õ”¹‘¥Íµ¥ÍÌ ¤ô±…‰•°èì%µ…”¡ÍåÍÑ•µ9…µ”è€‰áµ…É¬ˆ¤¹™½¹Ğ ¹ÍåÍÑ•´¡Í¥é”è€ÈÈ°İ•¥¡Ğè€¹µ•‘¥Õ´¤¤¹™É…µ”¡İ¥‘Ñ è€ĞĞ°¡•¥¡Ğè€ĞĞ¤ô(€€€€€€€€€€€€€€€€€€€MÁ…•È ¤(€€€€€€€€€€€€€€€€€€€Q•áĞ ‹–ªK’öOº‡Bˆ¤¹™½¹Ğ ¹Ñ¥Ñ±”È¹İ•¥¡Ğ ¹‰½±¤¤(€€€€€€€€€€€€€€€€€€€MÁ…•È ¤(€€€€€€€€€€€€€€€€€€€	ÕÑÑ½¸ ‹’şw–¶`ˆ¤ì½¹M…Ù”¡‘É…™Ğ°…É½ÕÍ•±¹…‰±•¤ìÁÉ•Í•¹Ñ…Ñ¥½¹5½‘”¹İÉ…ÁÁ•‘Y…±Õ”¹‘¥Íµ¥ÍÌ ¤ô¹™½¹Ğ ¹¡•…‘±¥¹”¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄĞ¤(€€€€€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹Ñ½À°€à¤((€€€€€€€€€€€€€€€Q•áĞ ‹¦Vÿš2'š.[–*£–>¿¢ÂšVÓ¦š[¦†×¦†ë–ê<ˆ¤¹™½¹Ğ ¹ÍÕ‰¡•…‘±¥¹”¤¹™½É•É½Õ¹‘½±½È ¹Í•½¹‘…Éä¤¹™É…µ”¡µ…á]¥‘Ñ è€¹¥¹™¥¹¥Ñä°…±¥¹µ•¹Ğè€¹±•…‘¥¹œ¤¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÈĞ¤¹Á…‘‘¥¹œ ¹Ñ½À°€ÄÀ¤¹Á…‘‘¥¹œ ¹‰½ÑÑ½´°€à¤((€€€€€€€€€€€€€€€1¥ÍĞì(€€€€€€€€€€€€€€€€€€€M•Ñ¥½¸ì(€€€€€€€€€€€€€€€€€€€€€€€Q½±”¡¥Í=¸è€‘…É½ÕÍ•±¹…‰±•¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€YMÑ…¬¡…±¥¹µ•¹Ğè€¹±•…‘¥¹œ°ÍÁ…¥¹œè€Ì¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Q•áĞ ‹¢ö»šJ·–nøˆ¤¹™½¹Ğ ¹‰½‘ä¹İ•¥¡Ğ ¹Í•µ¥‰½±¤¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Q•áĞ ‹’â¦R»š:Ÿ–"Û¦š[¦†×šÊ'šÖã¢ö»šJ·¾ò3–Ï¦^·’â7’òkšâ¦f“’â/šZç–ªK’öO–êO¦'š.¤ˆ¤¹™½¹Ğ ¹…ÁÑ¥½¸¤¹™½É•É½Õ¹‘½±½È ¹Í•½¹‘…Éä¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€€€€€¹Ñ¥¹Ğ ¹É••¸¤(€€€€€€€€€€€€€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹Ù•ÉÑ¥…°°€Ì¤(€€€€€€€€€€€€€€€€€€€ô((€€€€€€€€€€€€€€€€€€€M•Ñ¥½¸ì(€€€€€€€€€€€€€€€€€€€€€€€½É…  ‘‘É…™Ğ¤ì€‘ÁÉ•™•É•¹”¥¸(€€€€€€€€€€€€€€€€€€€€€€€€€€€!MÑ…¬¡ÍÁ…¥¹œè€ÄÈ¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Q•áĞ¡ÁÉ•™•É•¹”¹¹…µ”¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹™½¹Ğ ¹‰½‘ä¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹±¥¹•1¥µ¥Ğ Ä¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹™É…µ”¡µ…á]¥‘Ñ è€¹¥¹™¥¹¥Ñä°…±¥¹µ•¹Ğè€¹±•…‘¥¹œ¤((€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Q½±” ‹¦š[¦†Ôˆ°¥Í=¸è€‘ÁÉ•™•É•¹”¹Í¡½İ=¹!½µ”¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹±…‰•±Í!¥‘‘•¸ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹Ñ¥¹Ğ ¹É••¸¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ è€ØÈ¤((€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Q½±” Šö»šJ´ˆ°¥Í=¸è€‘ÁÉ•™•É•¹”¹¥¹±Õ‘•%¹…É½ÕÍ•°¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹±…‰•±Í!¥‘‘•¸ ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹Ñ¥¹Ğ ¹É••¸¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ è€ØÈ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹½Á…¥Ñä¡…É½ÕÍ•±¹…‰±•€ü€Ä€è€À¸ÔÔ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹™É…µ”¡µ¥¹!•¥¡Ğè€ĞĞ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹±¥ÍÑI½İ%¹Í•ÑÌ¡‘•%¹Í•ÑÌ¡Ñ½Àè€Ø°±•…‘¥¹œè€Äà°‰½ÑÑ½´è€Ø°ÑÉ…¥±¥¹œè€ÄÈ¤¤(€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€€€€€¹½¹5½Ù”ìÍ½ÕÉ”°‘•ÍÑ¥¹…Ñ¥½¸¥¸‘É…™Ğ¹µ½Ù”¡™É½µ=™™Í•ÑÌèÍ½ÕÉ”°Ñ½=™™Í•Ğè‘•ÍÑ¥¹…Ñ¥½¸¤ô(€€€€€€€€€€€€€€€€€€€ô¡•…‘•Èèì(€€€€€€€€€€€€€€€€€€€€€€€!MÑ…¬¡ÍÁ…¥¹œè€ÄÈ¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€MÁ…•È¡µ¥¹1•¹Ñ è€À¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€Q•áĞ ‹¦š[¦†Ôˆ¤¹™½¹Ğ ¹…ÁÑ¥½¸È¤¹™½É•É½Õ¹‘½±½È ¹Í•½¹‘…Éä¤¹™É…µ”¡İ¥‘Ñ è€ØÈ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€Q•áĞ ‹¢ö»šJ´ˆ¤¹™½¹Ğ ¹…ÁÑ¥½¸È¤¹™½É•É½Õ¹‘½±½È ¹Í•½¹‘…Éä¤¹™É…µ”¡İ¥‘Ñ è€ØÈ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€MÁ…•È ¤¹™É…µ”¡İ¥‘Ñ è€ÌÀ¤(€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€€€€€¹Ñ•áÑ…Í”¡¹¥°¤(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€¹±¥ÍÑMÑå±”¡%¹Í•ÑÉ½ÕÁ•‘1¥ÍÑMÑå±” ¤¤(€€€€€€€€€€€€€€€€¹•¹Ù¥É½¹µ•¹Ğ¡p¹•‘¥Ñ5½‘”°€¹½¹ÍÑ…¹Ğ ¹…Ñ¥Ù”¤¤(€€€€€€€€€€€ô(€€€€€€€€€€€€¹¹…Ù¥…Ñ¥½¹	…É!¥‘‘•¸¡ÑÉÕ”¤(€€€€€€€€€€€€¹‰…­É½Õ¹¡½±½È¡Õ¥½±½Èè€¹ÍåÍÑ•µÉ½ÕÁ•‘	…­É½Õ¹¤¹¥¹½É•ÍM…™•É•„ ¤¤(€€€€€€€ô(€€€€€€€€¹¹…Ù¥…Ñ¥½¹Y¥•İMÑå±”¡MÑ…­9…Ù¥…Ñ¥½¹Y¥•İMÑå±” ¤¤(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍ!•É½…ÉèY¥•Üì(€€€±•Ğ¥Ñ•´è1¥‰É…Éå%Ñ•´(€€€±•Ğ±¥•¹Ğèµ‰åA%±¥•¹Ğ(€€€±•ĞÕÍ•Í1¥¡Ñ½É•É½Õ¹è	½½°((€€€ÁÉ¥Ù…Ñ”Ù…ÈÁÉ¥µ…Éå½É•É½Õ¹è½±½ÈìÕÍ•Í1¥¡Ñ½É•É½Õ¹€ü€¹İ¡¥Ñ”€è€¹‰±…¬ô(€€€ÁÉ¥Ù…Ñ”Ù…ÈÍ•½¹‘…Éå½É•É½Õ¹è½±½ÈìÕÍ•Í1¥¡Ñ½É•É½Õ¹€ü€¹İ¡¥Ñ”¹½Á…¥Ñä À¸äÀ¤€è€¹‰±…¬¹½Á…¥Ñä À¸àÀ¤ô(€€€ÁÉ¥Ù…Ñ”Ù…È™½É•É½Õ¹‘M¡…‘½Üè½±½ÈìÕÍ•Í1¥¡Ñ½É•É½Õ¹€ü€¹‰±…¬¹½Á…¥Ñä À¸ÔÈ¤€è€¹İ¡¥Ñ”¹½Á…¥Ñä À¸ÈĞ¤ô((€€€Ù…È‰½‘äèÍ½µ”Y¥•Üì(€€€€€€€YMÑ…¬¡…±¥¹µ•¹Ğè€¹±•…‘¥¹œ°ÍÁ…¥¹œè€ÄÀ¤ì(€€€€€€€€€€€MÁ…•È ¤(€€€€€€€€€€€Q•áĞ¡¡•É½Q¥Ñ±”¤(€€€€€€€€€€€€€€€€¹™½¹Ğ ¹ÍåÍÑ•´¡Í¥é”è€ÌÀ°İ•¥¡Ğè€¹‰½±¤¤(€€€€€€€€€€€€€€€€¹™½É•É½Õ¹‘½±½È¡ÁÉ¥µ…Éå½É•É½Õ¹¤(€€€€€€€€€€€€€€€€¹±¥¹•1¥µ¥Ğ È¤(€€€€€€€€€€€€€€€€¹™É…µ”¡µ…á]¥‘Ñ è€¹¥¹™¥¹¥Ñä°…±¥¹µ•¹Ğè€¹±•…‘¥¹œ¤(€€€€€€€€€€€€€€€€¹Í¡…‘½Ü¡½±½Èè™½É•É½Õ¹‘M¡…‘½Ü°É…‘¥ÕÌè€Ì°äè€Ä¤((€€€€€€€€€€€!MÑ…¬¡ÍÁ…¥¹œè€à¤ì(€€€€€€€€€€€€€€€¥˜±•ĞÉ…Ñ¥¹œ€ô¥Ñ•´¹½µµÕ¹¥ÑåI…Ñ¥¹œìQ•áĞ ‹Šb€ˆ€¬MÑÉ¥¹œ¡™½Éµ…Ğè€ˆ”¸Å˜ˆ°É…Ñ¥¹œ¤¤¹™½É•É½Õ¹‘½±½È ¹å•±±½Ü¤ô(€€€€€€€€€€€€€€€¥˜±•Ğå•…È€ô¥Ñ•´¹ÁÉ½‘ÕÑ¥½¹e•…ÈìQ•áĞ¡MÑÉ¥¹œ¡å•…È¤¤ô(€€€€€€€€€€€€€€€¥˜±•Ğ½™™¥¥…°€ô¥Ñ•´¹½™™¥¥…±I…Ñ¥¹œ°€…½™™¥¥…°¹¥ÍµÁÑäìQ•áĞ¡½™™¥¥…°¤ô(€€€€€€€€€€€€€€€Q•áĞ¡ØÍ5•‘¥…QåÁ•Q¥Ñ±”¡¥Ñ•´¤¤(€€€€€€€€€€€ô(€€€€€€€€€€€€¹™½¹Ğ ¹ÍÕ‰¡•…‘±¥¹”¹İ•¥¡Ğ ¹Í•µ¥‰½±¤¤(€€€€€€€€€€€€¹™½É•É½Õ¹‘½±½È¡Í•½¹‘…Éå½É•É½Õ¹¤(€€€€€€€€€€€€¹™É…µ”¡µ…á]¥‘Ñ è€¹¥¹™¥¹¥Ñä°…±¥¹µ•¹Ğè€¹±•…‘¥¹œ¤((€€€€€€€€€€€¥˜±•Ğ½Ù•ÉÙ¥•Ü€ô¥Ñ•´¹½Ù•ÉÙ¥•Ü°€…½Ù•ÉÙ¥•Ü¹¥ÍµÁÑäì(€€€€€€€€€€€€€€€Q•áĞ¡½Ù•ÉÙ¥•Ü¤(€€€€€€€€€€€€€€€€€€€€¹™½¹Ğ ¹ÍÕ‰¡•…‘±¥¹”¤(€€€€€€€€€€€€€€€€€€€€¹™½É•É½Õ¹‘½±½ÈáÍ•½¹‘…Éå½É•É½Õ¹¤(€€€€€€€€€€€€€€€€€€€€¹±¥¹•1¥µ¥Ğ È¤(€€€€€€€€€€€€€€€€€€€€¹™É…µ”¡µ…á]¥‘Ñ è€¹¥¹™¥¹¥Ñä°…±¥¹µ•¹Ğè€¹±•…‘¥¹œ¤(€€€€€€€€€€€€€€€€€€€€¹Í¡…‘½Ü¡½±½Èè™½É•É½Õ¹‘M¡…‘½Ü°É…‘¥ÕÌè€È°äè€Ä¤(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€€¹™É…µ”¡µ…á]¥‘Ñ è€¹¥¹™¥¹¥Ñä°µ…á!•¥¡Ğè€¹¥¹™¥¹¥Ñä°…±¥¹µ•¹Ğè€¹‰½ÑÑ½µ1•…‘¥¹œ¤(€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÈÀ¤(€€€€€€€€¹Á…‘‘¥¹œ ¹‰½ÑÑ½´°€Ôà¤(€€€€€€€€¹½¹Ñ•¹ÑM¡…Á”¡I•Ñ…¹±” ¤¤(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù…È¡•É½Q¥Ñ±”èMÑÉ¥¹œì(€€€€€€€¥˜¥Ñ•´¹ÑåÁ”ü¹…Í•%¹Í•¹Í¥Ñ¥Ù•½µÁ…É” ‰Á¥Í½‘”ˆ¤€ôô€¹½É‘•É•‘M…µ”°±•ĞÍ•É¥•Í9…µ”€ô¥Ñ•´¹Í•É¥•Í9…µ”°€…Í•É¥•Í9…µ”¹¥ÍµÁÑäìÉ•ÑÕÉ¸Í•É¥•Í9…µ”ô(€€€€€€€É•ÑÕÉ¸¥Ñ•´¹¹…µ”(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍ1¥‰É…Éå	É½İÍ•ÉY¥•ÜèY¥•Üì(€€€±•Ğ±¥‰É…Éäè1¥‰É…Éå%Ñ•´(€€€±•Ğ±¥•¹Ğèµ‰åA%±¥•¹Ğ(€€€±•Ğ‘½¬è¹åY¥•Ü(€€€MÑ…Ñ•=‰©•ĞÁÉ¥Ù…Ñ”Ù…Èµ½‘•°èXÍ1¥‰É…Éå	É½İÍ•ÉY¥•İ5½‘•°((€€€¥¹¥Ğ¡±¥‰É…Éäè1¥‰É…Éå%Ñ•´°±¥•¹Ğèµ‰åA%±¥•¹Ğ°‘½¬è¹åY¥•Ü¤ì(€€€€€€€Í•±˜¹±¥‰É…Éä€ô±¥‰É…Éä(€€€€€€€Í•±˜¹±¥•¹Ğ€ô±¥•¹Ğ(€€€€€€€Í•±˜¹‘½¬€ô‘½¬(€€€€€€€}µ½‘•°€ôMÑ…Ñ•=‰©•Ğ¡İÉ…ÁÁ•‘Y…±Õ”èXÍ1¥‰É…Éå	É½İÍ•ÉY¥•İ5½‘•°¡±¥‰É…Éäè±¥‰É…Éä°±¥•¹Ğè±¥•¹Ğ¤¤(€€€ô((€€€Ù…È‰½‘äèÍ½µ”Y¥•Üì(€€€€€€€MÉ½±±Y¥•Ü ¹Ù•ÉÑ¥…°°Í¡½İÍ%¹‘¥…Ñ½ÉÌè™…±Í”¤ì(€€€€€€€€€€€YMÑ…¬¡…±¥¹µ•¹Ğè€¹±•…‘¥¹œ°ÍÁ…¥¹œè€ÄĞ¤ì(€€€€€€€€€€€€€€€!MÑ…¬ì(€€€€€€€€€€€€€€€€€€€Q•áĞ¡½¹Ñ•¹ÑQ¥Ñ±”¤¹™½¹Ğ ¹¡•…‘±¥¹”¤¹™½É•É½Õ¹‘½±½È ¹‰±Õ”¤(€€€€€€€€€€€€€€€€€€€MÁ…•È ¤(€€€€€€€€€€€€€€€€€€€5•¹Ôì(€€€€€€€€€€€€€€€€€€€€€€€Í½ÉÑ	ÕÑÑ½¸ ‹–*ƒ–—š^—šr|ˆ°­•äè€‰…Ñ•É•…Ñ•ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€Í½ÉÑ	ÕÑÑ½¸ ‹š‚¦Š`ˆ°­•äè€‰M½ÉÑ9…µ”ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€Í½ÉÑ	ÕÑÑ½¸ ‹–>G¢†3š^—šr|ˆ°­•äè€‰AÉ•µ¥•É•…Ñ”ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€Í½ÉÑ	ÕÑÑ½¸ ‹šJ·šRûš^—šr|ˆ°­•äè€‰…Ñ•A±…å•ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€Í½ÉÑ	ÕÑÑ½¸ ‹šJ·šRûš²‡šVÀˆ°­•äè€‰A±…å½Õ¹Ğˆ¤(€€€€€€€€€€€€€€€€€€€€€€€Í½ÉÑ	ÕÑÑ½¸ ‹šJ·šRûš^Û¦Vüˆ°­•äè€‰IÕ¹Ñ¥µ”ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€Í½ÉÑ	ÕÑÑ½¸ ‹¦j?šrèˆ°­•äè€‰I…¹‘½´ˆ¤(€€€€€€€€€€€€€€€€€€€ô±…‰•°èì%µ…”¡ÍåÍÑ•µ9…µ”è€‰…ÉÉ½Ü¹ÕÀ¹…ÉÉ½Ü¹‘½İ¸ˆ¤¹™½¹Ğ ¹ÍåÍÑ•´¡Í¥é”è€ÈÀ¤¤ô(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°µ‰åA½ÍÑ•ÉÉ¥‘5•ÑÉ¥Ì¹¡½É¥é½¹Ñ…±A…‘‘¥¹œ¤((€€€€€€€€€€€€€€€¥˜µ½‘•°¹¥Í1½…‘¥¹œ€˜˜µ½‘•°¹¥Ñ•µÌ¹¥ÍµÁÑäì(€€€€€€€€€€€€€€€€€€€AÉ½É•ÍÍY¥•Ü ¤¹™É…µ”¡µ…á]¥‘Ñ è€¹¥¹™¥¹¥Ñä¤¹Á…‘‘¥¹œ ¹Ñ½À°€ĞÀ¤(€€€€€€€€€€€€€€€ô•±Í”ì(€€€€€€€€€€€€€€€€€€€µ‰åA½ÍÑ•ÉÉ¥¡¥Ñ•µÌèµ½‘•°¹¥Ñ•µÌ°½¹ÁÁÉ½…¡¥¹¹èì(€€€€€€€€€€€€€€€€€€€€€€€Õ…Éµ½‘•°¹¡…Í5½É”•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€€€€€€€€€€€€€Q…Í¬ì…İ…¥Ğµ½‘•°¹±½…‘9•áÑA…” ¤ô(€€€€€€€€€€€€€€€€€€€ô¤ì¥Ñ•´¥¸(€€€€€€€€€€€€€€€€€€€€€€€µ‰åA½ÍÑ•É•Ñ…¥±1¥¹¬¡¥Ñ•´è¥Ñ•´°±¥•¹Ğè±¥•¹Ğ¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€XÍA½ÍÑ•É…É¡¥Ñ•´è¥Ñ•´°±¥•¹Ğè±¥•¹Ğ°İ¥‘Ñ è¹¥°¤(€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€ô((€€€€€€€€€€€€€€€¥˜µ½‘•°¹¥Í1½…‘¥¹œ€˜˜€…µ½‘•°¹¥Ñ•µÌ¹¥ÍµÁÑäìAÉ½É•ÍÍY¥•Ü ¤¹™É…µ”¡µ…á]¥‘Ñ è€¹¥¹™¥¹¥Ñä¤¹Á…‘‘¥¹œ ¹Ù•ÉÑ¥…°°€ÄÈ¤ô(€€€€€€€€€€€€€€€¥˜±•Ğ•ÉÉ½È€ôµ½‘•°¹•ÉÉ½É5•ÍÍ…”ìQ•áĞ¡•ÉÉ½È¤¹™½É•É½Õ¹‘½±½È ¹É•¤¹™½¹Ğ ¹™½½Ñ¹½Ñ”¤¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°µ‰åA½ÍÑ•ÉÉ¥‘5•ÑÉ¥Ì¹¡½É¥é½¹Ñ…±A…‘‘¥¹œ¤ô(€€€€€€€€€€€ô(€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹‰½ÑÑ½´°€àØ¤(€€€€€€€ô(€€€€€€€€¹¹…Ù¥…Ñ¥½¹Q¥Ñ±”¡±¥‰É…Éä¹¹…µ”¤(€€€€€€€€¹¹…Ù¥…Ñ¥½¹	…ÉQ¥Ñ±•¥ÍÁ±…å5½‘” ¹¥¹±¥¹”¤(€€€€€€€€¹‰…­É½Õ¹¡½±½È¡Õ¥½±½Èè€¹ÍåÍÑ•µ	…­É½Õ¹¤¹¥¹½É•ÍM…™•É•„ ¤¤(€€€€€€€€¹½Ù•É±…ä¡…±¥¹µ•¹Ğè€¹‰½ÑÑ½´¤ì‘½¬ô(€€€€€€€€¹¹…Ñ¥Ù•%¹Ñ•É…Ñ¥Ù•A½À ¤(€€€€€€€€¹½¹ÁÁ•…Èì¥˜€…µ½‘•°¹¡…Í1½…‘•ìQ…Í¬ì…İ…¥Ğµ½‘•°¹É•±½… ¤ôôô(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù…È½¹Ñ•¹ÑQ¥Ñ±”èMÑÉ¥¹œì(€€€€€€€Íİ¥Ñ ±¥‰É…Éä¹½±±•Ñ¥½¹QåÁ”ü¹±½İ•É…Í• ¤ì…Í”€‰ÑÙÍ¡½İÌˆèÉ•ÑÕÉ¸€‹¢*n¸ˆì…Í”€‰µ½Ù¥•ÌˆèÉ•ÑÕÉ¸€‹R×–öÄˆì‘•™…Õ±ĞèÉ•ÑÕÉ¸€‹––ºäˆô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÍ½ÉÑ	ÕÑÑ½¸¡|Ñ¥Ñ±”èMÑÉ¥¹œ°­•äèMÑÉ¥¹œ¤€´øÍ½µ”Y¥•Üì(€€€€€€€	ÕÑÑ½¸ìQ…Í¬ì…İ…¥Ğµ½‘•°¹¡…¹•M½ÉĞ¡Ñ¼è­•ä¤ôô±…‰•°èì¥˜µ½‘•°¹Í½ÉÑ	ä€ôô­•äì1…‰•°¡Ñ¥Ñ±”°ÍåÍÑ•µ%µ…”è€‰¡•­µ…É¬ˆ¤ô•±Í”ìQ•áĞ¡Ñ¥Ñ±”¤ôô(€€€ô)ô()5…¥¹Ñ½È)ÁÉ¥Ù…Ñ”™¥¹…°±…ÍÌXÍ1¥‰É…Éå	É½İÍ•ÉY¥•İ5½‘•°è=‰Í•ÉÙ…‰±•=‰©•Ğì(€€€AÕ‰±¥Í¡•Ù…È¥Ñ•µÌèm1¥‰É…Éå%Ñ•µt€ômt(€€€AÕ‰±¥Í¡•Ù…È¥Í1½…‘¥¹œ€ô™…±Í”(€€€AÕ‰±¥Í¡•Ù…È•ÉÉ½É5•ÍÍ…”èMÑÉ¥¹œü(€€€AÕ‰±¥Í¡•ÁÉ¥Ù…Ñ”¡Í•Ğ¤Ù…È¡…Í5½É”€ôÑÉÕ”(€€€AÕ‰±¥Í¡•Ù…ÈÍ½ÉÑ	ä€ô€‰…Ñ•É•…Ñ•ˆ(€€€ÁÉ¥Ù…Ñ”±•Ğ±¥‰É…Éäè1¥‰É…Éå%Ñ•´(€€€ÁÉ¥Ù…Ñ”±•Ğ±¥•¹Ğèµ‰åA%±¥•¹Ğ(€€€ÁÉ¥Ù…Ñ”±•ĞÁ…•M¥é”€ô€ØÀ(€€€ÁÉ¥Ù…Ñ”Ù…È¹•áÑMÑ…ÉÑ%¹‘•à€ô€À(€€€ÁÉ¥Ù…Ñ”¡Í•Ğ¤Ù…È¡…Í1½…‘•€ô™…±Í”((€€€¥¹¥Ğ¡±¥‰É…Éäè1¥‰É…Éå%Ñ•´°±¥•¹Ğèµ‰åA%±¥•¹Ğ¤ìÍ•±˜¹±¥‰É…Éä€ô±¥‰É…ÉäìÍ•±˜¹±¥•¹Ğ€ô±¥•¹Ğô((€€€™Õ¹ŒÉ•±½… ¤…Íå¹Œì(€€€€€€€Õ…É€…¥Í1½…‘¥¹œ•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€¥Ñ•µÌ€ômt(€€€€€€€¹•áÑMÑ…ÉÑ%¹‘•à€ô€À(€€€€€€€¡…Í5½É”€ôÑÉÕ”(€€€€€€€¡…Í1½…‘•€ô™…±Í”(€€€€€€€…İ…¥Ğ™•Ñ¡9•áÑA…” ¤(€€€ô((€€€™Õ¹Œ±½…‘9•áÑA…” ¤…Íå¹Œì(€€€€€€€Õ…É¡…Í1½…‘•°¡…Í5½É”°€…¥Í1½…‘¥¹œ•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€…İ…¥Ğ™•Ñ¡9•áÑA…” ¤(€€€ô((€€€™Õ¹Œ¡…¹•M½ÉĞ¡Ñ¼­•äèMÑÉ¥¹œ¤…Íå¹Œì(€€€€€€€Õ…É­•ä€„ôÍ½ÉÑ	ä•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€Í½ÉÑ	ä€ô­•ä(€€€€€€€…İ…¥ĞÉ•±½… ¤(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹Œ™•Ñ¡9•áÑA…” ¤…Íå¹Œì(€€€€€€€Õ…É€…¥Í1½…‘¥¹œ°¡…Í5½É”•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€¥Í1½…‘¥¹œ€ôÑÉÕ”(€€€€€€€•ÉÉ½É5•ÍÍ…”€ô¹¥°(€€€€€€€±•ĞÉ•ÅÕ•ÍÑ•‘MÑ…ÉÑ%¹‘•à€ô¹•áÑMÑ…ÉÑ%¹‘•à(€€€€€€€‘•™•Èì¥Í1½…‘¥¹œ€ô™…±Í”ì¡…Í1½…‘•€ôÑÉÕ”ô(€€€€€€€‘¼ì(€€€€€€€€€€€±•Ğ•áÁ•Ñ•‘QåÁ•ÌèmMÑÉ¥¹t(€€€€€€€€€€€Íİ¥Ñ ±¥‰É…Éä¹½±±•Ñ¥½¹QåÁ”ü¹±½İ•É…Í• ¤ì(€€€€€€€€€€€…Í”€‰µ½Ù¥•Ìˆè•áÁ•Ñ•‘QåÁ•Ì€ôl‰5½Ù¥”‰t(€€€€€€€€€€€…Í”€‰ÑÙÍ¡½İÌˆè•áÁ•Ñ•‘QåÁ•Ì€ôl‰M•É¥•Ì‰t(€€€€€€€€€€€…Í”€‰¡½µ•Ù¥‘•½Ìˆè•áÁ•Ñ•‘QåÁ•Ì€ôl‰Y¥‘•¼‰t(€€€€€€€€€€€…Í”€‰µ¥á•ˆè•áÁ•Ñ•‘QåÁ•Ì€ôl‰5½Ù¥”ˆ°€‰M•É¥•Ìˆ°€‰Y¥‘•¼‰t(€€€€€€€€€€€‘•™…Õ±Ğè•áÁ•Ñ•‘QåÁ•Ì€ômt(€€€€€€€€€€€ô(€€€€€€€€€€€±•ĞÁ…”€ôÑÉä…İ…¥Ğ±¥•¹Ğ¹±¥‰É…Éå%Ñ•µÌ¡Á…É•¹Ñ%è±¥‰É…Éä¹¥°±¥µ¥ĞèÁ…•M¥é”°ÍÑ…ÉÑ%¹‘•àèÉ•ÅÕ•ÍÑ•‘MÑ…ÉÑ%¹‘•à°Í½ÉÑ	äèÍ½ÉÑ	ä°¥¹±Õ‘•%Ñ•µQåÁ•Ìè•áÁ•Ñ•‘QåÁ•Ì¤(€€€€€€€€€€€±•Ğ…±±½İ•€ôM•Ğ¡•áÁ•Ñ•‘QåÁ•Ì¹µ…Àì€À¹±½İ•É…Í• ¤ô¤(€€€€€€€€€€€±•Ğ™¥±Ñ•É•€ôÁ…”¹¥Ñ•µÌ¹™¥±Ñ•Èì…±±½İ•¹¥ÍµÁÑäñğ…±±½İ•¹½¹Ñ…¥¹Ì À¹ÑåÁ”ü¹±½İ•É…Í• ¤€üü€ˆˆ¤ô(€€€€€€€€€€€Ù…ÈÍ••¸€ôM•Ğ¡¥Ñ•µÌ¹µ…À¡p¹¥¤¤(€€€€€€€€€€€¥Ñ•µÌ¹…ÁÁ•¹¡½¹Ñ•¹ÑÍ=˜è™¥±Ñ•É•¹™¥±Ñ•ÈìÍ••¸¹¥¹Í•ÉĞ À¹¥¤¹¥¹Í•ÉÑ•ô¤(€€€€€€€€€€€¹•áÑMÑ…ÉÑ%¹‘•à€ôÉ•ÅÕ•ÍÑ•‘MÑ…ÉÑ%¹‘•à€¬Á…”¹¥Ñ•µÌ¹½Õ¹Ğ(€€€€€€€€€€€¥˜±•ĞÑ½Ñ…±I•½É‘½Õ¹Ğ€ôÁ…”¹Ñ½Ñ…±I•½É‘½Õ¹Ğì(€€€€€€€€€€€€€€€¡…Í5½É”€ô¹•áÑMÑ…ÉÑ%¹‘•à€ğÑ½Ñ…±I•½É‘½Õ¹Ğ(€€€€€€€€€€€ô•±Í”ì(€€€€€€€€€€€€€€€¡…Í5½É”€ôÁ…”¹¥Ñ•µÌ¹½Õ¹Ğ€ôôÁ…•M¥é”(€€€€€€€€€€€ô(€€€€€€€ô…Ñ ì(€€€€€€€€€€€¥˜€…¥Íµ‰åI•ÅÕ•ÍÑ…¹•±±…Ñ¥½¸¡•ÉÉ½È¤ì•ÉÉ½É5•ÍÍ…”€ô•ÉÉ½È¹±½…±¥é•‘•ÍÉ¥ÁÑ¥½¸ô(€€€€€€€ô(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍµ‰å…Ù½É¥Ñ•ÍY¥•ÜèY¥•Üì(€€€±•Ğ±¥•¹Ğèµ‰åA%±¥•¹Ğ(€€€±•Ğ½¹±½Í”è€ ¤€´øY½¥(€€€±•Ğ‘½¬è¹åY¥•Ü(€€€MÑ…Ñ•=‰©•ĞÁÉ¥Ù…Ñ”Ù…Èµ½‘•°èXÍ…Ù½É¥Ñ•ÍY¥•İ5½‘•°((€€€¥¹¥Ğ¡±¥•¹Ğèµ‰åA%±¥•¹Ğ°½¹±½Í”è•Í…Á¥¹œ€ ¤€´øY½¥°‘½¬è¹åY¥•Ü¤ì(€€€€€€€Í•±˜¹±¥•¹Ğ€ô±¥•¹Ğ(€€€€€€€Í•±˜¹½¹±½Í”€ô½¹±½Í”(€€€€€€€Í•±˜¹‘½¬€ô‘½¬(€€€€€€€}µ½‘•°€ôMÑ…Ñ•=‰©•Ğ¡İÉ…ÁÁ•‘Y…±Õ”èXÍ…Ù½É¥Ñ•ÍY¥•İ5½‘•°¡±¥•¹Ğè±¥•¹Ğ¤¤(€€€ô((€€€Ù…È‰½‘äèÍ½µ”Y¥•Üì(€€€€€€€9…Ù¥…Ñ¥½¹Y¥•Üì(€€€€€€€€€€€MÉ½±±Y¥•Ü ¹Ù•ÉÑ¥…°°Í¡½İÍ%¹‘¥…Ñ½ÉÌè™…±Í”¤ì(€€€€€€€€€€€€€€€1…éåYMÑ…¬¡…±¥¹µ•¹Ğè€¹±•…‘¥¹œ°ÍÁ…¥¹œè€ÈÈ¤ì(€€€€€€€€€€€€€€€€€€€XÍA…•!•…‘•È¡Ñ¥Ñ±”è€‹šRÛ¢^<ˆ°½¹±½Í”è½¹±½Í”¤(€€€€€€€€€€€€€€€€€€€™…Ù½É¥Ñ•M•Ñ¥½¸ ‹R×–öTˆ°¥Ñ•µÌèµ½‘•°¹µ½Ù¥•Ì¤(€€€€€€€€€€€€€€€€€€€™…Ù½É¥Ñ•M•Ñ¥½¸ ‹–&Ÿ¦nˆ°¥Ñ•µÌèµ½‘•°¹Í•É¥•Ì¤(€€€€€€€€€€€€€€€€€€€™…Ù½É¥Ñ•A•½Á±”(€€€€€€€€€€€€€€€€€€€™…Ù½É¥Ñ•M•Ñ¥½¸ ‹–B#¦nˆ°¥Ñ•µÌèµ½‘•°¹½±±•Ñ¥½¹Ì¤(€€€€€€€€€€€€€€€€€€€¥˜µ½‘•°¹¥Í1½…‘¥¹œìAÉ½É•ÍÍY¥•Ü ¤¹™É…µ”¡µ…á]¥‘Ñ è€¹¥¹™¥¹¥Ñä¤ô(€€€€€€€€€€€€€€€€€€€¥˜±•Ğ•ÉÉ½È€ôµ½‘•°¹•ÉÉ½É5•ÍÍ…”ìQ•áĞ¡•ÉÉ½È¤¹™½¹Ğ ¹™½½Ñ¹½Ñ”¤¹™½É•É½Õ¹‘½±½È ¹É•¤¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄØ¤ô(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹‰½ÑÑ½´°€àØ¤(€€€€€€€€€€€ô(€€€€€€€€€€€€¹‰…­É½Õ¹¡½±½È¡Õ¥½±½Èè€¹ÍåÍÑ•µ	…­É½Õ¹¤¹¥¹½É•ÍM…™•É•„ ¤¤(€€€€€€€€€€€€¹½Ù•É±…ä¡…±¥¹µ•¹Ğè€¹‰½ÑÑ½´¤ì‘½¬ô(€€€€€€€€€€€€¹É•™É•Í¡…‰±”ì…İ…¥Ğµ½‘•°¹±½… ¤ô(€€€€€€€€€€€€¹½¹ÁÁ•…Èì¥˜€…µ½‘•°¹¡…Í1½…‘•ìQ…Í¬ì…İ…¥Ğµ½‘•°¹±½… ¤ôôô(€€€€€€€€€€€€¹¹…Ù¥…Ñ¥½¹	…É!¥‘‘•¸¡ÑÉÕ”¤(€€€€€€€ô(€€€€€€€€¹¹…Ù¥…Ñ¥½¹Y¥•İMÑå±”¡MÑ…­9…Ù¥…Ñ¥½¹Y¥•İMÑå±” ¤¤(€€€ô((€€€Y¥•İ	Õ¥±‘•È(€€€ÁÉ¥Ù…Ñ”™Õ¹Œ™…Ù½É¥Ñ•M•Ñ¥½¸¡|Ñ¥Ñ±”èMÑÉ¥¹œ°¥Ñ•µÌèm1¥‰É…Éå%Ñ•µt¤€´øÍ½µ”Y¥•Üì(€€€€€€€¥˜€…¥Ñ•µÌ¹¥ÍµÁÑäì(€€€€€€€€€€€Q•áĞ¡Ñ¥Ñ±”¤¹™½¹Ğ ¹Ñ¥Ñ±”È¹İ•¥¡Ğ ¹‰½±¤¤¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄØ¤(€€€€€€€€€€€µ‰åA½ÍÑ•ÉÉ¥¡¥Ñ•µÌè¥Ñ•µÌ¤ì¥Ñ•´¥¸(€€€€€€€€€€€€€€€µ‰åA½ÍÑ•É•Ñ…¥±1¥¹¬¡¥Ñ•´è¥Ñ•´°±¥•¹Ğè±¥•¹Ğ¤ì(€€€€€€€€€€€€€€€€€€€XÍA½ÍÑ•É…É¡¥Ñ•´è¥Ñ•´°±¥•¹Ğè±¥•¹Ğ°İ¥‘Ñ è¹¥°¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€ô(€€€ô((€€€Y¥•İ	Õ¥±‘•È(€€€ÁÉ¥Ù…Ñ”Ù…È™…Ù½É¥Ñ•A•½Á±”èÍ½µ”Y¥•Üì(€€€€€€€¥˜€…µ½‘•°¹Á•½Á±”¹¥ÍµÁÑäì(€€€€€€€€€€€Q•áĞ ‹šòS–F`ˆ¤¹™½¹Ğ ¹Ñ¥Ñ±”È¹İ•¥¡Ğ ¹‰½±¤¤¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄØ¤(€€€€€€€€€€€MÉ½±±Y¥•Ü ¹¡½É¥é½¹Ñ…°°Í¡½İÍ%¹‘¥…Ñ½ÉÌè™…±Í”¤ì(€€€€€€€€€€€€€€€!MÑ…¬¡ÍÁ…¥¹œè€ÄØ¤ì(€€€€€€€€€€€€€€€€€€€½É… ¡µ½‘•°¹Á•½Á±”¤ìÁ•ÉÍ½¸¥¸(€€€€€€€€€€€€€€€€€€€€€€€YMÑ…¬¡ÍÁ…¥¹œè€Ø¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€XÍI•µ½Ñ•%µ…”¡ÕÉ°è±¥•¹Ğ¹¥µ…•UI0¡¥Ñ•µ%èÁ•ÉÍ½¸¹¥°µ…á]¥‘Ñ è€ÈØÀ°Ñ…œèÁ•ÉÍ½¸¹ÁÉ¥µ…Éå%µ…•Q…œ¤°½¹Ñ•¹Ñ5½‘”è€¹™¥±°¤¹™É…µ”¡İ¥‘Ñ è€äÈ°¡•¥¡Ğè€äÈ¤¹±¥ÁM¡…Á”¡¥É±” ¤¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€Q•áĞ¡Á•ÉÍ½¸¹¹…µ”¤¹™½¹Ğ ¹ÍÕ‰¡•…‘±¥¹”¤¹±¥¹•1¥µ¥Ğ Ä¤¹™É…µ”¡İ¥‘Ñ è€ÄÀÈ¤(€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄØ¤(€€€€€€€€€€€ô(€€€€€€€ô(€€€ô)ô()5…¥¹Ñ½È)ÁÉ¥Ù…Ñ”™¥¹…°±…ÍÌXÍ…Ù½É¥Ñ•ÍY¥•İ5½‘•°è=‰Í•ÉÙ…‰±•=‰©•Ğì(€€€AÕ‰±¥Í¡•Ù…È¥Ñ•µÌèm1¥‰É…Éå%Ñ•µt€ômt(€€€AÕ‰±¥Í¡•Ù…È¥Í1½…‘¥¹œ€ô™…±Í”(€€€AÕ‰±¥Í¡•Ù…È•ÉÉ½É5•ÍÍ…”èMÑÉ¥¹œü(€€€ÁÉ¥Ù…Ñ”±•Ğ±¥•¹Ğèµ‰åA%±¥•¹Ğ(€€€ÁÉ¥Ù…Ñ”¡Í•Ğ¤Ù…È¡…Í1½…‘•€ô™…±Í”((€€€¥¹¥Ğ¡±¥•¹Ğèµ‰åA%±¥•¹Ğ¤ìÍ•±˜¹±¥•¹Ğ€ô±¥•¹Ğô(€€€Ù…Èµ½Ù¥•Ìèm1¥‰É…Éå%Ñ•µtì¥Ñ•µÌ¹™¥±Ñ•Èì€À¹ÑåÁ”ü¹…Í•%¹Í•¹Í¥Ñ¥Ù•½µÁ…É” ‰5½Ù¥”ˆ¤€ôô€¹½É‘•É•‘M…µ”ôô(€€€Ù…ÈÍ•É¥•Ìèm1¥‰É…Éå%Ñ•µtì¥Ñ•µÌ¹™¥±Ñ•Èì€À¹ÑåÁ”ü¹…Í•%¹Í•¹Í¥Ñ¥Ù•½µÁ…É” ‰M•É¥•Ìˆ¤€ôô€¹½É‘•É•‘M…µ”ôô(€€€Ù…ÈÁ•½Á±”èm1¥‰É…Éå%Ñ•µtì¥Ñ•µÌ¹™¥±Ñ•Èì€À¹ÑåÁ”ü¹…Í•%¹Í•¹Í¥Ñ¥Ù•½µÁ…É” ‰A•ÉÍ½¸ˆ¤€ôô€¹½É‘•É•‘M…µ”ôô(€€€Ù…È½±±•Ñ¥½¹Ìèm1¥‰É…Éå%Ñ•µtì¥Ñ•µÌ¹™¥±Ñ•Èìl‰‰½áÍ•Ğˆ°€‰½±±•Ñ¥½¹™½±‘•È‰t¹½¹Ñ…¥¹Ì À¹ÑåÁ”ü¹±½İ•É…Í• ¤€üü€ˆˆ¤ôô((€€€™Õ¹Œ±½… ¤…Íå¹Œì(€€€€€€€Õ…É€…¥Í1½…‘¥¹œ•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€¥Í1½…‘¥¹œ€ôÑÉÕ”(€€€€€€€•ÉÉ½É5•ÍÍ…”€ô¹¥°(€€€€€€€‘•™•Èì¥Í1½…‘¥¹œ€ô™…±Í”ì¡…Í1½…‘•€ôÑÉÕ”ô(€€€€€€€‘¼ì¥Ñ•µÌ€ôÑÉä…İ…¥Ğ±¥•¹Ğ¹™…Ù½É¥Ñ•%Ñ•µÌ ¤ô(€€€€€€€…Ñ ì¥˜€…¥Íµ‰åI•ÅÕ•ÍÑ…¹•±±…Ñ¥½¸¡•ÉÉ½È¤ì•ÉÉ½É5•ÍÍ…”€ô•ÉÉ½È¹±½…±¥é•‘•ÍÉ¥ÁÑ¥½¸ôô(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍµ‰åM•…É¡Y¥•ÜèY¥•Üì(€€€±•Ğ±¥•¹Ğèµ‰åA%±¥•¹Ğ(€€€±•Ğ½¹±½Í”è€ ¤€´øY½¥(€€€±•Ğ‘½¬è¹åY¥•Ü(€€€MÑ…Ñ•=‰©•ĞÁÉ¥Ù…Ñ”Ù…Èµ½‘•°èXÍM•…É¡Y¥•İ5½‘•°(€€€MÑ…Ñ”ÁÉ¥Ù…Ñ”Ù…ÈÍ•…É¡Q•áĞ€ô€ˆˆ((€€€¥¹¥Ğ¡±¥•¹Ğèµ‰åA%±¥•¹Ğ°½¹±½Í”è•Í…Á¥¹œ€ ¤€´øY½¥°‘½¬è¹åY¥•Ü¤ì(€€€€€€€Í•±˜¹±¥•¹Ğ€ô±¥•¹Ğ(€€€€€€€Í•±˜¹½¹±½Í”€ô½¹±½Í”(€€€€€€€Í•±˜¹‘½¬€ô‘½¬(€€€€€€€}µ½‘•°€ôMÑ…Ñ•=‰©•Ğ¡İÉ…ÁÁ•‘Y…±Õ”èXÍM•…É¡Y¥•İ5½‘•°¡±¥•¹Ğè±¥•¹Ğ¤¤(€€€ô((€€€Ù…È‰½‘äèÍ½µ”Y¥•Üì(€€€€€€€9…Ù¥…Ñ¥½¹Y¥•Üì(€€€€€€€€€€€YMÑ…¬¡ÍÁ…¥¹œè€ÄÀ¤ì(€€€€€€€€€€€€€€€XÍA…•!•…‘•È¡Ñ¥Ñ±”è€‹šBsÒˆˆ°½¹±½Í”è½¹±½Í”¤(€€€€€€€€€€€€€€€!MÑ…¬¡ÍÁ…¥¹œè€ä¤ì(€€€€€€€€€€€€€€€€€€€%µ…”¡ÍåÍÑ•µ9…µ”è€‰µ…¹¥™å¥¹±…ÍÌˆ¤¹™½É•É½Õ¹‘½±½È ¹Í•½¹‘…Éä¤(€€€€€€€€€€€€€€€€€€€Q•áÑ¥•± ‹šBsÒ‹–öO–&4µ‰äˆ°Ñ•áĞè€‘Í•…É¡Q•áĞ°½¹½µµ¥ĞèìQ…Í¬ì…İ…¥Ğµ½‘•°¹Í•…É ¡Í•…É¡Q•áĞ¤ôô¤¹Ñ•áÑ%¹ÁÕÑÕÑ½…Á¥Ñ…±¥é…Ñ¥½¸ ¹¹•Ù•È¤¹…ÕÑ½½ÉÉ•Ñ¥½¹¥Í…‰±• ¤(€€€€€€€€€€€€€€€€€€€¥˜€…Í•…É¡Q•áĞ¹¥ÍµÁÑäì	ÕÑÑ½¸ìÍ•…É¡Q•áĞ€ô€ˆˆìµ½‘•°¹¥Ñ•µÌ€ômtô±…‰•°èì%µ…”¡ÍåÍÑ•µ9…µ”è€‰áµ…É¬¹¥É±”¹™¥±°ˆ¤¹™½É•É½Õ¹‘½±½È ¹Í•½¹‘…Éä¤ôô(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄÈ¤(€€€€€€€€€€€€€€€€¹™É…µ”¡¡•¥¡Ğè€ĞÈ¤(€€€€€€€€€€€€€€€€¹‰…­É½Õ¹¡½±½È¡Õ¥½±½Èè€¹Í•½¹‘…ÉåMåÍÑ•µ	…­É½Õ¹¤¤(€€€€€€€€€€€€€€€€¹±¥ÁM¡…Á”¡I½Õ¹‘•‘I•Ñ…¹±”¡½É¹•ÉI…‘¥ÕÌè€ÄÀ°ÍÑå±”è€¹½¹Ñ¥¹Õ½ÕÌ¤¤(€€€€€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄØ¤((€€€€€€€€€€€€€€€MÉ½±±Y¥•Ü ¹Ù•ÉÑ¥…°°Í¡½İÍ%¹‘¥…Ñ½ÉÌè™…±Í”¤ì(€€€€€€€€€€€€€€€€€€€µ‰åA½ÍÑ•ÉÉ¥¡¥Ñ•µÌèµ½‘•°¹¥Ñ•µÌ¤ì¥Ñ•´¥¸(€€€€€€€€€€€€€€€€€€€€€€€µ‰åA½ÍÑ•É•Ñ…¥±1¥¹¬¡¥Ñ•´è¥Ñ•´°±¥•¹Ğè±¥•¹Ğ¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€XÍA½ÍÑ•É…É¡¥Ñ•´è¥Ñ•´°±¥•¹Ğè±¥•¹Ğ°İ¥‘Ñ è¹¥°¤(€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹‰½ÑÑ½´°€àØ¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€¥˜µ½‘•°¹¥Í1½…‘¥¹œìAÉ½É•ÍÍY¥•Ü ¤¹Á…‘‘¥¹œ ¹‰½ÑÑ½´°€à¤ô(€€€€€€€€€€€ô(€€€€€€€€€€€€¹™É…µ”¡µ…á]¥‘Ñ è€¹¥¹™¥¹¥Ñä°µ…á!•¥¡Ğè€¹¥¹™¥¹¥Ñä¤(€€€€€€€€€€€€¹‰…­É½Õ¹¡½±½È¡Õ¥½±½Èè€¹ÍåÍÑ•µ	…­É½Õ¹¤¹¥¹½É•ÍM…™•É•„ ¤¤(€€€€€€€€€€€€¹½Ù•É±…ä¡…±¥¹µ•¹Ğè€¹‰½ÑÑ½´¤ì‘½¬ô(€€€€€€€€€€€€¹¹…Ù¥…Ñ¥½¹	…É!¥‘‘•¸¡ÑÉÕ”¤(€€€€€€€ô(€€€€€€€€¹¹…Ù¥…Ñ¥½¹Y¥•İMÑå±”¡MÑ…­9…Ù¥…Ñ¥½¹Y¥•İMÑå±” ¤¤(€€€ô)ô()5…¥¹Ñ½È)ÁÉ¥Ù…Ñ”™¥¹…°±…ÍÌXÍM•…É¡Y¥•İ5½‘•°è=‰Í•ÉÙ…‰±•=‰©•Ğì(€€€AÕ‰±¥Í¡•Ù…È¥Ñ•µÌèm1¥‰É…Éå%Ñ•µt€ômt(€€€AÕ‰±¥Í¡•Ù…È¥Í1½…‘¥¹œ€ô™…±Í”(€€€ÁÉ¥Ù…Ñ”±•Ğ±¥•¹Ğèµ‰åA%±¥•¹Ğ(€€€¥¹¥Ğ¡±¥•¹Ğèµ‰åA%±¥•¹Ğ¤ìÍ•±˜¹±¥•¹Ğ€ô±¥•¹Ğô((€€€™Õ¹ŒÍ•…É ¡|Ñ•É´èMÑÉ¥¹œ¤…Íå¹Œì(€€€€€€€Õ…É€…¥Í1½…‘¥¹œ•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€¥Í1½…‘¥¹œ€ôÑÉÕ”(€€€€€€€‘•™•Èì¥Í1½…‘¥¹œ€ô™…±Í”ô(€€€€€€€‘¼ì¥Ñ•µÌ€ôÑÉä…İ…¥Ğ±¥•¹Ğ¹Í•…É¡%Ñ•µÌ¡Ñ•É´èÑ•É´¤ô(€€€€€€€…Ñ ì¥˜€…¥Íµ‰åI•ÅÕ•ÍÑ…¹•±±…Ñ¥½¸¡•ÉÉ½È¤ì¥Ñ•µÌ€ômtôô(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍµ‰åM•ÉÙ•ÉM•ÑÑ¥¹ÍY¥•ÜèY¥•Üì(€€€±•ĞÍ•ÍÍ¥½¸èµ‰åM•ÍÍ¥½¸(€€€±•Ğ½¹±½Í”è€ ¤€´øY½¥(€€€±•Ğ‘½¬è¹åY¥•Ü(€€€MÑ…Ñ”ÁÉ¥Ù…Ñ”Ù…ÈÍ¡…É•UI0èUI0ü((€€€Ù…È‰½‘äèÍ½µ”Y¥•Üì(€€€€€€€9…Ù¥…Ñ¥½¹Y¥•Üì(€€€€€€€€€€€MÉ½±±Y¥•Ü ¹Ù•ÉÑ¥…°°Í¡½İÍ%¹‘¥…Ñ½ÉÌè™…±Í”¤ì(€€€€€€€€€€€€€€€YMÑ…¬¡…±¥¹µ•¹Ğè€¹±•…‘¥¹œ°ÍÁ…¥¹œè€ÈÀ¤ì(€€€€€€€€€€€€€€€€€€€XÍA…•!•…‘•È¡Ñ¥Ñ±”è€‹¢ºûö¸ˆ°½¹±½Í”è½¹±½Í”¤(€€€€€€€€€€€€€€€€€€€XÍM•ÑÑ¥¹Í…Éì(€€€€€€€€€€€€€€€€€€€€€€€Í•ÑÑ¥¹I½Ü ‹šr7–*‡–f ˆ°Ù…±Õ”èÍ•ÍÍ¥½¸¹Í•ÉÙ•É9…µ”°ÍåÍÑ•µ%µ…”è€‰•áÑ•É¹…±‘É¥Ù”ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€¥Ù¥‘•È ¤¹Á…‘‘¥¹œ ¹±•…‘¥¹œ°€ĞØ¤(€€€€€€€€€€€€€€€€€€€€€€€Í•ÑÑ¥¹I½Ü ‹R£š"Üˆ°Ù…±Õ”èÍ•ÍÍ¥½¸¹ÕÍ•È¹¹…µ”°ÍåÍÑ•µ%µ…”è€‰Á•ÉÍ½¸ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€¥Ù¥‘•È ¤¹Á…‘‘¥¹œ ¹±•…‘¥¹œ°€ĞØ¤(€€€€€€€€€€€€€€€€€€€€€€€Í•ÑÑ¥¹I½Ü ‹&#šr°ˆ°Ù…±Õ”èÍ•ÍÍ¥½¸¹Í•ÉÙ•ÉY•ÉÍ¥½¸°ÍåÍÑ•µ%µ…”è€‰¥¹™¼¹¥É±”ˆ¤(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€XÍM•ÑÑ¥¹Í…Éì(€€€€€€€€€€€€€€€€€€€€€€€9…Ù¥…Ñ¥½¹1¥¹¬¡‘•ÍÑ¥¹…Ñ¥½¸èA±…å•ÉM•ÑÑ¥¹ÍY¥•Ü ¤¤ìÍ•ÑÑ¥¹I½Ü ‹šJ·šRû¢ºûö¸ˆ°Ù…±Õ”è¹¥°°ÍåÍÑ•µ%µ…”è€‰Á±…åÁ…ÕÍ”ˆ¤ô(€€€€€€€€€€€€€€€€€€€€€€€¥Ù¥‘•È ¤¹Á…‘‘¥¹œ ¹±•…‘¥¹œ°€ĞØ¤(€€€€€€€€€€€€€€€€€€€€€€€9…Ù¥…Ñ¥½¹1¥¹¬¡‘•ÍÑ¥¹…Ñ¥½¸èA±…å‰…­1…‰Y¥•Ü ¤¤ìÍ•ÑÑ¥¹I½Ü ‹šJ·šRû–f£–º{¦ª3–ºˆ°Ù…±Õ”è¹¥°°ÍåÍÑ•µ%µ…”è€‰İÉ•¹ ¹…¹¹ÍÉ•İ‘É¥Ù•Èˆ¤ô(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€XÍM•ÑÑ¥¹Í…Éì(€€€€€€€€€€€€€€€€€€€€€€€	ÕÑÑ½¸ì‘¼ìÍ¡…É•UI0€ôÑÉä¥…¹½ÍÑ¥Í1½•È¹Í¡…É•¹•áÁ½ÉĞ ¤ô…Ñ íôô±…‰•°èìÍ•ÑÑ¥¹I½Ü ‹–¾ó–ëšJ·šRûš^—–ş\ˆ°Ù…±Õ”è¹¥°°ÍåÍÑ•µ%µ…”è€‰‘½Œ¹Ñ•áĞˆ¤ô¹‰ÕÑÑ½¹MÑå±” ¹Á±…¥¸¤(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄØ¤(€€€€€€€€€€€€€€€€¹Á…‘‘¥¹œ ¹‰½ÑÑ½´°€àØ¤(€€€€€€€€€€€ô(€€€€€€€€€€€€¹‰…­É½Õ¹¡½±½È¡Õ¥½±½Èè€¹ÍåÍÑ•µÉ½ÕÁ•‘	…­É½Õ¹¤¹¥¹½É•ÍM…™•É•„ ¤¤(€€€€€€€€€€€€¹½Ù•É±…ä¡…±¥¹µ•¹Ğè€¹‰½ÑÑ½´¤ì‘½¬ô(€€€€€€€€€€€€¹¹…Ù¥…Ñ¥½¹	…É!¥‘‘•¸¡ÑÉÕ”¤(€€€€€€€€€€€€¹Í¡••Ğ¡¥ÍAÉ•Í•¹Ñ•è	¥¹‘¥¹œ¡•ĞèìÍ¡…É•UI0€„ô¹¥°ô°Í•Ğèì¥˜€„ÀìÍ¡…É•UI0€ô¹¥°ôô¤¤ì¥˜±•ĞÍ¡…É•UI0ìÑ¥Ù¥ÑåY¥•Ü¡¥Ñ•µÌèmÍ¡…É•UI1t¤ôô(€€€€€€€ô(€€€€€€€€¹¹…Ù¥…Ñ¥½¹Y¥•İMÑå±”¡MÑ…­9…Ù¥…Ñ¥½¹Y¥•İMÑå±” ¤¤(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÍ•ÑÑ¥¹I½Ü¡|Ñ¥Ñ±”èMÑÉ¥¹œ°Ù…±Õ”èMÑÉ¥¹œü°ÍåÍÑ•µ%µ…”èMÑÉ¥¹œ¤€´øÍ½µ”Y¥•Üì(€€€€€€€!MÑ…¬¡ÍÁ…¥¹œè€ÄÈ¤ì(€€€€€€€€€€€%µ…”¡ÍåÍÑ•µ9…µ”èÍåÍÑ•µ%µ…”¤¹™½É•É½Õ¹‘½±½È ¹‰±Õ”¤¹™É…µ”¡İ¥‘Ñ è€ÈØ¤(€€€€€€€€€€€Q•áĞ¡Ñ¥Ñ±”¤¹™½É•É½Õ¹‘½±½È ¹ÁÉ¥µ…Éä¤(€€€€€€€€€€€MÁ…•È ¤(€€€€€€€€€€€¥˜±•ĞÙ…±Õ”ìQ•áĞ¡Ù…±Õ”¤¹™½É•É½Õ¹‘½±½È ¹Í•½¹‘…Éä¤¹±¥¹•1¥µ¥Ğ Ä¤ô(€€€€€€€€€€€%µ…”¡ÍåÍÑ•µ9…µ”è€‰¡•ÙÉ½¸¹É¥¡Ğˆ¤¹™½¹Ğ ¹…ÁÑ¥½¸È¤¹™½É•É½Õ¹‘½±½È¡½±½È¡Õ¥½±½Èè€¹Ñ•ÉÑ¥…Éå1…‰•°¤¤(€€€€€€€ô(€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄÌ¤(€€€€€€€€¹™É…µ”¡µ¥¹!•¥¡Ğè€ÔĞ¤(€€€€€€€€¹½¹Ñ•¹ÑM¡…Á”¡I•Ñ…¹±” ¤¤(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍM•ÑÑ¥¹Í…Éñ½¹Ñ•¹ĞèY¥•ÜøèY¥•Üì(€€€±•Ğ½¹Ñ•¹Ğè½¹Ñ•¹Ğ(€€€¥¹¥Ğ¡Y¥•İ	Õ¥±‘•È½¹Ñ•¹Ğè€ ¤€´ø½¹Ñ•¹Ğ¤ìÍ•±˜¹½¹Ñ•¹Ğ€ô½¹Ñ•¹Ğ ¤ô(€€€Ù…È‰½‘äèÍ½µ”Y¥•ÜìYMÑ…¬¡ÍÁ…¥¹œè€À¤ì½¹Ñ•¹Ğô¹‰…­É½Õ¹¡½±½È¡Õ¥½±½Èè€¹Í•½¹‘…ÉåMåÍÑ•µÉ½ÕÁ•‘	…­É½Õ¹¤¤¹±¥ÁM¡…Á”¡I½Õ¹‘•‘I•Ñ…¹±”¡½É¹•ÉI…‘¥ÕÌè€ÄÌ°ÍÑå±”è€¹½¹Ñ¥¹Õ½ÕÌ¤¤ô)ô()ÁÉ¥Ù…Ñ”™¥¹…°±…ÍÌXÍ!½µ•9…Ñ¥Ù•MÉ½±±AÉ½‰•Y¥•ÜèU%Y¥•Üì(€€€Ù…È¡¥•É…É¡å¥‘¡…¹”è€ ¡U%Y¥•Ü¤€´øY½¥¤ü((€€€½Ù•ÉÉ¥‘”™Õ¹Œ‘¥‘5½Ù•Q½MÕÁ•ÉÙ¥•Ü ¤ì(€€€€€€€ÍÕÁ•È¹‘¥‘5½Ù•Q½MÕÁ•ÉÙ¥•Ü ¤(€€€€€€€¡¥•É…É¡å¥‘¡…¹”ü¡Í•±˜¤(€€€ô((€€€½Ù•ÉÉ¥‘”™Õ¹Œ‘¥‘5½Ù•Q½]¥¹‘½Ü ¤ì(€€€€€€€ÍÕÁ•È¹‘¥‘5½Ù•Q½]¥¹‘½Ü ¤(€€€€€€€¡¥•É…É¡å¥‘¡…¹”ü¡Í•±˜¤(€€€ô((€€€½Ù•ÉÉ¥‘”™Õ¹Œ±…å½ÕÑMÕ‰Ù¥•İÌ ¤ì(€€€€€€€ÍÕÁ•È¹±…å½ÕÑMÕ‰Ù¥•İÌ ¤(€€€€€€€¡¥•É…É¡å¥‘¡…¹”ü¡Í•±˜¤(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍ!½µ•9…Ñ¥Ù•MÉ½±±=‰Í•ÉÙ•ÈèU%Y¥•İI•ÁÉ•Í•¹Ñ…‰±”ì(€€€±•Ğ¥ÍI•™É•Í¡¥¹œè	½½°(€€€±•Ğ½¹=™™Í•Ñ¡…¹•è€¡±½…Ğ¤€´øY½¥(€€€±•Ğ½¹I•™É•Í è€ ¤€´øY½¥((€€€™Õ¹Œµ…­•½½É‘¥¹…Ñ½È ¤€´ø½½É‘¥¹…Ñ½Èì½½É‘¥¹…Ñ½È¡¥ÍI•™É•Í¡¥¹œè¥ÍI•™É•Í¡¥¹œ°½¹=™™Í•Ñ¡…¹•è½¹=™™Í•Ñ¡…¹•°½¹I•™É•Í è½¹I•™É•Í ¤ô((€€€™Õ¹Œµ…­•U%Y¥•Ü¡½¹Ñ•áĞè½¹Ñ•áĞ¤€´øXÍ!½µ•9…Ñ¥Ù•MÉ½±±AÉ½‰•Y¥•Üì(€€€€€€€±•ĞÙ¥•Ü€ôXÍ!½µ•9…Ñ¥Ù•MÉ½±±AÉ½‰•Y¥•Ü¡™É…µ”è€¹é•É¼¤(€€€€€€€Ù¥•Ü¹‰…­É½Õ¹‘½±½È€ô€¹±•…È(€€€€€€€Ù¥•Ü¹¥ÍUÍ•É%¹Ñ•É…Ñ¥½¹¹…‰±•€ô™…±Í”(€€€€€€€Ù¥•Ü¹¡¥•É…É¡å¥‘¡…¹”€ôìmİ•…¬½½É‘¥¹…Ñ½È€ô½¹Ñ•áĞ¹½½É‘¥¹…Ñ½ÉtÁÉ½‰”¥¸½½É‘¥¹…Ñ½Èü¹…ÑÑ… ¡™É½´èÁÉ½‰”¤ô(€€€€€€€¥ÍÁ…Ñ¡EÕ•Õ”¹µ…¥¸¹…Íå¹Œìmİ•…¬½½É‘¥¹…Ñ½È€ô½¹Ñ•áĞ¹½½É‘¥¹…Ñ½È°İ•…¬Ù¥•İt¥¸(€€€€€€€€€€€Õ…É±•ĞÙ¥•Ü•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€½½É‘¥¹…Ñ½Èü¹…ÑÑ… ¡™É½´èÙ¥•Ü¤(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸Ù¥•Ü(€€€ô((€€€™Õ¹ŒÕÁ‘…Ñ•U%Y¥•Ü¡|Õ¥Y¥•ÜèXÍ!½µ•9…Ñ¥Ù•MÉ½±±AÉ½‰•Y¥•Ü°½¹Ñ•áĞè½¹Ñ•áĞ¤ì(€€€€€€€½¹Ñ•áĞ¹½½É‘¥¹…Ñ½È¹ÕÁ‘…Ñ”¡¥ÍI•™É•Í¡¥¹œè¥ÍI•™É•Í¡¥¹œ°½¹=™™Í•Ñ¡…¹•è½¹=™™Í•Ñ¡…¹•°½¹I•™É•Í è½¹I•™É•Í ¤(€€€€€€€¥ÍÁ…Ñ¡EÕ•Õ”¹µ…¥¸¹…Íå¹Œìmİ•…¬½½É‘¥¹…Ñ½È€ô½¹Ñ•áĞ¹½½É‘¥¹…Ñ½È°İ•…¬Õ¥Y¥•İt¥¸(€€€€€€€€€€€Õ…É±•ĞÕ¥Y¥•Ü•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€½½É‘¥¹…Ñ½Èü¹…ÑÑ… ¡™É½´èÕ¥Y¥•Ü¤(€€€€€€€ô(€€€ô((€€€ÍÑ…Ñ¥Œ™Õ¹Œ‘¥Íµ…¹Ñ±•U%Y¥•Ü¡|Õ¥Y¥•ÜèXÍ!½µ•9…Ñ¥Ù•MÉ½±±AÉ½‰•Y¥•Ü°½½É‘¥¹…Ñ½Èè½½É‘¥¹…Ñ½È¤ì(€€€€€€€Õ¥Y¥•Ü¹¡¥•É…É¡å¥‘¡…¹”€ô¹¥°(€€€€€€€½½É‘¥¹…Ñ½È¹‘•Ñ…  ¤(€€€ô((€€€™¥¹…°±…ÍÌ½½É‘¥¹…Ñ½Èè9M=‰©•Ğì(€€€€€€€ÁÉ¥Ù…Ñ”Ù…È¥ÍI•™É•Í¡¥¹œè	½½°(€€€€€€€ÁÉ¥Ù…Ñ”Ù…È½¹=™™Í•Ñ¡…¹•è€¡±½…Ğ¤€´øY½¥(€€€€€€€ÁÉ¥Ù…Ñ”Ù…È½¹I•™É•Í è€ ¤€´øY½¥(€€€€€€€ÁÉ¥Ù…Ñ”İ•…¬Ù…ÈÍÉ½±±Y¥•ÜèU%MÉ½±±Y¥•Üü(€€€€€€€ÁÉ¥Ù…Ñ”Ù…È½¹Ñ•¹Ñ=™™Í•Ñ=‰Í•ÉÙ…Ñ¥½¸è9M-•åY…±Õ•=‰Í•ÉÙ…Ñ¥½¸ü(€€€€€€€ÁÉ¥Ù…Ñ”±•ĞÉ•™É•Í¡½¹ÑÉ½°€ôU%I•™É•Í¡½¹ÑÉ½° ¤((€€€€€€€¥¹¥Ğ¡¥ÍI•™É•Í¡¥¹œè	½½°°½¹=™™Í•Ñ¡…¹•è•Í…Á¥¹œ€¡±½…Ğ¤€´øY½¥°½¹I•™É•Í è•Í…Á¥¹œ€ ¤€´øY½¥¤ì(€€€€€€€€€€€Í•±˜¹¥ÍI•™É•Í¡¥¹œ€ô¥ÍI•™É•Í¡¥¹œ(€€€€€€€€€€€Í•±˜¹½¹=™™Í•Ñ¡…¹•€ô½¹=™™Í•Ñ¡…¹•(€€€€€€€€€€€Í•±˜¹½¹I•™É•Í €ô½¹I•™É•Í (€€€€€€€€€€€ÍÕÁ•È¹¥¹¥Ğ ¤(€€€€€€€€€€€É•™É•Í¡½¹ÑÉ½°¹…‘‘Q…É•Ğ¡Í•±˜°…Ñ¥½¸è€Í•±•Ñ½È¡É•™É•Í¡QÉ¥•É•¤°™½Èè€¹Ù…±Õ•¡…¹•¤(€€€€€€€ô((€€€€€€€™Õ¹ŒÕÁ‘…Ñ”¡¥ÍI•™É•Í¡¥¹œè	½½°°½¹=™™Í•Ñ¡…¹•è•Í…Á¥¹œ€¡±½…Ğ¤€´øY½¥°½¹I•™É•Í è•Í…Á¥¹œ€ ¤€´øY½¥¤ì(€€€€€€€€€€€Í•±˜¹¥ÍI•™É•Í¡¥¹œ€ô¥ÍI•™É•Í¡¥¹œ(€€€€€€€€€€€Í•±˜¹½¹=™™Í•Ñ¡…¹•€ô½¹=™™Í•Ñ¡…¹•(€€€€€€€€€€€Í•±˜¹½¹I•™É•Í €ô½¹I•™É•Í (€€€€€€€€€€€Íå¹¡É½¹¥é•I•™É•Í¡½¹ÑÉ½° ¤(€€€€€€€ô((€€€€€€€™Õ¹Œ…ÑÑ… ¡™É½´ÁÉ½‰”èU%Y¥•Ü¤ì(€€€€€€€€€€€Õ…É±•ĞÍÉ½±±Y¥•Ü€ô…¹•ÍÑ½ÉY•ÉÑ¥…±MÉ½±±Y¥•Ü¡™É½´èÁÉ½‰”¤•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€¥˜Í•±˜¹ÍÉ½±±Y¥•Ü€„ôôÍÉ½±±Y¥•Üì(€€€€€€€€€€€€€€€½¹Ñ•¹Ñ=™™Í•Ñ=‰Í•ÉÙ…Ñ¥½¸ü¹¥¹Ù…±¥‘…Ñ” ¤(€€€€€€€€€€€€€€€Í•±˜¹ÍÉ½±±Y¥•Ü€ôÍÉ½±±Y¥•Ü(€€€€€€€€€€€€€€€ÍÉ½±±Y¥•Ü¹…±İ…åÍ	½Õ¹•Y•ÉÑ¥…°€ôÑÉÕ”(€€€€€€€€€€€€€€€¥˜ÍÉ½±±Y¥•Ü¹É•™É•Í¡½¹ÑÉ½°€ôô¹¥°ñğÍÉ½±±Y¥•Ü¹É•™É•Í¡½¹ÑÉ½°€ôôôÉ•™É•Í¡½¹ÑÉ½°ìÍÉ½±±Y¥•Ü¹É•™É•Í¡½¹ÑÉ½°€ôÉ•™É•Í¡½¹ÑÉ½°ô(€€€€€€€€€€€€€€€½¹Ñ•¹Ñ=™™Í•Ñ=‰Í•ÉÙ…Ñ¥½¸€ôÍÉ½±±Y¥•Ü¹½‰Í•ÉÙ”¡p¹½¹Ñ•¹Ñ=™™Í•Ğ°½ÁÑ¥½¹Ìèl¹¥¹¥Ñ¥…°°€¹¹•İt¤ìmİ•…¬Í•±™tÍÉ½±±Y¥•Ü°|¥¸Í•±˜ü¹•µ¥Ğ¡ÍÉ½±±Y¥•Ü¤ô(€€€€€€€€€€€ô•±Í”ì(€€€€€€€€€€€€€€€•µ¥Ğ¡ÍÉ½±±Y¥•Ü¤(€€€€€€€€€€€ô(€€€€€€€€€€€Íå¹¡É½¹¥é•I•™É•Í¡½¹ÑÉ½° ¤(€€€€€€€ô((€€€€€€€™Õ¹Œ‘•Ñ…  ¤ì(€€€€€€€€€€€½¹Ñ•¹Ñ=™™Í•Ñ=‰Í•ÉÙ…Ñ¥½¸ü¹¥¹Ù…±¥‘…Ñ” ¤(€€€€€€€€€€€½¹Ñ•¹Ñ=™™Í•Ñ=‰Í•ÉÙ…Ñ¥½¸€ô¹¥°(€€€€€€€€€€€¥˜ÍÉ½±±Y¥•Üü¹É•™É•Í¡½¹ÑÉ½°€ôôôÉ•™É•Í¡½¹ÑÉ½°ìÍÉ½±±Y¥•Üü¹É•™É•Í¡½¹ÑÉ½°€ô¹¥°ô(€€€€€€€€€€€ÍÉ½±±Y¥•Ü€ô¹¥°(€€€€€€€ô((€€€€€€€½‰©ŒÁÉ¥Ù…Ñ”™Õ¹ŒÉ•™É•Í¡QÉ¥•É• ¤ì½¹I•™É•Í  ¤ô((€€€€€€€ÁÉ¥Ù…Ñ”™Õ¹Œ…¹•ÍÑ½ÉY•ÉÑ¥…±MÉ½±±Y¥•Ü¡™É½´ÁÉ½‰”èU%Y¥•Ü¤€´øU%MÉ½±±Y¥•Üüì(€€€€€€€€€€€Ù…ÈÕÉÉ•¹ĞèU%Y¥•Üü€ôÁÉ½‰”(€€€€€€€€€€€İ¡¥±”±•ĞÙ¥•Ü€ôÕÉÉ•¹Ğì(€€€€€€€€€€€€€€€¥˜±•ĞÍÉ½±±Y¥•Ü€ôÙ¥•Ü…ÌüU%MÉ½±±Y¥•Ü°€…ÍÉ½±±Y¥•Ü¹¥ÍA…¥¹¹…‰±•ìÉ•ÑÕÉ¸ÍÉ½±±Y¥•Üô(€€€€€€€€€€€€€€€ÕÉÉ•¹Ğ€ôÙ¥•Ü¹ÍÕÁ•ÉÙ¥•Ü(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸¹¥°(€€€€€€€ô((€€€€€€€ÁÉ¥Ù…Ñ”™Õ¹Œ•µ¥Ğ¡|ÍÉ½±±Y¥•ÜèU%MÉ½±±Y¥•Ü¤ì(€€€€€€€€€€€±•ĞÉ…İ¥ÍÁ±…•µ•¹Ğ€ô€´¡ÍÉ½±±Y¥•Ü¹½¹Ñ•¹Ñ=™™Í•Ğ¹ä€¬ÍÉ½±±Y¥•Ü¹…‘©ÕÍÑ•‘½¹Ñ•¹Ñ%¹Í•Ğ¹Ñ½À¤(€€€€€€€€€€€¥˜Q¡É•…¹¥Í5…¥¹Q¡É•…ì½¹=™™Í•Ñ¡…¹•¡É…İ¥ÍÁ±…•µ•¹Ğ¤ô(€€€€€€€€€€€•±Í”ì¥ÍÁ…Ñ¡EÕ•Õ”¹µ…¥¸¹…Íå¹Œìmİ•…¬Í•±™t¥¸Í•±˜ü¹½¹=™™Í•Ñ¡…¹•¡É…İ¥ÍÁ±…•µ•¹Ğ¤ôô(€€€€€€€ô((€€€€€€€ÁÉ¥Ù…Ñ”™Õ¹ŒÍå¹¡É½¹¥é•I•™É•Í¡½¹ÑÉ½° ¤ì(€€€€€€€€€€€Õ…É€…¥ÍI•™É•Í¡¥¹œ•±Í”ìÉ•ÑÕÉ¸ô(€€€€€€€€€€€¥˜É•™É•Í¡½¹ÑÉ½°¹¥ÍI•™É•Í¡¥¹œìÉ•™É•Í¡½¹ÑÉ½°¹•¹‘I•™É•Í¡¥¹œ ¤ô(€€€€€€€ô(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍA…•!•…‘•ÈèY¥•Üì(€€€±•ĞÑ¥Ñ±”èMÑÉ¥¹œ(€€€±•Ğ½¹±½Í”è€ ¤€´øY½¥(€€€Ù…È‰½‘äèÍ½µ”Y¥•Üì(€€€€€€€!MÑ…¬ì(€€€€€€€€€€€MÁ…•È ¤¹™É…µ”¡İ¥‘Ñ è€ÌØ¤(€€€€€€€€€€€MÁ…•È ¤(€€€€€€€€€€€Q•áĞ¡Ñ¥Ñ±”¤¹™½¹Ğ ¹Ñ¥Ñ±”È¹İ•¥¡Ğ ¹‰½±¤¤(€€€€€€€€€€€MÁ…•È ¤(€€€€€€€€€€€	ÕÑÑ½¸¡…Ñ¥½¸è½¹±½Í”¤ì%µ…”¡ÍåÍÑ•µ9…µ”è€‰áµ…É¬ˆ¤¹™½¹Ğ ¹ÍåÍÑ•´¡Í¥é”è€ÄÔ°İ•¥¡Ğè€¹Í•µ¥‰½±¤¤¹™½É•É½Õ¹‘½±½È ¹ÁÉ¥µ…Éä¤¹™É…µ”¡İ¥‘Ñ è€ÌØ°¡•¥¡Ğè€ÌØ¤¹‰…­É½Õ¹¡½±½È¡Õ¥½±½Èè€¹Í•½¹‘…ÉåMåÍÑ•µ	…­É½Õ¹¤¤¹±¥ÁM¡…Á”¡¥É±” ¤¤ô(€€€€€€€ô(€€€€€€€€¹Á…‘‘¥¹œ ¹¡½É¥é½¹Ñ…°°€ÄØ¤(€€€€€€€€¹Á…‘‘¥¹œ ¹Ñ½À°€Ô¤(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍ1¥‰É…ÉåQ¥±”èY¥•Üì(€€€±•Ğ¥Ñ•´è1¥‰É…Éå%Ñ•´(€€€±•Ğ±¥•¹Ğèµ‰åA%±¥•¹Ğ(€€€Ù…È‰½‘äèÍ½µ”Y¥•Üì(€€€€€€€YMÑ…¬¡ÍÁ…¥¹œè€Ø¤ì(€€€€€€€€€€€XÍI•µ½Ñ•%µ…”¡ÕÉ°è±¥•¹Ğ¹¥µ…•UI0¡¥Ñ•µ%è¥Ñ•´¹¥°µ…á]¥‘Ñ è€ĞàÀ°Ñ…œè¥Ñ•´¹ÁÉ¥µ…Éå%µ…•Q…œ¤°½¹Ñ•¹Ñ5½‘”è€¹™¥±°¤¹™É…µ”¡İ¥‘Ñ è€ÄØĞ°¡•¥¡Ğè€äÈ¤¹±¥ÁÁ• ¤¹±¥ÁM¡…Á”¡I½Õ¹‘•‘I•Ñ…¹±”¡½É¹•ÉI…‘¥ÕÌè€ä°ÍÑå±”è€¹½¹Ñ¥¹Õ½ÕÌ¤¤(€€€€€€€€€€€Q•áĞ¡¥Ñ•´¹¹…µ”¤¹™½¹Ğ ¹ÍÕ‰¡•…‘±¥¹”¹İ•¥¡Ğ ¹µ•‘¥Õ´¤¤¹™½É•É½Õ¹‘½±½È ¹ÁÉ¥µ…Éä¤¹±¥¹•1¥µ¥Ğ Ä¤¹™É…µ”¡İ¥‘Ñ è€ÄØĞ¤(€€€€€€€ô(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍ1…¹‘Í…Á•…ÉèY¥•Üì(€€€±•Ğ¥Ñ•´è1¥‰É…Éå%Ñ•´(€€€±•Ğ±¥•¹Ğèµ‰åA%±¥•¹Ğ(€€€Ù…È‰½‘äèÍ½µ”Y¥•Üì(€€€€€€€YMÑ…¬¡…±¥¹µ•¹Ğè€¹±•…‘¥¹œ°ÍÁ…¥¹œè€Ô¤ì(€€€€€€€€€€€iMÑ…¬¡…±¥¹µ•¹Ğè€¹‰½ÑÑ½µ1•…‘¥¹œ¤ì(€€€€€€€€€€€€€€€XÍI•µ½Ñ•%µ…”¡ÕÉ°è±¥•¹Ğ¹¥µ…•UI0¡¥Ñ•µ%è¥Ñ•´¹¥°¥µ…•QåÁ”è¥Ñ•´¹‰…­‘É½Á%µ…•Q…Ì¹¥ÍµÁÑä€ü€‰AÉ¥µ…Éäˆ€è€‰	…­‘É½Àˆ°µ…á]¥‘Ñ è€ØÔÀ°Ñ…œè¥Ñ•´¹‰…­‘É½Á%µ…•Q…Ì¹™¥ÉÍĞ€üü¥Ñ•´¹ÁÉ¥µ…Éå%µ…•Q…œ¤°½¹Ñ•¹Ñ5½‘”è€¹™¥±°¤¹™É…µ”¡İ¥‘Ñ è€ÈÄÈ°¡•¥¡Ğè€ÄÈÀ¤¹±¥ÁÁ• ¤(€€€€€€€€€€€€€€€¥˜¥Ñ•´¹Á±…å‰…­AÉ½É•ÍÌ€ø€Àì•½µ•ÑÉåI•…‘•ÈìÁÉ½áä¥¸YMÑ…¬ìMÁ…•È ¤ìI•Ñ…¹±” ¤¹™¥±°¡½±½È¹‰±Õ”¤¹™É…µ”¡İ¥‘Ñ èÁÉ½áä¹Í¥é”¹İ¥‘Ñ €¨¥Ñ•´¹Á±…å‰…­AÉ½É•ÍÌ°¡•¥¡Ğè€Ì¤ôôô(€€€€€€€€€€€ô(€€€€€€€€€€€€¹±¥ÁM¡…Á”¡I½Õ¹‘•‘I•Ñ…¹±”¡½É¹•ÉI…‘¥ÕÌè€ä°ÍÑå±”è€¹½¹Ñ¥¹Õ½ÕÌ¤¤(€€€€€€€€€€€Q•áĞ¡¥Ñ•´¹¹…µ”¤¹™½¹Ğ ¹ÍÕ‰¡•…‘±¥¹”¹İ•¥¡Ğ ¹Í•µ¥‰½±¤¤¹±¥¹•1¥µ¥Ğ Ä¤¹™É…µ”¡İ¥‘Ñ è€ÈÄÈ°…±¥¹µ•¹Ğè€¹±•…‘¥¹œ¤(€€€€€€€€€€€Q•áĞ¡ØÍ5•‘¥…MÕ‰Ñ¥Ñ±”¡¥Ñ•´¤¤¹™½¹Ğ ¹…ÁÑ¥½¸¤¹™½É•É½Õ¹‘½±½È ¹Í•½¹‘…Éä¤¹±¥¹•1¥µ¥Ğ Ä¤(€€€€€€€ô(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍA½ÍÑ•É…ÉèY¥•Üì(€€€¹Ù¥É½¹µ•¹Ğ¡p¹•µ‰åA½ÍÑ•ÉÉ¥‘•±±]¥‘Ñ ¤ÁÉ¥Ù…Ñ”Ù…ÈÉ¥‘•±±]¥‘Ñ (€€€±•Ğ¥Ñ•´è1¥‰É…Éå%Ñ•´(€€€±•Ğ±¥•¹Ğèµ‰åA%±¥•¹Ğ(€€€±•Ğİ¥‘Ñ è±½…Ğü((€€€ÁÉ¥Ù…Ñ”Ù…ÈÉ•Í½±Ù•‘]¥‘Ñ è±½…Ğìİ¥‘Ñ €üüÉ¥‘•±±]¥‘Ñ €üü€ÄÄàô(€€€ÁÉ¥Ù…Ñ”Ù…ÈÁ½ÍÑ•É!•¥¡Ğè±½…Ğì™±½½È¡É•Í½±Ù•‘]¥‘Ñ €¼µ‰åA½ÍÑ•ÉÉ¥‘5•ÑÉ¥Ì¹Á½ÍÑ•ÉÍÁ•ÑI…Ñ¥¼¤ô(€€€ÁÉ¥Ù…Ñ”Ù…Èå•…ÉQ•áĞèMÑÉ¥¹œì¥Ñ•´¹ÁÉ½‘ÕÑ¥½¹e•…È¹µ…À¡MÑÉ¥¹œ¹¥¹¥Ğ¤€üü€ˆ€ˆô((€€€Ù…È‰½‘äèÍ½µ”Y¥•Üì(€€€€€€€YMÑ…¬¡…±¥¹µ•¹Ğè€¹±•…‘¥¹œ°ÍÁ…¥¹œè€Ğ¤ì(€€€€€€€€€€€iMÑ…¬¡…±¥¹µ•¹Ğè€¹‰½ÑÑ½µ1•…‘¥¹œ¤ì(€€€€€€€€€€€€€€€XÍI•µ½Ñ•%µ…”¡ÕÉ°è±¥•¹Ğ¹¥µ…•UI0¡¥Ñ•µ%è¥Ñ•´¹ÁÉ•™•ÉÉ•‘AÉ¥µ…Éå%µ…•%Ñ•µ%°µ…á]¥‘Ñ è€ĞĞÀ°Ñ…œè¥Ñ•´¹ÁÉ•™•ÉÉ•‘AÉ¥µ…Éå%µ…•Q…œ¤°½¹Ñ•¹Ñ5½‘”è€¹™¥±°¤(€€€€€€€€€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ èÉ•Í½±Ù•‘]¥‘Ñ °¡•¥¡ĞèÁ½ÍÑ•É!•¥¡Ğ¤(€€€€€€€€€€€€€€€€€€€€¹±¥ÁÁ• ¤(€€€€€€€€€€€€€€€¥˜¥Ñ•´¹Á±…å‰…­AÉ½É•ÍÌ€ø€Àì•½µ•ÑÉåI•…‘•ÈìÁÉ½áä¥¸YMÑ…¬ìMÁ…•È ¤ìI•Ñ…¹±” ¤¹™¥±°¡½±½È¹‰±Õ”¤¹™É…µ”¡İ¥‘Ñ èÁÉ½áä¹Í¥é”¹İ¥‘Ñ €¨¥Ñ•´¹Á±…å‰…­AÉ½É•ÍÌ°¡•¥¡Ğè€Ì¤ôôô(€€€€€€€€€€€€€€€¥˜±•Ğ½Õ¹Ğ€ô¥Ñ•´¹ÕÍ•É…Ñ„ü¹Õ¹Á±…å•‘%Ñ•µ½Õ¹Ğ°½Õ¹Ğ€ø€Àì(€€€€€€€€€€€€€€€€€€€YMÑ…¬ì!MÑ…¬ìMÁ…•È ¤ìQ•áĞ ‰p¡½Õ¹Ğ¤ˆ¤¹™½¹Ğ ¹…ÁÑ¥½¸È¹İ•¥¡Ğ ¹‰½±¤¤¹™½É•É½Õ¹‘½±½È ¹İ¡¥Ñ”¤¹Á…‘‘¥¹œ Ø¤¹‰…­É½Õ¹¡½±½È¹‰±Õ”¤¹±¥ÁM¡…Á”¡¥É±” ¤¤ôìMÁ…•È ¤ô¹Á…‘‘¥¹œ Ô¤(€€€€€€€€€€€€€€€ô•±Í”¥˜¥Ñ•´¹¥ÍA±…å•ì(€€€€€€€€€€€€€€€€€€€YMÑ…¬ì!MÑ…¬ìMÁ…•È ¤ì%µ…”¡ÍåÍÑ•µ9…µ”è€‰¡•­µ…É¬ˆ¤¹™½¹Ğ ¹…ÁÑ¥½¸È¹İ•¥¡Ğ ¹‰½±¤¤¹™½É•É½Õ¹‘½±½È ¹İ¡¥Ñ”¤¹Á…‘‘¥¹œ Ø¤¹‰…­É½Õ¹¡½±½È¹É••¸¤¹±¥ÁM¡…Á”¡¥É±” ¤¤ôìMÁ…•È ¤ô¹Á…‘‘¥¹œ Ô¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ èÉ•Í½±Ù•‘]¥‘Ñ °¡•¥¡ĞèÁ½ÍÑ•É!•¥¡Ğ¤(€€€€€€€€€€€€¹‰…­É½Õ¹¡½±½È¡Õ¥½±½Èè€¹Í•½¹‘…ÉåMåÍÑ•µ	…­É½Õ¹¤¤(€€€€€€€€€€€€¹±¥ÁM¡…Á”¡I½Õ¹‘•‘I•Ñ…¹±”¡½É¹•ÉI…‘¥ÕÌè€ÄÀ°ÍÑå±”è€¹½¹Ñ¥¹Õ½ÕÌ¤¤((€€€€€€€€€€€YMÑ…¬¡…±¥¹µ•¹Ğè€¹±•…‘¥¹œ°ÍÁ…¥¹œè€È¤ì(€€€€€€€€€€€€€€€Q•áĞ¡¥Ñ•´¹¹…µ”¤¹™½¹Ğ ¹ÍÕ‰¡•…‘±¥¹”¤¹±¥¹•1¥µ¥Ğ Ä¤¹™É…µ”¡İ¥‘Ñ èÉ•Í½±Ù•‘]¥‘Ñ °¡•¥¡Ğè€ÈÀ°…±¥¹µ•¹Ğè€¹±•…‘¥¹œ¤(€€€€€€€€€€€€€€€Q•áĞ¡å•…ÉQ•áĞ¤¹™½¹Ğ ¹…ÁÑ¥½¸¤¹™½É•É½Õ¹‘½±½È ¹Í•½¹‘…Éä¤¹±¥¹•1¥µ¥Ğ Ä¤¹™É…µ”¡İ¥‘Ñ èÉ•Í½±Ù•‘]¥‘Ñ °¡•¥¡Ğè€ÄØ°…±¥¹µ•¹Ğè€¹±•…‘¥¹œ¤¹½Á…¥Ñä¡¥Ñ•´¹ÁÉ½‘ÕÑ¥½¹e•…È€ôô¹¥°€ü€À€è€Ä¤(€€€€€€€€€€€ô(€€€€€€€€€€€€¹™É…µ”¡İ¥‘Ñ èÉ•Í½±Ù•‘]¥‘Ñ °¡•¥¡Ğè€Ìà°…±¥¹µ•¹Ğè€¹Ñ½Á1•…‘¥¹œ¤(€€€€€€€ô(€€€€€€€€¹™É…µ”¡İ¥‘Ñ èÉ•Í½±Ù•‘]¥‘Ñ °…±¥¹µ•¹Ğè€¹±•…‘¥¹œ¤(€€€ô)ô()ÁÉ¥Ù…Ñ”ÍÑÉÕĞXÍI•µ½Ñ•%µ…”èY¥•Üì(€€€±•ĞÕÉ°èUI0ü(€€€±•Ğ½¹Ñ•¹Ñ5½‘”è½¹Ñ•¹Ñ5½‘”(€€€Ù…È‰½‘äèÍ½µ”Y¥•Üìµ‰å…¡•‘I•µ½Ñ•%µ…”¡ÕÉ°èÕÉ°°½¹Ñ•¹Ñ5½‘”è½¹Ñ•¹Ñ5½‘”°Á±…•¡½±‘•ÉMåÍÑ•µ%µ…”è€‰Á±…ä¹É•Ñ…¹±”ˆ°Í¡½İÍ1½…‘¥¹%¹‘¥…Ñ½Èè™…±Í”¤ô)ô()ÁÉ¥Ù…Ñ”™Õ¹ŒØÍ5•‘¥…MÕ‰Ñ¥Ñ±”¡|¥Ñ•´è1¥‰É…Éå%Ñ•´¤€´øMÑÉ¥¹œì(€€€¥˜±•ĞÍ•É¥•Í9…µ”€ô¥Ñ•´¹Í•É¥•Í9…µ”°±•ĞÍ•…Í½¸€ô¥Ñ•´¹Á…É•¹Ñ%¹‘•á9Õµ‰•È°±•Ğ•Á¥Í½‘”€ô¥Ñ•´¹¥¹‘•á9Õµ‰•ÈìÉ•ÑÕÉ¸€‰p¡Í•É¥•Í9…µ”¤ƒ
+ÜMp¡Í•…Í½¸¤ép¡•Á¥Í½‘”¤ˆô(€€€¥˜±•Ğå•…È€ô¥Ñ•´¹ÁÉ½‘ÕÑ¥½¹e•…ÈìÉ•ÑÕÉ¸MÑÉ¥¹œ¡å•…È¤ô(€€€É•ÑÕÉ¸¥Ñ•´¹ÑåÁ”€üü€ˆˆ)ô()ÁÉ¥Ù…Ñ”™Õ¹ŒØÍ5•‘¥…QåÁ•Q¥Ñ±”¡|¥Ñ•´è1¥‰É…Éå%Ñ•´¤€´øMÑÉ¥¹œì(€€€Íİ¥Ñ ¥Ñ•´¹ÑåÁ”ü¹±½İ•É…Í• ¤ì(€€€…Í”€‰µ½Ù¥”ˆèÉ•ÑÕÉ¸€‹R×–öÄˆ(€€€…Í”€‰Í•É¥•ÌˆèÉ•ÑÕÉ¸€‹–&Ÿ¦nˆ(€€€…Í”€‰•Á¥Í½‘”ˆèÉ•ÑÕÉ¸€‹–&Ÿ¦nˆ(€€€…Í”€‰Ù¥‘•¼ˆèÉ•ÑÕÉ¸€‹¢¦ŠDˆ(€€€‘•™…Õ±ĞèÉ•ÑÕÉ¸¥Ñ•´¹ÑåÁ”€üü€ˆˆ(€€€ô)ô()ÁÉ¥Ù…Ñ”™Õ¹ŒØÍ½±±•Ñ¥½¹QåÁ•Q¥Ñ±”¡|Ù…±Õ”èMÑÉ¥¹œ¤€´øMÑÉ¥¹œì(€€€Íİ¥Ñ Ù…±Õ”¹±½İ•É…Í• ¤ì(€€€…Í”€‰µ½Ù¥•ÌˆèÉ•ÑÕÉ¸€‹R×–öÄˆ(€€€…Í”€‰ÑÙÍ¡½İÌˆèÉ•ÑÕÉ¸€‹R×¢–&œˆ(€€€…Í”€‰µÕÍ¥ŒˆèÉ•ÑÕÉ¸€‹¦~Ï’æ@ˆ(€€€…Í”€‰¡½µ•Ù¥‘•½ÌˆèÉ•ÑÕÉ¸€‹–ºÛ–ê·¢¦ŠDˆ(€€€…Í”€‰µ¥á•ˆèÉ•ÑÕÉ¸€‹šŞß–B#––ºäˆ(€€€‘•™…Õ±ĞèÉ•ÑÕÉ¸Ù…±Õ”(€€€ô)ô(
