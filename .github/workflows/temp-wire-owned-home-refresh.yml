@@ -1,0 +1,58 @@
+name: Temp Wire Owned Home Refresh
+
+on:
+  push:
+    branches:
+      - fix/home-refresh-owned-control
+    paths:
+      - .github/workflows/temp-wire-owned-home-refresh.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/home-refresh-owned-control
+      - name: Apply Home refresh wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Sources/UI/EmbyHomeCoreV3.swift')
+          s = p.read_text()
+          reps = [
+            ('    @State var isHomeActive = false\n    @State var homeAppearanceGeneration = 0\n', '    @State var isHomeActive = false\n'),
+            ('                .onAppear {\n                    homeAppearanceGeneration &+= 1\n                    isHomeActive = true\n', '                .onAppear {\n                    isHomeActive = true\n'),
+            ('                        V3HomeScrollOffsetObserver(lifecycleGeneration: homeAppearanceGeneration) { value in\n                            guard immersive, isHomeActive else { return }\n                            let clampedValue = max(-heroTrackingLimit, value)\n                            heroScrollState.update(clampedValue)\n                        }\n                        V3HomeRefreshControlStyler(immersive: immersive, lifecycleGeneration: homeAppearanceGeneration)\n', '                        V3HomeScrollOffsetObserver { value in\n                            guard immersive, isHomeActive else { return }\n                            let clampedValue = max(-heroTrackingLimit, value)\n                            heroScrollState.update(clampedValue)\n                        }\n                        if immersive {\n                            V3HomeOwnedRefreshControl { completion in\n                                Task { await refreshHome(); completion() }\n                            }\n                        } else {\n                            V3HomeRefreshControlStyler(immersive: false)\n                        }\n'),
+            ('            }\n            .refreshable { await refreshHome() }\n            .frame(width: width)\n', '            }\n            .modifier(V3HomeRefreshModifier(immersive: immersive, action: refreshHome))\n            .frame(width: width)\n')
+          ]
+          for old, new in reps:
+              if s.count(old) != 1:
+                  raise SystemExit(f'expected one match, got {s.count(old)} for {old[:80]!r}')
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          cat >> Sources/UI/EmbyHomeCoreV3.swift <<'SWIFT'
+
+private struct V3HomeRefreshModifier: ViewModifier {
+    let immersive: Bool
+    let action: @MainActor () async -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if immersive { content }
+        else { content.refreshable { await action() } }
+    }
+}
+SWIFT
+          rm -f .github/workflows/temp-wire-owned-home-refresh.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: isolate immersive Home refresh ownership"
+          git push origin HEAD:fix/home-refresh-owned-control
