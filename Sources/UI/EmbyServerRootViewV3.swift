@@ -92,6 +92,7 @@ struct EmbyServerRootViewV3: View {
                     Text(title).font(.system(size: 10))
                 }
                 .foregroundColor(selectedTab == tab ? .blue : .secondary)
+                .offset(y: 4)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
