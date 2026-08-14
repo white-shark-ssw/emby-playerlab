@@ -176,7 +176,7 @@ struct V3EmbyHomeView: View {
                             let clampedValue = max(-heroTrackingLimit, value)
                             heroScrollState.update(clampedValue)
                         }
-                        V3HomeRefreshControlStyler()
+                        V3HomeRefreshControlStyler(immersive: immersive)
                     }
                 )
             }
