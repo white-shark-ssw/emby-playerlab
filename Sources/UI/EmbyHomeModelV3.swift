@@ -6,6 +6,7 @@ struct V3HomeLibraryPreference: Codable, Identifiable, Equatable {
     let libraryID: String
     var name: String
     var collectionType: String?
+    var primaryImageTag: String? = nil
     var showOnHome: Bool
     var includeInCarousel: Bool
     var id: String { libraryID }
@@ -25,6 +26,8 @@ final class V3EmbyHomeViewModel: ObservableObject {
     private let carouselEnabledKey: String
     private let carouselSnapshotKey: String
     private let latestSnapshotKey: String
+    private let librariesSnapshotKey: String
+    private let resumeSnapshotKey: String
     private var cachedCarouselItems: [LibraryItem]
     private var hasResolvedLiveCarouselMetadata = false
     private(set) var hasLoaded = false
@@ -40,9 +43,21 @@ final class V3EmbyHomeViewModel: ObservableObject {
         carouselSnapshotKey = snapshotKey
         let latestKey = "osplayer.home.latest-snapshot.v1.\(session.serverId).\(session.user.id)"
         latestSnapshotKey = latestKey
+        let librariesKey = "osplayer.home.libraries-snapshot.v1.\(session.serverId).\(session.user.id)"
+        librariesSnapshotKey = librariesKey
+        let resumeKey = "osplayer.home.resume-snapshot.v1.\(session.serverId).\(session.user.id)"
+        resumeSnapshotKey = resumeKey
         latestByLibrary = Self.loadLatestSnapshot(forKey: latestKey)
         cachedCarouselItems = Self.loadCarouselSnapshot(forKey: snapshotKey)
-        carouselEnabled = UserDefaults.standard.object(forKey: carouselKey) as? Bool ?? true
+        let savedCarouselEnabled = UserDefaults.standard.object(forKey: carouselKey) as? Bool ?? true
+        carouselEnabled = savedCarouselEnabled
+        if savedCarouselEnabled {
+            let savedPreferences = Self.loadPreferences(forKey: preferenceKey)
+            preferences = savedPreferences
+            let savedLibraries = Self.loadItemSnapshot(forKey: librariesKey)
+            libraries = savedLibraries.isEmpty ? savedPreferences.compactMap(Self.libraryItem(from:)) : savedLibraries
+            resumeItems = Self.loadItemSnapshot(forKey: resumeKey)
+        }
     }
 
     var orderedLibraries: [LibraryItem] {
@@ -105,6 +120,8 @@ final class V3EmbyHomeViewModel: ObservableObject {
             let (views, resume) = try await (viewsRequest, resumeRequest)
             libraries = uniqueItems(views)
             resumeItems = uniqueItems(resume).filter { ["movie", "episode"].contains($0.type?.lowercased() ?? "") }
+            persistItemSnapshot(libraries, forKey: librariesSnapshotKey)
+            persistItemSnapshot(resumeItems, forKey: resumeSnapshotKey)
             resumeDirty = false
             dirtyResumeItemIDs.removeAll()
             preferences = reconcilePreferences(libraries)
@@ -153,6 +170,7 @@ final class V3EmbyHomeViewModel: ObservableObject {
         do {
             let resume = try await client.resumeItems(limit: 18)
             resumeItems = uniqueItems(resume).filter { ["movie", "episode"].contains($0.type?.lowercased() ?? "") }
+            persistItemSnapshot(resumeItems, forKey: resumeSnapshotKey)
             DiagnosticsLogger.shared.log("HomeRefresh", "resume refreshed count=\(resumeItems.count) dirty=\(resumeDirty) ids=\(dirtyResumeItemIDs.sorted().joined(separator: ","))")
             resumeDirty = false
             dirtyResumeItemIDs.removeAll()
@@ -196,11 +214,12 @@ final class V3EmbyHomeViewModel: ObservableObject {
             var updated = preference
             updated.name = library.name
             updated.collectionType = library.collectionType
+            updated.primaryImageTag = library.primaryImageTag
             return updated
         }
         let known = Set(next.map(\.libraryID))
         for library in views where !known.contains(library.id) {
-            next.append(V3HomeLibraryPreference(libraryID: library.id, name: library.name, collectionType: library.collectionType, showOnHome: true, includeInCarousel: defaultCarouselEnabled(library)))
+            next.append(V3HomeLibraryPreference(libraryID: library.id, name: library.name, collectionType: library.collectionType, primaryImageTag: library.primaryImageTag, showOnHome: true, includeInCarousel: defaultCarouselEnabled(library)))
         }
         return next
     }
@@ -212,14 +231,35 @@ final class V3EmbyHomeViewModel: ObservableObject {
         }
     }
 
-    private func loadPreferences() -> [V3HomeLibraryPreference] {
-        guard let data = UserDefaults.standard.data(forKey: preferenceKey), let value = try? JSONDecoder().decode([V3HomeLibraryPreference].self, from: data) else { return [] }
+    private func loadPreferences() -> [V3HomeLibraryPreference] { Self.loadPreferences(forKey: preferenceKey) }
+
+    private static func loadPreferences(forKey key: String) -> [V3HomeLibraryPreference] {
+        guard let data = UserDefaults.standard.data(forKey: key), let value = try? JSONDecoder().decode([V3HomeLibraryPreference].self, from: data) else { return [] }
         return value
     }
 
     private func persistPreferences(_ value: [V3HomeLibraryPreference]) {
         guard let data = try? JSONEncoder().encode(value) else { return }
         UserDefaults.standard.set(data, forKey: preferenceKey)
+    }
+
+    private func persistItemSnapshot(_ items: [LibraryItem], forKey key: String) {
+        let snapshot = items.map(V3HomeItemSnapshot.init)
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+
+    private static func loadItemSnapshot(forKey key: String) -> [LibraryItem] {
+        guard let data = UserDefaults.standard.data(forKey: key), let snapshot = try? JSONDecoder().decode([V3HomeItemSnapshot].self, from: data) else { return [] }
+        return snapshot.compactMap(\.libraryItem)
+    }
+
+    private static func libraryItem(from preference: V3HomeLibraryPreference) -> LibraryItem? {
+        var payload: [String: Any] = ["Id": preference.libraryID, "Name": preference.name, "Type": "CollectionFolder"]
+        if let collectionType = preference.collectionType { payload["CollectionType"] = collectionType }
+        if let primaryImageTag = preference.primaryImageTag { payload["ImageTags"] = ["Primary": primaryImageTag] }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
+        return try? JSONDecoder().decode(LibraryItem.self, from: data)
     }
 
     private func persistLatestSnapshot(_ latest: [String: [LibraryItem]]) {
@@ -259,6 +299,7 @@ private struct V3HomeItemSnapshot: Codable {
     let primaryImageTag: String?
     let primaryImageItemId: String?
     let seriesPrimaryImageTag: String?
+    let collectionType: String?
     let playbackPositionTicks: Int64?
     let played: Bool?
     let unplayedItemCount: Int?
@@ -277,6 +318,7 @@ private struct V3HomeItemSnapshot: Codable {
         primaryImageTag = item.primaryImageTag
         primaryImageItemId = item.primaryImageItemId
         seriesPrimaryImageTag = item.seriesPrimaryImageTag
+        collectionType = item.collectionType
         playbackPositionTicks = item.userData?.playbackPositionTicks
         played = item.userData?.played
         unplayedItemCount = item.userData?.unplayedItemCount
@@ -295,6 +337,7 @@ private struct V3HomeItemSnapshot: Codable {
         if let primaryImageTag { payload["ImageTags"] = ["Primary": primaryImageTag] }
         if let primaryImageItemId { payload["PrimaryImageItemId"] = primaryImageItemId }
         if let seriesPrimaryImageTag { payload["SeriesPrimaryImageTag"] = seriesPrimaryImageTag }
+        if let collectionType { payload["CollectionType"] = collectionType }
         if playbackPositionTicks != nil || played != nil || unplayedItemCount != nil {
             var userData: [String: Any] = [:]
             if let playbackPositionTicks { userData["PlaybackPositionTicks"] = playbackPositionTicks }

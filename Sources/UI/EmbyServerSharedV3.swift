@@ -121,19 +121,31 @@ struct V3HomeNativeScrollObserver: UIViewRepresentable {
     }
 }
 
+enum V3ServerHeaderMetrics {
+    static let horizontalPadding: CGFloat = 16
+    static let controlHeight: CGFloat = 38
+    static let closeButtonSize: CGFloat = 36
+    static let bottomPadding: CGFloat = 6
+}
+
 struct V3PageHeader: View {
     let title: String
     let onClose: () -> Void
     var body: some View {
         HStack {
-            Spacer().frame(width: 36)
+            Spacer().frame(width: V3ServerHeaderMetrics.closeButtonSize)
             Spacer()
             Text(title).font(.title2.weight(.bold))
             Spacer()
-            Button(action: onClose) { Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundColor(.primary).frame(width: 36, height: 36).background(Color(uiColor: .secondarySystemBackground)).clipShape(Circle()) }
+            Button(action: onClose) {
+                Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundColor(.primary)
+                    .frame(width: V3ServerHeaderMetrics.closeButtonSize, height: V3ServerHeaderMetrics.closeButtonSize)
+                    .background(Color(uiColor: .secondarySystemBackground)).clipShape(Circle())
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 5)
+        .frame(height: V3ServerHeaderMetrics.controlHeight)
+        .padding(.horizontal, V3ServerHeaderMetrics.horizontalPadding)
+        .padding(.bottom, V3ServerHeaderMetrics.bottomPadding)
     }
 }
 

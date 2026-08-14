@@ -529,7 +529,7 @@ struct V3EmbyServerSettingsView: View {
         NavigationView {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
-                    V3PageHeader(title: "设置", onClose: onClose)
+                    V3PageHeader(title: "设置", onClose: onClose).padding(.horizontal, -16)
                     V3SettingsCard {
                         settingRow("服务器", value: session.serverName, systemImage: "externaldrive")
                         Divider().padding(.leading, 46)
