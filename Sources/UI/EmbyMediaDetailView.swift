@@ -25,10 +25,10 @@ struct EmbyMediaDetailView: View {
     @State private var mediaInfoExpanded = false
     @State private var showRawMediaPath = false
 
-    init(item: LibraryItem, client: EmbyAPIClient) {
+    init(item: LibraryItem, client: EmbyAPIClient, initialEpisodeID: String? = nil) {
         self.item = item
         self.client = client
-        _model = StateObject(wrappedValue: EmbyMediaDetailViewModel(item: item, client: client))
+        _model = StateObject(wrappedValue: EmbyMediaDetailViewModel(item: item, client: client, initialEpisodeID: initialEpisodeID))
     }
 
     var body: some View {
@@ -425,6 +425,16 @@ struct EmbyMediaDetailView: View {
                 }
                 .frame(height: 165, alignment: .top)
             }
+            .onAppear { scrollToInitialEpisodeIfNeeded(proxy) }
+            .onChange(of: model.episodeScrollTargetID) { _ in scrollToInitialEpisodeIfNeeded(proxy) }
+        }
+    }
+
+    private func scrollToInitialEpisodeIfNeeded(_ proxy: ScrollViewProxy) {
+        guard let target = model.episodeScrollTargetID else { return }
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.32)) { proxy.scrollTo(target, anchor: .center) }
+            model.consumeEpisodeScrollTarget(target)
         }
     }
 
@@ -444,7 +454,7 @@ struct EmbyMediaDetailView: View {
 
     private func episodePreviewCard(_ episode: LibraryItem) -> some View {
         let overview = model.normalizedOverview(for: episode) ?? ""
-        return Button { Task { await model.play(episode) } } label: {
+        return Button { model.selectEpisode(episode); Task { await model.play(episode) } } label: {
             VStack(alignment: .leading, spacing: 5) {
                 ZStack {
                     EmbyDetailRemoteImage(url: client.imageURL(itemId: episode.preferredPrimaryImageItemId, maxWidth: 620, tag: episode.preferredPrimaryImageTag), contentMode: .fill)
@@ -457,6 +467,7 @@ struct EmbyMediaDetailView: View {
                 .frame(width: 174, height: 98)
                 .background(Color(uiColor: .secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(model.selectedEpisodeID == episode.id ? Color.blue : Color.clear, lineWidth: 2))
 
                 Text(model.displayEpisodeTitle(episode))
                     .font(.system(size: 11.5, weight: .semibold))
@@ -935,7 +946,7 @@ private struct EmbyDetailFilterResultsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                if model.isLoading && model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.top, 44) }
+                if model.isInitialLoading && model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.top, 44) }
                 else {
                     EmbyPosterGrid(items: model.items, onApproachingEnd: {
                         guard model.hasMore else { return }
@@ -946,7 +957,6 @@ private struct EmbyDetailFilterResultsView: View {
                         }
                     }
                 }
-                if model.isLoading && !model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12) }
                 if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
             }
             .padding(.bottom, 86)
@@ -962,13 +972,15 @@ private struct EmbyDetailFilterResultsView: View {
 @MainActor
 private final class EmbyDetailFilterResultsViewModel: ObservableObject {
     @Published var items: [LibraryItem] = []
-    @Published var isLoading = false
+    @Published var isInitialLoading = false
     @Published var errorMessage: String?
-    @Published private(set) var hasMore = true
+    private(set) var hasMore = true
     private let filter: EmbyDetailFilter
     private let client: EmbyAPIClient
     private let pageSize = 60
     private var nextStartIndex = 0
+    private var isFetching = false
+    private var seenItemIDs = Set<String>()
     private(set) var hasLoaded = false
 
     init(filter: EmbyDetailFilter, client: EmbyAPIClient) {
@@ -977,8 +989,9 @@ private final class EmbyDetailFilterResultsViewModel: ObservableObject {
     }
 
     func reload() async {
-        guard !isLoading else { return }
+        guard !isFetching else { return }
         items = []
+        seenItemIDs.removeAll(keepingCapacity: true)
         nextStartIndex = 0
         hasMore = true
         hasLoaded = false
@@ -986,20 +999,25 @@ private final class EmbyDetailFilterResultsViewModel: ObservableObject {
     }
 
     func loadNextPage() async {
-        guard hasLoaded, hasMore, !isLoading else { return }
+        guard hasLoaded, hasMore, !isFetching else { return }
         await fetchNextPage()
     }
 
     private func fetchNextPage() async {
-        guard !isLoading, hasMore else { return }
-        isLoading = true
-        errorMessage = nil
+        guard !isFetching, hasMore else { return }
+        isFetching = true
+        if items.isEmpty { isInitialLoading = true }
+        if errorMessage != nil { errorMessage = nil }
         let start = nextStartIndex
-        defer { isLoading = false; hasLoaded = true }
+        defer {
+            isFetching = false
+            if isInitialLoading { isInitialLoading = false }
+            hasLoaded = true
+        }
         do {
             let page = try await client.detailItems(filter: filter.name, isGenre: filter.isGenre, limit: pageSize, startIndex: start)
-            var seen = Set(items.map(\.id))
-            items.append(contentsOf: page.items.filter { seen.insert($0.id).inserted })
+            let newItems = page.items.filter { seenItemIDs.insert($0.id).inserted }
+            if !newItems.isEmpty { items.append(contentsOf: newItems) }
             nextStartIndex = start + page.items.count
             if let total = page.totalRecordCount { hasMore = nextStartIndex < total }
             else { hasMore = page.items.count == pageSize }
@@ -1015,10 +1033,11 @@ private struct EmbyDetailPosterCard: View {
     let client: EmbyAPIClient
     private var width: CGFloat { gridCellWidth ?? 118 }
     private var height: CGFloat { floor(width / EmbyPosterGridMetrics.posterAspectRatio) }
+    private var imageMaxWidth: Int { min(440, max(1, Int(ceil(width * UIScreen.main.scale)))) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            EmbyDetailRemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 440, tag: item.preferredPrimaryImageTag), contentMode: .fill)
+            EmbyDetailRemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: imageMaxWidth, tag: item.preferredPrimaryImageTag), contentMode: .fill)
                 .frame(width: width, height: height)
                 .clipped()
                 .background(Color(uiColor: .secondarySystemBackground))
@@ -1039,6 +1058,8 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     @Published var similarItems: [LibraryItem] = []
     @Published var selectedSeason: Int?
     @Published var selectedEpisodeRangeOffset = 0
+    @Published var selectedEpisodeID: String?
+    @Published var episodeScrollTargetID: String?
     @Published var errorMessage: String?
     @Published var isLoadingEpisodes = false
     @Published var isResolvingPlayback = false
@@ -1054,11 +1075,13 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     private var favoriteSyncTask: Task<Void, Never>?
     private var playedSyncTask: Task<Void, Never>?
     private let client: EmbyAPIClient
+    private let initialEpisodeID: String?
     private(set) var hasLoaded = false
 
-    init(item: LibraryItem, client: EmbyAPIClient) {
+    init(item: LibraryItem, client: EmbyAPIClient, initialEpisodeID: String? = nil) {
         self.item = item
         self.client = client
+        self.initialEpisodeID = initialEpisodeID
         self.desiredFavorite = item.isFavorite
         self.desiredPlayed = item.isPlayed
         self.syncedFavorite = item.isFavorite
@@ -1159,6 +1182,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     var primaryPlayableItem: LibraryItem? {
         if isPlayable { return item }
         guard isSeries else { return nil }
+        if let selectedEpisodeID, let selected = episodes.first(where: { $0.id == selectedEpisodeID }) { return selected }
         if let resume = episodes.first(where: { $0.playbackProgress > 0.001 && !$0.isPlayed }) { return resume }
         if let unplayed = episodes.first(where: { !$0.isPlayed }) { return unplayed }
         return episodes.first
@@ -1217,9 +1241,13 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     func selectSeason(_ season: Int) {
         selectedSeason = season
         selectedEpisodeRangeOffset = 0
+        selectedEpisodeID = nil
+        episodeScrollTargetID = nil
     }
 
-    func selectEpisodeRange(_ offset: Int) { selectedEpisodeRangeOffset = max(0, offset) }
+    func selectEpisodeRange(_ offset: Int) { selectedEpisodeRangeOffset = max(0, offset); selectedEpisodeID = nil; episodeScrollTargetID = nil }
+    func selectEpisode(_ episode: LibraryItem) { selectedEpisodeID = episode.id }
+    func consumeEpisodeScrollTarget(_ itemID: String) { if episodeScrollTargetID == itemID { episodeScrollTargetID = nil } }
 
     func displayEpisodeTitle(_ episode: LibraryItem) -> String {
         let number = episode.indexNumber ?? (selectedSeasonEpisodes.firstIndex(where: { $0.id == episode.id }).map { $0 + 1 } ?? 0)
@@ -1267,7 +1295,12 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                 catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "seasons failed: \(error.localizedDescription)") } }
                 isLoadingEpisodes = false
 
-                if let playable = primaryPlayableItem, let season = seasonNumber(for: playable) {
+                if let initialEpisodeID, let requestedEpisode = episodes.first(where: { $0.id == initialEpisodeID }), let season = seasonNumber(for: requestedEpisode) {
+                    selectedSeason = season
+                    selectedEpisodeID = requestedEpisode.id
+                    if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == requestedEpisode.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
+                    episodeScrollTargetID = requestedEpisode.id
+                } else if let playable = primaryPlayableItem, let season = seasonNumber(for: playable) {
                     selectedSeason = season
                     if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == playable.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
                 } else if selectedSeason == nil {

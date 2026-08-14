@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum EmbyPosterGridMetrics {
     static let columnCount = 3
@@ -130,7 +131,7 @@ struct EmbyPosterGrid<Content: View>: View {
     let horizontalPadding: CGFloat
     let onApproachingEnd: (() -> Void)?
     private let content: (LibraryItem) -> Content
-    @State private var containerWidth: CGFloat = 0
+    @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
     @StateObject private var navigationState = EmbyPosterGridNavigationState()
 
     init(
