@@ -112,27 +112,33 @@ struct V3EmbyHomeView: View {
                     }
                     .id("v3-home-top")
 
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 24) {
                         if model.isLoading && model.libraries.isEmpty {
                             ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
                         } else {
                             if !model.visibleLibraries.isEmpty {
-                                sectionTitle("我的媒体")
-                                libraryRow
+                                VStack(alignment: .leading, spacing: 8) {
+                                    sectionTitle("我的媒体")
+                                    libraryRow
+                                }
                             }
                             if !model.resumeItems.isEmpty {
-                                sectionTitle("继续观看")
-                                landscapeRow(model.resumeItems)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    sectionTitle("继续观看")
+                                    landscapeRow(model.resumeItems)
+                                }
                             }
                             ForEach(model.visibleLibraries) { library in
                                 if let items = model.latestByLibrary[library.id], !items.isEmpty {
-                                    HStack(spacing: 8) {
-                                        sectionTitle(library.name)
-                                        Spacer()
-                                        NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client, dock: dock))
-                                            .font(.subheadline).foregroundColor(.blue).padding(.trailing, 16)
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack(spacing: 8) {
+                                            sectionTitle(library.name)
+                                            Spacer()
+                                            NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client, dock: dock))
+                                                .font(.subheadline).foregroundColor(.blue).padding(.trailing, 16)
+                                        }
+                                        posterRow(items)
                                     }
-                                    posterRow(items)
                                 }
                             }
                             if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
@@ -144,18 +150,15 @@ struct V3EmbyHomeView: View {
                 .frame(width: width)
                 .background(
                     ZStack {
-                        V3HomeNativeScrollObserver(
-                            isRefreshing: isHomeRefreshing,
-                            onOffsetChanged: { value in
-                                guard isHomeActive else { return }
-                                if abs(homeRawScrollMinY - value) > 0.10 { homeRawScrollMinY = value }
-                            },
-                            onRefresh: { Task { await refreshHome() } }
-                        )
+                        V3HomeScrollOffsetObserver { value in
+                            guard isHomeActive else { return }
+                            if abs(homeRawScrollMinY - value) > 0.10 { homeRawScrollMinY = value }
+                        }
                         V3HomeRefreshControlStyler()
                     }
                 )
             }
+            .refreshable { await refreshHome() }
             .frame(width: width)
             .background(Color.clear)
             .onChange(of: refreshToken) { _ in Task { await refreshHome() } }
@@ -211,5 +214,4 @@ struct V3EmbyHomeView: View {
         .padding(.top, 0)
         .padding(.bottom, 6)
     }
-
 }
