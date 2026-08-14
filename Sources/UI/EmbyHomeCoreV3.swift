@@ -210,7 +210,7 @@ struct V3EmbyHomeView: View {
                     Image(systemName: "chevron.down").font(.caption2.weight(.bold)).foregroundColor(immersive ? .white.opacity(0.78) : .secondary)
                 }
                 .padding(.horizontal, 12)
-                .frame(height: 38)
+                .frame(height: V3ServerHeaderMetrics.controlHeight)
                 .background(
                     Group {
                         if immersive { Capsule().fill(.ultraThinMaterial).overlay(Capsule().fill(Color.black.opacity(0.18))) }
@@ -222,7 +222,7 @@ struct V3EmbyHomeView: View {
             Spacer()
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundColor(immersive ? .white : .primary)
-                    .frame(width: 36, height: 36)
+                    .frame(width: V3ServerHeaderMetrics.closeButtonSize, height: V3ServerHeaderMetrics.closeButtonSize)
                     .background(
                         Group {
                             if immersive { Circle().fill(.ultraThinMaterial).overlay(Circle().fill(Color.black.opacity(0.18))) }
@@ -232,8 +232,8 @@ struct V3EmbyHomeView: View {
                     .clipShape(Circle())
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 0)
-        .padding(.bottom, 6)
+        .frame(height: V3ServerHeaderMetrics.controlHeight)
+        .padding(.horizontal, V3ServerHeaderMetrics.horizontalPadding)
+        .padding(.bottom, V3ServerHeaderMetrics.bottomPadding)
     }
 }
