@@ -165,11 +165,23 @@ extension V3EmbyHomeView {
 
     func carouselOpacity(for itemID: String) -> Double {
         if let fromID = transitionFromID, let toID = transitionToID {
-            if itemID == fromID { return Double(1 - min(1, max(0, transitionProgress))) }
-            if itemID == toID { return Double(min(1, max(0, transitionProgress))) }
+            let blend = carouselBackdropBlendProgress(transitionProgress)
+            if itemID == fromID { return Double(1 - blend) }
+            if itemID == toID { return Double(blend) }
             return 0
         }
         return itemID == currentCarouselItemID ? 1 : 0
+    }
+
+    func carouselForegroundOpacity(for itemID: String) -> Double {
+        if let fromID = transitionFromID, let toID = transitionToID { return itemID == fromID || itemID == toID ? 1 : 0 }
+        return itemID == currentCarouselItemID ? 1 : 0
+    }
+
+    func carouselBackdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat {
+        let raw = min(1, max(0, rawProgress))
+        let delayed = min(1, max(0, (raw - 0.08) / 0.92))
+        return delayed * delayed * (3 - 2 * delayed)
     }
 
     func carouselForegroundOffset(for itemID: String, width: CGFloat) -> CGFloat {
@@ -203,5 +215,4 @@ extension V3EmbyHomeView {
         guard carouselLightForegroundByID[itemID] != prefersLight else { return }
         withAnimation(.easeOut(duration: 0.18)) { carouselLightForegroundByID[itemID] = prefersLight }
     }
-
 }

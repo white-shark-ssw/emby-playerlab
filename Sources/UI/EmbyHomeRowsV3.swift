@@ -3,7 +3,7 @@ import Combine
 import UIKit
 
 extension V3EmbyHomeView {
-    func sectionTitle(_ title: String) -> some View { Text(title).font(.title2.weight(.bold)).padding(.horizontal, 16) }
+    func sectionTitle(_ title: String) -> some View { Text(title).font(.system(size: 20, weight: .bold)).padding(.horizontal, 16) }
 
     var libraryRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {

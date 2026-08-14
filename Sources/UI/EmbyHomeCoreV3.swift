@@ -99,7 +99,6 @@ struct V3EmbyHomeView: View {
             .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
-        .ignoresSafeArea(.container, edges: .bottom)
     }
 
     private func homeScroll(width: CGFloat, viewportHeight: CGFloat, immersive: Bool) -> some View {
