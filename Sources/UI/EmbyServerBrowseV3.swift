@@ -33,7 +33,7 @@ struct V3LibraryBrowserView: View {
                 }
                 .padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding)
 
-                if model.isLoading && model.items.isEmpty {
+                if model.isInitialLoading && model.items.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
                 } else {
                     EmbyPosterGrid(items: model.items, onApproachingEnd: {
@@ -46,7 +46,6 @@ struct V3LibraryBrowserView: View {
                     }
                 }
 
-                if model.isLoading && !model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12) }
                 if let error = model.errorMessage { Text(error).foregroundColor(.red).font(.footnote).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
             }
             .padding(.bottom, 86)
@@ -71,21 +70,24 @@ struct V3LibraryBrowserView: View {
 @MainActor
 private final class V3LibraryBrowserViewModel: ObservableObject {
     @Published var items: [LibraryItem] = []
-    @Published var isLoading = false
+    @Published var isInitialLoading = false
     @Published var errorMessage: String?
-    @Published private(set) var hasMore = true
     @Published var sortBy = "DateCreated"
+    private(set) var hasMore = true
     private let library: LibraryItem
     private let client: EmbyAPIClient
     private let pageSize = 60
     private var nextStartIndex = 0
+    private var isFetching = false
+    private var seenItemIDs = Set<String>()
     private(set) var hasLoaded = false
 
     init(library: LibraryItem, client: EmbyAPIClient) { self.library = library; self.client = client }
 
     func reload() async {
-        guard !isLoading else { return }
+        guard !isFetching else { return }
         items = []
+        seenItemIDs.removeAll(keepingCapacity: true)
         nextStartIndex = 0
         hasMore = true
         hasLoaded = false
@@ -93,7 +95,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     }
 
     func loadNextPage() async {
-        guard hasLoaded, hasMore, !isLoading else { return }
+        guard hasLoaded, hasMore, !isFetching else { return }
         await fetchNextPage()
     }
 
@@ -104,11 +106,16 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     }
 
     private func fetchNextPage() async {
-        guard !isLoading, hasMore else { return }
-        isLoading = true
-        errorMessage = nil
+        guard !isFetching, hasMore else { return }
+        isFetching = true
+        if items.isEmpty { isInitialLoading = true }
+        if errorMessage != nil { errorMessage = nil }
         let requestedStartIndex = nextStartIndex
-        defer { isLoading = false; hasLoaded = true }
+        defer {
+            isFetching = false
+            if isInitialLoading { isInitialLoading = false }
+            hasLoaded = true
+        }
         do {
             let expectedTypes: [String]
             switch library.collectionType?.lowercased() {
@@ -121,8 +128,8 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             let page = try await client.libraryItems(parentId: library.id, limit: pageSize, startIndex: requestedStartIndex, sortBy: sortBy, includeItemTypes: expectedTypes)
             let allowed = Set(expectedTypes.map { $0.lowercased() })
             let filtered = page.items.filter { allowed.isEmpty || allowed.contains($0.type?.lowercased() ?? "") }
-            var seen = Set(items.map(\.id))
-            items.append(contentsOf: filtered.filter { seen.insert($0.id).inserted })
+            let newItems = filtered.filter { seenItemIDs.insert($0.id).inserted }
+            if !newItems.isEmpty { items.append(contentsOf: newItems) }
             nextStartIndex = requestedStartIndex + page.items.count
             if let totalRecordCount = page.totalRecordCount {
                 hasMore = nextStartIndex < totalRecordCount
