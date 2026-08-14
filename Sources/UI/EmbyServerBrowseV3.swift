@@ -158,12 +158,12 @@ struct V3EmbyFavoritesView: View {
     var body: some View {
         NavigationView {
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 22) {
+                LazyVStack(alignment: .leading, spacing: 28) {
                     V3PageHeader(title: "收藏", onClose: onClose)
-                    favoriteSection("电影", items: model.movies)
-                    favoriteSection("剧集", items: model.series)
-                    favoritePeople
-                    favoriteSection("合集", items: model.collections)
+                    favoriteMediaSection("电影", items: model.sections.movies)
+                    favoriteMediaSection("剧集", items: model.sections.series)
+                    favoriteMediaSection("集", items: model.sections.episodes)
+                    favoritePeopleSection
                     if model.isLoading { ProgressView().frame(maxWidth: .infinity) }
                     if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
                 }
@@ -179,57 +179,139 @@ struct V3EmbyFavoritesView: View {
     }
 
     @ViewBuilder
-    private func favoriteSection(_ title: String, items: [LibraryItem]) -> some View {
+    private func favoriteMediaSection(_ title: String, items: [LibraryItem]) -> some View {
         if !items.isEmpty {
-            Text(title).font(.title2.weight(.bold)).padding(.horizontal, 16)
-            EmbyPosterGrid(items: items) { item in
-                EmbyPosterDetailLink(item: item, client: client) {
-                    V3PosterCard(item: item, client: client, width: nil)
+            VStack(alignment: .leading, spacing: 10) {
+                favoriteSectionHeader(title: title, items: items, isPeople: false)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(items.prefix(20)) { item in
+                            EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: 118) }
+                        }
+                    }
+                    .padding(.horizontal, 16)
                 }
             }
         }
     }
 
     @ViewBuilder
-    private var favoritePeople: some View {
-        if !model.people.isEmpty {
-            Text("演员").font(.title2.weight(.bold)).padding(.horizontal, 16)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 16) {
-                    ForEach(model.people) { person in
-                        VStack(spacing: 6) {
-                            V3RemoteImage(url: client.imageURL(itemId: person.id, maxWidth: 260, tag: person.primaryImageTag), contentMode: .fill).frame(width: 92, height: 92).clipShape(Circle())
-                            Text(person.name).font(.subheadline).lineLimit(1).frame(width: 102)
+    private var favoritePeopleSection: some View {
+        if !model.sections.people.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                favoriteSectionHeader(title: "演员", items: model.sections.people, isPeople: true)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(model.sections.people.prefix(20)) { person in
+                            V3FavoritePersonLink(item: person, client: client, width: 118)
                         }
                     }
+                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, 16)
             }
         }
     }
+
+    private func favoriteSectionHeader(title: String, items: [LibraryItem], isPeople: Bool) -> some View {
+        HStack {
+            Text(title).font(.system(size: 20, weight: .bold))
+            Spacer()
+            NavigationLink(destination: V3FavoriteCategoryGridView(title: title, items: items, client: client, dock: dock, isPeople: isPeople)) {
+                Text("更多").font(.system(size: 16, weight: .regular)).foregroundColor(.blue)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+    }
+}
+
+private struct V3FavoriteCategoryGridView: View {
+    let title: String
+    let items: [LibraryItem]
+    let client: EmbyAPIClient
+    let dock: AnyView
+    let isPeople: Bool
+
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            EmbyPosterGrid(items: items) { item in
+                if isPeople {
+                    V3FavoritePersonLink(item: item, client: client, width: nil)
+                } else {
+                    EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) }
+                }
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 86)
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .overlay(alignment: .bottom) { dock }
+        .nativeInteractivePop()
+    }
+}
+
+private struct V3FavoritePersonLink: View {
+    @Environment(\.embyPosterGridCellWidth) private var gridCellWidth
+    let item: LibraryItem
+    let client: EmbyAPIClient
+    let width: CGFloat?
+
+    private var resolvedWidth: CGFloat { width ?? gridCellWidth ?? 118 }
+    private var posterHeight: CGFloat { floor(resolvedWidth / EmbyPosterGridMetrics.posterAspectRatio) }
+    private var person: EmbyPerson { EmbyPerson(itemId: item.id, name: item.name, role: nil, type: item.type, primaryImageTag: item.primaryImageTag) }
+
+    var body: some View {
+        NavigationLink(destination: EmbyPersonMediaView(person: person, client: client)) {
+            VStack(alignment: .leading, spacing: 4) {
+                V3RemoteImage(url: client.imageURL(itemId: item.id, maxWidth: max(1, Int(ceil(resolvedWidth * UIScreen.main.scale))), tag: item.primaryImageTag), contentMode: .fill)
+                    .frame(width: resolvedWidth, height: posterHeight)
+                    .clipped()
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Text(item.name).font(.subheadline).foregroundColor(.primary).lineLimit(1).frame(width: resolvedWidth, height: 20, alignment: .leading)
+            }
+            .frame(width: resolvedWidth, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct V3FavoriteSections {
+    var movies: [LibraryItem] = []
+    var series: [LibraryItem] = []
+    var episodes: [LibraryItem] = []
+    var people: [LibraryItem] = []
 }
 
 @MainActor
 private final class V3FavoritesViewModel: ObservableObject {
-    @Published var items: [LibraryItem] = []
+    @Published private(set) var sections = V3FavoriteSections()
     @Published var isLoading = false
     @Published var errorMessage: String?
     private let client: EmbyAPIClient
     private(set) var hasLoaded = false
 
     init(client: EmbyAPIClient) { self.client = client }
-    var movies: [LibraryItem] { items.filter { $0.type?.caseInsensitiveCompare("Movie") == .orderedSame } }
-    var series: [LibraryItem] { items.filter { $0.type?.caseInsensitiveCompare("Series") == .orderedSame } }
-    var people: [LibraryItem] { items.filter { $0.type?.caseInsensitiveCompare("Person") == .orderedSame } }
-    var collections: [LibraryItem] { items.filter { ["boxset", "collectionfolder"].contains($0.type?.lowercased() ?? "") } }
 
     func load() async {
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false; hasLoaded = true }
-        do { items = try await client.favoriteItems() }
-        catch { if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription } }
+        do {
+            let items = try await client.favoriteBrowseItems(includeItemTypes: ["Movie", "Series", "Episode", "Person"])
+            sections = V3FavoriteSections(
+                movies: items.filter { $0.type?.caseInsensitiveCompare("Movie") == .orderedSame },
+                series: items.filter { $0.type?.caseInsensitiveCompare("Series") == .orderedSame },
+                episodes: items.filter { $0.type?.caseInsensitiveCompare("Episode") == .orderedSame },
+                people: items.filter { $0.type?.caseInsensitiveCompare("Person") == .orderedSame }
+            )
+        } catch {
+            if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
+        }
     }
 }
 
