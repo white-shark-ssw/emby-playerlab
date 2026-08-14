@@ -21,9 +21,10 @@ final class V3HomeScrollOffsetProbeView: UIView {
 }
 
 struct V3HomeScrollOffsetObserver: UIViewRepresentable {
+    let lifecycleGeneration: Int
     let onChange: (CGFloat) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
+    func makeCoordinator() -> Coordinator { Coordinator(lifecycleGeneration: lifecycleGeneration, onChange: onChange) }
 
     func makeUIView(context: Context) -> V3HomeScrollOffsetProbeView {
         let view = V3HomeScrollOffsetProbeView(frame: .zero)
@@ -38,7 +39,7 @@ struct V3HomeScrollOffsetObserver: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: V3HomeScrollOffsetProbeView, context: Context) {
-        context.coordinator.onChange = onChange
+        context.coordinator.update(lifecycleGeneration: lifecycleGeneration, onChange: onChange)
         DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
             guard let uiView else { return }
             coordinator?.attach(from: uiView)
@@ -52,23 +53,41 @@ struct V3HomeScrollOffsetObserver: UIViewRepresentable {
 
     final class Coordinator {
         var onChange: (CGFloat) -> Void
+        private var lifecycleGeneration: Int
         private weak var scrollView: UIScrollView?
         private var contentOffsetObservation: NSKeyValueObservation?
         private var restingAdjustedTopInset: CGFloat?
+        private var needsRestingInsetRebase = true
 
-        init(onChange: @escaping (CGFloat) -> Void) { self.onChange = onChange }
+        init(lifecycleGeneration: Int, onChange: @escaping (CGFloat) -> Void) {
+            self.lifecycleGeneration = lifecycleGeneration
+            self.onChange = onChange
+        }
+
+        func update(lifecycleGeneration: Int, onChange: @escaping (CGFloat) -> Void) {
+            self.onChange = onChange
+            guard self.lifecycleGeneration != lifecycleGeneration else { return }
+            self.lifecycleGeneration = lifecycleGeneration
+            needsRestingInsetRebase = true
+        }
 
         func attach(from probe: UIView) {
             guard let scrollView = ancestorVerticalScrollView(from: probe) else { return }
-            guard self.scrollView !== scrollView else {
-                emit(scrollView)
-                return
+            if self.scrollView !== scrollView {
+                contentOffsetObservation?.invalidate()
+                self.scrollView = scrollView
+                needsRestingInsetRebase = true
+                scrollView.alwaysBounceVertical = true
+                contentOffsetObservation = scrollView.observe(\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in self?.emit(scrollView) }
             }
-            contentOffsetObservation?.invalidate()
-            self.scrollView = scrollView
+            rebaseRestingInsetIfNeeded(scrollView)
+            emit(scrollView)
+        }
+
+        private func rebaseRestingInsetIfNeeded(_ scrollView: UIScrollView) {
+            guard needsRestingInsetRebase, scrollView.refreshControl?.isRefreshing != true else { return }
             restingAdjustedTopInset = scrollView.adjustedContentInset.top
-            scrollView.alwaysBounceVertical = true
-            contentOffsetObservation = scrollView.observe(\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in self?.emit(scrollView) }
+            needsRestingInsetRebase = false
         }
 
         func detach() {
@@ -76,6 +95,7 @@ struct V3HomeScrollOffsetObserver: UIViewRepresentable {
             contentOffsetObservation = nil
             scrollView = nil
             restingAdjustedTopInset = nil
+            needsRestingInsetRebase = true
         }
 
         private func ancestorVerticalScrollView(from probe: UIView) -> UIScrollView? {
