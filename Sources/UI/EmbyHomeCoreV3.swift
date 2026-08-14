@@ -33,7 +33,6 @@ struct V3EmbyHomeView: View {
     @State var heroScrollState = V3HomeHeroScrollState()
     @State var isHomeRefreshing = false
     @State var isHomeActive = false
-    @State var homeAppearanceGeneration = 0
     private let carouselTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, onCarouselActiveChanged: @escaping (Bool) -> Void, dock: AnyView) {
@@ -83,7 +82,6 @@ struct V3EmbyHomeView: View {
                     else { dock }
                 }
                 .onAppear {
-                    homeAppearanceGeneration &+= 1
                     isHomeActive = true
                     synchronizeCarouselItems()
                     carouselLastSettledAt = Date()
@@ -173,16 +171,22 @@ struct V3EmbyHomeView: View {
                 .frame(width: width)
                 .background(
                     ZStack {
-                        V3HomeScrollOffsetObserver(lifecycleGeneration: homeAppearanceGeneration) { value in
+                        V3HomeScrollOffsetObserver { value in
                             guard immersive, isHomeActive else { return }
                             let clampedValue = max(-heroTrackingLimit, value)
                             heroScrollState.update(clampedValue)
                         }
-                        V3HomeRefreshControlStyler(immersive: immersive, lifecycleGeneration: homeAppearanceGeneration)
+                        if immersive {
+                            V3HomeOwnedRefreshControl { completion in
+                                Task { await refreshHome(); completion() }
+                            }
+                        } else {
+                            V3HomeRefreshControlStyler(immersive: false)
+                        }
                     }
                 )
             }
-            .refreshable { await refreshHome() }
+            .modifier(V3HomeRefreshModifier(immersive: immersive, action: refreshHome))
             .frame(width: width)
             .background(Color.clear)
             .onChange(of: refreshToken) { _ in Task { await refreshHome() } }
@@ -237,5 +241,16 @@ struct V3EmbyHomeView: View {
         .frame(height: V3ServerHeaderMetrics.controlHeight)
         .padding(.horizontal, V3ServerHeaderMetrics.horizontalPadding)
         .padding(.bottom, V3ServerHeaderMetrics.bottomPadding)
+    }
+}
+
+private struct V3HomeRefreshModifier: ViewModifier {
+    let immersive: Bool
+    let action: @MainActor () async -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if immersive { content }
+        else { content.refreshable { await action() } }
     }
 }
