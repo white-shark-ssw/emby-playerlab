@@ -1,0 +1,35 @@
+name: Temp Apply Grid Episode Patch
+
+on:
+  push:
+    branches:
+      - perf/all-grid-pages-episode-route-search
+    paths:
+      - .github/workflows/temp-apply-grid-episode-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/all-grid-pages-episode-route-search
+          fetch-depth: 0
+      - name: Apply patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .tmp/grid_episode.patch.gz.b64 | gzip -d > /tmp/grid_episode.patch
+          git apply --check /tmp/grid_episode.patch
+          git apply /tmp/grid_episode.patch
+          rm -f .tmp/grid_episode.patch.gz.b64
+          rmdir .tmp 2>/dev/null || true
+          rm -f .github/workflows/temp-apply-grid-episode-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "perf: optimize poster grids and episode routing"
+          git push origin HEAD:perf/all-grid-pages-episode-route-search
