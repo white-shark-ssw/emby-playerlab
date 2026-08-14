@@ -12,8 +12,10 @@ struct V3EmbyHomeView: View {
     let onClose: () -> Void
     let onCarouselActiveChanged: (Bool) -> Void
     let dock: AnyView
+    let carouselDisplayRangeKey: String
     @StateObject var model: V3EmbyHomeViewModel
     @State var isMediaManagementPresented = false
+    @State var carouselDisplayRange: Double
     @State var currentCarouselItemID: String?
     @State var transitionFromID: String?
     @State var transitionToID: String?
@@ -41,6 +43,10 @@ struct V3EmbyHomeView: View {
         self.onClose = onClose
         self.onCarouselActiveChanged = onCarouselActiveChanged
         self.dock = dock
+        let rangeKey = "osplayer.home.carousel-display-range.\(session.serverId).\(session.user.id)"
+        carouselDisplayRangeKey = rangeKey
+        let savedRange = UserDefaults.standard.object(forKey: rangeKey) as? Double ?? 0.30
+        _carouselDisplayRange = State(initialValue: min(1, max(0, savedRange)))
         _model = StateObject(wrappedValue: V3EmbyHomeViewModel(session: session, client: client))
     }
 
@@ -87,17 +93,26 @@ struct V3EmbyHomeView: View {
                     guard let source = notification.object as? EmbyAPIClient, source === client, let itemID = notification.userInfo?[EmbyUserDataChange.itemIDKey] as? String else { return }
                     model.markResumeDirty(itemID)
                 }
-                .sheet(isPresented: $isMediaManagementPresented) {
-                    V3MediaManagementView(preferences: model.preferences, carouselEnabled: model.carouselEnabled) { preferences, carouselEnabled in
-                        model.savePreferences(preferences, carouselEnabled: carouselEnabled)
-                    }
-                }
                 .onReceive(carouselTimer) { _ in autoAdvanceCarouselIfNeeded() }
                 .onChange(of: model.carouselItems.map(\.id)) { _ in synchronizeCarouselItems() }
                 .onDisappear {
                     isHomeActive = false
                     isCarouselDragging = false
                     onCarouselActiveChanged(false)
+                }
+                .overlay(alignment: .center) {
+                    if isMediaManagementPresented {
+                        V3MediaManagementOverlayView(
+                            preferences: model.preferences,
+                            carouselEnabled: model.carouselEnabled,
+                            carouselDisplayRange: $carouselDisplayRange,
+                            onClose: { withAnimation(.easeOut(duration: 0.16)) { isMediaManagementPresented = false } },
+                            onPreferencesChanged: { preferences, carouselEnabled in model.savePreferences(preferences, carouselEnabled: carouselEnabled) },
+                            onRangeCommit: { value in UserDefaults.standard.set(min(1, max(0, value)), forKey: carouselDisplayRangeKey) }
+                        )
+                        .transition(.opacity)
+                        .zIndex(100)
+                    }
                 }
             }
             .navigationBarHidden(true)
@@ -181,7 +196,7 @@ struct V3EmbyHomeView: View {
         HStack(spacing: 12) {
             Menu {
                 Button { Task { await refreshHome() } } label: { Label("刷新首页", systemImage: "arrow.clockwise") }
-                Button { isMediaManagementPresented = true } label: { Label("媒体管理", systemImage: "slider.horizontal.3") }
+                Button { withAnimation(.easeOut(duration: 0.16)) { isMediaManagementPresented = true } } label: { Label("媒体管理", systemImage: "slider.horizontal.3") }
                 Divider()
                 Text("当前服务器：\(session.serverName)")
             } label: {
