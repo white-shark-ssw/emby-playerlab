@@ -103,6 +103,7 @@ struct CacheSettingsView: View {
     @MainActor
     private func clearImages() async {
         await EmbyImageDiskCache.shared.clear()
+        EmbyDecodedImageRenderPool.shared.clear()
         statusMessage = "图片缓存已清除"
         await refreshUsage()
     }

@@ -5,6 +5,25 @@ import Combine
 import CoreImage
 import ImageIO
 
+final class EmbyDecodedImageRenderPool: @unchecked Sendable {
+    static let shared = EmbyDecodedImageRenderPool()
+    private let cache = NSCache<NSURL, UIImage>()
+
+    private init() {
+        cache.countLimit = 64
+        cache.totalCostLimit = 96 * 1024 * 1024
+    }
+
+    func image(for url: URL) -> UIImage? { cache.object(forKey: url as NSURL) }
+
+    func store(_ image: UIImage, for url: URL) {
+        let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+        cache.setObject(image, forKey: url as NSURL, cost: cost)
+    }
+
+    func clear() { cache.removeAllObjects() }
+}
+
 private final class EmbyCachedImageLoader: ObservableObject {
     @Published var image: UIImage?
     @Published var isLoading = false
@@ -20,6 +39,11 @@ private final class EmbyCachedImageLoader: ObservableObject {
             isLoading = false
             return
         }
+        if let rendered = EmbyDecodedImageRenderPool.shared.image(for: url) {
+            image = rendered
+            isLoading = false
+            return
+        }
         image = nil
         isLoading = true
         task = Task { [weak self] in
@@ -29,6 +53,7 @@ private final class EmbyCachedImageLoader: ObservableObject {
                     let cachedImage = await Task.detached(priority: .utility) { EmbyImageDecoder.decode(data: cachedData, url: url) }.value
                     if let cachedImage {
                         guard !Task.isCancelled else { return }
+                        EmbyDecodedImageRenderPool.shared.store(cachedImage, for: url)
                         await MainActor.run {
                             guard self?.currentURL == url else { return }
                             self?.image = cachedImage
@@ -48,6 +73,7 @@ private final class EmbyCachedImageLoader: ObservableObject {
                 guard !Task.isCancelled, let data else { return }
                 let loaded = await Task.detached(priority: .utility) { EmbyImageDecoder.decode(data: data, url: url) }.value
                 guard !Task.isCancelled, let loaded else { return }
+                EmbyDecodedImageRenderPool.shared.store(loaded, for: url)
                 await MainActor.run {
                     guard self?.currentURL == url else { return }
                     self?.image = loaded
