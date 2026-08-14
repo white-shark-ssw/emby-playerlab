@@ -324,6 +324,53 @@ enum EmbyImageContrastAnalyzer {
     }
 }
 
+private struct EmbyPosterDetailDestination: View {
+    let item: LibraryItem
+    let client: EmbyAPIClient
+
+    var body: some View {
+        if item.type?.caseInsensitiveCompare("Episode") == .orderedSame, let seriesID = item.seriesId, !seriesID.isEmpty {
+            EmbyEpisodeSeriesDestinationView(episode: item, seriesID: seriesID, client: client)
+        } else {
+            EmbyMediaDetailView(item: item, client: client)
+        }
+    }
+}
+
+private struct EmbyEpisodeSeriesDestinationView: View {
+    let episode: LibraryItem
+    let seriesID: String
+    let client: EmbyAPIClient
+    @State private var seriesItem: LibraryItem?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Group {
+            if let seriesItem {
+                EmbyMediaDetailView(item: seriesItem, client: client, initialEpisodeID: episode.id)
+            } else if let errorMessage {
+                VStack(spacing: 12) {
+                    Text("无法打开对应剧集").font(.headline)
+                    Text(errorMessage).font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
+                    Button("重试") { self.errorMessage = nil; Task { await loadSeries() } }
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ProgressView("正在打开剧集…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .task { if seriesItem == nil && errorMessage == nil { await loadSeries() } }
+    }
+
+    @MainActor
+    private func loadSeries() async {
+        do { seriesItem = try await client.libraryItem(itemId: seriesID) }
+        catch { if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription } }
+    }
+}
+
 private struct EmbyGridPosterNavigationLink<Content: View>: View {
     @ObservedObject var state: EmbyPosterGridNavigationState
     let item: LibraryItem
@@ -332,7 +379,7 @@ private struct EmbyGridPosterNavigationLink<Content: View>: View {
 
     var body: some View {
         NavigationLink(
-            destination: EmbyMediaDetailView(item: item, client: client)
+            destination: EmbyPosterDetailDestination(item: item, client: client)
                 .onAppear { state.destinationDidAppear(itemID: item.id) }
                 .onDisappear { state.destinationDidDisappear(itemID: item.id) },
             tag: item.id,
@@ -370,7 +417,7 @@ struct EmbyPosterDetailLink<Content: View>: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { EmbyPosterNavigationGate.shared.release(item.id) }
                     }
                     .background(
-                        NavigationLink(destination: EmbyMediaDetailView(item: item, client: client), isActive: $isActive) { EmptyView() }
+                        NavigationLink(destination: EmbyPosterDetailDestination(item: item, client: client), isActive: $isActive) { EmptyView() }
                             .frame(width: 0, height: 0)
                             .hidden()
                     )

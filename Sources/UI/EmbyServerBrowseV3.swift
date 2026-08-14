@@ -160,9 +160,9 @@ struct V3EmbyFavoritesView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 28) {
                     V3PageHeader(title: "收藏", onClose: onClose)
-                    favoriteMediaSection("电影", items: model.sections.movies)
-                    favoriteMediaSection("剧集", items: model.sections.series)
-                    favoriteMediaSection("集", items: model.sections.episodes)
+                    favoriteMediaSection("电影", items: model.sections.movies, includeItemType: "Movie")
+                    favoriteMediaSection("剧集", items: model.sections.series, includeItemType: "Series")
+                    favoriteMediaSection("集", items: model.sections.episodes, includeItemType: "Episode")
                     favoritePeopleSection
                     if model.isLoading { ProgressView().frame(maxWidth: .infinity) }
                     if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
@@ -179,10 +179,10 @@ struct V3EmbyFavoritesView: View {
     }
 
     @ViewBuilder
-    private func favoriteMediaSection(_ title: String, items: [LibraryItem]) -> some View {
+    private func favoriteMediaSection(_ title: String, items: [LibraryItem], includeItemType: String) -> some View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                favoriteSectionHeader(title: title, items: items, isPeople: false)
+                favoriteSectionHeader(title: title, includeItemType: includeItemType, isPeople: false)
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(items.prefix(20)) { item in
@@ -199,12 +199,10 @@ struct V3EmbyFavoritesView: View {
     private var favoritePeopleSection: some View {
         if !model.sections.people.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                favoriteSectionHeader(title: "演员", items: model.sections.people, isPeople: true)
+                favoriteSectionHeader(title: "演员", includeItemType: "Person", isPeople: true)
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 12) {
-                        ForEach(model.sections.people.prefix(20)) { person in
-                            V3FavoritePersonLink(item: person, client: client, width: 118)
-                        }
+                        ForEach(model.sections.people.prefix(20)) { person in V3FavoritePersonLink(item: person, client: client, width: 118) }
                     }
                     .padding(.horizontal, 16)
                 }
@@ -212,11 +210,11 @@ struct V3EmbyFavoritesView: View {
         }
     }
 
-    private func favoriteSectionHeader(title: String, items: [LibraryItem], isPeople: Bool) -> some View {
+    private func favoriteSectionHeader(title: String, includeItemType: String, isPeople: Bool) -> some View {
         HStack {
             Text(title).font(.system(size: 20, weight: .bold))
             Spacer()
-            NavigationLink(destination: V3FavoriteCategoryGridView(title: title, items: items, client: client, dock: dock, isPeople: isPeople)) {
+            NavigationLink(destination: V3FavoriteCategoryGridView(title: title, includeItemType: includeItemType, client: client, dock: dock, isPeople: isPeople)) {
                 Text("更多").font(.system(size: 16, weight: .regular)).foregroundColor(.blue)
             }
             .buttonStyle(.plain)
@@ -227,19 +225,36 @@ struct V3EmbyFavoritesView: View {
 
 private struct V3FavoriteCategoryGridView: View {
     let title: String
-    let items: [LibraryItem]
+    let includeItemType: String
     let client: EmbyAPIClient
     let dock: AnyView
     let isPeople: Bool
+    @StateObject private var model: V3FavoriteCategoryGridViewModel
+
+    init(title: String, includeItemType: String, client: EmbyAPIClient, dock: AnyView, isPeople: Bool) {
+        self.title = title
+        self.includeItemType = includeItemType
+        self.client = client
+        self.dock = dock
+        self.isPeople = isPeople
+        _model = StateObject(wrappedValue: V3FavoriteCategoryGridViewModel(includeItemType: includeItemType, client: client))
+    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            EmbyPosterGrid(items: items) { item in
-                if isPeople {
-                    V3FavoritePersonLink(item: item, client: client, width: nil)
+            VStack(alignment: .leading, spacing: 14) {
+                if model.isInitialLoading && model.items.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
                 } else {
-                    EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) }
+                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
+                        guard model.hasMore else { return }
+                        Task { await model.loadNextPage() }
+                    }) { item in
+                        if isPeople { V3FavoritePersonLink(item: item, client: client, width: nil) }
+                        else { EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) } }
+                    }
                 }
+                if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
             }
             .padding(.top, 8)
             .padding(.bottom, 86)
@@ -249,6 +264,62 @@ private struct V3FavoriteCategoryGridView: View {
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .overlay(alignment: .bottom) { dock }
         .nativeInteractivePop()
+        .onAppear { if !model.hasLoaded { Task { await model.reload() } } }
+    }
+}
+
+@MainActor
+private final class V3FavoriteCategoryGridViewModel: ObservableObject {
+    @Published var items: [LibraryItem] = []
+    @Published var isInitialLoading = false
+    @Published var errorMessage: String?
+    private(set) var hasMore = true
+    private let includeItemType: String
+    private let client: EmbyAPIClient
+    private let pageSize = 60
+    private var nextStartIndex = 0
+    private var isFetching = false
+    private var seenItemIDs = Set<String>()
+    private(set) var hasLoaded = false
+
+    init(includeItemType: String, client: EmbyAPIClient) { self.includeItemType = includeItemType; self.client = client }
+
+    func reload() async {
+        guard !isFetching else { return }
+        items = []
+        seenItemIDs.removeAll(keepingCapacity: true)
+        nextStartIndex = 0
+        hasMore = true
+        hasLoaded = false
+        await fetchNextPage()
+    }
+
+    func loadNextPage() async {
+        guard hasLoaded, hasMore, !isFetching else { return }
+        await fetchNextPage()
+    }
+
+    private func fetchNextPage() async {
+        guard !isFetching, hasMore else { return }
+        isFetching = true
+        if items.isEmpty { isInitialLoading = true }
+        if errorMessage != nil { errorMessage = nil }
+        let start = nextStartIndex
+        defer {
+            isFetching = false
+            if isInitialLoading { isInitialLoading = false }
+            hasLoaded = true
+        }
+        do {
+            let page = try await client.favoriteBrowsePage(includeItemTypes: [includeItemType], limit: pageSize, startIndex: start)
+            let newItems = page.items.filter { seenItemIDs.insert($0.id).inserted }
+            if !newItems.isEmpty { items.append(contentsOf: newItems) }
+            nextStartIndex = start + page.items.count
+            if let total = page.totalRecordCount { hasMore = nextStartIndex < total }
+            else { hasMore = page.items.count == pageSize }
+        } catch {
+            if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
+        }
     }
 }
 
@@ -315,6 +386,10 @@ private final class V3FavoritesViewModel: ObservableObject {
     }
 }
 
+private enum V3SearchDefaults {
+    static let detailedSearchEnabled = false
+}
+
 struct V3EmbySearchView: View {
     let client: EmbyAPIClient
     let onClose: () -> Void
@@ -326,7 +401,7 @@ struct V3EmbySearchView: View {
         self.client = client
         self.onClose = onClose
         self.dock = dock
-        _model = StateObject(wrappedValue: V3SearchViewModel(client: client))
+        _model = StateObject(wrappedValue: V3SearchViewModel(client: client, detailedSearchEnabled: V3SearchDefaults.detailedSearchEnabled))
     }
 
     var body: some View {
@@ -336,7 +411,7 @@ struct V3EmbySearchView: View {
                 HStack(spacing: 9) {
                     Image(systemName: "magnifyingglass").foregroundColor(.secondary)
                     TextField("搜索当前 Emby", text: $searchText, onCommit: { Task { await model.search(searchText) } }).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    if !searchText.isEmpty { Button { searchText = ""; model.items = [] } label: { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary) } }
+                    if !searchText.isEmpty { Button { searchText = ""; model.clear() } label: { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary) } }
                 }
                 .padding(.horizontal, 12)
                 .frame(height: 42)
@@ -345,14 +420,20 @@ struct V3EmbySearchView: View {
                 .padding(.horizontal, 16)
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    EmbyPosterGrid(items: model.items) { item in
-                        EmbyPosterDetailLink(item: item, client: client) {
-                            V3PosterCard(item: item, client: client, width: nil)
+                    VStack(spacing: 0) {
+                        if model.isInitialLoading && model.items.isEmpty {
+                            ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
+                        } else {
+                            EmbyPosterGrid(items: model.items, onApproachingEnd: {
+                                guard model.hasMore else { return }
+                                Task { await model.loadNextPage() }
+                            }) { item in
+                                EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) }
+                            }
                         }
                     }
                     .padding(.bottom, 86)
                 }
-                if model.isLoading { ProgressView().padding(.bottom, 8) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
@@ -365,17 +446,76 @@ struct V3EmbySearchView: View {
 
 @MainActor
 private final class V3SearchViewModel: ObservableObject {
-    @Published var items: [LibraryItem] = []
-    @Published var isLoading = false
+    @Published private(set) var items: [LibraryItem] = []
+    @Published var isInitialLoading = false
+    private(set) var hasMore = false
     private let client: EmbyAPIClient
-    init(client: EmbyAPIClient) { self.client = client }
+    private let detailedSearchEnabled: Bool
+    private let pageSize = 60
+    private var nextStartIndex = 0
+    private var currentTerm = ""
+    private var isFetching = false
+    private var seenItemIDs = Set<String>()
+    private var generation = 0
+
+    init(client: EmbyAPIClient, detailedSearchEnabled: Bool) { self.client = client; self.detailedSearchEnabled = detailedSearchEnabled }
+
+    private var includeItemTypes: [String] { detailedSearchEnabled ? ["Movie", "Series", "Episode", "BoxSet"] : ["Movie", "Series", "BoxSet"] }
 
     func search(_ term: String) async {
-        guard !isLoading else { return }
-        isLoading = true
-        defer { isLoading = false }
-        do { items = try await client.searchItems(term: term) }
-        catch { if !isEmbyRequestCancellation(error) { items = [] } }
+        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { clear(); return }
+        generation += 1
+        currentTerm = trimmed
+        items = []
+        seenItemIDs.removeAll(keepingCapacity: true)
+        nextStartIndex = 0
+        hasMore = true
+        isFetching = false
+        await fetchNextPage(generation: generation)
+    }
+
+    func loadNextPage() async {
+        guard !currentTerm.isEmpty, hasMore, !isFetching else { return }
+        await fetchNextPage(generation: generation)
+    }
+
+    func clear() {
+        generation += 1
+        currentTerm = ""
+        items = []
+        seenItemIDs.removeAll(keepingCapacity: true)
+        nextStartIndex = 0
+        hasMore = false
+        isInitialLoading = false
+        isFetching = false
+    }
+
+    private func fetchNextPage(generation requestGeneration: Int) async {
+        guard requestGeneration == generation, !isFetching, hasMore, !currentTerm.isEmpty else { return }
+        isFetching = true
+        if items.isEmpty { isInitialLoading = true }
+        let start = nextStartIndex
+        let term = currentTerm
+        defer {
+            if requestGeneration == generation {
+                isFetching = false
+                if isInitialLoading { isInitialLoading = false }
+            }
+        }
+        do {
+            let page = try await client.searchItemsPage(term: term, limit: pageSize, startIndex: start, includeItemTypes: includeItemTypes)
+            guard requestGeneration == generation, term == currentTerm else { return }
+            let newItems = page.items.filter { seenItemIDs.insert($0.id).inserted }
+            if !newItems.isEmpty { items.append(contentsOf: newItems) }
+            nextStartIndex = start + page.items.count
+            if let total = page.totalRecordCount { hasMore = nextStartIndex < total }
+            else { hasMore = page.items.count == pageSize }
+        } catch {
+            guard requestGeneration == generation else { return }
+            if !isEmbyRequestCancellation(error) { items = [] }
+            hasMore = false
+        }
     }
 }
 

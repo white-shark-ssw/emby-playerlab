@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct EmbyPersonMediaView: View {
     let person: EmbyPerson
@@ -14,16 +15,14 @@ struct EmbyPersonMediaView: View {
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
-                if model.isLoading && model.items.isEmpty {
+                if model.isInitialLoading && model.items.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
                 } else if let itemId = person.itemId, !itemId.isEmpty {
                     EmbyPosterGrid(items: model.items, onApproachingEnd: {
                         guard model.hasMore else { return }
                         Task { await model.loadNextPage() }
                     }) { item in
-                        EmbyPosterDetailLink(item: item, client: client) {
-                            EmbyPersonResultPoster(item: item, client: client)
-                        }
+                        EmbyPosterDetailLink(item: item, client: client) { EmbyPersonResultPoster(item: item, client: client) }
                     }
                 } else {
                     Text("该演职人员缺少 Emby PersonId，暂时无法按人物精确筛选。")
@@ -32,7 +31,6 @@ struct EmbyPersonMediaView: View {
                         .padding(20)
                 }
 
-                if model.isLoading && !model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12) }
                 if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
             }
             .padding(.bottom, 24)
@@ -52,10 +50,11 @@ private struct EmbyPersonResultPoster: View {
 
     private var width: CGFloat { gridCellWidth ?? 118 }
     private var height: CGFloat { floor(width / EmbyPosterGridMetrics.posterAspectRatio) }
+    private var imageMaxWidth: Int { min(440, max(1, Int(ceil(width * UIScreen.main.scale)))) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            EmbyCachedRemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 440, tag: item.preferredPrimaryImageTag), contentMode: .fill)
+            EmbyCachedRemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: imageMaxWidth, tag: item.preferredPrimaryImageTag), contentMode: .fill)
                 .frame(width: width, height: height)
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -69,23 +68,23 @@ private struct EmbyPersonResultPoster: View {
 @MainActor
 private final class EmbyPersonMediaViewModel: ObservableObject {
     @Published var items: [LibraryItem] = []
-    @Published var isLoading = false
+    @Published var isInitialLoading = false
     @Published var errorMessage: String?
-    @Published private(set) var hasMore = true
+    private(set) var hasMore = true
     private let person: EmbyPerson
     private let client: EmbyAPIClient
     private let pageSize = 60
     private var nextStartIndex = 0
+    private var isFetching = false
+    private var seenItemIDs = Set<String>()
     private(set) var hasLoaded = false
 
-    init(person: EmbyPerson, client: EmbyAPIClient) {
-        self.person = person
-        self.client = client
-    }
+    init(person: EmbyPerson, client: EmbyAPIClient) { self.person = person; self.client = client }
 
     func reload() async {
-        guard !isLoading else { return }
+        guard !isFetching else { return }
         items = []
+        seenItemIDs.removeAll(keepingCapacity: true)
         nextStartIndex = 0
         hasMore = true
         hasLoaded = false
@@ -93,21 +92,26 @@ private final class EmbyPersonMediaViewModel: ObservableObject {
     }
 
     func loadNextPage() async {
-        guard hasLoaded, hasMore, !isLoading else { return }
+        guard hasLoaded, hasMore, !isFetching else { return }
         await fetchNextPage()
     }
 
     private func fetchNextPage() async {
-        guard !isLoading, hasMore else { return }
+        guard !isFetching, hasMore else { return }
         guard let personId = person.itemId, !personId.isEmpty else { hasLoaded = true; hasMore = false; return }
-        isLoading = true
-        errorMessage = nil
+        isFetching = true
+        if items.isEmpty { isInitialLoading = true }
+        if errorMessage != nil { errorMessage = nil }
         let start = nextStartIndex
-        defer { isLoading = false; hasLoaded = true }
+        defer {
+            isFetching = false
+            if isInitialLoading { isInitialLoading = false }
+            hasLoaded = true
+        }
         do {
             let page = try await client.personMediaItems(personId: personId, limit: pageSize, startIndex: start)
-            var seen = Set(items.map(\.id))
-            items.append(contentsOf: page.items.filter { seen.insert($0.id).inserted })
+            let newItems = page.items.filter { seenItemIDs.insert($0.id).inserted }
+            if !newItems.isEmpty { items.append(contentsOf: newItems) }
             nextStartIndex = start + page.items.count
             if let total = page.totalRecordCount { hasMore = nextStartIndex < total }
             else { hasMore = page.items.count == pageSize }
