@@ -540,6 +540,8 @@ struct V3EmbyServerSettingsView: View {
                     V3SettingsCard {
                         NavigationLink(destination: PlayerSettingsView()) { settingRow("播放设置", value: nil, systemImage: "playpause") }
                         Divider().padding(.leading, 46)
+                        NavigationLink(destination: CacheSettingsView()) { settingRow("缓存管理", value: nil, systemImage: "externaldrive") }
+                        Divider().padding(.leading, 46)
                         NavigationLink(destination: PlaybackLabView()) { settingRow("播放器实验室", value: nil, systemImage: "wrench.and.screwdriver") }
                     }
                     V3SettingsCard {

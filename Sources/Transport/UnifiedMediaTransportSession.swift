@@ -160,8 +160,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             guard resolved.supportsByteRanges else { throw MediaTransportError.rangeUnsupported(statusCode: 200) }
             resource = resolved
             if store == nil {
+                let cacheKey = TransportCacheMaintenance.stableVideoCacheKey(for: source)
+                if configuration.keepLastCache { TransportCacheMaintenance.preparePersistentVideoCache(cacheKey: cacheKey) }
+                else { TransportCacheMaintenance.clearPersistentUnifiedVideoCaches() }
                 let cache = try DownloadFirstSparseStore(
-                    cacheKey: "unified-v1-\(source.itemId)-\(source.mediaSource.id)",
+                    cacheKey: cacheKey,
                     contentLength: resolved.contentLength,
                     etag: resolved.etag,
                     lastModified: resolved.lastModified,

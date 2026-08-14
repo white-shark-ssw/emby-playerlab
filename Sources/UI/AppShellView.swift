@@ -64,7 +64,7 @@ struct GlobalSettingsView: View {
                         Divider().padding(.leading, 48)
                         NavigationLink(destination: PlaceholderSettingsView(title: "字幕")) { settingsRow("字幕", systemImage: "captions.bubble") }
                         Divider().padding(.leading, 48)
-                        NavigationLink(destination: PlaceholderSettingsView(title: "缓存")) { settingsRow("缓存", systemImage: "externaldrive") }
+                        NavigationLink(destination: CacheSettingsView()) { settingsRow("缓存", systemImage: "externaldrive") }
                     }
 
                     settingsGroup {
