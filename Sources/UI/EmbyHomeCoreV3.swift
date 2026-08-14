@@ -33,6 +33,7 @@ struct V3EmbyHomeView: View {
     @State var heroScrollState = V3HomeHeroScrollState()
     @State var isHomeRefreshing = false
     @State var isHomeActive = false
+    @State var homeAppearanceGeneration = 0
     private let carouselTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, onCarouselActiveChanged: @escaping (Bool) -> Void, dock: AnyView) {
@@ -82,6 +83,7 @@ struct V3EmbyHomeView: View {
                     else { dock }
                 }
                 .onAppear {
+                    homeAppearanceGeneration &+= 1
                     isHomeActive = true
                     synchronizeCarouselItems()
                     carouselLastSettledAt = Date()
@@ -171,12 +173,12 @@ struct V3EmbyHomeView: View {
                 .frame(width: width)
                 .background(
                     ZStack {
-                        V3HomeScrollOffsetObserver { value in
+                        V3HomeScrollOffsetObserver(lifecycleGeneration: homeAppearanceGeneration) { value in
                             guard immersive, isHomeActive else { return }
                             let clampedValue = max(-heroTrackingLimit, value)
                             heroScrollState.update(clampedValue)
                         }
-                        V3HomeRefreshControlStyler(immersive: immersive)
+                        V3HomeRefreshControlStyler(immersive: immersive, lifecycleGeneration: homeAppearanceGeneration)
                     }
                 )
             }
