@@ -22,11 +22,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d .tmp/grid_episode.patch.gz.b64 | gzip -d > /tmp/grid_episode.patch
+          gzip -dc .tmp/grid_episode.patch.gz > /tmp/grid_episode.patch
           git apply --check /tmp/grid_episode.patch
           git apply /tmp/grid_episode.patch
-          rm -f .tmp/grid_episode.patch.gz.b64
-          rmdir .tmp 2>/dev/null || true
+          rm -rf .tmp
           rm -f .github/workflows/temp-apply-grid-episode-patch.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
