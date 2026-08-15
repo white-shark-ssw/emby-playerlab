@@ -131,6 +131,11 @@ final class MPVPlayerEngine: PlayerEngine {
         setPropertyAsync(name: "pause", value: "yes")
     }
 
+    func setPlaybackRate(_ rate: Double) {
+        let clamped = min(4, max(0.25, rate))
+        setPropertyAsync(name: "speed", value: String(format: "%.3f", clamped))
+    }
+
     func seek(to seconds: Double, direction: SeekDirection) {
         let duration = snapshot.duration
         let target = min(max(0, seconds), duration > 0 ? duration : seconds)
