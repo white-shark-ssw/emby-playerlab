@@ -10,6 +10,7 @@ enum PlaybackVerticalAdjustment {
 
 struct PlaybackGestureOverlay: UIViewRepresentable {
     let volumeHapticsEnabled: Bool
+    let resetGeneration: Int
     let onSingleTap: () -> Void
     let onLeftDoubleTap: () -> Void
     let onCenterDoubleTap: () -> Void
@@ -23,6 +24,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator(
             volumeHapticsEnabled: volumeHapticsEnabled,
+            resetGeneration: resetGeneration,
             onSingleTap: onSingleTap,
             onLeftDoubleTap: onLeftDoubleTap,
             onCenterDoubleTap: onCenterDoubleTap,
@@ -89,6 +91,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         context.coordinator.onAdjustmentBegan = onAdjustmentBegan
         context.coordinator.onAdjustmentChanged = onAdjustmentChanged
         context.coordinator.onAdjustmentEnded = onAdjustmentEnded
+        context.coordinator.applyResetGeneration(resetGeneration)
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
@@ -109,6 +112,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         var onAdjustmentEnded: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
         weak var volumeSlider: UISlider?
 
+        private var resetGeneration: Int
         private var gestureOwner: GestureOwner?
         private var activeAdjustment: PlaybackVerticalAdjustment?
         private var adjustmentStartValue: Double = 0
@@ -118,6 +122,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
 
         init(
             volumeHapticsEnabled: Bool,
+            resetGeneration: Int,
             onSingleTap: @escaping () -> Void,
             onLeftDoubleTap: @escaping () -> Void,
             onCenterDoubleTap: @escaping () -> Void,
@@ -129,6 +134,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             onAdjustmentEnded: @escaping (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
         ) {
             self.volumeHapticsEnabled = volumeHapticsEnabled
+            self.resetGeneration = resetGeneration
             self.onSingleTap = onSingleTap
             self.onLeftDoubleTap = onLeftDoubleTap
             self.onCenterDoubleTap = onCenterDoubleTap
@@ -138,6 +144,12 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             self.onAdjustmentBegan = onAdjustmentBegan
             self.onAdjustmentChanged = onAdjustmentChanged
             self.onAdjustmentEnded = onAdjustmentEnded
+        }
+
+        func applyResetGeneration(_ generation: Int) {
+            guard generation != resetGeneration else { return }
+            resetGeneration = generation
+            resetActiveInteraction()
         }
 
         @objc func handleSingleTap(_ recognizer: UITapGestureRecognizer) {
@@ -203,6 +215,13 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             default:
                 break
             }
+        }
+
+        private func resetActiveInteraction() {
+            if gestureOwner == .temporaryRate { onTemporaryRateEnded() }
+            else if gestureOwner == .verticalAdjustment { finishAdjustment() }
+            gestureOwner = nil
+            activeAdjustment = nil
         }
 
         private func quantized(_ value: Double) -> Double {
