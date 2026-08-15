@@ -58,7 +58,7 @@ jobs:
           ldid -S../Config/TrollStore.entitlements "$EXECUTABLE_PATH"
           ldid -e "$EXECUTABLE_PATH" > ../embedded-entitlements.plist
           /usr/bin/plutil -p ../embedded-entitlements.plist
-          /usr/bin/plutil -extract com.apple.private.coreservices.canmaplsdatabase raw ../embedded-entitlements.plist | grep -qx 'true'
+          /usr/bin/plutil -extract com.apple.private.coreservices.canmaplsdatabase raw ../embedded-entitlements.plist | grep -qx '1'
           /usr/bin/plutil -extract application-identifier raw ../embedded-entitlements.plist | grep -qx 'TROLLTROLL.*'
           /usr/bin/plutil -extract com.apple.developer.team-identifier raw ../embedded-entitlements.plist | grep -qx 'TROLLTROLL'
           cd ..
