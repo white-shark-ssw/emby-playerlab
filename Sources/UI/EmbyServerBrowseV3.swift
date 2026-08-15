@@ -80,7 +80,7 @@ struct V3LibraryBrowserView: View {
 
     private var tabStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
+            HStack(spacing: 18) {
                 ForEach(V3LibraryTab.allCases) { tab in
                     Button {
                         guard selectedTab != tab else { return }
@@ -99,7 +99,7 @@ struct V3LibraryBrowserView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 14)
         }
         .frame(height: 44)
     }
