@@ -56,6 +56,8 @@ struct GlobalSettingsView: View {
                         .padding(.top, 14)
 
                     settingsGroup {
+                        NavigationLink(destination: AppearanceSettingsView()) { settingsRow("外观", systemImage: "paintpalette") }
+                        Divider().padding(.leading, 48)
                         NavigationLink(destination: GeneralSettingsView()) { settingsRow("通用", systemImage: "slider.horizontal.3") }
                         Divider().padding(.leading, 48)
                         NavigationLink(destination: PlayerSettingsView()) { settingsRow("播放", systemImage: "playpause") }
@@ -75,7 +77,7 @@ struct GlobalSettingsView: View {
                         }
                         .buttonStyle(.plain)
                         Divider().padding(.leading, 48)
-                        NavigationLink(destination: AboutOSPlayerView()) { settingsRow("关于 OS player", systemImage: "info.circle") }
+                        NavigationLink(destination: AboutOnePlayerView()) { settingsRow("关于 OnePlayer", systemImage: "info.circle") }
                     }
                 }
                 .padding(.horizontal, 18)
@@ -139,7 +141,7 @@ private struct PlaceholderSettingsView: View {
     var body: some View {
         List {
             Section {
-                Text("该设置页已经进入 OS player 的正式结构，具体选项会在对应功能实现时接入。")
+                Text("该设置页已经进入 OnePlayer 的正式结构，具体选项会在对应功能实现时接入。")
                     .foregroundColor(.secondary)
             }
         }
@@ -147,14 +149,18 @@ private struct PlaceholderSettingsView: View {
     }
 }
 
-private struct AboutOSPlayerView: View {
+private struct AboutOnePlayerView: View {
+    private var buildNumber: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+    }
+
     var body: some View {
         List {
             Section {
                 HStack {
                     Text("版本")
                     Spacer()
-                    Text("\(AppIdentity.version) (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
+                    Text("\(AppIdentity.version) (\(buildNumber))")
                         .foregroundColor(.secondary)
                 }
                 HStack {
@@ -165,6 +171,6 @@ private struct AboutOSPlayerView: View {
                 }
             }
         }
-        .navigationTitle("关于 OS player")
+        .navigationTitle("关于 OnePlayer")
     }
 }

@@ -28,7 +28,7 @@ struct EmbyServerRootViewV3: View {
 
                         if selectedTab == .favorites { V3EmbyFavoritesView(client: client, onClose: close, dock: dock) }
                         if selectedTab == .search { V3EmbySearchView(client: client, onClose: close, dock: dock) }
-                        if selectedTab == .settings { V3EmbyServerSettingsView(session: session, onClose: close, dock: dock) }
+                        if selectedTab == .settings { OnePlayerServerSettingsView(session: session, onClose: close, dock: dock) }
                     }
                     .environment(\.serverDockContent, dock)
                     .environment(\.serverDockBottomInset, geometry.safeAreaInsets.bottom)

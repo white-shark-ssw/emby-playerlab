@@ -35,7 +35,7 @@ jobs:
       - name: Export exact source snapshot
         run: |
           set -euo pipefail
-          SOURCE_ZIP="OS-player-v0.13.3-build69-${GITHUB_SHA::7}-source.zip"
+          SOURCE_ZIP="OnePlayer-v0.13.3-build69-${GITHUB_SHA::7}-source.zip"
           git archive --format=zip --output "$SOURCE_ZIP" HEAD
           shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
           echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
@@ -44,7 +44,7 @@ jobs:
       - name: Upload source snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: OS-player-source-${{ github.sha }}
+          name: OnePlayer-source-${{ github.sha }}
           path: |
             ${{ env.SOURCE_ZIP }}
             ${{ env.SOURCE_ZIP }}.sha256
@@ -67,11 +67,10 @@ jobs:
           xcodegen --version
           pod --version
 
-      - name: Prepare packaging assets
+      - name: Prepare OnePlayer app icons and validate branding
         run: |
           set -euo pipefail
-          python3 scripts/generate_os_player_icons.py
-          python3 scripts/version_os_player_icons.py
+          python3 scripts/generate_oneplayer_icons.py
           python3 - <<'PY'
           import json
           import plistlib
@@ -85,23 +84,39 @@ jobs:
           require('iOS: "15.0"' in project, "project.yml deploymentTarget.iOS must remain 15.0")
           require('deploymentTarget: "15.0"' in project, "application deploymentTarget must remain 15.0")
           require('PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app' in project, "unexpected PRODUCT_BUNDLE_IDENTIFIER")
-          require('PRODUCT_NAME: "OS player"' in project, "unexpected PRODUCT_NAME")
-          require('ASSETCATALOG_COMPILER_APPICON_NAME: OSPlayerIcon' in project, "OSPlayerIcon is not configured as app icon")
+          require('PRODUCT_NAME: "OnePlayer"' in project, "unexpected PRODUCT_NAME")
+          require('ASSETCATALOG_COMPILER_APPICON_NAME: OnePlayerIcon' in project, "OnePlayerIcon is not configured as primary app icon")
+          require('ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "OnePlayerAltIcon"' in project, "OnePlayerAltIcon is not configured as alternate app icon")
 
           with Path("Config/Info.plist").open("rb") as handle:
               info = plistlib.load(handle)
-          require(info.get("CFBundleDisplayName") == "OS player", "source CFBundleDisplayName must be OS player")
+          require(info.get("CFBundleDisplayName") == "OnePlayer", "source CFBundleDisplayName must be OnePlayer")
+          require(info.get("CFBundleName") == "OnePlayer", "source CFBundleName must be OnePlayer")
           require(str(info.get("CFBundleShortVersionString")) == "0.13.3", "source version must be 0.13.3")
           require(str(info.get("CFBundleVersion")) == "69", "source build must be 69")
 
-          contents_path = Path("Resources/Assets.xcassets/OSPlayerIcon.appiconset/Contents.json")
-          require(contents_path.is_file(), "OSPlayerIcon Contents.json is missing")
-          contents = json.loads(contents_path.read_text())
-          filenames = [image.get("filename", "") for image in contents.get("images", []) if image.get("filename")]
-          require(len(filenames) == 18, f"OSPlayerIcon must contain 18 named icon slots, got {len(filenames)}")
-          missing = [name for name in filenames if not (contents_path.parent / name).is_file()]
-          require(not missing, f"OSPlayerIcon image files are missing: {missing}")
-          print("Packaging source preflight: OK")
+          stale_brand_files = []
+          for root in (Path("Sources"), Path("Config")):
+              for candidate in root.rglob("*"):
+                  if not candidate.is_file() or candidate.suffix not in {".swift", ".plist", ".h", ".m", ".mm"}:
+                      continue
+                  try:
+                      body = candidate.read_text(errors="ignore")
+                  except Exception:
+                      continue
+                  if "OS player" in body:
+                      stale_brand_files.append(str(candidate))
+          require(not stale_brand_files, f"stale visible OS player branding remains: {stale_brand_files}")
+
+          for icon_set in ("OnePlayerIcon.appiconset", "OnePlayerAltIcon.appiconset"):
+              contents_path = Path("Resources/Assets.xcassets") / icon_set / "Contents.json"
+              require(contents_path.is_file(), f"{icon_set} Contents.json is missing")
+              contents = json.loads(contents_path.read_text())
+              filenames = [image.get("filename", "") for image in contents.get("images", []) if image.get("filename")]
+              require(len(filenames) == 18, f"{icon_set} must contain 18 named icon slots, got {len(filenames)}")
+              missing = [name for name in filenames if not (contents_path.parent / name).is_file()]
+              require(not missing, f"{icon_set} image files are missing: {missing}")
+          print("OnePlayer packaging source preflight: OK")
           PY
 
       - name: Generate Xcode project
@@ -184,7 +199,7 @@ jobs:
           echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
           echo "Found $APP_PATH"
 
-      - name: Validate built app structure
+      - name: Validate built OnePlayer identity and icon metadata
         run: |
           set -euo pipefail
           set -o pipefail
@@ -199,10 +214,12 @@ jobs:
             "$APP_PATH" \
             --bundle-id "com.embyplayerlab.app" \
             --version "0.13.3" \
-            --build "69" 2>&1 | tee app-validation.log
+            --build "69" \
+            --display-name "OnePlayer" \
+            --minimum-os "15.0" \
+            --primary-icon "OnePlayerIcon" \
+            --alternate-icon "OnePlayerAltIcon" 2>&1 | tee app-validation.log
 
-      # Package first. A successful .app must always produce a downloadable TrollStore test IPA.
-      # Compatibility certification runs afterwards and may keep the job/release red without deleting this artifact.
       - name: Package and verify TrollStore test IPA
         run: |
           set -euo pipefail
@@ -210,7 +227,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="EmbyPlayerLab-0.13.3-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="OnePlayer-0.13.3-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           {
@@ -229,7 +246,7 @@ jobs:
       - name: Upload TrollStore test IPA
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerLab-unsigned-${{ github.sha }}
+          name: OnePlayer-unsigned-${{ github.sha }}
           path: |
             ${{ env.IPA_NAME }}
             ${{ env.IPA_NAME }}.sha256
@@ -249,7 +266,7 @@ jobs:
         run: |
           set -euo pipefail
           RELEASE_TAG="v0.13.3-build69-dev"
-          RELEASE_IPA="OS-player-v0.13.3-build69-${GITHUB_SHA::7}-unsigned.ipa"
+          RELEASE_IPA="OnePlayer-v0.13.3-build69-${GITHUB_SHA::7}-unsigned.ipa"
           cp "$IPA_NAME" "$RELEASE_IPA"
           shasum -a 256 "$RELEASE_IPA" | tee "$RELEASE_IPA.sha256"
           gh release delete "$RELEASE_TAG" --cleanup-tag -y >/dev/null 2>&1 || true
@@ -257,8 +274,8 @@ jobs:
             "$RELEASE_IPA" \
             "$RELEASE_IPA.sha256" \
             --target "$GITHUB_SHA" \
-            --title "OS player v0.13.3 Build 69" \
-            --notes "Compatibility-certified TrollStore test build for OS player v0.13.3 Build 69 from $GITHUB_SHA" \
+            --title "OnePlayer v0.13.3 Build 69" \
+            --notes "Compatibility-certified TrollStore test build for OnePlayer v0.13.3 Build 69 from $GITHUB_SHA. Deployment Target remains iOS 15.0; intended device test includes iOS 17.0." \
             --prerelease
 
       - name: Summarize failure
@@ -274,7 +291,7 @@ jobs:
       - name: Write build report
         if: always()
         run: |
-          printf '{"version":"0.13.3","build":69,"commit":"%s","runId":%s,"runNumber":%s,"status":"%s","deploymentTarget":"15.0","requiredDeviceIOS":"17.0"}\n' \
+          printf '{"product":"OnePlayer","version":"0.13.3","build":69,"commit":"%s","runId":%s,"runNumber":%s,"status":"%s","deploymentTarget":"15.0","requiredDeviceIOS":"17.0"}\n' \
             "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_NUMBER" "${{ job.status }}" > build-report.json
           cat build-report.json
 
@@ -282,7 +299,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerLab-build-diagnostics-${{ github.sha }}
+          name: OnePlayer-build-diagnostics-${{ github.sha }}
           path: |
             build.log
             package-resolution.log
