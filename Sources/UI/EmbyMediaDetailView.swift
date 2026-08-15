@@ -1084,7 +1084,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     }
 
     var isSeries: Bool { item.type?.caseInsensitiveCompare("Series") == .orderedSame }
-    var isPlayable: Bool { ["movie", "episode", "video"].contains(item.type?.lowercased() ?? "") }
+    var isPlayable: Bool { ["movie", "episode", "video", "trailer"].contains(item.type?.lowercased() ?? "") }
     var displayedFavorite: Bool { desiredFavorite }
     var displayedPlayed: Bool { desiredPlayed }
     var normalizedOverview: String? { normalizedOverview(for: item) }
