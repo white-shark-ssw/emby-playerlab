@@ -4,13 +4,13 @@ import UIKit
 struct PlayerScreen: View {
     @Environment(\.presentationMode) private var presentationMode
     @StateObject private var controller: PlayerController
+    @StateObject private var sessionOverrides: PlaybackSessionOverrides
     @AppStorage(PlayerPreferenceKeys.backwardSeconds) private var backwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.forwardSeconds) private var forwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.bufferPreset) private var bufferPresetRaw = BufferPreset.balanced.rawValue
     @AppStorage(PlayerPreferenceKeys.volumeHapticsEnabled) private var volumeHapticsEnabled = true
     @AppStorage(PlayerPreferenceKeys.independentBrightnessEnabled) private var independentBrightnessEnabled = false
     @AppStorage(PlayerPreferenceKeys.independentBrightnessValue) private var independentBrightnessValue = 0.5
-    @AppStorage(PlayerPreferenceKeys.defaultScaleMode) private var scaleModeRaw = PlayerVideoScaleMode.fit.rawValue
     @AppStorage(PlayerPreferenceKeys.controlsAutoHideSeconds) private var controlsAutoHideSeconds = 3.0
 
     @State private var showSettings = false
@@ -25,6 +25,9 @@ struct PlayerScreen: View {
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
         _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: preference))
+        let defaultScaleRaw = UserDefaults.standard.string(forKey: PlayerPreferenceKeys.defaultScaleMode) ?? PlayerVideoScaleMode.fit.rawValue
+        let defaultScale = PlayerVideoScaleMode(rawValue: defaultScaleRaw) ?? .fit
+        _sessionOverrides = StateObject(wrappedValue: PlaybackSessionOverrides(defaultScaleMode: defaultScale))
     }
 
     var body: some View {
@@ -128,14 +131,15 @@ struct PlayerScreen: View {
                 rotatePlayer()
                 showControls()
             } label: {
-                Image(systemName: "rotate.right").font(.system(size: 19, weight: .semibold)).frame(width: 42, height: 42)
+                Image(systemName: "rectangle.landscape.rotate").font(.system(size: 19, weight: .semibold)).frame(width: 42, height: 42)
             }
+            .disabled(!capabilities.supportsRotation)
             .accessibilityLabel("旋转画面")
 
             Menu {
                 ForEach(PlayerVideoScaleMode.allCases) { mode in
                     Button {
-                        scaleModeRaw = mode.rawValue
+                        sessionOverrides.scaleMode = mode
                         DiagnosticsLogger.shared.playback("PlayerUI", "picture size mode=\(mode.rawValue)")
                         showControls()
                     } label: {
@@ -146,6 +150,7 @@ struct PlayerScreen: View {
             } label: {
                 Image(systemName: "aspectratio").font(.system(size: 19, weight: .semibold)).frame(width: 42, height: 42)
             }
+            .disabled(!capabilities.supportsPictureSize)
             .accessibilityLabel("画面尺寸")
 
             Button {
@@ -312,7 +317,8 @@ struct PlayerScreen: View {
         .cornerRadius(12)
     }
 
-    private var currentScaleMode: PlayerVideoScaleMode { PlayerVideoScaleMode(rawValue: scaleModeRaw) ?? .fit }
+    private var capabilities: PlayerCapabilities { PlayerCapabilities.resolve(for: controller.engineKind) }
+    private var currentScaleMode: PlayerVideoScaleMode { sessionOverrides.scaleMode }
 
     private func playerSurfaceSize(container: CGSize, mode: PlayerVideoScaleMode) -> CGSize {
         let targetRatio: CGFloat?
@@ -389,6 +395,7 @@ struct PlayerScreen: View {
         guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }) else { return }
         let landscape = scene.interfaceOrientation.isLandscape
         let targetOrientation: UIInterfaceOrientation = landscape ? .portrait : .landscapeRight
+        sessionOverrides.manualOrientation = targetOrientation
         if #available(iOS 16.0, *) {
             let mask: UIInterfaceOrientationMask = landscape ? .portrait : .landscapeRight
             scene.windows.first(where: { $0.isKeyWindow })?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
