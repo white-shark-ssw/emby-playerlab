@@ -1,28 +1,46 @@
+import AVFoundation
+import MediaPlayer
 import SwiftUI
 import UIKit
 
+enum PlaybackVerticalAdjustment {
+    case brightness
+    case volume
+}
+
 struct PlaybackGestureOverlay: UIViewRepresentable {
+    let volumeHapticsEnabled: Bool
+    let onSingleTap: () -> Void
     let onLeftDoubleTap: () -> Void
+    let onCenterDoubleTap: () -> Void
     let onRightDoubleTap: () -> Void
-    let onHorizontalPanBegan: () -> Void
-    let onHorizontalPanChanged: (_ translationX: CGFloat, _ viewWidth: CGFloat) -> Void
-    let onHorizontalPanEnded: () -> Void
-    let onHorizontalPanCancelled: () -> Void
+    let onAdjustmentBegan: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
+    let onAdjustmentChanged: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
+    let onAdjustmentEnded: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
+            volumeHapticsEnabled: volumeHapticsEnabled,
+            onSingleTap: onSingleTap,
             onLeftDoubleTap: onLeftDoubleTap,
+            onCenterDoubleTap: onCenterDoubleTap,
             onRightDoubleTap: onRightDoubleTap,
-            onHorizontalPanBegan: onHorizontalPanBegan,
-            onHorizontalPanChanged: onHorizontalPanChanged,
-            onHorizontalPanEnded: onHorizontalPanEnded,
-            onHorizontalPanCancelled: onHorizontalPanCancelled
+            onAdjustmentBegan: onAdjustmentBegan,
+            onAdjustmentChanged: onAdjustmentChanged,
+            onAdjustmentEnded: onAdjustmentEnded
         )
     }
 
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
         view.backgroundColor = .clear
+
+        let volumeView = MPVolumeView(frame: CGRect(x: -10, y: -10, width: 1, height: 1))
+        volumeView.showsRouteButton = false
+        volumeView.showsVolumeSlider = true
+        volumeView.alpha = 0.001
+        view.addSubview(volumeView)
+        context.coordinator.volumeSlider = volumeView.subviews.compactMap { $0 as? UISlider }.first
 
         let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap(_:)))
         doubleTap.numberOfTapsRequired = 2
@@ -31,82 +49,154 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         doubleTap.delegate = context.coordinator
         view.addGestureRecognizer(doubleTap)
 
-        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
-        pan.maximumNumberOfTouches = 1
-        pan.cancelsTouchesInView = false
-        pan.delegate = context.coordinator
-        view.addGestureRecognizer(pan)
+        let singleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleSingleTap(_:)))
+        singleTap.numberOfTapsRequired = 1
+        singleTap.numberOfTouchesRequired = 1
+        singleTap.cancelsTouchesInView = false
+        singleTap.delegate = context.coordinator
+        singleTap.require(toFail: doubleTap)
+        view.addGestureRecognizer(singleTap)
+
+        let verticalPan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleVerticalPan(_:)))
+        verticalPan.maximumNumberOfTouches = 1
+        verticalPan.cancelsTouchesInView = false
+        verticalPan.delegate = context.coordinator
+        view.addGestureRecognizer(verticalPan)
 
         return view
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.volumeHapticsEnabled = volumeHapticsEnabled
+        context.coordinator.onSingleTap = onSingleTap
         context.coordinator.onLeftDoubleTap = onLeftDoubleTap
+        context.coordinator.onCenterDoubleTap = onCenterDoubleTap
         context.coordinator.onRightDoubleTap = onRightDoubleTap
-        context.coordinator.onHorizontalPanBegan = onHorizontalPanBegan
-        context.coordinator.onHorizontalPanChanged = onHorizontalPanChanged
-        context.coordinator.onHorizontalPanEnded = onHorizontalPanEnded
-        context.coordinator.onHorizontalPanCancelled = onHorizontalPanCancelled
+        context.coordinator.onAdjustmentBegan = onAdjustmentBegan
+        context.coordinator.onAdjustmentChanged = onAdjustmentChanged
+        context.coordinator.onAdjustmentEnded = onAdjustmentEnded
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var volumeHapticsEnabled: Bool
+        var onSingleTap: () -> Void
         var onLeftDoubleTap: () -> Void
+        var onCenterDoubleTap: () -> Void
         var onRightDoubleTap: () -> Void
-        var onHorizontalPanBegan: () -> Void
-        var onHorizontalPanChanged: (_ translationX: CGFloat, _ viewWidth: CGFloat) -> Void
-        var onHorizontalPanEnded: () -> Void
-        var onHorizontalPanCancelled: () -> Void
+        var onAdjustmentBegan: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
+        var onAdjustmentChanged: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
+        var onAdjustmentEnded: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
+        weak var volumeSlider: UISlider?
+
+        private var activeAdjustment: PlaybackVerticalAdjustment?
+        private var adjustmentStartValue: Double = 0
+        private var lastVolumeTick = -1
+        private let volumeTickStep = 0.02
+        private let hapticGenerator = UISelectionFeedbackGenerator()
 
         init(
+            volumeHapticsEnabled: Bool,
+            onSingleTap: @escaping () -> Void,
             onLeftDoubleTap: @escaping () -> Void,
+            onCenterDoubleTap: @escaping () -> Void,
             onRightDoubleTap: @escaping () -> Void,
-            onHorizontalPanBegan: @escaping () -> Void,
-            onHorizontalPanChanged: @escaping (_ translationX: CGFloat, _ viewWidth: CGFloat) -> Void,
-            onHorizontalPanEnded: @escaping () -> Void,
-            onHorizontalPanCancelled: @escaping () -> Void
+            onAdjustmentBegan: @escaping (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void,
+            onAdjustmentChanged: @escaping (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void,
+            onAdjustmentEnded: @escaping (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
         ) {
+            self.volumeHapticsEnabled = volumeHapticsEnabled
+            self.onSingleTap = onSingleTap
             self.onLeftDoubleTap = onLeftDoubleTap
+            self.onCenterDoubleTap = onCenterDoubleTap
             self.onRightDoubleTap = onRightDoubleTap
-            self.onHorizontalPanBegan = onHorizontalPanBegan
-            self.onHorizontalPanChanged = onHorizontalPanChanged
-            self.onHorizontalPanEnded = onHorizontalPanEnded
-            self.onHorizontalPanCancelled = onHorizontalPanCancelled
+            self.onAdjustmentBegan = onAdjustmentBegan
+            self.onAdjustmentChanged = onAdjustmentChanged
+            self.onAdjustmentEnded = onAdjustmentEnded
+        }
+
+        @objc func handleSingleTap(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended else { return }
+            onSingleTap()
         }
 
         @objc func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
-            guard let view = recognizer.view else { return }
-            let location = recognizer.location(in: view)
-            location.x < view.bounds.midX ? onLeftDoubleTap() : onRightDoubleTap()
+            guard recognizer.state == .ended, let view = recognizer.view else { return }
+            let x = recognizer.location(in: view).x / max(view.bounds.width, 1)
+            if x < 0.35 { onLeftDoubleTap() }
+            else if x > 0.65 { onRightDoubleTap() }
+            else { onCenterDoubleTap() }
         }
 
-        @objc func handlePan(_ recognizer: UIPanGestureRecognizer) {
+        @objc func handleVerticalPan(_ recognizer: UIPanGestureRecognizer) {
             guard let view = recognizer.view else { return }
             switch recognizer.state {
             case .began:
-                onHorizontalPanBegan()
+                let x = recognizer.location(in: view).x / max(view.bounds.width, 1)
+                if x < 0.35 {
+                    activeAdjustment = .brightness
+                    adjustmentStartValue = Double(UIScreen.main.brightness)
+                } else if x > 0.65 {
+                    activeAdjustment = .volume
+                    adjustmentStartValue = Double(AVAudioSession.sharedInstance().outputVolume)
+                    lastVolumeTick = Int((adjustmentStartValue / volumeTickStep).rounded())
+                    if volumeHapticsEnabled { hapticGenerator.prepare() }
+                } else {
+                    activeAdjustment = nil
+                    return
+                }
+                if let activeAdjustment { onAdjustmentBegan(activeAdjustment, adjustmentStartValue) }
             case .changed:
-                onHorizontalPanChanged(recognizer.translation(in: view).x, max(view.bounds.width, 1))
+                guard let activeAdjustment else { return }
+                let translation = recognizer.translation(in: view)
+                let span = max(view.bounds.height * 0.65, 220)
+                let value = min(1, max(0, adjustmentStartValue - Double(translation.y / span)))
+                apply(activeAdjustment, value: value)
+                onAdjustmentChanged(activeAdjustment, value)
             case .ended:
-                onHorizontalPanEnded()
+                finishAdjustment()
             case .cancelled, .failed:
-                onHorizontalPanCancelled()
+                finishAdjustment()
             default:
                 break
             }
         }
 
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard let pan = gestureRecognizer as? UIPanGestureRecognizer,
-                  let view = pan.view else { return true }
-            let velocity = pan.velocity(in: view)
-            return abs(velocity.x) > 40 && abs(velocity.x) > abs(velocity.y) * 1.2
+        private func apply(_ adjustment: PlaybackVerticalAdjustment, value: Double) {
+            switch adjustment {
+            case .brightness:
+                UIScreen.main.brightness = CGFloat(value)
+            case .volume:
+                volumeSlider?.setValue(Float(value), animated: false)
+                volumeSlider?.sendActions(for: .valueChanged)
+                guard volumeHapticsEnabled else { return }
+                let tick = Int((value / volumeTickStep).rounded())
+                if tick != lastVolumeTick {
+                    lastVolumeTick = tick
+                    hapticGenerator.selectionChanged()
+                    hapticGenerator.prepare()
+                }
+            }
         }
 
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-        ) -> Bool {
-            false
+        private func finishAdjustment() {
+            guard let activeAdjustment else { return }
+            let value: Double
+            switch activeAdjustment {
+            case .brightness: value = Double(UIScreen.main.brightness)
+            case .volume: value = Double(AVAudioSession.sharedInstance().outputVolume)
+            }
+            onAdjustmentEnded(activeAdjustment, value)
+            self.activeAdjustment = nil
         }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer, let view = pan.view else { return true }
+            let velocity = pan.velocity(in: view)
+            guard abs(velocity.y) > 35, abs(velocity.y) > abs(velocity.x) * 1.15 else { return false }
+            let x = pan.location(in: view).x / max(view.bounds.width, 1)
+            return x < 0.35 || x > 0.65
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { false }
     }
 }
