@@ -1,0 +1,86 @@
+name: Build Alternate Icon Entitlement Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/trollstore-alternate-icon-ls]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ldid
+        run: |
+          set -euo pipefail
+          brew install ldid
+          ldid -h 2>&1 | head -20 || true
+
+      - name: Download known-good baseline IPA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir baseline
+          gh run download 31892835274 \
+            -n OnePlayer-unsigned-1860955710486ed96bd59eabf707401dba0500e4 \
+            --dir baseline
+          BASELINE_IPA="$(find baseline -maxdepth 1 -name '*.ipa' -print -quit)"
+          if [[ -z "$BASELINE_IPA" ]]; then
+            echo "::error::Baseline IPA not found"
+            exit 1
+          fi
+          echo "BASELINE_IPA=$BASELINE_IPA" >> "$GITHUB_ENV"
+          shasum -a 256 "$BASELINE_IPA"
+
+      - name: Inject TrollStore LaunchServices entitlement
+        run: |
+          set -euo pipefail
+          rm -rf work
+          mkdir work
+          cd work
+          unzip -q "../$BASELINE_IPA"
+          APP_PATH="$(find Payload -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
+            echo "::error::App bundle not found in baseline IPA"
+            exit 1
+          fi
+          EXECUTABLE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Info.plist")"
+          EXECUTABLE_PATH="$APP_PATH/$EXECUTABLE_NAME"
+          ldid -S../Config/TrollStore.entitlements "$EXECUTABLE_PATH"
+          ldid -e "$EXECUTABLE_PATH" > ../embedded-entitlements.plist
+          /usr/bin/plutil -p ../embedded-entitlements.plist
+          /usr/bin/plutil -extract com.apple.private.coreservices.canmaplsdatabase raw ../embedded-entitlements.plist | grep -qx 'true'
+          /usr/bin/plutil -extract application-identifier raw ../embedded-entitlements.plist | grep -qx 'TROLLTROLL.*'
+          /usr/bin/plutil -extract com.apple.developer.team-identifier raw ../embedded-entitlements.plist | grep -qx 'TROLLTROLL'
+          cd ..
+
+      - name: Package test IPA
+        run: |
+          set -euo pipefail
+          cd work
+          IPA_NAME="OnePlayer-0.13.3-icon-ls-test-${GITHUB_SHA::7}.ipa"
+          /usr/bin/zip -qry "../$IPA_NAME" Payload
+          cd ..
+          /usr/bin/unzip -t "$IPA_NAME"
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload test IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-icon-ls-test-${{ github.sha }}
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            embedded-entitlements.plist
+          if-no-files-found: error
+          retention-days: 14
