@@ -79,6 +79,7 @@ struct AppearanceSettingsView: View {
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("外观设置")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(false)
         .onAppear { currentIconName = UIApplication.shared.alternateIconName }
         .alert(isPresented: Binding(get: { iconErrorMessage != nil }, set: { if !$0 { iconErrorMessage = nil } })) {
             Alert(title: Text("图标切换失败"), message: Text(iconErrorMessage ?? ""), dismissButton: .default(Text("好")))
