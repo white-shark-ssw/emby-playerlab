@@ -25,10 +25,22 @@ jobs:
           from pathlib import Path
           p = Path('Sources/UI/EmbyServerBrowseV3.swift')
           s = p.read_text()
-          if s.count('HStack(spacing: 14)') != 1: raise SystemExit('unexpected spacing match count')
-          if s.count('.padding(.horizontal, 12)') != 1: raise SystemExit('unexpected padding match count')
-          s = s.replace('HStack(spacing: 14)', 'HStack(spacing: 18)', 1)
-          s = s.replace('.padding(.horizontal, 12)', '.padding(.horizontal, 14)', 1)
+          old = '''        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {'''
+          new = '''        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 18) {'''
+          if s.count(old) != 1: raise SystemExit(f'unexpected tab spacing context count: {s.count(old)}')
+          s = s.replace(old, new, 1)
+          old = '''            }
+            .padding(.horizontal, 12)
+        }
+        .frame(height: 44)'''
+          new = '''            }
+            .padding(.horizontal, 14)
+        }
+        .frame(height: 44)'''
+          if s.count(old) != 1: raise SystemExit(f'unexpected tab padding context count: {s.count(old)}')
+          s = s.replace(old, new, 1)
           p.write_text(s)
           PY
           rm -f .github/workflows/temp-relax-library-tabs.yml
