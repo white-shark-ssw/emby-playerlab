@@ -65,6 +65,10 @@ struct PlayerScreen: View {
                     onRightDoubleTap: { controller.seek(by: Double(forwardSeconds)) },
                     onTemporaryRateBegan: beginTemporaryRate,
                     onTemporaryRateEnded: endTemporaryRate,
+                    onScreenScrubBegan: beginScreenScrub,
+                    onScreenScrubChanged: { translationX, viewWidth in controller.updateScreenScrubbing(translationX: translationX, viewWidth: viewWidth) },
+                    onScreenScrubEnded: endScreenScrub,
+                    onScreenScrubCancelled: cancelScreenScrub,
                     onAdjustmentBegan: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: false) },
                     onAdjustmentChanged: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: false) },
                     onAdjustmentEnded: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: true) }
@@ -109,15 +113,9 @@ struct PlayerScreen: View {
             if !PlayerCapabilities.resolve(for: kind).supportsPictureInPicture { pictureInPictureController.stopAndDetach() }
             controller.applyVideoScaleMode(currentScaleMode)
         }
-        .onChange(of: pictureInPictureController.isActive) { _ in
-            updateIndependentBrightnessForPlaybackContext()
-        }
-        .onChange(of: scenePhase) { phase in
-            handleScenePhase(phase)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { notification in
-            handleAudioInterruption(notification)
-        }
+        .onChange(of: pictureInPictureController.isActive) { _ in updateIndependentBrightnessForPlaybackContext() }
+        .onChange(of: scenePhase) { phase in handleScenePhase(phase) }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { notification in handleAudioInterruption(notification) }
         .sheet(isPresented: $showSettings) { PlayerSettingsView() }
         .sheet(item: $activePanel, onDismiss: { scheduleControlsHide() }) { panel in
             PlayerControlPanelSheet(
@@ -140,8 +138,7 @@ struct PlayerScreen: View {
                 if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {
                     MPVPlayerSurface(displayLayer: layer)
                 } else if let player = controller.avPlayer {
-                    AVPlayerSurface(player: player, scaleMode: mode, onPlayerLayerReady: pictureInPictureController.attach)
-                        .id("avplayer")
+                    AVPlayerSurface(player: player, scaleMode: mode, onPlayerLayerReady: pictureInPictureController.attach).id("avplayer")
                 } else {
                     Color.black
                 }
@@ -167,20 +164,13 @@ struct PlayerScreen: View {
 
     private var topControls: some View {
         HStack(spacing: 4) {
-            Button(action: closePlayer) {
-                Image(systemName: "xmark").font(.system(size: 19, weight: .semibold)).frame(width: 42, height: 42)
-            }
+            Button(action: closePlayer) { Image(systemName: "xmark").font(.system(size: 19, weight: .semibold)).frame(width: 42, height: 42) }
 
-            Text(controller.source.itemName)
-                .lineLimit(1)
-                .font(.headline)
-
+            Text(controller.source.itemName).lineLimit(1).font(.headline)
             Spacer(minLength: 8)
 
             if capabilities.supportsSystemRoutePicker {
-                PlayerSystemRoutePicker()
-                    .frame(width: 42, height: 42)
-                    .accessibilityLabel("投屏")
+                PlayerSystemRoutePicker().frame(width: 42, height: 42).accessibilityLabel("投屏")
             }
 
             if capabilities.supportsPictureInPicture {
@@ -239,9 +229,7 @@ struct PlayerScreen: View {
             Button {
                 controller.seek(by: -Double(backwardSeconds))
                 showControls()
-            } label: {
-                seekButtonLabel(systemName: "gobackward", seconds: backwardSeconds)
-            }
+            } label: { seekButtonLabel(systemName: "gobackward", seconds: backwardSeconds) }
 
             Button {
                 controller.togglePlayPause()
@@ -258,9 +246,7 @@ struct PlayerScreen: View {
             Button {
                 controller.seek(by: Double(forwardSeconds))
                 showControls()
-            } label: {
-                seekButtonLabel(systemName: "goforward", seconds: forwardSeconds)
-            }
+            } label: { seekButtonLabel(systemName: "goforward", seconds: forwardSeconds) }
         }
         .padding(.bottom, 18)
     }
@@ -302,9 +288,7 @@ struct PlayerScreen: View {
         VStack(spacing: 6) {
             ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white)).scaleEffect(1.1)
             Text("正在缓冲").font(.caption)
-            if bufferingDownloadSpeed > 0 {
-                Text(bufferingSpeedText).font(.caption2.monospacedDigit()).foregroundColor(.white.opacity(0.82))
-            }
+            if bufferingDownloadSpeed > 0 { Text(bufferingSpeedText).font(.caption2.monospacedDigit()).foregroundColor(.white.opacity(0.82)) }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -322,9 +306,7 @@ struct PlayerScreen: View {
         .onDisappear { bufferingDownloadSpeed = 0 }
     }
 
-    private var bufferingSpeedText: String {
-        ByteCountFormatter.string(fromByteCount: Int64(bufferingDownloadSpeed.rounded()), countStyle: .file) + "/s"
-    }
+    private var bufferingSpeedText: String { ByteCountFormatter.string(fromByteCount: Int64(bufferingDownloadSpeed.rounded()), countStyle: .file) + "/s" }
 
     @ViewBuilder
     private var statusMessages: some View {
@@ -386,26 +368,31 @@ struct PlayerScreen: View {
     }
 
     private func adjustmentHUDView(_ state: AdjustmentHUDState) -> some View {
-        VStack {
-            HStack(spacing: 12) {
-                Image(systemName: state.adjustment == .volume ? "speaker.wave.2.fill" : "sun.max.fill").frame(width: 24)
-                HStack(alignment: .center, spacing: 3) {
-                    ForEach(0..<21, id: \.self) { index in
+        let tickCount = 31
+        let currentTick = Int((state.value * Double(tickCount - 1)).rounded())
+        return VStack {
+            HStack(spacing: 11) {
+                Image(systemName: state.adjustment == .volume ? "speaker.wave.2.fill" : "sun.max.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .frame(width: 25)
+
+                HStack(alignment: .center, spacing: 2.7) {
+                    ForEach(0..<tickCount, id: \.self) { index in
+                        let isCurrent = index == currentTick
+                        let isFilled = index <= currentTick
                         Capsule()
-                            .fill(index <= Int((state.value * 20).rounded()) ? Color.white : Color.white.opacity(0.28))
-                            .frame(width: 2.5, height: index % 5 == 0 ? 16 : 9)
+                            .fill(Color.white.opacity(isCurrent ? 1 : (isFilled ? 0.88 : 0.22)))
+                            .frame(width: isCurrent ? 3 : 1.8, height: isCurrent ? 21 : (index % 5 == 0 ? 16 : 10))
                     }
                 }
+
                 Text("\(Int((state.value * 100).rounded()))%")
-                    .font(.caption.monospacedDigit())
-                    .frame(width: 42, alignment: .trailing)
+                    .font(.system(size: 17, weight: .medium, design: .rounded).monospacedDigit())
+                    .frame(width: 46, alignment: .trailing)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color.black.opacity(0.62))
             .foregroundColor(.white)
-            .clipShape(Capsule())
-            .padding(.top, 54)
+            .shadow(color: .black.opacity(0.72), radius: 2, x: 0, y: 1)
+            .padding(.top, 70)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -427,9 +414,7 @@ struct PlayerScreen: View {
     private var currentScaleMode: PlayerVideoScaleMode { sessionOverrides.scaleMode }
     private var isExternalPlaybackActive: Bool { controller.avPlayer?.isExternalPlaybackActive == true }
     private var hasTrackInfo: Bool {
-        (controller.source.mediaSource.mediaStreams ?? []).contains {
-            $0.type?.caseInsensitiveCompare("Audio") == .orderedSame || $0.type?.caseInsensitiveCompare("Subtitle") == .orderedSame
-        }
+        (controller.source.mediaSource.mediaStreams ?? []).contains { $0.type?.caseInsensitiveCompare("Audio") == .orderedSame || $0.type?.caseInsensitiveCompare("Subtitle") == .orderedSame }
     }
 
     private func playerSurfaceSize(container: CGSize, mode: PlayerVideoScaleMode) -> CGSize {
@@ -445,16 +430,53 @@ struct PlayerScreen: View {
     }
 
     private func prepareInitialOrientationAndStart() {
-        let target = resolvedInitialOrientation()
-        let current = activeWindowScene()?.interfaceOrientation
-        if let target, target != current { requestInterfaceOrientation(target, reason: "initial") }
-        let delay: TimeInterval = target != nil && target != current ? 0.12 : 0
-        let workItem = DispatchWorkItem {
+        guard let target = resolvedInitialOrientation() else {
+            DiagnosticsLogger.shared.playback("PlayerUI", "initial orientation kept because media display aspect is unavailable")
             orientationReady = true
             startPlaybackIfNeeded()
+            return
         }
+        beginOrientationTransition(to: target, reason: "initial", shouldStartPlayback: true)
+    }
+
+    private func beginOrientationTransition(to target: UIInterfaceOrientation, reason: String, shouldStartPlayback: Bool) {
+        initialOrientationWorkItem?.cancel()
+        orientationReady = false
+        let current = activeWindowScene()?.interfaceOrientation
+        if current == target {
+            finishOrientationTransition(target: target, reason: reason, shouldStartPlayback: shouldStartPlayback, timedOut: false)
+            return
+        }
+        requestInterfaceOrientation(target, reason: reason)
+        waitForOrientation(target, reason: reason, shouldStartPlayback: shouldStartPlayback, attempt: 0)
+    }
+
+    private func waitForOrientation(_ target: UIInterfaceOrientation, reason: String, shouldStartPlayback: Bool, attempt: Int) {
+        guard !isClosing else { return }
+        if activeWindowScene()?.interfaceOrientation == target {
+            finishOrientationTransition(target: target, reason: reason, shouldStartPlayback: shouldStartPlayback, timedOut: false)
+            return
+        }
+        if attempt >= 24 {
+            finishOrientationTransition(target: target, reason: reason, shouldStartPlayback: shouldStartPlayback, timedOut: true)
+            return
+        }
+        if attempt == 5 || attempt == 12 { requestInterfaceOrientation(target, reason: "\(reason)-retry\(attempt)") }
+        let workItem = DispatchWorkItem { waitForOrientation(target, reason: reason, shouldStartPlayback: shouldStartPlayback, attempt: attempt + 1) }
         initialOrientationWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
+    }
+
+    private func finishOrientationTransition(target: UIInterfaceOrientation, reason: String, shouldStartPlayback: Bool, timedOut: Bool) {
+        initialOrientationWorkItem?.cancel()
+        initialOrientationWorkItem = nil
+        orientationReady = true
+        DiagnosticsLogger.shared.playback("PlayerUI", "rotation settled reason=\(reason) target=\(target.rawValue) actual=\(activeWindowScene()?.interfaceOrientation.rawValue ?? 0) timeout=\(timedOut)")
+        if shouldStartPlayback { startPlaybackIfNeeded() }
+        else {
+            controller.applyVideoScaleMode(currentScaleMode)
+            showControls()
+        }
     }
 
     private func startPlaybackIfNeeded() {
@@ -485,14 +507,25 @@ struct PlayerScreen: View {
     }
 
     private func activeWindowScene() -> UIWindowScene? {
-        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first(where: { $0.activationState == .foregroundActive })
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        return scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first(where: { $0.activationState == .foregroundInactive })
     }
 
     private func requestInterfaceOrientation(_ targetOrientation: UIInterfaceOrientation, reason: String) {
-        guard let scene = activeWindowScene() else { return }
+        guard let scene = activeWindowScene() else {
+            DiagnosticsLogger.shared.playback("PlayerUI", "rotation skipped reason=\(reason) scene=unavailable")
+            return
+        }
         if #available(iOS 16.0, *) {
             let mask: UIInterfaceOrientationMask = targetOrientation.isPortrait ? .portrait : (targetOrientation == .landscapeLeft ? .landscapeLeft : .landscapeRight)
-            scene.windows.first(where: { $0.isKeyWindow })?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            if let root = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
+                root.setNeedsUpdateOfSupportedInterfaceOrientations()
+                var presented = root.presentedViewController
+                while let controller = presented {
+                    controller.setNeedsUpdateOfSupportedInterfaceOrientations()
+                    presented = controller.presentedViewController
+                }
+            }
             scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
                 DiagnosticsLogger.shared.playback("PlayerUI", "rotation failed reason=\(reason) error=\(error.localizedDescription)")
             }
@@ -508,11 +541,7 @@ struct PlayerScreen: View {
         case .background:
             resetTransientInteractions(reason: "background")
             restoreOriginalBrightnessIfNeeded()
-            guard pauseWhenBackgrounded,
-                  !audioInterruptionActive,
-                  controller.playbackControlIsPlaying,
-                  !pictureInPictureController.isActive,
-                  !isExternalPlaybackActive else {
+            guard pauseWhenBackgrounded, !audioInterruptionActive, controller.playbackControlIsPlaying, !pictureInPictureController.isActive, !isExternalPlaybackActive else {
                 wasAutoPausedForBackground = false
                 DiagnosticsLogger.shared.playback("Lifecycle", "background preserve playback pip=\(pictureInPictureController.isActive) external=\(isExternalPlaybackActive) wantsPlayback=\(controller.playbackControlIsPlaying)")
                 return
@@ -580,9 +609,7 @@ struct PlayerScreen: View {
         if controlsVisible {
             controlsHideWorkItem?.cancel()
             controlsVisible = false
-        } else {
-            showControls()
-        }
+        } else { showControls() }
     }
 
     private func showControls(autoHide: Bool = true) {
@@ -631,6 +658,21 @@ struct PlayerScreen: View {
         if scenePhase == .active { scheduleControlsHide() }
     }
 
+    private func beginScreenScrub() {
+        controlsHideWorkItem?.cancel()
+        controller.beginScreenScrubbing()
+    }
+
+    private func endScreenScrub() {
+        controller.endScreenScrubbing()
+        if controlsVisible { scheduleControlsHide() }
+    }
+
+    private func cancelScreenScrub() {
+        controller.cancelScreenScrubbing()
+        if controlsVisible { scheduleControlsHide() }
+    }
+
     private func applyBasePlaybackRate(_ rate: Double) {
         let clamped = min(4, max(0.25, rate))
         sessionOverrides.basePlaybackRate = clamped
@@ -670,7 +712,7 @@ struct PlayerScreen: View {
         guard let scene = activeWindowScene() else { return }
         let targetOrientation: UIInterfaceOrientation = scene.interfaceOrientation.isLandscape ? .portrait : .landscapeRight
         sessionOverrides.manualOrientation = targetOrientation
-        requestInterfaceOrientation(targetOrientation, reason: "manual")
+        beginOrientationTransition(to: targetOrientation, reason: "manual", shouldStartPlayback: false)
     }
 
     private struct AdjustmentHUDState {

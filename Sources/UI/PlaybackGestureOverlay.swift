@@ -17,6 +17,10 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
     let onRightDoubleTap: () -> Void
     let onTemporaryRateBegan: () -> Void
     let onTemporaryRateEnded: () -> Void
+    let onScreenScrubBegan: () -> Void
+    let onScreenScrubChanged: (_ translationX: CGFloat, _ viewWidth: CGFloat) -> Void
+    let onScreenScrubEnded: () -> Void
+    let onScreenScrubCancelled: () -> Void
     let onAdjustmentBegan: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
     let onAdjustmentChanged: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
     let onAdjustmentEnded: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
@@ -31,6 +35,10 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             onRightDoubleTap: onRightDoubleTap,
             onTemporaryRateBegan: onTemporaryRateBegan,
             onTemporaryRateEnded: onTemporaryRateEnded,
+            onScreenScrubBegan: onScreenScrubBegan,
+            onScreenScrubChanged: onScreenScrubChanged,
+            onScreenScrubEnded: onScreenScrubEnded,
+            onScreenScrubCancelled: onScreenScrubCancelled,
             onAdjustmentBegan: onAdjustmentBegan,
             onAdjustmentChanged: onAdjustmentChanged,
             onAdjustmentEnded: onAdjustmentEnded
@@ -63,11 +71,11 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         singleTap.require(toFail: doubleTap)
         view.addGestureRecognizer(singleTap)
 
-        let verticalPan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleVerticalPan(_:)))
-        verticalPan.maximumNumberOfTouches = 1
-        verticalPan.cancelsTouchesInView = false
-        verticalPan.delegate = context.coordinator
-        view.addGestureRecognizer(verticalPan)
+        let directionalPan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDirectionalPan(_:)))
+        directionalPan.maximumNumberOfTouches = 1
+        directionalPan.cancelsTouchesInView = false
+        directionalPan.delegate = context.coordinator
+        view.addGestureRecognizer(directionalPan)
 
         let longPress = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress(_:)))
         longPress.minimumPressDuration = 0.42
@@ -88,6 +96,10 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         context.coordinator.onRightDoubleTap = onRightDoubleTap
         context.coordinator.onTemporaryRateBegan = onTemporaryRateBegan
         context.coordinator.onTemporaryRateEnded = onTemporaryRateEnded
+        context.coordinator.onScreenScrubBegan = onScreenScrubBegan
+        context.coordinator.onScreenScrubChanged = onScreenScrubChanged
+        context.coordinator.onScreenScrubEnded = onScreenScrubEnded
+        context.coordinator.onScreenScrubCancelled = onScreenScrubCancelled
         context.coordinator.onAdjustmentBegan = onAdjustmentBegan
         context.coordinator.onAdjustmentChanged = onAdjustmentChanged
         context.coordinator.onAdjustmentEnded = onAdjustmentEnded
@@ -97,6 +109,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         private enum GestureOwner {
             case verticalAdjustment
+            case screenScrub
             case temporaryRate
         }
 
@@ -107,6 +120,10 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         var onRightDoubleTap: () -> Void
         var onTemporaryRateBegan: () -> Void
         var onTemporaryRateEnded: () -> Void
+        var onScreenScrubBegan: () -> Void
+        var onScreenScrubChanged: (_ translationX: CGFloat, _ viewWidth: CGFloat) -> Void
+        var onScreenScrubEnded: () -> Void
+        var onScreenScrubCancelled: () -> Void
         var onAdjustmentBegan: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
         var onAdjustmentChanged: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
         var onAdjustmentEnded: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
@@ -129,6 +146,10 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             onRightDoubleTap: @escaping () -> Void,
             onTemporaryRateBegan: @escaping () -> Void,
             onTemporaryRateEnded: @escaping () -> Void,
+            onScreenScrubBegan: @escaping () -> Void,
+            onScreenScrubChanged: @escaping (_ translationX: CGFloat, _ viewWidth: CGFloat) -> Void,
+            onScreenScrubEnded: @escaping () -> Void,
+            onScreenScrubCancelled: @escaping () -> Void,
             onAdjustmentBegan: @escaping (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void,
             onAdjustmentChanged: @escaping (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void,
             onAdjustmentEnded: @escaping (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
@@ -141,6 +162,10 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             self.onRightDoubleTap = onRightDoubleTap
             self.onTemporaryRateBegan = onTemporaryRateBegan
             self.onTemporaryRateEnded = onTemporaryRateEnded
+            self.onScreenScrubBegan = onScreenScrubBegan
+            self.onScreenScrubChanged = onScreenScrubChanged
+            self.onScreenScrubEnded = onScreenScrubEnded
+            self.onScreenScrubCancelled = onScreenScrubCancelled
             self.onAdjustmentBegan = onAdjustmentBegan
             self.onAdjustmentChanged = onAdjustmentChanged
             self.onAdjustmentEnded = onAdjustmentEnded
@@ -180,11 +205,19 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             }
         }
 
-        @objc func handleVerticalPan(_ recognizer: UIPanGestureRecognizer) {
+        @objc func handleDirectionalPan(_ recognizer: UIPanGestureRecognizer) {
             guard let view = recognizer.view else { return }
             switch recognizer.state {
             case .began:
                 guard gestureOwner == nil else { return }
+                let velocity = recognizer.velocity(in: view)
+                if abs(velocity.x) > 35, abs(velocity.x) > abs(velocity.y) * 1.15 {
+                    gestureOwner = .screenScrub
+                    onScreenScrubBegan()
+                    return
+                }
+
+                guard abs(velocity.y) > 35, abs(velocity.y) > abs(velocity.x) * 1.15 else { return }
                 let x = recognizer.location(in: view).x / max(view.bounds.width, 1)
                 if x < 0.35 {
                     activeAdjustment = .brightness
@@ -200,26 +233,51 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
                 }
                 gestureOwner = .verticalAdjustment
                 if let activeAdjustment { onAdjustmentBegan(activeAdjustment, adjustmentStartValue) }
+
             case .changed:
-                guard gestureOwner == .verticalAdjustment, let activeAdjustment else { return }
-                let translation = recognizer.translation(in: view)
-                let span = max(view.bounds.height * 0.65, 220)
-                let rawValue = adjustmentStartValue - Double(translation.y / span)
-                let value = quantized(rawValue)
-                apply(activeAdjustment, value: value)
-                onAdjustmentChanged(activeAdjustment, value)
-            case .ended, .cancelled, .failed:
-                guard gestureOwner == .verticalAdjustment else { return }
-                finishAdjustment()
+                switch gestureOwner {
+                case .screenScrub:
+                    onScreenScrubChanged(recognizer.translation(in: view).x, max(view.bounds.width, 1))
+                case .verticalAdjustment:
+                    guard let activeAdjustment else { return }
+                    let translation = recognizer.translation(in: view)
+                    let span = max(view.bounds.height * 0.65, 220)
+                    let rawValue = adjustmentStartValue - Double(translation.y / span)
+                    let value = quantized(rawValue)
+                    apply(activeAdjustment, value: value)
+                    onAdjustmentChanged(activeAdjustment, value)
+                default:
+                    break
+                }
+
+            case .ended:
+                switch gestureOwner {
+                case .screenScrub: onScreenScrubEnded()
+                case .verticalAdjustment: finishAdjustment()
+                default: break
+                }
                 gestureOwner = nil
+
+            case .cancelled, .failed:
+                switch gestureOwner {
+                case .screenScrub: onScreenScrubCancelled()
+                case .verticalAdjustment: finishAdjustment()
+                default: break
+                }
+                gestureOwner = nil
+
             default:
                 break
             }
         }
 
         private func resetActiveInteraction() {
-            if gestureOwner == .temporaryRate { onTemporaryRateEnded() }
-            else if gestureOwner == .verticalAdjustment { finishAdjustment() }
+            switch gestureOwner {
+            case .temporaryRate: onTemporaryRateEnded()
+            case .screenScrub: onScreenScrubCancelled()
+            case .verticalAdjustment: finishAdjustment()
+            case .none: break
+            }
             gestureOwner = nil
             activeAdjustment = nil
         }
@@ -258,14 +316,14 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         }
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard gestureOwner == nil else { return false }
             if let pan = gestureRecognizer as? UIPanGestureRecognizer, let view = pan.view {
-                guard gestureOwner == nil else { return false }
                 let velocity = pan.velocity(in: view)
+                if abs(velocity.x) > 35, abs(velocity.x) > abs(velocity.y) * 1.15 { return true }
                 guard abs(velocity.y) > 35, abs(velocity.y) > abs(velocity.x) * 1.15 else { return false }
                 let x = pan.location(in: view).x / max(view.bounds.width, 1)
                 return x < 0.35 || x > 0.65
             }
-            if gestureRecognizer is UILongPressGestureRecognizer { return gestureOwner == nil }
             return true
         }
 
