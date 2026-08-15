@@ -1,4 +1,6 @@
+import QuartzCore
 import SwiftUI
+import UIKit
 
 struct PlayerAdjustmentRulerHUD: View {
     let adjustment: PlaybackVerticalAdjustment
@@ -9,24 +11,23 @@ struct PlayerAdjustmentRulerHUD: View {
 
     var body: some View {
         VStack {
-            VStack(spacing: 3) {
-                HStack(spacing: 7) {
+            VStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Image(systemName: adjustmentSymbol)
-                        .font(.system(size: 13.5, weight: .semibold))
-                        .frame(width: 18)
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 17)
                     Text(String(percent))
-                        .font(.system(size: 15, weight: .semibold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
                 }
                 .foregroundColor(.white.opacity(0.94))
 
-                MovingAdjustmentRuler(percent: percent)
-                    .frame(width: 92, height: 18)
+                PlayerMovingAdjustmentRuler(percent: percent)
+                    .frame(width: 62, height: 10)
             }
-            .frame(width: 132, height: 58)
-            .background(Color.black.opacity(0.74))
+            .frame(width: 112, height: 50)
+            .background(Color.black.opacity(0.72))
             .clipShape(Capsule())
-            .shadow(color: .black.opacity(0.32), radius: 7, x: 0, y: 3)
-            .padding(.top, 18)
+            .padding(.top, 16)
 
             Spacer()
         }
@@ -49,49 +50,117 @@ struct PlayerAdjustmentRulerHUD: View {
     }
 }
 
-private struct MovingAdjustmentRuler: View {
+private struct PlayerMovingAdjustmentRuler: UIViewRepresentable {
     let percent: Int
 
-    private let tickWidth: CGFloat = 2
-    private let tickSpacing: CGFloat = 7
+    func makeUIView(context: Context) -> AdjustmentRulerUIView {
+        let view = AdjustmentRulerUIView()
+        view.setPercent(percent, animated: false)
+        return view
+    }
 
-    var body: some View {
-        GeometryReader { geometry in
-            let pitch = tickWidth + tickSpacing
-            let totalWidth = CGFloat(101) * tickWidth + CGFloat(100) * tickSpacing
-            let currentCenter = CGFloat(min(100, max(0, percent))) * pitch + tickWidth / 2
+    func updateUIView(_ uiView: AdjustmentRulerUIView, context: Context) {
+        uiView.setPercent(percent, animated: true)
+    }
+}
 
-            ZStack {
-                HStack(alignment: .center, spacing: tickSpacing) {
-                    ForEach(0...100, id: \.self) { index in
-                        Capsule()
-                            .fill(Color.white.opacity(index % 5 == 0 ? 0.34 : 0.22))
-                            .frame(width: tickWidth, height: index % 5 == 0 ? 13 : 8)
-                    }
-                }
-                .frame(width: totalWidth, height: geometry.size.height, alignment: .leading)
-                .offset(x: geometry.size.width / 2 - currentCenter)
-                .animation(.linear(duration: 0.04), value: percent)
-                .mask(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .black, location: 0.12),
-                            .init(color: .black, location: 0.88),
-                            .init(color: .clear, location: 1)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
+private final class AdjustmentRulerUIView: UIView {
+    private var displayPercent: CGFloat = 0
+    private var animationStartPercent: CGFloat = 0
+    private var animationTargetPercent: CGFloat = 0
+    private var animationStartTime: CFTimeInterval = 0
+    private var displayLink: CADisplayLink?
+    private var hasInitialValue = false
 
-                Capsule()
-                    .fill(Color.yellow)
-                    .frame(width: 2.6, height: 18)
-                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-            }
-            .frame(width: geometry.size.width, height: geometry.size.height)
-            .clipped()
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+        contentMode = .redraw
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        backgroundColor = .clear
+        isOpaque = false
+        contentMode = .redraw
+    }
+
+    deinit { displayLink?.invalidate() }
+
+    func setPercent(_ percent: Int, animated: Bool) {
+        let target = CGFloat(min(100, max(0, percent)))
+        guard hasInitialValue else {
+            hasInitialValue = true
+            displayPercent = target
+            animationTargetPercent = target
+            setNeedsDisplay()
+            return
         }
+        guard abs(target - animationTargetPercent) > 0.001 else { return }
+        animationStartPercent = displayPercent
+        animationTargetPercent = target
+        animationStartTime = CACurrentMediaTime()
+        guard animated else {
+            stopDisplayLink()
+            displayPercent = target
+            setNeedsDisplay()
+            return
+        }
+        startDisplayLink()
+    }
+
+    override func draw(_ rect: CGRect) {
+        guard bounds.width > 0, bounds.height > 0, let context = UIGraphicsGetCurrentContext() else { return }
+        context.clear(bounds)
+        context.setLineCap(.round)
+
+        let centerX = bounds.midX
+        let baseline = bounds.maxY
+        let pointsPerPercent: CGFloat = 5
+        let halfWidth = max(bounds.width / 2, 1)
+
+        for tickValue in stride(from: 0, through: 100, by: 2) {
+            let x = centerX + (CGFloat(tickValue) - displayPercent) * pointsPerPercent
+            guard x >= -2, x <= bounds.width + 2 else { continue }
+            let major = tickValue % 10 == 0
+            let height: CGFloat = major ? 10 : 5
+            let distance = min(1, abs(x - centerX) / halfWidth)
+            let alpha = 0.42 - 0.20 * distance
+            context.setStrokeColor(UIColor.white.withAlphaComponent(alpha).cgColor)
+            context.setLineWidth(2)
+            context.move(to: CGPoint(x: x, y: baseline - height))
+            context.addLine(to: CGPoint(x: x, y: baseline))
+            context.strokePath()
+        }
+
+        context.setStrokeColor(UIColor(red: 0.95, green: 0.79, blue: 0.04, alpha: 1).cgColor)
+        context.setLineWidth(2)
+        context.move(to: CGPoint(x: centerX, y: baseline - 10))
+        context.addLine(to: CGPoint(x: centerX, y: baseline))
+        context.strokePath()
+    }
+
+    @objc private func updateAnimation(_ link: CADisplayLink) {
+        let elapsed = CACurrentMediaTime() - animationStartTime
+        let progress = min(1, CGFloat(elapsed / 0.045))
+        displayPercent = animationStartPercent + (animationTargetPercent - animationStartPercent) * progress
+        setNeedsDisplay()
+        if progress >= 1 { stopDisplayLink() }
+    }
+
+    private func startDisplayLink() {
+        if displayLink == nil {
+            let link = CADisplayLink(target: self, selector: #selector(updateAnimation(_:)))
+            link.add(to: .main, forMode: .common)
+            displayLink = link
+        }
+    }
+
+    private func stopDisplayLink() {
+        displayLink?.invalidate()
+        displayLink = nil
+        displayPercent = animationTargetPercent
+        setNeedsDisplay()
     }
 }
