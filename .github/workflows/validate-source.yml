@@ -26,11 +26,14 @@ jobs:
           : > mpv-module-maps.log
           : > pods-install.log
           : > source-audit.log
+          : > built-info-plist.log
+          : > app-validation.log
 
       - name: Validate current source configuration
         run: |
           set -euo pipefail
           python3 - <<'PY' 2>&1 | tee source-audit.log
+          import json
           import plistlib
           from pathlib import Path
 
@@ -42,14 +45,30 @@ jobs:
           require('iOS: "15.0"' in project, "project.yml deploymentTarget.iOS must remain 15.0")
           require('deploymentTarget: "15.0"' in project, "app deploymentTarget must remain 15.0")
           require('PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app' in project, "unexpected bundle identifier")
-          require('PRODUCT_NAME: "OS player"' in project, "unexpected product name")
+          require('PRODUCT_NAME: "OnePlayer"' in project, "unexpected product name")
+          require('ASSETCATALOG_COMPILER_APPICON_NAME: OnePlayerIcon' in project, "unexpected primary app icon name")
+          require('ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "OnePlayerAltIcon"' in project, "alternate app icon is not configured")
           require('exactVersion: 1.0.0' in project, "MPVKit version changed unexpectedly")
 
           with Path("Config/Info.plist").open("rb") as handle:
               info = plistlib.load(handle)
-          require(info.get("CFBundleDisplayName") == "OS player", "source display name must be OS player")
+          require(info.get("CFBundleDisplayName") == "OnePlayer", "source display name must be OnePlayer")
+          require(info.get("CFBundleName") == "OnePlayer", "source bundle name must be OnePlayer")
           require(str(info.get("CFBundleShortVersionString")) == "0.13.3", "source version must be 0.13.3")
           require(str(info.get("CFBundleVersion")) == "69", "source build must be 69")
+
+          stale_brand_files = []
+          for root in (Path("Sources"), Path("Config")):
+              for candidate in root.rglob("*"):
+                  if not candidate.is_file() or candidate.suffix not in {".swift", ".plist", ".h", ".m", ".mm"}:
+                      continue
+                  try:
+                      body = candidate.read_text(errors="ignore")
+                  except Exception:
+                      continue
+                  if "OS player" in body:
+                      stale_brand_files.append(str(candidate))
+          require(not stale_brand_files, f"stale visible OS player branding remains: {stale_brand_files}")
 
           required = [
               "Sources/Player/PlayerController.swift",
@@ -57,12 +76,23 @@ jobs:
               "Sources/Player/MPVPlayerEngine.swift",
               "Sources/Transport/UnifiedMediaTransportSession.swift",
               "Sources/Transport/RangeHTTPClient.swift",
+              "Sources/UI/OnePlayerSettingsViews.swift",
+              "scripts/assets/OnePlayerDefault.jpg",
+              "scripts/assets/OnePlayerAlternate.jpg",
+              "scripts/generate_oneplayer_icons.py",
               "scripts/check_min_os.sh",
               "scripts/validate_built_app.py",
           ]
           missing = [path for path in required if not Path(path).is_file()]
           require(not missing, f"required current source files are missing: {missing}")
-          print("Current source configuration: OK")
+
+          for name in ("OnePlayerIcon.appiconset", "OnePlayerAltIcon.appiconset"):
+              contents_path = Path("Resources/Assets.xcassets") / name / "Contents.json"
+              require(contents_path.is_file(), f"{name} Contents.json is missing")
+              contents = json.loads(contents_path.read_text())
+              filenames = [image.get("filename") for image in contents.get("images", []) if image.get("filename")]
+              require(len(filenames) == 18, f"{name} must declare 18 icon slots")
+          print("Current OnePlayer source configuration: OK")
           PY
 
       - name: Select Xcode 16.4
@@ -80,10 +110,8 @@ jobs:
           xcodegen --version
           pod --version
 
-      - name: Generate OS player app icons
-        run: |
-          python3 scripts/generate_os_player_icons.py
-          python3 scripts/version_os_player_icons.py
+      - name: Generate OnePlayer app icons
+        run: python3 scripts/generate_oneplayer_icons.py
 
       - name: Generate project
         run: xcodegen generate
@@ -155,13 +183,15 @@ jobs:
           grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 15.0' build-settings.log
           grep -q 'SWIFT_VERSION = 5.0' build-settings.log
           grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.embyplayerlab.app' build-settings.log
-          grep -q 'PRODUCT_NAME = OS player' build-settings.log
-          grep -q 'ASSETCATALOG_COMPILER_APPICON_NAME = OSPlayerIcon' build-settings.log
+          grep -q 'PRODUCT_NAME = OnePlayer' build-settings.log
+          grep -q 'ASSETCATALOG_COMPILER_APPICON_NAME = OnePlayerIcon' build-settings.log
+          grep -q 'ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = OnePlayerAltIcon' build-settings.log
 
       - name: Compile for generic iOS device
         run: |
           set -euo pipefail
           set -o pipefail
+          rm -rf build/DerivedData
           xcodebuild \
             -workspace EmbyPlayerLab.xcworkspace \
             -scheme EmbyPlayerLab \
@@ -176,13 +206,31 @@ jobs:
             DEVELOPMENT_TEAM='' \
             build 2>&1 | tee validate-build.log
 
+      - name: Verify built OnePlayer name and alternate icon registration
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Debug-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
+            echo "::error::Debug .app was not produced"
+            exit 1
+          fi
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" 2>&1 | tee built-info-plist.log
+          python3 scripts/validate_built_app.py \
+            "$APP_PATH" \
+            --bundle-id "com.embyplayerlab.app" \
+            --version "0.13.3" \
+            --build "69" \
+            --display-name "OnePlayer" \
+            --primary-icon "OnePlayerIcon" \
+            --alternate-icon "OnePlayerAltIcon" 2>&1 | tee app-validation.log
+
       - name: Summarize compiler errors
         if: failure()
         run: |
           {
             echo "## First validation/compiler errors"
             echo '```text'
-            grep -nE '(^|[[:space:]])(error:|fatal error:)|::error::' source-audit.log validate-build.log build-settings.log package-resolution.log pods-install.log mpv-module-maps.log | head -160 || true
+            grep -nE '(^|[[:space:]])(error:|fatal error:)|::error::' source-audit.log validate-build.log build-settings.log package-resolution.log pods-install.log mpv-module-maps.log app-validation.log built-info-plist.log | head -180 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -190,7 +238,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyPlayerLab-validation-logs-${{ github.sha }}
+          name: OnePlayer-validation-logs-${{ github.sha }}
           path: |
             source-audit.log
             validate-build.log
@@ -198,5 +246,7 @@ jobs:
             package-resolution.log
             pods-install.log
             mpv-module-maps.log
+            app-validation.log
+            built-info-plist.log
           if-no-files-found: error
           retention-days: 14
