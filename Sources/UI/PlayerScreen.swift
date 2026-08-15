@@ -1,8 +1,11 @@
+import AVFoundation
+import Combine
 import SwiftUI
 import UIKit
 
 struct PlayerScreen: View {
     @Environment(\.presentationMode) private var presentationMode
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var controller: PlayerController
     @StateObject private var sessionOverrides: PlaybackSessionOverrides
     @StateObject private var pictureInPictureController: PlayerPictureInPictureController
@@ -14,6 +17,8 @@ struct PlayerScreen: View {
     @AppStorage(PlayerPreferenceKeys.volumeHapticsEnabled) private var volumeHapticsEnabled = true
     @AppStorage(PlayerPreferenceKeys.independentBrightnessEnabled) private var independentBrightnessEnabled = false
     @AppStorage(PlayerPreferenceKeys.independentBrightnessValue) private var independentBrightnessValue = 0.5
+    @AppStorage(PlayerPreferenceKeys.pauseWhenBackgrounded) private var pauseWhenBackgrounded = true
+    @AppStorage(PlayerPreferenceKeys.resumeWhenForegrounded) private var resumeWhenForegrounded = false
     @AppStorage(PlayerPreferenceKeys.controlsAutoHideSeconds) private var controlsAutoHideSeconds = 3.0
 
     @State private var showSettings = false
@@ -30,6 +35,9 @@ struct PlayerScreen: View {
     @State private var adjustmentHideWorkItem: DispatchWorkItem?
     @State private var initialOrientationWorkItem: DispatchWorkItem?
     @State private var originalScreenBrightness: CGFloat?
+    @State private var wasAutoPausedForBackground = false
+    @State private var audioInterruptionActive = false
+    @State private var gestureResetGeneration = 0
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
         _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: preference))
@@ -48,6 +56,7 @@ struct PlayerScreen: View {
 
                 PlaybackGestureOverlay(
                     volumeHapticsEnabled: volumeHapticsEnabled,
+                    resetGeneration: gestureResetGeneration,
                     onSingleTap: toggleControls,
                     onLeftDoubleTap: { controller.seek(by: -Double(backwardSeconds)) },
                     onCenterDoubleTap: togglePlayPauseFromGesture,
@@ -75,7 +84,7 @@ struct PlayerScreen: View {
         .statusBar(hidden: true)
         .onAppear {
             originalScreenBrightness = UIScreen.main.brightness
-            if independentBrightnessEnabled { UIScreen.main.brightness = CGFloat(min(1, max(0, independentBrightnessValue))) }
+            applyIndependentBrightnessIfNeeded()
             prepareInitialOrientationAndStart()
         }
         .onDisappear {
@@ -83,9 +92,10 @@ struct PlayerScreen: View {
             feedbackHideWorkItem?.cancel()
             adjustmentHideWorkItem?.cancel()
             initialOrientationWorkItem?.cancel()
-            if sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
+            resetTransientInteractions(reason: "disappear")
+            wasAutoPausedForBackground = false
             pictureInPictureController.stopAndDetach()
-            if independentBrightnessEnabled, let originalScreenBrightness { UIScreen.main.brightness = originalScreenBrightness }
+            restoreOriginalBrightnessIfNeeded()
             controller.stop()
         }
         .onChange(of: controller.snapshot.isPlaying) { isPlaying in
@@ -95,6 +105,15 @@ struct PlayerScreen: View {
         }
         .onChange(of: controller.engineKind) { kind in
             if !PlayerCapabilities.resolve(for: kind).supportsPictureInPicture { pictureInPictureController.stopAndDetach() }
+        }
+        .onChange(of: pictureInPictureController.isActive) { _ in
+            updateIndependentBrightnessForPlaybackContext()
+        }
+        .onChange(of: scenePhase) { phase in
+            handleScenePhase(phase)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { notification in
+            handleAudioInterruption(notification)
         }
         .sheet(isPresented: $showSettings) { PlayerSettingsView() }
         .sheet(item: $activePanel, onDismiss: { scheduleControlsHide() }) { panel in
@@ -385,6 +404,7 @@ struct PlayerScreen: View {
 
     private var capabilities: PlayerCapabilities { PlayerCapabilities.resolve(for: controller.engineKind) }
     private var currentScaleMode: PlayerVideoScaleMode { sessionOverrides.scaleMode }
+    private var isExternalPlaybackActive: Bool { controller.avPlayer?.isExternalPlaybackActive == true }
     private var hasTrackInfo: Bool {
         (controller.source.mediaSource.mediaStreams ?? []).contains {
             $0.type?.caseInsensitiveCompare("Audio") == .orderedSame || $0.type?.caseInsensitiveCompare("Subtitle") == .orderedSame
@@ -461,6 +481,79 @@ struct PlayerScreen: View {
         DiagnosticsLogger.shared.playback("PlayerUI", "rotation requested reason=\(reason) target=\(targetOrientation.rawValue)")
     }
 
+    private func handleScenePhase(_ phase: ScenePhase) {
+        switch phase {
+        case .background:
+            resetTransientInteractions(reason: "background")
+            restoreOriginalBrightnessIfNeeded()
+            guard pauseWhenBackgrounded,
+                  !audioInterruptionActive,
+                  controller.playbackControlIsPlaying,
+                  !pictureInPictureController.isActive,
+                  !isExternalPlaybackActive else {
+                wasAutoPausedForBackground = false
+                DiagnosticsLogger.shared.playback("Lifecycle", "background preserve playback pip=\(pictureInPictureController.isActive) external=\(isExternalPlaybackActive) wantsPlayback=\(controller.playbackControlIsPlaying)")
+                return
+            }
+            wasAutoPausedForBackground = controller.pausePlayback()
+            DiagnosticsLogger.shared.playback("Lifecycle", "background autoPause=\(wasAutoPausedForBackground)")
+        case .active:
+            updateIndependentBrightnessForPlaybackContext()
+            let shouldResume = wasAutoPausedForBackground && resumeWhenForegrounded && !audioInterruptionActive
+            wasAutoPausedForBackground = false
+            if shouldResume, controller.resumePlayback() {
+                controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
+                DiagnosticsLogger.shared.playback("Lifecycle", "foreground resumed app-auto-paused playback")
+            } else {
+                DiagnosticsLogger.shared.playback("Lifecycle", "foreground no-auto-resume enabled=\(resumeWhenForegrounded) interruption=\(audioInterruptionActive)")
+            }
+        case .inactive:
+            resetTransientInteractions(reason: "inactive")
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleAudioInterruption(_ notification: Notification) {
+        guard let rawValue = (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue,
+              let type = AVAudioSession.InterruptionType(rawValue: rawValue) else { return }
+        switch type {
+        case .began:
+            audioInterruptionActive = true
+            wasAutoPausedForBackground = false
+            resetTransientInteractions(reason: "audio-interruption")
+            let paused = controller.pausePlayback()
+            DiagnosticsLogger.shared.playback("AudioInterruption", "began pauseIssued=\(paused)")
+        case .ended:
+            audioInterruptionActive = false
+            DiagnosticsLogger.shared.playback("AudioInterruption", "ended autoResume=false")
+        @unknown default:
+            break
+        }
+    }
+
+    private func resetTransientInteractions(reason: String) {
+        if sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
+        gestureResetGeneration &+= 1
+        DiagnosticsLogger.shared.playback("PlayerGesture", "reset reason=\(reason) generation=\(gestureResetGeneration)")
+    }
+
+    private func updateIndependentBrightnessForPlaybackContext() {
+        guard independentBrightnessEnabled else { return }
+        if scenePhase == .active, !pictureInPictureController.isActive, !isExternalPlaybackActive { applyIndependentBrightnessIfNeeded() }
+        else { restoreOriginalBrightnessIfNeeded() }
+    }
+
+    private func applyIndependentBrightnessIfNeeded() {
+        guard independentBrightnessEnabled else { return }
+        UIScreen.main.brightness = CGFloat(min(1, max(0, independentBrightnessValue)))
+    }
+
+    private func restoreOriginalBrightnessIfNeeded() {
+        guard independentBrightnessEnabled, let originalScreenBrightness else { return }
+        UIScreen.main.brightness = originalScreenBrightness
+    }
+
     private func toggleControls() {
         if controlsVisible {
             controlsHideWorkItem?.cancel()
@@ -513,7 +606,7 @@ struct PlayerScreen: View {
         sessionOverrides.temporaryPlaybackRate = nil
         temporaryRateHUD = nil
         controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
-        scheduleControlsHide()
+        if scenePhase == .active { scheduleControlsHide() }
     }
 
     private func applyBasePlaybackRate(_ rate: Double) {
