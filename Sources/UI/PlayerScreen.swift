@@ -123,7 +123,9 @@ struct PlayerScreen: View {
                 panel: panel,
                 source: controller.source,
                 currentRate: sessionOverrides.basePlaybackRate,
-                onRateSelected: applyBasePlaybackRate
+                onRateSelected: applyBasePlaybackRate,
+                trackProvider: { controller.selectableTracks() },
+                onTrackSelected: { controller.selectTrack($0) }
             )
         }
     }
@@ -283,7 +285,7 @@ struct PlayerScreen: View {
             }
 
             PlayerBottomFunctionBar(
-                tracksEnabled: hasTrackInfo,
+                tracksEnabled: hasTrackInfo && controller.supportsInteractiveTrackSelection,
                 episodesEnabled: false,
                 currentRate: sessionOverrides.basePlaybackRate,
                 onSelect: openControlPanel
