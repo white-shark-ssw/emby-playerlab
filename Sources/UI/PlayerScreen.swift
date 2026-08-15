@@ -5,6 +5,7 @@ struct PlayerScreen: View {
     @Environment(\.presentationMode) private var presentationMode
     @StateObject private var controller: PlayerController
     @StateObject private var sessionOverrides: PlaybackSessionOverrides
+    @StateObject private var pictureInPictureController: PlayerPictureInPictureController
     @AppStorage(PlayerPreferenceKeys.backwardSeconds) private var backwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.forwardSeconds) private var forwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.bufferPreset) private var bufferPresetRaw = BufferPreset.balanced.rawValue
@@ -35,6 +36,7 @@ struct PlayerScreen: View {
         let defaultScaleRaw = UserDefaults.standard.string(forKey: PlayerPreferenceKeys.defaultScaleMode) ?? PlayerVideoScaleMode.fit.rawValue
         let defaultScale = PlayerVideoScaleMode(rawValue: defaultScaleRaw) ?? .fit
         _sessionOverrides = StateObject(wrappedValue: PlaybackSessionOverrides(defaultScaleMode: defaultScale))
+        _pictureInPictureController = StateObject(wrappedValue: PlayerPictureInPictureController())
     }
 
     var body: some View {
@@ -82,6 +84,7 @@ struct PlayerScreen: View {
             adjustmentHideWorkItem?.cancel()
             initialOrientationWorkItem?.cancel()
             if sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
+            pictureInPictureController.stopAndDetach()
             if independentBrightnessEnabled, let originalScreenBrightness { UIScreen.main.brightness = originalScreenBrightness }
             controller.stop()
         }
@@ -89,6 +92,9 @@ struct PlayerScreen: View {
             if !isPlaying, sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
             if isPlaying { scheduleControlsHide() }
             else { showControls(autoHide: false) }
+        }
+        .onChange(of: controller.engineKind) { kind in
+            if !PlayerCapabilities.resolve(for: kind).supportsPictureInPicture { pictureInPictureController.stopAndDetach() }
         }
         .sheet(isPresented: $showSettings) { PlayerSettingsView() }
         .sheet(item: $activePanel, onDismiss: { scheduleControlsHide() }) { panel in
@@ -110,7 +116,8 @@ struct PlayerScreen: View {
                 if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {
                     MPVPlayerSurface(displayLayer: layer)
                 } else if let player = controller.avPlayer {
-                    AVPlayerSurface(player: player, scaleMode: mode).id("avplayer")
+                    AVPlayerSurface(player: player, scaleMode: mode, onPlayerLayerReady: pictureInPictureController.attach)
+                        .id("avplayer")
                 } else {
                     Color.black
                 }
@@ -135,7 +142,7 @@ struct PlayerScreen: View {
     }
 
     private var topControls: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
             Button(action: closePlayer) {
                 Image(systemName: "xmark").font(.system(size: 19, weight: .semibold)).frame(width: 42, height: 42)
             }
@@ -144,7 +151,24 @@ struct PlayerScreen: View {
                 .lineLimit(1)
                 .font(.headline)
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 8)
+
+            if capabilities.supportsSystemRoutePicker {
+                PlayerSystemRoutePicker()
+                    .frame(width: 42, height: 42)
+                    .accessibilityLabel("投屏")
+            }
+
+            if capabilities.supportsPictureInPicture {
+                Button {
+                    pictureInPictureController.toggle()
+                    showControls()
+                } label: {
+                    Image(systemName: "pip").font(.system(size: 19, weight: .semibold)).frame(width: 42, height: 42)
+                }
+                .disabled(!pictureInPictureController.isPossible && !pictureInPictureController.isActive)
+                .accessibilityLabel(pictureInPictureController.isActive ? "退出画中画" : "进入画中画")
+            }
 
             Button {
                 rotatePlayer()
@@ -521,6 +545,7 @@ struct PlayerScreen: View {
         isClosing = true
         DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            pictureInPictureController.stopAndDetach()
             controller.stop()
             presentationMode.wrappedValue.dismiss()
         }
