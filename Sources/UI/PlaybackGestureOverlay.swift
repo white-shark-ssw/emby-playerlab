@@ -14,6 +14,8 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
     let onLeftDoubleTap: () -> Void
     let onCenterDoubleTap: () -> Void
     let onRightDoubleTap: () -> Void
+    let onTemporaryRateBegan: () -> Void
+    let onTemporaryRateEnded: () -> Void
     let onAdjustmentBegan: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
     let onAdjustmentChanged: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
     let onAdjustmentEnded: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
@@ -25,6 +27,8 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             onLeftDoubleTap: onLeftDoubleTap,
             onCenterDoubleTap: onCenterDoubleTap,
             onRightDoubleTap: onRightDoubleTap,
+            onTemporaryRateBegan: onTemporaryRateBegan,
+            onTemporaryRateEnded: onTemporaryRateEnded,
             onAdjustmentBegan: onAdjustmentBegan,
             onAdjustmentChanged: onAdjustmentChanged,
             onAdjustmentEnded: onAdjustmentEnded
@@ -63,6 +67,14 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         verticalPan.delegate = context.coordinator
         view.addGestureRecognizer(verticalPan)
 
+        let longPress = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress(_:)))
+        longPress.minimumPressDuration = 0.42
+        longPress.allowableMovement = 10
+        longPress.numberOfTouchesRequired = 1
+        longPress.cancelsTouchesInView = false
+        longPress.delegate = context.coordinator
+        view.addGestureRecognizer(longPress)
+
         return view
     }
 
@@ -72,22 +84,32 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         context.coordinator.onLeftDoubleTap = onLeftDoubleTap
         context.coordinator.onCenterDoubleTap = onCenterDoubleTap
         context.coordinator.onRightDoubleTap = onRightDoubleTap
+        context.coordinator.onTemporaryRateBegan = onTemporaryRateBegan
+        context.coordinator.onTemporaryRateEnded = onTemporaryRateEnded
         context.coordinator.onAdjustmentBegan = onAdjustmentBegan
         context.coordinator.onAdjustmentChanged = onAdjustmentChanged
         context.coordinator.onAdjustmentEnded = onAdjustmentEnded
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        private enum GestureOwner {
+            case verticalAdjustment
+            case temporaryRate
+        }
+
         var volumeHapticsEnabled: Bool
         var onSingleTap: () -> Void
         var onLeftDoubleTap: () -> Void
         var onCenterDoubleTap: () -> Void
         var onRightDoubleTap: () -> Void
+        var onTemporaryRateBegan: () -> Void
+        var onTemporaryRateEnded: () -> Void
         var onAdjustmentBegan: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
         var onAdjustmentChanged: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
         var onAdjustmentEnded: (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
         weak var volumeSlider: UISlider?
 
+        private var gestureOwner: GestureOwner?
         private var activeAdjustment: PlaybackVerticalAdjustment?
         private var adjustmentStartValue: Double = 0
         private var lastVolumeTick = -1
@@ -100,6 +122,8 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             onLeftDoubleTap: @escaping () -> Void,
             onCenterDoubleTap: @escaping () -> Void,
             onRightDoubleTap: @escaping () -> Void,
+            onTemporaryRateBegan: @escaping () -> Void,
+            onTemporaryRateEnded: @escaping () -> Void,
             onAdjustmentBegan: @escaping (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void,
             onAdjustmentChanged: @escaping (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void,
             onAdjustmentEnded: @escaping (_ adjustment: PlaybackVerticalAdjustment, _ value: Double) -> Void
@@ -109,28 +133,46 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             self.onLeftDoubleTap = onLeftDoubleTap
             self.onCenterDoubleTap = onCenterDoubleTap
             self.onRightDoubleTap = onRightDoubleTap
+            self.onTemporaryRateBegan = onTemporaryRateBegan
+            self.onTemporaryRateEnded = onTemporaryRateEnded
             self.onAdjustmentBegan = onAdjustmentBegan
             self.onAdjustmentChanged = onAdjustmentChanged
             self.onAdjustmentEnded = onAdjustmentEnded
         }
 
         @objc func handleSingleTap(_ recognizer: UITapGestureRecognizer) {
-            guard recognizer.state == .ended else { return }
+            guard recognizer.state == .ended, gestureOwner == nil else { return }
             onSingleTap()
         }
 
         @objc func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
-            guard recognizer.state == .ended, let view = recognizer.view else { return }
+            guard recognizer.state == .ended, gestureOwner == nil, let view = recognizer.view else { return }
             let x = recognizer.location(in: view).x / max(view.bounds.width, 1)
             if x < 0.35 { onLeftDoubleTap() }
             else if x > 0.65 { onRightDoubleTap() }
             else { onCenterDoubleTap() }
         }
 
+        @objc func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            switch recognizer.state {
+            case .began:
+                guard gestureOwner == nil else { return }
+                gestureOwner = .temporaryRate
+                onTemporaryRateBegan()
+            case .ended, .cancelled, .failed:
+                guard gestureOwner == .temporaryRate else { return }
+                onTemporaryRateEnded()
+                gestureOwner = nil
+            default:
+                break
+            }
+        }
+
         @objc func handleVerticalPan(_ recognizer: UIPanGestureRecognizer) {
             guard let view = recognizer.view else { return }
             switch recognizer.state {
             case .began:
+                guard gestureOwner == nil else { return }
                 let x = recognizer.location(in: view).x / max(view.bounds.width, 1)
                 if x < 0.35 {
                     activeAdjustment = .brightness
@@ -144,19 +186,20 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
                     activeAdjustment = nil
                     return
                 }
+                gestureOwner = .verticalAdjustment
                 if let activeAdjustment { onAdjustmentBegan(activeAdjustment, adjustmentStartValue) }
             case .changed:
-                guard let activeAdjustment else { return }
+                guard gestureOwner == .verticalAdjustment, let activeAdjustment else { return }
                 let translation = recognizer.translation(in: view)
                 let span = max(view.bounds.height * 0.65, 220)
                 let rawValue = adjustmentStartValue - Double(translation.y / span)
                 let value = quantized(rawValue)
                 apply(activeAdjustment, value: value)
                 onAdjustmentChanged(activeAdjustment, value)
-            case .ended:
+            case .ended, .cancelled, .failed:
+                guard gestureOwner == .verticalAdjustment else { return }
                 finishAdjustment()
-            case .cancelled, .failed:
-                finishAdjustment()
+                gestureOwner = nil
             default:
                 break
             }
@@ -196,11 +239,15 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         }
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard let pan = gestureRecognizer as? UIPanGestureRecognizer, let view = pan.view else { return true }
-            let velocity = pan.velocity(in: view)
-            guard abs(velocity.y) > 35, abs(velocity.y) > abs(velocity.x) * 1.15 else { return false }
-            let x = pan.location(in: view).x / max(view.bounds.width, 1)
-            return x < 0.35 || x > 0.65
+            if let pan = gestureRecognizer as? UIPanGestureRecognizer, let view = pan.view {
+                guard gestureOwner == nil else { return false }
+                let velocity = pan.velocity(in: view)
+                guard abs(velocity.y) > 35, abs(velocity.y) > abs(velocity.x) * 1.15 else { return false }
+                let x = pan.location(in: view).x / max(view.bounds.width, 1)
+                return x < 0.35 || x > 0.65
+            }
+            if gestureRecognizer is UILongPressGestureRecognizer { return gestureOwner == nil }
+            return true
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { false }
