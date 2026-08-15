@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 
 SOURCE_PARTS = {
-    "OnePlayerIcon": ("OnePlayerDefault256.b64", 1),
+    "OnePlayerIcon": ("OnePlayerDefault256.b64.*", 2),
     "OnePlayerAltIcon": ("OnePlayerAlternate384.b64.*", 2),
 }
 
