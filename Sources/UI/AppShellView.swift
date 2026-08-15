@@ -150,13 +150,17 @@ private struct PlaceholderSettingsView: View {
 }
 
 private struct AboutOnePlayerView: View {
+    private var buildNumber: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+    }
+
     var body: some View {
         List {
             Section {
                 HStack {
                     Text("版本")
                     Spacer()
-                    Text("\(AppIdentity.version) (\(Bundle.main.object(forInfoDictionaryKey: \"CFBundleVersion\") as? String ?? \"\"))")
+                    Text("\(AppIdentity.version) (\(buildNumber))")
                         .foregroundColor(.secondary)
                 }
                 HStack {
