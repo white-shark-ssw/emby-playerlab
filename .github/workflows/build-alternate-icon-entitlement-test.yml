@@ -1,4 +1,4 @@
-name: Build Alternate Icon Entitlement Test
+name: Build Alternate Icon Legacy Test
 
 on:
   workflow_dispatch:
@@ -18,11 +18,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install ldid
+      - name: Generate legacy alternate icon files
         run: |
           set -euo pipefail
-          brew install ldid
-          ldid -h 2>&1 | head -20 || true
+          python3 scripts/generate_oneplayer_icons.py
 
       - name: Download known-good baseline IPA
         env:
@@ -34,14 +33,11 @@ jobs:
             -n OnePlayer-unsigned-1860955710486ed96bd59eabf707401dba0500e4 \
             --dir baseline
           BASELINE_IPA="$(find baseline -maxdepth 1 -name '*.ipa' -print -quit)"
-          if [[ -z "$BASELINE_IPA" ]]; then
-            echo "::error::Baseline IPA not found"
-            exit 1
-          fi
+          test -n "$BASELINE_IPA"
           echo "BASELINE_IPA=$BASELINE_IPA" >> "$GITHUB_ENV"
           shasum -a 256 "$BASELINE_IPA"
 
-      - name: Inject TrollStore LaunchServices entitlement
+      - name: Inject iOS 17 legacy alternate icon metadata
         run: |
           set -euo pipefail
           rm -rf work
@@ -49,40 +45,43 @@ jobs:
           cd work
           unzip -q "../$BASELINE_IPA"
           APP_PATH="$(find Payload -maxdepth 1 -name '*.app' -print -quit)"
-          if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
-            echo "::error::App bundle not found in baseline IPA"
-            exit 1
-          fi
-          EXECUTABLE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Info.plist")"
-          EXECUTABLE_PATH="$APP_PATH/$EXECUTABLE_NAME"
-          ldid -S../Config/TrollStore.entitlements "$EXECUTABLE_PATH"
-          ldid -e "$EXECUTABLE_PATH" > ../embedded-entitlements.plist
-          /usr/bin/plutil -p ../embedded-entitlements.plist
-          cd ..
-          python3 - <<'PY'
-          import plistlib
-          from pathlib import Path
+          test -d "$APP_PATH"
 
-          entitlements = plistlib.loads(Path("embedded-entitlements.plist").read_bytes())
-          expected = {
-              "application-identifier": "TROLLTROLL.*",
-              "com.apple.developer.team-identifier": "TROLLTROLL",
-              "get-task-allow": True,
-              "com.apple.private.coreservices.canmaplsdatabase": True,
+          cp ../Resources/Assets.xcassets/OnePlayerAltIcon.appiconset/OnePlayerAlt-60@2x.png "$APP_PATH/OnePlayerAltLegacy60x60@2x.png"
+          cp ../Resources/Assets.xcassets/OnePlayerAltIcon.appiconset/OnePlayerAlt-60@3x.png "$APP_PATH/OnePlayerAltLegacy60x60@3x.png"
+          cp ../Resources/Assets.xcassets/OnePlayerAltIcon.appiconset/OnePlayerAlt-76@1x.png "$APP_PATH/OnePlayerAltLegacy76x76.png"
+          cp ../Resources/Assets.xcassets/OnePlayerAltIcon.appiconset/OnePlayerAlt-76@2x.png "$APP_PATH/OnePlayerAltLegacy76x76@2x.png"
+          cp ../Resources/Assets.xcassets/OnePlayerAltIcon.appiconset/OnePlayerAlt-83.5@2x.png "$APP_PATH/OnePlayerAltLegacy83.5x83.5@2x.png"
+
+          python3 - "$APP_PATH/Info.plist" <<'PY'
+          import plistlib, sys
+          from pathlib import Path
+          path = Path(sys.argv[1])
+          with path.open('rb') as f:
+              info = plistlib.load(f)
+          phone = info.setdefault('CFBundleIcons', {}).setdefault('CFBundleAlternateIcons', {})
+          phone['OnePlayerAltIcon'] = {
+              'CFBundleIconFiles': ['OnePlayerAltLegacy60x60'],
+              'UIPrerenderedIcon': False,
           }
-          for key, value in expected.items():
-              if entitlements.get(key) != value:
-                  raise SystemExit(f"::error::unexpected entitlement {key}={entitlements.get(key)!r}")
-          if entitlements.get("keychain-access-groups") != ["TROLLTROLL.*", "com.apple.token"]:
-              raise SystemExit("::error::unexpected keychain-access-groups")
-          print("Embedded TrollStore entitlements: OK")
+          ipad = info.setdefault('CFBundleIcons~ipad', {}).setdefault('CFBundleAlternateIcons', {})
+          ipad['OnePlayerAltIcon'] = {
+              'CFBundleIconFiles': ['OnePlayerAltLegacy60x60', 'OnePlayerAltLegacy76x76', 'OnePlayerAltLegacy83.5x83.5'],
+              'UIPrerenderedIcon': False,
+          }
+          with path.open('wb') as f:
+              plistlib.dump(info, f, fmt=plistlib.FMT_BINARY)
           PY
+
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | sed -n '/CFBundleIcons/,+45p'
+          test -f "$APP_PATH/OnePlayerAltLegacy60x60@3x.png"
+          cd ..
 
       - name: Package test IPA
         run: |
           set -euo pipefail
           cd work
-          IPA_NAME="OnePlayer-0.13.3-icon-ls-test-${GITHUB_SHA::7}.ipa"
+          IPA_NAME="OnePlayer-0.13.3-icon-legacy17-test-${GITHUB_SHA::7}.ipa"
           /usr/bin/zip -qry "../$IPA_NAME" Payload
           cd ..
           /usr/bin/unzip -t "$IPA_NAME"
@@ -92,10 +91,9 @@ jobs:
       - name: Upload test IPA
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-icon-ls-test-${{ github.sha }}
+          name: OnePlayer-icon-legacy17-test-${{ github.sha }}
           path: |
             ${{ env.IPA_NAME }}
             ${{ env.IPA_NAME }}.sha256
-            embedded-entitlements.plist
           if-no-files-found: error
           retention-days: 14
