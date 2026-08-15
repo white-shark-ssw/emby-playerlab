@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 enum AppIdentity {
-    static let clientName = "OS player"
+    static let clientName = "OnePlayer"
     static let sourceVersion = "0.13.3"
     static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.13.3"
     static let ticksPerSecond: Double = 10_000_000
@@ -18,6 +18,7 @@ enum AppIdentity {
     }
 
     static var deviceId: String {
+        // Keep the existing key so this branding change does not create a new Emby device identity.
         let key = "EmbyPlayerLab.DeviceId"
         if let value = UserDefaults.standard.string(forKey: key), !value.isEmpty { return value }
         let value = UUID().uuidString.lowercased()
