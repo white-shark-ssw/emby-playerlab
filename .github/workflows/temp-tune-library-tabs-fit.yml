@@ -1,0 +1,46 @@
+name: Temp Tune Library Tabs Fit
+
+on:
+  push:
+    branches:
+      - tune/library-tabs-fit-round1
+    paths:
+      - .github/workflows/temp-tune-library-tabs-fit.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tune/library-tabs-fit-round1
+      - name: Tune library tab strip
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Sources/UI/EmbyServerBrowseV3.swift')
+          s = p.read_text()
+          replacements = [
+              ('HStack(spacing: 26) {', 'HStack(spacing: 14) {'),
+              ('VStack(spacing: 6) {', 'VStack(spacing: 5) {'),
+              ('.font(.system(size: 17, weight: selectedTab == tab ? .semibold : .regular))', '.font(.system(size: 15, weight: selectedTab == tab ? .semibold : .regular))'),
+              ('.frame(height: 2.5)', '.frame(height: 2)'),
+              ('.padding(.horizontal, 16)\n        }\n        .frame(height: 48)', '.padding(.horizontal, 12)\n        }\n        .frame(height: 44)'),
+          ]
+          for old, new in replacements:
+              if s.count(old) != 1:
+                  raise SystemExit(f'expected exactly one match for: {old!r}, got {s.count(old)}')
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          rm -f .github/workflows/temp-tune-library-tabs-fit.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "ui: fit all library tabs on screen"
+          git push origin HEAD:tune/library-tabs-fit-round1
