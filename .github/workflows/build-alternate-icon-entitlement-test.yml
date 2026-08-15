@@ -37,7 +37,7 @@ jobs:
           echo "BASELINE_IPA=$BASELINE_IPA" >> "$GITHUB_ENV"
           shasum -a 256 "$BASELINE_IPA"
 
-      - name: Inject iOS 17 legacy alternate icon metadata
+      - name: Inject TrollStore-compatible legacy alternate icon metadata
         run: |
           set -euo pipefail
           rm -rf work
@@ -51,7 +51,6 @@ jobs:
           cp ../Resources/Assets.xcassets/OnePlayerAltIcon.appiconset/OnePlayerAlt-60@3x.png "$APP_PATH/OnePlayerAltLegacy60x60@3x.png"
           cp ../Resources/Assets.xcassets/OnePlayerAltIcon.appiconset/OnePlayerAlt-76@1x.png "$APP_PATH/OnePlayerAltLegacy76x76.png"
           cp ../Resources/Assets.xcassets/OnePlayerAltIcon.appiconset/OnePlayerAlt-76@2x.png "$APP_PATH/OnePlayerAltLegacy76x76@2x.png"
-          cp ../Resources/Assets.xcassets/OnePlayerAltIcon.appiconset/OnePlayerAlt-83.5@2x.png "$APP_PATH/OnePlayerAltLegacy83.5x83.5@2x.png"
 
           python3 - "$APP_PATH/Info.plist" <<'PY'
           import plistlib, sys
@@ -59,29 +58,27 @@ jobs:
           path = Path(sys.argv[1])
           with path.open('rb') as f:
               info = plistlib.load(f)
-          phone = info.setdefault('CFBundleIcons', {}).setdefault('CFBundleAlternateIcons', {})
-          phone['OnePlayerAltIcon'] = {
-              'CFBundleIconFiles': ['OnePlayerAltLegacy60x60'],
+          alternate = {
+              'CFBundleIconFiles': ['OnePlayerAltLegacy60x60', 'OnePlayerAltLegacy76x76'],
+              'CFBundleIconName': 'OnePlayerAltIcon',
               'UIPrerenderedIcon': False,
           }
-          ipad = info.setdefault('CFBundleIcons~ipad', {}).setdefault('CFBundleAlternateIcons', {})
-          ipad['OnePlayerAltIcon'] = {
-              'CFBundleIconFiles': ['OnePlayerAltLegacy60x60', 'OnePlayerAltLegacy76x76', 'OnePlayerAltLegacy83.5x83.5'],
-              'UIPrerenderedIcon': False,
-          }
+          info.setdefault('CFBundleIcons', {}).setdefault('CFBundleAlternateIcons', {})['OnePlayerAltIcon'] = dict(alternate)
+          info.setdefault('CFBundleIcons~ipad', {}).setdefault('CFBundleAlternateIcons', {})['OnePlayerAltIcon'] = dict(alternate)
           with path.open('wb') as f:
               plistlib.dump(info, f, fmt=plistlib.FMT_BINARY)
           PY
 
           /usr/bin/plutil -p "$APP_PATH/Info.plist" | sed -n '/CFBundleIcons/,+45p'
           test -f "$APP_PATH/OnePlayerAltLegacy60x60@3x.png"
+          test -f "$APP_PATH/OnePlayerAltLegacy76x76@2x.png"
           cd ..
 
       - name: Package test IPA
         run: |
           set -euo pipefail
           cd work
-          IPA_NAME="OnePlayer-0.13.3-icon-legacy17-test-${GITHUB_SHA::7}.ipa"
+          IPA_NAME="OnePlayer-0.13.3-icon-trollstore-test-${GITHUB_SHA::7}.ipa"
           /usr/bin/zip -qry "../$IPA_NAME" Payload
           cd ..
           /usr/bin/unzip -t "$IPA_NAME"
@@ -91,7 +88,7 @@ jobs:
       - name: Upload test IPA
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-icon-legacy17-test-${{ github.sha }}
+          name: OnePlayer-icon-trollstore-test-${{ github.sha }}
           path: |
             ${{ env.IPA_NAME }}
             ${{ env.IPA_NAME }}.sha256
