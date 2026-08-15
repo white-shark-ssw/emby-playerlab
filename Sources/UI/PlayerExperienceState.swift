@@ -1,7 +1,7 @@
+import Combine
 import Foundation
 import UIKit
 
-@MainActor
 final class PlaybackSessionOverrides: ObservableObject {
     @Published var scaleMode: PlayerVideoScaleMode
     @Published var basePlaybackRate: Double = 1.0
