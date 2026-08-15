@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import Foundation
 import SwiftUI
 import UIKit
 
@@ -38,6 +39,7 @@ struct PlayerScreen: View {
     @State private var wasAutoPausedForBackground = false
     @State private var audioInterruptionActive = false
     @State private var gestureResetGeneration = 0
+    @State private var bufferingDownloadSpeed: Double = 0
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
         _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: preference))
@@ -293,9 +295,12 @@ struct PlayerScreen: View {
     }
 
     private var bufferingIndicator: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white)).scaleEffect(1.1)
             Text("正在缓冲").font(.caption)
+            if bufferingDownloadSpeed > 0 {
+                Text(bufferingSpeedText).font(.caption2.monospacedDigit()).foregroundColor(.white.opacity(0.82))
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -303,6 +308,18 @@ struct PlayerScreen: View {
         .foregroundColor(.white)
         .cornerRadius(12)
         .allowsHitTesting(false)
+        .task {
+            bufferingDownloadSpeed = 0
+            while !Task.isCancelled && controller.snapshot.isBuffering {
+                bufferingDownloadSpeed = await controller.currentDownloadBytesPerSecond()
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+        .onDisappear { bufferingDownloadSpeed = 0 }
+    }
+
+    private var bufferingSpeedText: String {
+        ByteCountFormatter.string(fromByteCount: Int64(bufferingDownloadSpeed.rounded()), countStyle: .file) + "/s"
     }
 
     @ViewBuilder
