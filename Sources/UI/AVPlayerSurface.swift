@@ -11,10 +11,12 @@ final class PlayerSurfaceUIView: UIView {
 struct AVPlayerSurface: UIViewRepresentable {
     let player: AVPlayer
     let scaleMode: PlayerVideoScaleMode
+    let onPlayerLayerReady: ((AVPlayerLayer) -> Void)?
 
-    init(player: AVPlayer, scaleMode: PlayerVideoScaleMode = .fit) {
+    init(player: AVPlayer, scaleMode: PlayerVideoScaleMode = .fit, onPlayerLayerReady: ((AVPlayerLayer) -> Void)? = nil) {
         self.player = player
         self.scaleMode = scaleMode
+        self.onPlayerLayerReady = onPlayerLayerReady
     }
 
     func makeUIView(context: Context) -> PlayerSurfaceUIView {
@@ -22,12 +24,14 @@ struct AVPlayerSurface: UIViewRepresentable {
         view.backgroundColor = .black
         view.playerLayer.player = player
         applyScaleMode(scaleMode, to: view.playerLayer)
+        DispatchQueue.main.async { onPlayerLayerReady?(view.playerLayer) }
         return view
     }
 
     func updateUIView(_ uiView: PlayerSurfaceUIView, context: Context) {
         uiView.playerLayer.player = player
         applyScaleMode(scaleMode, to: uiView.playerLayer)
+        DispatchQueue.main.async { onPlayerLayerReady?(uiView.playerLayer) }
     }
 
     private func applyScaleMode(_ mode: PlayerVideoScaleMode, to layer: AVPlayerLayer) {
