@@ -77,7 +77,6 @@ struct OnePlayerServerSettingsView: View {
     let session: EmbySession
     let onClose: () -> Void
     let dock: AnyView
-    @State private var shareURL: URL?
 
     var body: some View {
         NavigationView {
@@ -98,10 +97,9 @@ struct OnePlayerServerSettingsView: View {
                         Divider().padding(.leading, 46)
                         NavigationLink(destination: CacheSettingsView()) { settingsRow("缓存管理", value: nil, systemImage: "externaldrive", showsChevron: true) }
                         Divider().padding(.leading, 46)
+                        NavigationLink(destination: LogSettingsView()) { settingsRow("日志", value: nil, systemImage: "doc.text", showsChevron: true) }
+                        Divider().padding(.leading, 46)
                         NavigationLink(destination: PlaybackLabView()) { settingsRow("播放器实验室", value: nil, systemImage: "wrench.and.screwdriver", showsChevron: true) }
-                    }
-                    settingsCard {
-                        Button { do { shareURL = try DiagnosticsLogger.shared.export() } catch {} } label: { settingsRow("导出播放日志", value: nil, systemImage: "doc.text", showsChevron: false) }.buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -110,7 +108,6 @@ struct OnePlayerServerSettingsView: View {
             .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             .overlay(alignment: .bottom) { dock }
             .navigationBarHidden(true)
-            .sheet(isPresented: Binding(get: { shareURL != nil }, set: { if !$0 { shareURL = nil } })) { if let shareURL { ActivityView(items: [shareURL]) } }
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }

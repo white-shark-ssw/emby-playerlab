@@ -131,6 +131,19 @@ final class MPVPlayerEngine: PlayerEngine {
         setPropertyAsync(name: "pause", value: "yes")
     }
 
+    func setPlaybackRate(_ rate: Double) {
+        let clamped = min(4, max(0.25, rate))
+        setPropertyAsync(name: "speed", value: String(format: "%.3f", clamped))
+    }
+
+    func setVideoGeometry(panscan: Double, aspectOverride: String?) {
+        let clampedPanscan = min(1, max(0, panscan))
+        setPropertyAsync(name: "video-unscaled", value: "no")
+        setPropertyAsync(name: "video-aspect-override", value: aspectOverride ?? "no")
+        setPropertyAsync(name: "panscan", value: String(format: "%.3f", clampedPanscan))
+        DiagnosticsLogger.shared.log("MPVVideo", "geometry panscan=\(String(format: "%.3f", clampedPanscan)) aspect=\(aspectOverride ?? "source")")
+    }
+
     func seek(to seconds: Double, direction: SeekDirection) {
         let duration = snapshot.duration
         let target = min(max(0, seconds), duration > 0 ? duration : seconds)
@@ -733,6 +746,7 @@ final class MPVPlayerEngine: PlayerEngine {
 
     func play() {}
     func pause() {}
+    func setVideoGeometry(panscan: Double, aspectOverride: String?) {}
 
     func seek(to seconds: Double, direction: SeekDirection) {
         let requestedAt = CACurrentMediaTime()

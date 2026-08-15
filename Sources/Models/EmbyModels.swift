@@ -285,6 +285,7 @@ struct MediaStream: Decodable, Hashable {
     let width: Int?
     let height: Int?
     let aspectRatio: String?
+    let rotation: Int?
     let isInterlaced: Bool?
     let realFrameRate: Double?
     let averageFrameRate: Double?
@@ -316,6 +317,7 @@ struct MediaStream: Decodable, Hashable {
         case width = "Width"
         case height = "Height"
         case aspectRatio = "AspectRatio"
+        case rotation = "Rotation"
         case isInterlaced = "IsInterlaced"
         case realFrameRate = "RealFrameRate"
         case averageFrameRate = "AverageFrameRate"
@@ -349,6 +351,9 @@ struct MediaStream: Decodable, Hashable {
         width = try? container.decode(Int.self, forKey: .width)
         height = try? container.decode(Int.self, forKey: .height)
         aspectRatio = try? container.decode(String.self, forKey: .aspectRatio)
+        if let value = try? container.decode(Int.self, forKey: .rotation) { rotation = value }
+        else if let value = try? container.decode(String.self, forKey: .rotation) { rotation = Int(value) }
+        else { rotation = nil }
         isInterlaced = try? container.decode(Bool.self, forKey: .isInterlaced)
         realFrameRate = try? container.decode(Double.self, forKey: .realFrameRate)
         averageFrameRate = try? container.decode(Double.self, forKey: .averageFrameRate)
@@ -367,6 +372,18 @@ struct MediaStream: Decodable, Hashable {
         isDefault = try? container.decode(Bool.self, forKey: .isDefault)
         isForced = try? container.decode(Bool.self, forKey: .isForced)
         isExternal = try? container.decode(Bool.self, forKey: .isExternal)
+    }
+
+    var displayAspectRatio: Double? {
+        var ratio: Double?
+        if let aspectRatio {
+            let parts = aspectRatio.split(separator: ":")
+            if parts.count == 2, let width = Double(parts[0]), let height = Double(parts[1]), width > 0, height > 0 { ratio = width / height }
+        }
+        if ratio == nil, let width, let height, width > 0, height > 0 { ratio = Double(width) / Double(height) }
+        guard let ratio else { return nil }
+        let normalizedRotation = abs(rotation ?? 0) % 180
+        return normalizedRotation == 90 ? 1 / ratio : ratio
     }
 }
 

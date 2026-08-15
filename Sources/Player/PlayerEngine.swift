@@ -110,6 +110,7 @@ protocol PlayerEngine: AnyObject {
     func prepare(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double)
     func play()
     func pause()
+    func setPlaybackRate(_ rate: Double)
     func seek(to seconds: Double, direction: SeekDirection)
     func reload(at seconds: Double)
     func recoverStall(position: Double, duration: Double)
@@ -118,6 +119,7 @@ protocol PlayerEngine: AnyObject {
 }
 
 extension PlayerEngine {
+    func setPlaybackRate(_ rate: Double) {}
     func recoverStall(position: Double, duration: Double) {}
     func transportMetrics() async -> TransportMetricsSnapshot? { nil }
 }
