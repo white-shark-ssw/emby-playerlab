@@ -58,10 +58,25 @@ jobs:
           ldid -S../Config/TrollStore.entitlements "$EXECUTABLE_PATH"
           ldid -e "$EXECUTABLE_PATH" > ../embedded-entitlements.plist
           /usr/bin/plutil -p ../embedded-entitlements.plist
-          /usr/bin/plutil -extract com.apple.private.coreservices.canmaplsdatabase raw ../embedded-entitlements.plist | grep -qx '1'
-          /usr/bin/plutil -extract application-identifier raw ../embedded-entitlements.plist | grep -qx 'TROLLTROLL.*'
-          /usr/bin/plutil -extract com.apple.developer.team-identifier raw ../embedded-entitlements.plist | grep -qx 'TROLLTROLL'
           cd ..
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+
+          entitlements = plistlib.loads(Path("embedded-entitlements.plist").read_bytes())
+          expected = {
+              "application-identifier": "TROLLTROLL.*",
+              "com.apple.developer.team-identifier": "TROLLTROLL",
+              "get-task-allow": True,
+              "com.apple.private.coreservices.canmaplsdatabase": True,
+          }
+          for key, value in expected.items():
+              if entitlements.get(key) != value:
+                  raise SystemExit(f"::error::unexpected entitlement {key}={entitlements.get(key)!r}")
+          if entitlements.get("keychain-access-groups") != ["TROLLTROLL.*", "com.apple.token"]:
+              raise SystemExit("::error::unexpected keychain-access-groups")
+          print("Embedded TrollStore entitlements: OK")
+          PY
 
       - name: Package test IPA
         run: |
