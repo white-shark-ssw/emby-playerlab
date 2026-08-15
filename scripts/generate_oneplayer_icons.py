@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import base64
 import json
 import shutil
 import subprocess
+import tempfile
 
-SOURCES = {
-    "OnePlayerIcon": Path("scripts/assets/OnePlayerDefault.jpg"),
-    "OnePlayerAltIcon": Path("scripts/assets/OnePlayerAlternate.jpg"),
+SOURCE_PARTS = {
+    "OnePlayerIcon": "OnePlayerDefault.b64.*",
+    "OnePlayerAltIcon": "OnePlayerAlternate.b64.*",
 }
 
 PIXELS = {
@@ -17,15 +19,7 @@ PIXELS = {
     "83.5@2x": 167, "1024": 1024,
 }
 
-ICON_SETS = {
-    "OnePlayerIcon": "OnePlayer",
-    "OnePlayerAltIcon": "OnePlayerAlt",
-}
-
-PREVIEWS = {
-    "OnePlayerDefaultPreview.imageset/OnePlayerDefaultPreview.png": SOURCES["OnePlayerIcon"],
-    "OnePlayerAlternatePreview.imageset/OnePlayerAlternatePreview.png": SOURCES["OnePlayerAltIcon"],
-}
+ICON_PREFIXES = {"OnePlayerIcon": "OnePlayer", "OnePlayerAltIcon": "OnePlayerAlt"}
 
 
 def resize(source: Path, target: Path, pixels: int) -> None:
@@ -35,38 +29,51 @@ def resize(source: Path, target: Path, pixels: int) -> None:
         raise SystemExit(f"failed to generate {target}")
 
 
+def decoded_source(pattern: str, target: Path) -> Path:
+    parts = sorted(Path("scripts/assets").glob(pattern))
+    if not parts:
+        raise SystemExit(f"missing OnePlayer icon source parts: {pattern}")
+    payload = "".join(part.read_text().strip() for part in parts)
+    target.write_bytes(base64.b64decode(payload))
+    if target.stat().st_size == 0:
+        raise SystemExit(f"decoded icon source is empty: {pattern}")
+    return target
+
+
 def main() -> None:
-    # The old OSPlayerIcon set references build-generated files that are intentionally
-    # not tracked. Remove that legacy set for OnePlayer builds so actool only sees
-    # complete icon sets. Historical diagnostic workflows still prepare it separately.
     shutil.rmtree(Path("Resources/Assets.xcassets/OSPlayerIcon.appiconset"), ignore_errors=True)
 
-    for icon_name, source in SOURCES.items():
-        if not source.is_file():
-            raise SystemExit(f"missing OnePlayer icon source: {source}")
-        icon_dir = Path(f"Resources/Assets.xcassets/{icon_name}.appiconset")
-        contents_path = icon_dir / "Contents.json"
-        if not contents_path.is_file():
-            raise SystemExit(f"missing {icon_name} Contents.json")
-        contents = json.loads(contents_path.read_text())
-        expected = {image["filename"] for image in contents.get("images", []) if image.get("filename")}
-        if len(expected) != 18:
-            raise SystemExit(f"{icon_name} must define 18 icon slots, got {len(expected)}")
-        generated = set()
-        prefix = ICON_SETS[icon_name]
-        for suffix, pixels in PIXELS.items():
-            filename = f"{prefix}-{suffix}.png"
-            if filename not in expected:
-                raise SystemExit(f"{icon_name} Contents.json does not reference {filename}")
-            resize(source, icon_dir / filename, pixels)
-            generated.add(filename)
-        if generated != expected:
-            raise SystemExit(f"{icon_name} generated filenames do not match Contents.json")
-        print(f"{icon_name} generated: {len(generated)}")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp = Path(temp_dir)
+        sources = {
+            "OnePlayerIcon": decoded_source(SOURCE_PARTS["OnePlayerIcon"], temp / "oneplayer-default.jpg"),
+            "OnePlayerAltIcon": decoded_source(SOURCE_PARTS["OnePlayerAltIcon"], temp / "oneplayer-alternate.jpg"),
+        }
 
-    for relative_path, source in PREVIEWS.items():
-        resize(source, Path("Resources/Assets.xcassets") / relative_path, 256)
-    print("OnePlayer settings icon previews generated: 2")
+        for icon_name, source in sources.items():
+            icon_dir = Path(f"Resources/Assets.xcassets/{icon_name}.appiconset")
+            contents_path = icon_dir / "Contents.json"
+            if not contents_path.is_file():
+                raise SystemExit(f"missing {icon_name} Contents.json")
+            contents = json.loads(contents_path.read_text())
+            expected = {image["filename"] for image in contents.get("images", []) if image.get("filename")}
+            if len(expected) != 18:
+                raise SystemExit(f"{icon_name} must define 18 icon slots, got {len(expected)}")
+            generated = set()
+            prefix = ICON_PREFIXES[icon_name]
+            for suffix, pixels in PIXELS.items():
+                filename = f"{prefix}-{suffix}.png"
+                if filename not in expected:
+                    raise SystemExit(f"{icon_name} Contents.json does not reference {filename}")
+                resize(source, icon_dir / filename, pixels)
+                generated.add(filename)
+            if generated != expected:
+                raise SystemExit(f"{icon_name} generated filenames do not match Contents.json")
+            print(f"{icon_name} generated: {len(generated)}")
+
+        resize(sources["OnePlayerIcon"], Path("Resources/Assets.xcassets/OnePlayerDefaultPreview.imageset/OnePlayerDefaultPreview.png"), 256)
+        resize(sources["OnePlayerAltIcon"], Path("Resources/Assets.xcassets/OnePlayerAlternatePreview.imageset/OnePlayerAlternatePreview.png"), 256)
+        print("OnePlayer settings icon previews generated: 2")
 
 
 if __name__ == "__main__":
