@@ -16,6 +16,7 @@ struct PlayerScreen: View {
     @AppStorage(PlayerPreferenceKeys.controlsAutoHideSeconds) private var controlsAutoHideSeconds = 3.0
 
     @State private var showSettings = false
+    @State private var activePanel: PlayerControlPanel?
     @State private var isClosing = false
     @State private var orientationReady = false
     @State private var playbackStarted = false
@@ -90,6 +91,14 @@ struct PlayerScreen: View {
             else { showControls(autoHide: false) }
         }
         .sheet(isPresented: $showSettings) { PlayerSettingsView() }
+        .sheet(item: $activePanel, onDismiss: { scheduleControlsHide() }) { panel in
+            PlayerControlPanelSheet(
+                panel: panel,
+                source: controller.source,
+                currentRate: sessionOverrides.basePlaybackRate,
+                onRateSelected: applyBasePlaybackRate
+            )
+        }
     }
 
     @ViewBuilder
@@ -187,6 +196,7 @@ struct PlayerScreen: View {
 
             Button {
                 controller.togglePlayPause()
+                if controller.playbackControlIsPlaying { controller.setPlaybackRate(sessionOverrides.effectivePlaybackRate) }
                 showControls(autoHide: controller.playbackControlIsPlaying)
             } label: {
                 Image(systemName: controller.playbackControlIsPlaying ? "pause.fill" : "play.fill")
@@ -207,26 +217,35 @@ struct PlayerScreen: View {
     }
 
     private var bottomControls: some View {
-        HStack(spacing: 12) {
-            Text(formatTime(controller.displayedPosition)).monospacedDigit().font(.caption)
-            BufferedTimelineSlider(
-                value: Binding(get: { controller.displayedPosition }, set: { controller.updateScrubbing(to: $0) }),
-                range: 0...max(controller.effectiveDuration, 1),
-                downloadCacheRanges: controller.transportCacheRanges,
-                onEditingChanged: { editing in
-                    if editing {
-                        controlsHideWorkItem?.cancel()
-                        controller.beginScrubbing()
-                    } else {
-                        controller.endScrubbing()
-                        scheduleControlsHide()
+        VStack(spacing: 2) {
+            HStack(spacing: 12) {
+                Text(formatTime(controller.displayedPosition)).monospacedDigit().font(.caption)
+                BufferedTimelineSlider(
+                    value: Binding(get: { controller.displayedPosition }, set: { controller.updateScrubbing(to: $0) }),
+                    range: 0...max(controller.effectiveDuration, 1),
+                    downloadCacheRanges: controller.transportCacheRanges,
+                    onEditingChanged: { editing in
+                        if editing {
+                            controlsHideWorkItem?.cancel()
+                            controller.beginScrubbing()
+                        } else {
+                            controller.endScrubbing()
+                            scheduleControlsHide()
+                        }
                     }
-                }
+                )
+                Text(formatTime(controller.effectiveDuration)).monospacedDigit().font(.caption)
+            }
+
+            PlayerBottomFunctionBar(
+                tracksEnabled: hasTrackInfo,
+                episodesEnabled: false,
+                currentRate: sessionOverrides.basePlaybackRate,
+                onSelect: openControlPanel
             )
-            Text(formatTime(controller.effectiveDuration)).monospacedDigit().font(.caption)
         }
         .padding(.horizontal, 18)
-        .padding(.bottom, 18)
+        .padding(.bottom, 10)
         .background(LinearGradient(colors: [Color.black.opacity(0), Color.black.opacity(0.82)], startPoint: .top, endPoint: .bottom))
     }
 
@@ -342,6 +361,11 @@ struct PlayerScreen: View {
 
     private var capabilities: PlayerCapabilities { PlayerCapabilities.resolve(for: controller.engineKind) }
     private var currentScaleMode: PlayerVideoScaleMode { sessionOverrides.scaleMode }
+    private var hasTrackInfo: Bool {
+        (controller.source.mediaSource.mediaStreams ?? []).contains {
+            $0.type?.caseInsensitiveCompare("Audio") == .orderedSame || $0.type?.caseInsensitiveCompare("Subtitle") == .orderedSame
+        }
+    }
 
     private func playerSurfaceSize(container: CGSize, mode: PlayerVideoScaleMode) -> CGSize {
         let targetRatio: CGFloat?
@@ -441,6 +465,7 @@ struct PlayerScreen: View {
     private func togglePlayPauseFromGesture() {
         let willPause = controller.playbackControlIsPlaying
         controller.togglePlayPause()
+        if !willPause { controller.setPlaybackRate(sessionOverrides.effectivePlaybackRate) }
         centerFeedbackSymbol = willPause ? "pause.fill" : "play.fill"
         feedbackHideWorkItem?.cancel()
         let workItem = DispatchWorkItem { centerFeedbackSymbol = nil }
@@ -465,6 +490,18 @@ struct PlayerScreen: View {
         temporaryRateHUD = nil
         controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
         scheduleControlsHide()
+    }
+
+    private func applyBasePlaybackRate(_ rate: Double) {
+        let clamped = min(4, max(0.25, rate))
+        sessionOverrides.basePlaybackRate = clamped
+        if sessionOverrides.temporaryPlaybackRate == nil, controller.playbackControlIsPlaying { controller.setPlaybackRate(clamped) }
+        DiagnosticsLogger.shared.playback("PlayerUI", "base playback rate=\(String(format: "%.2f", clamped))")
+    }
+
+    private func openControlPanel(_ panel: PlayerControlPanel) {
+        controlsHideWorkItem?.cancel()
+        activePanel = panel
     }
 
     private func showAdjustmentHUD(_ adjustment: PlaybackVerticalAdjustment, value: Double, autoHide: Bool) {
