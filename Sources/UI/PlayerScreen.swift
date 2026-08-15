@@ -99,12 +99,12 @@ struct PlayerScreen: View {
             feedbackHideWorkItem?.cancel()
             adjustmentHideWorkItem?.cancel()
             initialOrientationWorkItem?.cancel()
+            AppOrientationCoordinator.shared.restoreMainInterfaceOrientation()
             resetTransientInteractions(reason: "disappear")
             wasAutoPausedForBackground = false
             pictureInPictureController.stopAndDetach()
             restoreOriginalBrightnessIfNeeded()
             controller.stop()
-            AppOrientationCoordinator.shared.restoreMainInterfaceOrientation()
         }
         .onChange(of: controller.snapshot.isPlaying) { isPlaying in
             if !isPlaying, sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
@@ -370,41 +370,7 @@ struct PlayerScreen: View {
     }
 
     private func adjustmentHUDView(_ state: AdjustmentHUDState) -> some View {
-        let tickCount = 35
-        let currentTick = Int((state.value * Double(tickCount - 1)).rounded())
-        let icon = state.adjustment == .volume ? "speaker.wave.2.fill" : "sun.max.fill"
-        return VStack {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 21)
-
-                HStack(alignment: .center, spacing: 2.1) {
-                    ForEach(0..<tickCount, id: \.self) { index in
-                        let isCurrent = index == currentTick
-                        let isFilled = index <= currentTick
-                        Capsule()
-                            .fill(Color.white.opacity(isCurrent ? 1 : (isFilled ? 0.90 : 0.22)))
-                            .frame(width: isCurrent ? 2.6 : 1.45, height: isCurrent ? 18 : (index % 5 == 0 ? 13 : 8))
-                    }
-                }
-
-                Text("\(Int((state.value * 100).rounded()))%")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
-                    .frame(width: 40, alignment: .trailing)
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 14)
-            .frame(height: 42)
-            .background(Color.black.opacity(0.64))
-            .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.7))
-            .clipShape(Capsule())
-            .shadow(color: .black.opacity(0.36), radius: 8, x: 0, y: 3)
-            .padding(.top, 58)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .allowsHitTesting(false)
+        PlayerAdjustmentRulerHUD(adjustment: state.adjustment, value: state.value)
     }
 
     private func statusBanner(title: String, message: String, color: Color) -> some View {
@@ -713,12 +679,12 @@ struct PlayerScreen: View {
     private func closePlayer() {
         guard !isClosing else { return }
         isClosing = true
-        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pictureInPictureController.stopAndDetach()
-            controller.stop()
-            presentationMode.wrappedValue.dismiss()
-        }
+        controlsHideWorkItem?.cancel()
+        adjustmentHideWorkItem?.cancel()
+        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; portrait restore requested before dismiss")
+        AppOrientationCoordinator.shared.restoreMainInterfaceOrientation()
+        pictureInPictureController.stopAndDetach()
+        presentationMode.wrappedValue.dismiss()
     }
 
     private func rotatePlayer() {

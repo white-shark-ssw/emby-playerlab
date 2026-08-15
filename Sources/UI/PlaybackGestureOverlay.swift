@@ -135,7 +135,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         private var adjustmentStartValue: Double = 0
         private var lastVolumeTick = -1
         private let adjustmentStep = 0.01
-        private let hapticGenerator = UISelectionFeedbackGenerator()
+        private let volumeTickHaptics = PlaybackVolumeTickHaptics()
 
         init(
             volumeHapticsEnabled: Bool,
@@ -226,7 +226,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
                     activeAdjustment = .volume
                     adjustmentStartValue = quantized(Double(AVAudioSession.sharedInstance().outputVolume))
                     lastVolumeTick = Int((adjustmentStartValue / adjustmentStep).rounded())
-                    if volumeHapticsEnabled { hapticGenerator.prepare() }
+                    if volumeHapticsEnabled { volumeTickHaptics.prepare() }
                 } else {
                     activeAdjustment = nil
                     return
@@ -298,8 +298,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
                 let tick = Int((value / adjustmentStep).rounded())
                 if tick != lastVolumeTick {
                     lastVolumeTick = tick
-                    hapticGenerator.selectionChanged()
-                    hapticGenerator.prepare()
+                    volumeTickHaptics.play()
                 }
             }
         }
