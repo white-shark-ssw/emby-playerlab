@@ -7,8 +7,8 @@ import subprocess
 import tempfile
 
 SOURCE_PARTS = {
-    "OnePlayerIcon": "OnePlayerDefault.b64.*",
-    "OnePlayerAltIcon": "OnePlayerAlternate.b64.*",
+    "OnePlayerIcon": "OnePlayerDefault384.b64.*",
+    "OnePlayerAltIcon": "OnePlayerAlternate384.b64.*",
 }
 
 PIXELS = {
@@ -31,16 +31,22 @@ def resize(source: Path, target: Path, pixels: int) -> None:
 
 def decoded_source(pattern: str, target: Path) -> Path:
     parts = sorted(Path("scripts/assets").glob(pattern))
-    if not parts:
-        raise SystemExit(f"missing OnePlayer icon source parts: {pattern}")
+    if len(parts) != 2:
+        raise SystemExit(f"expected exactly 2 OnePlayer icon source parts for {pattern}, got {len(parts)}")
     payload = "".join(part.read_text().strip() for part in parts)
-    target.write_bytes(base64.b64decode(payload))
+    try:
+        decoded = base64.b64decode(payload, validate=True)
+    except Exception as exc:
+        raise SystemExit(f"invalid OnePlayer icon source base64 for {pattern}: {exc}")
+    target.write_bytes(decoded)
     if target.stat().st_size == 0:
         raise SystemExit(f"decoded icon source is empty: {pattern}")
     return target
 
 
 def main() -> None:
+    # The legacy OSPlayerIcon set references CI-generated files. OnePlayer builds use
+    # the new complete primary + alternate icon sets instead.
     shutil.rmtree(Path("Resources/Assets.xcassets/OSPlayerIcon.appiconset"), ignore_errors=True)
 
     with tempfile.TemporaryDirectory() as temp_dir:
