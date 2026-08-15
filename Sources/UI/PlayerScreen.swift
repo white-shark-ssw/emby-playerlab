@@ -9,6 +9,7 @@ struct PlayerScreen: View {
     @AppStorage(PlayerPreferenceKeys.forwardSeconds) private var forwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.bufferPreset) private var bufferPresetRaw = BufferPreset.balanced.rawValue
     @AppStorage(PlayerPreferenceKeys.orientationPolicy) private var orientationPolicyRaw = PlaybackOrientationPolicy.adaptive.rawValue
+    @AppStorage(PlayerPreferenceKeys.temporaryPlaybackRate) private var temporaryPlaybackRate = 2.0
     @AppStorage(PlayerPreferenceKeys.volumeHapticsEnabled) private var volumeHapticsEnabled = true
     @AppStorage(PlayerPreferenceKeys.independentBrightnessEnabled) private var independentBrightnessEnabled = false
     @AppStorage(PlayerPreferenceKeys.independentBrightnessValue) private var independentBrightnessValue = 0.5
@@ -20,6 +21,7 @@ struct PlayerScreen: View {
     @State private var playbackStarted = false
     @State private var controlsVisible = true
     @State private var centerFeedbackSymbol: String?
+    @State private var temporaryRateHUD: Double?
     @State private var adjustmentHUD: AdjustmentHUDState?
     @State private var controlsHideWorkItem: DispatchWorkItem?
     @State private var feedbackHideWorkItem: DispatchWorkItem?
@@ -47,6 +49,8 @@ struct PlayerScreen: View {
                     onLeftDoubleTap: { controller.seek(by: -Double(backwardSeconds)) },
                     onCenterDoubleTap: togglePlayPauseFromGesture,
                     onRightDoubleTap: { controller.seek(by: Double(forwardSeconds)) },
+                    onTemporaryRateBegan: beginTemporaryRate,
+                    onTemporaryRateEnded: endTemporaryRate,
                     onAdjustmentBegan: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: false) },
                     onAdjustmentChanged: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: false) },
                     onAdjustmentEnded: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: true) }
@@ -56,6 +60,7 @@ struct PlayerScreen: View {
                 if let feedback = controller.seekFeedback { feedbackView(feedback) }
                 if let feedback = controller.scrubFeedback { feedbackView(feedback) }
                 if let centerFeedbackSymbol { symbolFeedbackView(centerFeedbackSymbol) }
+                if let temporaryRateHUD { rateFeedbackView(temporaryRateHUD) }
                 if let adjustmentHUD { adjustmentHUDView(adjustmentHUD) }
 
                 controls
@@ -75,10 +80,12 @@ struct PlayerScreen: View {
             feedbackHideWorkItem?.cancel()
             adjustmentHideWorkItem?.cancel()
             initialOrientationWorkItem?.cancel()
+            if sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
             if independentBrightnessEnabled, let originalScreenBrightness { UIScreen.main.brightness = originalScreenBrightness }
             controller.stop()
         }
         .onChange(of: controller.snapshot.isPlaying) { isPlaying in
+            if !isPlaying, sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
             if isPlaying { scheduleControlsHide() }
             else { showControls(autoHide: false) }
         }
@@ -281,6 +288,20 @@ struct PlayerScreen: View {
             .allowsHitTesting(false)
     }
 
+    private func rateFeedbackView(_ rate: Double) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "forward.fill")
+            Text(String(format: "%.2gx", rate)).monospacedDigit()
+        }
+        .font(.system(size: 20, weight: .semibold))
+        .padding(.horizontal, 18)
+        .padding(.vertical, 11)
+        .background(Color.black.opacity(0.62))
+        .foregroundColor(.white)
+        .clipShape(Capsule())
+        .allowsHitTesting(false)
+    }
+
     private func adjustmentHUDView(_ state: AdjustmentHUDState) -> some View {
         VStack {
             HStack(spacing: 12) {
@@ -352,6 +373,7 @@ struct PlayerScreen: View {
         playbackStarted = true
         let preset = BufferPreset(rawValue: bufferPresetRaw) ?? .balanced
         controller.start(preferredForwardBuffer: preset.seconds)
+        controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
         scheduleControlsHide()
     }
 
@@ -432,6 +454,23 @@ struct PlayerScreen: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
         if willPause { showControls(autoHide: false) }
         else if controlsVisible { scheduleControlsHide() }
+    }
+
+    private func beginTemporaryRate() {
+        guard controller.playbackControlIsPlaying, sessionOverrides.temporaryPlaybackRate == nil else { return }
+        let rate = min(4, max(0.25, temporaryPlaybackRate))
+        sessionOverrides.temporaryPlaybackRate = rate
+        temporaryRateHUD = rate
+        controlsHideWorkItem?.cancel()
+        controller.setPlaybackRate(rate)
+    }
+
+    private func endTemporaryRate() {
+        guard sessionOverrides.temporaryPlaybackRate != nil else { return }
+        sessionOverrides.temporaryPlaybackRate = nil
+        temporaryRateHUD = nil
+        controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
+        scheduleControlsHide()
     }
 
     private func showAdjustmentHUD(_ adjustment: PlaybackVerticalAdjustment, value: Double, autoHide: Bool) {
