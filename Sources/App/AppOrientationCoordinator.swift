@@ -22,7 +22,7 @@ final class AppOrientationCoordinator {
         playerModeActive = true
         let target = preferredPlayerOrientation(for: source)
         pendingPlayerOrientation = target
-        supportedMask = target.map(orientationMask) ?? [.portrait, .landscapeLeft, .landscapeRight]
+        supportedMask = target.map { orientationMask(for: $0) } ?? [.portrait, .landscapeLeft, .landscapeRight]
         invalidateSupportedOrientations()
         if let target { request(target, reason: "pre-presentation") }
         DiagnosticsLogger.shared.playback("AppOrientation", "player presentation prepared target=\(target?.rawValue ?? 0) mask=\(supportedMask.rawValue)")
