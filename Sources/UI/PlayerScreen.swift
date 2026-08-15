@@ -428,6 +428,9 @@ struct PlayerScreen: View {
     private func playerSurfaceSize(container: CGSize, mode: PlayerVideoScaleMode) -> CGSize {
         let targetRatio: CGFloat?
         switch mode {
+        case .fit:
+            if controller.engineKind == .mpv, let ratio = sourceDisplayAspectRatio(), ratio > 0.01 { targetRatio = CGFloat(ratio) }
+            else { targetRatio = nil }
         case .ratio16x9: targetRatio = 16.0 / 9.0
         case .ratio4x3: targetRatio = 4.0 / 3.0
         default: targetRatio = nil
