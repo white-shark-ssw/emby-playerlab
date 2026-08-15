@@ -107,6 +107,7 @@ struct PlayerScreen: View {
         }
         .onChange(of: controller.engineKind) { kind in
             if !PlayerCapabilities.resolve(for: kind).supportsPictureInPicture { pictureInPictureController.stopAndDetach() }
+            controller.applyVideoScaleMode(currentScaleMode)
         }
         .onChange(of: pictureInPictureController.isActive) { _ in
             updateIndependentBrightnessForPlaybackContext()
@@ -206,6 +207,7 @@ struct PlayerScreen: View {
                 ForEach(PlayerVideoScaleMode.allCases) { mode in
                     Button {
                         sessionOverrides.scaleMode = mode
+                        controller.applyVideoScaleMode(mode)
                         DiagnosticsLogger.shared.playback("PlayerUI", "picture size mode=\(mode.rawValue)")
                         showControls()
                     } label: {
@@ -461,6 +463,7 @@ struct PlayerScreen: View {
         let preset = BufferPreset(rawValue: bufferPresetRaw) ?? .balanced
         controller.start(preferredForwardBuffer: preset.seconds)
         controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
+        controller.applyVideoScaleMode(currentScaleMode)
         scheduleControlsHide()
     }
 
