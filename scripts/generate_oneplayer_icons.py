@@ -7,8 +7,8 @@ import subprocess
 import tempfile
 
 SOURCE_PARTS = {
-    "OnePlayerIcon": "OnePlayerDefault384.b64.*",
-    "OnePlayerAltIcon": "OnePlayerAlternate384.b64.*",
+    "OnePlayerIcon": ("OnePlayerDefault256.b64", 1),
+    "OnePlayerAltIcon": ("OnePlayerAlternate384.b64.*", 2),
 }
 
 PIXELS = {
@@ -29,10 +29,10 @@ def resize(source: Path, target: Path, pixels: int) -> None:
         raise SystemExit(f"failed to generate {target}")
 
 
-def decoded_source(pattern: str, target: Path) -> Path:
+def decoded_source(pattern: str, expected_count: int, target: Path) -> Path:
     parts = sorted(Path("scripts/assets").glob(pattern))
-    if len(parts) != 2:
-        raise SystemExit(f"expected exactly 2 OnePlayer icon source parts for {pattern}, got {len(parts)}")
+    if len(parts) != expected_count:
+        raise SystemExit(f"expected exactly {expected_count} OnePlayer icon source part(s) for {pattern}, got {len(parts)}")
     payload = "".join(part.read_text().strip() for part in parts)
     try:
         decoded = base64.b64decode(payload, validate=True)
@@ -51,9 +51,11 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
+        default_pattern, default_count = SOURCE_PARTS["OnePlayerIcon"]
+        alternate_pattern, alternate_count = SOURCE_PARTS["OnePlayerAltIcon"]
         sources = {
-            "OnePlayerIcon": decoded_source(SOURCE_PARTS["OnePlayerIcon"], temp / "oneplayer-default.jpg"),
-            "OnePlayerAltIcon": decoded_source(SOURCE_PARTS["OnePlayerAltIcon"], temp / "oneplayer-alternate.jpg"),
+            "OnePlayerIcon": decoded_source(default_pattern, default_count, temp / "oneplayer-default.jpg"),
+            "OnePlayerAltIcon": decoded_source(alternate_pattern, alternate_count, temp / "oneplayer-alternate.jpg"),
         }
 
         for icon_name, source in sources.items():
