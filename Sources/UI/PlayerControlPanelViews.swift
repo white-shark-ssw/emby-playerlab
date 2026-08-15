@@ -38,7 +38,7 @@ struct PlayerBottomFunctionBar: View {
     }
 
     private func functionButton(title: String, systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        return Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: systemImage).font(.system(size: 17, weight: .medium))
                 Text(title).font(.caption2).lineLimit(1)
