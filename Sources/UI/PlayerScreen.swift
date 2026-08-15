@@ -42,6 +42,7 @@ struct PlayerScreen: View {
     @State private var bufferingDownloadSpeed: Double = 0
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
+        AppOrientationCoordinator.shared.beginPlayerPresentation(source: source)
         _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: preference))
         let defaultScaleRaw = UserDefaults.standard.string(forKey: PlayerPreferenceKeys.defaultScaleMode) ?? PlayerVideoScaleMode.fit.rawValue
         let defaultScale = PlayerVideoScaleMode(rawValue: defaultScaleRaw) ?? .fit
@@ -103,6 +104,7 @@ struct PlayerScreen: View {
             pictureInPictureController.stopAndDetach()
             restoreOriginalBrightnessIfNeeded()
             controller.stop()
+            AppOrientationCoordinator.shared.restoreMainInterfaceOrientation()
         }
         .onChange(of: controller.snapshot.isPlaying) { isPlaying in
             if !isPlaying, sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
@@ -368,31 +370,37 @@ struct PlayerScreen: View {
     }
 
     private func adjustmentHUDView(_ state: AdjustmentHUDState) -> some View {
-        let tickCount = 31
+        let tickCount = 35
         let currentTick = Int((state.value * Double(tickCount - 1)).rounded())
+        let icon = state.adjustment == .volume ? "speaker.wave.2.fill" : "sun.max.fill"
         return VStack {
-            HStack(spacing: 11) {
-                Image(systemName: state.adjustment == .volume ? "speaker.wave.2.fill" : "sun.max.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                    .frame(width: 25)
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 21)
 
-                HStack(alignment: .center, spacing: 2.7) {
+                HStack(alignment: .center, spacing: 2.1) {
                     ForEach(0..<tickCount, id: \.self) { index in
                         let isCurrent = index == currentTick
                         let isFilled = index <= currentTick
                         Capsule()
-                            .fill(Color.white.opacity(isCurrent ? 1 : (isFilled ? 0.88 : 0.22)))
-                            .frame(width: isCurrent ? 3 : 1.8, height: isCurrent ? 21 : (index % 5 == 0 ? 16 : 10))
+                            .fill(Color.white.opacity(isCurrent ? 1 : (isFilled ? 0.90 : 0.22)))
+                            .frame(width: isCurrent ? 2.6 : 1.45, height: isCurrent ? 18 : (index % 5 == 0 ? 13 : 8))
                     }
                 }
 
                 Text("\(Int((state.value * 100).rounded()))%")
-                    .font(.system(size: 17, weight: .medium, design: .rounded).monospacedDigit())
-                    .frame(width: 46, alignment: .trailing)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
+                    .frame(width: 40, alignment: .trailing)
             }
             .foregroundColor(.white)
-            .shadow(color: .black.opacity(0.72), radius: 2, x: 0, y: 1)
-            .padding(.top, 70)
+            .padding(.horizontal, 14)
+            .frame(height: 42)
+            .background(Color.black.opacity(0.64))
+            .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.7))
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.36), radius: 8, x: 0, y: 3)
+            .padding(.top, 58)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -433,6 +441,7 @@ struct PlayerScreen: View {
         guard let target = resolvedInitialOrientation() else {
             DiagnosticsLogger.shared.playback("PlayerUI", "initial orientation kept because media display aspect is unavailable")
             orientationReady = true
+            AppOrientationCoordinator.shared.playerOrientationDidSettle()
             startPlaybackIfNeeded()
             return
         }
@@ -471,6 +480,7 @@ struct PlayerScreen: View {
         initialOrientationWorkItem?.cancel()
         initialOrientationWorkItem = nil
         orientationReady = true
+        AppOrientationCoordinator.shared.playerOrientationDidSettle()
         DiagnosticsLogger.shared.playback("PlayerUI", "rotation settled reason=\(reason) target=\(target.rawValue) actual=\(activeWindowScene()?.interfaceOrientation.rawValue ?? 0) timeout=\(timedOut)")
         if shouldStartPlayback { startPlaybackIfNeeded() }
         else {
