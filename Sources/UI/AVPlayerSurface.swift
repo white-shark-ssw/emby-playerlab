@@ -12,6 +12,11 @@ struct AVPlayerSurface: UIViewRepresentable {
     let player: AVPlayer
     let scaleMode: PlayerVideoScaleMode
 
+    init(player: AVPlayer, scaleMode: PlayerVideoScaleMode = .fit) {
+        self.player = player
+        self.scaleMode = scaleMode
+    }
+
     func makeUIView(context: Context) -> PlayerSurfaceUIView {
         let view = PlayerSurfaceUIView()
         view.backgroundColor = .black
@@ -27,12 +32,9 @@ struct AVPlayerSurface: UIViewRepresentable {
 
     private func applyScaleMode(_ mode: PlayerVideoScaleMode, to layer: AVPlayerLayer) {
         switch mode {
-        case .fill:
-            layer.videoGravity = .resizeAspectFill
-        case .ratio16x9, .ratio4x3:
-            layer.videoGravity = .resize
-        case .fit, .source:
-            layer.videoGravity = .resizeAspect
+        case .fill: layer.videoGravity = .resizeAspectFill
+        case .ratio16x9, .ratio4x3: layer.videoGravity = .resize
+        case .fit, .source: layer.videoGravity = .resizeAspect
         }
     }
 }
