@@ -29,6 +29,7 @@ final class PlaybackVolumeTickHaptics {
         do {
             let engine = try CHHapticEngine(audioSession: nil)
             engine.playsHapticsOnly = true
+            engine.isAutoShutdownEnabled = false
             engine.resetHandler = { [weak self] in
                 DispatchQueue.main.async {
                     self?.engine = nil
@@ -45,7 +46,7 @@ final class PlaybackVolumeTickHaptics {
                     CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.82)
                 ],
                 relativeTime: 0,
-                duration: 0.005
+                duration: 0.008
             )
             let pattern = try CHHapticPattern(events: [event], parameters: [])
             self.engine = engine

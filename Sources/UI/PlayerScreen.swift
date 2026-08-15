@@ -54,7 +54,7 @@ struct PlayerScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if orientationReady, !isClosing {
+            if orientationReady {
                 playerSurface.ignoresSafeArea()
 
                 PlaybackGestureOverlay(
@@ -75,6 +75,7 @@ struct PlayerScreen: View {
                     onAdjustmentEnded: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: true) }
                 )
                 .ignoresSafeArea()
+                .allowsHitTesting(!isClosing)
 
                 if let feedback = controller.seekFeedback { feedbackView(feedback) }
                 if let feedback = controller.scrubFeedback { feedbackView(feedback) }
@@ -99,12 +100,14 @@ struct PlayerScreen: View {
             feedbackHideWorkItem?.cancel()
             adjustmentHideWorkItem?.cancel()
             initialOrientationWorkItem?.cancel()
-            AppOrientationCoordinator.shared.restoreMainInterfaceOrientation()
+            if !isClosing { AppOrientationCoordinator.shared.restoreMainInterfaceOrientation() }
             resetTransientInteractions(reason: "disappear")
             wasAutoPausedForBackground = false
             pictureInPictureController.stopAndDetach()
             restoreOriginalBrightnessIfNeeded()
-            controller.stop()
+            controller.pausePlayback()
+            let closingController = controller
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { closingController.stop() }
         }
         .onChange(of: controller.snapshot.isPlaying) { isPlaying in
             if !isPlaying, sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
@@ -160,7 +163,7 @@ struct PlayerScreen: View {
         }
         .foregroundColor(.white)
         .opacity(controlsVisible ? 1 : 0)
-        .allowsHitTesting(controlsVisible)
+        .allowsHitTesting(controlsVisible && !isClosing)
         .animation(.easeOut(duration: 0.18), value: controlsVisible)
     }
 
@@ -680,11 +683,17 @@ struct PlayerScreen: View {
         guard !isClosing else { return }
         isClosing = true
         controlsHideWorkItem?.cancel()
+        feedbackHideWorkItem?.cancel()
         adjustmentHideWorkItem?.cancel()
-        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; portrait restore requested before dismiss")
-        AppOrientationCoordinator.shared.restoreMainInterfaceOrientation()
+        controlsVisible = false
+        centerFeedbackSymbol = nil
+        temporaryRateHUD = nil
+        adjustmentHUD = nil
+        controller.pausePlayback()
         pictureInPictureController.stopAndDetach()
+        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; dismiss first, portrait restore queued once")
         presentationMode.wrappedValue.dismiss()
+        DispatchQueue.main.async { AppOrientationCoordinator.shared.restoreMainInterfaceOrientation() }
     }
 
     private func rotatePlayer() {
