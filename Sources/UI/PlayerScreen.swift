@@ -8,6 +8,7 @@ struct PlayerScreen: View {
     @AppStorage(PlayerPreferenceKeys.backwardSeconds) private var backwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.forwardSeconds) private var forwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.bufferPreset) private var bufferPresetRaw = BufferPreset.balanced.rawValue
+    @AppStorage(PlayerPreferenceKeys.orientationPolicy) private var orientationPolicyRaw = PlaybackOrientationPolicy.adaptive.rawValue
     @AppStorage(PlayerPreferenceKeys.volumeHapticsEnabled) private var volumeHapticsEnabled = true
     @AppStorage(PlayerPreferenceKeys.independentBrightnessEnabled) private var independentBrightnessEnabled = false
     @AppStorage(PlayerPreferenceKeys.independentBrightnessValue) private var independentBrightnessValue = 0.5
@@ -15,12 +16,15 @@ struct PlayerScreen: View {
 
     @State private var showSettings = false
     @State private var isClosing = false
+    @State private var orientationReady = false
+    @State private var playbackStarted = false
     @State private var controlsVisible = true
     @State private var centerFeedbackSymbol: String?
     @State private var adjustmentHUD: AdjustmentHUDState?
     @State private var controlsHideWorkItem: DispatchWorkItem?
     @State private var feedbackHideWorkItem: DispatchWorkItem?
     @State private var adjustmentHideWorkItem: DispatchWorkItem?
+    @State private var initialOrientationWorkItem: DispatchWorkItem?
     @State private var originalScreenBrightness: CGFloat?
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
@@ -34,44 +38,43 @@ struct PlayerScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if !isClosing { playerSurface.ignoresSafeArea() }
+            if orientationReady, !isClosing {
+                playerSurface.ignoresSafeArea()
 
-            PlaybackGestureOverlay(
-                volumeHapticsEnabled: volumeHapticsEnabled,
-                onSingleTap: toggleControls,
-                onLeftDoubleTap: { controller.seek(by: -Double(backwardSeconds)) },
-                onCenterDoubleTap: togglePlayPauseFromGesture,
-                onRightDoubleTap: { controller.seek(by: Double(forwardSeconds)) },
-                onAdjustmentBegan: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: false) },
-                onAdjustmentChanged: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: false) },
-                onAdjustmentEnded: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: true) }
-            )
-            .ignoresSafeArea()
+                PlaybackGestureOverlay(
+                    volumeHapticsEnabled: volumeHapticsEnabled,
+                    onSingleTap: toggleControls,
+                    onLeftDoubleTap: { controller.seek(by: -Double(backwardSeconds)) },
+                    onCenterDoubleTap: togglePlayPauseFromGesture,
+                    onRightDoubleTap: { controller.seek(by: Double(forwardSeconds)) },
+                    onAdjustmentBegan: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: false) },
+                    onAdjustmentChanged: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: false) },
+                    onAdjustmentEnded: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: true) }
+                )
+                .ignoresSafeArea()
 
-            if let feedback = controller.seekFeedback { feedbackView(feedback) }
-            if let feedback = controller.scrubFeedback { feedbackView(feedback) }
-            if let centerFeedbackSymbol { symbolFeedbackView(centerFeedbackSymbol) }
+                if let feedback = controller.seekFeedback { feedbackView(feedback) }
+                if let feedback = controller.scrubFeedback { feedbackView(feedback) }
+                if let centerFeedbackSymbol { symbolFeedbackView(centerFeedbackSymbol) }
+                if let adjustmentHUD { adjustmentHUDView(adjustmentHUD) }
 
-            if let adjustmentHUD { adjustmentHUDView(adjustmentHUD) }
+                controls
 
-            controls
-
-            if controller.snapshot.isBuffering { bufferingIndicator }
-
-            statusMessages
+                if controller.snapshot.isBuffering { bufferingIndicator }
+                statusMessages
+            }
         }
         .statusBar(hidden: true)
         .onAppear {
             originalScreenBrightness = UIScreen.main.brightness
             if independentBrightnessEnabled { UIScreen.main.brightness = CGFloat(min(1, max(0, independentBrightnessValue))) }
-            let preset = BufferPreset(rawValue: bufferPresetRaw) ?? .balanced
-            controller.start(preferredForwardBuffer: preset.seconds)
-            scheduleControlsHide()
+            prepareInitialOrientationAndStart()
         }
         .onDisappear {
             controlsHideWorkItem?.cancel()
             feedbackHideWorkItem?.cancel()
             adjustmentHideWorkItem?.cancel()
+            initialOrientationWorkItem?.cancel()
             if independentBrightnessEnabled, let originalScreenBrightness { UIScreen.main.brightness = originalScreenBrightness }
             controller.stop()
         }
@@ -281,8 +284,7 @@ struct PlayerScreen: View {
     private func adjustmentHUDView(_ state: AdjustmentHUDState) -> some View {
         VStack {
             HStack(spacing: 12) {
-                Image(systemName: state.adjustment == .volume ? "speaker.wave.2.fill" : "sun.max.fill")
-                    .frame(width: 24)
+                Image(systemName: state.adjustment == .volume ? "speaker.wave.2.fill" : "sun.max.fill").frame(width: 24)
                 HStack(alignment: .center, spacing: 3) {
                     ForEach(0..<21, id: \.self) { index in
                         Capsule()
@@ -330,6 +332,69 @@ struct PlayerScreen: View {
         guard let targetRatio, container.width > 0, container.height > 0 else { return container }
         if container.width / container.height > targetRatio { return CGSize(width: container.height * targetRatio, height: container.height) }
         return CGSize(width: container.width, height: container.width / targetRatio)
+    }
+
+    private func prepareInitialOrientationAndStart() {
+        let target = resolvedInitialOrientation()
+        let current = activeWindowScene()?.interfaceOrientation
+        if let target, target != current { requestInterfaceOrientation(target, reason: "initial") }
+        let delay: TimeInterval = target != nil && target != current ? 0.12 : 0
+        let workItem = DispatchWorkItem {
+            orientationReady = true
+            startPlaybackIfNeeded()
+        }
+        initialOrientationWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func startPlaybackIfNeeded() {
+        guard !playbackStarted, !isClosing else { return }
+        playbackStarted = true
+        let preset = BufferPreset(rawValue: bufferPresetRaw) ?? .balanced
+        controller.start(preferredForwardBuffer: preset.seconds)
+        scheduleControlsHide()
+    }
+
+    private func resolvedInitialOrientation() -> UIInterfaceOrientation? {
+        let policy = PlaybackOrientationPolicy(rawValue: orientationPolicyRaw) ?? .adaptive
+        switch policy {
+        case .landscape: return .landscapeRight
+        case .portrait: return .portrait
+        case .adaptive:
+            guard let ratio = sourceDisplayAspectRatio() else { return nil }
+            if ratio > 1.02 { return .landscapeRight }
+            if ratio < 0.98 { return .portrait }
+            return nil
+        }
+    }
+
+    private func sourceDisplayAspectRatio() -> Double? {
+        guard let stream = controller.source.mediaSource.mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Video") == .orderedSame }) else { return nil }
+        if let aspect = stream.aspectRatio {
+            let parts = aspect.split(separator: ":")
+            if parts.count == 2, let width = Double(parts[0]), let height = Double(parts[1]), width > 0, height > 0 { return width / height }
+        }
+        if let width = stream.width, let height = stream.height, width > 0, height > 0 { return Double(width) / Double(height) }
+        return nil
+    }
+
+    private func activeWindowScene() -> UIWindowScene? {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first(where: { $0.activationState == .foregroundActive })
+    }
+
+    private func requestInterfaceOrientation(_ targetOrientation: UIInterfaceOrientation, reason: String) {
+        guard let scene = activeWindowScene() else { return }
+        if #available(iOS 16.0, *) {
+            let mask: UIInterfaceOrientationMask = targetOrientation.isPortrait ? .portrait : (targetOrientation == .landscapeLeft ? .landscapeLeft : .landscapeRight)
+            scene.windows.first(where: { $0.isKeyWindow })?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
+                DiagnosticsLogger.shared.playback("PlayerUI", "rotation failed reason=\(reason) error=\(error.localizedDescription)")
+            }
+        } else {
+            UIDevice.current.setValue(targetOrientation.rawValue, forKey: "orientation")
+            UIViewController.attemptRotationToDeviceOrientation()
+        }
+        DiagnosticsLogger.shared.playback("PlayerUI", "rotation requested reason=\(reason) target=\(targetOrientation.rawValue)")
     }
 
     private func toggleControls() {
@@ -392,21 +457,10 @@ struct PlayerScreen: View {
     }
 
     private func rotatePlayer() {
-        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }) else { return }
-        let landscape = scene.interfaceOrientation.isLandscape
-        let targetOrientation: UIInterfaceOrientation = landscape ? .portrait : .landscapeRight
+        guard let scene = activeWindowScene() else { return }
+        let targetOrientation: UIInterfaceOrientation = scene.interfaceOrientation.isLandscape ? .portrait : .landscapeRight
         sessionOverrides.manualOrientation = targetOrientation
-        if #available(iOS 16.0, *) {
-            let mask: UIInterfaceOrientationMask = landscape ? .portrait : .landscapeRight
-            scene.windows.first(where: { $0.isKeyWindow })?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-            scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
-                DiagnosticsLogger.shared.playback("PlayerUI", "rotation failed error=\(error.localizedDescription)")
-            }
-        } else {
-            UIDevice.current.setValue(targetOrientation.rawValue, forKey: "orientation")
-            UIViewController.attemptRotationToDeviceOrientation()
-        }
-        DiagnosticsLogger.shared.playback("PlayerUI", "rotation requested target=\(targetOrientation.rawValue)")
+        requestInterfaceOrientation(targetOrientation, reason: "manual")
     }
 
     private struct AdjustmentHUDState {
