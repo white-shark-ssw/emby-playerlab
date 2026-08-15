@@ -55,7 +55,12 @@ struct V3LibraryBrowserView: View {
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .overlay(alignment: .bottom) { dock }
         .nativeInteractivePop()
+        .refreshable { await model.refresh() }
         .onAppear { if !model.hasLoaded { Task { await model.reload() } } }
+        .onReceive(NotificationCenter.default.publisher(for: EmbyUserDataChange.notification)) { notification in
+            guard let source = notification.object as? EmbyAPIClient, source === client, let itemID = notification.userInfo?[EmbyUserDataChange.itemIDKey] as? String else { return }
+            Task { await model.refreshUserData(itemID: itemID) }
+        }
     }
 
     private var contentTitle: String {
@@ -99,10 +104,53 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         await fetchNextPage()
     }
 
+    func refresh() async {
+        guard !isFetching else { return }
+        isFetching = true
+        if errorMessage != nil { errorMessage = nil }
+        defer { isFetching = false; hasLoaded = true }
+        do {
+            let expectedTypes = expectedItemTypes
+            let page = try await client.libraryItems(parentId: library.id, limit: pageSize, startIndex: 0, sortBy: sortBy, includeItemTypes: expectedTypes)
+            let allowed = Set(expectedTypes.map { $0.lowercased() })
+            var refreshedItems: [LibraryItem] = []
+            var refreshedIDs = Set<String>()
+            for item in page.items where (allowed.isEmpty || allowed.contains(item.type?.lowercased() ?? "")) && refreshedIDs.insert(item.id).inserted { refreshedItems.append(item) }
+            items = refreshedItems
+            seenItemIDs = refreshedIDs
+            nextStartIndex = page.items.count
+            if let totalRecordCount = page.totalRecordCount { hasMore = nextStartIndex < totalRecordCount }
+            else { hasMore = page.items.count == pageSize }
+        } catch {
+            if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
+        }
+    }
+
+    func refreshUserData(itemID: String) async {
+        guard hasLoaded else { return }
+        do {
+            let refreshed = try await client.libraryItem(itemId: itemID)
+            if let index = items.firstIndex(where: { $0.id == refreshed.id }) { items[index] = refreshed }
+            if let seriesID = refreshed.seriesId, seriesID != refreshed.id, let index = items.firstIndex(where: { $0.id == seriesID }), let refreshedSeries = try? await client.libraryItem(itemId: seriesID) { items[index] = refreshedSeries }
+        } catch {
+            if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Library", "userdata refresh failed item=\(itemID): \(error.localizedDescription)") }
+        }
+    }
+
     func changeSort(to key: String) async {
         guard key != sortBy else { return }
         sortBy = key
         await reload()
+    }
+
+    private var expectedItemTypes: [String] {
+        switch library.collectionType?.lowercased() {
+        case "movies": return ["Movie"]
+        case "tvshows": return ["Series"]
+        case "homevideos": return ["Video"]
+        case "mixed": return ["Movie", "Series", "Video"]
+        default: return []
+        }
     }
 
     private func fetchNextPage() async {
@@ -117,14 +165,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             hasLoaded = true
         }
         do {
-            let expectedTypes: [String]
-            switch library.collectionType?.lowercased() {
-            case "movies": expectedTypes = ["Movie"]
-            case "tvshows": expectedTypes = ["Series"]
-            case "homevideos": expectedTypes = ["Video"]
-            case "mixed": expectedTypes = ["Movie", "Series", "Video"]
-            default: expectedTypes = []
-            }
+            let expectedTypes = expectedItemTypes
             let page = try await client.libraryItems(parentId: library.id, limit: pageSize, startIndex: requestedStartIndex, sortBy: sortBy, includeItemTypes: expectedTypes)
             let allowed = Set(expectedTypes.map { $0.lowercased() })
             let filtered = page.items.filter { allowed.isEmpty || allowed.contains($0.type?.lowercased() ?? "") }
