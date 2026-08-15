@@ -31,10 +31,6 @@ enum AppInterfaceStyle: String, CaseIterable, Identifiable {
 
 struct AppearanceSettingsView: View {
     @AppStorage(AppAppearanceSettings.interfaceStyleKey) private var interfaceStyleRaw = AppInterfaceStyle.system.rawValue
-    @State private var currentIconName = UIApplication.shared.alternateIconName
-    @State private var iconErrorMessage: String?
-
-    private let iconColumns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
 
     var body: some View {
         ScrollView {
@@ -54,23 +50,6 @@ struct AppearanceSettingsView: View {
                     .padding(.horizontal, 15)
                     .frame(minHeight: 56)
                 }
-
-                sectionTitle("APP 图标")
-                appearanceCard {
-                    LazyVGrid(columns: iconColumns, spacing: 18) {
-                        iconButton(title: "默认", preview: "OnePlayerDefaultPreview", alternateIconName: nil)
-                        iconButton(title: "备选 1", preview: "OnePlayerAlternatePreview", alternateIconName: "OnePlayerAltIcon")
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 16)
-                }
-
-                if !UIApplication.shared.supportsAlternateIcons {
-                    Text("当前系统环境不支持切换 App 图标。")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 4)
-                }
             }
             .padding(.horizontal, 18)
             .padding(.top, 14)
@@ -80,10 +59,6 @@ struct AppearanceSettingsView: View {
         .navigationTitle("外观设置")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(false)
-        .onAppear { currentIconName = UIApplication.shared.alternateIconName }
-        .alert(isPresented: Binding(get: { iconErrorMessage != nil }, set: { if !$0 { iconErrorMessage = nil } })) {
-            Alert(title: Text("图标切换失败"), message: Text(iconErrorMessage ?? ""), dismissButton: .default(Text("好")))
-        }
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -95,32 +70,6 @@ struct AppearanceSettingsView: View {
         VStack(spacing: 0) { content() }
             .background(Color(uiColor: .secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private func iconButton(title: String, preview: String, alternateIconName: String?) -> some View {
-        let selected = currentIconName == alternateIconName
-        return Button {
-            guard UIApplication.shared.supportsAlternateIcons, currentIconName != alternateIconName else { return }
-            UIApplication.shared.setAlternateIconName(alternateIconName) { error in
-                DispatchQueue.main.async {
-                    if let error { iconErrorMessage = error.localizedDescription }
-                    currentIconName = UIApplication.shared.alternateIconName
-                }
-            }
-        } label: {
-            VStack(spacing: 8) {
-                Image(preview)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 64, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .padding(5)
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(selected ? Color.blue : Color.clear, lineWidth: 3))
-                Text(title).font(.caption).foregroundColor(selected ? .blue : .secondary).lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.plain)
     }
 }
 
