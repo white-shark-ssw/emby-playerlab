@@ -25,23 +25,14 @@ jobs:
           from pathlib import Path
           p = Path('Sources/UI/EmbyServerBrowseV3.swift')
           s = p.read_text()
-          old = '''        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {'''
-          new = '''        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 18) {'''
-          if s.count(old) != 1: raise SystemExit(f'unexpected tab spacing context count: {s.count(old)}')
-          s = s.replace(old, new, 1)
-          old = '''            }
-            .padding(.horizontal, 12)
-        }
-        .frame(height: 44)'''
-          new = '''            }
-            .padding(.horizontal, 14)
-        }
-        .frame(height: 44)'''
-          if s.count(old) != 1: raise SystemExit(f'unexpected tab padding context count: {s.count(old)}')
-          s = s.replace(old, new, 1)
-          p.write_text(s)
+          start = s.index('    private var tabStrip: some View {')
+          end = s.index('    @ViewBuilder', start)
+          chunk = s[start:end]
+          if chunk.count('HStack(spacing: 14)') != 1: raise SystemExit('unexpected spacing count in tabStrip')
+          if chunk.count('.padding(.horizontal, 12)') != 1: raise SystemExit('unexpected padding count in tabStrip')
+          chunk = chunk.replace('HStack(spacing: 14)', 'HStack(spacing: 18)', 1)
+          chunk = chunk.replace('.padding(.horizontal, 12)', '.padding(.horizontal, 14)', 1)
+          p.write_text(s[:start] + chunk + s[end:])
           PY
           rm -f .github/workflows/temp-relax-library-tabs.yml
           git config user.name "github-actions[bot]"
