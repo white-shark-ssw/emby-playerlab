@@ -3,7 +3,7 @@ import AVKit
 import Combine
 
 @MainActor
-final class PlayerPictureInPictureController: NSObject, ObservableObject, AVPictureInPictureControllerDelegate {
+final class PlayerPictureInPictureController: NSObject, ObservableObject, @preconcurrency AVPictureInPictureControllerDelegate {
     @Published private(set) var isPossible = false
     @Published private(set) var isActive = false
 
@@ -15,15 +15,15 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, AVPict
         guard self.playerLayer !== playerLayer else { return }
         stopAndDetach()
         self.playerLayer = playerLayer
-        guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
+        guard AVPictureInPictureController.isPictureInPictureSupported(),
+              let pictureInPictureController = AVPictureInPictureController(playerLayer: playerLayer) else { return }
 
-        let controller = AVPictureInPictureController(playerLayer: playerLayer)
-        controller.delegate = self
-        if #available(iOS 14.2, *) { controller.canStartPictureInPictureAutomaticallyFromInline = true }
-        possibleObservation = controller.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] controller, _ in
+        pictureInPictureController.delegate = self
+        if #available(iOS 14.2, *) { pictureInPictureController.canStartPictureInPictureAutomaticallyFromInline = true }
+        possibleObservation = pictureInPictureController.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] controller, _ in
             DispatchQueue.main.async { self?.isPossible = controller.isPictureInPicturePossible }
         }
-        self.controller = controller
+        controller = pictureInPictureController
     }
 
     func toggle() {
