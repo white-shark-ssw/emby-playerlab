@@ -18,6 +18,7 @@ final class AppOrientationCoordinator {
 
     func beginPlayerPresentation(source: ResolvedPlaybackSource) {
         dispatchPrecondition(condition: .onQueue(.main))
+        guard !playerModeActive else { return }
         playerModeActive = true
         let target = preferredPlayerOrientation(for: source)
         pendingPlayerOrientation = target
