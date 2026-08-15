@@ -7,36 +7,40 @@ final class OnePlayerAppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 
-@MainActor
 final class AppOrientationCoordinator {
     static let shared = AppOrientationCoordinator()
 
     private(set) var supportedMask: UIInterfaceOrientationMask = .portrait
     private var playerModeActive = false
+    private var pendingPlayerOrientation: UIInterfaceOrientation?
 
     private init() {}
 
-    func prepareForPlayerPresentation(source: ResolvedPlaybackSource) async {
-        let target = preferredPlayerOrientation(for: source)
-        if let target {
-            supportedMask = orientationMask(for: target)
-            invalidateSupportedOrientations()
-            await requestAndWait(for: target, reason: "pre-presentation")
-        }
+    func beginPlayerPresentation(source: ResolvedPlaybackSource) {
+        dispatchPrecondition(condition: .onQueue(.main))
         playerModeActive = true
-        supportedMask = [.portrait, .landscapeLeft, .landscapeRight]
+        let target = preferredPlayerOrientation(for: source)
+        pendingPlayerOrientation = target
+        supportedMask = target.map(orientationMask) ?? [.portrait, .landscapeLeft, .landscapeRight]
         invalidateSupportedOrientations()
+        if let target { request(target, reason: "pre-presentation") }
+        DiagnosticsLogger.shared.playback("AppOrientation", "player presentation prepared target=\(target?.rawValue ?? 0) mask=\(supportedMask.rawValue)")
     }
 
-    func playerDidAppear() {
-        playerModeActive = true
+    func playerOrientationDidSettle() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard playerModeActive else { return }
+        pendingPlayerOrientation = nil
         supportedMask = [.portrait, .landscapeLeft, .landscapeRight]
         invalidateSupportedOrientations()
+        DiagnosticsLogger.shared.playback("AppOrientation", "player orientation unlocked mask=\(supportedMask.rawValue)")
     }
 
     func restoreMainInterfaceOrientation() {
+        dispatchPrecondition(condition: .onQueue(.main))
         guard playerModeActive || supportedMask != .portrait else { return }
         playerModeActive = false
+        pendingPlayerOrientation = nil
         supportedMask = .portrait
         invalidateSupportedOrientations()
         request(.portrait, reason: "player-dismiss")
@@ -58,31 +62,6 @@ final class AppOrientationCoordinator {
         }
     }
 
-    private func requestAndWait(for target: UIInterfaceOrientation, reason: String) async {
-        guard let scene = activeWindowScene() else {
-            DiagnosticsLogger.shared.playback("AppOrientation", "prepare skipped reason=\(reason) scene=unavailable")
-            return
-        }
-        if scene.interfaceOrientation == target {
-            DiagnosticsLogger.shared.playback("AppOrientation", "prepared reason=\(reason) target=\(target.rawValue) actual=\(scene.interfaceOrientation.rawValue) attempts=0")
-            return
-        }
-
-        request(target, reason: reason)
-        var attempt = 0
-        while attempt < 30 {
-            try? await Task.sleep(nanoseconds: 40_000_000)
-            guard !Task.isCancelled else { return }
-            if scene.interfaceOrientation == target {
-                DiagnosticsLogger.shared.playback("AppOrientation", "prepared reason=\(reason) target=\(target.rawValue) actual=\(scene.interfaceOrientation.rawValue) attempts=\(attempt + 1)")
-                return
-            }
-            attempt += 1
-            if attempt == 8 || attempt == 18 { request(target, reason: "\(reason)-retry\(attempt)") }
-        }
-        DiagnosticsLogger.shared.playback("AppOrientation", "prepare timeout reason=\(reason) target=\(target.rawValue) actual=\(scene.interfaceOrientation.rawValue)")
-    }
-
     private func request(_ target: UIInterfaceOrientation, reason: String) {
         guard let scene = activeWindowScene() else {
             DiagnosticsLogger.shared.playback("AppOrientation", "request skipped reason=\(reason) scene=unavailable")
@@ -98,7 +77,7 @@ final class AppOrientationCoordinator {
             UIDevice.current.setValue(target.rawValue, forKey: "orientation")
             UIViewController.attemptRotationToDeviceOrientation()
         }
-        DiagnosticsLogger.shared.playback("AppOrientation", "request reason=\(reason) target=\(target.rawValue) mask=\(mask.rawValue)")
+        DiagnosticsLogger.shared.playback("AppOrientation", "request reason=\(reason) target=\(target.rawValue) mask=\(mask.rawValue) actual=\(scene.interfaceOrientation.rawValue)")
     }
 
     private func invalidateSupportedOrientations() {
