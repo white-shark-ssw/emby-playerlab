@@ -38,7 +38,7 @@ struct PlayerBottomFunctionBar: View {
     }
 
     private func functionButton(title: String, systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        return Button(action: action) {
+        Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: systemImage).font(.system(size: 17, weight: .medium))
                 Text(title).font(.caption2).lineLimit(1)
@@ -57,8 +57,26 @@ struct PlayerControlPanelSheet: View {
     let source: ResolvedPlaybackSource
     let currentRate: Double
     let onRateSelected: (Double) -> Void
+    let trackProvider: () -> [PlayerSelectableTrack]
+    let onTrackSelected: (PlayerSelectableTrack) -> Bool
 
     @Environment(\.presentationMode) private var presentationMode
+
+    init(
+        panel: PlayerControlPanel,
+        source: ResolvedPlaybackSource,
+        currentRate: Double,
+        onRateSelected: @escaping (Double) -> Void,
+        trackProvider: @escaping () -> [PlayerSelectableTrack] = { [] },
+        onTrackSelected: @escaping (PlayerSelectableTrack) -> Bool = { _ in false }
+    ) {
+        self.panel = panel
+        self.source = source
+        self.currentRate = currentRate
+        self.onRateSelected = onRateSelected
+        self.trackProvider = trackProvider
+        self.onTrackSelected = onTrackSelected
+    }
 
     var body: some View {
         NavigationView {
@@ -67,7 +85,7 @@ struct PlayerControlPanelSheet: View {
                 case .info:
                     PlayerPlaybackInfoView(source: source)
                 case .tracks:
-                    PlayerTrackOverviewView(source: source)
+                    PlayerTrackSelectionView(source: source, trackProvider: trackProvider, onSelect: onTrackSelected)
                 case .episodes:
                     PlayerUnavailablePanelView(message: "当前播放入口还没有携带剧集列表，选集会在下一阶段接入 Emby 剧集上下文。")
                 case .speed:
@@ -140,35 +158,90 @@ private struct PlayerPlaybackInfoView: View {
     }
 }
 
-private struct PlayerTrackOverviewView: View {
+private struct PlayerTrackSelectionView: View {
     let source: ResolvedPlaybackSource
+    let trackProvider: () -> [PlayerSelectableTrack]
+    let onSelect: (PlayerSelectableTrack) -> Bool
+
+    @State private var tracks: [PlayerSelectableTrack] = []
+    @State private var selectionError: String?
 
     var body: some View {
         Form {
-            Section(footer: Text("这里先展示 Emby 返回的轨道信息。真正的轨道切换会在播放器引擎暴露统一选择接口后启用，当前不会假装已经切换成功。")) {
-                ForEach(Array(tracks.enumerated()), id: \.offset) { index, stream in
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(trackTitle(stream, fallbackIndex: index)).font(.body)
-                        Text(trackDetail(stream)).font(.caption).foregroundColor(.secondary)
-                    }
+            if !audioTracks.isEmpty {
+                Section(header: Text("音轨")) {
+                    ForEach(audioTracks) { track in selectableRow(track) }
                 }
-                if tracks.isEmpty { Text("没有可用的音轨或字幕信息").foregroundColor(.secondary) }
+            }
+
+            if !subtitleTracks.isEmpty {
+                Section(header: Text("字幕")) {
+                    ForEach(subtitleTracks) { track in selectableRow(track) }
+                }
+            }
+
+            if tracks.isEmpty {
+                Section(footer: Text("当前播放器尚未暴露可确认的实时轨道选择。这里仅展示 Emby 返回的信息，不会伪装成已切换成功。")) {
+                    ForEach(Array(embyTracks.enumerated()), id: \.offset) { index, stream in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(embyTrackTitle(stream, fallbackIndex: index)).font(.body)
+                            Text(embyTrackDetail(stream)).font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                    if embyTracks.isEmpty { Text("没有可用的音轨或字幕信息").foregroundColor(.secondary) }
+                }
+            }
+
+            if let selectionError {
+                Section {
+                    Text(selectionError).font(.footnote).foregroundColor(.red)
+                }
             }
         }
+        .onAppear(perform: reload)
     }
 
-    private var tracks: [MediaStream] {
+    private var audioTracks: [PlayerSelectableTrack] { tracks.filter { $0.kind == .audio } }
+    private var subtitleTracks: [PlayerSelectableTrack] { tracks.filter { $0.kind == .subtitle } }
+    private var embyTracks: [MediaStream] {
         (source.mediaSource.mediaStreams ?? []).filter {
             $0.type?.caseInsensitiveCompare("Audio") == .orderedSame || $0.type?.caseInsensitiveCompare("Subtitle") == .orderedSame
         }
     }
 
-    private func trackTitle(_ stream: MediaStream, fallbackIndex: Int) -> String {
+    private func selectableRow(_ track: PlayerSelectableTrack) -> some View {
+        Button {
+            if onSelect(track) {
+                selectionError = nil
+                reload()
+            } else {
+                selectionError = "播放器没有确认这次轨道切换，当前选择未改变。"
+                reload()
+            }
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(track.title).foregroundColor(.primary)
+                    if let detail = track.detail, !detail.isEmpty { Text(detail).font(.caption).foregroundColor(.secondary) }
+                }
+                Spacer()
+                if track.isSelected { Image(systemName: "checkmark").foregroundColor(.accentColor) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func reload() {
+        tracks = trackProvider()
+    }
+
+    private func embyTrackTitle(_ stream: MediaStream, fallbackIndex: Int) -> String {
         let type = stream.type?.caseInsensitiveCompare("Subtitle") == .orderedSame ? "字幕" : "音轨"
         return stream.displayTitle ?? stream.title ?? "\(type) \(stream.index ?? fallbackIndex)"
     }
 
-    private func trackDetail(_ stream: MediaStream) -> String {
+    private func embyTrackDetail(_ stream: MediaStream) -> String {
         [stream.codec?.uppercased(), stream.language, stream.isDefault == true ? "默认" : nil, stream.isForced == true ? "强制" : nil, stream.isExternal == true ? "外挂" : nil]
             .compactMap { $0 }
             .joined(separator: " · ")
