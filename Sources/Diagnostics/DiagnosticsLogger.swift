@@ -54,6 +54,8 @@ final class DiagnosticsLogger {
     func app(_ category: String, _ message: String) { write(channel: .app, category: category, message: message) }
     func playback(_ category: String, _ message: String) { write(channel: .playback, category: category, message: message) }
 
+    func export() throws -> URL { try export(.playback) }
+
     func export(_ channel: DiagnosticsLogChannel) throws -> URL {
         try queue.sync {
             guard let store = stores[channel] else { throw CocoaError(.fileNoSuchFile) }
