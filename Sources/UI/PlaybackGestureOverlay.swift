@@ -91,7 +91,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         private var activeAdjustment: PlaybackVerticalAdjustment?
         private var adjustmentStartValue: Double = 0
         private var lastVolumeTick = -1
-        private let volumeTickStep = 0.02
+        private let adjustmentStep = 0.01
         private let hapticGenerator = UISelectionFeedbackGenerator()
 
         init(
@@ -134,11 +134,11 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
                 let x = recognizer.location(in: view).x / max(view.bounds.width, 1)
                 if x < 0.35 {
                     activeAdjustment = .brightness
-                    adjustmentStartValue = Double(UIScreen.main.brightness)
+                    adjustmentStartValue = quantized(Double(UIScreen.main.brightness))
                 } else if x > 0.65 {
                     activeAdjustment = .volume
-                    adjustmentStartValue = Double(AVAudioSession.sharedInstance().outputVolume)
-                    lastVolumeTick = Int((adjustmentStartValue / volumeTickStep).rounded())
+                    adjustmentStartValue = quantized(Double(AVAudioSession.sharedInstance().outputVolume))
+                    lastVolumeTick = Int((adjustmentStartValue / adjustmentStep).rounded())
                     if volumeHapticsEnabled { hapticGenerator.prepare() }
                 } else {
                     activeAdjustment = nil
@@ -149,7 +149,8 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
                 guard let activeAdjustment else { return }
                 let translation = recognizer.translation(in: view)
                 let span = max(view.bounds.height * 0.65, 220)
-                let value = min(1, max(0, adjustmentStartValue - Double(translation.y / span)))
+                let rawValue = adjustmentStartValue - Double(translation.y / span)
+                let value = quantized(rawValue)
                 apply(activeAdjustment, value: value)
                 onAdjustmentChanged(activeAdjustment, value)
             case .ended:
@@ -161,6 +162,11 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             }
         }
 
+        private func quantized(_ value: Double) -> Double {
+            let clamped = min(1, max(0, value))
+            return (clamped / adjustmentStep).rounded() * adjustmentStep
+        }
+
         private func apply(_ adjustment: PlaybackVerticalAdjustment, value: Double) {
             switch adjustment {
             case .brightness:
@@ -169,7 +175,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
                 volumeSlider?.setValue(Float(value), animated: false)
                 volumeSlider?.sendActions(for: .valueChanged)
                 guard volumeHapticsEnabled else { return }
-                let tick = Int((value / volumeTickStep).rounded())
+                let tick = Int((value / adjustmentStep).rounded())
                 if tick != lastVolumeTick {
                     lastVolumeTick = tick
                     hapticGenerator.selectionChanged()
@@ -182,8 +188,8 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             guard let activeAdjustment else { return }
             let value: Double
             switch activeAdjustment {
-            case .brightness: value = Double(UIScreen.main.brightness)
-            case .volume: value = Double(AVAudioSession.sharedInstance().outputVolume)
+            case .brightness: value = quantized(Double(UIScreen.main.brightness))
+            case .volume: value = quantized(Double(AVAudioSession.sharedInstance().outputVolume))
             }
             onAdjustmentEnded(activeAdjustment, value)
             self.activeAdjustment = nil
