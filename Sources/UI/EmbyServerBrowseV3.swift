@@ -80,28 +80,28 @@ struct V3LibraryBrowserView: View {
 
     private var tabStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 26) {
+            HStack(spacing: 14) {
                 ForEach(V3LibraryTab.allCases) { tab in
                     Button {
                         guard selectedTab != tab else { return }
                         selectedTab = tab
                     } label: {
-                        VStack(spacing: 6) {
+                        VStack(spacing: 5) {
                             Text(tab.title(contentTitle: contentTitle))
-                                .font(.system(size: 17, weight: selectedTab == tab ? .semibold : .regular))
+                                .font(.system(size: 15, weight: selectedTab == tab ? .semibold : .regular))
                                 .foregroundColor(selectedTab == tab ? .blue : .secondary)
                                 .fixedSize(horizontal: true, vertical: false)
                             Capsule()
                                 .fill(selectedTab == tab ? Color.blue : Color.clear)
-                                .frame(height: 2.5)
+                                .frame(height: 2)
                         }
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 12)
         }
-        .frame(height: 48)
+        .frame(height: 44)
     }
 
     @ViewBuilder
