@@ -391,13 +391,7 @@ struct PlayerScreen: View {
     }
 
     private func sourceDisplayAspectRatio() -> Double? {
-        guard let stream = controller.source.mediaSource.mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Video") == .orderedSame }) else { return nil }
-        if let aspect = stream.aspectRatio {
-            let parts = aspect.split(separator: ":")
-            if parts.count == 2, let width = Double(parts[0]), let height = Double(parts[1]), width > 0, height > 0 { return width / height }
-        }
-        if let width = stream.width, let height = stream.height, width > 0, height > 0 { return Double(width) / Double(height) }
-        return nil
+        controller.source.mediaSource.mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Video") == .orderedSame })?.displayAspectRatio
     }
 
     private func activeWindowScene() -> UIWindowScene? {
