@@ -7,6 +7,7 @@ final class PlayerSurfaceUIView: UIView {
 
     private let presentationCoverView = UIView()
     private var presentationGateObserver: NSObjectProtocol?
+    var expectedPointSize: CGSize = .zero
     var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
 
     override init(frame: CGRect) {
@@ -34,7 +35,8 @@ final class PlayerSurfaceUIView: UIView {
         super.layoutSubviews()
         presentationCoverView.frame = bounds
         bringSubviewToFront(presentationCoverView)
-        if window != nil { PlayerSurfacePresentationGate.shared.passiveSurfaceDidSettle() }
+        let expectedMatches = expectedPointSize.width > 0 && RendererSurfaceGeometry.matches(bounds.size, expectedPointSize, tolerance: 1.5)
+        if window != nil, expectedMatches { PlayerSurfacePresentationGate.shared.passiveSurfaceDidSettle() }
     }
 
     private func configurePresentationCover() {
@@ -66,6 +68,7 @@ struct AVPlayerSurface: UIViewRepresentable {
     func makeUIView(context: Context) -> PlayerSurfaceUIView {
         let view = PlayerSurfaceUIView()
         view.backgroundColor = .black
+        view.expectedPointSize = layoutPlan.surfaceFrame.size
         view.playerLayer.player = player
         applyLayout(layoutPlan, to: view.playerLayer)
         DispatchQueue.main.async { onPlayerLayerReady?(view.playerLayer) }
@@ -73,8 +76,10 @@ struct AVPlayerSurface: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PlayerSurfaceUIView, context: Context) {
+        uiView.expectedPointSize = layoutPlan.surfaceFrame.size
         uiView.playerLayer.player = player
         applyLayout(layoutPlan, to: uiView.playerLayer)
+        uiView.setNeedsLayout()
         DispatchQueue.main.async { onPlayerLayerReady?(uiView.playerLayer) }
     }
 
