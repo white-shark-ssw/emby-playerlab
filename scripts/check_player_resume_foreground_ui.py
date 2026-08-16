@@ -20,7 +20,7 @@ checks = {
     "resume authority accepts exact consumed bytes": "confirmConcretePlaybackByte" in transport_protocol and "exact-byte authority confirmed" in resume_authority,
     "mpv resume authority requires sustained concrete reads": "sustained playback-byte authority" in mpv_stream and "authorityMinimumReads = 3" in mpv_stream and "authorityMinimumSpanBytes" in mpv_stream,
     "resume confirmation does not use time to byte math": "byteGuess=disabled" in transport and "byteGuess=disabled" in resume_authority,
-    "foreground restores previous player orientation": "foreground-restore" in orientation and "backgroundPlayerOrientation" in orientation,
+    "foreground restores previous player orientation before active presentation": "foreground-prepare" in orientation and "foreground-active" in orientation and "backgroundPlayerOrientation" in orientation,
     "foreground locks orientation while presentation is held": "lockedMask" in orientation and "PlayerSurfacePresentationGate.shared.hold" in orientation,
     "renderer snapshot derives target backing from plan and scale": "plan.surfaceFrame.width * scale" in renderer and "plan.surfaceFrame.height * scale" in renderer,
     "renderer snapshot identity excludes observed backing": "struct SnapshotKey" in renderer and "observedBackingWidth" not in renderer and "observedBackingHeight" not in renderer,
