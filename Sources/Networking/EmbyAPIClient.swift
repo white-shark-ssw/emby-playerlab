@@ -6,6 +6,14 @@ final class EmbyAPIClient {
     let userId: String?
     let serverName: String?
 
+    private struct CachedLibraryItem {
+        let item: LibraryItem
+        let storedAt: Date
+    }
+
+    private let libraryItemCacheLock = NSLock()
+    private var libraryItemCache: [String: CachedLibraryItem] = [:]
+
     init(baseURL: URL, accessToken: String? = nil, userId: String? = nil, serverName: String? = nil) {
         self.baseURL = baseURL
         self.accessToken = accessToken
@@ -32,7 +40,20 @@ final class EmbyAPIClient {
 
     func libraryItem(itemId: String) async throws -> LibraryItem {
         guard let userId else { throw EmbyAPIError.missingSession }
-        return try await send(path: "Users/\(userId)/Items/\(itemId)", method: "GET", query: commonBrowseFields)
+        let item: LibraryItem = try await send(path: "Users/\(userId)/Items/\(itemId)", method: "GET", query: commonBrowseFields)
+        rememberLibraryItems([item])
+        return item
+    }
+
+    func cachedLibraryItem(itemId: String, maxAge: TimeInterval = 90) -> LibraryItem? {
+        libraryItemCacheLock.lock()
+        defer { libraryItemCacheLock.unlock() }
+        guard let cached = libraryItemCache[itemId] else { return nil }
+        guard Date().timeIntervalSince(cached.storedAt) <= max(0, maxAge) else {
+            libraryItemCache.removeValue(forKey: itemId)
+            return nil
+        }
+        return cached.item
     }
 
     func userViews() async throws -> [LibraryItem] {
@@ -77,7 +98,9 @@ final class EmbyAPIClient {
         ]
         if !includeItemTypes.isEmpty { query.append(URLQueryItem(name: "IncludeItemTypes", value: includeItemTypes.joined(separator: ","))) }
         let page: EmbyItemPage = try await send(path: "Users/\(userId)/Items", method: "GET", query: query)
-        return EmbyItemPage(items: deduplicated(page.items), totalRecordCount: page.totalRecordCount)
+        let items = deduplicated(page.items)
+        rememberLibraryItems(items)
+        return EmbyItemPage(items: items, totalRecordCount: page.totalRecordCount)
     }
 
     func seriesEpisodes(seriesId: String, pageSize: Int = 500) async throws -> [LibraryItem] {
@@ -305,6 +328,14 @@ final class EmbyAPIClient {
     private func safeMediaHeaders(_ headers: [String: String]) -> [String: String] {
         let blocked = ["authorization", "x-emby-token", "x-mediabrowser-token", "cookie", "set-cookie"]
         return headers.filter { key, _ in !blocked.contains(key.lowercased()) }
+    }
+
+    private func rememberLibraryItems(_ items: [LibraryItem]) {
+        guard !items.isEmpty else { return }
+        let storedAt = Date()
+        libraryItemCacheLock.lock()
+        for item in items { libraryItemCache[item.id] = CachedLibraryItem(item: item, storedAt: storedAt) }
+        libraryItemCacheLock.unlock()
     }
 
     private func deduplicated(_ items: [LibraryItem]) -> [LibraryItem] {
