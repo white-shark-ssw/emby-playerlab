@@ -6,6 +6,7 @@ import UIKit
 final class MPVSurfaceUIView: UIView {
     private var displayLayer: CAMetalLayer?
     private var lastGeometryLog = ""
+    private var layoutGeneration: UInt64 = 0
 
     func attach(_ layer: CAMetalLayer) {
         if displayLayer !== layer {
@@ -13,14 +14,16 @@ final class MPVSurfaceUIView: UIView {
             displayLayer = layer
             layer.masksToBounds = true
             self.layer.addSublayer(layer)
-            DiagnosticsLogger.shared.log("MPVSurface", "attach layer=CAMetalLayer host=UIViewRepresentable drawableOwner=moltenvk")
+            DiagnosticsLogger.shared.log("MPVSurface", "attach surface=\(ObjectIdentifier(self)) layer=CAMetalLayer host=UIViewRepresentable lifecycle=persistent drawableOwner=moltenvk")
         }
         setNeedsLayout()
     }
 
     func detach() {
-        displayLayer?.removeFromSuperlayer()
-        displayLayer = nil
+        guard let displayLayer else { return }
+        DiagnosticsLogger.shared.log("MPVSurface", "detach surface=\(ObjectIdentifier(self)) generation=\(layoutGeneration)")
+        displayLayer.removeFromSuperlayer()
+        self.displayLayer = nil
         lastGeometryLog = ""
     }
 
@@ -34,8 +37,9 @@ final class MPVSurfaceUIView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         guard let displayLayer else { return }
+        layoutGeneration &+= 1
+        let generation = layoutGeneration
         let scale = window?.screen.nativeScale ?? UIScreen.main.nativeScale
-        let expectedDrawable = CGSize(width: max(2, (bounds.width * scale).rounded()), height: max(2, (bounds.height * scale).rounded()))
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -46,15 +50,22 @@ final class MPVSurfaceUIView: UIView {
         displayLayer.setNeedsDisplay()
         CATransaction.commit()
 
-        // MPV owns a Vulkan/MoltenVK swapchain for this layer. Do not force drawableSize from UIKit
-        // and do not replace CAMetalLayer.delegate with a UIView. The latter caused a real-device
-        // process termination before the surface attach diagnostic could be emitted. Keep UIKit's
-        // responsibility limited to layer geometry/scale while MPV/MoltenVK owns drawable creation.
+        logGeometry(stage: "layout", generation: generation)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard let self, self.layoutGeneration == generation, self.window != nil else { return }
+            self.logGeometry(stage: "settled", generation: generation, force: true)
+        }
+    }
+
+    private func logGeometry(stage: String, generation: UInt64, force: Bool = false) {
+        guard let displayLayer else { return }
+        let scale = displayLayer.contentsScale > 0 ? displayLayer.contentsScale : (window?.screen.nativeScale ?? UIScreen.main.nativeScale)
+        let expectedDrawable = CGSize(width: max(2, (bounds.width * scale).rounded()), height: max(2, (bounds.height * scale).rounded()))
         let windowSize = window?.bounds.size ?? .zero
         let orientation = window?.windowScene?.interfaceOrientation.rawValue ?? 0
         let actualDrawable = displayLayer.drawableSize
-        let geometry = "view=\(Int(bounds.width))x\(Int(bounds.height)) layer=\(Int(displayLayer.bounds.width))x\(Int(displayLayer.bounds.height)) drawable=\(Int(actualDrawable.width))x\(Int(actualDrawable.height)) expected=\(Int(expectedDrawable.width))x\(Int(expectedDrawable.height)) window=\(Int(windowSize.width))x\(Int(windowSize.height)) orientation=\(orientation) scale=\(String(format: "%.2f", displayLayer.contentsScale)) drawableOwner=moltenvk delegateOwner=unchanged"
-        if geometry != lastGeometryLog {
+        let geometry = "surface=\(ObjectIdentifier(self)) stage=\(stage) generation=\(generation) view=\(Int(bounds.width))x\(Int(bounds.height)) layer=\(Int(displayLayer.bounds.width))x\(Int(displayLayer.bounds.height)) drawable=\(Int(actualDrawable.width))x\(Int(actualDrawable.height)) expected=\(Int(expectedDrawable.width))x\(Int(expectedDrawable.height)) window=\(Int(windowSize.width))x\(Int(windowSize.height)) orientation=\(orientation) scale=\(String(format: "%.2f", scale)) lifecycle=persistent drawableOwner=moltenvk delegateOwner=unchanged"
+        if force || geometry != lastGeometryLog {
             lastGeometryLog = geometry
             DiagnosticsLogger.shared.log("MPVSurface", geometry)
         }
