@@ -143,9 +143,9 @@ final class MPVPlayerEngine: PlayerEngine {
         setPropertyAsync(name: "panscan", value: String(format: "%.3f", clampedPanscan))
         DiagnosticsLogger.shared.log("MPVVideo", "geometry panscan=\(String(format: "%.3f", clampedPanscan)) aspect=\(aspectOverride ?? "source")")
         queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-    guard let self, let handle = self.mpv, !self.isStopping else { return }
-    self.logVideoOutputGeometry(handle: handle, reason: "layout")
-}
+            guard let self, let handle = self.mpv, !self.isStopping else { return }
+            self.logVideoOutputGeometry(handle: handle, reason: "layout")
+        }
     }
 
     func seek(to seconds: Double, direction: SeekDirection) {
