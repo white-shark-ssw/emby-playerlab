@@ -6,7 +6,9 @@ import UIKit
 final class MPVSurfaceUIView: UIView {
     private var displayLayer: CAMetalLayer?
     private var lastGeometryLog = ""
+    private var lastReportedGeometry: RendererSurfaceGeometry?
     private var layoutGeneration: UInt64 = 0
+    var onGeometrySettled: ((RendererSurfaceGeometry) -> Void)?
 
     func attach(_ layer: CAMetalLayer) {
         if displayLayer !== layer {
@@ -14,6 +16,7 @@ final class MPVSurfaceUIView: UIView {
             displayLayer = layer
             layer.masksToBounds = true
             self.layer.addSublayer(layer)
+            lastReportedGeometry = nil
             DiagnosticsLogger.shared.log("MPVSurface", "attach surface=\(ObjectIdentifier(self)) layer=CAMetalLayer host=UIViewRepresentable lifecycle=persistent drawableOwner=moltenvk")
         }
         setNeedsLayout()
@@ -25,6 +28,7 @@ final class MPVSurfaceUIView: UIView {
         displayLayer.removeFromSuperlayer()
         self.displayLayer = nil
         lastGeometryLog = ""
+        lastReportedGeometry = nil
     }
 
     deinit { detach() }
@@ -50,15 +54,37 @@ final class MPVSurfaceUIView: UIView {
         displayLayer.setNeedsDisplay()
         CATransaction.commit()
 
-        logGeometry(stage: "layout", generation: generation)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+        if let geometry = logGeometry(stage: "layout", generation: generation) {
+            let settled = reportGeometryIfReady(geometry)
+            if settled { return }
+        }
+        scheduleGeometryProbe(generation: generation, attempt: 0)
+    }
+
+    private func scheduleGeometryProbe(generation: UInt64, attempt: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
             guard let self, self.layoutGeneration == generation, self.window != nil else { return }
-            self.logGeometry(stage: "settled", generation: generation, force: true)
+            let geometry = self.logGeometry(stage: attempt == 0 ? "settled" : "probe\(attempt)", generation: generation, force: true)
+            guard let geometry else { return }
+            if self.reportGeometryIfReady(geometry) { return }
+            if attempt < 8 { self.scheduleGeometryProbe(generation: generation, attempt: attempt + 1) }
         }
     }
 
-    private func logGeometry(stage: String, generation: UInt64, force: Bool = false) {
-        guard let displayLayer else { return }
+    private func reportGeometryIfReady(_ geometry: RendererSurfaceGeometry) -> Bool {
+        let backingMatches = geometry.hasObservedBacking && RendererSurfaceGeometry.matches(geometry.observedBackingSize, geometry.expectedBackingSize, tolerance: 3)
+        if !geometry.hasObservedBacking || backingMatches {
+            if geometry != lastReportedGeometry {
+                lastReportedGeometry = geometry
+                onGeometrySettled?(geometry)
+            }
+        }
+        return backingMatches
+    }
+
+    @discardableResult
+    private func logGeometry(stage: String, generation: UInt64, force: Bool = false) -> RendererSurfaceGeometry? {
+        guard let displayLayer else { return nil }
         let scale = displayLayer.contentsScale > 0 ? displayLayer.contentsScale : (window?.screen.nativeScale ?? UIScreen.main.nativeScale)
         let expectedDrawable = CGSize(width: max(2, (bounds.width * scale).rounded()), height: max(2, (bounds.height * scale).rounded()))
         let windowSize = window?.bounds.size ?? .zero
@@ -69,22 +95,26 @@ final class MPVSurfaceUIView: UIView {
             lastGeometryLog = geometry
             DiagnosticsLogger.shared.log("MPVSurface", geometry)
         }
+        return RendererSurfaceGeometry(pointSize: bounds.size, expectedBackingSize: expectedDrawable, observedBackingSize: actualDrawable, scale: scale)
     }
 }
 
 struct MPVPlayerSurface: UIViewRepresentable {
     let displayLayer: CAMetalLayer
+    var onGeometrySettled: (RendererSurfaceGeometry) -> Void = { _ in }
 
     func makeUIView(context: Context) -> MPVSurfaceUIView {
         let view = MPVSurfaceUIView()
         view.backgroundColor = .black
         view.isOpaque = true
         view.clipsToBounds = true
+        view.onGeometrySettled = onGeometrySettled
         view.attach(displayLayer)
         return view
     }
 
     func updateUIView(_ uiView: MPVSurfaceUIView, context: Context) {
+        uiView.onGeometrySettled = onGeometrySettled
         uiView.attach(displayLayer)
         uiView.setNeedsLayout()
     }

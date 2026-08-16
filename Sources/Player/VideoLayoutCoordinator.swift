@@ -4,8 +4,8 @@ import Foundation
 /// Engine-agnostic video presentation contract.
 ///
 /// Player UI supplies only the viewport, source display aspect ratio and user-selected mode.
-/// The coordinator returns one deterministic layout plan; individual playback engines translate
-/// that plan into their own renderer controls without owning orientation or sizing policy.
+/// The coordinator returns one deterministic layout plan. Renderer submission, refresh and
+/// acknowledgement are owned by RendererLayoutCoordinator so engines do not own orientation policy.
 struct VideoLayoutPlan: Equatable {
     enum ContentMode: String {
         case aspectFit
@@ -61,11 +61,4 @@ struct VideoLayoutCoordinator {
         let origin = CGPoint(x: (viewport.width - size.width) / 2, y: (viewport.height - size.height) / 2)
         return VideoLayoutPlan(viewport: viewport, surfaceFrame: CGRect(origin: origin, size: size), contentMode: .stretch, sourceAspectRatio: sourceAspectRatio, aspectOverride: ratio)
     }
-}
-
-/// Optional renderer hook for engines that need explicit geometry commands (MPV today, future
-/// engines later). Engines that render through a UIKit layer can apply the same plan in their
-/// surface adapter instead.
-protocol VideoLayoutEngineAdapter: AnyObject {
-    func applyVideoLayout(_ plan: VideoLayoutPlan)
 }
