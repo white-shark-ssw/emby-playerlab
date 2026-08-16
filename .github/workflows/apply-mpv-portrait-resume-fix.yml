@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Normalize patched source
+      - name: Normalize patched source indentation
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -25,26 +25,22 @@ jobs:
 
           engine_path = Path('Sources/Player/MPVPlayerEngine.swift')
           text = engine_path.read_text()
-          bad_probe = '        queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in\n    guard let self, let handle = self.mpv, !self.isStopping else { return }\n    self.logVideoOutputGeometry(handle: handle, reason: "layout")\n}\n'
-          good_probe = '        queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in\n            guard let self, let handle = self.mpv, !self.isStopping else { return }\n            self.logVideoOutputGeometry(handle: handle, reason: "layout")\n        }\n'
-          text = text.replace(bad_probe, good_probe, 1)
-
           helper_start = text.find('    private func logVideoOutputGeometry(handle: OpaquePointer, reason: String) {')
           helper_end = text.find('\n\n    private func logVideoState', helper_start)
           if helper_start < 0 or helper_end < 0:
               raise SystemExit('::error::MPV viewport helper markers not found')
-          helper = '''    private func logVideoOutputGeometry(handle: OpaquePointer, reason: String) {
-              let osdWidth = getStringProperty(handle: handle, name: "osd-width") ?? "nil"
-              let osdHeight = getStringProperty(handle: handle, name: "osd-height") ?? "nil"
-              let dwidth = getStringProperty(handle: handle, name: "dwidth") ?? "nil"
-              let dheight = getStringProperty(handle: handle, name: "dheight") ?? "nil"
-              let panscan = getStringProperty(handle: handle, name: "panscan") ?? "nil"
-              let aspectOverride = getStringProperty(handle: handle, name: "video-aspect-override") ?? "nil"
-              DiagnosticsLogger.shared.log("MPVViewport", "reason=\\(reason) osd=\\(osdWidth)x\\(osdHeight) display=\\(dwidth)x\\(dheight) panscan=\\(panscan) aspectOverride=\\(aspectOverride)")
-          }'''
+          helper = '\n'.join([
+              '    private func logVideoOutputGeometry(handle: OpaquePointer, reason: String) {',
+              '        let osdWidth = getStringProperty(handle: handle, name: "osd-width") ?? "nil"',
+              '        let osdHeight = getStringProperty(handle: handle, name: "osd-height") ?? "nil"',
+              '        let dwidth = getStringProperty(handle: handle, name: "dwidth") ?? "nil"',
+              '        let dheight = getStringProperty(handle: handle, name: "dheight") ?? "nil"',
+              '        let panscan = getStringProperty(handle: handle, name: "panscan") ?? "nil"',
+              '        let aspectOverride = getStringProperty(handle: handle, name: "video-aspect-override") ?? "nil"',
+              '        DiagnosticsLogger.shared.log("MPVViewport", "reason=\\(reason) osd=\\(osdWidth)x\\(osdHeight) display=\\(dwidth)x\\(dheight) panscan=\\(panscan) aspectOverride=\\(aspectOverride)")',
+              '    }'
+          ])
           text = text[:helper_start] + helper + text[helper_end:]
-          if 'self.logVideoOutputGeometry(handle: handle, reason: "layout")' not in text:
-              raise SystemExit('::error::MPV viewport probe missing')
           engine_path.write_text(text)
 
           transport_path = Path('Sources/Transport/UnifiedMediaTransportSession.swift')
@@ -53,21 +49,23 @@ jobs:
           end = text.find('\n        if concretePlaybackDemand, reason == "blocked-read"', start)
           if start < 0 or end < 0:
               raise SystemExit('::error::resume bootstrap block markers not found')
-          block = '''        let resumeHeadGuard = awaitingInitialResumeDemand ? initialResumeHeadGuardBytes(resourceLength: resource.contentLength) : 0
-          let resumeBootstrapHead = awaitingInitialResumeDemand && concretePlaybackDemand && range.lowerBound < resumeHeadGuard
-          if resumeBootstrapHead {
-              let boundedUpper = min(resource.contentLength, min(range.upperBound, safeAdd(range.lowerBound, metadataUrgentBlockBytes)))
-              let bounded = range.lowerBound..<max(range.lowerBound + 1, boundedUpper)
-              DiagnosticsLogger.shared.playback(
-                  "Resume",
-                  "bootstrap head range=\\(range.lowerBound)-\\(range.upperBound) bounded=\\(bounded.lowerBound)-\\(bounded.upperBound) headGuard=\\(resumeHeadGuard) reason=\\(reason) action=urgent-only-keep-gate"
-              )
-              if !store.contains(bounded) { installUrgent(range: bounded, metadata: true, reason: "resume-bootstrap-head") }
-              scheduleSlots(reason: "resume-bootstrap-head")
-              return
-          }'''
+          block = '\n'.join([
+              '        let resumeHeadGuard = awaitingInitialResumeDemand ? initialResumeHeadGuardBytes(resourceLength: resource.contentLength) : 0',
+              '        let resumeBootstrapHead = awaitingInitialResumeDemand && concretePlaybackDemand && range.lowerBound < resumeHeadGuard',
+              '        if resumeBootstrapHead {',
+              '            let boundedUpper = min(resource.contentLength, min(range.upperBound, safeAdd(range.lowerBound, metadataUrgentBlockBytes)))',
+              '            let bounded = range.lowerBound..<max(range.lowerBound + 1, boundedUpper)',
+              '            DiagnosticsLogger.shared.playback(',
+              '                "Resume",',
+              '                "bootstrap head range=\\(range.lowerBound)-\\(range.upperBound) bounded=\\(bounded.lowerBound)-\\(bounded.upperBound) headGuard=\\(resumeHeadGuard) reason=\\(reason) action=urgent-only-keep-gate"',
+              '            )',
+              '            if !store.contains(bounded) { installUrgent(range: bounded, metadata: true, reason: "resume-bootstrap-head") }',
+              '            scheduleSlots(reason: "resume-bootstrap-head")',
+              '            return',
+              '        }'
+          ])
           text = text[:start] + block + text[end:]
-          if 'let resumeAuthority = range.lowerBound >= resumeHeadGuard' not in text:
+          if '            let resumeAuthority = range.lowerBound >= resumeHeadGuard' not in text:
               raise SystemExit('::error::resume authority fix missing')
           transport_path.write_text(text)
           PY
@@ -79,5 +77,5 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git add Sources/Player/MPVPlayerEngine.swift Sources/Transport/UnifiedMediaTransportSession.swift
           git diff --cached --check
-          git commit -m 'Normalize portrait and resume fixes'
+          git commit -m 'Normalize portrait and resume source formatting'
           git push origin HEAD:fix/mpv-portrait-layout-resume-bootstrap
