@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 struct PlayerFloatingPanelOverlay: View {
     let panel: PlayerControlPanel
@@ -31,6 +32,40 @@ struct PlayerFloatingPanelOverlay: View {
             .contentShape(Rectangle())
             .onTapGesture { }
             .transition(.scale(scale: 0.96).combined(with: .opacity))
+        }
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func playerFloatingPanelPresentation() -> some View {
+        if #available(iOS 16.4, *) {
+            self.presentationBackground(.clear)
+        } else {
+            self.background(PlayerClearPresentationBackground())
+        }
+    }
+}
+
+private struct PlayerClearPresentationBackground: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.backgroundColor = .clear
+        DispatchQueue.main.async { clearPresentationBackground(from: view) }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async { clearPresentationBackground(from: uiView) }
+    }
+
+    private func clearPresentationBackground(from view: UIView) {
+        var current = view.superview
+        var remaining = 4
+        while let container = current, remaining > 0 {
+            container.backgroundColor = .clear
+            current = container.superview
+            remaining -= 1
         }
     }
 }
