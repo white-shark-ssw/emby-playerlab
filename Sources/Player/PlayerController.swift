@@ -57,6 +57,8 @@ final class PlayerController: ObservableObject {
     private var lastVerifiedMPVPosition: Double?
     private var stallWatchdogSuppressedUntil = Date.distantPast
     private var hasPlaybackAdvanced = false
+    private var initialResumeConfirmationPending = false
+    private var initialResumePlaybackBaseline: Double?
 
     var ksAVIOView: UIView? {
         #if canImport(KSPlayer)
@@ -135,6 +137,8 @@ final class PlayerController: ObservableObject {
     private func startEngine(at startPosition: Double) {
         let position = max(0, startPosition)
         displayedPosition = position
+        initialResumeConfirmationPending = position > 0.5
+        initialResumePlaybackBaseline = nil
         suppressStallWatchdog(for: engineKind == .mpv ? 12 : 6)
         if engineKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "prepare begin item=\(source.itemId)") }
         engine.prepare(url: source.url, headers: source.headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: position)
@@ -172,6 +176,8 @@ final class PlayerController: ObservableObject {
         guard started else { return }
         started = false
         userWantsPlayback = false
+        initialResumeConfirmationPending = false
+        initialResumePlaybackBaseline = nil
         let shouldReportStop = playbackSessionStarted
         playbackSessionStarted = false
         DiagnosticsLogger.shared.log("Lifecycle", "player close requested engine=\(engineKind.title) position=\(snapshot.position)")
@@ -475,6 +481,7 @@ final class PlayerController: ObservableObject {
                 let wasEnd = self.snapshot.didReachEnd
                 self.snapshot = value
                 if value.position > 0.25 { self.hasPlaybackAdvanced = true }
+                self.confirmInitialResumePlaybackIfNeeded(value)
                 self.updateVerifiedBufferedRanges(from: value)
                 self.logBufferTimelineIfNeeded(value)
                 if self.engineTransitionAwaitingFirstSnapshot {
@@ -521,6 +528,24 @@ final class PlayerController: ObservableObject {
                 DiagnosticsLogger.shared.log("Seek", "engine=\(self.engineKind.title) target=\(result.target) actual=\(actualText) bufferHit=\(result.bufferHit) completionMs=\(result.completionLatencyMs) measurement=\(result.measurement)")
             }
         }
+    }
+
+    private func confirmInitialResumePlaybackIfNeeded(_ value: PlayerSnapshot) {
+        guard initialResumeConfirmationPending, userWantsPlayback, value.isPlaying, !value.isBuffering, value.position.isFinite else { return }
+        guard let baseline = initialResumePlaybackBaseline else {
+            initialResumePlaybackBaseline = value.position
+            DiagnosticsLogger.shared.playback("Resume", "playback confirmation baseline=\(String(format: "%.3f", value.position)) engine=\(engineKind.title)")
+            return
+        }
+        if value.position < baseline - 0.5 {
+            initialResumePlaybackBaseline = value.position
+            return
+        }
+        guard value.position - baseline >= 0.15 else { return }
+        initialResumeConfirmationPending = false
+        initialResumePlaybackBaseline = nil
+        DiagnosticsLogger.shared.playback("Resume", "playback advanced baseline=\(String(format: "%.3f", baseline)) current=\(String(format: "%.3f", value.position)) action=confirm-real-byte-head")
+        if let session = transportContext?.session { Task { await session.confirmInitialResumePlayback() } }
     }
 
     private func commitScrubbedPosition() {

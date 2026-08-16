@@ -13,13 +13,19 @@ final class AppOrientationCoordinator {
     private(set) var supportedMask: UIInterfaceOrientationMask = .portrait
     private var playerModeActive = false
     private var pendingPlayerOrientation: UIInterfaceOrientation?
+    private var backgroundPlayerOrientation: UIInterfaceOrientation?
+    private var lifecycleObservers: [NSObjectProtocol] = []
 
-    private init() {}
+    private init() {
+        lifecycleObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.capturePlayerOrientationForBackground() })
+        lifecycleObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.restorePlayerOrientationAfterForeground() })
+    }
 
     func beginPlayerPresentation(source: ResolvedPlaybackSource) {
         dispatchPrecondition(condition: .onQueue(.main))
         guard !playerModeActive else { return }
         playerModeActive = true
+        backgroundPlayerOrientation = nil
         let target = preferredPlayerOrientation(for: source)
         pendingPlayerOrientation = target
         supportedMask = [.portrait, .landscapeLeft, .landscapeRight]
@@ -31,9 +37,10 @@ final class AppOrientationCoordinator {
         dispatchPrecondition(condition: .onQueue(.main))
         guard playerModeActive else { return }
         pendingPlayerOrientation = nil
+        if let actual = activeWindowScene()?.interfaceOrientation, actual.isPortrait || actual.isLandscape { backgroundPlayerOrientation = actual }
         supportedMask = [.portrait, .landscapeLeft, .landscapeRight]
         invalidateSupportedOrientations()
-        DiagnosticsLogger.shared.playback("AppOrientation", "player orientation unlocked mask=\(supportedMask.rawValue)")
+        DiagnosticsLogger.shared.playback("AppOrientation", "player orientation unlocked mask=\(supportedMask.rawValue) remembered=\(backgroundPlayerOrientation?.rawValue ?? 0)")
     }
 
     func restoreMainInterfaceOrientation() {
@@ -41,6 +48,7 @@ final class AppOrientationCoordinator {
         guard playerModeActive || supportedMask != .portrait else { return }
         playerModeActive = false
         pendingPlayerOrientation = nil
+        backgroundPlayerOrientation = nil
         supportedMask = .portrait
         invalidateSupportedOrientations()
         request(.portrait, reason: "player-dismiss")
@@ -60,6 +68,21 @@ final class AppOrientationCoordinator {
             if ratio < 0.98 { return .portrait }
             return nil
         }
+    }
+
+    private func capturePlayerOrientationForBackground() {
+        guard playerModeActive, let actual = activeWindowScene()?.interfaceOrientation, actual.isPortrait || actual.isLandscape else { return }
+        backgroundPlayerOrientation = actual
+        DiagnosticsLogger.shared.playback("AppOrientation", "background capture target=\(actual.rawValue)")
+    }
+
+    private func restorePlayerOrientationAfterForeground() {
+        guard playerModeActive, let target = backgroundPlayerOrientation else { return }
+        supportedMask = [.portrait, .landscapeLeft, .landscapeRight]
+        invalidateSupportedOrientations()
+        let actual = activeWindowScene()?.interfaceOrientation
+        DiagnosticsLogger.shared.playback("AppOrientation", "foreground restore target=\(target.rawValue) actual=\(actual?.rawValue ?? 0)")
+        request(target, reason: "foreground-restore")
     }
 
     private func request(_ target: UIInterfaceOrientation, reason: String) {

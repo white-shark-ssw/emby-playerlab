@@ -152,7 +152,7 @@ final class MPVPlayerEngine: PlayerEngine {
     }
 
     func setPlaybackRate(_ rate: Double) {
-        let clamped = min(4, max(0.25, rate))
+        let clamped = min(8, max(0.15, rate))
         setPropertyAsync(name: "speed", value: String(format: "%.3f", clamped))
     }
 

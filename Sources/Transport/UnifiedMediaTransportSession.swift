@@ -122,6 +122,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var playbackStarving = false
     private var awaitingInitialResumeDemand = false
     private var initialResumeAnchorByte: Int64?
+    private var initialResumeCandidateByte: Int64?
     private var initialResumeHistoryGuardUntil = Date.distantPast
     private var demandCoordinator = PlaybackDemandCoordinator()
     private var pendingUserSeekUntil = Date.distantPast
@@ -179,12 +180,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         scheduleSlots(reason: advancing ? "playback-resumed" : "playback-paused-fill")
     }
 
-
     func prepareInitialPlayback(position: Double, duration: Double) {
         guard !stopped, position > 0.5 else { return }
         awaitingInitialResumeDemand = true
         initialResumeAnchorByte = nil
+        initialResumeCandidateByte = nil
         initialResumeHistoryGuardUntil = .distantPast
+        lastBlockingPlaybackDemand = nil
+        lastBlockingPlaybackDemandAt = .distantPast
         demandCoordinator.reset()
         playbackDemandSamples.removeAll()
         resetSequentialWave()
@@ -193,6 +196,32 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             "Resume",
             "transport gate armed position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) byteGuess=disabled headGuard=adaptive"
         )
+    }
+
+    func confirmInitialResumePlayback() async {
+        guard !stopped, awaitingInitialResumeDemand, let resource else { return }
+        guard let candidate = initialResumeCandidateByte else {
+            DiagnosticsLogger.shared.playback("Resume", "playback advanced but real-byte candidate unavailable action=keep-gate")
+            return
+        }
+        let anchor = min(max(0, candidate), max(0, resource.contentLength - 1))
+        let previous = playbackAnchor
+        awaitingInitialResumeDemand = false
+        playbackAnchor = anchor
+        initialResumeAnchorByte = anchor
+        initialResumeCandidateByte = nil
+        initialResumeHistoryGuardUntil = Date().addingTimeInterval(initialResumeHistoryGuardSeconds)
+        demandCoordinator.reset()
+        playbackDemandSamples.removeAll()
+        recordPlaybackDemand(offset: anchor)
+        resetCacheWindowCenter(to: anchor, resource: resource, reason: "resume-playback-confirmed")
+        for slot in [0, 1] {
+            guard let active = slotClaims[slot], !active.range.contains(anchor) else { continue }
+            if active.role == .urgentPlayback { cancelSlot(slot, reason: "resume-confirm-replace-urgent") }
+            if active.role == .sequential { cancelSlot(slot, reason: "resume-confirm-reanchor-sequential") }
+        }
+        DiagnosticsLogger.shared.playback("Resume", "playback-confirmed anchor previous=\(previous) new=\(anchor) byteGuess=disabled action=release-bulk-gate")
+        scheduleSlots(reason: "resume-playback-confirmed")
     }
 
     func resolve() async throws -> TransportResolvedResource {
@@ -376,6 +405,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let metadata = startupTailMetadata || (!concreteReason && isMetadataProbe(range, resource: resource))
         let pendingUserSeek = Date() <= pendingUserSeekUntil
         let concretePlaybackDemand = concreteReason && !metadata
+        if awaitingInitialResumeDemand, concretePlaybackDemand, reason == "concrete-read" || reason == "blocked-read" { initialResumeCandidateByte = range.lowerBound }
         let cachedReadDistance = range.lowerBound >= playbackAnchor ? range.lowerBound - playbackAnchor : playbackAnchor - range.lowerBound
         let cachedSeekRead = pendingUserSeek && reason == "concrete-read" && store.availableLength(from: range.lowerBound, maximumLength: min(Int64(range.count), urgentBlockBytes)) > 0 && cachedReadDistance >= max(8 * 1_048_576, blockBytes / 2)
         let authoritativeSeekDemand = reason == "blocked-read" || reason == "byte-offset" || cachedSeekRead
@@ -417,6 +447,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 let previous = playbackAnchor
                 playbackAnchor = range.lowerBound
                 initialResumeAnchorByte = range.lowerBound
+                initialResumeCandidateByte = nil
                 initialResumeHistoryGuardUntil = Date().addingTimeInterval(initialResumeHistoryGuardSeconds)
                 demandCoordinator.reset()
                 playbackDemandSamples.removeAll()
@@ -472,6 +503,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             let previous = playbackAnchor
             playbackAnchor = range.lowerBound
             initialResumeAnchorByte = nil
+            initialResumeCandidateByte = nil
             initialResumeHistoryGuardUntil = .distantPast
             demandCoordinator.reset()
             playbackDemandSamples.removeAll()
