@@ -299,7 +299,7 @@ struct PlayerScreen: View {
             )
         }
         .padding(.horizontal, 18)
-        .padding(.bottom, 10)
+        .padding(.bottom, 4)
         .background(LinearGradient(colors: [Color.black.opacity(0), Color.black.opacity(0.82)], startPoint: .top, endPoint: .bottom))
     }
 
@@ -693,7 +693,7 @@ struct PlayerScreen: View {
     }
 
     private func applyBasePlaybackRate(_ rate: Double) {
-        let clamped = min(4, max(0.25, rate))
+        let clamped = min(8, max(0.15, rate))
         sessionOverrides.basePlaybackRate = clamped
         if sessionOverrides.temporaryPlaybackRate == nil, controller.playbackControlIsPlaying { controller.setPlaybackRate(clamped) }
         DiagnosticsLogger.shared.playback("PlayerUI", "base playback rate=\(String(format: "%.2f", clamped))")
