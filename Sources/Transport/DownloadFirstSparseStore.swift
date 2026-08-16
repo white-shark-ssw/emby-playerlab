@@ -170,6 +170,48 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
         return rangeSet.ranges
     }
 
+    @discardableResult
+    func evictCachedBytes(before upperBound: Int64, targetBytes: Int64, protectedPrefixBytes: Int64 = 8 * 1_048_576) -> [Range<Int64>] {
+        let safeUpper = min(contentLength, max(protectedPrefixBytes, upperBound))
+        let target = max(0, targetBytes)
+
+        condition.lock()
+        defer { condition.unlock() }
+        guard !closed, fileDescriptor >= 0, rangeSet.totalBytes > target, safeUpper > protectedPrefixBytes else { return [] }
+
+        var remainingToFree = rangeSet.totalBytes - target
+        var evicted: [Range<Int64>] = []
+        let page = Int64(max(4096, getpagesize()))
+
+        for cached in rangeSet.ranges where remainingToFree > 0 {
+            let candidateLower = max(cached.lowerBound, protectedPrefixBytes)
+            let candidateUpper = min(cached.upperBound, safeUpper)
+            guard candidateUpper > candidateLower else { continue }
+
+            let alignedLower = ((candidateLower + page - 1) / page) * page
+            let maximumUpper = min(candidateUpper, alignedLower + remainingToFree)
+            let alignedUpper = (maximumUpper / page) * page
+            guard alignedUpper > alignedLower else { continue }
+
+            var hole = fpunchhole_t(fp_flags: 0, reserved: 0, fp_offset: off_t(alignedLower), fp_length: off_t(alignedUpper - alignedLower))
+            guard fcntl(fileDescriptor, F_PUNCHHOLE, &hole) == 0 else {
+                DiagnosticsLogger.shared.playback("RollingCache", "punch-hole failed range=\(alignedLower)-\(alignedUpper) errno=\(errno)")
+                continue
+            }
+
+            let removal = alignedLower..<alignedUpper
+            rangeSet.remove(removal)
+            evicted.append(removal)
+            remainingToFree = max(0, remainingToFree - Int64(removal.count))
+        }
+
+        if !evicted.isEmpty {
+            persistRangesIfNeededLocked(force: true)
+            condition.broadcast()
+        }
+        return evicted
+    }
+
     func close(removeFiles: Bool) {
         condition.lock()
         guard !closed else {
