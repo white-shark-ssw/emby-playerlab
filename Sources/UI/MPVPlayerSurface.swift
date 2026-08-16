@@ -54,28 +54,28 @@ final class MPVSurfaceUIView: UIView {
         displayLayer.setNeedsDisplay()
         CATransaction.commit()
 
-        logGeometry(stage: "layout", generation: generation)
+        if let geometry = logGeometry(stage: "layout", generation: generation), reportGeometryIfReady(geometry) { return }
         scheduleGeometryProbe(generation: generation, attempt: 0)
     }
 
     private func scheduleGeometryProbe(generation: UInt64, attempt: Int) {
-        let delay = attempt == 0 ? 0.12 : 0.03
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
             guard let self, self.layoutGeneration == generation, self.window != nil else { return }
-            let stage = attempt == 0 ? "settled" : "probe\(attempt)"
-            let geometry = self.logGeometry(stage: stage, generation: generation, force: true)
+            let geometry = self.logGeometry(stage: attempt == 0 ? "settled" : "probe\(attempt)", generation: generation, force: true)
             guard let geometry else { return }
-
-            let backingReady = !geometry.hasObservedBacking || RendererSurfaceGeometry.matches(geometry.observedBackingSize, geometry.expectedBackingSize, tolerance: 3)
-            if backingReady {
-                if geometry != self.lastReportedGeometry {
-                    self.lastReportedGeometry = geometry
-                    self.onGeometrySettled?(geometry)
-                }
-                return
-            }
+            if self.reportGeometryIfReady(geometry) { return }
             if attempt < 8 { self.scheduleGeometryProbe(generation: generation, attempt: attempt + 1) }
         }
+    }
+
+    private func reportGeometryIfReady(_ geometry: RendererSurfaceGeometry) -> Bool {
+        let backingReady = !geometry.hasObservedBacking || RendererSurfaceGeometry.matches(geometry.observedBackingSize, geometry.expectedBackingSize, tolerance: 3)
+        guard backingReady else { return false }
+        if geometry != lastReportedGeometry {
+            lastReportedGeometry = geometry
+            onGeometrySettled?(geometry)
+        }
+        return true
     }
 
     @discardableResult
