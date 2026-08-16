@@ -78,83 +78,46 @@ struct PlayerControlPanelSheet: View {
         self.onTrackSelected = onTrackSelected
     }
 
+    @ViewBuilder
     var body: some View {
+        switch panel {
+        case .info, .speed:
+            PlayerFloatingPanelOverlay(
+                panel: panel,
+                source: source,
+                currentRate: currentRate,
+                onRateSelected: onRateSelected,
+                onDismiss: dismiss
+            )
+            .playerFloatingPanelPresentation()
+        case .tracks, .episodes:
+            legacyPanel
+        }
+    }
+
+    private var legacyPanel: some View {
         NavigationView {
             Group {
                 switch panel {
-                case .info:
-                    PlayerPlaybackInfoView(source: source)
                 case .tracks:
                     PlayerTrackSelectionView(source: source, trackProvider: trackProvider, onSelect: onTrackSelected)
                 case .episodes:
                     PlayerUnavailablePanelView(message: "当前播放入口还没有携带剧集列表，选集会在下一阶段接入 Emby 剧集上下文。")
-                case .speed:
-                    PlayerSpeedPickerView(currentRate: currentRate, onSelect: onRateSelected)
+                case .info, .speed:
+                    EmptyView()
                 }
             }
             .navigationTitle(panel.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("完成") { presentationMode.wrappedValue.dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("完成", action: dismiss) }
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
-}
 
-private struct PlayerPlaybackInfoView: View {
-    let source: ResolvedPlaybackSource
-
-    var body: some View {
-        Form {
-            Section(header: Text("媒体")) {
-                infoRow("容器", source.mediaSource.container?.uppercased())
-                infoRow("时长", source.mediaSource.durationSeconds.map(formatTime))
-                if let size = source.mediaSource.size { infoRow("文件大小", ByteCountFormatter.string(fromByteCount: size, countStyle: .file)) }
-            }
-
-            if let video = videoStream {
-                Section(header: Text("视频")) {
-                    infoRow("编码", video.codec?.uppercased())
-                    if let width = video.width, let height = video.height { infoRow("分辨率", "\(width) × \(height)") }
-                    infoRow("显示比例", video.displayAspectRatio.map { String(format: "%.3f:1", $0) })
-                    if let rotation = video.rotation, rotation % 360 != 0 { infoRow("旋转", "\(rotation)°") }
-                    if let frameRate = video.averageFrameRate ?? video.realFrameRate { infoRow("帧率", String(format: "%.3g fps", frameRate)) }
-                    if let bitRate = video.bitRate { infoRow("码率", bitrateTitle(bitRate)) }
-                    infoRow("动态范围", video.videoRangeType ?? video.videoRange)
-                    if let bitDepth = video.bitDepth { infoRow("位深", "\(bitDepth) bit") }
-                    infoRow("像素格式", video.pixelFormat)
-                }
-            }
-
-            if let audio = audioStream {
-                Section(header: Text("音频")) {
-                    infoRow("编码", audio.codec?.uppercased())
-                    infoRow("声道", audio.channelLayout ?? audio.channels.map(String.init))
-                    if let sampleRate = audio.sampleRate { infoRow("采样率", "\(sampleRate) Hz") }
-                    if let bitRate = audio.bitRate { infoRow("码率", bitrateTitle(bitRate)) }
-                    infoRow("语言", audio.language)
-                }
-            }
-        }
-    }
-
-    private var videoStream: MediaStream? { source.mediaSource.mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Video") == .orderedSame }) }
-    private var audioStream: MediaStream? { source.mediaSource.mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Audio") == .orderedSame }) }
-
-    @ViewBuilder
-    private func infoRow(_ title: String, _ value: String?) -> some View {
-        if let value, !value.isEmpty {
-            HStack {
-                Text(title)
-                Spacer()
-                Text(value).foregroundColor(.secondary).multilineTextAlignment(.trailing)
-            }
-        }
-    }
-
-    private func bitrateTitle(_ value: Int) -> String {
-        value >= 1_000_000 ? String(format: "%.2f Mbps", Double(value) / 1_000_000) : String(format: "%.0f Kbps", Double(value) / 1_000)
+    private func dismiss() {
+        presentationMode.wrappedValue.dismiss()
     }
 }
 
@@ -245,26 +208,6 @@ private struct PlayerTrackSelectionView: View {
         [stream.codec?.uppercased(), stream.language, stream.isDefault == true ? "默认" : nil, stream.isForced == true ? "强制" : nil, stream.isExternal == true ? "外挂" : nil]
             .compactMap { $0 }
             .joined(separator: " · ")
-    }
-}
-
-private struct PlayerSpeedPickerView: View {
-    let currentRate: Double
-    let onSelect: (Double) -> Void
-    private let rates = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
-
-    var body: some View {
-        List(rates, id: \.self) { rate in
-            Button {
-                onSelect(rate)
-            } label: {
-                HStack {
-                    Text(String(format: "%.2gx", rate))
-                    Spacer()
-                    if abs(currentRate - rate) < 0.001 { Image(systemName: "checkmark") }
-                }
-            }
-        }
     }
 }
 
