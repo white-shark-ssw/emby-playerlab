@@ -18,7 +18,7 @@ struct CacheSettingsView: View {
                 if let statusMessage { Text(statusMessage).font(.footnote).foregroundColor(.secondary) }
             }
 
-            Section(header: Text("视频缓存"), footer: Text("中途切换 Wi‑Fi / 蜂窝网络后，需要重新播放视频才能完整按新的缓存容量生效。")) {
+            Section(header: Text("视频缓存"), footer: Text("缓存大小表示当前播放位置单方向的缓存窗口：播放器最多向前缓存该容量，并保留相近容量的已播放数据，正常总占用最高约为设置值的 2 倍。中途切换 Wi‑Fi / 蜂窝网络后，需要重新播放视频才能完整按新容量生效。")) {
                 capacityMenu(title: "Wi-Fi 视频缓存", systemImage: "wifi", value: $wifiCacheMB, defaultValue: VideoCacheCapacity.defaultWiFiMB)
                 capacityMenu(title: "蜂窝网络视频缓存", systemImage: "antenna.radiowaves.left.and.right", value: $cellularCacheMB, defaultValue: VideoCacheCapacity.defaultCellularMB)
             }

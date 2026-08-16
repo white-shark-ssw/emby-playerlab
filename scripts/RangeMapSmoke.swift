@@ -43,7 +43,12 @@ struct RangeMapSmoke {
 
         let next = require(map.nextClaim(from: 0, resourceLength: resource, segmentBytes: segment, workerLimit: 2, lookaheadSegments: 4), "missing next sequential claim")
         precondition(next == (96 * mib)..<(128 * mib), "next claim must continue the contiguous pipeline")
-        print("RangeMap smoke OK: bounded lookahead, earliest-hole repair, metadata isolation")
+
+        precondition(map.playbackBytes(in: (32 * mib)..<(80 * mib)) == 48 * mib, "window byte accounting mismatch")
+        map.removePlayback((32 * mib)..<(64 * mib))
+        precondition(map.playbackBytes(in: 0..<(96 * mib)) == 64 * mib, "rolling eviction accounting mismatch")
+        precondition(map.contiguousFrontier(from: 0) == 32 * mib, "rolling eviction must reopen the evicted sparse hole")
+        print("RangeMap smoke OK: bounded lookahead, earliest-hole repair, metadata isolation, rolling-window accounting")
     }
 
     private static func require<T>(_ value: T?, _ message: String) -> T {

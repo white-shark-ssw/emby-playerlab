@@ -17,9 +17,12 @@ struct PlaybackRangeMap: Equatable {
     private(set) var downloading: [String: Range<Int64>] = [:]
 
     mutating func insertPlayback(_ range: Range<Int64>) { playback.insert(range) }
+    mutating func removePlayback(_ range: Range<Int64>) { playback.remove(range) }
     mutating func insertMetadata(_ range: Range<Int64>) { metadata.insert(range) }
     mutating func setDownloading(_ range: Range<Int64>?, lane: String) { downloading[lane] = range }
     mutating func clearDownloading(lane: String) { downloading.removeValue(forKey: lane) }
+
+    func playbackBytes(in range: Range<Int64>) -> Int64 { playback.cachedBytes(in: range) }
 
     func contiguousFrontier(from anchor: Int64) -> Int64 {
         guard let range = playback.ranges.first(where: { $0.lowerBound <= anchor && $0.upperBound > anchor }) else { return anchor }
@@ -80,7 +83,6 @@ struct PlaybackRangeMap: Equatable {
         let value = playback.ranges.map(\.upperBound).max() ?? 0
         return resourceLength > 0 ? min(value, resourceLength) : value
     }
-
 
     private func physicalHoleCount(from anchor: Int64, through upperBound: Int64) -> Int {
         guard upperBound > anchor else { return 0 }

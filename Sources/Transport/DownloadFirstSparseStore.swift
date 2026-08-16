@@ -170,6 +170,149 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
         return rangeSet.ranges
     }
 
+    @discardableResult
+    func evictCachedBytes(before upperBound: Int64, targetBytes: Int64, protectedPrefixBytes: Int64 = 8 * 1_048_576) -> [Range<Int64>] {
+        let safeUpper = min(contentLength, max(protectedPrefixBytes, upperBound))
+        let target = max(0, targetBytes)
+
+        condition.lock()
+        defer { condition.unlock() }
+        guard !closed, fileDescriptor >= 0, rangeSet.totalBytes > target, safeUpper > protectedPrefixBytes else { return [] }
+
+        var remainingToFree = rangeSet.totalBytes - target
+        var evicted: [Range<Int64>] = []
+        let page = Int64(max(4096, getpagesize()))
+
+        for cached in rangeSet.ranges where remainingToFree > 0 {
+            let candidateLower = max(cached.lowerBound, protectedPrefixBytes)
+            let candidateUpper = min(cached.upperBound, safeUpper)
+            guard candidateUpper > candidateLower else { continue }
+
+            let alignedLower = ((candidateLower + page - 1) / page) * page
+            let maximumUpper = min(candidateUpper, alignedLower + remainingToFree)
+            let alignedUpper = (maximumUpper / page) * page
+            guard alignedUpper > alignedLower else { continue }
+
+            var hole = fpunchhole_t(fp_flags: 0, reserved: 0, fp_offset: off_t(alignedLower), fp_length: off_t(alignedUpper - alignedLower))
+            guard fcntl(fileDescriptor, F_PUNCHHOLE, &hole) == 0 else {
+                DiagnosticsLogger.shared.playback("RollingCache", "punch-hole failed range=\(alignedLower)-\(alignedUpper) errno=\(errno)")
+                continue
+            }
+
+            let removal = alignedLower..<alignedUpper
+            rangeSet.remove(removal)
+            evicted.append(removal)
+            remainingToFree = max(0, remainingToFree - Int64(removal.count))
+        }
+
+        if !evicted.isEmpty {
+            persistRangesIfNeededLocked(force: true)
+            condition.broadcast()
+        }
+        return evicted
+    }
+
+    @discardableResult
+    func evictCachedBytes(
+        outside retainedWindow: Range<Int64>,
+        targetBytes: Int64,
+        protectedPrefixBytes: Int64 = 8 * 1_048_576,
+        protectedRanges: [Range<Int64>] = []
+    ) -> [Range<Int64>] {
+        let retainedLower = min(contentLength, max(0, retainedWindow.lowerBound))
+        let retainedUpper = min(contentLength, max(retainedLower, retainedWindow.upperBound))
+        let target = max(0, targetBytes)
+
+        condition.lock()
+        defer { condition.unlock() }
+        guard !closed, fileDescriptor >= 0, rangeSet.totalBytes > target else { return [] }
+
+        let prefixUpper = min(contentLength, max(0, protectedPrefixBytes))
+        var protections = protectedRanges.filter { !$0.isEmpty }
+        if prefixUpper > 0 { protections.append(0..<prefixUpper) }
+
+        var candidates: [(range: Range<Int64>, fromEnd: Bool)] = []
+        let cachedSnapshot = rangeSet.ranges
+
+        if retainedLower > prefixUpper {
+            for cached in cachedSnapshot {
+                let lower = max(prefixUpper, cached.lowerBound)
+                let upper = min(retainedLower, cached.upperBound)
+                if upper > lower { candidates.append((lower..<upper, false)) }
+            }
+        }
+
+        if retainedUpper < contentLength {
+            for cached in cachedSnapshot.reversed() {
+                let lower = max(retainedUpper, cached.lowerBound)
+                let upper = min(contentLength, cached.upperBound)
+                if upper > lower { candidates.append((lower..<upper, true)) }
+            }
+        }
+
+        var remainingToFree = rangeSet.totalBytes - target
+        var evicted: [Range<Int64>] = []
+        let page = Int64(max(4096, getpagesize()))
+
+        for candidate in candidates where remainingToFree > 0 {
+            for piece in evictablePieces(candidate.range, excluding: protections) where remainingToFree > 0 {
+                let removal: Range<Int64>?
+                if candidate.fromEnd {
+                    let alignedUpper = (piece.upperBound / page) * page
+                    let minimumLower = max(piece.lowerBound, alignedUpper - remainingToFree)
+                    let alignedLower = ((minimumLower + page - 1) / page) * page
+                    removal = alignedUpper > alignedLower ? alignedLower..<alignedUpper : nil
+                } else {
+                    let alignedLower = ((piece.lowerBound + page - 1) / page) * page
+                    let maximumUpper = min(piece.upperBound, alignedLower + remainingToFree)
+                    let alignedUpper = (maximumUpper / page) * page
+                    removal = alignedUpper > alignedLower ? alignedLower..<alignedUpper : nil
+                }
+                guard let removal else { continue }
+
+                var hole = fpunchhole_t(fp_flags: 0, reserved: 0, fp_offset: off_t(removal.lowerBound), fp_length: off_t(removal.count))
+                guard fcntl(fileDescriptor, F_PUNCHHOLE, &hole) == 0 else {
+                    DiagnosticsLogger.shared.playback("RollingCache", "punch-hole failed range=\(removal.lowerBound)-\(removal.upperBound) errno=\(errno)")
+                    continue
+                }
+
+                rangeSet.remove(removal)
+                evicted.append(removal)
+                remainingToFree = max(0, remainingToFree - Int64(removal.count))
+            }
+        }
+
+        if !evicted.isEmpty {
+            persistRangesIfNeededLocked(force: true)
+            condition.broadcast()
+        }
+        return evicted
+    }
+
+    private func evictablePieces(_ candidate: Range<Int64>, excluding protectedRanges: [Range<Int64>]) -> [Range<Int64>] {
+        var pieces = [candidate]
+        for protected in protectedRanges where !protected.isEmpty {
+            var next: [Range<Int64>] = []
+            for piece in pieces {
+                guard piece.overlaps(protected) else {
+                    next.append(piece)
+                    continue
+                }
+                if piece.lowerBound < protected.lowerBound {
+                    let left = piece.lowerBound..<min(piece.upperBound, protected.lowerBound)
+                    if !left.isEmpty { next.append(left) }
+                }
+                if piece.upperBound > protected.upperBound {
+                    let right = max(piece.lowerBound, protected.upperBound)..<piece.upperBound
+                    if !right.isEmpty { next.append(right) }
+                }
+            }
+            pieces = next
+            if pieces.isEmpty { break }
+        }
+        return pieces
+    }
+
     func close(removeFiles: Bool) {
         condition.lock()
         guard !closed else {
@@ -193,6 +336,7 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
         var fd: Int32 = -1
 
         condition.lock()
+        defer { condition.unlock() }
         while !closed {
             readableLength = rangeSet.contiguousLength(from: offset, maximumLength: Int64(maximumLength))
             if readableLength > 0 {
@@ -201,12 +345,12 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
             }
             if !condition.wait(until: deadline) { break }
         }
-        let isClosed = closed
-        condition.unlock()
 
-        if isClosed || fd < 0 { throw StoreError.closed }
+        if closed || fd < 0 { throw StoreError.closed }
         guard readableLength > 0 else { throw StoreError.timeout(offset: offset) }
 
+        // Keep the condition locked through the physical pread. Rolling eviction uses the same lock,
+        // so bytes cannot be punched out after the range was declared readable but before it is read.
         var data = Data(count: Int(readableLength))
         let readCount = try data.withUnsafeMutableBytes { rawBuffer -> Int in
             guard let base = rawBuffer.baseAddress else { return 0 }

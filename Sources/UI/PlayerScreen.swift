@@ -105,7 +105,6 @@ struct PlayerScreen: View {
             originalScreenBrightness = UIScreen.main.brightness
             applyIndependentBrightnessIfNeeded()
             AppOrientationCoordinator.shared.beginPlayerPresentation(source: controller.source)
-            startPlaybackIfNeeded()
         }
         .onDisappear {
             controlsHideWorkItem?.cancel()
@@ -164,6 +163,11 @@ struct PlayerScreen: View {
             .frame(width: surfaceSize.width, height: surfaceSize.height)
             .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
             .clipped()
+            .background(
+                PlayerSurfaceMountProbe(onMounted: handlePlayerSurfaceMounted)
+                    .frame(width: 1, height: 1)
+                    .allowsHitTesting(false)
+            )
         }
     }
 
@@ -429,6 +433,12 @@ struct PlayerScreen: View {
         prepareInitialOrientation()
     }
 
+    private func handlePlayerSurfaceMounted() {
+        guard orientationReady, !isClosing, !playbackStarted else { return }
+        DiagnosticsLogger.shared.playback("PlayerUI", "final-orientation player surface mounted; engine activation may begin")
+        startPlaybackIfNeeded()
+    }
+
     private func prepareInitialOrientation() {
         guard let target = resolvedInitialOrientation() else {
             DiagnosticsLogger.shared.playback("PlayerUI", "initial orientation kept because media display aspect is unavailable")
@@ -481,10 +491,10 @@ struct PlayerScreen: View {
     }
 
     private func startPlaybackIfNeeded() {
-        guard !playbackStarted, !isClosing else { return }
+        guard !playbackStarted, !isClosing, orientationReady else { return }
         playbackStarted = true
         let preset = BufferPreset(rawValue: bufferPresetRaw) ?? .balanced
-        DiagnosticsLogger.shared.playback("PlayerUI", "startup playback preparation begin while presentation/orientation is covered")
+        DiagnosticsLogger.shared.playback("PlayerUI", "startup engine activation after mounted final-orientation surface")
         controller.start(preferredForwardBuffer: preset.seconds)
         controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
         controller.applyVideoScaleMode(currentScaleMode)

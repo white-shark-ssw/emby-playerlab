@@ -38,9 +38,40 @@ struct SparseByteRangeSet: Equatable {
         ranges = output
     }
 
+    mutating func remove(_ removal: Range<Int64>) {
+        guard !removal.isEmpty else { return }
+        var output: [Range<Int64>] = []
+        output.reserveCapacity(ranges.count + 1)
+
+        for range in ranges {
+            guard range.overlaps(removal) else {
+                output.append(range)
+                continue
+            }
+            if range.lowerBound < removal.lowerBound {
+                let left = range.lowerBound..<min(range.upperBound, removal.lowerBound)
+                if !left.isEmpty { output.append(left) }
+            }
+            if range.upperBound > removal.upperBound {
+                let right = max(range.lowerBound, removal.upperBound)..<range.upperBound
+                if !right.isEmpty { output.append(right) }
+            }
+        }
+        ranges = output
+    }
+
     func contains(_ range: Range<Int64>) -> Bool {
         guard !range.isEmpty else { return true }
         return ranges.contains { $0.lowerBound <= range.lowerBound && $0.upperBound >= range.upperBound }
+    }
+
+    func cachedBytes(in query: Range<Int64>) -> Int64 {
+        guard !query.isEmpty else { return 0 }
+        return ranges.reduce(Int64(0)) { total, range in
+            let lower = max(query.lowerBound, range.lowerBound)
+            let upper = min(query.upperBound, range.upperBound)
+            return upper > lower ? total + (upper - lower) : total
+        }
     }
 
     func contiguousLength(from offset: Int64, maximumLength: Int64) -> Int64 {
