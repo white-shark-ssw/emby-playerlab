@@ -54,7 +54,10 @@ final class MPVSurfaceUIView: UIView {
         displayLayer.setNeedsDisplay()
         CATransaction.commit()
 
-        if let geometry = logGeometry(stage: "layout", generation: generation), reportGeometryIfReady(geometry) { return }
+        if let geometry = logGeometry(stage: "layout", generation: generation) {
+            let settled = reportGeometryIfReady(geometry)
+            if settled { return }
+        }
         scheduleGeometryProbe(generation: generation, attempt: 0)
     }
 
@@ -69,13 +72,14 @@ final class MPVSurfaceUIView: UIView {
     }
 
     private func reportGeometryIfReady(_ geometry: RendererSurfaceGeometry) -> Bool {
-        let backingReady = !geometry.hasObservedBacking || RendererSurfaceGeometry.matches(geometry.observedBackingSize, geometry.expectedBackingSize, tolerance: 3)
-        guard backingReady else { return false }
-        if geometry != lastReportedGeometry {
-            lastReportedGeometry = geometry
-            onGeometrySettled?(geometry)
+        let backingMatches = geometry.hasObservedBacking && RendererSurfaceGeometry.matches(geometry.observedBackingSize, geometry.expectedBackingSize, tolerance: 3)
+        if !geometry.hasObservedBacking || backingMatches {
+            if geometry != lastReportedGeometry {
+                lastReportedGeometry = geometry
+                onGeometrySettled?(geometry)
+            }
         }
-        return true
+        return backingMatches
     }
 
     @discardableResult
