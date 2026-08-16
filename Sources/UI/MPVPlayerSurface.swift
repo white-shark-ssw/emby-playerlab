@@ -5,6 +5,7 @@ import UIKit
 
 final class MPVSurfaceUIView: UIView {
     private var displayLayer: CAMetalLayer?
+    private let presentationCoverView = UIView()
     private var lastGeometryLog = ""
     private var lastReportedGeometry: RendererSurfaceGeometry?
     private var layoutGeneration: UInt64 = 0
@@ -13,11 +14,13 @@ final class MPVSurfaceUIView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        configurePresentationCover()
         presentationGateObserver = NotificationCenter.default.addObserver(forName: .onePlayerSurfacePresentationGateChanged, object: nil, queue: .main) { [weak self] _ in self?.presentationGateDidChange() }
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        configurePresentationCover()
         presentationGateObserver = NotificationCenter.default.addObserver(forName: .onePlayerSurfacePresentationGateChanged, object: nil, queue: .main) { [weak self] _ in self?.presentationGateDidChange() }
     }
 
@@ -26,8 +29,9 @@ final class MPVSurfaceUIView: UIView {
             displayLayer?.removeFromSuperlayer()
             displayLayer = layer
             layer.masksToBounds = true
-            layer.isHidden = PlayerSurfacePresentationGate.shared.isHolding
-            self.layer.addSublayer(layer)
+            layer.isHidden = false
+            self.layer.insertSublayer(layer, at: 0)
+            bringSubviewToFront(presentationCoverView)
             lastReportedGeometry = nil
             DiagnosticsLogger.shared.log("MPVSurface", "attach surface=\(ObjectIdentifier(self)) layer=CAMetalLayer host=UIViewRepresentable lifecycle=persistent drawableOwner=moltenvk")
         }
@@ -55,6 +59,8 @@ final class MPVSurfaceUIView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        presentationCoverView.frame = bounds
+        bringSubviewToFront(presentationCoverView)
         guard let displayLayer else { return }
         layoutGeneration &+= 1
         let generation = layoutGeneration
@@ -66,7 +72,7 @@ final class MPVSurfaceUIView: UIView {
         displayLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         displayLayer.frame = bounds
         displayLayer.contentsScale = scale
-        displayLayer.isHidden = PlayerSurfacePresentationGate.shared.isHolding
+        displayLayer.isHidden = false
         displayLayer.setNeedsDisplay()
         CATransaction.commit()
 
@@ -77,10 +83,16 @@ final class MPVSurfaceUIView: UIView {
         scheduleGeometryProbe(generation: generation, attempt: 0)
     }
 
+    private func configurePresentationCover() {
+        presentationCoverView.backgroundColor = .black
+        presentationCoverView.isUserInteractionEnabled = false
+        presentationCoverView.isHidden = !PlayerSurfacePresentationGate.shared.isHolding
+        addSubview(presentationCoverView)
+    }
+
     private func presentationGateDidChange() {
         guard Thread.isMainThread else { DispatchQueue.main.async { [weak self] in self?.presentationGateDidChange() }; return }
-        let hidden = PlayerSurfacePresentationGate.shared.isHolding
-        if displayLayer?.isHidden != hidden { displayLayer?.isHidden = hidden }
+        presentationCoverView.isHidden = !PlayerSurfacePresentationGate.shared.isHolding
         setNeedsLayout()
         if window != nil { layoutIfNeeded() }
     }
@@ -112,7 +124,7 @@ final class MPVSurfaceUIView: UIView {
         let windowSize = window?.bounds.size ?? .zero
         let orientation = window?.windowScene?.interfaceOrientation.rawValue ?? 0
         let actualDrawable = displayLayer.drawableSize
-        let geometry = "surface=\(ObjectIdentifier(self)) stage=\(stage) generation=\(generation) view=\(Int(bounds.width))x\(Int(bounds.height)) layer=\(Int(displayLayer.bounds.width))x\(Int(displayLayer.bounds.height)) drawable=\(Int(actualDrawable.width))x\(Int(actualDrawable.height)) expected=\(Int(expectedDrawable.width))x\(Int(expectedDrawable.height)) window=\(Int(windowSize.width))x\(Int(windowSize.height)) orientation=\(orientation) scale=\(String(format: "%.2f", scale)) lifecycle=persistent drawableOwner=moltenvk delegateOwner=unchanged hidden=\(displayLayer.isHidden)"
+        let geometry = "surface=\(ObjectIdentifier(self)) stage=\(stage) generation=\(generation) view=\(Int(bounds.width))x\(Int(bounds.height)) layer=\(Int(displayLayer.bounds.width))x\(Int(displayLayer.bounds.height)) drawable=\(Int(actualDrawable.width))x\(Int(actualDrawable.height)) expected=\(Int(expectedDrawable.width))x\(Int(expectedDrawable.height)) window=\(Int(windowSize.width))x\(Int(windowSize.height)) orientation=\(orientation) scale=\(String(format: "%.2f", scale)) lifecycle=persistent drawableOwner=moltenvk delegateOwner=unchanged covered=\(!presentationCoverView.isHidden)"
         if force || geometry != lastGeometryLog {
             lastGeometryLog = geometry
             DiagnosticsLogger.shared.log("MPVSurface", geometry)
