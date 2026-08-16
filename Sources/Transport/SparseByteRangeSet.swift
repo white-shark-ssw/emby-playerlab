@@ -65,6 +65,15 @@ struct SparseByteRangeSet: Equatable {
         return ranges.contains { $0.lowerBound <= range.lowerBound && $0.upperBound >= range.upperBound }
     }
 
+    func cachedBytes(in query: Range<Int64>) -> Int64 {
+        guard !query.isEmpty else { return 0 }
+        return ranges.reduce(Int64(0)) { total, range in
+            let lower = max(query.lowerBound, range.lowerBound)
+            let upper = min(query.upperBound, range.upperBound)
+            return upper > lower ? total + (upper - lower) : total
+        }
+    }
+
     func contiguousLength(from offset: Int64, maximumLength: Int64) -> Int64 {
         guard maximumLength > 0 else { return 0 }
         guard let range = ranges.first(where: { $0.lowerBound <= offset && $0.upperBound > offset }) else { return 0 }

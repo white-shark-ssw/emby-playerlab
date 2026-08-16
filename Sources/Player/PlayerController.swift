@@ -140,6 +140,7 @@ final class PlayerController: ObservableObject {
         engine.prepare(url: source.url, headers: source.headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: position)
         if engineKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "prepare returned item=\(source.itemId)") }
         engine.play()
+        if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }
         playbackSessionStarted = true
 
         DiagnosticsLogger.shared.log(
@@ -237,10 +238,12 @@ final class PlayerController: ObservableObject {
         if userWantsPlayback {
             userWantsPlayback = false
             engine.pause()
+            if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(false) } }
             Task { await client.reportProgress(source: source, position: snapshot.position, paused: true, eventName: "Pause") }
         } else {
             userWantsPlayback = true
             engine.play()
+            if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }
             Task { await client.reportProgress(source: source, position: snapshot.position, paused: false, eventName: "Unpause") }
         }
     }
@@ -566,6 +569,7 @@ final class PlayerController: ObservableObject {
 
         guard decision.isPremature else {
             userWantsPlayback = false
+            if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(false) } }
             let stoppedSource = source
             let stoppedClient = client
             let stoppedPosition = snapshot.position

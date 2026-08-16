@@ -22,6 +22,8 @@ struct PlaybackRangeMap: Equatable {
     mutating func setDownloading(_ range: Range<Int64>?, lane: String) { downloading[lane] = range }
     mutating func clearDownloading(lane: String) { downloading.removeValue(forKey: lane) }
 
+    func playbackBytes(in range: Range<Int64>) -> Int64 { playback.cachedBytes(in: range) }
+
     func contiguousFrontier(from anchor: Int64) -> Int64 {
         guard let range = playback.ranges.first(where: { $0.lowerBound <= anchor && $0.upperBound > anchor }) else { return anchor }
         return range.upperBound
