@@ -5,16 +5,19 @@ import UIKit
 final class PlayerSurfaceUIView: UIView {
     override class var layerClass: AnyClass { AVPlayerLayer.self }
 
+    private let presentationCoverView = UIView()
     private var presentationGateObserver: NSObjectProtocol?
     var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        configurePresentationCover()
         presentationGateObserver = NotificationCenter.default.addObserver(forName: .onePlayerSurfacePresentationGateChanged, object: nil, queue: .main) { [weak self] _ in self?.presentationGateDidChange() }
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        configurePresentationCover()
         presentationGateObserver = NotificationCenter.default.addObserver(forName: .onePlayerSurfacePresentationGateChanged, object: nil, queue: .main) { [weak self] _ in self?.presentationGateDidChange() }
     }
 
@@ -29,13 +32,21 @@ final class PlayerSurfaceUIView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        playerLayer.isHidden = PlayerSurfacePresentationGate.shared.isHolding
+        presentationCoverView.frame = bounds
+        bringSubviewToFront(presentationCoverView)
         if window != nil { PlayerSurfacePresentationGate.shared.passiveSurfaceDidSettle() }
+    }
+
+    private func configurePresentationCover() {
+        presentationCoverView.backgroundColor = .black
+        presentationCoverView.isUserInteractionEnabled = false
+        presentationCoverView.isHidden = !PlayerSurfacePresentationGate.shared.isHolding
+        addSubview(presentationCoverView)
     }
 
     private func presentationGateDidChange() {
         guard Thread.isMainThread else { DispatchQueue.main.async { [weak self] in self?.presentationGateDidChange() }; return }
-        playerLayer.isHidden = PlayerSurfacePresentationGate.shared.isHolding
+        presentationCoverView.isHidden = !PlayerSurfacePresentationGate.shared.isHolding
         setNeedsLayout()
         if window != nil { layoutIfNeeded() }
     }
@@ -56,7 +67,6 @@ struct AVPlayerSurface: UIViewRepresentable {
         let view = PlayerSurfaceUIView()
         view.backgroundColor = .black
         view.playerLayer.player = player
-        view.playerLayer.isHidden = PlayerSurfacePresentationGate.shared.isHolding
         applyLayout(layoutPlan, to: view.playerLayer)
         DispatchQueue.main.async { onPlayerLayerReady?(view.playerLayer) }
         return view
@@ -64,7 +74,6 @@ struct AVPlayerSurface: UIViewRepresentable {
 
     func updateUIView(_ uiView: PlayerSurfaceUIView, context: Context) {
         uiView.playerLayer.player = player
-        uiView.playerLayer.isHidden = PlayerSurfacePresentationGate.shared.isHolding
         applyLayout(layoutPlan, to: uiView.playerLayer)
         DispatchQueue.main.async { onPlayerLayerReady?(uiView.playerLayer) }
     }
