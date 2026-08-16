@@ -10,29 +10,36 @@ struct PlayerFloatingPanelOverlay: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.001)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture(perform: onDismiss)
+        GeometryReader { geometry in
+            ZStack {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onDismiss)
 
-            Group {
                 switch panel {
                 case .info:
                     PlayerPlaybackInfoFloatingPanel(source: source)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                        .padding(.leading, floatingHorizontalInset(width: geometry.size.width))
+                        .padding(.bottom, 40)
                 case .speed:
                     PlayerSpeedFloatingPanel(currentRate: currentRate, onSelect: { rate in
                         onRateSelected(rate)
                         onDismiss()
                     })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.trailing, floatingHorizontalInset(width: geometry.size.width))
+                    .padding(.bottom, 40)
                 case .tracks, .episodes:
                     EmptyView()
                 }
             }
-            .contentShape(Rectangle())
-            .onTapGesture { }
-            .transition(.scale(scale: 0.96).combined(with: .opacity))
         }
+    }
+
+    private func floatingHorizontalInset(width: CGFloat) -> CGFloat {
+        min(116, max(72, width * 0.10))
     }
 }
 
@@ -70,81 +77,92 @@ private struct PlayerClearPresentationBackground: UIViewRepresentable {
     }
 }
 
+private struct PlayerFrostedGlassBackground: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIVisualEffectView {
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterialDark))
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.08)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {}
+}
+
 private struct PlayerFloatingPanelChrome<Content: View>: View {
-    let title: String
-    let maxWidth: CGFloat
-    let maxHeight: CGFloat?
+    let width: CGFloat
+    let height: CGFloat?
     let content: Content
 
-    init(title: String, maxWidth: CGFloat, maxHeight: CGFloat? = nil, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.maxWidth = maxWidth
-        self.maxHeight = maxHeight
+    init(width: CGFloat, height: CGFloat? = nil, @ViewBuilder content: () -> Content) {
+        self.width = width
+        self.height = height
         self.content = content()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.white.opacity(0.52))
-                .padding(.horizontal, 20)
-                .frame(height: 42)
-
-            Divider().background(Color.white.opacity(0.09))
-            content
-        }
-        .frame(maxWidth: maxWidth)
-        .frame(maxHeight: maxHeight)
-        .background(Color(red: 0.16, green: 0.16, blue: 0.17).opacity(0.97))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.42), radius: 24, x: 0, y: 10)
-        .padding(.horizontal, 24)
+        content
+            .frame(width: width)
+            .frame(height: height)
+            .background(
+                ZStack {
+                    PlayerFrostedGlassBackground()
+                    Color.black.opacity(0.12)
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(Color.white.opacity(0.10), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.34), radius: 18, x: 0, y: 8)
+            .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .onTapGesture { }
     }
 }
 
 private struct PlayerSpeedFloatingPanel: View {
     let currentRate: Double
     let onSelect: (Double) -> Void
-    private let rates = [3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5]
+    private let rates = [8.0, 6.0, 5.0, 4.0, 3.0, 2.5, 2.0, 1.5, 1.25, 1.0, 0.75, 0.5, 0.15]
 
     var body: some View {
-        PlayerFloatingPanelChrome(title: "倍速", maxWidth: 330, maxHeight: 400) {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    ForEach(Array(rates.enumerated()), id: \.element) { index, rate in
-                        Button { onSelect(rate) } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .opacity(abs(currentRate - rate) < 0.001 ? 1 : 0)
-                                    .frame(width: 18)
+        PlayerFloatingPanelChrome(width: 250, height: 380) {
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: true) {
+                    VStack(spacing: 0) {
+                        ForEach(Array(rates.enumerated()), id: \.element) { index, rate in
+                            Button { onSelect(rate) } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .opacity(abs(currentRate - rate) < 0.001 ? 1 : 0)
+                                        .frame(width: 18)
 
-                                Text(rateTitle(rate))
-                                    .font(.system(size: 20, weight: .regular))
-                                    .monospacedDigit()
+                                    Text(rateTitle(rate))
+                                        .font(.system(size: 20, weight: .regular))
+                                        .monospacedDigit()
 
-                                Spacer(minLength: 0)
+                                    Spacer(minLength: 0)
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 18)
+                                .frame(height: 44)
+                                .contentShape(Rectangle())
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 20)
-                            .frame(height: 39)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
+                            .buttonStyle(.plain)
+                            .id(rate)
 
-                        if index != rates.count - 1 { Divider().background(Color.white.opacity(0.08)).padding(.leading, 20) }
+                            if index != rates.count - 1 { Divider().background(Color.white.opacity(0.13)) }
+                        }
                     }
+                }
+                .onAppear {
+                    let nearest = rates.min(by: { abs($0 - currentRate) < abs($1 - currentRate) }) ?? 1
+                    DispatchQueue.main.async { proxy.scrollTo(nearest, anchor: UnitPoint(x: 0.5, y: 0.62)) }
                 }
             }
         }
     }
 
     private func rateTitle(_ rate: Double) -> String {
-        if abs(rate.rounded() - rate) < 0.001 { return String(format: "%.0fX", rate) }
-        if abs(rate * 10 - (rate * 10).rounded()) < 0.001 { return String(format: "%.1fX", rate) }
-        return String(format: "%.2fX", rate)
+        if abs(rate * 100 - (rate * 100).rounded()) < 0.001, abs(rate * 10 - (rate * 10).rounded()) >= 0.001 { return String(format: "%.2fx", rate) }
+        return String(format: "%.1fx", rate)
     }
 }
 
@@ -152,14 +170,14 @@ private struct PlayerPlaybackInfoFloatingPanel: View {
     let source: ResolvedPlaybackSource
 
     var body: some View {
-        PlayerFloatingPanelChrome(title: "播放信息", maxWidth: 620, maxHeight: 340) {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
+        PlayerFloatingPanelChrome(width: 470, height: 318) {
+            ScrollView(showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 15) {
                     infoSection(title: "媒体", fields: mediaFields)
-                    if !videoFields.isEmpty { infoSection(title: "视频", fields: videoFields) }
-                    if !audioFields.isEmpty { infoSection(title: "音频", fields: audioFields) }
+                    if !videoFields.isEmpty { Divider().background(Color.white.opacity(0.12)); infoSection(title: "视频", fields: videoFields) }
+                    if !audioFields.isEmpty { Divider().background(Color.white.opacity(0.12)); infoSection(title: "音频", fields: audioFields) }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 18)
                 .padding(.vertical, 16)
             }
         }
@@ -204,13 +222,13 @@ private struct PlayerPlaybackInfoFloatingPanel: View {
 
     private func infoSection(title: String, fields: [PlayerInfoField]) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text(title).font(.system(size: 13, weight: .semibold)).foregroundColor(.white.opacity(0.55))
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 18), GridItem(.flexible(), spacing: 18)], alignment: .leading, spacing: 9) {
+            Text(title).font(.system(size: 13, weight: .semibold)).foregroundColor(.white.opacity(0.58))
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], alignment: .leading, spacing: 9) {
                 ForEach(fields) { field in
                     HStack(spacing: 8) {
                         Text(field.title).foregroundColor(.white.opacity(0.58))
                         Spacer(minLength: 6)
-                        Text(field.value).foregroundColor(.white).lineLimit(1).minimumScaleFactor(0.8)
+                        Text(field.value).foregroundColor(.white).lineLimit(1).minimumScaleFactor(0.78)
                     }
                     .font(.system(size: 13, weight: .regular))
                 }
