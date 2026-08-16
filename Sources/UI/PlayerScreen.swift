@@ -128,7 +128,6 @@ struct PlayerScreen: View {
         }
         .onChange(of: controller.engineKind) { kind in
             if !PlayerCapabilities.resolve(for: kind).supportsPictureInPicture { pictureInPictureController.stopAndDetach() }
-            controller.applyVideoScaleMode(currentScaleMode)
         }
         .onChange(of: pictureInPictureController.isActive) { _ in updateIndependentBrightnessForPlaybackContext() }
         .onChange(of: scenePhase) { phase in handleScenePhase(phase) }
@@ -149,25 +148,27 @@ struct PlayerScreen: View {
     @ViewBuilder
     private var playerSurface: some View {
         GeometryReader { geometry in
-            let mode = currentScaleMode
-            let surfaceSize = playerSurfaceSize(container: geometry.size, mode: mode)
+            let plan = VideoLayoutCoordinator().makePlan(viewport: geometry.size, sourceAspectRatio: sourceDisplayAspectRatio(), mode: currentScaleMode)
             Group {
                 if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {
                     MPVPlayerSurface(displayLayer: layer)
                 } else if let player = controller.avPlayer {
-                    AVPlayerSurface(player: player, scaleMode: mode, onPlayerLayerReady: pictureInPictureController.attach).id("avplayer")
+                    AVPlayerSurface(player: player, layoutPlan: plan, onPlayerLayerReady: pictureInPictureController.attach).id("avplayer")
                 } else {
                     Color.black
                 }
             }
-            .frame(width: surfaceSize.width, height: surfaceSize.height)
-            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+            .frame(width: plan.surfaceFrame.width, height: plan.surfaceFrame.height)
+            .position(x: plan.surfaceFrame.midX, y: plan.surfaceFrame.midY)
             .clipped()
             .background(
                 PlayerSurfaceMountProbe(onMounted: handlePlayerSurfaceMounted)
                     .frame(width: 1, height: 1)
                     .allowsHitTesting(false)
             )
+            .onAppear { controller.applyVideoLayout(plan) }
+            .onChange(of: plan) { controller.applyVideoLayout($0) }
+            .onChange(of: controller.engineKind) { _ in controller.applyVideoLayout(plan) }
         }
     }
 
@@ -219,7 +220,6 @@ struct PlayerScreen: View {
                 ForEach(PlayerVideoScaleMode.allCases) { mode in
                     Button {
                         sessionOverrides.scaleMode = mode
-                        controller.applyVideoScaleMode(mode)
                         DiagnosticsLogger.shared.playback("PlayerUI", "picture size mode=\(mode.rawValue)")
                         showControls()
                     } label: {
@@ -411,20 +411,6 @@ struct PlayerScreen: View {
         (controller.source.mediaSource.mediaStreams ?? []).contains { $0.type?.caseInsensitiveCompare("Audio") == .orderedSame || $0.type?.caseInsensitiveCompare("Subtitle") == .orderedSame }
     }
 
-    private func playerSurfaceSize(container: CGSize, mode: PlayerVideoScaleMode) -> CGSize {
-        let targetRatio: CGFloat?
-        switch mode {
-        case .fit:
-            if controller.engineKind == .mpv, let ratio = sourceDisplayAspectRatio(), ratio > 0.01 { targetRatio = CGFloat(ratio) }
-            else { targetRatio = nil }
-        case .ratio16x9: targetRatio = 16.0 / 9.0
-        case .ratio4x3: targetRatio = 4.0 / 3.0
-        default: targetRatio = nil
-        }
-        guard let targetRatio, container.width > 0, container.height > 0 else { return container }
-        if container.width / container.height > targetRatio { return CGSize(width: container.height * targetRatio, height: container.height) }
-        return CGSize(width: container.width, height: container.width / targetRatio)
-    }
 
     private func handlePresentationDidAppear() {
         guard !presentationDidAppear, !isClosing else { return }
@@ -484,10 +470,7 @@ struct PlayerScreen: View {
         AppOrientationCoordinator.shared.playerOrientationDidSettle()
         DiagnosticsLogger.shared.playback("PlayerUI", "rotation settled reason=\(reason) target=\(target.rawValue) actual=\(activeWindowScene()?.interfaceOrientation.rawValue ?? 0) timeout=\(timedOut)")
         if shouldStartPlayback { startPlaybackIfNeeded() }
-        else {
-            controller.applyVideoScaleMode(currentScaleMode)
-            showControls()
-        }
+        else { showControls() }
     }
 
     private func startPlaybackIfNeeded() {
@@ -497,7 +480,6 @@ struct PlayerScreen: View {
         DiagnosticsLogger.shared.playback("PlayerUI", "startup engine activation after mounted final-orientation surface")
         controller.start(preferredForwardBuffer: preset.seconds)
         controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
-        controller.applyVideoScaleMode(currentScaleMode)
         scheduleControlsHide()
     }
 
