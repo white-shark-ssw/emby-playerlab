@@ -25,30 +25,25 @@ struct PlayerBottomFunctionBar: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            functionButton(title: "播放信息", systemImage: "info.circle", enabled: true) { onSelect(.info) }
-            functionButton(title: "音轨字幕", systemImage: "captions.bubble", enabled: tracksEnabled) { onSelect(.tracks) }
-            functionButton(title: "选集", systemImage: "rectangle.stack", enabled: episodesEnabled) { onSelect(.episodes) }
-            functionButton(title: rateTitle, systemImage: "speedometer", enabled: true) { onSelect(.speed) }
+            functionButton(accessibilityTitle: "播放信息", systemImage: "info.circle", enabled: true) { onSelect(.info) }
+            functionButton(accessibilityTitle: "音轨字幕", systemImage: "captions.bubble", enabled: tracksEnabled) { onSelect(.tracks) }
+            functionButton(accessibilityTitle: "选集", systemImage: "rectangle.stack", enabled: episodesEnabled) { onSelect(.episodes) }
+            functionButton(accessibilityTitle: currentRate == 1 ? "倍速" : String(format: "倍速 %.2gx", currentRate), systemImage: "speedometer", enabled: true) { onSelect(.speed) }
         }
         .frame(maxWidth: .infinity)
     }
 
-    private var rateTitle: String {
-        currentRate == 1 ? "倍速" : String(format: "%.2gx", currentRate)
-    }
-
-    private func functionButton(title: String, systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+    private func functionButton(accessibilityTitle: String, systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: systemImage).font(.system(size: 17, weight: .medium))
-                Text(title).font(.caption2).lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .contentShape(Rectangle())
+            Image(systemName: systemImage)
+                .font(.system(size: 22, weight: .medium))
+                .frame(maxWidth: .infinity, minHeight: 34)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.38)
+        .accessibilityLabel(accessibilityTitle)
     }
 }
 
