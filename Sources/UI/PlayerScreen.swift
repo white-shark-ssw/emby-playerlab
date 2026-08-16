@@ -463,8 +463,8 @@ struct PlayerScreen: View {
             finishOrientationTransition(target: target, reason: reason, shouldStartPlayback: shouldStartPlayback, timedOut: true)
             return
         }
-        if actual != target, attempt == 5 || actual != target, attempt == 12 { requestInterfaceOrientation(target, reason: "\(reason)-retry\(attempt)") }
-        if actual == target, !surfaceReady, attempt == 0 || actual == target, !surfaceReady, attempt == 6 || actual == target, !surfaceReady, attempt == 12 {
+        if actual != target && (attempt == 5 || attempt == 12) { requestInterfaceOrientation(target, reason: "\(reason)-retry\(attempt)") }
+        if actual == target && !surfaceReady && (attempt == 0 || attempt == 6 || attempt == 12) {
             logSurfaceWaitState(reason: reason, target: target, attempt: attempt)
         }
         let workItem = DispatchWorkItem { waitForOrientation(target, reason: reason, shouldStartPlayback: shouldStartPlayback, attempt: attempt + 1) }
