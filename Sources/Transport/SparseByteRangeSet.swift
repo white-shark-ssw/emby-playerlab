@@ -38,6 +38,28 @@ struct SparseByteRangeSet: Equatable {
         ranges = output
     }
 
+    mutating func remove(_ removal: Range<Int64>) {
+        guard !removal.isEmpty else { return }
+        var output: [Range<Int64>] = []
+        output.reserveCapacity(ranges.count + 1)
+
+        for range in ranges {
+            guard range.overlaps(removal) else {
+                output.append(range)
+                continue
+            }
+            if range.lowerBound < removal.lowerBound {
+                let left = range.lowerBound..<min(range.upperBound, removal.lowerBound)
+                if !left.isEmpty { output.append(left) }
+            }
+            if range.upperBound > removal.upperBound {
+                let right = max(range.lowerBound, removal.upperBound)..<range.upperBound
+                if !right.isEmpty { output.append(right) }
+            }
+        }
+        ranges = output
+    }
+
     func contains(_ range: Range<Int64>) -> Bool {
         guard !range.isEmpty else { return true }
         return ranges.contains { $0.lowerBound <= range.lowerBound && $0.upperBound >= range.upperBound }
