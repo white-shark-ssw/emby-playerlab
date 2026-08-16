@@ -37,6 +37,7 @@ final class MPVPlayerEngine: PlayerEngine {
     private var mpv: OpaquePointer?
     private var snapshot = PlayerSnapshot()
     private var pendingSeek: PendingSeek?
+    private var pendingRendererLayout: PendingRendererLayout?
     private var lastConfiguration: Configuration?
     private var isStopping = false
     private var lastPositionEmission: TimeInterval = 0
@@ -55,6 +56,25 @@ final class MPVPlayerEngine: PlayerEngine {
         let requestedAt: TimeInterval
         let target: Double
         let bufferHit: Bool
+    }
+
+    private final class PendingRendererLayout {
+        enum Phase: String { case waitingTemporaryReconfig, waitingTargetReconfig, polling }
+
+        let request: RendererLayoutRequest
+        let completion: (RendererLayoutAcknowledgement) -> Void
+        let targetPanscan: Double
+        let targetAspect: String
+        var phase: Phase
+        var pollAttempt = 0
+
+        init(request: RendererLayoutRequest, completion: @escaping (RendererLayoutAcknowledgement) -> Void, targetPanscan: Double, targetAspect: String, phase: Phase) {
+            self.request = request
+            self.completion = completion
+            self.targetPanscan = targetPanscan
+            self.targetAspect = targetAspect
+            self.phase = phase
+        }
     }
 
     init(sharedTransportSession: TransportDataSession? = nil) {
@@ -138,13 +158,53 @@ final class MPVPlayerEngine: PlayerEngine {
 
     func setVideoGeometry(panscan: Double, aspectOverride: String?) {
         let clampedPanscan = min(1, max(0, panscan))
-        setPropertyAsync(name: "video-unscaled", value: "no")
-        setPropertyAsync(name: "video-aspect-override", value: aspectOverride ?? "no")
-        setPropertyAsync(name: "panscan", value: String(format: "%.3f", clampedPanscan))
-        DiagnosticsLogger.shared.log("MPVVideo", "geometry panscan=\(String(format: "%.3f", clampedPanscan)) aspect=\(aspectOverride ?? "source")")
-        queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+        let targetAspect = aspectOverride ?? "no"
+        queue.async { [weak self] in
             guard let self, let handle = self.mpv, !self.isStopping else { return }
-            self.logVideoOutputGeometry(handle: handle, reason: "layout")
+            self.applyVideoGeometry(handle: handle, panscan: clampedPanscan, aspect: targetAspect)
+            DiagnosticsLogger.shared.log("MPVVideo", "geometry panscan=\(String(format: "%.3f", clampedPanscan)) aspect=\(aspectOverride ?? "source")")
+            self.queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+                guard let self, let handle = self.mpv, !self.isStopping else { return }
+                self.logVideoOutputGeometry(handle: handle, reason: "layout")
+            }
+        }
+    }
+
+    func applyRendererLayout(_ request: RendererLayoutRequest, completion: @escaping (RendererLayoutAcknowledgement) -> Void) {
+        let targetPanscan = min(1, max(0, request.plan.mpvPanscan))
+        let targetAspect = request.plan.mpvAspectOverride ?? "no"
+        queue.async { [weak self] in
+            guard let self else { return }
+            guard !self.isStopping else {
+                completion(RendererLayoutAcknowledgement(generation: request.generation, matched: false, rendererConfigured: false, actualBackingSize: nil, detail: "engine-stopping"))
+                return
+            }
+            guard let handle = self.mpv else {
+                completion(RendererLayoutAcknowledgement(generation: request.generation, matched: true, rendererConfigured: false, actualBackingSize: request.surface.hasObservedBacking ? request.surface.observedBackingSize : nil, detail: "preinit-layout-recorded"))
+                return
+            }
+            guard request.surface.hasObservedBacking else {
+                completion(RendererLayoutAcknowledgement(generation: request.generation, matched: false, rendererConfigured: true, actualBackingSize: nil, detail: "surface-backing-not-ready"))
+                return
+            }
+
+            let phase: PendingRendererLayout.Phase = request.forceRendererRefresh ? .waitingTemporaryReconfig : .waitingTargetReconfig
+            let pending = PendingRendererLayout(request: request, completion: completion, targetPanscan: targetPanscan, targetAspect: targetAspect, phase: phase)
+            self.pendingRendererLayout = pending
+
+            if request.forceRendererRefresh {
+                let temporaryAspect = targetAspect == "no" ? "1:1" : "no"
+                self.applyVideoGeometry(handle: handle, panscan: targetPanscan, aspect: temporaryAspect)
+                DiagnosticsLogger.shared.log("MPVRenderer", "refresh begin generation=\(request.generation) temporaryAspect=\(temporaryAspect) targetAspect=\(targetAspect) target=\(Int(request.surface.expectedBackingSize.width))x\(Int(request.surface.expectedBackingSize.height))")
+                self.queue.asyncAfter(deadline: .now() + 0.08) { [weak self, weak pending] in
+                    guard let self, let pending, self.pendingRendererLayout === pending, pending.phase == .waitingTemporaryReconfig, let handle = self.mpv, !self.isStopping else { return }
+                    self.applyRendererTarget(handle: handle, pending: pending, reason: "temporary-timeout")
+                }
+            } else {
+                self.applyVideoGeometry(handle: handle, panscan: targetPanscan, aspect: targetAspect)
+                DiagnosticsLogger.shared.log("MPVRenderer", "layout apply generation=\(request.generation) aspect=\(targetAspect) panscan=\(String(format: "%.3f", targetPanscan)) target=\(Int(request.surface.expectedBackingSize.width))x\(Int(request.surface.expectedBackingSize.height))")
+                self.scheduleRendererViewportPoll(handle: handle, pending: pending, delay: 0.02)
+            }
         }
     }
 
@@ -203,6 +263,7 @@ final class MPVPlayerEngine: PlayerEngine {
         // Prevent new callbacks before touching the handle.
         mpv_set_wakeup_callback(handle, nil, nil)
         pendingSeek = nil
+        pendingRendererLayout = nil
         streamPrepareTask?.cancel()
         streamPrepareTask = nil
         let retainedStreamBridge = streamBridge
@@ -450,6 +511,9 @@ final class MPVPlayerEngine: PlayerEngine {
             logAudioState(handle: handle, reason: "file-loaded")
             logVideoState(handle: handle, reason: "file-loaded")
             emitOnMain()
+        case MPV_EVENT_VIDEO_RECONFIG:
+            logVideoOutputGeometry(handle: handle, reason: "video-reconfig")
+            handleRendererVideoReconfig(handle: handle)
         case MPV_EVENT_SEEK:
             snapshot.isBuffering = true
             snapshot.waitingReason = "MPV seek"
@@ -620,6 +684,66 @@ final class MPVPlayerEngine: PlayerEngine {
         DiagnosticsLogger.shared.log("MPVViewport", "reason=\(reason) osd=\(osdWidth)x\(osdHeight) display=\(dwidth)x\(dheight) panscan=\(panscan) aspectOverride=\(aspectOverride)")
     }
 
+    private func rendererViewportSize(handle: OpaquePointer) -> CGSize? {
+        guard let widthText = getStringProperty(handle: handle, name: "osd-width"), let width = Double(widthText), width > 1,
+              let heightText = getStringProperty(handle: handle, name: "osd-height"), let height = Double(heightText), height > 1 else { return nil }
+        return CGSize(width: width, height: height)
+    }
+
+    private func applyVideoGeometry(handle: OpaquePointer, panscan: Double, aspect: String) {
+        setProperty(handle: handle, name: "video-unscaled", value: "no")
+        setProperty(handle: handle, name: "video-aspect-override", value: aspect)
+        setProperty(handle: handle, name: "panscan", value: String(format: "%.3f", panscan))
+    }
+
+    private func handleRendererVideoReconfig(handle: OpaquePointer) {
+        guard let pending = pendingRendererLayout else { return }
+        DiagnosticsLogger.shared.log("MPVRenderer", "video-reconfig generation=\(pending.request.generation) phase=\(pending.phase.rawValue)")
+        switch pending.phase {
+        case .waitingTemporaryReconfig:
+            applyRendererTarget(handle: handle, pending: pending, reason: "temporary-reconfig")
+        case .waitingTargetReconfig, .polling:
+            pending.phase = .polling
+            scheduleRendererViewportPoll(handle: handle, pending: pending, delay: 0)
+        }
+    }
+
+    private func applyRendererTarget(handle: OpaquePointer, pending: PendingRendererLayout, reason: String) {
+        guard pendingRendererLayout === pending else { return }
+        pending.phase = .waitingTargetReconfig
+        applyVideoGeometry(handle: handle, panscan: pending.targetPanscan, aspect: pending.targetAspect)
+        DiagnosticsLogger.shared.log("MPVRenderer", "target apply generation=\(pending.request.generation) reason=\(reason) aspect=\(pending.targetAspect) panscan=\(String(format: "%.3f", pending.targetPanscan))")
+        scheduleRendererViewportPoll(handle: handle, pending: pending, delay: 0.02)
+    }
+
+    private func scheduleRendererViewportPoll(handle: OpaquePointer, pending: PendingRendererLayout, delay: TimeInterval) {
+        guard pendingRendererLayout === pending else { return }
+        queue.asyncAfter(deadline: .now() + delay) { [weak self, weak pending] in
+            guard let self, let pending, self.pendingRendererLayout === pending, let currentHandle = self.mpv, currentHandle == handle, !self.isStopping else { return }
+            pending.phase = .polling
+            pending.pollAttempt += 1
+            let actual = self.rendererViewportSize(handle: handle)
+            let target = pending.request.surface.expectedBackingSize
+            if let actual, RendererSurfaceGeometry.matches(actual, target, tolerance: 4) {
+                self.logVideoOutputGeometry(handle: handle, reason: "renderer-ack")
+                self.finishRendererLayout(pending: pending, matched: true, actual: actual, detail: "viewport-match")
+                return
+            }
+            if pending.pollAttempt >= 24 {
+                self.logVideoOutputGeometry(handle: handle, reason: "renderer-timeout")
+                self.finishRendererLayout(pending: pending, matched: false, actual: actual, detail: "viewport-timeout")
+                return
+            }
+            self.scheduleRendererViewportPoll(handle: handle, pending: pending, delay: 0.025)
+        }
+    }
+
+    private func finishRendererLayout(pending: PendingRendererLayout, matched: Bool, actual: CGSize?, detail: String) {
+        guard pendingRendererLayout === pending else { return }
+        pendingRendererLayout = nil
+        pending.completion(RendererLayoutAcknowledgement(generation: pending.request.generation, matched: matched, rendererConfigured: true, actualBackingSize: actual, detail: detail))
+    }
+
     private func logVideoState(handle: OpaquePointer, reason: String) {
         let width = getStringProperty(handle: handle, name: "width") ?? "nil"
         let height = getStringProperty(handle: handle, name: "height") ?? "nil"
@@ -652,7 +776,6 @@ final class MPVPlayerEngine: PlayerEngine {
         let status = mpv_set_property_string(handle, name, value)
         check(status, operation: "set \(name)=\(value)")
     }
-
 
     private func command(_ handle: OpaquePointer, _ arguments: [String]) {
         guard !arguments.isEmpty else { return }
@@ -761,6 +884,10 @@ final class MPVPlayerEngine: PlayerEngine {
     func play() {}
     func pause() {}
     func setVideoGeometry(panscan: Double, aspectOverride: String?) {}
+
+    func applyRendererLayout(_ request: RendererLayoutRequest, completion: @escaping (RendererLayoutAcknowledgement) -> Void) {
+        completion(RendererLayoutAcknowledgement(generation: request.generation, matched: true, rendererConfigured: false, actualBackingSize: nil, detail: "mpv-unavailable"))
+    }
 
     func seek(to seconds: Double, direction: SeekDirection) {
         let requestedAt = CACurrentMediaTime()
