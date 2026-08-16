@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import UIKit
 
@@ -15,8 +16,8 @@ final class PlayerSurfacePresentationGate {
 
     private init() {}
 
-    @MainActor
     func hold(targetOrientation: UIInterfaceOrientation?, reason: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
         epoch &+= 1
         isHolding = true
         self.targetOrientation = targetOrientation
@@ -24,8 +25,8 @@ final class PlayerSurfacePresentationGate {
         NotificationCenter.default.post(name: .onePlayerSurfacePresentationGateChanged, object: self)
     }
 
-    @MainActor
     func refresh(targetOrientation: UIInterfaceOrientation?, reason: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
         if !isHolding {
             hold(targetOrientation: targetOrientation, reason: reason)
             return
@@ -35,8 +36,8 @@ final class PlayerSurfacePresentationGate {
         NotificationCenter.default.post(name: .onePlayerSurfacePresentationGateChanged, object: self)
     }
 
-    @MainActor
     func rendererDidSettle(epoch settledEpoch: UInt64, targetBackingSize: CGSize, actualBackingSize: CGSize?) {
+        dispatchPrecondition(condition: .onQueue(.main))
         guard isHolding, settledEpoch == epoch else { return }
         let actualOrientation = activeWindowScene()?.interfaceOrientation
         if let targetOrientation, actualOrientation != targetOrientation {
@@ -50,8 +51,8 @@ final class PlayerSurfacePresentationGate {
         NotificationCenter.default.post(name: .onePlayerSurfacePresentationGateReleased, object: self)
     }
 
-    @MainActor
     func passiveSurfaceDidSettle() {
+        dispatchPrecondition(condition: .onQueue(.main))
         guard isHolding else { return }
         let actualOrientation = activeWindowScene()?.interfaceOrientation
         if let targetOrientation, actualOrientation != targetOrientation { return }
@@ -61,8 +62,8 @@ final class PlayerSurfacePresentationGate {
         NotificationCenter.default.post(name: .onePlayerSurfacePresentationGateReleased, object: self)
     }
 
-    @MainActor
     func reset(reason: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
         guard isHolding || targetOrientation != nil else { return }
         isHolding = false
         targetOrientation = nil
