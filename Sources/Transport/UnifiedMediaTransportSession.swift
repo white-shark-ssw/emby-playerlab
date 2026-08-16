@@ -268,6 +268,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard !stopped, !range.isEmpty, let resolved = try? await resolve(), let store else { return }
         let normalized = clamp(range: range, contentLength: resolved.contentLength)
         guard !normalized.isEmpty else { return }
+        // Range requests are scheduler hints only. During a pending seek, the actual read() callback
+        // is authoritative because AVFoundation may still issue cached/stale requests from the old timeline.
         if store.contains(normalized) {
             acceptRealDemand(normalized, resource: resolved, reason: "range-demand-cached")
             return
@@ -370,6 +372,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     }
 
     func quiesceConsumers() async {
+        // The shared byte store is intentionally kept alive across engine switches.
+        // Give in-flight local reads a tiny handoff window without cancelling upstream slots.
         try? await Task.sleep(nanoseconds: 80_000_000)
     }
 
@@ -392,6 +396,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private func acceptRealDemand(_ range: Range<Int64>, resource: TransportResolvedResource, reason: String) {
         guard !range.isEmpty, let store else { return }
         let concreteReason = reason == "concrete-read" || reason == "blocked-read" || reason == "byte-offset"
+        // Distant concrete reads are normally real playback dependencies (poorly interleaved A/V),
+        // but a large MP4's first near-EOF seek is container metadata. Treating that moov/sample-table
+        // read as playback made 152901 cache 100+ MiB from the head while file-loaded waited on a slow
+        // ~10 MiB tail request. Limit this override to the startup window so a later user seek near EOF
+        // remains ordinary playback demand.
         let startupTailMetadata = isStartupTailMetadata(range, resource: resource)
         let metadata = startupTailMetadata || (!concreteReason && isMetadataProbe(range, resource: resource))
         let pendingUserSeek = Date() <= pendingUserSeekUntil
@@ -462,6 +471,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             }
         }
 
+        // AVFoundation may emit stale/cached range requests from the pre-seek timeline while a seek is
+        // still settling. Only a cache-miss blocked read, or MPV's explicit byte seek, may consume the
+        // pending seek token. Ordinary concrete reads can be stale demux traffic from the old timeline.
         if pendingUserSeek, !metadata, !concretePlaybackDemand {
             DiagnosticsLogger.shared.log(
                 "UnifiedAnchor",
@@ -477,6 +489,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             return
         }
 
+        // AVPlayer range announcements are speculative. They must never preempt a healthy bulk
+        // connection merely because the demuxer considered a region. Concrete read()/byte-offset
+        // demand remains authoritative; metadata hints are retained because tail indexes are startup-critical.
         if !concreteReason, !metadata {
             DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "hint-only request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=keep-bulk")
             scheduleSlots(reason: "hint-only")
@@ -524,7 +539,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             case .nearHead:
                 advanceCacheWindowCenterFromRecentDemand(resource: resource)
             case .holdCandidate(let samples):
-                if samples == 1 { DiagnosticsLogger.shared.playback("PlaybackDemand", "candidate center=\(cacheWindowCenter) offset=\(range.lowerBound) starving=\(playbackStarving) reason=\(reason)") }
+                if samples == 1 {
+                    DiagnosticsLogger.shared.playback("PlaybackDemand", "candidate center=\(cacheWindowCenter) offset=\(range.lowerBound) starving=\(playbackStarving) reason=\(reason)")
+                }
             case .promote(let offset, let promotionReason):
                 let previous = cacheWindowCenter
                 playbackAnchor = offset
@@ -545,6 +562,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             return
         }
 
+        // Being inside an active foreground claim still does not prove that the requested byte has
+        // arrived. A far seek can land deep inside an older 16 MiB urgent claim; waiting for that lane
+        // to walk linearly to the new read head caused multi-second stalls while the second lane sat idle.
         if let activeEntry = slotClaims.first(where: { $0.value.role != .sequential && $0.value.range.contains(range.lowerBound) }) {
             let activeSlot = activeEntry.key
             let active = activeEntry.value
@@ -563,6 +583,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             return
         }
 
+        // Being inside a 32 MiB sequential claim does not mean the requested byte has arrived. This
+        // was the 63360/194s regression: the read was ~10 MiB ahead of Slot 0's actual download head.
+        // Wait only when the progressive stream is genuinely close; otherwise preserve the warmed
+        // sequential request and borrow Slot 1 for an exact urgent Range.
         if concretePlaybackDemand, let activeSequential = slotClaims.first(where: { $0.value.role == .sequential && $0.value.range.contains(range.lowerBound) }) {
             let slot = activeSequential.key
             let claim = activeSequential.value
@@ -947,6 +971,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         do {
             let started = Date()
             if claim.role == .sequential {
+                // Keep one long Range request alive for throughput while every received chunk is
+                // committed to ByteStore immediately. This preserves progressive visibility without
+                // paying a fresh HTTP Range request every 4 MiB.
                 while receivedForClaim < Int64(claim.range.count) {
                     try Task.checkCancellation()
                     let remaining = (claim.range.lowerBound + receivedForClaim)..<claim.range.upperBound
@@ -1087,7 +1114,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             liveLaneState[slot] = live
             DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=reset-after-cancel success=\(reset) pending=\(!reset) sourceRefresh=\(refreshSource)")
             laneHealth[slot] = LaneHealthState()
-            if refreshSource { Task { [weak self] in await self?.refreshResolvedSourceAfterLaneRotation(slot: slot) } }
+            if refreshSource {
+                Task { [weak self] in await self?.refreshResolvedSourceAfterLaneRotation(slot: slot) }
+            }
         } else if claim.role == .sequential, error == nil, let completedSequentialBps, let downloadedBytes {
             considerSequentialLaneHealth(slot: slot, bytes: downloadedBytes, bps: completedSequentialBps)
         }
@@ -1101,6 +1130,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             let written = claim.range.lowerBound..<min(claim.range.upperBound, claim.range.lowerBound + downloadedBytes)
             if claim.role == .metadata || claim.role == .startupMetadata { rangeMap.insertMetadata(written) }
             else { rangeMap.insertPlayback(written) }
+            // Network bytes/speed are recorded per received chunk so long 32 MiB requests do not
+            // display as zero throughput until the entire Range finishes.
+
             if slot == 0, claim.role == .sequential, downloadedBytes >= Int64(claim.range.count) {
                 successfulPrimaryBlocks += 1
                 if !secondaryEnabled, successfulPrimaryBlocks >= 1 {
@@ -1129,7 +1161,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             else if claim.role == .metadata, pendingMetadataRange == nil { pendingMetadataRange = claim.range }
             if claim.role == .urgentPlayback, pendingPlaybackUrgentRange == nil { pendingPlaybackUrgentRange = claim.range }
             metricsValue.rangeFailureCount += 1
-            DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) failed role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) error=\(error.localizedDescription)")
+            DiagnosticsLogger.shared.log(
+                "UnifiedSlot",
+                "slot=\(slot) failed role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) error=\(error.localizedDescription)"
+            )
             if slot == 1 {
                 secondaryFailureCount += 1
                 let delay = min(30.0, 4.0 * Double(max(1, secondaryFailureCount)))
@@ -1212,8 +1247,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             scheduleSlots(reason: "live-lane-reset-ready")
             return
         }
-        if attempt < 10 { armLiveLaneResetRetry(slot: slot, attempt: attempt + 1) }
-        else {
+        if attempt < 10 {
+            armLiveLaneResetRetry(slot: slot, attempt: attempt + 1)
+        } else {
             liveLaneResetPending.remove(slot)
             DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=reset-retry give-up attempt=\(attempt)")
             scheduleSlots(reason: "live-lane-reset-give-up")
@@ -1315,6 +1351,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard live.generation == generation else { return }
         live.lastChunkAt = now
         live.receivedBytes += bytes
+
+        // URLSession may deliver several already-buffered chunks back-to-back. Measuring one chunk
+        // against the previous callback timestamp produced impossible 100-500 MB/s samples and false
+        // lane rotations. Only a real time window is allowed to influence connection health.
         let sampleSeconds = now.timeIntervalSince(live.sampleWindowStartedAt)
         let sampleBytes = live.receivedBytes - live.sampleWindowStartedBytes
         guard sampleSeconds >= liveLaneSampleWindowSeconds, sampleBytes >= liveLaneSampleMinimumBytes else {
@@ -1337,8 +1377,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let absoluteFloorBps = NetworkPathMonitor.shared.isCellular ? liveLaneAbsoluteFloorBps : liveLaneWifiAbsoluteFloorBps
         let absoluteSlow = now.timeIntervalSince(live.startedAt) >= 3.0 && live.receivedBytes >= 4 * 1_048_576 && live.recentBps < absoluteFloorBps
         let peakRelativeSlow = live.peakBps >= liveLanePeakFloorBps && windowBps < live.peakBps * liveLanePeakRelativeFloor
-        if peakRelativeSlow { if live.badSince == .distantPast { live.badSince = now } }
-        else { live.badSince = .distantPast }
+        if peakRelativeSlow {
+            if live.badSince == .distantPast { live.badSince = now }
+        } else {
+            live.badSince = .distantPast
+        }
         let peakDropSeconds = live.badSince == .distantPast ? 0 : now.timeIntervalSince(live.badSince)
         let sustainedPeakDrop = peakRelativeSlow && peakDropSeconds >= liveLanePeakDropSeconds
         if relativeSlow || absoluteSlow { live.slowStreak += 1 }
@@ -1347,8 +1390,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let peakRatio = live.peakBps > 0 ? windowBps / live.peakBps : 1
         DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) windowMs=\(Int(sampleSeconds * 1000)) windowBytes=\(sampleBytes) sampleBps=\(Int(windowBps)) avgBps=\(Int(live.recentBps)) peakBps=\(Int(live.peakBps)) healthyBps=\(Int(live.lastHealthyBps)) peakRatio=\(String(format: "%.2f", peakRatio)) badMs=\(Int(peakDropSeconds * 1000)) peerBps=\(Int(peerBps)) slowStreak=\(live.slowStreak)")
 
-        if sustainedPeakDrop { requestLiveLaneRotation(slot: slot, generation: generation, reason: "peak-collapse", observedBps: windowBps, peerBps: peerBps) }
-        else if live.slowStreak >= 2 { requestLiveLaneRotation(slot: slot, generation: generation, reason: relativeSlow ? "rolling-relative-slow" : "rolling-absolute-slow", observedBps: live.recentBps, peerBps: peerBps) }
+        if sustainedPeakDrop {
+            requestLiveLaneRotation(slot: slot, generation: generation, reason: "peak-collapse", observedBps: windowBps, peerBps: peerBps)
+        } else if live.slowStreak >= 2 {
+            requestLiveLaneRotation(slot: slot, generation: generation, reason: relativeSlow ? "rolling-relative-slow" : "rolling-absolute-slow", observedBps: live.recentBps, peerBps: peerBps)
+        }
     }
 
     private func requestLiveLaneRotation(slot: Int, generation: Int, reason: String, observedBps: Double, peerBps: Double) {
