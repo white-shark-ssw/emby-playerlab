@@ -17,6 +17,16 @@ final class MPVUnifiedStreamBridge: @unchecked Sendable {
     let contentLength: Int64
     private let lock = NSLock()
     private var cancelled = false
+    private var playbackAuthorityArmed = false
+    private var playbackAuthorityConfirmed = false
+    private var authorityClusterStart: Int64?
+    private var authorityClusterEnd: Int64 = 0
+    private var authorityClusterReads = 0
+    private var authorityLastSeekAt = Date.distantPast
+    private let authorityMinimumSpanBytes: Int64 = 512 * 1024
+    private let authorityMinimumReads = 3
+    private let authorityContinuityToleranceBytes: Int64 = 256 * 1024
+    private let authoritySeekSettleSeconds: TimeInterval = 0.08
 
     init(session: TransportDataSession, contentLength: Int64) {
         self.session = session
@@ -44,6 +54,66 @@ final class MPVUnifiedStreamBridge: @unchecked Sendable {
 
     fileprivate func makeState() -> MPVUnifiedStreamState {
         MPVUnifiedStreamState(session: session, contentLength: contentLength, owner: self)
+    }
+
+    fileprivate func noteSeek(_ offset: Int64) {
+        let headGuard = min(32 * 1_048_576, max(1 * 1_048_576, contentLength / 100))
+        let nearTail = contentLength > 64 * 1_048_576 && offset >= contentLength - 64 * 1_048_576
+        lock.lock()
+        guard !cancelled, !playbackAuthorityConfirmed else { lock.unlock(); return }
+        authorityClusterStart = nil
+        authorityClusterEnd = 0
+        authorityClusterReads = 0
+        authorityLastSeekAt = Date()
+        let newlyArmed = !playbackAuthorityArmed && offset >= headGuard && !nearTail
+        if offset >= headGuard && !nearTail { playbackAuthorityArmed = true }
+        lock.unlock()
+        if newlyArmed {
+            DiagnosticsLogger.shared.log("MPVStream", "playback-byte authority armed seek=\(offset) headGuard=\(headGuard) tailExcluded=\(nearTail) byteGuess=disabled")
+        }
+    }
+
+    fileprivate func noteSuccessfulRead(offset: Int64, count: Int) {
+        guard count > 0 else { return }
+        let upper = min(contentLength, offset + Int64(count))
+        let headGuard = min(32 * 1_048_576, max(1 * 1_048_576, contentLength / 100))
+        let nearTail = contentLength > 64 * 1_048_576 && offset >= contentLength - 64 * 1_048_576
+        var confirmedStart: Int64?
+        var confirmedSpan: Int64 = 0
+        var confirmedReads = 0
+
+        lock.lock()
+        if !cancelled, playbackAuthorityArmed, !playbackAuthorityConfirmed, offset >= headGuard, !nearTail, Date().timeIntervalSince(authorityLastSeekAt) >= authoritySeekSettleSeconds {
+            if let start = authorityClusterStart {
+                let overlapsCluster = offset <= authorityClusterEnd + authorityContinuityToleranceBytes && upper >= start
+                if overlapsCluster {
+                    authorityClusterEnd = max(authorityClusterEnd, upper)
+                    authorityClusterReads += 1
+                } else {
+                    authorityClusterStart = offset
+                    authorityClusterEnd = upper
+                    authorityClusterReads = 1
+                }
+            } else {
+                authorityClusterStart = offset
+                authorityClusterEnd = upper
+                authorityClusterReads = 1
+            }
+            if let start = authorityClusterStart {
+                let span = max(0, authorityClusterEnd - start)
+                if span >= authorityMinimumSpanBytes, authorityClusterReads >= authorityMinimumReads {
+                    playbackAuthorityConfirmed = true
+                    confirmedStart = start
+                    confirmedSpan = span
+                    confirmedReads = authorityClusterReads
+                }
+            }
+        }
+        lock.unlock()
+
+        guard let confirmedStart else { return }
+        DiagnosticsLogger.shared.log("MPVStream", "sustained playback-byte authority start=\(confirmedStart) span=\(confirmedSpan) reads=\(confirmedReads) byteGuess=disabled")
+        Task { [session] in await session.confirmConcretePlaybackByte(confirmedStart) }
     }
 }
 
@@ -119,6 +189,7 @@ private final class MPVUnifiedStreamState: @unchecked Sendable {
             data.withUnsafeBytes { raw in
                 if let base = raw.baseAddress { memcpy(buffer, base, data.count) }
             }
+            owner?.noteSuccessfulRead(offset: offset, count: data.count)
             lock.lock()
             currentOffset = min(contentLength, offset + Int64(data.count))
             lock.unlock()
@@ -135,6 +206,7 @@ private final class MPVUnifiedStreamState: @unchecked Sendable {
         guard !cancelled, owner?.isCancelled != true else { lock.unlock(); return mpvStreamGenericError }
         currentOffset = offset
         lock.unlock()
+        owner?.noteSeek(offset)
         Task { [session] in await session.prioritizeOffset(offset) }
         DiagnosticsLogger.shared.log("MPVStream", "seek byte=\(offset)")
         return offset

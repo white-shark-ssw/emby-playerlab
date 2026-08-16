@@ -55,13 +55,13 @@ final class RendererLayoutCoordinator {
         }
     }
 
-    private struct RequestKey: Equatable {
+    private struct SnapshotKey: Equatable {
         let engineID: ObjectIdentifier
         let plan: VideoLayoutPlan
-        let expectedBackingWidth: Int
-        let expectedBackingHeight: Int
-        let observedBackingWidth: Int
-        let observedBackingHeight: Int
+        let targetBackingWidth: Int
+        let targetBackingHeight: Int
+        let scaleMilli: Int
+        let presentationEpoch: UInt64
     }
 
     private enum State: String {
@@ -75,9 +75,12 @@ final class RendererLayoutCoordinator {
     private var desiredPlan: VideoLayoutPlan?
     private var surfaceGeometry: RendererSurfaceGeometry?
     private var activeEngineID: ObjectIdentifier?
-    private var lastRequestKey: RequestKey?
+    private var activeSnapshotKey: SnapshotKey?
+    private var activeTargetBackingSize: CGSize?
     private var lastPresentationSignature: PresentationSignature?
     private var lastTargetBackingSize: CGSize?
+    private var lastRendererConfigured = false
+    private var lastRendererActualBackingSize: CGSize?
     private var state: State = .idle
     private(set) var generation: UInt64 = 0
     private(set) var acknowledgedGeneration: UInt64 = 0
@@ -87,9 +90,12 @@ final class RendererLayoutCoordinator {
         if activeEngineID != engineID {
             activeEngineID = engineID
             surfaceGeometry = nil
-            lastRequestKey = nil
+            activeSnapshotKey = nil
+            activeTargetBackingSize = nil
             lastPresentationSignature = nil
             lastTargetBackingSize = nil
+            lastRendererConfigured = false
+            lastRendererActualBackingSize = nil
             state = .idle
         }
         desiredPlan = plan
@@ -107,72 +113,111 @@ final class RendererLayoutCoordinator {
     func matches(plan: VideoLayoutPlan, engine: PlayerEngine) -> Bool {
         guard desiredPlan == plan else { return false }
         guard engine is RendererLayoutEngineAdapter else { return true }
-        return state == .settled && acknowledgedGeneration == generation
+        guard let surfaceGeometry, RendererSurfaceGeometry.matches(surfaceGeometry.pointSize, plan.surfaceFrame.size, tolerance: 1.5) else { return false }
+        let target = targetBackingSize(for: plan, scale: surfaceGeometry.scale)
+        guard let activeTargetBackingSize, RendererSurfaceGeometry.matches(activeTargetBackingSize, target, tolerance: 3) else { return false }
+        guard state == .settled && acknowledgedGeneration == generation else { return false }
+        if !lastRendererConfigured { return true }
+        return surfaceGeometry.hasObservedBacking && RendererSurfaceGeometry.matches(surfaceGeometry.observedBackingSize, target, tolerance: 3)
     }
 
     func waitDescription(plan: VideoLayoutPlan, engine: PlayerEngine) -> String {
-        let target = surfaceGeometry?.expectedBackingSize ?? .zero
         let observed = surfaceGeometry?.observedBackingSize ?? .zero
-        return "engine=\(engine.kind.title) state=\(state.rawValue) generation=\(generation) ack=\(acknowledgedGeneration) planSurface=\(Int(plan.surfaceFrame.width))x\(Int(plan.surfaceFrame.height)) targetBacking=\(Int(target.width))x\(Int(target.height)) observedBacking=\(Int(observed.width))x\(Int(observed.height))"
+        let scale = surfaceGeometry?.scale ?? 0
+        let target = scale > 0 ? targetBackingSize(for: plan, scale: scale) : .zero
+        let surface = surfaceGeometry?.pointSize ?? .zero
+        return "engine=\(engine.kind.title) state=\(state.rawValue) generation=\(generation) ack=\(acknowledgedGeneration) planSurface=\(Int(plan.surfaceFrame.width))x\(Int(plan.surfaceFrame.height)) observedSurface=\(Int(surface.width))x\(Int(surface.height)) targetBacking=\(Int(target.width))x\(Int(target.height)) observedBacking=\(Int(observed.width))x\(Int(observed.height)) rendererConfigured=\(lastRendererConfigured) epoch=\(PlayerSurfacePresentationGate.shared.epoch)"
     }
 
     private func evaluate(engine: PlayerEngine, reason: RendererLayoutReason) {
         guard let plan = desiredPlan else { return }
-        guard let adapter = engine as? RendererLayoutEngineAdapter else {
-            state = .settled
-            acknowledgedGeneration = generation
-            return
-        }
         guard let surface = surfaceGeometry, RendererSurfaceGeometry.matches(surface.pointSize, plan.surfaceFrame.size, tolerance: 1.5) else {
             state = .waitingSurface
             return
         }
-        guard surface.backingMatchesExpected else {
-            state = .waitingSurface
+
+        let targetBacking = targetBackingSize(for: plan, scale: surface.scale)
+        let normalizedSurface = RendererSurfaceGeometry(pointSize: surface.pointSize, expectedBackingSize: targetBacking, observedBackingSize: surface.observedBackingSize, scale: surface.scale)
+        let observedMatchesTarget = normalizedSurface.hasObservedBacking && RendererSurfaceGeometry.matches(normalizedSurface.observedBackingSize, targetBacking, tolerance: 3)
+        let engineID = ObjectIdentifier(engine as AnyObject)
+        let presentationEpoch = PlayerSurfacePresentationGate.shared.epoch
+        let key = SnapshotKey(
+            engineID: engineID,
+            plan: plan,
+            targetBackingWidth: Int(targetBacking.width.rounded()),
+            targetBackingHeight: Int(targetBacking.height.rounded()),
+            scaleMilli: Int((surface.scale * 1_000).rounded()),
+            presentationEpoch: presentationEpoch
+        )
+
+        if let adapter = engine as? RendererLayoutEngineAdapter {
+            let sameSnapshot = key == activeSnapshotKey
+            if sameSnapshot, state == .settled, !lastRendererConfigured || observedMatchesTarget {
+                PlayerSurfacePresentationGate.shared.rendererDidSettle(epoch: presentationEpoch, targetBackingSize: targetBacking, actualBackingSize: lastRendererActualBackingSize)
+                return
+            }
+            let mayRefreshRegressedSurface = sameSnapshot && state == .settled && lastRendererConfigured && !observedMatchesTarget
+            let mayRetryFailedSnapshot = sameSnapshot && state == .failed && normalizedSurface.hasObservedBacking
+            guard !sameSnapshot || mayRetryFailedSnapshot || mayRefreshRegressedSurface else { return }
+
+            let signature = PresentationSignature(plan: plan)
+            let targetChangedWithoutPresentationChange = lastPresentationSignature == signature && lastTargetBackingSize.map { !RendererSurfaceGeometry.matches($0, targetBacking, tolerance: 3) } == true
+            let forceRefresh = PlayerSurfacePresentationGate.shared.isHolding || !observedMatchesTarget || targetChangedWithoutPresentationChange
+
+            generation &+= 1
+            let requestGeneration = generation
+            activeSnapshotKey = key
+            activeTargetBackingSize = targetBacking
+            lastPresentationSignature = signature
+            lastTargetBackingSize = targetBacking
+            lastRendererConfigured = false
+            lastRendererActualBackingSize = nil
+            state = .waitingRenderer
+
+            DiagnosticsLogger.shared.log(
+                "RendererLayout",
+                "request generation=\(requestGeneration) epoch=\(presentationEpoch) engine=\(engine.kind.title) reason=\(reason.rawValue) surface=\(Int(normalizedSurface.pointSize.width))x\(Int(normalizedSurface.pointSize.height)) target=\(Int(targetBacking.width))x\(Int(targetBacking.height)) observed=\(Int(normalizedSurface.observedBackingSize.width))x\(Int(normalizedSurface.observedBackingSize.height)) forceRefresh=\(forceRefresh)"
+            )
+
+            let request = RendererLayoutRequest(generation: requestGeneration, plan: plan, surface: normalizedSurface, reason: reason, forceRendererRefresh: forceRefresh)
+            adapter.applyRendererLayout(request) { [weak self] acknowledgement in
+                DispatchQueue.main.async {
+                    guard let self, acknowledgement.generation == self.generation, self.activeSnapshotKey == key else { return }
+                    self.lastRendererConfigured = acknowledgement.rendererConfigured
+                    self.lastRendererActualBackingSize = acknowledgement.actualBackingSize
+                    if acknowledgement.matched {
+                        self.acknowledgedGeneration = acknowledgement.generation
+                        self.state = .settled
+                    } else {
+                        self.state = .failed
+                    }
+                    let actual = acknowledgement.actualBackingSize ?? .zero
+                    DiagnosticsLogger.shared.log(
+                        "RendererLayout",
+                        "ack generation=\(acknowledgement.generation) epoch=\(presentationEpoch) engine=\(engine.kind.title) matched=\(acknowledgement.matched) configured=\(acknowledgement.rendererConfigured) target=\(Int(targetBacking.width))x\(Int(targetBacking.height)) actual=\(Int(actual.width))x\(Int(actual.height)) detail=\(acknowledgement.detail)"
+                    )
+                    let latestSurfaceMatches = self.surfaceGeometry.map { current in
+                        RendererSurfaceGeometry.matches(current.pointSize, plan.surfaceFrame.size, tolerance: 1.5) && (!acknowledgement.rendererConfigured || current.hasObservedBacking && RendererSurfaceGeometry.matches(current.observedBackingSize, targetBacking, tolerance: 3))
+                    } == true
+                    if acknowledgement.matched, latestSurfaceMatches {
+                        PlayerSurfacePresentationGate.shared.rendererDidSettle(epoch: presentationEpoch, targetBackingSize: targetBacking, actualBackingSize: acknowledgement.actualBackingSize)
+                    }
+                }
+            }
             return
         }
 
-        let engineID = ObjectIdentifier(engine as AnyObject)
-        let key = RequestKey(
-            engineID: engineID,
-            plan: plan,
-            expectedBackingWidth: Int(surface.expectedBackingSize.width.rounded()),
-            expectedBackingHeight: Int(surface.expectedBackingSize.height.rounded()),
-            observedBackingWidth: Int(surface.observedBackingSize.width.rounded()),
-            observedBackingHeight: Int(surface.observedBackingSize.height.rounded())
-        )
-        guard key != lastRequestKey else { return }
-
-        let signature = PresentationSignature(plan: plan)
-        let forceRefresh = lastPresentationSignature == signature && lastTargetBackingSize.map { !RendererSurfaceGeometry.matches($0, surface.expectedBackingSize, tolerance: 3) } == true
-        generation &+= 1
-        let requestGeneration = generation
-        lastRequestKey = key
-        lastPresentationSignature = signature
-        lastTargetBackingSize = surface.expectedBackingSize
-        state = .waitingRenderer
-
-        DiagnosticsLogger.shared.log(
-            "RendererLayout",
-            "request generation=\(requestGeneration) engine=\(engine.kind.title) reason=\(reason.rawValue) surface=\(Int(surface.pointSize.width))x\(Int(surface.pointSize.height)) target=\(Int(surface.expectedBackingSize.width))x\(Int(surface.expectedBackingSize.height)) observed=\(Int(surface.observedBackingSize.width))x\(Int(surface.observedBackingSize.height)) forceRefresh=\(forceRefresh)"
-        )
-
-        let request = RendererLayoutRequest(generation: requestGeneration, plan: plan, surface: surface, reason: reason, forceRendererRefresh: forceRefresh)
-        adapter.applyRendererLayout(request) { [weak self] acknowledgement in
-            DispatchQueue.main.async {
-                guard let self, acknowledgement.generation == self.generation else { return }
-                if acknowledgement.matched {
-                    self.acknowledgedGeneration = acknowledgement.generation
-                    self.state = .settled
-                } else {
-                    self.state = .failed
-                }
-                let actual = acknowledgement.actualBackingSize ?? .zero
-                DiagnosticsLogger.shared.log(
-                    "RendererLayout",
-                    "ack generation=\(acknowledgement.generation) engine=\(engine.kind.title) matched=\(acknowledgement.matched) configured=\(acknowledgement.rendererConfigured) actual=\(Int(actual.width))x\(Int(actual.height)) detail=\(acknowledgement.detail)"
-                )
-            }
+        if key != activeSnapshotKey {
+            generation &+= 1
+            activeSnapshotKey = key
+            activeTargetBackingSize = targetBacking
         }
+        acknowledgedGeneration = generation
+        state = .settled
+        PlayerSurfacePresentationGate.shared.passiveSurfaceDidSettle()
+    }
+
+    private func targetBackingSize(for plan: VideoLayoutPlan, scale: CGFloat) -> CGSize {
+        CGSize(width: max(2, (plan.surfaceFrame.width * scale).rounded()), height: max(2, (plan.surfaceFrame.height * scale).rounded()))
     }
 }
