@@ -152,14 +152,13 @@ final class RendererLayoutCoordinator {
 
         if let adapter = engine as? RendererLayoutEngineAdapter {
             let sameSnapshot = key == activeSnapshotKey
-            if sameSnapshot, state == .settled {
-                if !lastRendererConfigured || observedMatchesTarget {
-                    PlayerSurfacePresentationGate.shared.rendererDidSettle(epoch: presentationEpoch, targetBackingSize: targetBacking, actualBackingSize: lastRendererActualBackingSize)
-                }
+            if sameSnapshot, state == .settled, !lastRendererConfigured || observedMatchesTarget {
+                PlayerSurfacePresentationGate.shared.rendererDidSettle(epoch: presentationEpoch, targetBackingSize: targetBacking, actualBackingSize: lastRendererActualBackingSize)
                 return
             }
+            let mayRefreshRegressedSurface = sameSnapshot && state == .settled && lastRendererConfigured && !observedMatchesTarget
             let mayRetryFailedSnapshot = sameSnapshot && state == .failed && normalizedSurface.hasObservedBacking
-            guard !sameSnapshot || mayRetryFailedSnapshot else { return }
+            guard !sameSnapshot || mayRetryFailedSnapshot || mayRefreshRegressedSurface else { return }
 
             let signature = PresentationSignature(plan: plan)
             let targetChangedWithoutPresentationChange = lastPresentationSignature == signature && lastTargetBackingSize.map { !RendererSurfaceGeometry.matches($0, targetBacking, tolerance: 3) } == true
