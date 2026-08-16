@@ -142,6 +142,10 @@ final class MPVPlayerEngine: PlayerEngine {
         setPropertyAsync(name: "video-aspect-override", value: aspectOverride ?? "no")
         setPropertyAsync(name: "panscan", value: String(format: "%.3f", clampedPanscan))
         DiagnosticsLogger.shared.log("MPVVideo", "geometry panscan=\(String(format: "%.3f", clampedPanscan)) aspect=\(aspectOverride ?? "source")")
+        queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+    guard let self, let handle = self.mpv, !self.isStopping else { return }
+    self.logVideoOutputGeometry(handle: handle, reason: "layout")
+}
     }
 
     func seek(to seconds: Double, direction: SeekDirection) {
@@ -605,6 +609,16 @@ final class MPVPlayerEngine: PlayerEngine {
             "reason=\(reason) currentAO=\(currentAO) aid=\(aid) audioParams=\(audioParams)"
         )
     }
+
+    private func logVideoOutputGeometry(handle: OpaquePointer, reason: String) {
+    let osdWidth = getStringProperty(handle: handle, name: "osd-width") ?? "nil"
+    let osdHeight = getStringProperty(handle: handle, name: "osd-height") ?? "nil"
+    let dwidth = getStringProperty(handle: handle, name: "dwidth") ?? "nil"
+    let dheight = getStringProperty(handle: handle, name: "dheight") ?? "nil"
+    let panscan = getStringProperty(handle: handle, name: "panscan") ?? "nil"
+    let aspectOverride = getStringProperty(handle: handle, name: "video-aspect-override") ?? "nil"
+    DiagnosticsLogger.shared.log("MPVViewport", "reason=\(reason) osd=\(osdWidth)x\(osdHeight) display=\(dwidth)x\(dheight) panscan=\(panscan) aspectOverride=\(aspectOverride)")
+}
 
     private func logVideoState(handle: OpaquePointer, reason: String) {
         let width = getStringProperty(handle: handle, name: "width") ?? "nil"

@@ -383,6 +383,19 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             guard concretePlaybackDemand, !pendingUserSeek, Date() <= initialResumeHistoryGuardUntil, let resumeAnchor = initialResumeAnchorByte else { return false }
             return range.upperBound + initialResumeHistoryDependencyMaxBytes < resumeAnchor
         }()
+        let resumeHeadGuard = awaitingInitialResumeDemand ? initialResumeHeadGuardBytes(resourceLength: resource.contentLength) : 0
+let resumeBootstrapHead = awaitingInitialResumeDemand && concretePlaybackDemand && range.lowerBound < resumeHeadGuard
+if resumeBootstrapHead {
+    let boundedUpper = min(resource.contentLength, min(range.upperBound, safeAdd(range.lowerBound, metadataUrgentBlockBytes)))
+    let bounded = range.lowerBound..<max(range.lowerBound + 1, boundedUpper)
+    DiagnosticsLogger.shared.playback(
+        "Resume",
+        "bootstrap head range=\(range.lowerBound)-\(range.upperBound) bounded=\(bounded.lowerBound)-\(bounded.upperBound) headGuard=\(resumeHeadGuard) reason=\(reason) action=urgent-only-keep-gate"
+    )
+    if !store.contains(bounded) { installUrgent(range: bounded, metadata: true, reason: "resume-bootstrap-head") }
+    scheduleSlots(reason: "resume-bootstrap-head")
+    return
+}
         if concretePlaybackDemand, reason == "blocked-read", !resumeHistoricalDependency, !playbackStarving {
             playbackStarving = true
             cacheRefillActive = true
@@ -398,7 +411,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         if awaitingInitialResumeDemand, concretePlaybackDemand {
             let resumeHeadGuard = initialResumeHeadGuardBytes(resourceLength: resource.contentLength)
-            let resumeAuthority = reason == "byte-offset" || range.lowerBound >= resumeHeadGuard
+            let resumeAuthority = range.lowerBound >= resumeHeadGuard
             if resumeAuthority {
                 awaitingInitialResumeDemand = false
                 let previous = playbackAnchor
