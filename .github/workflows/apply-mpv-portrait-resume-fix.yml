@@ -25,43 +25,28 @@ jobs:
 
           engine_path = Path('Sources/Player/MPVPlayerEngine.swift')
           text = engine_path.read_text()
-          old = '''    func setVideoGeometry(panscan: Double, aspectOverride: String?) {
-              let clampedPanscan = min(1, max(0, panscan))
-              setPropertyAsync(name: "video-unscaled", value: "no")
-              setPropertyAsync(name: "video-aspect-override", value: aspectOverride ?? "no")
-              setPropertyAsync(name: "panscan", value: String(format: "%.3f", clampedPanscan))
-              DiagnosticsLogger.shared.log("MPVVideo", "geometry panscan=\\(String(format: "%.3f", clampedPanscan)) aspect=\\(aspectOverride ?? "source")")
-          }
-          '''
-          new = '''    func setVideoGeometry(panscan: Double, aspectOverride: String?) {
-              let clampedPanscan = min(1, max(0, panscan))
-              setPropertyAsync(name: "video-unscaled", value: "no")
-              setPropertyAsync(name: "video-aspect-override", value: aspectOverride ?? "no")
-              setPropertyAsync(name: "panscan", value: String(format: "%.3f", clampedPanscan))
-              DiagnosticsLogger.shared.log("MPVVideo", "geometry panscan=\\(String(format: "%.3f", clampedPanscan)) aspect=\\(aspectOverride ?? "source")")
-              queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-                  guard let self, let handle = self.mpv, !self.isStopping else { return }
-                  self.logVideoOutputGeometry(handle: handle, reason: "layout")
-              }
-          }
-          '''
-          if old not in text:
-              raise SystemExit('::error::setVideoGeometry block not found')
-          text = text.replace(old, new, 1)
 
-          marker = '''    private func logVideoState(handle: OpaquePointer, reason: String) {
-              let width = getStringProperty(handle: handle, name: "width") ?? "nil"
-              let height = getStringProperty(handle: handle, name: "height") ?? "nil"
-              let dwidth = getStringProperty(handle: handle, name: "dwidth") ?? "nil"
-              let dheight = getStringProperty(handle: handle, name: "dheight") ?? "nil"
-              let rotate = getStringProperty(handle: handle, name: "video-rotate") ?? "nil"
-              let aspect = getStringProperty(handle: handle, name: "video-aspect") ?? "nil"
-              let hwdec = getStringProperty(handle: handle, name: "hwdec-current") ?? "nil"
-              let params = getStringProperty(handle: handle, name: "video-out-params") ?? getStringProperty(handle: handle, name: "video-params") ?? "nil"
-              DiagnosticsLogger.shared.log("MPVVideoState", "reason=\\(reason) size=\\(width)x\\(height) display=\\(dwidth)x\\(dheight) rotate=\\(rotate) aspect=\\(aspect) hwdec=\\(hwdec) params=\\(params)")
+          geometry_anchor = '        DiagnosticsLogger.shared.log("MPVVideo", "geometry panscan='
+          geometry_index = text.find(geometry_anchor)
+          if geometry_index < 0:
+              raise SystemExit('::error::MPV geometry diagnostic line not found')
+          geometry_line_end = text.find('\n', geometry_index)
+          if geometry_line_end < 0:
+              raise SystemExit('::error::MPV geometry diagnostic line has no terminator')
+          geometry_line_end += 1
+          viewport_probe = '''        queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+              guard let self, let handle = self.mpv, !self.isStopping else { return }
+              self.logVideoOutputGeometry(handle: handle, reason: "layout")
           }
           '''
-          addition = marker + '''\n    private func logVideoOutputGeometry(handle: OpaquePointer, reason: String) {
+          if 'self.logVideoOutputGeometry(handle: handle, reason: "layout")' not in text:
+              text = text[:geometry_line_end] + viewport_probe + text[geometry_line_end:]
+
+          video_state_anchor = '    private func logVideoState(handle: OpaquePointer, reason: String) {'
+          video_state_index = text.find(video_state_anchor)
+          if video_state_index < 0:
+              raise SystemExit('::error::logVideoState anchor not found')
+          viewport_helper = '''    private func logVideoOutputGeometry(handle: OpaquePointer, reason: String) {
               let osdWidth = getStringProperty(handle: handle, name: "osd-width") ?? "nil"
               let osdHeight = getStringProperty(handle: handle, name: "osd-height") ?? "nil"
               let dwidth = getStringProperty(handle: handle, name: "dwidth") ?? "nil"
@@ -70,20 +55,22 @@ jobs:
               let aspectOverride = getStringProperty(handle: handle, name: "video-aspect-override") ?? "nil"
               DiagnosticsLogger.shared.log("MPVViewport", "reason=\\(reason) osd=\\(osdWidth)x\\(osdHeight) display=\\(dwidth)x\\(dheight) panscan=\\(panscan) aspectOverride=\\(aspectOverride)")
           }
+
           '''
-          if marker not in text:
-              raise SystemExit('::error::logVideoState block not found')
-          text = text.replace(marker, addition, 1)
+          if 'private func logVideoOutputGeometry' not in text:
+              text = text[:video_state_index] + viewport_helper + text[video_state_index:]
           engine_path.write_text(text)
 
           transport_path = Path('Sources/Transport/UnifiedMediaTransportSession.swift')
           text = transport_path.read_text()
-          marker = '''        let resumeHistoricalDependency: Bool = {
-              guard concretePlaybackDemand, !pendingUserSeek, Date() <= initialResumeHistoryGuardUntil, let resumeAnchor = initialResumeAnchorByte else { return false }
-              return range.upperBound + initialResumeHistoryDependencyMaxBytes < resumeAnchor
-          }()
-          '''
-          addition = marker + '''        let resumeHeadGuard = awaitingInitialResumeDemand ? initialResumeHeadGuardBytes(resourceLength: resource.contentLength) : 0
+          dependency_start = text.find('        let resumeHistoricalDependency: Bool = {')
+          if dependency_start < 0:
+              raise SystemExit('::error::resumeHistoricalDependency anchor not found')
+          dependency_end = text.find('        }()\n', dependency_start)
+          if dependency_end < 0:
+              raise SystemExit('::error::resumeHistoricalDependency terminator not found')
+          dependency_end += len('        }()\n')
+          bootstrap_block = '''        let resumeHeadGuard = awaitingInitialResumeDemand ? initialResumeHeadGuardBytes(resourceLength: resource.contentLength) : 0
           let resumeBootstrapHead = awaitingInitialResumeDemand && concretePlaybackDemand && range.lowerBound < resumeHeadGuard
           if resumeBootstrapHead {
               let boundedUpper = min(resource.contentLength, min(range.upperBound, safeAdd(range.lowerBound, metadataUrgentBlockBytes)))
@@ -97,18 +84,15 @@ jobs:
               return
           }
           '''
-          if marker not in text:
-              raise SystemExit('::error::resumeHistoricalDependency block not found')
-          text = text.replace(marker, addition, 1)
-          old = '''            let resumeHeadGuard = initialResumeHeadGuardBytes(resourceLength: resource.contentLength)
-              let resumeAuthority = reason == "byte-offset" || range.lowerBound >= resumeHeadGuard
-          '''
-          new = '''            let resumeHeadGuard = initialResumeHeadGuardBytes(resourceLength: resource.contentLength)
-              let resumeAuthority = range.lowerBound >= resumeHeadGuard
-          '''
-          if old not in text:
-              raise SystemExit('::error::resumeAuthority block not found')
-          text = text.replace(old, new, 1)
+          if 'action=urgent-only-keep-gate' not in text:
+              text = text[:dependency_end] + bootstrap_block + text[dependency_end:]
+
+          old_authority = '            let resumeAuthority = reason == "byte-offset" || range.lowerBound >= resumeHeadGuard'
+          new_authority = '            let resumeAuthority = range.lowerBound >= resumeHeadGuard'
+          if old_authority in text:
+              text = text.replace(old_authority, new_authority, 1)
+          elif new_authority not in text:
+              raise SystemExit('::error::resumeAuthority line not found')
           transport_path.write_text(text)
           PY
 
@@ -118,5 +102,6 @@ jobs:
           git config user.name 'oneplayer-ci'
           git config user.email 'actions@users.noreply.github.com'
           git add Sources/Player/MPVPlayerEngine.swift Sources/Transport/UnifiedMediaTransportSession.swift
+          git diff --cached --check
           git commit -m 'Fix portrait renderer resize and resume bootstrap gating'
           git push origin HEAD:fix/mpv-portrait-layout-resume-bootstrap
