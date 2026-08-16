@@ -1,0 +1,105 @@
+diff --git a/Sources/Transport/UnifiedMediaTransportSession.swift b/Sources/Transport/UnifiedMediaTransportSession.swift
+index 5a64524..5b5e92f 100644
+--- a/Sources/Transport/UnifiedMediaTransportSession.swift
++++ b/Sources/Transport/UnifiedMediaTransportSession.swift
+@@ -73,7 +73,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
+     private let initialResumeMinimumHeadGuardBytes: Int64 = 1 * 1_048_576
+     private let initialResumeMaximumHeadGuardBytes: Int64 = 32 * 1_048_576
+     private let rollingCacheProtectedPrefixBytes: Int64 = 32 * 1_048_576
+-    private let rollingCacheMinimumHeadroomBytes: Int64 = 64 * 1_048_576
++    private let rollingCacheMinimumRefillGapBytes: Int64 = 64 * 1_048_576
++    private let rollingCacheMaximumRefillGapBytes: Int64 = 512 * 1_048_576
++    private let rollingCacheEmergencyMaximumBytes: Int64 = 256 * 1_048_576
++    private let rollingCacheTransientAllowanceBytes: Int64 = 128 * 1_048_576
+     private let playbackDemandRetentionSeconds: TimeInterval = 6
+     private let startupMetadataSlowFirstChunkSeconds: TimeInterval = 1.5
+     private let startupMetadataSlowFirstChunkBps: Double = 1 * 1_048_576
+@@ -110,6 +113,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
+     private var store: DownloadFirstSparseStore?
+     private var rangeMap = PlaybackRangeMap()
+     private var playbackAnchor: Int64 = 0
++    private var cacheWindowCenter: Int64 = 0
++    private var cacheRefillActive = true
++    private var cacheEmergencyActive = false
++    private var playbackAdvancing = true
+     private var awaitingInitialResumeDemand = false
+     private var pendingUserSeekUntil = Date.distantPast
+     private var pendingPlaybackUrgentRange: Range<Int64>?
+@@ -157,6 +164,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
+         self.blockBytes = min(max(configuration.upstreamBlockSizeBytes, 4 * 1_048_576), 64 * 1_048_576)
+     }
+ 
++    func setPlaybackAdvancing(_ advancing: Bool) async {
++        guard !stopped else { return }
++        guard playbackAdvancing != advancing else { return }
++        playbackAdvancing = advancing
++        DiagnosticsLogger.shared.playback("RollingCache", "playback advancing=\(advancing) center=\(cacheWindowCenter) refill=\(cacheRefillActive)")
++        scheduleSlots(reason: advancing ? "playback-resumed" : "playback-paused-fill")
++    }
++
+     func prepareInitialPlayback(position: Double, duration: Double) {
+         guard !stopped, position > 0.5 else { return }
+         awaitingInitialResumeDemand = true
+@@ -199,7 +214,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
+             }
+             DiagnosticsLogger.shared.log(
+                 "UnifiedTransport",
+-                "ready item=\(source.itemId) bytes=\(resolved.contentLength) slots=2 block=\(blockBytes) preloadWindow=\(preloadWindowBytes()) anchor=\(playbackAnchor) resumeGate=\(awaitingInitialResumeDemand) \(NetworkPathMonitor.shared.diagnosticSummary)"
++                "ready item=\(source.itemId) bytes=\(resolved.contentLength) slots=2 block=\(blockBytes) preloadWindow=\(preloadWindowBytes()) anchor=\(playbackAnchor) center=\(cacheWindowCenter) softMax=\(rollingSoftLimitBytes(window: preloadWindowBytes())) resumeGate=\(awaitingInitialResumeDemand) \(NetworkPathMonitor.shared.diagnosticSummary)"
+             )
+             scheduleSlots(reason: "resolved")
+             return resolved
+@@ -283,7 +298,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
+         if let demand = lastBlockingPlaybackDemand, now.timeIntervalSince(lastBlockingPlaybackDemandAt) <= stallBlockingDemandFreshSeconds, let resource {
+             let previous = playbackAnchor
+             playbackAnchor = demand.lowerBound
+-            resetSequentialWave()
++            resetCacheWindowCenter(to: demand.lowerBound, resource: resource, reason: "stall-blocking-demand")
+             let urgent = demand.lowerBound..<min(resource.contentLength, safeAdd(demand.lowerBound, urgentBlockBytes))
+             if store?.contains(urgent) == true {
+                 DiagnosticsLogger.shared.log("UnifiedDemand", "stall position=\(String(format: "%.3f", position)) previousAnchor=\(previous) anchor=\(playbackAnchor) blocked=\(demand.lowerBound)-\(demand.upperBound) action=blocking-demand-already-cached")
+@@ -349,7 +364,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
+         let metadata = startupTailMetadata || (!concreteReason && isMetadataProbe(range, resource: resource))
+         let pendingUserSeek = Date() <= pendingUserSeekUntil
+         let concretePlaybackDemand = concreteReason && !metadata
+-        let authoritativeSeekDemand = reason == "blocked-read" || reason == "byte-offset"
++        let cachedReadDistance = range.lowerBound >= playbackAnchor ? range.lowerBound - playbackAnchor : playbackAnchor - range.lowerBound
++        let cachedSeekRead = pendingUserSeek && reason == "concrete-read" && store.availableLength(from: range.lowerBound, maximumLength: min(Int64(range.count), urgentBlockBytes)) > 0 && cachedReadDistance >= max(8 * 1_048_576, blockBytes / 2)
++        let authoritativeSeekDemand = reason == "blocked-read" || reason == "byte-offset" || cachedSeekRead
+         var reanchored = false
+         if startupTailMetadata { DiagnosticsLogger.shared.log("UnifiedStartup", "critical-tail-metadata range=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=actual-demand") }
+         if concretePlaybackDemand { recordPlaybackDemand(offset: range.lowerBound) }
+@@ -367,7 +384,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
+                 playbackAnchor = range.lowerBound
+                 playbackDemandSamples.removeAll()
+                 recordPlaybackDemand(offset: range.lowerBound)
+-                resetSequentialWave()
++                resetCacheWindowCenter(to: range.lowerBound, resource: resource, reason: "resume-real-demand")
+                 reanchored = true
+                 DiagnosticsLogger.shared.playback(
+                     "Resume",
+@@ -419,11 +436,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
+             playbackAnchor = range.lowerBound
+             playbackDemandSamples.removeAll()
+             recordPlaybackDemand(offset: range.lowerBound)
+-            resetSequentialWave()
++            resetCacheWindowCenter(to: range.lowerBound, resource: resource, reason: "user-seek-real-demand")
+             reanchored = true
+             DiagnosticsLogger.shared.log(
+                 "UnifiedAnchor",
+-                "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) authority=cache-miss"
++                "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) authority=\(cachedSeekRead ? "cached-read" : "cache-miss")"
+             )
+             for slot in [0, 1] {
+                 guard let active = slotClaims[slot], !active.range.contains(range.lowerBound) else { continue }
+@@ -440,6 +457,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
+             }
+         }
+ 
++        if concretePlaybackDemand, !reanchored, !awaitingInitialResumeDemand, Date() > pendingUserSeekUntil {
++            advanceCacheWindowCenterFromRecentDemand(resource: resource)
++        }
++
+         if store.availableLength(from: range.lowerBound, maximumLength: min(Int64(range.count), urgentBlockBytes)) > 0 {
+             if reanchored { scheduleSlots(reason: "reanchor-cache-hit") }
+             return
