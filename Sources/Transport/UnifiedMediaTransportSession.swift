@@ -70,7 +70,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let secondaryMetadataMaxBytes: Int64 = 2 * 1_048_576
     private let initialSequentialBlockBytes: Int64 = 4 * 1_048_576
     private let largeFileInitialSequentialBlockBytes: Int64 = 1 * 1_048_576
-    private let initialResumeHeadGuardBytes: Int64 = 32 * 1_048_576
+    private let initialResumeMinimumHeadGuardBytes: Int64 = 1 * 1_048_576
+    private let initialResumeMaximumHeadGuardBytes: Int64 = 32 * 1_048_576
     private let rollingCacheProtectedPrefixBytes: Int64 = 32 * 1_048_576
     private let rollingCacheMinimumHeadroomBytes: Int64 = 64 * 1_048_576
     private let playbackDemandRetentionSeconds: TimeInterval = 6
@@ -164,7 +165,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         for slot in [0, 1] where slotClaims[slot]?.role == .sequential { cancelSlot(slot, reason: "initial-resume-await-real-demand") }
         DiagnosticsLogger.shared.playback(
             "Resume",
-            "transport gate armed position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) byteGuess=disabled headGuard=\(initialResumeHeadGuardBytes)"
+            "transport gate armed position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) byteGuess=disabled headGuard=adaptive"
         )
     }
 
@@ -358,7 +359,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         }
 
         if awaitingInitialResumeDemand, concretePlaybackDemand {
-            let resumeAuthority = reason == "byte-offset" || range.lowerBound >= initialResumeHeadGuardBytes
+            let resumeHeadGuard = initialResumeHeadGuardBytes(resourceLength: resource.contentLength)
+            let resumeAuthority = reason == "byte-offset" || range.lowerBound >= resumeHeadGuard
             if resumeAuthority {
                 awaitingInitialResumeDemand = false
                 let previous = playbackAnchor
@@ -369,7 +371,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 reanchored = true
                 DiagnosticsLogger.shared.playback(
                     "Resume",
-                    "real-demand anchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) headGuard=\(initialResumeHeadGuardBytes)"
+                    "real-demand anchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) headGuard=\(resumeHeadGuard)"
                 )
                 for slot in [0, 1] {
                     guard let active = slotClaims[slot], !active.range.contains(range.lowerBound) else { continue }
@@ -379,7 +381,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             } else if authoritativeSeekDemand {
                 DiagnosticsLogger.shared.playback(
                     "Resume",
-                    "bootstrap demand range=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=urgent-only-await-resume-byte"
+                    "bootstrap demand range=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=urgent-only-await-resume-byte headGuard=\(resumeHeadGuard)"
                 )
             }
         }
@@ -1304,6 +1306,12 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         if let transportError = error as? MediaTransportError, case .cancelled = transportError { return true }
         if let urlError = error as? URLError, urlError.code == .cancelled { return true }
         return false
+    }
+
+    private func initialResumeHeadGuardBytes(resourceLength: Int64) -> Int64 {
+        guard resourceLength > 0 else { return initialResumeMaximumHeadGuardBytes }
+        let proportional = max(initialResumeMinimumHeadGuardBytes, resourceLength / 100)
+        return min(initialResumeMaximumHeadGuardBytes, proportional)
     }
 
     private func preloadWindowBytes() -> Int64 {
