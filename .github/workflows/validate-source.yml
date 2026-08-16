@@ -83,6 +83,7 @@ jobs:
               "scripts/assets/OnePlayerAlternate384.b64.01",
               "scripts/generate_oneplayer_icons.py",
               "scripts/check_min_os.sh",
+              "scripts/check_player_resume_foreground_ui.py",
               "scripts/validate_built_app.py",
           ]
           missing = [path for path in required if not Path(path).is_file()]
@@ -117,6 +118,9 @@ jobs:
 
       - name: Generate project
         run: xcodegen generate
+
+      - name: Validate player resume and foreground UI
+        run: python3 scripts/check_player_resume_foreground_ui.py
 
       - name: Validate contiguous RangeMap
         run: |
