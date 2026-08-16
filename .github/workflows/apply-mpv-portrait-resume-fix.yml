@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Patch MPV viewport diagnostics and resume bootstrap gate
+      - name: Normalize patched source
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -25,28 +25,15 @@ jobs:
 
           engine_path = Path('Sources/Player/MPVPlayerEngine.swift')
           text = engine_path.read_text()
+          bad_probe = '        queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in\n    guard let self, let handle = self.mpv, !self.isStopping else { return }\n    self.logVideoOutputGeometry(handle: handle, reason: "layout")\n}\n'
+          good_probe = '        queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in\n            guard let self, let handle = self.mpv, !self.isStopping else { return }\n            self.logVideoOutputGeometry(handle: handle, reason: "layout")\n        }\n'
+          text = text.replace(bad_probe, good_probe, 1)
 
-          geometry_anchor = '        DiagnosticsLogger.shared.log("MPVVideo", "geometry panscan='
-          geometry_index = text.find(geometry_anchor)
-          if geometry_index < 0:
-              raise SystemExit('::error::MPV geometry diagnostic line not found')
-          geometry_line_end = text.find('\n', geometry_index)
-          if geometry_line_end < 0:
-              raise SystemExit('::error::MPV geometry diagnostic line has no terminator')
-          geometry_line_end += 1
-          viewport_probe = '''        queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-              guard let self, let handle = self.mpv, !self.isStopping else { return }
-              self.logVideoOutputGeometry(handle: handle, reason: "layout")
-          }
-          '''
-          if 'self.logVideoOutputGeometry(handle: handle, reason: "layout")' not in text:
-              text = text[:geometry_line_end] + viewport_probe + text[geometry_line_end:]
-
-          video_state_anchor = '    private func logVideoState(handle: OpaquePointer, reason: String) {'
-          video_state_index = text.find(video_state_anchor)
-          if video_state_index < 0:
-              raise SystemExit('::error::logVideoState anchor not found')
-          viewport_helper = '''    private func logVideoOutputGeometry(handle: OpaquePointer, reason: String) {
+          helper_start = text.find('    private func logVideoOutputGeometry(handle: OpaquePointer, reason: String) {')
+          helper_end = text.find('\n\n    private func logVideoState', helper_start)
+          if helper_start < 0 or helper_end < 0:
+              raise SystemExit('::error::MPV viewport helper markers not found')
+          helper = '''    private func logVideoOutputGeometry(handle: OpaquePointer, reason: String) {
               let osdWidth = getStringProperty(handle: handle, name: "osd-width") ?? "nil"
               let osdHeight = getStringProperty(handle: handle, name: "osd-height") ?? "nil"
               let dwidth = getStringProperty(handle: handle, name: "dwidth") ?? "nil"
@@ -54,23 +41,19 @@ jobs:
               let panscan = getStringProperty(handle: handle, name: "panscan") ?? "nil"
               let aspectOverride = getStringProperty(handle: handle, name: "video-aspect-override") ?? "nil"
               DiagnosticsLogger.shared.log("MPVViewport", "reason=\\(reason) osd=\\(osdWidth)x\\(osdHeight) display=\\(dwidth)x\\(dheight) panscan=\\(panscan) aspectOverride=\\(aspectOverride)")
-          }
-
-          '''
-          if 'private func logVideoOutputGeometry' not in text:
-              text = text[:video_state_index] + viewport_helper + text[video_state_index:]
+          }'''
+          text = text[:helper_start] + helper + text[helper_end:]
+          if 'self.logVideoOutputGeometry(handle: handle, reason: "layout")' not in text:
+              raise SystemExit('::error::MPV viewport probe missing')
           engine_path.write_text(text)
 
           transport_path = Path('Sources/Transport/UnifiedMediaTransportSession.swift')
           text = transport_path.read_text()
-          dependency_start = text.find('        let resumeHistoricalDependency: Bool = {')
-          if dependency_start < 0:
-              raise SystemExit('::error::resumeHistoricalDependency anchor not found')
-          dependency_end = text.find('        }()\n', dependency_start)
-          if dependency_end < 0:
-              raise SystemExit('::error::resumeHistoricalDependency terminator not found')
-          dependency_end += len('        }()\n')
-          bootstrap_block = '''        let resumeHeadGuard = awaitingInitialResumeDemand ? initialResumeHeadGuardBytes(resourceLength: resource.contentLength) : 0
+          start = text.find('        let resumeHeadGuard = awaitingInitialResumeDemand ?')
+          end = text.find('\n        if concretePlaybackDemand, reason == "blocked-read"', start)
+          if start < 0 or end < 0:
+              raise SystemExit('::error::resume bootstrap block markers not found')
+          block = '''        let resumeHeadGuard = awaitingInitialResumeDemand ? initialResumeHeadGuardBytes(resourceLength: resource.contentLength) : 0
           let resumeBootstrapHead = awaitingInitialResumeDemand && concretePlaybackDemand && range.lowerBound < resumeHeadGuard
           if resumeBootstrapHead {
               let boundedUpper = min(resource.contentLength, min(range.upperBound, safeAdd(range.lowerBound, metadataUrgentBlockBytes)))
@@ -82,26 +65,19 @@ jobs:
               if !store.contains(bounded) { installUrgent(range: bounded, metadata: true, reason: "resume-bootstrap-head") }
               scheduleSlots(reason: "resume-bootstrap-head")
               return
-          }
-          '''
-          if 'action=urgent-only-keep-gate' not in text:
-              text = text[:dependency_end] + bootstrap_block + text[dependency_end:]
-
-          old_authority = '            let resumeAuthority = reason == "byte-offset" || range.lowerBound >= resumeHeadGuard'
-          new_authority = '            let resumeAuthority = range.lowerBound >= resumeHeadGuard'
-          if old_authority in text:
-              text = text.replace(old_authority, new_authority, 1)
-          elif new_authority not in text:
-              raise SystemExit('::error::resumeAuthority line not found')
+          }'''
+          text = text[:start] + block + text[end:]
+          if 'let resumeAuthority = range.lowerBound >= resumeHeadGuard' not in text:
+              raise SystemExit('::error::resume authority fix missing')
           transport_path.write_text(text)
           PY
 
-      - name: Commit source fixes
+      - name: Commit normalization
         run: |
           set -euo pipefail
           git config user.name 'oneplayer-ci'
           git config user.email 'actions@users.noreply.github.com'
           git add Sources/Player/MPVPlayerEngine.swift Sources/Transport/UnifiedMediaTransportSession.swift
           git diff --cached --check
-          git commit -m 'Fix portrait renderer resize and resume bootstrap gating'
+          git commit -m 'Normalize portrait and resume fixes'
           git push origin HEAD:fix/mpv-portrait-layout-resume-bootstrap
