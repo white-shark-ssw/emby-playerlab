@@ -611,14 +611,14 @@ final class MPVPlayerEngine: PlayerEngine {
     }
 
     private func logVideoOutputGeometry(handle: OpaquePointer, reason: String) {
-    let osdWidth = getStringProperty(handle: handle, name: "osd-width") ?? "nil"
-    let osdHeight = getStringProperty(handle: handle, name: "osd-height") ?? "nil"
-    let dwidth = getStringProperty(handle: handle, name: "dwidth") ?? "nil"
-    let dheight = getStringProperty(handle: handle, name: "dheight") ?? "nil"
-    let panscan = getStringProperty(handle: handle, name: "panscan") ?? "nil"
-    let aspectOverride = getStringProperty(handle: handle, name: "video-aspect-override") ?? "nil"
-    DiagnosticsLogger.shared.log("MPVViewport", "reason=\(reason) osd=\(osdWidth)x\(osdHeight) display=\(dwidth)x\(dheight) panscan=\(panscan) aspectOverride=\(aspectOverride)")
-}
+        let osdWidth = getStringProperty(handle: handle, name: "osd-width") ?? "nil"
+        let osdHeight = getStringProperty(handle: handle, name: "osd-height") ?? "nil"
+        let dwidth = getStringProperty(handle: handle, name: "dwidth") ?? "nil"
+        let dheight = getStringProperty(handle: handle, name: "dheight") ?? "nil"
+        let panscan = getStringProperty(handle: handle, name: "panscan") ?? "nil"
+        let aspectOverride = getStringProperty(handle: handle, name: "video-aspect-override") ?? "nil"
+        DiagnosticsLogger.shared.log("MPVViewport", "reason=\(reason) osd=\(osdWidth)x\(osdHeight) display=\(dwidth)x\(dheight) panscan=\(panscan) aspectOverride=\(aspectOverride)")
+    }
 
     private func logVideoState(handle: OpaquePointer, reason: String) {
         let width = getStringProperty(handle: handle, name: "width") ?? "nil"

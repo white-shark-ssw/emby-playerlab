@@ -384,18 +384,18 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             return range.upperBound + initialResumeHistoryDependencyMaxBytes < resumeAnchor
         }()
         let resumeHeadGuard = awaitingInitialResumeDemand ? initialResumeHeadGuardBytes(resourceLength: resource.contentLength) : 0
-let resumeBootstrapHead = awaitingInitialResumeDemand && concretePlaybackDemand && range.lowerBound < resumeHeadGuard
-if resumeBootstrapHead {
-    let boundedUpper = min(resource.contentLength, min(range.upperBound, safeAdd(range.lowerBound, metadataUrgentBlockBytes)))
-    let bounded = range.lowerBound..<max(range.lowerBound + 1, boundedUpper)
-    DiagnosticsLogger.shared.playback(
-        "Resume",
-        "bootstrap head range=\(range.lowerBound)-\(range.upperBound) bounded=\(bounded.lowerBound)-\(bounded.upperBound) headGuard=\(resumeHeadGuard) reason=\(reason) action=urgent-only-keep-gate"
-    )
-    if !store.contains(bounded) { installUrgent(range: bounded, metadata: true, reason: "resume-bootstrap-head") }
-    scheduleSlots(reason: "resume-bootstrap-head")
-    return
-}
+        let resumeBootstrapHead = awaitingInitialResumeDemand && concretePlaybackDemand && range.lowerBound < resumeHeadGuard
+        if resumeBootstrapHead {
+            let boundedUpper = min(resource.contentLength, min(range.upperBound, safeAdd(range.lowerBound, metadataUrgentBlockBytes)))
+            let bounded = range.lowerBound..<max(range.lowerBound + 1, boundedUpper)
+            DiagnosticsLogger.shared.playback(
+                "Resume",
+                "bootstrap head range=\(range.lowerBound)-\(range.upperBound) bounded=\(bounded.lowerBound)-\(bounded.upperBound) headGuard=\(resumeHeadGuard) reason=\(reason) action=urgent-only-keep-gate"
+            )
+            if !store.contains(bounded) { installUrgent(range: bounded, metadata: true, reason: "resume-bootstrap-head") }
+            scheduleSlots(reason: "resume-bootstrap-head")
+            return
+        }
         if concretePlaybackDemand, reason == "blocked-read", !resumeHistoricalDependency, !playbackStarving {
             playbackStarving = true
             cacheRefillActive = true
