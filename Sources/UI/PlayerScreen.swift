@@ -42,7 +42,6 @@ struct PlayerScreen: View {
     @State private var bufferingDownloadSpeed: Double = 0
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
-        AppOrientationCoordinator.shared.beginPlayerPresentation(source: source)
         _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: preference))
         let defaultScaleRaw = UserDefaults.standard.string(forKey: PlayerPreferenceKeys.defaultScaleMode) ?? PlayerVideoScaleMode.fit.rawValue
         let defaultScale = PlayerVideoScaleMode(rawValue: defaultScaleRaw) ?? .fit
@@ -53,10 +52,13 @@ struct PlayerScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
+            playerSurface.ignoresSafeArea()
+
+            if !orientationReady {
+                Color.black.ignoresSafeArea().allowsHitTesting(false)
+            }
 
             if orientationReady {
-                playerSurface.ignoresSafeArea()
-
                 PlaybackGestureOverlay(
                     volumeHapticsEnabled: volumeHapticsEnabled,
                     resetGeneration: gestureResetGeneration,
@@ -93,7 +95,9 @@ struct PlayerScreen: View {
         .onAppear {
             originalScreenBrightness = UIScreen.main.brightness
             applyIndependentBrightnessIfNeeded()
-            prepareInitialOrientationAndStart()
+            AppOrientationCoordinator.shared.beginPlayerPresentation(source: controller.source)
+            startPlaybackIfNeeded()
+            prepareInitialOrientation()
         }
         .onDisappear {
             controlsHideWorkItem?.cancel()
@@ -409,15 +413,14 @@ struct PlayerScreen: View {
         return CGSize(width: container.width, height: container.width / targetRatio)
     }
 
-    private func prepareInitialOrientationAndStart() {
+    private func prepareInitialOrientation() {
         guard let target = resolvedInitialOrientation() else {
             DiagnosticsLogger.shared.playback("PlayerUI", "initial orientation kept because media display aspect is unavailable")
             orientationReady = true
             AppOrientationCoordinator.shared.playerOrientationDidSettle()
-            startPlaybackIfNeeded()
             return
         }
-        beginOrientationTransition(to: target, reason: "initial", shouldStartPlayback: true)
+        beginOrientationTransition(to: target, reason: "initial", shouldStartPlayback: false)
     }
 
     private func beginOrientationTransition(to target: UIInterfaceOrientation, reason: String, shouldStartPlayback: Bool) {
@@ -465,6 +468,7 @@ struct PlayerScreen: View {
         guard !playbackStarted, !isClosing else { return }
         playbackStarted = true
         let preset = BufferPreset(rawValue: bufferPresetRaw) ?? .balanced
+        DiagnosticsLogger.shared.playback("PlayerUI", "startup playback begin in parallel with orientation")
         controller.start(preferredForwardBuffer: preset.seconds)
         controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
         controller.applyVideoScaleMode(currentScaleMode)
@@ -691,9 +695,9 @@ struct PlayerScreen: View {
         adjustmentHUD = nil
         controller.pausePlayback()
         pictureInPictureController.stopAndDetach()
-        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; dismiss first, portrait restore queued once")
+        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; portrait restore and dismiss begin together while video surface remains mounted")
+        AppOrientationCoordinator.shared.restoreMainInterfaceOrientation()
         presentationMode.wrappedValue.dismiss()
-        DispatchQueue.main.async { AppOrientationCoordinator.shared.restoreMainInterfaceOrientation() }
     }
 
     private func rotatePlayer() {
