@@ -92,7 +92,12 @@ final class MPVSurfaceUIView: UIView {
 
     private func presentationGateDidChange() {
         guard Thread.isMainThread else { DispatchQueue.main.async { [weak self] in self?.presentationGateDidChange() }; return }
-        presentationCoverView.isHidden = !PlayerSurfacePresentationGate.shared.isHolding
+        let gate = PlayerSurfacePresentationGate.shared
+        presentationCoverView.isHidden = !gate.isHolding
+        if gate.requiresRendererAcknowledgement {
+            lastReportedGeometry = nil
+            DiagnosticsLogger.shared.log("MPVSurface", "foreground presentation replay epoch=\(gate.epoch) reason=renderer-ack-required")
+        }
         setNeedsLayout()
         if window != nil { layoutIfNeeded() }
     }
