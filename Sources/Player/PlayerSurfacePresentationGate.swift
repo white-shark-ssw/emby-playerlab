@@ -15,6 +15,8 @@ final class PlayerSurfacePresentationGate {
     private(set) var targetOrientation: UIInterfaceOrientation?
     private var foregroundReleaseArmed = false
 
+    var requiresRendererAcknowledgement: Bool { isHolding && foregroundReleaseArmed }
+
     private init() {}
 
     func hold(targetOrientation: UIInterfaceOrientation?, reason: String) {
