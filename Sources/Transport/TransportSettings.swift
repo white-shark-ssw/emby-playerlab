@@ -169,7 +169,7 @@ struct CacheStorageUsage: Equatable, Sendable {
 enum CacheStorageFormatter {
     static func string(bytes: Int64) -> String {
         guard bytes > 0 else { return "0 MB" }
-        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .binary)
     }
 }
 

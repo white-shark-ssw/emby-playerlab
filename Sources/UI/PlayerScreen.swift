@@ -27,6 +27,7 @@ struct PlayerScreen: View {
     @State private var isClosing = false
     @State private var orientationReady = false
     @State private var playbackStarted = false
+    @State private var presentationDidAppear = false
     @State private var controlsVisible = true
     @State private var centerFeedbackSymbol: String?
     @State private var temporaryRateHUD: Double?
@@ -35,6 +36,7 @@ struct PlayerScreen: View {
     @State private var feedbackHideWorkItem: DispatchWorkItem?
     @State private var adjustmentHideWorkItem: DispatchWorkItem?
     @State private var initialOrientationWorkItem: DispatchWorkItem?
+    @State private var closeDismissWorkItem: DispatchWorkItem?
     @State private var originalScreenBrightness: CGFloat?
     @State private var wasAutoPausedForBackground = false
     @State private var audioInterruptionActive = false
@@ -52,13 +54,16 @@ struct PlayerScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            playerSurface.ignoresSafeArea()
 
-            if !orientationReady {
+            if orientationReady && !isClosing {
+                playerSurface.ignoresSafeArea()
+            }
+
+            if !orientationReady || isClosing {
                 Color.black.ignoresSafeArea().allowsHitTesting(false)
             }
 
-            if orientationReady {
+            if orientationReady && !isClosing {
                 PlaybackGestureOverlay(
                     volumeHapticsEnabled: volumeHapticsEnabled,
                     resetGeneration: gestureResetGeneration,
@@ -90,6 +95,10 @@ struct PlayerScreen: View {
                 if controller.snapshot.isBuffering { bufferingIndicator }
                 statusMessages
             }
+
+            PlayerPresentationDidAppearProbe(onDidAppear: handlePresentationDidAppear)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
         }
         .statusBar(hidden: true)
         .onAppear {
@@ -97,13 +106,13 @@ struct PlayerScreen: View {
             applyIndependentBrightnessIfNeeded()
             AppOrientationCoordinator.shared.beginPlayerPresentation(source: controller.source)
             startPlaybackIfNeeded()
-            prepareInitialOrientation()
         }
         .onDisappear {
             controlsHideWorkItem?.cancel()
             feedbackHideWorkItem?.cancel()
             adjustmentHideWorkItem?.cancel()
             initialOrientationWorkItem?.cancel()
+            closeDismissWorkItem?.cancel()
             if !isClosing { AppOrientationCoordinator.shared.restoreMainInterfaceOrientation() }
             resetTransientInteractions(reason: "disappear")
             wasAutoPausedForBackground = false
@@ -413,6 +422,13 @@ struct PlayerScreen: View {
         return CGSize(width: container.width, height: container.width / targetRatio)
     }
 
+    private func handlePresentationDidAppear() {
+        guard !presentationDidAppear, !isClosing else { return }
+        presentationDidAppear = true
+        DiagnosticsLogger.shared.playback("Lifecycle", "player cover fully appeared; initial orientation may begin")
+        prepareInitialOrientation()
+    }
+
     private func prepareInitialOrientation() {
         guard let target = resolvedInitialOrientation() else {
             DiagnosticsLogger.shared.playback("PlayerUI", "initial orientation kept because media display aspect is unavailable")
@@ -468,7 +484,7 @@ struct PlayerScreen: View {
         guard !playbackStarted, !isClosing else { return }
         playbackStarted = true
         let preset = BufferPreset(rawValue: bufferPresetRaw) ?? .balanced
-        DiagnosticsLogger.shared.playback("PlayerUI", "startup playback begin in parallel with orientation")
+        DiagnosticsLogger.shared.playback("PlayerUI", "startup playback preparation begin while presentation/orientation is covered")
         controller.start(preferredForwardBuffer: preset.seconds)
         controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
         controller.applyVideoScaleMode(currentScaleMode)
@@ -686,18 +702,36 @@ struct PlayerScreen: View {
     private func closePlayer() {
         guard !isClosing else { return }
         isClosing = true
+        orientationReady = false
         controlsHideWorkItem?.cancel()
         feedbackHideWorkItem?.cancel()
         adjustmentHideWorkItem?.cancel()
+        initialOrientationWorkItem?.cancel()
+        closeDismissWorkItem?.cancel()
         controlsVisible = false
         centerFeedbackSymbol = nil
         temporaryRateHUD = nil
         adjustmentHUD = nil
         controller.pausePlayback()
         pictureInPictureController.stopAndDetach()
-        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; portrait restore and dismiss begin together while video surface remains mounted")
+        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; keep opaque player cover until portrait settles")
         AppOrientationCoordinator.shared.restoreMainInterfaceOrientation()
-        presentationMode.wrappedValue.dismiss()
+        waitForPortraitBeforeDismiss(attempt: 0)
+    }
+
+    private func waitForPortraitBeforeDismiss(attempt: Int) {
+        guard isClosing else { return }
+        let actual = activeWindowScene()?.interfaceOrientation
+        if actual?.isPortrait == true || attempt >= 20 {
+            closeDismissWorkItem = nil
+            DiagnosticsLogger.shared.playback("Lifecycle", "player dismiss after portrait wait actual=\(actual?.rawValue ?? 0) timeout=\(attempt >= 20)")
+            presentationMode.wrappedValue.dismiss()
+            return
+        }
+        if attempt == 6 || attempt == 12 { requestInterfaceOrientation(.portrait, reason: "close-retry\(attempt)") }
+        let workItem = DispatchWorkItem { waitForPortraitBeforeDismiss(attempt: attempt + 1) }
+        closeDismissWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
     }
 
     private func rotatePlayer() {
@@ -710,6 +744,42 @@ struct PlayerScreen: View {
     private struct AdjustmentHUDState {
         let adjustment: PlaybackVerticalAdjustment
         let value: Double
+    }
+}
+
+private struct PlayerPresentationDidAppearProbe: UIViewControllerRepresentable {
+    let onDidAppear: () -> Void
+
+    func makeUIViewController(context: Context) -> ProbeViewController {
+        ProbeViewController(onDidAppear: onDidAppear)
+    }
+
+    func updateUIViewController(_ uiViewController: ProbeViewController, context: Context) {
+        uiViewController.onDidAppear = onDidAppear
+    }
+
+    final class ProbeViewController: UIViewController {
+        var onDidAppear: () -> Void
+
+        init(onDidAppear: @escaping () -> Void) {
+            self.onDidAppear = onDidAppear
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func loadView() {
+            let view = UIView(frame: .zero)
+            view.backgroundColor = .clear
+            view.isUserInteractionEnabled = false
+            self.view = view
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            DispatchQueue.main.async { [weak self] in self?.onDidAppear() }
+        }
     }
 }
 
