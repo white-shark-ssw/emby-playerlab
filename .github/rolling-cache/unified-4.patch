@@ -1,0 +1,49 @@
+diff --git a/Sources/Transport/UnifiedMediaTransportSession.swift b/Sources/Transport/UnifiedMediaTransportSession.swift
+index 5a64524..5b5e92f 100644
+--- a/Sources/Transport/UnifiedMediaTransportSession.swift
++++ b/Sources/Transport/UnifiedMediaTransportSession.swift
+@@ -1289,9 +1387,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
+             lastMetricsLogAt = Date()
+             let slot0 = slotClaims[0]?.range.description ?? "idle"
+             let slot1 = slotClaims[1]?.range.description ?? "idle"
++            let window = preloadWindowBytes()
++            let forwardUpper = min(resource.contentLength, safeAdd(center, window))
++            let backwardLower = max(0, center - window)
++            let forwardCached = forwardUpper > center ? rangeMap.playbackBytes(in: center..<forwardUpper) : 0
++            let backwardCached = center > backwardLower ? rangeMap.playbackBytes(in: backwardLower..<center) : 0
+             DiagnosticsLogger.shared.log(
+                 "UnifiedMap",
+-                "anchor=\(map.anchorByte) frontier=\(map.frontierByte) contiguous=\(metricsValue.contiguousCacheBytes) cached=\(metricsValue.cacheBytes) metadata=\(map.metadataBytes) holes=\(map.holeCount) slot0=\(slot0) slot1=\(slot1) networkBps=\(Int(metricsValue.currentDownloadBytesPerSecond)) resumeGate=\(awaitingInitialResumeDemand)"
++                "anchor=\(playbackAnchor) center=\(center) frontier=\(map.frontierByte) contiguous=\(metricsValue.contiguousCacheBytes) forwardCached=\(forwardCached) backwardCached=\(backwardCached) window=\(window) cached=\(metricsValue.cacheBytes) metadata=\(map.metadataBytes) holes=\(map.holeCount) refill=\(cacheRefillActive) emergency=\(cacheEmergencyActive) advancing=\(playbackAdvancing) slot0=\(slot0) slot1=\(slot1) networkBps=\(Int(metricsValue.currentDownloadBytesPerSecond)) resumeGate=\(awaitingInitialResumeDemand)"
+             )
+         }
+     }
+@@ -1315,18 +1418,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
+     }
+ 
+     private func preloadWindowBytes() -> Int64 {
+-        if NetworkPathMonitor.shared.isCellular {
+-            // Unified Transport v3 uses its own configured cellular byte window. A non-zero cellular
+-            // budget means prefetch is enabled; zero remains the explicit opt-out. Do not inherit the
+-            // legacy KTV proxy switch, otherwise v3 becomes urgent-only and can go idle after a seek.
+-            return max(0, configuration.cellularPreloadBytes)
+-        }
+-        // On Wi-Fi the session disk budget is a rolling cache capacity, not "the first N bytes".
+-        // The scheduler slides playbackAnchor forward only from recent real byte demand, then sparse
+-        // blocks safely behind playback are punched out so a >2 GiB movie keeps prefetching later data.
+-        if configuration.ktvContinuousPreloadEnabled, configuration.usesDiskCache, configuration.diskLimitBytes > 0 {
+-            return max(configuration.wifiPreloadBytes, configuration.diskLimitBytes)
+-        }
++        if NetworkPathMonitor.shared.isCellular { return max(0, configuration.cellularPreloadBytes) }
+         return max(0, configuration.wifiPreloadBytes)
+     }
+ 
+@@ -1341,7 +1433,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
+     private func isMetadataProbe(_ range: Range<Int64>, resource: TransportResolvedResource) -> Bool {
+         guard !range.isEmpty else { return false }
+         let nearTail = resource.contentLength > 64 * 1_048_576 && range.lowerBound >= resource.contentLength - 64 * 1_048_576
+-        let tinyProbe = range.count <= 64 * 1024 && range.lowerBound > max(8 * 1_048_576, playbackAnchor + 2 * blockBytes)
++        let tinyProbe = range.count <= 64 * 1024 && range.lowerBound > max(8 * 1_048_576, cacheWindowCenter + 2 * blockBytes)
+         return nearTail || tinyProbe
+     }
+ 
