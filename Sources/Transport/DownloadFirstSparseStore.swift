@@ -235,6 +235,7 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
         var fd: Int32 = -1
 
         condition.lock()
+        defer { condition.unlock() }
         while !closed {
             readableLength = rangeSet.contiguousLength(from: offset, maximumLength: Int64(maximumLength))
             if readableLength > 0 {
@@ -243,12 +244,12 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
             }
             if !condition.wait(until: deadline) { break }
         }
-        let isClosed = closed
-        condition.unlock()
 
-        if isClosed || fd < 0 { throw StoreError.closed }
+        if closed || fd < 0 { throw StoreError.closed }
         guard readableLength > 0 else { throw StoreError.timeout(offset: offset) }
 
+        // Keep the condition locked through the physical pread. Rolling eviction uses the same lock,
+        // so bytes cannot be punched out after the range was declared readable but before it is read.
         var data = Data(count: Int(readableLength))
         let readCount = try data.withUnsafeMutableBytes { rawBuffer -> Int in
             guard let base = rawBuffer.baseAddress else { return 0 }
