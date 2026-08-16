@@ -1,0 +1,229 @@
+diff --git a/Sources/Cache/PlaybackRangeMap.swift b/Sources/Cache/PlaybackRangeMap.swift
+index e06c851..934d501 100644
+--- a/Sources/Cache/PlaybackRangeMap.swift
++++ b/Sources/Cache/PlaybackRangeMap.swift
+@@ -22,6 +22,8 @@ struct PlaybackRangeMap: Equatable {
+     mutating func setDownloading(_ range: Range<Int64>?, lane: String) { downloading[lane] = range }
+     mutating func clearDownloading(lane: String) { downloading.removeValue(forKey: lane) }
+ 
++    func playbackBytes(in range: Range<Int64>) -> Int64 { playback.cachedBytes(in: range) }
++
+     func contiguousFrontier(from anchor: Int64) -> Int64 {
+         guard let range = playback.ranges.first(where: { $0.lowerBound <= anchor && $0.upperBound > anchor }) else { return anchor }
+         return range.upperBound
+diff --git a/Sources/Player/PlayerController.swift b/Sources/Player/PlayerController.swift
+index e00cadd..e910eb4 100644
+--- a/Sources/Player/PlayerController.swift
++++ b/Sources/Player/PlayerController.swift
+@@ -140,6 +140,7 @@ final class PlayerController: ObservableObject {
+         engine.prepare(url: source.url, headers: source.headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: position)
+         if engineKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "prepare returned item=\(source.itemId)") }
+         engine.play()
++        if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }
+         playbackSessionStarted = true
+ 
+         DiagnosticsLogger.shared.log(
+@@ -237,10 +238,12 @@ final class PlayerController: ObservableObject {
+         if userWantsPlayback {
+             userWantsPlayback = false
+             engine.pause()
++            if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(false) } }
+             Task { await client.reportProgress(source: source, position: snapshot.position, paused: true, eventName: "Pause") }
+         } else {
+             userWantsPlayback = true
+             engine.play()
++            if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }
+             Task { await client.reportProgress(source: source, position: snapshot.position, paused: false, eventName: "Unpause") }
+         }
+     }
+@@ -566,6 +569,7 @@ final class PlayerController: ObservableObject {
+ 
+         guard decision.isPremature else {
+             userWantsPlayback = false
++            if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(false) } }
+             let stoppedSource = source
+             let stoppedClient = client
+             let stoppedPosition = snapshot.position
+diff --git a/Sources/Transport/DownloadFirstSparseStore.swift b/Sources/Transport/DownloadFirstSparseStore.swift
+index 6055e60..af97495 100644
+--- a/Sources/Transport/DownloadFirstSparseStore.swift
++++ b/Sources/Transport/DownloadFirstSparseStore.swift
+@@ -212,6 +212,107 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
+         return evicted
+     }
+ 
++    @discardableResult
++    func evictCachedBytes(
++        outside retainedWindow: Range<Int64>,
++        targetBytes: Int64,
++        protectedPrefixBytes: Int64 = 8 * 1_048_576,
++        protectedRanges: [Range<Int64>] = []
++    ) -> [Range<Int64>] {
++        let retainedLower = min(contentLength, max(0, retainedWindow.lowerBound))
++        let retainedUpper = min(contentLength, max(retainedLower, retainedWindow.upperBound))
++        let target = max(0, targetBytes)
++
++        condition.lock()
++        defer { condition.unlock() }
++        guard !closed, fileDescriptor >= 0, rangeSet.totalBytes > target else { return [] }
++
++        let prefixUpper = min(contentLength, max(0, protectedPrefixBytes))
++        var protections = protectedRanges.filter { !$0.isEmpty }
++        if prefixUpper > 0 { protections.append(0..<prefixUpper) }
++
++        var candidates: [(range: Range<Int64>, fromEnd: Bool)] = []
++        let cachedSnapshot = rangeSet.ranges
++
++        if retainedLower > prefixUpper {
++            for cached in cachedSnapshot {
++                let lower = max(prefixUpper, cached.lowerBound)
++                let upper = min(retainedLower, cached.upperBound)
++                if upper > lower { candidates.append((lower..<upper, false)) }
++            }
++        }
++
++        if retainedUpper < contentLength {
++            for cached in cachedSnapshot.reversed() {
++                let lower = max(retainedUpper, cached.lowerBound)
++                let upper = min(contentLength, cached.upperBound)
++                if upper > lower { candidates.append((lower..<upper, true)) }
++            }
++        }
++
++        var remainingToFree = rangeSet.totalBytes - target
++        var evicted: [Range<Int64>] = []
++        let page = Int64(max(4096, getpagesize()))
++
++        for candidate in candidates where remainingToFree > 0 {
++            for piece in evictablePieces(candidate.range, excluding: protections) where remainingToFree > 0 {
++                let removal: Range<Int64>?
++                if candidate.fromEnd {
++                    let alignedUpper = (piece.upperBound / page) * page
++                    let minimumLower = max(piece.lowerBound, alignedUpper - remainingToFree)
++                    let alignedLower = ((minimumLower + page - 1) / page) * page
++                    removal = alignedUpper > alignedLower ? alignedLower..<alignedUpper : nil
++                } else {
++                    let alignedLower = ((piece.lowerBound + page - 1) / page) * page
++                    let maximumUpper = min(piece.upperBound, alignedLower + remainingToFree)
++                    let alignedUpper = (maximumUpper / page) * page
++                    removal = alignedUpper > alignedLower ? alignedLower..<alignedUpper : nil
++                }
++                guard let removal else { continue }
++
++                var hole = fpunchhole_t(fp_flags: 0, reserved: 0, fp_offset: off_t(removal.lowerBound), fp_length: off_t(removal.count))
++                guard fcntl(fileDescriptor, F_PUNCHHOLE, &hole) == 0 else {
++                    DiagnosticsLogger.shared.playback("RollingCache", "punch-hole failed range=\(removal.lowerBound)-\(removal.upperBound) errno=\(errno)")
++                    continue
++                }
++
++                rangeSet.remove(removal)
++                evicted.append(removal)
++                remainingToFree = max(0, remainingToFree - Int64(removal.count))
++            }
++        }
++
++        if !evicted.isEmpty {
++            persistRangesIfNeededLocked(force: true)
++            condition.broadcast()
++        }
++        return evicted
++    }
++
++    private func evictablePieces(_ candidate: Range<Int64>, excluding protectedRanges: [Range<Int64>]) -> [Range<Int64>] {
++        var pieces = [candidate]
++        for protected in protectedRanges where !protected.isEmpty {
++            var next: [Range<Int64>] = []
++            for piece in pieces {
++                guard piece.overlaps(protected) else {
++                    next.append(piece)
++                    continue
++                }
++                if piece.lowerBound < protected.lowerBound {
++                    let left = piece.lowerBound..<min(piece.upperBound, protected.lowerBound)
++                    if !left.isEmpty { next.append(left) }
++                }
++                if piece.upperBound > protected.upperBound {
++                    let right = max(piece.lowerBound, protected.upperBound)..<piece.upperBound
++                    if !right.isEmpty { next.append(right) }
++                }
++            }
++            pieces = next
++            if pieces.isEmpty { break }
++        }
++        return pieces
++    }
++
+     func close(removeFiles: Bool) {
+         condition.lock()
+         guard !closed else {
+diff --git a/Sources/Transport/SparseByteRangeSet.swift b/Sources/Transport/SparseByteRangeSet.swift
+index e949e8f..5dd60aa 100644
+--- a/Sources/Transport/SparseByteRangeSet.swift
++++ b/Sources/Transport/SparseByteRangeSet.swift
+@@ -65,6 +65,15 @@ struct SparseByteRangeSet: Equatable {
+         return ranges.contains { $0.lowerBound <= range.lowerBound && $0.upperBound >= range.upperBound }
+     }
+ 
++    func cachedBytes(in query: Range<Int64>) -> Int64 {
++        guard !query.isEmpty else { return 0 }
++        return ranges.reduce(Int64(0)) { total, range in
++            let lower = max(query.lowerBound, range.lowerBound)
++            let upper = min(query.upperBound, range.upperBound)
++            return upper > lower ? total + (upper - lower) : total
++        }
++    }
++
+     func contiguousLength(from offset: Int64, maximumLength: Int64) -> Int64 {
+         guard maximumLength > 0 else { return 0 }
+         guard let range = ranges.first(where: { $0.lowerBound <= offset && $0.upperBound > offset }) else { return 0 }
+diff --git a/Sources/Transport/TransportDataSession.swift b/Sources/Transport/TransportDataSession.swift
+index 259cc3a..87ca29b 100644
+--- a/Sources/Transport/TransportDataSession.swift
++++ b/Sources/Transport/TransportDataSession.swift
+@@ -7,6 +7,7 @@ protocol TransportDataSession: AnyObject {
+     func prioritizeSeek(position: Double, duration: Double) async
+     func prioritizeOffset(_ offset: Int64) async
+     func recoverStall(position: Double, duration: Double) async
++    func setPlaybackAdvancing(_ advancing: Bool) async
+     func metrics() async -> TransportMetricsSnapshot
+     func stop() async
+ }
+@@ -15,6 +16,7 @@ extension TransportDataSession {
+     func noteDemand(range: Range<Int64>) async {}
+     func prioritizeOffset(_ offset: Int64) async { await noteDemand(range: offset..<(offset + 1)) }
+     func recoverStall(position: Double, duration: Double) async {}
++    func setPlaybackAdvancing(_ advancing: Bool) async {}
+ }
+ 
+ extension MediaTransportSession: TransportDataSession {}
+diff --git a/Sources/UI/CacheSettingsView.swift b/Sources/UI/CacheSettingsView.swift
+index 6153a91..c12bce6 100644
+--- a/Sources/UI/CacheSettingsView.swift
++++ b/Sources/UI/CacheSettingsView.swift
+@@ -18,7 +18,7 @@ struct CacheSettingsView: View {
+                 if let statusMessage { Text(statusMessage).font(.footnote).foregroundColor(.secondary) }
+             }
+ 
+-            Section(header: Text("视频缓存"), footer: Text("中途切换 Wi‑Fi / 蜂窝网络后，需要重新播放视频才能完整按新的缓存容量生效。")) {
++            Section(header: Text("视频缓存"), footer: Text("缓存大小表示当前播放位置单方向的缓存窗口：播放器最多向前缓存该容量，并保留相近容量的已播放数据，正常总占用最高约为设置值的 2 倍。中途切换 Wi‑Fi / 蜂窝网络后，需要重新播放视频才能完整按新容量生效。")) {
+                 capacityMenu(title: "Wi-Fi 视频缓存", systemImage: "wifi", value: $wifiCacheMB, defaultValue: VideoCacheCapacity.defaultWiFiMB)
+                 capacityMenu(title: "蜂窝网络视频缓存", systemImage: "antenna.radiowaves.left.and.right", value: $cellularCacheMB, defaultValue: VideoCacheCapacity.defaultCellularMB)
+             }
+diff --git a/scripts/RangeMapSmoke.swift b/scripts/RangeMapSmoke.swift
+index 92e45a1..ccd36a7 100644
+--- a/scripts/RangeMapSmoke.swift
++++ b/scripts/RangeMapSmoke.swift
+@@ -43,7 +43,12 @@ struct RangeMapSmoke {
+ 
+         let next = require(map.nextClaim(from: 0, resourceLength: resource, segmentBytes: segment, workerLimit: 2, lookaheadSegments: 4), "missing next sequential claim")
+         precondition(next == (96 * mib)..<(128 * mib), "next claim must continue the contiguous pipeline")
+-        print("RangeMap smoke OK: bounded lookahead, earliest-hole repair, metadata isolation")
++
++        precondition(map.playbackBytes(in: (32 * mib)..<(80 * mib)) == 48 * mib, "window byte accounting mismatch")
++        map.removePlayback((32 * mib)..<(64 * mib))
++        precondition(map.playbackBytes(in: 0..<(96 * mib)) == 64 * mib, "rolling eviction accounting mismatch")
++        precondition(map.contiguousFrontier(from: 0) == 32 * mib, "rolling eviction must reopen the evicted sparse hole")
++        print("RangeMap smoke OK: bounded lookahead, earliest-hole repair, metadata isolation, rolling-window accounting")
+     }
+ 
+     private static func require<T>(_ value: T?, _ message: String) -> T {
