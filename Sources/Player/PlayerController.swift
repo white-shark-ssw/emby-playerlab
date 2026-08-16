@@ -105,6 +105,10 @@ final class PlayerController: ObservableObject {
             guard let self else { return }
             let startPosition = await self.resolveInitialPlaybackPosition()
             guard !Task.isCancelled, self.started else { return }
+            if startPosition > 0.5, let session = self.transportContext?.session {
+                await session.prepareInitialPlayback(position: startPosition, duration: self.source.mediaSource.durationSeconds ?? 0)
+                guard !Task.isCancelled, self.started else { return }
+            }
             self.initialPlaybackTask = nil
             self.startEngine(at: startPosition)
         }
