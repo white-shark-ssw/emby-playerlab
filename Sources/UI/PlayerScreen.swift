@@ -148,7 +148,7 @@ struct PlayerScreen: View {
             let plan = VideoLayoutCoordinator().makePlan(viewport: geometry.size, sourceAspectRatio: sourceDisplayAspectRatio(), mode: currentScaleMode)
             Group {
                 if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {
-                    MPVPlayerSurface(displayLayer: layer)
+                    MPVPlayerSurface(displayLayer: layer, onGeometrySettled: controller.rendererSurfaceDidSettle)
                 } else if let player = controller.avPlayer {
                     AVPlayerSurface(player: player, layoutPlan: plan, onPlayerLayerReady: pictureInPictureController.attach).id("avplayer")
                 } else {
@@ -441,7 +441,7 @@ struct PlayerScreen: View {
         initialOrientationWorkItem?.cancel()
         orientationReady = false
         let current = activeWindowScene()?.interfaceOrientation
-        DiagnosticsLogger.shared.playback("PlayerUI", "rotation transition begin reason=\(reason) target=\(target.rawValue) current=\(current?.rawValue ?? 0) surfaceLifecycle=persistent")
+        DiagnosticsLogger.shared.playback("PlayerUI", "rotation transition begin reason=\(reason) target=\(target.rawValue) current=\(current?.rawValue ?? 0) surfaceLifecycle=persistent rendererLayout=coordinated")
         if current == target, settledSurfaceMatchesCurrentLayout() {
             finishOrientationTransition(target: target, reason: reason, shouldStartPlayback: shouldStartPlayback, timedOut: false)
             return
@@ -453,18 +453,18 @@ struct PlayerScreen: View {
     private func waitForOrientation(_ target: UIInterfaceOrientation, reason: String, shouldStartPlayback: Bool, attempt: Int) {
         guard !isClosing else { return }
         let actual = activeWindowScene()?.interfaceOrientation
-        let surfaceReady = actual == target && settledSurfaceMatchesCurrentLayout()
-        if surfaceReady {
+        let rendererReady = actual == target && settledSurfaceMatchesCurrentLayout()
+        if rendererReady {
             finishOrientationTransition(target: target, reason: reason, shouldStartPlayback: shouldStartPlayback, timedOut: false)
             return
         }
         if attempt >= 24 {
-            DiagnosticsLogger.shared.playback("PlayerUI", "rotation surface wait timeout reason=\(reason) target=\(target.rawValue) actual=\(actual?.rawValue ?? 0) surfaceReady=\(surfaceReady)")
+            DiagnosticsLogger.shared.playback("PlayerUI", "rotation renderer wait timeout reason=\(reason) target=\(target.rawValue) actual=\(actual?.rawValue ?? 0) rendererReady=\(rendererReady)")
             finishOrientationTransition(target: target, reason: reason, shouldStartPlayback: shouldStartPlayback, timedOut: true)
             return
         }
         if actual != target && (attempt == 5 || attempt == 12) { requestInterfaceOrientation(target, reason: "\(reason)-retry\(attempt)") }
-        if actual == target && !surfaceReady && (attempt == 0 || attempt == 6 || attempt == 12) {
+        if actual == target && !rendererReady && (attempt == 0 || attempt == 6 || attempt == 12) {
             logSurfaceWaitState(reason: reason, target: target, attempt: attempt)
         }
         let workItem = DispatchWorkItem { waitForOrientation(target, reason: reason, shouldStartPlayback: shouldStartPlayback, attempt: attempt + 1) }
@@ -478,7 +478,7 @@ struct PlayerScreen: View {
         if let plan = settledLayoutPlan() { controller.applyVideoLayout(plan) }
         orientationReady = true
         AppOrientationCoordinator.shared.playerOrientationDidSettle()
-        DiagnosticsLogger.shared.playback("PlayerUI", "rotation settled reason=\(reason) target=\(target.rawValue) actual=\(activeWindowScene()?.interfaceOrientation.rawValue ?? 0) timeout=\(timedOut) surfaceLifecycle=persistent")
+        DiagnosticsLogger.shared.playback("PlayerUI", "rotation settled reason=\(reason) target=\(target.rawValue) actual=\(activeWindowScene()?.interfaceOrientation.rawValue ?? 0) timeout=\(timedOut) surfaceLifecycle=persistent rendererLayout=coordinated")
         if shouldStartPlayback { startPlaybackIfNeeded() }
         else { showControls() }
     }
@@ -489,19 +489,13 @@ struct PlayerScreen: View {
     }
 
     private func settledSurfaceMatchesCurrentLayout() -> Bool {
-        guard controller.engineKind == .mpv else { return true }
-        guard let layer = controller.mpvDisplayLayer, let plan = settledLayoutPlan() else { return false }
-        let expected = plan.surfaceFrame.size
-        let actual = layer.bounds.size
-        return abs(actual.width - expected.width) <= 1 && abs(actual.height - expected.height) <= 1
+        guard let plan = settledLayoutPlan() else { return false }
+        return controller.rendererLayoutMatches(plan)
     }
 
     private func logSurfaceWaitState(reason: String, target: UIInterfaceOrientation, attempt: Int) {
-        guard controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer, let plan = settledLayoutPlan() else { return }
-        let expected = plan.surfaceFrame.size
-        let actual = layer.bounds.size
-        let drawable = layer.drawableSize
-        DiagnosticsLogger.shared.playback("PlayerUI", "rotation surface wait reason=\(reason) target=\(target.rawValue) attempt=\(attempt) layer=\(Int(actual.width))x\(Int(actual.height)) expected=\(Int(expected.width))x\(Int(expected.height)) drawable=\(Int(drawable.width))x\(Int(drawable.height))")
+        guard let plan = settledLayoutPlan() else { return }
+        DiagnosticsLogger.shared.playback("PlayerUI", "rotation renderer wait reason=\(reason) target=\(target.rawValue) attempt=\(attempt) \(controller.rendererLayoutWaitDescription(plan))")
     }
 
     private func startPlaybackIfNeeded() {
