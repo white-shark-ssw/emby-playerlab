@@ -22,10 +22,8 @@ jobs:
       - name: Apply 0.13.5 source patches
         run: |
           set -euo pipefail
-          git apply scripts/mdk0135-ui-transport.patch
-          git apply --exclude=.github/workflows/build-mdk-lab.yml scripts/mdk0135-support.patch
+          python3 scripts/apply_mdk0135_ui_transport_support.py
           python3 scripts/apply_mdk0135_native_seek.py
-          rm -f scripts/mdk0135-ui-transport.patch scripts/mdk0135-support.patch
 
           swiftc -parse MDKLab/App/MDKKSAVIOPlayerEngine.swift
           swiftc -parse Sources/Transport/UnifiedMediaTransportSession.swift
