@@ -1,0 +1,114 @@
+--- a/Sources/UI/BufferedTimelineSlider.swift
++++ b/Sources/UI/BufferedTimelineSlider.swift
+@@ -3,10 +3,9 @@
+ struct BufferedTimelineSlider: View {
+     @Binding var value: Double
+     let range: ClosedRange<Double>
+-    /// Exact UnifiedTransport playback-byte cache coverage normalized to 0...1.
+-    /// Sparse seeks remain sparse here: a hole is rendered as a hole instead of being
+-    /// disguised by aggregate cacheBytes/resourceBytes.
+-    let downloadCacheRanges: [ClosedRange<Double>]
++    /// Engine-reported playable TIME ranges. The slider is a time axis, so byte-space
++    /// UnifiedTransport ranges must never be projected onto it by file-size ratio.
++    let playableRanges: [ClosedRange<Double>]
+     let onEditingChanged: (Bool) -> Void
+ 
+     @State private var isEditing = false
+@@ -18,7 +17,7 @@
+             ZStack(alignment: .leading) {
+                 Capsule().fill(Color(white: 0.16)).frame(height: trackHeight)
+ 
+-                ForEach(Array(normalizedDownloadRanges.enumerated()), id: \.offset) { _, cached in
++                ForEach(Array(normalizedPlayableRanges.enumerated()), id: \.offset) { _, cached in
+                     Capsule()
+                         .fill(Color(white: 0.48))
+                         .frame(width: max(2, width * CGFloat(cached.upperBound - cached.lowerBound)), height: trackHeight)
+@@ -60,10 +59,15 @@
+         }
+     }
+ 
+-    private var normalizedDownloadRanges: [ClosedRange<Double>] {
+-        downloadCacheRanges.compactMap { item in
+-            let lower = min(1, max(0, item.lowerBound))
+-            let upper = min(1, max(0, item.upperBound))
++    private var normalizedPlayableRanges: [ClosedRange<Double>] {
++        let duration = range.upperBound - range.lowerBound
++        guard duration > 0 else { return [] }
++        return playableRanges.compactMap { item in
++            let clippedLower = max(range.lowerBound, item.lowerBound)
++            let clippedUpper = min(range.upperBound, item.upperBound)
++            guard clippedUpper > clippedLower else { return nil }
++            let lower = min(1, max(0, (clippedLower - range.lowerBound) / duration))
++            let upper = min(1, max(0, (clippedUpper - range.lowerBound) / duration))
+             return upper > lower ? lower...upper : nil
+         }
+     }
+--- a/Sources/UI/PlayerScreen.swift
++++ b/Sources/UI/PlayerScreen.swift
+@@ -322,7 +322,7 @@
+                 BufferedTimelineSlider(
+                     value: Binding(get: { controller.displayedPosition }, set: { controller.updateScrubbing(to: $0) }),
+                     range: 0...max(controller.effectiveDuration, 1),
+-                    downloadCacheRanges: controller.transportCacheRanges,
++                    playableRanges: controller.snapshot.bufferedRanges,
+                     onEditingChanged: { editing in
+                         if editing {
+                             controlsHideWorkItem?.cancel()
+--- a/Sources/Transport/UnifiedMediaTransportSession.swift
++++ b/Sources/Transport/UnifiedMediaTransportSession.swift
+@@ -443,7 +443,7 @@
+         var reanchored = false
+         if startupTailMetadata { DiagnosticsLogger.shared.log("UnifiedStartup", "critical-tail-metadata range=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=actual-demand") }
+         if concretePlaybackDemand, !resumeHistoricalDependency { recordPlaybackDemand(offset: range.lowerBound) }
+-        if concretePlaybackDemand, authoritativeSeekDemand, !resumeHistoricalDependency {
++        if concretePlaybackDemand, authoritativeSeekDemand, !resumeHistoricalDependency, !cachedSeekRead {
+             lastBlockingPlaybackDemand = range
+             lastBlockingPlaybackDemandAt = Date()
+         }
+@@ -481,8 +481,8 @@
+         }
+ 
+         // AVFoundation may emit stale/cached range requests from the pre-seek timeline while a seek is
+-        // still settling. Only a cache-miss blocked read, or MPV's explicit byte seek, may consume the
+-        // pending seek token. Ordinary concrete reads can be stale demux traffic from the old timeline.
++        // still settling. A cache miss, an explicit byte seek, or a sufficiently distant cached concrete
++        // read may consume the token. Cached authority updates the logical head without resetting bulk IO.
+         if pendingUserSeek, !metadata, !concretePlaybackDemand {
+             DiagnosticsLogger.shared.log(
+                 "UnifiedAnchor",
+@@ -519,16 +519,27 @@
+             demandCoordinator.reset()
+             playbackDemandSamples.removeAll()
+             recordPlaybackDemand(offset: range.lowerBound)
+-            resetCacheWindowCenter(to: range.lowerBound, resource: resource, reason: "user-seek-real-demand")
+             reanchored = true
+-            DiagnosticsLogger.shared.log(
+-                "UnifiedAnchor",
+-                "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) authority=\(cachedSeekRead ? \"cached-read\" : \"cache-miss\")"
+-            )
+-            for slot in [0, 1] {
+-                guard let active = slotClaims[slot], !active.range.contains(range.lowerBound) else { continue }
+-                if active.role == .urgentPlayback { cancelSlot(slot, reason: "replace-stale-urgent") }
+-                if active.role == .sequential { cancelSlot(slot, reason: "seek-reanchor-sequential") }
++
++            if cachedSeekRead {
++                // A seek into bytes already present in the sparse store must not tear down the warmed
++                // 115/CDN sequential lanes. Keep cacheWindowCenter and bulk claims stable; subsequent
++                // real playback reads can naturally promote the center if the new head truly moves away.
++                DiagnosticsLogger.shared.log(
++                    "UnifiedAnchor",
++                    "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) authority=cached-read action=keep-cache-window center=\(cacheWindowCenter)"
++                )
++            } else {
++                resetCacheWindowCenter(to: range.lowerBound, resource: resource, reason: "user-seek-real-demand")
++                DiagnosticsLogger.shared.log(
++                    "UnifiedAnchor",
++                    "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) authority=cache-miss action=reanchor-cache-window"
++                )
++                for slot in [0, 1] {
++                    guard let active = slotClaims[slot], !active.range.contains(range.lowerBound) else { continue }
++                    if active.role == .urgentPlayback { cancelSlot(slot, reason: "replace-stale-urgent") }
++                    if active.role == .sequential { cancelSlot(slot, reason: "seek-reanchor-sequential") }
++                }
+             }
+         }
