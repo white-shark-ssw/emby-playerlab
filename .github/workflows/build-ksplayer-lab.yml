@@ -133,6 +133,28 @@ jobs:
             DEVELOPMENT_TEAM='' \
             clean build 2>&1 | tee ks-build.log
 
+      - name: Extract KSPlayer build errors
+        if: failure()
+        run: |
+          set +e
+          grep -nE '(^|[[:space:]])(error:|fatal error:)' ks-build.log > ks-build-errors.log
+          if [ ! -s ks-build-errors.log ]; then tail -n 500 ks-build.log > ks-build-errors.log; fi
+          echo "## KSPlayer build errors" >> "$GITHUB_STEP_SUMMARY"
+          sed -n '1,200p' ks-build-errors.log >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload failed KSPlayer build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-KSPlayerLab-build-errors-${{ github.sha }}
+          path: |
+            ks-build.log
+            ks-build-errors.log
+            ks-package-resolution.log
+            ks-license-report.log
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Locate and validate app
         id: app
         run: |
