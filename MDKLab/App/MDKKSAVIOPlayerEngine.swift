@@ -28,6 +28,7 @@ private final class MDKRenderView: MTKView, MTKViewDelegate {
         self.player = player
         player.addRenderTarget(self, commandQueue: commandQueue)
         let size = drawableSize
+        if size.width > 0, size.height > 0 { player.setVideoSurfaceSize(Int32(size.width), Int32(size.height), vid: self) }
         player.setRenderCallback { [weak self, weak player] in
             DispatchQueue.main.async { [weak self, weak player] in
                 guard let self, let player, self.player === player else { return }
