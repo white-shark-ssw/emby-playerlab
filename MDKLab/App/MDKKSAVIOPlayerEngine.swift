@@ -28,7 +28,6 @@ private final class MDKRenderView: MTKView, MTKViewDelegate {
         self.player = player
         player.addRenderTarget(self, commandQueue: commandQueue)
         let size = drawableSize
-        if size.width > 0, size.height > 0 { player.setVideoSurfaceSize(size.width, size.height, vid: self) }
         player.setRenderCallback { [weak self, weak player] in
             DispatchQueue.main.async { [weak self, weak player] in
                 guard let self, let player, self.player === player else { return }
@@ -41,12 +40,12 @@ private final class MDKRenderView: MTKView, MTKViewDelegate {
     func unbind(_ player: swift_mdk.Player) {
         guard self.player === player else { return }
         player.setRenderCallback(nil)
-        player.setVideoSurfaceSize(-1, -1, vid: self)
+        player.setVideoSurfaceSize(Float(-1), Float(-1), vid: self)
         self.player = nil
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-        player?.setVideoSurfaceSize(size.width, size.height, vid: self)
+        player?.setVideoSurfaceSize(Float(size.width), Float(size.height), vid: self)
         onSurfaceChanged?(size)
     }
 
