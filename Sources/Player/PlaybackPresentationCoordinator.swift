@@ -90,14 +90,15 @@ final class PlaybackPresentationCoordinator: ObservableObject {
 
     func makePlan(rate: Double, motionSmoothingMode: MotionSmoothingMode, videoEnhancementEnabled: Bool, displayFPS: Double) -> PlaybackPresentationPlan {
         let rate = min(8, max(0.15, rate))
-        let displayFPS = min(240, max(30, displayFPS.isFinite ? displayFPS : 60))
-        let motionTarget = resolvedMotionTarget(rate: rate, mode: motionSmoothingMode, displayFPS: displayFPS)
+        let measuredDisplayFPS = min(240, max(30, displayFPS.isFinite ? displayFPS : 60))
+        let motionTarget = resolvedMotionTarget(rate: rate, mode: motionSmoothingMode, displayFPS: measuredDisplayFPS)
+        let timingDisplayFPS = motionTarget ?? measuredDisplayFPS
         let timingStrategy: PlaybackTimingStrategy = motionTarget != nil ? .motionSmoothed : (rate > 2 ? .displayCadenced : .audioMaster)
         let enhancementFeatures = videoEnhancementEnabled && rate <= 2 ? resolvedEnhancementFeatures() : []
         return PlaybackPresentationPlan(
             requestedRate: rate,
             sourceFPS: sourceFPS,
-            displayFPS: displayFPS,
+            displayFPS: timingDisplayFPS,
             timingStrategy: timingStrategy,
             motionSmoothingMode: motionSmoothingMode,
             effectiveMotionTargetFPS: motionTarget,
