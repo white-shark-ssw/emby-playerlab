@@ -61,11 +61,11 @@ struct PlaybackPresentationPlan: Equatable {
 }
 
 struct PlaybackPresentationAcknowledgement: Equatable {
-    let activeMotionSmoothing: Bool
+    let activeMotionFPS: Double?
     let activeEnhancementFeatures: [VideoEnhancementFeature]
     let detail: String
 
-    static let unsupported = PlaybackPresentationAcknowledgement(activeMotionSmoothing: false, activeEnhancementFeatures: [], detail: "engine-adapter-unavailable")
+    static let unsupported = PlaybackPresentationAcknowledgement(activeMotionFPS: nil, activeEnhancementFeatures: [], detail: "engine-adapter-unavailable")
 }
 
 protocol PlaybackPresentationEngineAdapter: AnyObject {
@@ -93,6 +93,7 @@ final class PlaybackPresentationCoordinator: ObservableObject {
         let displayFPS = min(240, max(30, displayFPS.isFinite ? displayFPS : 60))
         let motionTarget = resolvedMotionTarget(rate: rate, mode: motionSmoothingMode, displayFPS: displayFPS)
         let timingStrategy: PlaybackTimingStrategy = motionTarget != nil ? .motionSmoothed : (rate > 2 ? .displayCadenced : .audioMaster)
+        let enhancementFeatures = videoEnhancementEnabled && rate <= 2 ? resolvedEnhancementFeatures() : []
         return PlaybackPresentationPlan(
             requestedRate: rate,
             sourceFPS: sourceFPS,
@@ -101,13 +102,13 @@ final class PlaybackPresentationCoordinator: ObservableObject {
             motionSmoothingMode: motionSmoothingMode,
             effectiveMotionTargetFPS: motionTarget,
             videoEnhancementEnabled: videoEnhancementEnabled,
-            requestedEnhancementFeatures: videoEnhancementEnabled ? enhancementFeatures() : []
+            requestedEnhancementFeatures: enhancementFeatures
         )
     }
 
     func apply(_ plan: PlaybackPresentationPlan, using engine: PlayerEngine) {
         currentPlan = plan
-        acknowledgement = PlaybackPresentationAcknowledgement(activeMotionSmoothing: false, activeEnhancementFeatures: [], detail: "awaiting-engine-ack")
+        acknowledgement = PlaybackPresentationAcknowledgement(activeMotionFPS: nil, activeEnhancementFeatures: [], detail: "awaiting-engine-ack")
         guard let adapter = engine as? PlaybackPresentationEngineAdapter else {
             engine.setPlaybackRate(plan.requestedRate)
             acknowledgement = .unsupported
@@ -118,7 +119,7 @@ final class PlaybackPresentationCoordinator: ObservableObject {
             DispatchQueue.main.async {
                 guard let self, self.currentPlan == plan else { return }
                 self.acknowledgement = acknowledgement
-                DiagnosticsLogger.shared.playback("PresentationPlan", "engine=\(engine.kind.title) rate=\(String(format: "%.2f", plan.requestedRate)) timing=\(plan.timingStrategy.rawValue) display=\(String(format: "%.1f", plan.displayFPS)) source=\(plan.sourceFPS.map { String(format: "%.3f", $0) } ?? "unknown") motion=\(acknowledgement.activeMotionSmoothing) enhancement=\(acknowledgement.activeEnhancementFeatures.map(\.rawValue).joined(separator: ",")) detail=\(acknowledgement.detail)")
+                DiagnosticsLogger.shared.playback("PresentationPlan", "engine=\(engine.kind.title) rate=\(String(format: "%.2f", plan.requestedRate)) timing=\(plan.timingStrategy.rawValue) display=\(String(format: "%.1f", plan.displayFPS)) source=\(plan.sourceFPS.map { String(format: "%.3f", $0) } ?? "unknown") motionFPS=\(acknowledgement.activeMotionFPS.map { String(format: "%.1f", $0) } ?? "off") enhancement=\(acknowledgement.activeEnhancementFeatures.map(\.rawValue).joined(separator: ",")) detail=\(acknowledgement.detail)")
             }
         }
     }
@@ -129,7 +130,7 @@ final class PlaybackPresentationCoordinator: ObservableObject {
             badges.append("超画")
             badges.append(contentsOf: acknowledgement.activeEnhancementFeatures.prefix(2).map(\.title))
         }
-        if acknowledgement.activeMotionSmoothing, let target = currentPlan?.effectiveMotionTargetFPS { badges.append("\(Int(target.rounded()))Hz") }
+        if let activeMotionFPS = acknowledgement.activeMotionFPS { badges.append("平滑 \(Int(activeMotionFPS.rounded()))Hz") }
         return badges
     }
 
@@ -147,9 +148,9 @@ final class PlaybackPresentationCoordinator: ObservableObject {
         }
     }
 
-    private func enhancementFeatures() -> [VideoEnhancementFeature] {
-        guard let sourceWidth, let sourceHeight else { return [.sharpen, .deband] }
-        if sourceWidth <= 1920 || sourceHeight <= 1080 { return [.upscale, .sharpen, .deband, .chroma] }
-        return [.sharpen, .deband, .chroma]
+    private func resolvedEnhancementFeatures() -> [VideoEnhancementFeature] {
+        guard let sourceWidth, let sourceHeight else { return [.deband, .chroma] }
+        if sourceWidth <= 1920 || sourceHeight <= 1080 { return [.upscale, .deband, .chroma] }
+        return [.deband, .chroma]
     }
 }
