@@ -10,7 +10,7 @@ struct PlayerPlaybackSettingsPopover: View {
     @State private var page: Page = .root
     @State private var appeared = false
 
-    private enum Page { case root, motionSmoothing }
+    private enum Page: Equatable { case root, motionSmoothing }
 
     var body: some View {
         GeometryReader { geometry in
@@ -48,8 +48,9 @@ struct PlayerPlaybackSettingsPopover: View {
                 .offset(x: page == .motionSmoothing ? 0 : 18)
                 .allowsHitTesting(page == .motionSmoothing)
         }
+        .frame(width: 258, height: page == .root ? 139 : 224, alignment: .bottom)
+        .clipped()
         .animation(.easeInOut(duration: 0.20), value: page)
-        .frame(width: 258)
         .background(PlayerPlaybackSettingsGlassBackground())
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.13), lineWidth: 0.5))
@@ -144,7 +145,7 @@ struct PlayerPlaybackSettingsPopover: View {
     }
 
     private var separator: some View { Rectangle().fill(Color.white.opacity(0.13)).frame(height: 0.5) }
-    private var currentMotionMode: MotionSmoothingMode { MotionSmoothingMode(rawValue: motionSmoothingRaw) ?? .automatic }
+    private var currentMotionMode: MotionSmoothingMode { MotionSmoothingMode(rawValue: motionSmoothingRaw) ?? .off }
 
     private func dismiss() {
         withAnimation(.easeIn(duration: 0.16)) { appeared = false }
