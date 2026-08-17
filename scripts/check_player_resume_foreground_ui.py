@@ -33,6 +33,10 @@ checks = {
     "speed panel exposes 8x and 0.15x": "8.0" in panels and "0.15" in panels,
     "playback rate bridge accepts 8x and 0.15x": "min(8" in rate and "max(0.15" in rate,
     "mpv accepts 8x and 0.15x": "min(8" in mpv and "max(0.15" in mpv,
+    "mpv high rate keeps audio master sync": 'name: "video-sync", value: "audio"' in mpv and '"video-sync", "audio"' in mpv,
+    "mpv high rate enables decoder and vo dropping": 'highSpeed ? "decoder+vo" : "vo"' in mpv and 'name: "vd-lavc-framedrop", value: "nonref"' in mpv,
+    "mpv high rate preserves pitch correction": 'name: "audio-pitch-correction", value: "yes"' in mpv and '"audio-pitch-correction", "yes"' in mpv,
+    "mpv rate health logs actual speed and av sync": "MPVRateHealth" in mpv and 'name: "avsync"' in mpv and 'name: "decoder-frame-drop-count"' in mpv,
     "player base-rate path accepts 8x and 0.15x": "min(8" in screen and "max(0.15" in screen,
     "bottom controls are icon only": "Text(title)" not in controls.split("struct PlayerBottomFunctionBar", 1)[1].split("struct PlayerControlPanelSheet", 1)[0],
 }
