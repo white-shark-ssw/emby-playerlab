@@ -8,7 +8,7 @@ import swift_mdk
 private final class MDKRenderView: MTKView, MTKViewDelegate {
     weak var player: swift_mdk.Player?
     var onSurfaceChanged: ((CGSize) -> Void)?
-    var onFrameSubmitted: ((Double) -> Void)?
+    var onFrameSubmitted: ((Int64) -> Void)?
     private let commandQueue: MTLCommandQueue
 
     init() {
@@ -259,10 +259,10 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         }
     }
 
-    private func recordFirstRenderedFrame(_ renderResult: Double) {
+    private func recordFirstRenderedFrame(_ renderResult: Int64) {
         guard firstRenderedGeneration != generation else { return }
         firstRenderedGeneration = generation
-        DiagnosticsLogger.shared.playback("MDKFrame", "firstFrameSubmitted generation=\(generation) renderResult=\(String(format: "%.6f", renderResult)) drawable=\(Int(view.drawableSize.width))x\(Int(view.drawableSize.height))")
+        DiagnosticsLogger.shared.playback("MDKFrame", "firstFrameSubmitted generation=\(generation) renderResult=\(renderResult) drawable=\(Int(view.drawableSize.width))x\(Int(view.drawableSize.height))")
     }
 
     private func applyHTTPHeaders(_ headers: [String: String], to player: swift_mdk.Player) {
