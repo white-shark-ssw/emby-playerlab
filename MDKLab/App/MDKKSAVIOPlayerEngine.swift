@@ -8,7 +8,7 @@ import swift_mdk
 private final class MDKRenderView: MTKView, MTKViewDelegate {
     weak var player: swift_mdk.Player?
     var onSurfaceChanged: ((CGSize) -> Void)?
-    var onFrameSubmitted: ((Int64) -> Void)?
+    var onFrameSubmitted: ((Double) -> Void)?
     private let commandQueue: MTLCommandQueue
 
     init() {
@@ -40,12 +40,12 @@ private final class MDKRenderView: MTKView, MTKViewDelegate {
     func unbind(_ player: swift_mdk.Player) {
         guard self.player === player else { return }
         player.setRenderCallback(nil)
-        player.setVideoSurfaceSize(Float(-1), Float(-1), vid: self)
+        player.setVideoSurfaceSize(Int32(-1), Int32(-1), vid: self)
         self.player = nil
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-        player?.setVideoSurfaceSize(Float(size.width), Float(size.height), vid: self)
+        player?.setVideoSurfaceSize(Int32(size.width), Int32(size.height), vid: self)
         onSurfaceChanged?(size)
     }
 
@@ -259,7 +259,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         }
     }
 
-    private func recordFirstRenderedFrame(_ renderResult: Int64) {
+    private func recordFirstRenderedFrame(_ renderResult: Double) {
         guard firstRenderedGeneration != generation else { return }
         firstRenderedGeneration = generation
         DiagnosticsLogger.shared.playback("MDKFrame", "firstFrameSubmitted generation=\(generation) renderResult=\(renderResult) drawable=\(Int(view.drawableSize.width))x\(Int(view.drawableSize.height))")
