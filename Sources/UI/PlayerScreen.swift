@@ -10,6 +10,8 @@ struct PlayerScreen: View {
     @StateObject private var controller: PlayerController
     @StateObject private var sessionOverrides: PlaybackSessionOverrides
     @StateObject private var pictureInPictureController: PlayerPictureInPictureController
+    @StateObject private var presentationCoordinator: PlaybackPresentationCoordinator
+    @StateObject private var displayRefreshMonitor: DisplayRefreshRateMonitor
     @AppStorage(PlayerPreferenceKeys.backwardSeconds) private var backwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.forwardSeconds) private var forwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.bufferPreset) private var bufferPresetRaw = BufferPreset.balanced.rawValue
@@ -21,15 +23,18 @@ struct PlayerScreen: View {
     @AppStorage(PlayerPreferenceKeys.pauseWhenBackgrounded) private var pauseWhenBackgrounded = true
     @AppStorage(PlayerPreferenceKeys.resumeWhenForegrounded) private var resumeWhenForegrounded = false
     @AppStorage(PlayerPreferenceKeys.controlsAutoHideSeconds) private var controlsAutoHideSeconds = 3.0
+    @AppStorage(PlayerPresentationPreferenceKeys.motionSmoothingMode) private var motionSmoothingRaw = MotionSmoothingMode.off.rawValue
+    @AppStorage(PlayerPresentationPreferenceKeys.videoEnhancementEnabled) private var videoEnhancementEnabled = false
 
-    @State private var showSettings = false
     @State private var activePanel: PlayerControlPanel?
+    @State private var playbackSettingsPresented = false
     @State private var isClosing = false
     @State private var orientationReady = false
     @State private var playbackStarted = false
     @State private var presentationDidAppear = false
     @State private var controlsVisible = true
-    @State private var centerFeedbackSymbol: String?
+    @State private var centerFeedbackVisible = false
+    @State private var centerFeedbackScale: CGFloat = 1
     @State private var temporaryRateHUD: Double?
     @State private var adjustmentHUD: AdjustmentHUDState?
     @State private var controlsHideWorkItem: DispatchWorkItem?
@@ -49,6 +54,8 @@ struct PlayerScreen: View {
         let defaultScale = PlayerVideoScaleMode(rawValue: defaultScaleRaw) ?? .fit
         _sessionOverrides = StateObject(wrappedValue: PlaybackSessionOverrides(defaultScaleMode: defaultScale))
         _pictureInPictureController = StateObject(wrappedValue: PlayerPictureInPictureController())
+        _presentationCoordinator = StateObject(wrappedValue: PlaybackPresentationCoordinator(source: source))
+        _displayRefreshMonitor = StateObject(wrappedValue: DisplayRefreshRateMonitor())
     }
 
     var body: some View {
@@ -56,9 +63,7 @@ struct PlayerScreen: View {
             Color.black.ignoresSafeArea()
             playerSurface.ignoresSafeArea()
 
-            if !orientationReady || isClosing {
-                Color.black.ignoresSafeArea().allowsHitTesting(false)
-            }
+            if !orientationReady || isClosing { Color.black.ignoresSafeArea().allowsHitTesting(false) }
 
             if orientationReady && !isClosing {
                 PlaybackGestureOverlay(
@@ -79,18 +84,29 @@ struct PlayerScreen: View {
                     onAdjustmentEnded: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: true) }
                 )
                 .ignoresSafeArea()
-                .allowsHitTesting(!isClosing)
+                .allowsHitTesting(!isClosing && !playbackSettingsPresented)
 
                 if let feedback = controller.seekFeedback { feedbackView(feedback) }
                 if let feedback = controller.scrubFeedback { feedbackView(feedback) }
-                if let centerFeedbackSymbol { symbolFeedbackView(centerFeedbackSymbol) }
                 if let temporaryRateHUD { rateFeedbackView(temporaryRateHUD) }
                 if let adjustmentHUD { adjustmentHUDView(adjustmentHUD) }
 
                 controls
+                centerPlaybackControls
 
                 if controller.snapshot.isBuffering { bufferingIndicator }
                 statusMessages
+
+                if playbackSettingsPresented {
+                    PlayerPlaybackSettingsPopover(
+                        isPresented: $playbackSettingsPresented,
+                        motionSmoothingRaw: $motionSmoothingRaw,
+                        videoEnhancementEnabled: $videoEnhancementEnabled,
+                        onPreferencesChanged: applyPresentationPreferences
+                    )
+                    .transition(.opacity)
+                    .zIndex(20)
+                }
             }
 
             PlayerPresentationDidAppearProbe(onDidAppear: handlePresentationDidAppear)
@@ -101,6 +117,7 @@ struct PlayerScreen: View {
         .onAppear {
             originalScreenBrightness = UIScreen.main.brightness
             applyIndependentBrightnessIfNeeded()
+            displayRefreshMonitor.start()
             AppOrientationCoordinator.shared.beginPlayerPresentation(source: controller.source)
         }
         .onDisappear {
@@ -109,6 +126,8 @@ struct PlayerScreen: View {
             adjustmentHideWorkItem?.cancel()
             initialOrientationWorkItem?.cancel()
             closeDismissWorkItem?.cancel()
+            displayRefreshMonitor.stop()
+            playbackSettingsPresented = false
             if !isClosing { AppOrientationCoordinator.shared.restoreMainInterfaceOrientation() }
             resetTransientInteractions(reason: "disappear")
             wasAutoPausedForBackground = false
@@ -120,16 +139,27 @@ struct PlayerScreen: View {
         }
         .onChange(of: controller.snapshot.isPlaying) { isPlaying in
             if !isPlaying, sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
-            if isPlaying { scheduleControlsHide() }
-            else { showControls(autoHide: false) }
+            if isPlaying {
+                applyPresentationPreferences()
+                scheduleControlsHide()
+            } else { showControls(autoHide: false) }
         }
         .onChange(of: controller.engineKind) { kind in
             if !PlayerCapabilities.resolve(for: kind).supportsPictureInPicture { pictureInPictureController.stopAndDetach() }
+            if playbackStarted { applyPresentationPreferences() }
+        }
+        .onChange(of: displayRefreshMonitor.framesPerSecond) { _ in
+            if playbackStarted { applyPresentationPreferences() }
+        }
+        .onChange(of: motionSmoothingRaw) { _ in
+            if playbackStarted { applyPresentationPreferences() }
+        }
+        .onChange(of: videoEnhancementEnabled) { _ in
+            if playbackStarted { applyPresentationPreferences() }
         }
         .onChange(of: pictureInPictureController.isActive) { _ in updateIndependentBrightnessForPlaybackContext() }
         .onChange(of: scenePhase) { phase in handleScenePhase(phase) }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { notification in handleAudioInterruption(notification) }
-        .sheet(isPresented: $showSettings) { PlayerSettingsView() }
         .sheet(item: $activePanel, onDismiss: { scheduleControlsHide() }) { panel in
             PlayerControlPanelSheet(
                 panel: panel,
@@ -151,9 +181,7 @@ struct PlayerScreen: View {
                     MPVPlayerSurface(displayLayer: layer, onGeometrySettled: controller.rendererSurfaceDidSettle)
                 } else if let player = controller.avPlayer {
                     AVPlayerSurface(player: player, layoutPlan: plan, onPlayerLayerReady: pictureInPictureController.attach).id("avplayer")
-                } else {
-                    Color.black
-                }
+                } else { Color.black }
             }
             .frame(width: plan.surfaceFrame.width, height: plan.surfaceFrame.height)
             .position(x: plan.surfaceFrame.midX, y: plan.surfaceFrame.midY)
@@ -173,25 +201,21 @@ struct PlayerScreen: View {
         VStack(spacing: 0) {
             topControls
             Spacer()
-            centerControls
             bottomControls
         }
         .foregroundColor(.white)
         .opacity(controlsVisible ? 1 : 0)
-        .allowsHitTesting(controlsVisible && !isClosing)
+        .allowsHitTesting(controlsVisible && !isClosing && !playbackSettingsPresented)
         .animation(.easeOut(duration: 0.18), value: controlsVisible)
     }
 
     private var topControls: some View {
         HStack(spacing: 4) {
             Button(action: closePlayer) { Image(systemName: "xmark").font(.system(size: 19, weight: .semibold)).frame(width: 42, height: 42) }
-
             Text(controller.source.itemName).lineLimit(1).font(.headline)
             Spacer(minLength: 8)
 
-            if capabilities.supportsSystemRoutePicker {
-                PlayerSystemRoutePicker().frame(width: 42, height: 42).accessibilityLabel("投屏")
-            }
+            if capabilities.supportsSystemRoutePicker { PlayerSystemRoutePicker().frame(width: 42, height: 42).accessibilityLabel("投屏") }
 
             if capabilities.supportsPictureInPicture {
                 Button {
@@ -229,49 +253,66 @@ struct PlayerScreen: View {
             }
             .disabled(!capabilities.supportsPictureSize)
             .accessibilityLabel("画面尺寸")
-
-            Button {
-                controlsHideWorkItem?.cancel()
-                showSettings = true
-            } label: {
-                Image(systemName: "ellipsis").font(.system(size: 21, weight: .semibold)).frame(width: 42, height: 42)
-            }
-            .accessibilityLabel("更多播放设置")
         }
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .background(LinearGradient(colors: [Color.black.opacity(0.72), Color.black.opacity(0)], startPoint: .top, endPoint: .bottom))
     }
 
-    private var centerControls: some View {
-        HStack(spacing: 54) {
-            Button {
-                controller.seek(by: -Double(backwardSeconds))
-                showControls()
-            } label: { seekButtonLabel(systemName: "gobackward", seconds: backwardSeconds) }
+    private var centerPlaybackControls: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 54) {
+                Button {
+                    controller.seek(by: -Double(backwardSeconds))
+                    showControls()
+                } label: { seekButtonLabel(systemName: "gobackward", seconds: backwardSeconds) }
+                .opacity(controlsVisible ? 1 : 0)
+                .allowsHitTesting(controlsVisible && !playbackSettingsPresented)
 
-            Button {
-                controller.togglePlayPause()
-                if controller.playbackControlIsPlaying { controller.setPlaybackRate(sessionOverrides.effectivePlaybackRate) }
-                showControls(autoHide: controller.playbackControlIsPlaying)
-            } label: {
-                Image(systemName: controller.playbackControlIsPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 36, weight: .semibold))
-                    .frame(width: 64, height: 64)
-                    .background(Color.black.opacity(0.35))
-                    .clipShape(Circle())
+                Button(action: togglePlayPauseFromControl) {
+                    Image(systemName: controller.playbackControlIsPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 36, weight: .semibold))
+                        .frame(width: 64, height: 64)
+                        .background(Color.black.opacity(0.35))
+                        .foregroundColor(.white)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .opacity(controlsVisible || centerFeedbackVisible ? 1 : 0)
+                .scaleEffect(centerFeedbackScale)
+                .allowsHitTesting(controlsVisible && !playbackSettingsPresented)
+
+                Button {
+                    controller.seek(by: Double(forwardSeconds))
+                    showControls()
+                } label: { seekButtonLabel(systemName: "goforward", seconds: forwardSeconds) }
+                .opacity(controlsVisible ? 1 : 0)
+                .allowsHitTesting(controlsVisible && !playbackSettingsPresented)
             }
-
-            Button {
-                controller.seek(by: Double(forwardSeconds))
-                showControls()
-            } label: { seekButtonLabel(systemName: "goforward", seconds: forwardSeconds) }
+            .foregroundColor(.white)
+            .position(x: geometry.size.width * 0.5, y: geometry.size.height * 0.46)
+            .animation(.easeOut(duration: 0.18), value: controlsVisible)
         }
-        .padding(.bottom, 18)
+        .allowsHitTesting(controlsVisible && !isClosing && !playbackSettingsPresented)
     }
 
     private var bottomControls: some View {
         VStack(spacing: 2) {
+            if !presentationCoordinator.activeFeatureBadges.isEmpty {
+                HStack(spacing: 7) {
+                    Spacer()
+                    ForEach(presentationCoordinator.activeFeatureBadges, id: \.self) { badge in
+                        Text(badge)
+                            .font(.system(size: 11, weight: .semibold))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(Color.black.opacity(0.42))
+                            .clipShape(Capsule())
+                    }
+                }
+                .padding(.bottom, 2)
+            }
+
             HStack(spacing: 12) {
                 Text(formatTime(controller.displayedPosition)).monospacedDigit().font(.caption)
                 BufferedTimelineSlider(
@@ -293,9 +334,10 @@ struct PlayerScreen: View {
 
             PlayerBottomFunctionBar(
                 tracksEnabled: hasTrackInfo && controller.supportsInteractiveTrackSelection,
-                episodesEnabled: false,
                 currentRate: sessionOverrides.basePlaybackRate,
-                onSelect: openControlPanel
+                settingsPresented: playbackSettingsPresented,
+                onSelect: openControlPanel,
+                onSettings: togglePlaybackSettings
             )
         }
         .padding(.horizontal, 18)
@@ -362,16 +404,6 @@ struct PlayerScreen: View {
             .allowsHitTesting(false)
     }
 
-    private func symbolFeedbackView(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(.system(size: 34, weight: .bold))
-            .frame(width: 76, height: 76)
-            .background(Color.black.opacity(0.62))
-            .foregroundColor(.white)
-            .clipShape(Circle())
-            .allowsHitTesting(false)
-    }
-
     private func rateFeedbackView(_ rate: Double) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "forward.fill")
@@ -386,9 +418,7 @@ struct PlayerScreen: View {
         .allowsHitTesting(false)
     }
 
-    private func adjustmentHUDView(_ state: AdjustmentHUDState) -> some View {
-        PlayerAdjustmentRulerHUD(adjustment: state.adjustment, value: state.value)
-    }
+    private func adjustmentHUDView(_ state: AdjustmentHUDState) -> some View { PlayerAdjustmentRulerHUD(adjustment: state.adjustment, value: state.value) }
 
     private func statusBanner(title: String, message: String, color: Color) -> some View {
         VStack(spacing: 4) {
@@ -403,6 +433,7 @@ struct PlayerScreen: View {
 
     private var capabilities: PlayerCapabilities { PlayerCapabilities.resolve(for: controller.engineKind) }
     private var currentScaleMode: PlayerVideoScaleMode { sessionOverrides.scaleMode }
+    private var currentMotionSmoothingMode: MotionSmoothingMode { MotionSmoothingMode(rawValue: motionSmoothingRaw) ?? .off }
     private var isExternalPlaybackActive: Bool { controller.avPlayer?.isExternalPlaybackActive == true }
     private var hasTrackInfo: Bool {
         (controller.source.mediaSource.mediaStreams ?? []).contains { $0.type?.caseInsensitiveCompare("Audio") == .orderedSame || $0.type?.caseInsensitiveCompare("Subtitle") == .orderedSame }
@@ -464,9 +495,7 @@ struct PlayerScreen: View {
             return
         }
         if actual != target && (attempt == 5 || attempt == 12) { requestInterfaceOrientation(target, reason: "\(reason)-retry\(attempt)") }
-        if actual == target && !rendererReady && (attempt == 0 || attempt == 6 || attempt == 12) {
-            logSurfaceWaitState(reason: reason, target: target, attempt: attempt)
-        }
+        if actual == target && !rendererReady && (attempt == 0 || attempt == 6 || attempt == 12) { logSurfaceWaitState(reason: reason, target: target, attempt: attempt) }
         let workItem = DispatchWorkItem { waitForOrientation(target, reason: reason, shouldStartPlayback: shouldStartPlayback, attempt: attempt + 1) }
         initialOrientationWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
@@ -504,7 +533,6 @@ struct PlayerScreen: View {
         let preset = BufferPreset(rawValue: bufferPresetRaw) ?? .balanced
         DiagnosticsLogger.shared.playback("PlayerUI", "startup engine activation after mounted final-orientation surface")
         controller.start(preferredForwardBuffer: preset.seconds)
-        controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
         scheduleControlsHide()
     }
 
@@ -559,6 +587,7 @@ struct PlayerScreen: View {
         switch phase {
         case .background:
             resetTransientInteractions(reason: "background")
+            playbackSettingsPresented = false
             restoreOriginalBrightnessIfNeeded()
             guard pauseWhenBackgrounded, !audioInterruptionActive, controller.playbackControlIsPlaying, !pictureInPictureController.isActive, !isExternalPlaybackActive else {
                 wasAutoPausedForBackground = false
@@ -572,7 +601,7 @@ struct PlayerScreen: View {
             let shouldResume = wasAutoPausedForBackground && resumeWhenForegrounded && !audioInterruptionActive
             wasAutoPausedForBackground = false
             if shouldResume, controller.resumePlayback() {
-                controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
+                applyPresentationPreferences()
                 DiagnosticsLogger.shared.playback("Lifecycle", "foreground resumed app-auto-paused playback")
             } else {
                 DiagnosticsLogger.shared.playback("Lifecycle", "foreground no-auto-resume enabled=\(resumeWhenForegrounded) interruption=\(audioInterruptionActive)")
@@ -605,6 +634,8 @@ struct PlayerScreen: View {
     private func resetTransientInteractions(reason: String) {
         if sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
         gestureResetGeneration &+= 1
+        centerFeedbackVisible = false
+        centerFeedbackScale = 1
         DiagnosticsLogger.shared.playback("PlayerGesture", "reset reason=\(reason) generation=\(gestureResetGeneration)")
     }
 
@@ -627,6 +658,7 @@ struct PlayerScreen: View {
     private func toggleControls() {
         if controlsVisible {
             controlsHideWorkItem?.cancel()
+            playbackSettingsPresented = false
             controlsVisible = false
         } else { showControls() }
     }
@@ -635,29 +667,50 @@ struct PlayerScreen: View {
         controlsVisible = true
         controlsHideWorkItem?.cancel()
         controlsHideWorkItem = nil
-        if autoHide { scheduleControlsHide() }
+        if autoHide && !playbackSettingsPresented { scheduleControlsHide() }
     }
 
     private func scheduleControlsHide() {
         controlsHideWorkItem?.cancel()
         controlsHideWorkItem = nil
-        guard controlsAutoHideSeconds > 0, controller.playbackControlIsPlaying else { return }
-        let workItem = DispatchWorkItem { controlsVisible = false }
+        guard controlsAutoHideSeconds > 0, controller.playbackControlIsPlaying, !playbackSettingsPresented else { return }
+        let workItem = DispatchWorkItem {
+            playbackSettingsPresented = false
+            centerFeedbackVisible = false
+            controlsVisible = false
+        }
         controlsHideWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + controlsAutoHideSeconds, execute: workItem)
+    }
+
+    private func togglePlayPauseFromControl() {
+        let willPause = controller.playbackControlIsPlaying
+        controller.togglePlayPause()
+        if !willPause { applyPresentationPreferences() }
+        if willPause { showControls(autoHide: false) }
+        else { showControls(autoHide: true) }
     }
 
     private func togglePlayPauseFromGesture() {
         let willPause = controller.playbackControlIsPlaying
         controller.togglePlayPause()
-        if !willPause { controller.setPlaybackRate(sessionOverrides.effectivePlaybackRate) }
-        centerFeedbackSymbol = willPause ? "pause.fill" : "play.fill"
+        if !willPause { applyPresentationPreferences() }
+        showCenterPlaybackFeedback()
+        if willPause {
+            if controlsVisible { showControls(autoHide: false) }
+        } else if controlsVisible { scheduleControlsHide() }
+    }
+
+    private func showCenterPlaybackFeedback() {
         feedbackHideWorkItem?.cancel()
-        let workItem = DispatchWorkItem { centerFeedbackSymbol = nil }
+        centerFeedbackVisible = true
+        centerFeedbackScale = 1.14
+        withAnimation(.easeOut(duration: 0.16)) { centerFeedbackScale = 1 }
+        let workItem = DispatchWorkItem {
+            withAnimation(.easeOut(duration: 0.14)) { centerFeedbackVisible = false }
+        }
         feedbackHideWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
-        if willPause { showControls(autoHide: false) }
-        else if controlsVisible { scheduleControlsHide() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.50, execute: workItem)
     }
 
     private func beginTemporaryRate() {
@@ -666,14 +719,14 @@ struct PlayerScreen: View {
         sessionOverrides.temporaryPlaybackRate = rate
         temporaryRateHUD = rate
         controlsHideWorkItem?.cancel()
-        controller.setPlaybackRate(rate)
+        applyPresentationPreferences(rate: rate)
     }
 
     private func endTemporaryRate() {
         guard sessionOverrides.temporaryPlaybackRate != nil else { return }
         sessionOverrides.temporaryPlaybackRate = nil
         temporaryRateHUD = nil
-        controller.setPlaybackRate(sessionOverrides.basePlaybackRate)
+        applyPresentationPreferences(rate: sessionOverrides.basePlaybackRate)
         if scenePhase == .active { scheduleControlsHide() }
     }
 
@@ -695,13 +748,36 @@ struct PlayerScreen: View {
     private func applyBasePlaybackRate(_ rate: Double) {
         let clamped = min(8, max(0.15, rate))
         sessionOverrides.basePlaybackRate = clamped
-        if sessionOverrides.temporaryPlaybackRate == nil, controller.playbackControlIsPlaying { controller.setPlaybackRate(clamped) }
+        if sessionOverrides.temporaryPlaybackRate == nil, controller.playbackControlIsPlaying { applyPresentationPreferences(rate: clamped) }
         DiagnosticsLogger.shared.playback("PlayerUI", "base playback rate=\(String(format: "%.2f", clamped))")
     }
 
+    private func applyPresentationPreferences() {
+        applyPresentationPreferences(rate: sessionOverrides.effectivePlaybackRate)
+    }
+
+    private func applyPresentationPreferences(rate: Double) {
+        guard playbackStarted else { return }
+        let plan = presentationCoordinator.makePlan(
+            rate: rate,
+            motionSmoothingMode: currentMotionSmoothingMode,
+            videoEnhancementEnabled: videoEnhancementEnabled,
+            displayFPS: displayRefreshMonitor.framesPerSecond
+        )
+        presentationCoordinator.apply(plan, using: controller.engine)
+    }
+
     private func openControlPanel(_ panel: PlayerControlPanel) {
+        playbackSettingsPresented = false
         controlsHideWorkItem?.cancel()
         activePanel = panel
+    }
+
+    private func togglePlaybackSettings() {
+        activePanel = nil
+        controlsHideWorkItem?.cancel()
+        withAnimation(.easeOut(duration: 0.18)) { playbackSettingsPresented.toggle() }
+        if !playbackSettingsPresented { scheduleControlsHide() }
     }
 
     private func showAdjustmentHUD(_ adjustment: PlaybackVerticalAdjustment, value: Double, autoHide: Bool) {
@@ -726,7 +802,9 @@ struct PlayerScreen: View {
         initialOrientationWorkItem?.cancel()
         closeDismissWorkItem?.cancel()
         controlsVisible = false
-        centerFeedbackSymbol = nil
+        playbackSettingsPresented = false
+        centerFeedbackVisible = false
+        centerFeedbackScale = 1
         temporaryRateHUD = nil
         adjustmentHUD = nil
         controller.pausePlayback()
@@ -767,13 +845,9 @@ struct PlayerScreen: View {
 private struct PlayerPresentationDidAppearProbe: UIViewControllerRepresentable {
     let onDidAppear: () -> Void
 
-    func makeUIViewController(context: Context) -> ProbeViewController {
-        ProbeViewController(onDidAppear: onDidAppear)
-    }
+    func makeUIViewController(context: Context) -> ProbeViewController { ProbeViewController(onDidAppear: onDidAppear) }
 
-    func updateUIViewController(_ uiViewController: ProbeViewController, context: Context) {
-        uiViewController.onDidAppear = onDidAppear
-    }
+    func updateUIViewController(_ uiViewController: ProbeViewController, context: Context) { uiViewController.onDidAppear = onDidAppear }
 
     final class ProbeViewController: UIViewController {
         var onDidAppear: () -> Void

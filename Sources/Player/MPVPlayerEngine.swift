@@ -25,7 +25,7 @@ final class MPVMetalLayer: CAMetalLayer {
 }
 
 #if canImport(Libmpv)
-final class MPVPlayerEngine: PlayerEngine {
+final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
     let kind: PlayerEngineKind = .mpv
     var onSnapshot: ((PlayerSnapshot) -> Void)?
     var onSeekCompleted: ((SeekResult) -> Void)?
@@ -45,6 +45,7 @@ final class MPVPlayerEngine: PlayerEngine {
     private let sharedTransportSession: TransportDataSession?
     private var streamBridge: MPVUnifiedStreamBridge?
     private var streamPrepareTask: Task<Void, Never>?
+    private var enhancementBaseline: EnhancementBaseline?
 
     private struct Configuration {
         let url: URL
@@ -57,6 +58,13 @@ final class MPVPlayerEngine: PlayerEngine {
         let requestedAt: TimeInterval
         let target: Double
         let bufferHit: Bool
+    }
+
+    private struct EnhancementBaseline {
+        let scale: String
+        let cscale: String
+        let deband: String
+        let sigmoidUpscaling: String
     }
 
     private final class PendingRendererLayout {
@@ -154,28 +162,134 @@ final class MPVPlayerEngine: PlayerEngine {
 
     func setPlaybackRate(_ rate: Double) {
         let clamped = min(8, max(0.15, rate))
+        let displayFPS = Double(max(60, UIScreen.main.maximumFramesPerSecond))
+        let plan = PlaybackPresentationPlan(
+            requestedRate: clamped,
+            sourceFPS: nil,
+            displayFPS: displayFPS,
+            timingStrategy: clamped > 2 ? .displayCadenced : .audioMaster,
+            motionSmoothingMode: .off,
+            effectiveMotionTargetFPS: nil,
+            videoEnhancementEnabled: false,
+            requestedEnhancementFeatures: []
+        )
+        applyPresentationPlan(plan) { _ in }
+    }
+
+    func applyPresentationPlan(_ plan: PlaybackPresentationPlan, completion: @escaping (PlaybackPresentationAcknowledgement) -> Void) {
         queue.async { [weak self] in
-            guard let self, let handle = self.mpv, !self.isStopping else { return }
+            guard let self, let handle = self.mpv, !self.isStopping else {
+                completion(.unsupported)
+                return
+            }
+
             self.playbackRateGeneration &+= 1
             let generation = self.playbackRateGeneration
-            let highSpeed = clamped > 2
             var startPosition = Double(0)
             _ = self.getProperty(handle: handle, name: "time-pos", format: MPV_FORMAT_DOUBLE, value: &startPosition)
             let startedAt = CACurrentMediaTime()
+            let startVODrops = self.integerProperty(handle: handle, name: "frame-drop-count")
+            let startDecoderDrops = self.integerProperty(handle: handle, name: "decoder-frame-drop-count")
+            let displayFPS = min(240, max(30, plan.displayFPS))
 
-            // Keep audio as the master clock. Above 2x, VO-only frame dropping still
-            // decodes every 4K frame, which can make requested speed outrun VideoToolbox
-            // and allows A/V drift. Decoder+VO dropping lets libavcodec skip late
-            // non-reference frames before they become expensive display work.
-            self.setProperty(handle: handle, name: "video-sync", value: "audio")
+            self.setProperty(handle: handle, name: "display-fps-override", value: String(format: "%.3f", displayFPS))
             self.setProperty(handle: handle, name: "audio-pitch-correction", value: "yes")
-            self.setProperty(handle: handle, name: "vd-lavc-framedrop", value: "nonref")
-            self.setProperty(handle: handle, name: "framedrop", value: highSpeed ? "decoder+vo" : "vo")
-            self.setProperty(handle: handle, name: "speed", value: String(format: "%.3f", clamped))
-            DiagnosticsLogger.shared.log("MPVRate", "requested=\(String(format: "%.2f", clamped)) mode=\(highSpeed ? "high-speed" : "normal") videoSync=audio framedrop=\(highSpeed ? "decoder+vo" : "vo") decoderDrop=nonref pitchCorrection=yes")
-            self.schedulePlaybackRateHealth(handle: handle, generation: generation, requested: clamped, startedAt: startedAt, startPosition: startPosition, delay: 1.5)
-            self.schedulePlaybackRateHealth(handle: handle, generation: generation, requested: clamped, startedAt: startedAt, startPosition: startPosition, delay: 4.0)
+            self.setProperty(handle: handle, name: "framedrop", value: "vo")
+            self.setProperty(handle: handle, name: "vd-lavc-framedrop", value: "none")
+
+            let motionRequested = plan.motionSmoothingRequested && abs(plan.requestedRate - 1) < 0.01
+            if motionRequested {
+                self.setProperty(handle: handle, name: "video-sync", value: "display-resample")
+                self.setProperty(handle: handle, name: "interpolation", value: "yes")
+                self.setProperty(handle: handle, name: "tscale", value: "oversample")
+            } else if plan.requestedRate > 2 {
+                self.setProperty(handle: handle, name: "video-sync", value: "display-vdrop")
+                self.setProperty(handle: handle, name: "interpolation", value: "no")
+            } else {
+                self.setProperty(handle: handle, name: "video-sync", value: "audio")
+                self.setProperty(handle: handle, name: "interpolation", value: "no")
+            }
+            self.setProperty(handle: handle, name: "speed", value: String(format: "%.3f", plan.requestedRate))
+
+            let activeEnhancementFeatures = self.applyVideoEnhancement(handle: handle, requested: plan.requestedEnhancementFeatures)
+            let actualSync = self.getStringProperty(handle: handle, name: "video-sync") ?? "unknown"
+            let actualInterpolation = self.getStringProperty(handle: handle, name: "interpolation") ?? "no"
+            let actualDisplayFPS = Double(self.getStringProperty(handle: handle, name: "display-fps") ?? "") ?? displayFPS
+            let activeMotionFPS = motionRequested && actualSync.hasPrefix("display-") && actualInterpolation == "yes" ? actualDisplayFPS : nil
+            let detail = "sync=\(actualSync), interpolation=\(actualInterpolation), display=\(String(format: "%.2f", actualDisplayFPS))"
+
+            DiagnosticsLogger.shared.log(
+                "MPVRate",
+                "requested=\(String(format: "%.2f", plan.requestedRate)) strategy=\(plan.timingStrategy.rawValue) videoSync=\(actualSync) displayFPS=\(String(format: "%.2f", actualDisplayFPS)) framedrop=vo decoderDrop=none interpolation=\(actualInterpolation) pitchCorrection=yes"
+            )
+
+            if self.snapshot.isPlaying {
+                self.schedulePlaybackRateHealth(
+                    handle: handle,
+                    generation: generation,
+                    requested: plan.requestedRate,
+                    plannedSourceFPS: plan.sourceFPS,
+                    startedAt: startedAt,
+                    startPosition: startPosition,
+                    startVODrops: startVODrops,
+                    startDecoderDrops: startDecoderDrops,
+                    delay: 1.5
+                )
+                self.schedulePlaybackRateHealth(
+                    handle: handle,
+                    generation: generation,
+                    requested: plan.requestedRate,
+                    plannedSourceFPS: plan.sourceFPS,
+                    startedAt: startedAt,
+                    startPosition: startPosition,
+                    startVODrops: startVODrops,
+                    startDecoderDrops: startDecoderDrops,
+                    delay: 4.0
+                )
+            }
+
+            completion(PlaybackPresentationAcknowledgement(activeMotionFPS: activeMotionFPS, activeEnhancementFeatures: activeEnhancementFeatures, detail: detail))
         }
+    }
+
+    private func applyVideoEnhancement(handle: OpaquePointer, requested: [VideoEnhancementFeature]) -> [VideoEnhancementFeature] {
+        if enhancementBaseline == nil, !requested.isEmpty {
+            enhancementBaseline = EnhancementBaseline(
+                scale: getStringProperty(handle: handle, name: "scale") ?? "bilinear",
+                cscale: getStringProperty(handle: handle, name: "cscale") ?? "bilinear",
+                deband: getStringProperty(handle: handle, name: "deband") ?? "no",
+                sigmoidUpscaling: getStringProperty(handle: handle, name: "sigmoid-upscaling") ?? "no"
+            )
+        }
+
+        guard let baseline = enhancementBaseline else { return [] }
+        if requested.isEmpty {
+            setProperty(handle: handle, name: "scale", value: baseline.scale)
+            setProperty(handle: handle, name: "cscale", value: baseline.cscale)
+            setProperty(handle: handle, name: "deband", value: baseline.deband)
+            setProperty(handle: handle, name: "sigmoid-upscaling", value: baseline.sigmoidUpscaling)
+            return []
+        }
+
+        var active: [VideoEnhancementFeature] = []
+        if requested.contains(.upscale) {
+            let scaleOK = setPropertyChecked(handle: handle, name: "scale", value: "ewa_lanczossharp")
+            let sigmoidOK = setPropertyChecked(handle: handle, name: "sigmoid-upscaling", value: "yes")
+            if scaleOK && sigmoidOK { active.append(.upscale) }
+        } else {
+            setProperty(handle: handle, name: "scale", value: baseline.scale)
+            setProperty(handle: handle, name: "sigmoid-upscaling", value: baseline.sigmoidUpscaling)
+        }
+
+        if requested.contains(.chroma) {
+            if setPropertyChecked(handle: handle, name: "cscale", value: "ewa_lanczossharp") { active.append(.chroma) }
+        } else { setProperty(handle: handle, name: "cscale", value: baseline.cscale) }
+
+        if requested.contains(.deband) {
+            if setPropertyChecked(handle: handle, name: "deband", value: "yes") { active.append(.deband) }
+        } else { setProperty(handle: handle, name: "deband", value: baseline.deband) }
+
+        return active
     }
 
     func setVideoGeometry(panscan: Double, aspectOverride: String?) {
@@ -298,33 +412,26 @@ final class MPVPlayerEngine: PlayerEngine {
             // Drain events already produced by quit before destroying the handle.
             var drainCount = 0
             while drainCount < 100, let event = mpv_wait_event(handle, 0.02)?.pointee {
-                if event.event_id == MPV_EVENT_NONE || event.event_id == MPV_EVENT_SHUTDOWN {
-                    break
-                }
+                if event.event_id == MPV_EVENT_NONE || event.event_id == MPV_EVENT_SHUTDOWN { break }
                 drainCount += 1
             }
             DiagnosticsLogger.shared.log("MPVLifecycle", "events drained=\(drainCount)")
         }
 
-        if DispatchQueue.getSpecific(key: queueKey) != nil {
-            shutdown()
-        } else {
-            queue.sync(execute: shutdown)
-        }
+        if DispatchQueue.getSpecific(key: queueKey) != nil { shutdown() }
+        else { queue.sync(execute: shutdown) }
 
         // Clear the shared handle before asynchronous destruction so no queued work can reuse it.
         mpv = nil
         snapshot = PlayerSnapshot()
+        enhancementBaseline = nil
 
         let flushLayer = { [displayLayer] in
             displayLayer.contents = nil
             displayLayer.removeAllAnimations()
         }
-        if Thread.isMainThread {
-            flushLayer()
-        } else {
-            DispatchQueue.main.sync(execute: flushLayer)
-        }
+        if Thread.isMainThread { flushLayer() }
+        else { DispatchQueue.main.sync(execute: flushLayer) }
 
         DispatchQueue.global(qos: .userInitiated).async {
             mpv_terminate_destroy(handle)
@@ -337,11 +444,10 @@ final class MPVPlayerEngine: PlayerEngine {
     }
 
     private func createMPV() throws {
-        guard let handle = mpv_create() else {
-            throw MPVEngineError.creationFailed
-        }
+        guard let handle = mpv_create() else { throw MPVEngineError.creationFailed }
         mpv = handle
         isStopping = false
+        enhancementBaseline = nil
 
         check(mpv_request_log_messages(handle, "warn"), operation: "request logs")
 
@@ -358,7 +464,7 @@ final class MPVPlayerEngine: PlayerEngine {
         check(mpv_set_option_string(handle, "hwdec-software-fallback", "yes"), operation: "set hw fallback")
         check(mpv_set_option_string(handle, "video-sync", "audio"), operation: "set audio-master video sync")
         check(mpv_set_option_string(handle, "framedrop", "vo"), operation: "set normal frame drop")
-        check(mpv_set_option_string(handle, "vd-lavc-framedrop", "nonref"), operation: "set decoder frame drop policy")
+        check(mpv_set_option_string(handle, "vd-lavc-framedrop", "none"), operation: "disable decoder frame drop")
         check(mpv_set_option_string(handle, "audio-pitch-correction", "yes"), operation: "enable pitch correction")
         check(mpv_set_option_string(handle, "cache", "yes"), operation: "enable cache")
         check(mpv_set_option_string(handle, "demuxer-seekable-cache", "yes"), operation: "seekable cache")
@@ -434,18 +540,8 @@ final class MPVPlayerEngine: PlayerEngine {
         startPosition: Double,
         compatibilityMode: Bool
     ) {
-        snapshot = PlayerSnapshot(
-            position: max(0, startPosition),
-            isBuffering: true,
-            waitingReason: compatibilityMode ? "MPV compatibility loading" : "MPV loading"
-        )
-        pendingSeek = startPosition > 0
-            ? PendingSeek(
-                requestedAt: CACurrentMediaTime(),
-                target: startPosition,
-                bufferHit: false
-            )
-            : nil
+        snapshot = PlayerSnapshot(position: max(0, startPosition), isBuffering: true, waitingReason: compatibilityMode ? "MPV compatibility loading" : "MPV loading")
+        pendingSeek = startPosition > 0 ? PendingSeek(requestedAt: CACurrentMediaTime(), target: startPosition, bufferHit: false) : nil
         emitOnMain()
 
         queue.async { [weak self] in
@@ -483,11 +579,7 @@ final class MPVPlayerEngine: PlayerEngine {
             }
 
             self.setProperty(handle: handle, name: "start", value: String(format: "%.3f", max(0, startPosition)))
-
-            DiagnosticsLogger.shared.log(
-                "MPVLoad",
-                "mode=\(compatibilityMode ? "bad-interleaved-mp4" : "normal") start=\(startPosition) cacheSecs=\(cacheSeconds)"
-            )
+            DiagnosticsLogger.shared.log("MPVLoad", "mode=\(compatibilityMode ? "bad-interleaved-mp4" : "normal") start=\(startPosition) cacheSecs=\(cacheSeconds)")
 
             let target: String
             if self.streamBridge != nil { target = "embyunified://media" }
@@ -512,9 +604,7 @@ final class MPVPlayerEngine: PlayerEngine {
             ("partially-seekable", MPV_FORMAT_FLAG),
             ("demuxer-via-network", MPV_FORMAT_FLAG)
         ]
-        for (name, format) in properties {
-            mpv_observe_property(handle, 0, name, format)
-        }
+        for (name, format) in properties { mpv_observe_property(handle, 0, name, format) }
     }
 
     private func processEvents() {
@@ -550,8 +640,7 @@ final class MPVPlayerEngine: PlayerEngine {
 
             var actualPosition = snapshot.position
             var queriedPosition = Double(0)
-            if getProperty(handle: handle, name: "time-pos", format: MPV_FORMAT_DOUBLE, value: &queriedPosition) >= 0,
-               queriedPosition.isFinite {
+            if getProperty(handle: handle, name: "time-pos", format: MPV_FORMAT_DOUBLE, value: &queriedPosition) >= 0, queriedPosition.isFinite {
                 actualPosition = queriedPosition
                 snapshot.position = queriedPosition
             }
@@ -559,10 +648,7 @@ final class MPVPlayerEngine: PlayerEngine {
             if let pending = pendingSeek {
                 pendingSeek = nil
                 let latency = (CACurrentMediaTime() - pending.requestedAt) * 1000
-                DiagnosticsLogger.shared.log(
-                    "MPVSeekLanding",
-                    "target=\(pending.target) actual=\(actualPosition) delta=\(actualPosition - pending.target)"
-                )
+                DiagnosticsLogger.shared.log("MPVSeekLanding", "target=\(pending.target) actual=\(actualPosition) delta=\(actualPosition - pending.target)")
                 DispatchQueue.main.async { [weak self] in
                     self?.onSeekCompleted?(SeekResult(
                         requestedAt: pending.requestedAt,
@@ -589,34 +675,21 @@ final class MPVPlayerEngine: PlayerEngine {
                 // loadfile replace intentionally produces STOP for the previous file.
                 // Only a real EOF or ERROR belongs to the current playback-end path.
                 let isRealPlaybackEnd = reasonValue == 0 || reasonValue == 4
-
-                DiagnosticsLogger.shared.log(
-                    "MPVEndFile",
-                    "reason=\(reasonValue) error=\(errorValue) realEnd=\(isRealPlaybackEnd) position=\(snapshot.position) duration=\(snapshot.duration)"
-                )
+                DiagnosticsLogger.shared.log("MPVEndFile", "reason=\(reasonValue) error=\(errorValue) realEnd=\(isRealPlaybackEnd) position=\(snapshot.position) duration=\(snapshot.duration)")
 
                 if isRealPlaybackEnd {
                     snapshot.didReachEnd = true
                     snapshot.isPlaying = false
                     emitOnMain()
-                } else {
-                    DiagnosticsLogger.shared.log(
-                        "MPVEndFile",
-                        "ignored transition event reason=\(reasonValue)"
-                    )
-                }
+                } else { DiagnosticsLogger.shared.log("MPVEndFile", "ignored transition event reason=\(reasonValue)") }
             }
         case MPV_EVENT_PROPERTY_CHANGE:
-            if let namePointer = event.data?.assumingMemoryBound(to: mpv_event_property.self).pointee.name {
-                refreshProperty(name: String(cString: namePointer), handle: handle)
-            }
+            if let namePointer = event.data?.assumingMemoryBound(to: mpv_event_property.self).pointee.name { refreshProperty(name: String(cString: namePointer), handle: handle) }
         case MPV_EVENT_LOG_MESSAGE:
             if let message = event.data?.assumingMemoryBound(to: mpv_event_log_message.self).pointee {
                 let prefix = String(cString: message.prefix)
                 let text = String(cString: message.text).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !text.isEmpty {
-                    DiagnosticsLogger.shared.log("MPV", "[\(prefix)] \(text)")
-                }
+                if !text.isEmpty { DiagnosticsLogger.shared.log("MPV", "[\(prefix)] \(text)") }
             }
         case MPV_EVENT_SHUTDOWN:
             DiagnosticsLogger.shared.log("MPV", "shutdown")
@@ -670,9 +743,7 @@ final class MPVPlayerEngine: PlayerEngine {
             DiagnosticsLogger.shared.log("MPVAudio", "\(name)=\(value)")
         case "demuxer-cache-idle", "seekable", "partially-seekable", "demuxer-via-network":
             var flag = Int32(0)
-            if getProperty(handle: handle, name: name, format: MPV_FORMAT_FLAG, value: &flag) >= 0 {
-                DiagnosticsLogger.shared.log("MPVNetwork", "\(name)=\(flag != 0)")
-            }
+            if getProperty(handle: handle, name: name, format: MPV_FORMAT_FLAG, value: &flag) >= 0 { DiagnosticsLogger.shared.log("MPVNetwork", "\(name)=\(flag != 0)") }
         default:
             break
         }
@@ -690,14 +761,18 @@ final class MPVPlayerEngine: PlayerEngine {
         return String(cString: pointer)
     }
 
+    private func integerProperty(handle: OpaquePointer, name: String) -> Int64 {
+        if let value = getStringProperty(handle: handle, name: name), let parsed = Int64(value) { return parsed }
+        var value = Int64(0)
+        _ = getProperty(handle: handle, name: name, format: MPV_FORMAT_INT64, value: &value)
+        return value
+    }
+
     private func logAudioState(handle: OpaquePointer, reason: String) {
         let currentAO = getStringProperty(handle: handle, name: "current-ao") ?? "nil"
         let aid = getStringProperty(handle: handle, name: "aid") ?? "nil"
         let audioParams = getStringProperty(handle: handle, name: "audio-params") ?? "nil"
-        DiagnosticsLogger.shared.log(
-            "MPVAudio",
-            "reason=\(reason) currentAO=\(currentAO) aid=\(aid) audioParams=\(audioParams)"
-        )
+        DiagnosticsLogger.shared.log("MPVAudio", "reason=\(reason) currentAO=\(currentAO) aid=\(aid) audioParams=\(audioParams)")
     }
 
     private func logVideoOutputGeometry(handle: OpaquePointer, reason: String) {
@@ -726,8 +801,7 @@ final class MPVPlayerEngine: PlayerEngine {
         guard let pending = pendingRendererLayout else { return }
         DiagnosticsLogger.shared.log("MPVRenderer", "video-reconfig generation=\(pending.request.generation) phase=\(pending.phase.rawValue)")
         switch pending.phase {
-        case .waitingTemporaryReconfig:
-            applyRendererTarget(handle: handle, pending: pending, reason: "temporary-reconfig")
+        case .waitingTemporaryReconfig: applyRendererTarget(handle: handle, pending: pending, reason: "temporary-reconfig")
         case .waitingTargetReconfig, .polling:
             pending.phase = .polling
             scheduleRendererViewportPoll(handle: handle, pending: pending, delay: 0)
@@ -782,7 +856,17 @@ final class MPVPlayerEngine: PlayerEngine {
         DiagnosticsLogger.shared.log("MPVVideoState", "reason=\(reason) size=\(width)x\(height) display=\(dwidth)x\(dheight) rotate=\(rotate) aspect=\(aspect) hwdec=\(hwdec) params=\(params)")
     }
 
-    private func schedulePlaybackRateHealth(handle: OpaquePointer, generation: UInt64, requested: Double, startedAt: TimeInterval, startPosition: Double, delay: TimeInterval) {
+    private func schedulePlaybackRateHealth(
+        handle: OpaquePointer,
+        generation: UInt64,
+        requested: Double,
+        plannedSourceFPS: Double?,
+        startedAt: TimeInterval,
+        startPosition: Double,
+        startVODrops: Int64,
+        startDecoderDrops: Int64,
+        delay: TimeInterval
+    ) {
         queue.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.playbackRateGeneration == generation, let currentHandle = self.mpv, currentHandle == handle, !self.isStopping else { return }
             var currentPosition = Double(0)
@@ -790,12 +874,18 @@ final class MPVPlayerEngine: PlayerEngine {
             let elapsed = max(0.001, CACurrentMediaTime() - startedAt)
             let actualRate = max(0, (currentPosition - startPosition) / elapsed)
             let avsync = self.getStringProperty(handle: handle, name: "avsync") ?? "nil"
-            let voDrops = self.getStringProperty(handle: handle, name: "frame-drop-count") ?? "nil"
-            let decoderDrops = self.getStringProperty(handle: handle, name: "decoder-frame-drop-count") ?? "nil"
-            let sourceFPS = self.getStringProperty(handle: handle, name: "container-fps") ?? self.getStringProperty(handle: handle, name: "estimated-vf-fps") ?? "nil"
+            let voDrops = self.integerProperty(handle: handle, name: "frame-drop-count")
+            let decoderDrops = self.integerProperty(handle: handle, name: "decoder-frame-drop-count")
+            let sourceFPS = plannedSourceFPS.map { String(format: "%.3f", $0) } ?? self.getStringProperty(handle: handle, name: "container-fps") ?? self.getStringProperty(handle: handle, name: "estimated-vf-fps") ?? "nil"
             let displayFPS = self.getStringProperty(handle: handle, name: "display-fps") ?? "nil"
+            let displaySyncActive = self.getStringProperty(handle: handle, name: "display-sync-active") ?? "nil"
+            let vsyncRatio = self.getStringProperty(handle: handle, name: "vsync-ratio") ?? "nil"
+            let delayedFrames = self.getStringProperty(handle: handle, name: "vo-delayed-frame-count") ?? "nil"
             let hwdec = self.getStringProperty(handle: handle, name: "hwdec-current") ?? "nil"
-            DiagnosticsLogger.shared.log("MPVRateHealth", "requested=\(String(format: "%.2f", requested)) actual=\(String(format: "%.2f", actualRate)) sample=\(String(format: "%.1f", elapsed))s avsync=\(avsync) voDrops=\(voDrops) decoderDrops=\(decoderDrops) sourceFPS=\(sourceFPS) displayFPS=\(displayFPS) hwdec=\(hwdec)")
+            DiagnosticsLogger.shared.log(
+                "MPVRateHealth",
+                "requested=\(String(format: "%.2f", requested)) actual=\(String(format: "%.2f", actualRate)) sample=\(String(format: "%.1f", elapsed))s avsync=\(avsync) voDropsDelta=\(max(0, voDrops - startVODrops)) decoderDropsDelta=\(max(0, decoderDrops - startDecoderDrops)) sourceFPS=\(sourceFPS) displayFPS=\(displayFPS) displaySync=\(displaySyncActive) vsyncRatio=\(vsyncRatio) delayed=\(delayedFrames) hwdec=\(hwdec)"
+            )
         }
     }
 
@@ -815,31 +905,31 @@ final class MPVPlayerEngine: PlayerEngine {
         }
     }
 
-    private func setProperty(handle: OpaquePointer, name: String, value: String) {
+    @discardableResult
+    private func setPropertyChecked(handle: OpaquePointer, name: String, value: String) -> Bool {
         let status = mpv_set_property_string(handle, name, value)
         check(status, operation: "set \(name)=\(value)")
+        return status >= 0
+    }
+
+    private func setProperty(handle: OpaquePointer, name: String, value: String) {
+        _ = setPropertyChecked(handle: handle, name: name, value: value)
     }
 
     private func command(_ handle: OpaquePointer, _ arguments: [String]) {
         guard !arguments.isEmpty else { return }
-        withCStringArray(arguments) { pointer in
-            _ = mpv_command_async(handle, 0, pointer)
-        }
+        withCStringArray(arguments) { pointer in _ = mpv_command_async(handle, 0, pointer) }
     }
 
     @discardableResult
     private func commandSync(_ handle: OpaquePointer, _ arguments: [String]) -> Int32 {
         guard !arguments.isEmpty else { return -1 }
-        return withCStringArray(arguments) { pointer in
-            mpv_command(handle, pointer)
-        }
+        return withCStringArray(arguments) { pointer in mpv_command(handle, pointer) }
     }
 
     @discardableResult
     private func getProperty<T>(handle: OpaquePointer, name: String, format: mpv_format, value: inout T) -> Int32 {
-        withUnsafeMutablePointer(to: &value) { pointer in
-            mpv_get_property(handle, name, format, pointer)
-        }
+        withUnsafeMutablePointer(to: &value) { pointer in mpv_get_property(handle, name, format, pointer) }
     }
 
     private func check(_ status: Int32, operation: String) {
@@ -857,27 +947,16 @@ final class MPVPlayerEngine: PlayerEngine {
 
     private func emitOnMain() {
         let value = snapshot
-        DispatchQueue.main.async { [weak self] in
-            self?.onSnapshot?(value)
-        }
+        DispatchQueue.main.async { [weak self] in self?.onSnapshot?(value) }
     }
 
     @inline(__always)
-    private func withCStringArray<Result>(
-        _ arguments: [String],
-        body: (UnsafeMutablePointer<UnsafePointer<CChar>?>?) -> Result
-    ) -> Result {
+    private func withCStringArray<Result>(_ arguments: [String], body: (UnsafeMutablePointer<UnsafePointer<CChar>?>?) -> Result) -> Result {
         var strings = arguments.map { strdup($0) }
         strings.append(nil)
-        defer {
-            for pointer in strings where pointer != nil {
-                free(pointer)
-            }
-        }
+        defer { for pointer in strings where pointer != nil { free(pointer) } }
         return strings.withUnsafeMutableBufferPointer { buffer in
-            buffer.baseAddress!.withMemoryRebound(to: UnsafePointer<CChar>?.self, capacity: buffer.count) { rebound in
-                body(UnsafeMutablePointer(mutating: rebound))
-            }
+            buffer.baseAddress!.withMemoryRebound(to: UnsafePointer<CChar>?.self, capacity: buffer.count) { rebound in body(UnsafeMutablePointer(mutating: rebound)) }
         }
     }
 }
@@ -889,18 +968,15 @@ enum MPVEngineError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .creationFailed:
-            return "无法创建 MPV 实例。"
-        case .initializationFailed(let status):
-            return "MPV 初始化失败：\(status)。"
-        case .requiredVideoOutputUnavailable(let operation, let status, let message):
-            return "MPV 视频输出不可用：\(operation)，\(message)（\(status)）。"
+        case .creationFailed: return "无法创建 MPV 实例。"
+        case .initializationFailed(let status): return "MPV 初始化失败：\(status)。"
+        case .requiredVideoOutputUnavailable(let operation, let status, let message): return "MPV 视频输出不可用：\(operation)，\(message)（\(status)）。"
         }
     }
 }
 
 #else
-final class MPVPlayerEngine: PlayerEngine {
+final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
     let kind: PlayerEngineKind = .mpv
     var onSnapshot: ((PlayerSnapshot) -> Void)?
     var onSeekCompleted: ((SeekResult) -> Void)?
@@ -927,6 +1003,7 @@ final class MPVPlayerEngine: PlayerEngine {
     func play() {}
     func pause() {}
     func setVideoGeometry(panscan: Double, aspectOverride: String?) {}
+    func applyPresentationPlan(_ plan: PlaybackPresentationPlan, completion: @escaping (PlaybackPresentationAcknowledgement) -> Void) { completion(.unsupported) }
 
     func applyRendererLayout(_ request: RendererLayoutRequest, completion: @escaping (RendererLayoutAcknowledgement) -> Void) {
         completion(RendererLayoutAcknowledgement(generation: request.generation, matched: true, rendererConfigured: false, actualBackingSize: nil, detail: "mpv-unavailable"))

@@ -13,8 +13,12 @@ mpv_stream = (root / "Sources/Player/MPVUnifiedStreamBridge.swift").read_text()
 screen = (root / "Sources/UI/PlayerScreen.swift").read_text()
 panels = (root / "Sources/UI/PlayerFloatingPanelViews.swift").read_text()
 controls = (root / "Sources/UI/PlayerControlPanelViews.swift").read_text()
+playback_settings = (root / "Sources/UI/PlayerPlaybackSettingsPopover.swift").read_text()
+display_timing = (root / "Sources/UI/DisplayRefreshRateMonitor.swift").read_text()
 rate = (root / "Sources/Player/PlaybackRateBridge.swift").read_text()
 mpv = (root / "Sources/Player/MPVPlayerEngine.swift").read_text()
+presentation = (root / "Sources/Player/PlaybackPresentationCoordinator.swift").read_text()
+adapters = (root / "Sources/Player/PlaybackPresentationAdapters.swift").read_text()
 
 checks = {
     "resume playback advancement confirms transport head": "confirmInitialResumePlayback" in player and "confirmInitialResumePlayback" in transport,
@@ -33,10 +37,18 @@ checks = {
     "speed panel exposes 8x and 0.15x": "8.0" in panels and "0.15" in panels,
     "playback rate bridge accepts 8x and 0.15x": "min(8" in rate and "max(0.15" in rate,
     "mpv accepts 8x and 0.15x": "min(8" in mpv and "max(0.15" in mpv,
-    "mpv high rate keeps audio master sync": 'name: "video-sync", value: "audio"' in mpv and '"video-sync", "audio"' in mpv,
-    "mpv high rate enables decoder and vo dropping": 'highSpeed ? "decoder+vo" : "vo"' in mpv and 'name: "vd-lavc-framedrop", value: "nonref"' in mpv,
+    "presentation timing is engine independent": "protocol PlaybackPresentationEngineAdapter" in presentation and "PlaybackPresentationCoordinator" in presentation and "extension AVPlayerEngine: PlaybackPresentationEngineAdapter" in adapters,
+    "display timing monitor is iOS 15 compatible": "CADisplayLink" in display_timing and "maximumFramesPerSecond" in display_timing,
+    "mpv high rate uses display cadence": 'name: "video-sync", value: "display-vdrop"' in mpv and 'name: "display-fps-override"' in mpv,
+    "mpv high rate avoids decoder frame dropping": 'name: "framedrop", value: "vo"' in mpv and 'name: "vd-lavc-framedrop", value: "none"' in mpv and '"decoder+vo"' not in mpv,
+    "mpv motion smoothing uses display interpolation": 'name: "video-sync", value: "display-resample"' in mpv and 'name: "interpolation", value: "yes"' in mpv,
     "mpv high rate preserves pitch correction": 'name: "audio-pitch-correction", value: "yes"' in mpv and '"audio-pitch-correction", "yes"' in mpv,
-    "mpv rate health logs actual speed and av sync": "MPVRateHealth" in mpv and 'name: "avsync"' in mpv and 'name: "decoder-frame-drop-count"' in mpv,
+    "mpv rate health logs delta drops and display sync": "MPVRateHealth" in mpv and "voDropsDelta" in mpv and "decoderDropsDelta" in mpv and "displaySync" in mpv,
+    "video enhancement badges require adapter ack": "activeEnhancementFeatures" in presentation and "activeFeatureBadges" in presentation and "applyVideoEnhancement" in mpv,
+    "playback settings popover is in-player frosted UI": "PlayerPlaybackSettingsPopover" in playback_settings and "UIVisualEffectView" in playback_settings and ".sheet" not in playback_settings,
+    "motion smoothing preference is persistent": "PlayerPresentationPreferenceKeys.motionSmoothingMode" in screen and "MotionSmoothingMode.allCases" in playback_settings,
+    "video enhancement is direct toggle": "videoEnhancementEnabled.toggle()" in playback_settings,
+    "center playback controls are viewport anchored": "centerPlaybackControls" in screen and "geometry.size.height * 0.46" in screen,
     "player base-rate path accepts 8x and 0.15x": "min(8" in screen and "max(0.15" in screen,
     "bottom controls are icon only": "Text(title)" not in controls.split("struct PlayerBottomFunctionBar", 1)[1].split("struct PlayerControlPanelSheet", 1)[0],
 }
