@@ -70,7 +70,8 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private let view = MDKRenderView()
     private var player: swift_mdk.Player?
     private var stateTimer: Timer?
-    private var transportStopTask: Task<Void, Never>?
+    private var transportHTTPServer: TransportHTTPServer?
+    private var transportPrepareTask: Task<Void, Never>?
     private var lastURL: URL?
     private var lastHeaders: [String: String] = [:]
     private var preferredForwardBuffer: Double = 90
@@ -109,28 +110,33 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         pendingSeekResume = nil
         installMDKLoggingIfNeeded()
 
-        let player = swift_mdk.Player()
-        self.player = player
-        player.videoDecoders = ["VT", "FFmpeg"]
-        player.playbackRate = Float(playbackRate)
-        player.setBufferRange(msMin: 1_000, msMax: Int64(max(3_000, min(30_000, preferredForwardBuffer * 1_000))), drop: false)
-        applyHTTPHeaders(headers, to: player)
-        attachCallbacks(to: player, generation: currentGeneration)
-        view.bind(player)
-        player.media = url.absoluteString
-        player.prepare(from: milliseconds(startPosition), complete: { [weak self, weak player] preparedAtMs, boost in
-            guard let self, let player, currentGeneration == self.generation, self.player === player else { return false }
-            boost = true
-            DispatchQueue.main.async { [weak self, weak player] in
-                guard let self, let player, currentGeneration == self.generation, self.player === player else { return }
-                if self.shouldPlay { player.state = .Playing }
+        guard let sharedTransportSession else {
+            startMDKPlayer(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, generation: currentGeneration, transportMode: "direct-http302")
+            DiagnosticsLogger.shared.playback("MDKTransport", "mode=direct-http302 unifiedTransportAvailable=false nasMediaProxy=false")
+            return
+        }
+
+        let server = TransportHTTPServer(session: sharedTransportSession, fileExtension: mediaFileExtension, stopSessionOnStop: false)
+        transportHTTPServer = server
+        DiagnosticsLogger.shared.playback("MDKTransport", "mode=unified-localhost starting=true host=127.0.0.1 unifiedTransportActive=true nasMediaProxy=false")
+        transportPrepareTask = Task { @MainActor [weak self, weak server] in
+            guard let self, let server else { return }
+            do {
+                let localURL = try await server.start()
+                guard !Task.isCancelled, currentGeneration == self.generation, self.transportHTTPServer === server else { server.stop(); return }
+                self.transportPrepareTask = nil
+                DiagnosticsLogger.shared.playback("MDKTransport", "mode=unified-localhost ready=true host=127.0.0.1 port=\(localURL.port ?? 0) unifiedTransportActive=true nasMediaProxy=false")
+                self.startMDKPlayer(url: localURL, headers: [:], preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, generation: currentGeneration, transportMode: "unified-localhost")
+            } catch {
+                guard !Task.isCancelled, currentGeneration == self.generation else { return }
+                self.transportPrepareTask = nil
+                if self.transportHTTPServer === server { self.transportHTTPServer = nil }
+                server.stop()
+                let message = "MDK UnifiedTransport 本地桥启动失败：\(error.localizedDescription)"
+                DiagnosticsLogger.shared.playback("MDKTransport", "mode=unified-localhost ready=false error=\(error.localizedDescription) directFallback=false nasMediaProxy=false")
+                self.onSnapshot?(PlayerSnapshot(position: max(0, startPosition), duration: self.source.mediaSource.durationSeconds ?? 0, isPlaying: false, isBuffering: false, errorMessage: message))
             }
-            DiagnosticsLogger.shared.playback("MDKPrepare", "preparedAtMs=\(preparedAtMs) requestedStart=\(String(format: "%.3f", startPosition)) sourceFPS=\(self.sourceFrameRateText) videoDecoders=VT,FFmpeg directHTTP302=true")
-            return true
-        })
-        startStateTimer()
-        stopUnusedUnifiedTransportAfterDirectStart()
-        DiagnosticsLogger.shared.playback("MDK", "prepare item=\(source.itemId) version=\(swift_mdk.version()) directHTTP302=true sharedTransport=disabled-after-start headers=\(headers.keys.sorted().joined(separator: ",")) rate=\(String(format: "%.2f", playbackRate))")
+        }
     }
 
     func play() {
@@ -164,8 +170,11 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     func seek(to targetSeconds: Double, direction: SeekDirection) {
         guard let player else { return }
         let target = max(0, targetSeconds)
+        let duration = max(source.mediaSource.durationSeconds ?? 0, seconds(player.mediaInfo.duration))
+        if let sharedTransportSession { Task { await sharedTransportSession.prioritizeSeek(position: target, duration: duration) } }
         let requestedAt = Date().timeIntervalSince1970
         pendingSeekResume = (target, requestedAt, nil)
+        DiagnosticsLogger.shared.playback("MDKSeek", "target=\(String(format: "%.3f", target)) phase=request unifiedTransport=\(sharedTransportSession != nil) direction=\(String(describing: direction))")
         let accepted = player.seek(milliseconds(target), flags: .Default) { [weak self, weak player] actualMs in
             guard let self else { return }
             let callbackAt = Date().timeIntervalSince1970
@@ -173,13 +182,13 @@ final class KSAVIOPlayerEngine: PlayerEngine {
             let latency = (callbackAt - requestedAt) * 1_000
             if var pending = self.pendingSeekResume, abs(pending.target - target) < 0.001 { pending.callbackAt = callbackAt; self.pendingSeekResume = pending }
             self.onSeekCompleted?(SeekResult(requestedAt: requestedAt, target: target, actualPosition: actual, bufferHit: latency < 150, completionLatencyMs: latency, measurement: "MDK seek callback"))
-            DiagnosticsLogger.shared.playback("MDKSeek", "target=\(String(format: "%.3f", target)) callbackMs=\(String(format: "%.1f", latency)) actual=\(actual.map { String(format: "%.3f", $0) } ?? "nil") accepted=true direction=\(String(describing: direction))")
+            DiagnosticsLogger.shared.playback("MDKSeek", "target=\(String(format: "%.3f", target)) callbackMs=\(String(format: "%.1f", latency)) actual=\(actual.map { String(format: "%.3f", $0) } ?? "nil") accepted=true unifiedTransport=\(self.sharedTransportSession != nil) direction=\(String(describing: direction))")
             if self.shouldPlay, player?.state != .Playing { player?.state = .Playing }
         }
         if !accepted {
             pendingSeekResume = nil
             onSeekCompleted?(SeekResult(requestedAt: requestedAt, target: target, actualPosition: self.seconds(player.position), bufferHit: false, completionLatencyMs: 0, measurement: "MDK seek rejected"))
-            DiagnosticsLogger.shared.playback("MDKSeek", "target=\(String(format: "%.3f", target)) accepted=false direction=\(String(describing: direction))")
+            DiagnosticsLogger.shared.playback("MDKSeek", "target=\(String(format: "%.3f", target)) accepted=false unifiedTransport=\(sharedTransportSession != nil) direction=\(String(describing: direction))")
         }
     }
 
@@ -192,8 +201,14 @@ final class KSAVIOPlayerEngine: PlayerEngine {
 
     func recoverStall(position: Double, duration: Double) {
         guard let player else { return }
-        DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) state=\(String(describing: player.state)) status=0x\(String(player.mediaStatus.rawValue, radix: 16)) action=play")
+        if let sharedTransportSession { Task { await sharedTransportSession.recoverStall(position: position, duration: duration) } }
+        DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) state=\(String(describing: player.state)) status=0x\(String(player.mediaStatus.rawValue, radix: 16)) unifiedTransport=\(sharedTransportSession != nil) action=prioritize-and-play")
         if shouldPlay { player.state = .Playing }
+    }
+
+    func transportMetrics() async -> TransportMetricsSnapshot? {
+        guard let sharedTransportSession else { return nil }
+        return await sharedTransportSession.metrics()
     }
 
     func stop() {
@@ -203,6 +218,31 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         stopPlayerOnly()
         onSnapshot = nil
         onSeekCompleted = nil
+    }
+
+    private func startMDKPlayer(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double, generation currentGeneration: Int, transportMode: String) {
+        guard currentGeneration == generation else { return }
+        let player = swift_mdk.Player()
+        self.player = player
+        player.videoDecoders = ["VT", "FFmpeg"]
+        player.playbackRate = Float(playbackRate)
+        player.setBufferRange(msMin: 1_000, msMax: Int64(max(3_000, min(30_000, preferredForwardBuffer * 1_000))), drop: false)
+        applyHTTPHeaders(headers, to: player)
+        attachCallbacks(to: player, generation: currentGeneration)
+        view.bind(player)
+        player.media = url.absoluteString
+        player.prepare(from: milliseconds(startPosition), complete: { [weak self, weak player] preparedAtMs, boost in
+            guard let self, let player, currentGeneration == self.generation, self.player === player else { return false }
+            boost = true
+            DispatchQueue.main.async { [weak self, weak player] in
+                guard let self, let player, currentGeneration == self.generation, self.player === player else { return }
+                if self.shouldPlay { player.state = .Playing }
+            }
+            DiagnosticsLogger.shared.playback("MDKPrepare", "preparedAtMs=\(preparedAtMs) requestedStart=\(String(format: "%.3f", startPosition)) sourceFPS=\(self.sourceFrameRateText) videoDecoders=VT,FFmpeg transport=\(transportMode)")
+            return true
+        })
+        startStateTimer()
+        DiagnosticsLogger.shared.playback("MDK", "prepare item=\(source.itemId) version=\(swift_mdk.version()) transport=\(transportMode) localHost=\(url.host == "127.0.0.1") sharedTransport=\(sharedTransportSession != nil ? "active" : "unavailable") headers=\(headers.keys.sorted().joined(separator: ",")) rate=\(String(format: "%.2f", playbackRate))")
     }
 
     private func attachCallbacks(to player: swift_mdk.Player, generation: Int) {
@@ -245,7 +285,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
             let now = Date().timeIntervalSince1970
             let resumeMs = (now - pending.requestedAt) * 1_000
             let afterCallbackMs = pending.callbackAt.map { (now - $0) * 1_000 }
-            DiagnosticsLogger.shared.playback("MDKSeekHealth", "target=\(String(format: "%.3f", pending.target)) firstAdvance=\(String(format: "%.3f", position)) resumeMs=\(String(format: "%.1f", resumeMs)) afterCallbackMs=\(afterCallbackMs.map { String(format: "%.1f", $0) } ?? "pending") playing=\(isPlaying) buffering=\(buffering) bufferMs=\(player.buffered())")
+            DiagnosticsLogger.shared.playback("MDKSeekHealth", "target=\(String(format: "%.3f", pending.target)) firstAdvance=\(String(format: "%.3f", position)) resumeMs=\(String(format: "%.1f", resumeMs)) afterCallbackMs=\(afterCallbackMs.map { String(format: "%.1f", $0) } ?? "pending") playing=\(isPlaying) buffering=\(buffering) bufferMs=\(player.buffered()) unifiedTransport=\(sharedTransportSession != nil)")
             pendingSeekResume = nil
         }
     }
@@ -273,17 +313,6 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         player.setProperty(name: "avformat.headers", value: value)
     }
 
-    private func stopUnusedUnifiedTransportAfterDirectStart() {
-        transportStopTask?.cancel()
-        guard let sharedTransportSession else { return }
-        transportStopTask = Task {
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            guard !Task.isCancelled else { return }
-            await sharedTransportSession.stop()
-            DiagnosticsLogger.shared.playback("MDKTransport", "mode=directHTTP302 unifiedTransportStopped=true nasMediaProxy=false")
-        }
-    }
-
     private func installMDKLoggingIfNeeded() {
         guard !didInstallLogHandler else { return }
         didInstallLogHandler = true
@@ -301,6 +330,11 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         return fps.map { String(format: "%.3f", $0) } ?? "unknown"
     }
 
+    private var mediaFileExtension: String {
+        let container = source.mediaSource.normalizedContainer
+        return container.isEmpty ? "mkv" : container
+    }
+
     private func hasStatus(_ raw: Int32, bit: Int32) -> Bool { UInt32(bitPattern: raw) & (UInt32(1) << UInt32(bit)) != 0 }
     private func isPrepared(_ raw: Int32) -> Bool { hasStatus(raw, bit: 2) || hasStatus(raw, bit: 8) }
     private func seconds(_ milliseconds: Int64) -> Double { max(0, Double(milliseconds) / 1_000) }
@@ -309,8 +343,10 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private func stopPlayerOnly() {
         stateTimer?.invalidate()
         stateTimer = nil
-        transportStopTask?.cancel()
-        transportStopTask = nil
+        transportPrepareTask?.cancel()
+        transportPrepareTask = nil
+        transportHTTPServer?.stop()
+        transportHTTPServer = nil
         pendingSeekResume = nil
         if let player {
             player.onStateChanged(callback: nil)
