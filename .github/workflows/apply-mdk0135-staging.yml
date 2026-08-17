@@ -1,0 +1,50 @@
+name: Apply MDK 0.13.5 staging patch
+
+on:
+  push:
+    branches: [feat/mdk-engine-lab-0.13.5-work]
+    paths:
+      - ".github/workflows/apply-mdk0135-staging.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: macos-15
+    steps:
+      - name: Checkout staging branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/mdk-engine-lab-0.13.5-work
+          fetch-depth: 0
+
+      - name: Apply 0.13.5 source patches
+        run: |
+          set -euo pipefail
+          git apply scripts/mdk0135-ui-transport.patch
+          git apply --exclude=.github/workflows/build-mdk-lab.yml scripts/mdk0135-support.patch
+          python3 scripts/apply_mdk0135_native_seek.py
+          rm -f scripts/mdk0135-ui-transport.patch scripts/mdk0135-support.patch
+
+          swiftc -parse MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          swiftc -parse Sources/Transport/UnifiedMediaTransportSession.swift
+          swiftc -parse Sources/UI/BufferedTimelineSlider.swift
+          swiftc -parse Sources/UI/PlayerScreen.swift
+          python3 -m py_compile scripts/check_v0123_regressions.py
+
+          grep -q 'playableRanges: controller.snapshot.bufferedRanges' Sources/UI/PlayerScreen.swift
+          ! grep -q 'downloadCacheRanges' Sources/UI/BufferedTimelineSlider.swift
+          grep -q 'authority=cached-read action=keep-cache-window' Sources/Transport/UnifiedMediaTransportSession.swift
+          grep -q 'MDKSeekCoalesce' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -q 'MARKETING_VERSION: "0.13.5"' project.mdklab.yml
+          grep -q 'CURRENT_PROJECT_VERSION: "72"' project.mdklab.yml
+
+      - name: Commit staging result
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources MDKLab scripts project.mdklab.yml
+          git commit -m "fix: coalesce MDK seeks and show truthful buffer"
+          git push origin HEAD:feat/mdk-engine-lab-0.13.5-work
