@@ -265,6 +265,9 @@ final class PlayerController: ObservableObject {
         suppressStallWatchdog(for: 3)
         DiagnosticsLogger.shared.log("SeekAnchor", "offset=\(offset) base=\(base) target=\(target) enginePosition=\(snapshot.position)")
         engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)
+        #if MDK_LAB
+        if engineKind == .ksAVIO { scheduleSeekAnchorRelease(expectedTarget: target) }
+        #endif
         showSeekFeedback(offset: offset)
         scheduleSeekReport(position: pendingSeekTarget ?? target)
     }
@@ -490,7 +493,7 @@ final class PlayerController: ObservableObject {
                     else { EngineTransitionBreadcrumb.clear(); DiagnosticsLogger.shared.log("Engine", "Switch first snapshot engine=\(self.engineKind.title) position=\(value.position)") }
                 }
 
-                if self.engineKind != .mpv, !self.userIsScrubbing, let pending = self.pendingSeekTarget, self.hasReachedPendingTarget(actual: value.position, target: pending) {
+                if self.snapshotCanCompleteSeekAnchor, !self.userIsScrubbing, let pending = self.pendingSeekTarget, self.hasReachedPendingTarget(actual: value.position, target: pending) {
                     self.seekAnchorReleaseTask?.cancel()
                     self.seekAnchorReleaseTask = nil
                     self.pendingSeekTarget = nil
@@ -555,6 +558,9 @@ final class PlayerController: ObservableObject {
         pendingSeekDirection = .absolute
         suppressStallWatchdog(for: 3)
         engine.seek(to: target, direction: .absolute)
+        #if MDK_LAB
+        if engineKind == .ksAVIO { scheduleSeekAnchorRelease(expectedTarget: target) }
+        #endif
         Task { await client.reportProgress(source: source, position: target, paused: !snapshot.isPlaying, eventName: "TimeUpdate") }
     }
 
@@ -568,6 +574,15 @@ final class PlayerController: ObservableObject {
             self.displayedPosition = self.snapshot.position
             DiagnosticsLogger.shared.log("SeekAnchor", "timeout target=\(expectedTarget) actual=\(self.snapshot.position)")
         }
+    }
+
+
+    private var snapshotCanCompleteSeekAnchor: Bool {
+        #if MDK_LAB
+        return engineKind != .mpv && engineKind != .ksAVIO
+        #else
+        return engineKind != .mpv
+        #endif
     }
 
     private func hasReachedPendingTarget(actual: Double, target: Double) -> Bool {
