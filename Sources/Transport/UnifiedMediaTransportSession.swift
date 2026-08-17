@@ -126,6 +126,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var initialResumeHistoryGuardUntil = Date.distantPast
     private var demandCoordinator = PlaybackDemandCoordinator()
     private var pendingUserSeekUntil = Date.distantPast
+    private var pendingUserSeekPosition: Double?
+    private var pendingUserSeekDuration: Double?
     private var pendingPlaybackUrgentRange: Range<Int64>?
     private var pendingMetadataRange: Range<Int64>?
     private var lastBlockingPlaybackDemand: Range<Int64>?
@@ -294,16 +296,21 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         let requested = min(length, Int(resolved.contentLength - offset))
         let concreteRange = offset..<min(resolved.contentLength, offset + Int64(requested))
-        acceptRealDemand(concreteRange, resource: resolved, reason: "concrete-read")
+        let concreteTailMetadata = isConcreteTailMetadataRead(concreteRange, resource: resolved)
+        if concreteTailMetadata {
+            DiagnosticsLogger.shared.log("UnifiedMetadata", "concrete-tail range=\(concreteRange.lowerBound)-\(concreteRange.upperBound) bytes=\(concreteRange.count) center=\(cacheWindowCenter) pendingSeek=\(Date() <= pendingUserSeekUntil) action=metadata-no-anchor")
+        }
+        acceptRealDemand(concreteRange, resource: resolved, reason: concreteTailMetadata ? "concrete-tail-metadata" : "concrete-read")
         let available = store.availableLength(from: offset, maximumLength: Int64(requested))
         metricsValue.bytesServed += Int64(requested)
         if available >= Int64(requested) { metricsValue.cacheHitBytes += Int64(requested) }
 
         if available == 0 {
             let probe = offset..<min(resolved.contentLength, offset + max(Int64(requested), urgentBlockBytes))
-            let preferredLength = isMetadataProbe(probe, resource: resolved) ? metadataUrgentBlockBytes : urgentBlockBytes
+            let metadata = concreteTailMetadata || isMetadataProbe(probe, resource: resolved)
+            let preferredLength = metadata ? metadataUrgentBlockBytes : urgentBlockBytes
             let demandEnd = min(resolved.contentLength, offset + max(Int64(requested), preferredLength))
-            acceptRealDemand(offset..<demandEnd, resource: resolved, reason: "blocked-read")
+            acceptRealDemand(offset..<demandEnd, resource: resolved, reason: metadata ? "blocked-tail-metadata" : "blocked-read")
         }
 
         do {
@@ -313,11 +320,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         } catch let error as DownloadFirstSparseStore.StoreError {
             guard case .timeout = error else { throw error }
             let probe = offset..<min(resolved.contentLength, offset + max(Int64(requested), urgentBlockBytes))
-            let metadata = isMetadataProbe(probe, resource: resolved)
+            let metadata = concreteTailMetadata || isMetadataProbe(probe, resource: resolved)
             let preferredLength = metadata ? metadataUrgentBlockBytes : urgentBlockBytes
             let demandEnd = min(resolved.contentLength, offset + max(Int64(requested), preferredLength))
-            DiagnosticsLogger.shared.log("UnifiedDemand", "timeout offset=\(offset) length=\(requested); force slot0")
-            installUrgent(range: offset..<demandEnd, metadata: metadata, reason: "read-timeout")
+            DiagnosticsLogger.shared.log("UnifiedDemand", "timeout offset=\(offset) length=\(requested) metadata=\(metadata); force slot0")
+            installUrgent(range: offset..<demandEnd, metadata: metadata, reason: metadata ? "metadata-read-timeout" : "read-timeout")
             scheduleSlots(reason: "read-timeout")
             return try await store.readWhenAvailable(offset: offset, maximumLength: requested, timeout: 25)
         }
@@ -326,6 +333,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     func prioritizeSeek(position: Double, duration: Double) async {
         guard !stopped else { return }
         pendingUserSeekUntil = Date().addingTimeInterval(4)
+        pendingUserSeekPosition = max(0, position)
+        pendingUserSeekDuration = max(0, duration)
         DiagnosticsLogger.shared.log(
             "UnifiedAnchor",
             "user-seek position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) byteGuess=disabled awaitingRealDemand=true anchor=\(playbackAnchor)"
@@ -500,6 +509,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         if pendingUserSeek, !metadata, concretePlaybackDemand, authoritativeSeekDemand {
             pendingUserSeekUntil = .distantPast
+            pendingUserSeekPosition = nil
+            pendingUserSeekDuration = nil
             let previous = playbackAnchor
             playbackAnchor = range.lowerBound
             initialResumeAnchorByte = nil
@@ -1527,6 +1538,18 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         if let plan = startupMetadataPlanRange, range.upperBound > plan.lowerBound, range.lowerBound < plan.upperBound { return true }
         guard Date().timeIntervalSince(createdAt) < 35 else { return false }
         return range.lowerBound >= resource.contentLength - 64 * 1_048_576
+    }
+
+    private func isConcreteTailMetadataRead(_ range: Range<Int64>, resource: TransportResolvedResource) -> Bool {
+        guard !range.isEmpty, resource.contentLength > 64 * 1_048_576 else { return false }
+        guard range.count <= secondaryMetadataMaxBytes, range.lowerBound >= resource.contentLength - 64 * 1_048_576 else { return false }
+        let distance = range.lowerBound >= cacheWindowCenter ? range.lowerBound - cacheWindowCenter : cacheWindowCenter - range.lowerBound
+        guard distance >= max(64 * 1_048_576, blockBytes * 4) else { return false }
+        if Date() <= pendingUserSeekUntil, let position = pendingUserSeekPosition, let duration = pendingUserSeekDuration, duration > 0 {
+            let nearTimelineEnd = position >= max(0, duration * 0.97) || duration - position <= 30
+            if nearTimelineEnd { return false }
+        }
+        return true
     }
 
     private func isMetadataProbe(_ range: Range<Int64>, resource: TransportResolvedResource) -> Bool {
