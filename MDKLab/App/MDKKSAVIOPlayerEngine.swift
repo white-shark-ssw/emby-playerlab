@@ -1,15 +1,62 @@
 #if MDK_LAB && canImport(swift_mdk)
 import Foundation
+import MetalKit
 import QuartzCore
 import UIKit
 import swift_mdk
 
-private final class MDKRenderView: UIView {
-    var onLayout: ((CGSize) -> Void)?
+private final class MDKRenderView: MTKView, MTKViewDelegate {
+    weak var player: swift_mdk.Player?
+    var onSurfaceChanged: ((CGSize) -> Void)?
+    var onFrameSubmitted: ((Double) -> Void)?
+    private let commandQueue: MTLCommandQueue
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        onLayout?(bounds.size)
+    init() {
+        guard let device = MTLCreateSystemDefaultDevice(), let commandQueue = device.makeCommandQueue() else { fatalError("Metal is unavailable") }
+        self.commandQueue = commandQueue
+        super.init(frame: .zero, device: device)
+        delegate = self
+        autoResizeDrawable = true
+        enableSetNeedsDisplay = true
+        isPaused = true
+        preferredFramesPerSecond = UIScreen.main.maximumFramesPerSecond
+    }
+
+    required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func bind(_ player: swift_mdk.Player) {
+        self.player = player
+        player.addRenderTarget(self, commandQueue: commandQueue)
+        let size = drawableSize
+        if size.width > 0, size.height > 0 { player.setVideoSurfaceSize(size.width, size.height, vid: self) }
+        player.setRenderCallback { [weak self, weak player] in
+            DispatchQueue.main.async { [weak self, weak player] in
+                guard let self, let player, self.player === player else { return }
+                self.setNeedsDisplay()
+            }
+        }
+        onSurfaceChanged?(size)
+    }
+
+    func unbind(_ player: swift_mdk.Player) {
+        guard self.player === player else { return }
+        player.setRenderCallback(nil)
+        player.setVideoSurfaceSize(-1, -1, vid: self)
+        self.player = nil
+    }
+
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        player?.setVideoSurfaceSize(size.width, size.height, vid: self)
+        onSurfaceChanged?(size)
+    }
+
+    func draw(in view: MTKView) {
+        guard let player else { return }
+        let renderResult = player.renderVideo(vid: self)
+        guard let drawable = currentDrawable, let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
+        onFrameSubmitted?(renderResult)
     }
 }
 
@@ -20,7 +67,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
 
     private let source: ResolvedPlaybackSource
     private let sharedTransportSession: TransportDataSession?
-    private let view = MDKRenderView(frame: .zero)
+    private let view = MDKRenderView()
     private var player: swift_mdk.Player?
     private var stateTimer: Timer?
     private var transportStopTask: Task<Void, Never>?
@@ -31,7 +78,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private var playbackRate: Double = 1
     private var rateGeneration = 0
     private var generation = 0
-    private var surfaceSize = CGSize.zero
+    private var firstRenderedGeneration = -1
     private var pendingSeekResume: (target: Double, requestedAt: TimeInterval, callbackAt: TimeInterval?)?
     private var didInstallLogHandler = false
 
@@ -43,7 +90,10 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         view.backgroundColor = .black
         view.isOpaque = true
         view.isUserInteractionEnabled = false
-        view.onLayout = { [weak self] size in self?.updateSurface(size) }
+        view.onSurfaceChanged = { size in
+            DiagnosticsLogger.shared.playback("MDKSurface", "size=\(Int(size.width))x\(Int(size.height)) backend=MTKView")
+        }
+        view.onFrameSubmitted = { [weak self] renderResult in self?.recordFirstRenderedFrame(renderResult) }
         _ = client
         _ = configuration
         _ = ktvCacheSession
@@ -66,7 +116,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         player.setBufferRange(msMin: 1_000, msMax: Int64(max(3_000, min(30_000, preferredForwardBuffer * 1_000))), drop: false)
         applyHTTPHeaders(headers, to: player)
         attachCallbacks(to: player, generation: currentGeneration)
-        updateSurface(view.bounds.size)
+        view.bind(player)
         player.media = url.absoluteString
         player.prepare(from: milliseconds(startPosition), complete: { [weak self, weak player] preparedAtMs, boost in
             guard let self, let player, currentGeneration == self.generation, self.player === player else { return false }
@@ -210,15 +260,10 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         }
     }
 
-    private func updateSurface(_ size: CGSize) {
-        guard size.width > 0, size.height > 0, size != surfaceSize else { return }
-        surfaceSize = size
-        guard let player else { return }
-        let scale = view.window?.screen.scale ?? UIScreen.main.scale
-        let width = Int32(max(1, (size.width * scale).rounded()))
-        let height = Int32(max(1, (size.height * scale).rounded()))
-        player.updateNativeSurface(view, width: width, height: height)
-        DiagnosticsLogger.shared.playback("MDKSurface", "size=\(width)x\(height) scale=\(String(format: "%.2f", Double(scale))) backend=Metal")
+    private func recordFirstRenderedFrame(_ renderResult: Double) {
+        guard firstRenderedGeneration != generation else { return }
+        firstRenderedGeneration = generation
+        DiagnosticsLogger.shared.playback("MDKFrame", "firstFrameSubmitted generation=\(generation) renderResult=\(String(format: "%.6f", renderResult)) drawable=\(Int(view.drawableSize.width))x\(Int(view.drawableSize.height))")
     }
 
     private func applyHTTPHeaders(_ headers: [String: String], to player: swift_mdk.Player) {
@@ -271,7 +316,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
             player.onStateChanged(callback: nil)
             player.onMediaStatusChanged(callback: nil)
             player.state = .Stopped
-            player.setVideoSurfaceSize(Int32(-1), Int32(-1))
+            view.unbind(player)
         }
         player = nil
     }
