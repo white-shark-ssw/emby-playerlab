@@ -81,12 +81,15 @@ jobs:
               "MDK VT decoder": 'videoDecoders = ["VT", "FFmpeg"]' in engine,
               "MDK seek recovery metric": "MDKSeekHealth" in engine,
               "MDK seek buffering grace": "seekBufferingUIGraceSeconds" in engine and "MDKBuffering" in engine,
-              "MDK seek watchdog": "MDKSeekWatchdog" in engine and "outstanding=" in engine,
+              "MDK seek watchdog": "MDKSeekWatchdog" in engine and "nativeOutstanding=" in engine,
               "MDK seek immediate result is advisory": "immediateResult" in engine and "semantics=advisory" in engine and "MDK seek rejected" not in engine,
               "MDK stale seek callbacks isolated": "discard-stale-player-generation" in engine and "diagnostic-only" in engine,
-              "MDK rapid seek backlog tracked": "inFlightSeekIDs" in engine and "MDKSeekBacklog" in engine,
+              "MDK native seek latest-wins": "activeNativeSeek" in engine and "queuedLatestSeek" in engine and "MDKSeekCoalesce" in engine,
+              "MDK native seek single-flight": "dispatchQueuedSeekIfNeeded" in engine and "nativeSeekOutstandingCount" in engine,
               "MDK seek anchor waits for latest callback": "snapshotCanCompleteSeekAnchor" in controller and "engineKind != .ksAVIO" in controller and "scheduleSeekAnchorRelease(expectedTarget: target)" in controller,
               "Persistent sparse cache crash marker": "session.dirty" in sparse_store and "unclean previous session detected" in sparse_store,
+              "Truthful time buffer timeline": "playableRanges: controller.snapshot.bufferedRanges" in Path("Sources/UI/PlayerScreen.swift").read_text() and "downloadCacheRanges" not in Path("Sources/UI/BufferedTimelineSlider.swift").read_text(),
+              "Cached seek preserves warm bulk": "authority=cached-read action=keep-cache-window" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text(),
               "Unified concrete tail metadata guard": "isConcreteTailMetadataRead" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text() and "concrete-tail-metadata" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text(),
               "MDK rate health metric": "MDKRateHealth" in engine,
               "KS compatibility shim only": 'name: "KSPlayer"' in shim,
@@ -189,8 +192,8 @@ jobs:
           python3 scripts/validate_built_app.py \
             "$APP_PATH" \
             --bundle-id "com.embyplayerlab.app" \
-            --version "0.13.4" \
-            --build "71" \
+            --version "0.13.5" \
+            --build "72" \
             --display-name "OnePlayer" \
             --minimum-os "15.0" \
             --primary-icon "OnePlayerIcon" \
@@ -229,7 +232,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="OnePlayer-MDKLab-0.13.4-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="OnePlayer-MDKLab-0.13.5-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           /usr/bin/unzip -t "$IPA_NAME"
           shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
