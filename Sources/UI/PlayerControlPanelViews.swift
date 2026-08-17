@@ -19,18 +19,35 @@ enum PlayerControlPanel: String, Identifiable {
 
 struct PlayerBottomFunctionBar: View {
     let tracksEnabled: Bool
-    let episodesEnabled: Bool
     let currentRate: Double
+    let settingsPresented: Bool
     let onSelect: (PlayerControlPanel) -> Void
+    let onSettings: () -> Void
 
     var body: some View {
         HStack(spacing: 4) {
             functionButton(accessibilityTitle: "播放信息", systemImage: "info.circle", enabled: true) { onSelect(.info) }
             functionButton(accessibilityTitle: "音轨字幕", systemImage: "captions.bubble", enabled: tracksEnabled) { onSelect(.tracks) }
-            functionButton(accessibilityTitle: "选集", systemImage: "rectangle.stack", enabled: episodesEnabled) { onSelect(.episodes) }
             functionButton(accessibilityTitle: currentRate == 1 ? "倍速" : String(format: "倍速 %.2gx", currentRate), systemImage: "speedometer", enabled: true) { onSelect(.speed) }
+            settingsButton
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var settingsButton: some View {
+        Button(action: onSettings) {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 22, weight: .semibold))
+                .frame(width: 36, height: 34)
+                .background(settingsPresented ? Color.white.opacity(0.16) : Color.clear)
+                .clipShape(Circle())
+                .frame(maxWidth: .infinity, minHeight: 34)
+                .contentShape(Rectangle())
+                .scaleEffect(settingsPresented ? 0.94 : 1)
+                .animation(.easeOut(duration: 0.16), value: settingsPresented)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("播放设置")
     }
 
     private func functionButton(accessibilityTitle: String, systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
