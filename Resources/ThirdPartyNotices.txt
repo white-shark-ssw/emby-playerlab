@@ -1,21 +1,29 @@
-Emby Player Lab 0.7.2 KTV cache experiment does not link MPVKit.
+OnePlayer 0.13.3 has two mutually exclusive player dependency builds.
 
-MPV source integration remains in the repository behind a compile-time availability guard,
-but the MPVKit binary product is intentionally excluded because linking it together with
-KSPlayer/FFmpegKit under CocoaPods -ObjC produced duplicate FFmpeg and MoltenVK symbols.
-The active non-native playback dependency in this build is KSPlayer 2.3.4.
+Normal OnePlayer build
+----------------------
+The normal unsigned IPA links MPVKit 1.0.0 and does not link KSPlayer/FFmpegKit.
 
+MPVKit:
+https://github.com/mpvkit/MPVKit
+Pinned release: 1.0.0
 
-Emby Player Lab 0.6.0 uses KSPlayer 2.3.4.
+KSPlayer Lab build
+------------------
+The experimental KSPlayer Lab IPA links KSPlayer 2.3.4 and its FFmpegKit dependencies.
+It intentionally does not link MPVKit in the same application target because both stacks
+ship overlapping FFmpeg and MoltenVK binary products and previously produced duplicate
+link symbols when combined.
 
-Project:
+KSPlayer:
 https://github.com/kingslay/KSPlayer
+Pinned release: 2.3.4
 
-Pinned release:
-2.3.4
+KSPlayer's public repository is licensed under GPL-3.0. The KSPlayer Lab build is an
+experimental test artifact only. The exact OnePlayer source snapshot is exported beside
+the IPA and the upstream KSPlayer/FFmpegKit revisions are pinned by Swift Package Manager.
+Third-party copyright and license notices must be retained in redistributed copies.
 
-KSPlayer is licensed under GPL-3.0 and uses FFmpegKit and other transitive
-components. The complete Emby Player Lab source package is distributed
-alongside the test build so the corresponding modifications and integration
-code remain available. Third-party copyright and license notices must be
-retained in redistributed copies.
+The OnePlayer media transport remains unchanged in both variants: STRM/Emby redirects are
+resolved by the client and media bytes flow directly between the iOS device and the final
+115/CDN endpoint. The NAS is not used as a media-byte proxy.
