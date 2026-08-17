@@ -193,7 +193,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
             let displayFPS = min(240, max(30, plan.displayFPS))
             let sourceFPS = self.resolvedSourceFPS(handle: handle, plannedSourceFPS: plan.sourceFPS)
             let demandedFPS = sourceFPS.map { $0 * plan.requestedRate }
-            let decoderPressure = plan.requestedRate > 2 && (demandedFPS.map { $0 > displayFPS * 1.05 } ?? plan.requestedRate >= 3)
+            let exceedsDisplayBudget = demandedFPS.map { $0 > displayFPS * 1.05 } ?? (plan.requestedRate >= 3)
+            let decoderPressure = plan.requestedRate > 2 && exceedsDisplayBudget
 
             self.setProperty(handle: handle, name: "display-fps-override", value: String(format: "%.3f", displayFPS))
             self.setProperty(handle: handle, name: "audio-pitch-correction", value: "yes")
