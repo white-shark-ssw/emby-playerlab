@@ -15,6 +15,7 @@ packages:
     path: MDKLab/KSPlayerShim
 
 # MDK Lab 0.13.5 truthful-buffer and latest-wins seek baseline. Keep the pinned SDK fixed for this comparison round.
+# Rapid user taps remain immediate at the UI layer; only native MDK seek dispatch is coalesced latest-wins.
 # The MDK lab CI audits both LC_BUILD_VERSION and legacy LC_VERSION_MIN_IPHONEOS slices.
 settings:
   base:
