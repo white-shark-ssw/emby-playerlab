@@ -23,7 +23,7 @@ struct PlayerScreen: View {
     @AppStorage(PlayerPreferenceKeys.pauseWhenBackgrounded) private var pauseWhenBackgrounded = true
     @AppStorage(PlayerPreferenceKeys.resumeWhenForegrounded) private var resumeWhenForegrounded = false
     @AppStorage(PlayerPreferenceKeys.controlsAutoHideSeconds) private var controlsAutoHideSeconds = 3.0
-    @AppStorage(PlayerPresentationPreferenceKeys.motionSmoothingMode) private var motionSmoothingRaw = MotionSmoothingMode.automatic.rawValue
+    @AppStorage(PlayerPresentationPreferenceKeys.motionSmoothingMode) private var motionSmoothingRaw = MotionSmoothingMode.off.rawValue
     @AppStorage(PlayerPresentationPreferenceKeys.videoEnhancementEnabled) private var videoEnhancementEnabled = false
 
     @State private var activePanel: PlayerControlPanel?
@@ -433,7 +433,7 @@ struct PlayerScreen: View {
 
     private var capabilities: PlayerCapabilities { PlayerCapabilities.resolve(for: controller.engineKind) }
     private var currentScaleMode: PlayerVideoScaleMode { sessionOverrides.scaleMode }
-    private var currentMotionSmoothingMode: MotionSmoothingMode { MotionSmoothingMode(rawValue: motionSmoothingRaw) ?? .automatic }
+    private var currentMotionSmoothingMode: MotionSmoothingMode { MotionSmoothingMode(rawValue: motionSmoothingRaw) ?? .off }
     private var isExternalPlaybackActive: Bool { controller.avPlayer?.isExternalPlaybackActive == true }
     private var hasTrackInfo: Bool {
         (controller.source.mediaSource.mediaStreams ?? []).contains { $0.type?.caseInsensitiveCompare("Audio") == .orderedSame || $0.type?.caseInsensitiveCompare("Subtitle") == .orderedSame }
@@ -676,6 +676,7 @@ struct PlayerScreen: View {
         guard controlsAutoHideSeconds > 0, controller.playbackControlIsPlaying, !playbackSettingsPresented else { return }
         let workItem = DispatchWorkItem {
             playbackSettingsPresented = false
+            centerFeedbackVisible = false
             controlsVisible = false
         }
         controlsHideWorkItem = workItem
@@ -706,7 +707,7 @@ struct PlayerScreen: View {
         centerFeedbackScale = 1.14
         withAnimation(.easeOut(duration: 0.16)) { centerFeedbackScale = 1 }
         let workItem = DispatchWorkItem {
-            if !controlsVisible { withAnimation(.easeOut(duration: 0.14)) { centerFeedbackVisible = false } }
+            withAnimation(.easeOut(duration: 0.14)) { centerFeedbackVisible = false }
         }
         feedbackHideWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.50, execute: workItem)
