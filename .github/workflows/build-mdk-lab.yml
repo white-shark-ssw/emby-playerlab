@@ -66,6 +66,7 @@ jobs:
           engine_kind = Path("Sources/Player/PlayerEngine.swift").read_text()
           engine = Path("MDKLab/App/MDKKSAVIOPlayerEngine.swift").read_text()
           shim = Path("MDKLab/KSPlayerShim/Package.swift").read_text()
+          sparse_store = Path("Sources/Transport/DownloadFirstSparseStore.swift").read_text()
           checks = {
               "iOS 15 deployment": 'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,
               "MDK 0.38 revision pinned": "f112a85f2f51c5352439465204c1ae0fa51a9f18" in spec,
@@ -79,7 +80,11 @@ jobs:
               "MDK VT decoder": 'videoDecoders = ["VT", "FFmpeg"]' in engine,
               "MDK seek recovery metric": "MDKSeekHealth" in engine,
               "MDK seek buffering grace": "seekBufferingUIGraceSeconds" in engine and "MDKBuffering" in engine,
-              "MDK seek watchdog": "MDKSeekWatchdog" in engine,
+              "MDK seek watchdog": "MDKSeekWatchdog" in engine and "outstanding=" in engine,
+              "MDK seek immediate result is advisory": "immediateResult" in engine and "semantics=advisory" in engine and "MDK seek rejected" not in engine,
+              "MDK stale seek callbacks isolated": "discard-stale-player-generation" in engine and "diagnostic-only" in engine,
+              "MDK rapid seek backlog tracked": "inFlightSeekIDs" in engine and "MDKSeekBacklog" in engine,
+              "Persistent sparse cache crash marker": "session.dirty" in sparse_store and "unclean previous session detected" in sparse_store,
               "Unified concrete tail metadata guard": "isConcreteTailMetadataRead" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text() and "concrete-tail-metadata" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text(),
               "MDK rate health metric": "MDKRateHealth" in engine,
               "KS compatibility shim only": 'name: "KSPlayer"' in shim,
@@ -182,8 +187,8 @@ jobs:
           python3 scripts/validate_built_app.py \
             "$APP_PATH" \
             --bundle-id "com.embyplayerlab.app" \
-            --version "0.13.3" \
-            --build "70" \
+            --version "0.13.4" \
+            --build "71" \
             --display-name "OnePlayer" \
             --minimum-os "15.0" \
             --primary-icon "OnePlayerIcon" \
@@ -222,7 +227,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="OnePlayer-MDKLab-0.13.3-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="OnePlayer-MDKLab-0.13.4-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           /usr/bin/unzip -t "$IPA_NAME"
           shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
