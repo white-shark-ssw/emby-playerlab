@@ -14,6 +14,7 @@ packages:
   KSPlayerShim:
     path: MDKLab/KSPlayerShim
 
+# The MDK lab CI audits both LC_BUILD_VERSION and legacy LC_VERSION_MIN_IPHONEOS slices.
 settings:
   base:
     SWIFT_VERSION: "5.0"
