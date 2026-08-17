@@ -191,36 +191,60 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
             let startVODrops = self.integerProperty(handle: handle, name: "frame-drop-count")
             let startDecoderDrops = self.integerProperty(handle: handle, name: "decoder-frame-drop-count")
             let displayFPS = min(240, max(30, plan.displayFPS))
+            let sourceFPS = self.resolvedSourceFPS(handle: handle, plannedSourceFPS: plan.sourceFPS)
+            let demandedFPS = sourceFPS.map { $0 * plan.requestedRate }
+            let decoderPressure = plan.requestedRate > 2 && (demandedFPS.map { $0 > displayFPS * 1.05 } ?? plan.requestedRate >= 3)
 
             self.setProperty(handle: handle, name: "display-fps-override", value: String(format: "%.3f", displayFPS))
             self.setProperty(handle: handle, name: "audio-pitch-correction", value: "yes")
-            self.setProperty(handle: handle, name: "framedrop", value: "vo")
-            self.setProperty(handle: handle, name: "vd-lavc-framedrop", value: "none")
 
             let motionRequested = plan.motionSmoothingRequested && abs(plan.requestedRate - 1) < 0.01
+            let highRateMode: String
             if motionRequested {
                 self.setProperty(handle: handle, name: "video-sync", value: "display-resample")
                 self.setProperty(handle: handle, name: "interpolation", value: "yes")
                 self.setProperty(handle: handle, name: "tscale", value: "oversample")
+                self.setProperty(handle: handle, name: "framedrop", value: "vo")
+                self.setProperty(handle: handle, name: "vd-lavc-framedrop", value: "none")
+                highRateMode = "motion-smoothed"
+            } else if decoderPressure {
+                // A 60 fps source at 3x/4x asks the decoder for 180/240 fps in real time.
+                // VO-only dropping happens after decode and lets the decoder fall seconds behind.
+                // Under real decoder pressure, keep audio as the master clock and allow libavcodec
+                // to skip late non-reference frames before they become expensive display work.
+                self.setProperty(handle: handle, name: "video-sync", value: "audio")
+                self.setProperty(handle: handle, name: "interpolation", value: "no")
+                self.setProperty(handle: handle, name: "framedrop", value: "decoder+vo")
+                self.setProperty(handle: handle, name: "vd-lavc-framedrop", value: "nonref")
+                highRateMode = "decoder-budgeted"
             } else if plan.requestedRate > 2 {
                 self.setProperty(handle: handle, name: "video-sync", value: "display-vdrop")
                 self.setProperty(handle: handle, name: "interpolation", value: "no")
+                self.setProperty(handle: handle, name: "framedrop", value: "vo")
+                self.setProperty(handle: handle, name: "vd-lavc-framedrop", value: "none")
+                highRateMode = "display-cadenced"
             } else {
                 self.setProperty(handle: handle, name: "video-sync", value: "audio")
                 self.setProperty(handle: handle, name: "interpolation", value: "no")
+                self.setProperty(handle: handle, name: "framedrop", value: "vo")
+                self.setProperty(handle: handle, name: "vd-lavc-framedrop", value: "none")
+                highRateMode = "normal"
             }
             self.setProperty(handle: handle, name: "speed", value: String(format: "%.3f", plan.requestedRate))
 
             let activeEnhancementFeatures = self.applyVideoEnhancement(handle: handle, requested: plan.requestedEnhancementFeatures)
             let actualSync = self.getStringProperty(handle: handle, name: "video-sync") ?? "unknown"
             let actualInterpolation = self.getStringProperty(handle: handle, name: "interpolation") ?? "no"
+            let actualFramedrop = self.getStringProperty(handle: handle, name: "framedrop") ?? "unknown"
+            let actualDecoderDrop = self.getStringProperty(handle: handle, name: "vd-lavc-framedrop") ?? "unknown"
             let actualDisplayFPS = Double(self.getStringProperty(handle: handle, name: "display-fps") ?? "") ?? displayFPS
             let activeMotionFPS = motionRequested && actualSync.hasPrefix("display-") && actualInterpolation == "yes" ? actualDisplayFPS : nil
             let detail = "sync=\(actualSync), interpolation=\(actualInterpolation), display=\(String(format: "%.2f", actualDisplayFPS))"
+            let demandedFPSText = demandedFPS.map { String(format: "%.1f", $0) } ?? "unknown"
 
             DiagnosticsLogger.shared.log(
                 "MPVRate",
-                "requested=\(String(format: "%.2f", plan.requestedRate)) strategy=\(plan.timingStrategy.rawValue) videoSync=\(actualSync) displayFPS=\(String(format: "%.2f", actualDisplayFPS)) framedrop=vo decoderDrop=none interpolation=\(actualInterpolation) pitchCorrection=yes"
+                "requested=\(String(format: "%.2f", plan.requestedRate)) strategy=\(plan.timingStrategy.rawValue) mode=\(highRateMode) sourceFPS=\(sourceFPS.map { String(format: "%.2f", $0) } ?? "unknown") demandedFPS=\(demandedFPSText) displayFPS=\(String(format: "%.2f", actualDisplayFPS)) videoSync=\(actualSync) framedrop=\(actualFramedrop) decoderDrop=\(actualDecoderDrop) interpolation=\(actualInterpolation) pitchCorrection=yes"
             )
 
             if self.snapshot.isPlaying {
@@ -250,6 +274,14 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
 
             completion(PlaybackPresentationAcknowledgement(activeMotionFPS: activeMotionFPS, activeEnhancementFeatures: activeEnhancementFeatures, detail: detail))
         }
+    }
+
+    private func resolvedSourceFPS(handle: OpaquePointer, plannedSourceFPS: Double?) -> Double? {
+        if let plannedSourceFPS, plannedSourceFPS.isFinite, plannedSourceFPS > 0 { return plannedSourceFPS }
+        for name in ["container-fps", "estimated-vf-fps"] {
+            if let text = getStringProperty(handle: handle, name: name), let value = Double(text), value.isFinite, value > 0 { return value }
+        }
+        return nil
     }
 
     private func applyVideoEnhancement(handle: OpaquePointer, requested: [VideoEnhancementFeature]) -> [VideoEnhancementFeature] {
