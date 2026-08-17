@@ -29,6 +29,15 @@ version_gt() {
   ((10#$a3 > 10#$b3))
 }
 
+extract_ios_min_versions() {
+  local output="$1"
+  if grep -q 'LC_BUILD_VERSION' <<< "$output"; then
+    awk '$1 == "minos" {print $2}' <<< "$output" | sort -u
+  elif grep -q 'LC_VERSION_MIN_IPHONEOS' <<< "$output"; then
+    awk '$1 == "version" {print $2; exit}' <<< "$output"
+  fi
+}
+
 resolve_embedded_dependency() {
   local binary="$1" dependency="$2" candidate=""
   case "$dependency" in
@@ -77,9 +86,9 @@ while IFS= read -r binary; do
   RUNTIME_INSPECTED=$((RUNTIME_INSPECTED + 1))
   rel="${binary#"$APP_PATH"/}"
   output="$(xcrun vtool -show-build "$binary" 2>/dev/null || true)"
-  minos_values="$(printf '%s\n' "$output" | awk '$1 == "minos" {print $2}' | sort -u)"
+  minos_values="$(extract_ios_min_versions "$output")"
   if [[ -z "$minos_values" ]]; then
-    echo "WARN no LC_BUILD_VERSION minos found for runtime binary: $rel" | tee -a "$REPORT"
+    echo "WARN no iOS minimum-version load command found for runtime binary: $rel" | tee -a "$REPORT"
   else
     while IFS= read -r minos; do
       [[ -n "$minos" ]] || continue
@@ -114,7 +123,7 @@ if [[ -d "$APP_PATH/Frameworks" ]]; then
     UNREFERENCED=$((UNREFERENCED + 1))
     rel="${binary#"$APP_PATH"/}"
     output="$(xcrun vtool -show-build "$binary" 2>/dev/null || true)"
-    minos_values="$(printf '%s\n' "$output" | awk '$1 == "minos" {print $2}' | sort -u | paste -sd, -)"
+    minos_values="$(extract_ios_min_versions "$output" | paste -sd, -)"
     if [[ "$minos_values" == "100.0" ]]; then
       SYNTHETIC_STUBS=$((SYNTHETIC_STUBS + 1))
       echo "INFO skipped unreferenced Xcode codeless/static-framework stub minOS=100.0: $rel" | tee -a "$REPORT"
