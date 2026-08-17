@@ -41,6 +41,7 @@ final class MPVPlayerEngine: PlayerEngine {
     private var lastConfiguration: Configuration?
     private var isStopping = false
     private var lastPositionEmission: TimeInterval = 0
+    private var playbackRateGeneration: UInt64 = 0
     private let sharedTransportSession: TransportDataSession?
     private var streamBridge: MPVUnifiedStreamBridge?
     private var streamPrepareTask: Task<Void, Never>?
@@ -153,7 +154,28 @@ final class MPVPlayerEngine: PlayerEngine {
 
     func setPlaybackRate(_ rate: Double) {
         let clamped = min(8, max(0.15, rate))
-        setPropertyAsync(name: "speed", value: String(format: "%.3f", clamped))
+        queue.async { [weak self] in
+            guard let self, let handle = self.mpv, !self.isStopping else { return }
+            self.playbackRateGeneration &+= 1
+            let generation = self.playbackRateGeneration
+            let highSpeed = clamped > 2
+            var startPosition = Double(0)
+            _ = self.getProperty(handle: handle, name: "time-pos", format: MPV_FORMAT_DOUBLE, value: &startPosition)
+            let startedAt = CACurrentMediaTime()
+
+            // Keep audio as the master clock. Above 2x, VO-only frame dropping still
+            // decodes every 4K frame, which can make requested speed outrun VideoToolbox
+            // and allows A/V drift. Decoder+VO dropping lets libavcodec skip late
+            // non-reference frames before they become expensive display work.
+            self.setProperty(handle: handle, name: "video-sync", value: "audio")
+            self.setProperty(handle: handle, name: "audio-pitch-correction", value: "yes")
+            self.setProperty(handle: handle, name: "vd-lavc-framedrop", value: "nonref")
+            self.setProperty(handle: handle, name: "framedrop", value: highSpeed ? "decoder+vo" : "vo")
+            self.setProperty(handle: handle, name: "speed", value: String(format: "%.3f", clamped))
+            DiagnosticsLogger.shared.log("MPVRate", "requested=\(String(format: "%.2f", clamped)) mode=\(highSpeed ? "high-speed" : "normal") videoSync=audio framedrop=\(highSpeed ? "decoder+vo" : "vo") decoderDrop=nonref pitchCorrection=yes")
+            self.schedulePlaybackRateHealth(handle: handle, generation: generation, requested: clamped, startedAt: startedAt, startPosition: startPosition, delay: 1.5)
+            self.schedulePlaybackRateHealth(handle: handle, generation: generation, requested: clamped, startedAt: startedAt, startPosition: startPosition, delay: 4.0)
+        }
     }
 
     func setVideoGeometry(panscan: Double, aspectOverride: String?) {
@@ -334,6 +356,10 @@ final class MPVPlayerEngine: PlayerEngine {
         check(mpv_set_option_string(handle, "video-rotate", "no"), operation: "disable automatic video rotation")
         check(mpv_set_option_string(handle, "hwdec-codecs", "all"), operation: "set hwdec codecs")
         check(mpv_set_option_string(handle, "hwdec-software-fallback", "yes"), operation: "set hw fallback")
+        check(mpv_set_option_string(handle, "video-sync", "audio"), operation: "set audio-master video sync")
+        check(mpv_set_option_string(handle, "framedrop", "vo"), operation: "set normal frame drop")
+        check(mpv_set_option_string(handle, "vd-lavc-framedrop", "nonref"), operation: "set decoder frame drop policy")
+        check(mpv_set_option_string(handle, "audio-pitch-correction", "yes"), operation: "enable pitch correction")
         check(mpv_set_option_string(handle, "cache", "yes"), operation: "enable cache")
         check(mpv_set_option_string(handle, "demuxer-seekable-cache", "yes"), operation: "seekable cache")
         check(mpv_set_option_string(handle, "hr-seek", "no"), operation: "disable precise seek")
@@ -754,6 +780,23 @@ final class MPVPlayerEngine: PlayerEngine {
         let hwdec = getStringProperty(handle: handle, name: "hwdec-current") ?? "nil"
         let params = getStringProperty(handle: handle, name: "video-out-params") ?? getStringProperty(handle: handle, name: "video-params") ?? "nil"
         DiagnosticsLogger.shared.log("MPVVideoState", "reason=\(reason) size=\(width)x\(height) display=\(dwidth)x\(dheight) rotate=\(rotate) aspect=\(aspect) hwdec=\(hwdec) params=\(params)")
+    }
+
+    private func schedulePlaybackRateHealth(handle: OpaquePointer, generation: UInt64, requested: Double, startedAt: TimeInterval, startPosition: Double, delay: TimeInterval) {
+        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.playbackRateGeneration == generation, let currentHandle = self.mpv, currentHandle == handle, !self.isStopping else { return }
+            var currentPosition = Double(0)
+            guard self.getProperty(handle: handle, name: "time-pos", format: MPV_FORMAT_DOUBLE, value: &currentPosition) >= 0, currentPosition.isFinite else { return }
+            let elapsed = max(0.001, CACurrentMediaTime() - startedAt)
+            let actualRate = max(0, (currentPosition - startPosition) / elapsed)
+            let avsync = self.getStringProperty(handle: handle, name: "avsync") ?? "nil"
+            let voDrops = self.getStringProperty(handle: handle, name: "frame-drop-count") ?? "nil"
+            let decoderDrops = self.getStringProperty(handle: handle, name: "decoder-frame-drop-count") ?? "nil"
+            let sourceFPS = self.getStringProperty(handle: handle, name: "container-fps") ?? self.getStringProperty(handle: handle, name: "estimated-vf-fps") ?? "nil"
+            let displayFPS = self.getStringProperty(handle: handle, name: "display-fps") ?? "nil"
+            let hwdec = self.getStringProperty(handle: handle, name: "hwdec-current") ?? "nil"
+            DiagnosticsLogger.shared.log("MPVRateHealth", "requested=\(String(format: "%.2f", requested)) actual=\(String(format: "%.2f", actualRate)) sample=\(String(format: "%.1f", elapsed))s avsync=\(avsync) voDrops=\(voDrops) decoderDrops=\(decoderDrops) sourceFPS=\(sourceFPS) displayFPS=\(displayFPS) hwdec=\(hwdec)")
+        }
     }
 
     private func updateHTTPHeaders(handle: OpaquePointer, headers: [String: String]) {
