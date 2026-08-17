@@ -11,6 +11,9 @@ struct PlayerPlaybackSettingsPopover: View {
     @State private var appeared = false
 
     private enum Page: Equatable { case root, motionSmoothing }
+    private let rootHeight: CGFloat = 139
+    private let motionHeight: CGFloat = 224
+    private let pageAnimation = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.28)
 
     var body: some View {
         GeometryReader { geometry in
@@ -37,20 +40,22 @@ struct PlayerPlaybackSettingsPopover: View {
     }
 
     private var popover: some View {
-        ZStack {
+        ZStack(alignment: .bottom) {
             rootPage
+                .frame(width: 258, height: rootHeight, alignment: .bottom)
                 .opacity(page == .root ? 1 : 0)
-                .offset(x: page == .root ? 0 : -18)
+                .offset(x: page == .root ? 0 : -14)
                 .allowsHitTesting(page == .root)
 
             motionPage
+                .frame(width: 258, height: motionHeight, alignment: .bottom)
                 .opacity(page == .motionSmoothing ? 1 : 0)
-                .offset(x: page == .motionSmoothing ? 0 : 18)
+                .offset(x: page == .motionSmoothing ? 0 : 14)
                 .allowsHitTesting(page == .motionSmoothing)
         }
-        .frame(width: 258, height: page == .root ? 139 : 224, alignment: .bottom)
+        .frame(width: 258, height: page == .root ? rootHeight : motionHeight, alignment: .bottom)
         .clipped()
-        .animation(.easeInOut(duration: 0.20), value: page)
+        .animation(pageAnimation, value: page)
         .background(PlayerPlaybackSettingsGlassBackground())
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.13), lineWidth: 0.5))
