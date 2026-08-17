@@ -3,10 +3,9 @@ import SwiftUI
 struct BufferedTimelineSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
-    /// Exact UnifiedTransport playback-byte cache coverage normalized to 0...1.
-    /// Sparse seeks remain sparse here: a hole is rendered as a hole instead of being
-    /// disguised by aggregate cacheBytes/resourceBytes.
-    let downloadCacheRanges: [ClosedRange<Double>]
+    /// Engine-reported playable TIME ranges. The slider is a time axis, so byte-space
+    /// UnifiedTransport ranges must never be projected onto it by file-size ratio.
+    let playableRanges: [ClosedRange<Double>]
     let onEditingChanged: (Bool) -> Void
 
     @State private var isEditing = false
@@ -18,7 +17,7 @@ struct BufferedTimelineSlider: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Color(white: 0.16)).frame(height: trackHeight)
 
-                ForEach(Array(normalizedDownloadRanges.enumerated()), id: \.offset) { _, cached in
+                ForEach(Array(normalizedPlayableRanges.enumerated()), id: \.offset) { _, cached in
                     Capsule()
                         .fill(Color(white: 0.48))
                         .frame(width: max(2, width * CGFloat(cached.upperBound - cached.lowerBound)), height: trackHeight)
@@ -60,10 +59,15 @@ struct BufferedTimelineSlider: View {
         }
     }
 
-    private var normalizedDownloadRanges: [ClosedRange<Double>] {
-        downloadCacheRanges.compactMap { item in
-            let lower = min(1, max(0, item.lowerBound))
-            let upper = min(1, max(0, item.upperBound))
+    private var normalizedPlayableRanges: [ClosedRange<Double>] {
+        let duration = range.upperBound - range.lowerBound
+        guard duration > 0 else { return [] }
+        return playableRanges.compactMap { item in
+            let clippedLower = max(range.lowerBound, item.lowerBound)
+            let clippedUpper = min(range.upperBound, item.upperBound)
+            guard clippedUpper > clippedLower else { return nil }
+            let lower = min(1, max(0, (clippedLower - range.lowerBound) / duration))
+            let upper = min(1, max(0, (clippedUpper - range.lowerBound) / duration))
             return upper > lower ? lower...upper : nil
         }
     }

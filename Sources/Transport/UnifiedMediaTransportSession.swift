@@ -443,7 +443,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         var reanchored = false
         if startupTailMetadata { DiagnosticsLogger.shared.log("UnifiedStartup", "critical-tail-metadata range=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=actual-demand") }
         if concretePlaybackDemand, !resumeHistoricalDependency { recordPlaybackDemand(offset: range.lowerBound) }
-        if concretePlaybackDemand, authoritativeSeekDemand, !resumeHistoricalDependency {
+        if concretePlaybackDemand, authoritativeSeekDemand, !resumeHistoricalDependency, !cachedSeekRead {
             lastBlockingPlaybackDemand = range
             lastBlockingPlaybackDemandAt = Date()
         }
@@ -481,8 +481,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         }
 
         // AVFoundation may emit stale/cached range requests from the pre-seek timeline while a seek is
-        // still settling. Only a cache-miss blocked read, or MPV's explicit byte seek, may consume the
-        // pending seek token. Ordinary concrete reads can be stale demux traffic from the old timeline.
+        // still settling. A cache miss, an explicit byte seek, or a sufficiently distant cached concrete
+        // read may consume the token. Cached authority updates the logical head without resetting bulk IO.
         if pendingUserSeek, !metadata, !concretePlaybackDemand {
             DiagnosticsLogger.shared.log(
                 "UnifiedAnchor",
@@ -519,16 +519,27 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             demandCoordinator.reset()
             playbackDemandSamples.removeAll()
             recordPlaybackDemand(offset: range.lowerBound)
-            resetCacheWindowCenter(to: range.lowerBound, resource: resource, reason: "user-seek-real-demand")
             reanchored = true
-            DiagnosticsLogger.shared.log(
-                "UnifiedAnchor",
-                "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) authority=\(cachedSeekRead ? "cached-read" : "cache-miss")"
-            )
-            for slot in [0, 1] {
-                guard let active = slotClaims[slot], !active.range.contains(range.lowerBound) else { continue }
-                if active.role == .urgentPlayback { cancelSlot(slot, reason: "replace-stale-urgent") }
-                if active.role == .sequential { cancelSlot(slot, reason: "seek-reanchor-sequential") }
+
+            if cachedSeekRead {
+                // A seek into bytes already present in the sparse store must not tear down the warmed
+                // 115/CDN sequential lanes. Keep cacheWindowCenter and bulk claims stable; subsequent
+                // real playback reads can naturally promote the center if the new head truly moves away.
+                DiagnosticsLogger.shared.log(
+                    "UnifiedAnchor",
+                    "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) authority=cached-read action=keep-cache-window center=\(cacheWindowCenter)"
+                )
+            } else {
+                resetCacheWindowCenter(to: range.lowerBound, resource: resource, reason: "user-seek-real-demand")
+                DiagnosticsLogger.shared.log(
+                    "UnifiedAnchor",
+                    "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) authority=cache-miss action=reanchor-cache-window"
+                )
+                for slot in [0, 1] {
+                    guard let active = slotClaims[slot], !active.range.contains(range.lowerBound) else { continue }
+                    if active.role == .urgentPlayback { cancelSlot(slot, reason: "replace-stale-urgent") }
+                    if active.role == .sequential { cancelSlot(slot, reason: "seek-reanchor-sequential") }
+                }
             }
         }
 

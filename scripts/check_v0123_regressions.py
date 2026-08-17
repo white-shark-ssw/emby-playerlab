@@ -16,14 +16,16 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(f"v0.12.3 regression failed: {message}")
 
 for needle in [
-    'let authoritativeSeekDemand = reason == "blocked-read" || reason == "byte-offset"',
+    'let authoritativeSeekDemand = reason == "blocked-read" || reason == "byte-offset" || cachedSeekRead',
     "seek concrete-read deferred request=",
     "awaitingBlockedRead=true",
-    "authority=cache-miss",
+    "authority=cache-miss action=reanchor-cache-window",
+    "authority=cached-read action=keep-cache-window",
     'cancelSlot(slot, reason: "seek-reanchor-sequential")',
 ]:
     require(needle in unified, f"seek-anchor fix missing {needle}")
 require("pendingUserSeek, !metadata, concretePlaybackDemand, authoritativeSeekDemand" in unified, "pending seek must require authoritative demand")
+require("!cachedSeekRead" in unified, "cached seek must not be recorded as a blocking network demand")
 
 old_anchor = 233_046_016
 stale_cached_read = 237_305_856
@@ -41,14 +43,12 @@ require("resetStreamLane" not in health_body, "completed lane health must not re
 require("rotate-slow-lane" not in unified, "legacy completed-claim rotation must be removed")
 require("action=rotate-live-lane" in unified, "live-window lane rotation must remain")
 
-for needle in [
-    "func cachedByteRanges() -> [Range<Int64>]",
-    "@Published private(set) var transportCacheRanges: [ClosedRange<Double>] = []",
-    "downloadCacheRanges: [ClosedRange<Double>]",
-    "downloadCacheRanges: controller.transportCacheRanges",
-]:
-    require(needle in unified + controller + slider + screen, f"sparse cache UI missing {needle}")
-require("verifiedBufferedRanges:" not in slider and "bufferedRanges:" not in slider, "engine buffer overlays must not be rendered")
+require("func cachedByteRanges() -> [Range<Int64>]" in unified, "transport sparse byte diagnostics must remain available")
+require("@Published private(set) var transportCacheRanges: [ClosedRange<Double>] = []" in controller, "transport byte diagnostics must remain available")
+require("playableRanges: [ClosedRange<Double>]" in slider, "timeline must accept engine playable time ranges")
+require("playableRanges: controller.snapshot.bufferedRanges" in screen, "timeline must render engine-reported time coverage")
+require("downloadCacheRanges" not in slider + screen, "byte-space cache ranges must not be projected onto the time axis")
+require("controller.transportCacheRanges" not in screen, "playback timeline must not use normalized byte positions")
 require("downloadCacheFraction:" not in slider, "aggregate cache fraction must not masquerade as positional coverage")
 
 require("struct MPVPlayerSurface: UIViewRepresentable" in surface, "MPV surface must use stable UIViewRepresentable host")
