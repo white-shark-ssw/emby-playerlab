@@ -66,6 +66,7 @@ jobs:
           engine_kind = Path("Sources/Player/PlayerEngine.swift").read_text()
           engine = Path("MDKLab/App/MDKKSAVIOPlayerEngine.swift").read_text()
           shim = Path("MDKLab/KSPlayerShim/Package.swift").read_text()
+          controller = Path("Sources/Player/PlayerController.swift").read_text()
           sparse_store = Path("Sources/Transport/DownloadFirstSparseStore.swift").read_text()
           checks = {
               "iOS 15 deployment": 'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,
@@ -84,6 +85,7 @@ jobs:
               "MDK seek immediate result is advisory": "immediateResult" in engine and "semantics=advisory" in engine and "MDK seek rejected" not in engine,
               "MDK stale seek callbacks isolated": "discard-stale-player-generation" in engine and "diagnostic-only" in engine,
               "MDK rapid seek backlog tracked": "inFlightSeekIDs" in engine and "MDKSeekBacklog" in engine,
+              "MDK seek anchor waits for latest callback": "snapshotCanCompleteSeekAnchor" in controller and "engineKind != .ksAVIO" in controller and "scheduleSeekAnchorRelease(expectedTarget: target)" in controller,
               "Persistent sparse cache crash marker": "session.dirty" in sparse_store and "unclean previous session detected" in sparse_store,
               "Unified concrete tail metadata guard": "isConcreteTailMetadataRead" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text() and "concrete-tail-metadata" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text(),
               "MDK rate health metric": "MDKRateHealth" in engine,
