@@ -1,0 +1,175 @@
+name: Build Diagnostics PR 20260811
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-diagnostics-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event.pull_request.head.ref == 'chatgpt/diagnostics-ipa-pr-20260811'
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout diagnostic source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Initialize logs
+        run: |
+          : > build.log
+          : > package-resolution.log
+          : > pods-install.log
+          : > diagnostic-patch.diff
+          : > app-validation.log
+          : > min-os-report.log
+
+      - name: Apply runtime diagnostics
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_runtime_diagnostics.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Sources/Diagnostics/LayoutDiagnostics.swift')
+          text = path.read_text()
+          text = text.replace('NSStringFromCGRect(', 'String(describing: ')
+          text = text.replace('NSStringFromUIEdgeInsets(', 'String(describing: ')
+          path.write_text(text)
+          PY
+          git add -N Sources/Diagnostics/LayoutDiagnostics.swift
+          git diff --check
+          git diff > diagnostic-patch.diff
+          git diff --stat
+          grep -R -nE 'LayoutTrace|UnifiedSchedulerTrace|UnifiedDeadlockCandidate|UnifiedReadWait|TransportV3Race|StallTrace|DiagnosticsProfile' Sources | head -160
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Prepare project
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_os_player_icons.py
+          python3 scripts/version_os_player_icons.py
+          xcodegen generate
+          pod install --repo-update 2>&1 | tee pods-install.log
+
+      - name: Restore Swift package cache
+        uses: actions/cache@v4
+        with:
+          path: .spm-cache
+          key: ${{ runner.os }}-mpvkit-1.0.0-ktv-3.1.0-${{ hashFiles('project.yml', 'Podfile') }}
+
+      - name: Resolve MPVKit
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Build diagnostics app
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.13.3" --build "69" 2>&1 | tee app-validation.log
+
+      - name: Validate minimum OS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" min-os-report.log build.log
+
+      - name: Package diagnostics IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA_NAME="OS-player-v0.13.3-build69-diagnostics-${{ github.event.pull_request.head.sha }}"
+          IPA_NAME="${IPA_NAME:0:48}-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME"
+          shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload diagnostics IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: OS-player-diagnostics-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            diagnostic-patch.diff
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish diagnostics prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v0.13.3-build69-diagnostics"
+          gh release delete "$TAG" --cleanup-tag -y >/dev/null 2>&1 || true
+          gh release create "$TAG" \
+            "$IPA_NAME" \
+            "$IPA_NAME.sha256" \
+            diagnostic-patch.diff \
+            --target "${{ github.event.pull_request.head.sha }}" \
+            --title "OS player v0.13.3 Build 69 Diagnostics" \
+            --notes "Diagnostic TrollStore build for persistent immersive bottom safe-area blank strip and UnifiedTransport post-seek race/stall. Deployment Target remains iOS 15.0; intended device validation includes iOS 17.0." \
+            --prerelease
+
+      - name: Upload diagnostic build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OS-player-diagnostics-logs-${{ github.event.pull_request.head.sha }}
+          path: |
+            build.log
+            package-resolution.log
+            pods-install.log
+            diagnostic-patch.diff
+            app-validation.log
+            min-os-report.log
+          if-no-files-found: warn
+          retention-days: 30
