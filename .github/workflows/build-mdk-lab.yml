@@ -78,6 +78,9 @@ jobs:
               "MDK old transport shutdown removed": "unifiedTransportStopped=true" not in engine and "stopUnusedUnifiedTransportAfterDirectStart" not in engine,
               "MDK VT decoder": 'videoDecoders = ["VT", "FFmpeg"]' in engine,
               "MDK seek recovery metric": "MDKSeekHealth" in engine,
+              "MDK seek buffering grace": "seekBufferingUIGraceSeconds" in engine and "MDKBuffering" in engine,
+              "MDK seek watchdog": "MDKSeekWatchdog" in engine,
+              "Unified concrete tail metadata guard": "isConcreteTailMetadataRead" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text() and "concrete-tail-metadata" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text(),
               "MDK rate health metric": "MDKRateHealth" in engine,
               "KS compatibility shim only": 'name: "KSPlayer"' in shim,
           }
