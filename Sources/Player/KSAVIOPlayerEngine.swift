@@ -11,9 +11,9 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     private let source: ResolvedPlaybackSource
     private let client: EmbyAPIClient
     private let configuration: MediaTransportConfiguration
-    private let sharedTransportSession: MediaTransportSession?
+    private let sharedTransportSession: TransportDataSession?
     private var player: KSMEPlayer?
-    private var session: MediaTransportSession?
+    private var session: TransportDataSession?
     private var coordinator: SparseAVIOReadCoordinator?
     private var context: KSPlayerSparseAVIOContext?
     private var options: KSAVIOOptions?
@@ -38,7 +38,7 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
         source: ResolvedPlaybackSource,
         client: EmbyAPIClient,
         configuration: MediaTransportConfiguration,
-        sharedTransportSession: MediaTransportSession? = nil,
+        sharedTransportSession: TransportDataSession? = nil,
         ktvCacheSession: KTVCachePlaybackSession? = nil
     ) {
         self.source = source
