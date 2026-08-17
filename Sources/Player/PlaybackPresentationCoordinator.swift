@@ -6,7 +6,7 @@ struct PlayerPresentationPreferenceKeys {
     static let videoEnhancementEnabled = "player.videoEnhancementEnabled"
 }
 
-enum MotionSmoothingMode: String, CaseIterable, Identifiable {
+enum MotionSmoothingMode: String, CaseIterable, Identifiable, Equatable {
     case off
     case automatic
     case fps60
@@ -40,7 +40,7 @@ enum VideoEnhancementFeature: String, Hashable {
     }
 }
 
-enum PlaybackTimingStrategy: String {
+enum PlaybackTimingStrategy: String, Equatable {
     case audioMaster
     case displayCadenced
     case motionSmoothed
