@@ -32,7 +32,7 @@ enum VideoEnhancementFeature: String, Hashable {
 
     var title: String {
         switch self {
-        case .upscale: return "上采样"
+        case .upscale: return "高质缩放"
         case .sharpen: return "锐化"
         case .deband: return "去色带"
         case .chroma: return "色度增强"
