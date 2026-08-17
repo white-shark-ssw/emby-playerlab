@@ -14,6 +14,7 @@ packages:
   KSPlayerShim:
     path: MDKLab/KSPlayerShim
 
+# MDK Lab 0.13.4 rapid-seek recovery baseline. Keep the pinned SDK fixed for this comparison round.
 # The MDK lab CI audits both LC_BUILD_VERSION and legacy LC_VERSION_MIN_IPHONEOS slices.
 settings:
   base:
