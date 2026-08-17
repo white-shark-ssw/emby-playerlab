@@ -111,9 +111,9 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         scheduleRateHealth(player: player, generation: currentRateGeneration, requested: clamped, startedAt: startedAt, startPosition: startPosition, delay: 4.0)
     }
 
-    func seek(to seconds: Double, direction: SeekDirection) {
+    func seek(to targetSeconds: Double, direction: SeekDirection) {
         guard let player else { return }
-        let target = max(0, seconds)
+        let target = max(0, targetSeconds)
         let requestedAt = Date().timeIntervalSince1970
         pendingSeekResume = (target, requestedAt, nil)
         let accepted = player.seek(milliseconds(target), flags: .Default) { [weak self, weak player] actualMs in
@@ -128,7 +128,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         }
         if !accepted {
             pendingSeekResume = nil
-            onSeekCompleted?(SeekResult(requestedAt: requestedAt, target: target, actualPosition: seconds(player.position), bufferHit: false, completionLatencyMs: 0, measurement: "MDK seek rejected"))
+            onSeekCompleted?(SeekResult(requestedAt: requestedAt, target: target, actualPosition: self.seconds(player.position), bufferHit: false, completionLatencyMs: 0, measurement: "MDK seek rejected"))
             DiagnosticsLogger.shared.playback("MDKSeek", "target=\(String(format: "%.3f", target)) accepted=false direction=\(String(describing: direction))")
         }
     }
