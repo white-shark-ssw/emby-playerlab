@@ -32,6 +32,7 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
     private let mediaURL: URL
     private let rangesURL: URL
     private let metadataURL: URL
+    private let sessionMarkerURL: URL
     private let keepFiles: Bool
     private let contentLength: Int64
     private var fileDescriptor: Int32 = -1
@@ -51,6 +52,7 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
         mediaURL = directory.appendingPathComponent("media.sparse")
         rangesURL = directory.appendingPathComponent("ranges.json")
         metadataURL = directory.appendingPathComponent("metadata.json")
+        sessionMarkerURL = directory.appendingPathComponent("session.dirty")
 
         let expectedMetadata = Metadata(contentLength: contentLength, etag: etag, lastModified: lastModified)
         let existingMetadata: Metadata? = {
@@ -58,9 +60,11 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
             return try? JSONDecoder().decode(Metadata.self, from: data)
         }()
 
-        if !keepFiles || existingMetadata != expectedMetadata {
+        let previousSessionWasUnclean = keepFiles && existingMetadata == expectedMetadata && FileManager.default.fileExists(atPath: sessionMarkerURL.path)
+        if !keepFiles || existingMetadata != expectedMetadata || previousSessionWasUnclean {
             try? FileManager.default.removeItem(at: directory)
         }
+        if previousSessionWasUnclean { DiagnosticsLogger.shared.playback("TransportCache", "unclean previous session detected; persistent sparse cache discarded") }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         if keepFiles,
@@ -84,6 +88,7 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
             fileDescriptor = -1
             throw StoreError.openFailed(code)
         }
+        if keepFiles { try? Data("dirty\n".utf8).write(to: sessionMarkerURL, options: .atomic) }
         lastPersistedBytes = rangeSet.totalBytes
     }
 
@@ -328,6 +333,7 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
 
         if fd >= 0 { Darwin.close(fd) }
         if removeFiles { try? FileManager.default.removeItem(at: directory) }
+        else if keepFiles { try? FileManager.default.removeItem(at: sessionMarkerURL) }
     }
 
     private func blockingRead(offset: Int64, maximumLength: Int, timeout: TimeInterval) throws -> Data {
