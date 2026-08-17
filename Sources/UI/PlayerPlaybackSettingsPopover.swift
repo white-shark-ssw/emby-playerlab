@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct PlayerPlaybackSettingsPopover: View {
     @Binding var isPresented: Bool
@@ -87,7 +88,7 @@ struct PlayerPlaybackSettingsPopover: View {
             }
             .buttonStyle(.plain)
 
-            ForEach(Array(MotionSmoothingMode.allCases.enumerated()), id: \.element.id) { index, mode in
+            ForEach(MotionSmoothingMode.allCases) { mode in
                 separator
                 Button {
                     motionSmoothingRaw = mode.rawValue
@@ -123,9 +124,12 @@ struct PlayerPlaybackSettingsPopover: View {
     private func actionRow(title: String, systemImage: String, leadingCheck: Bool = false, trailingChevron: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: leadingCheck ? "checkmark" : "")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 18)
+                Group {
+                    if leadingCheck { Image(systemName: "checkmark") }
+                    else { Color.clear.frame(width: 1, height: 1) }
+                }
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 18)
                 Text(title).font(.system(size: 17, weight: .regular))
                 Spacer()
                 if trailingChevron { Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundColor(.white.opacity(0.72)) }
