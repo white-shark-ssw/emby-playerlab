@@ -66,6 +66,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         let target: Double
         let requestedAt: TimeInterval
         var callbackAt: TimeInterval?
+        var callbackPosition: Double?
         var didLogBufferingSuppression = false
     }
 
@@ -92,6 +93,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private let seekBufferingUIGraceSeconds: TimeInterval = 0.5
     private let seekWatchdogSeconds: TimeInterval = 2.0
     private var pendingSeekResume: PendingSeekResume?
+    private var inFlightSeekIDs: Set<Int> = []
     private var didInstallLogHandler = false
 
     var playerView: UIView? { view }
@@ -119,6 +121,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         lastURL = url
         lastHeaders = headers
         pendingSeekResume = nil
+        inFlightSeekIDs.removeAll()
         installMDKLoggingIfNeeded()
 
         guard let sharedTransportSession else {
@@ -184,26 +187,42 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         let duration = max(source.mediaSource.durationSeconds ?? 0, seconds(player.mediaInfo.duration))
         if let sharedTransportSession { Task { await sharedTransportSession.prioritizeSeek(position: target, duration: duration) } }
         let requestedAt = Date().timeIntervalSince1970
+        let currentPlayerGeneration = generation
         seekGeneration &+= 1
         let seekID = seekGeneration
-        pendingSeekResume = PendingSeekResume(id: seekID, target: target, requestedAt: requestedAt, callbackAt: nil)
-        DiagnosticsLogger.shared.playback("MDKSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) phase=request unifiedTransport=\(sharedTransportSession != nil) direction=\(String(describing: direction))")
-        let accepted = player.seek(milliseconds(target), flags: .Default) { [weak self, weak player] actualMs in
-            guard let self else { return }
+        pendingSeekResume = PendingSeekResume(id: seekID, target: target, requestedAt: requestedAt, callbackAt: nil, callbackPosition: nil)
+        inFlightSeekIDs.insert(seekID)
+        DiagnosticsLogger.shared.playback("MDKSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) phase=request generation=\(currentPlayerGeneration) outstanding=\(inFlightSeekIDs.count) unifiedTransport=\(sharedTransportSession != nil) direction=\(String(describing: direction))")
+        if inFlightSeekIDs.count >= 4 { DiagnosticsLogger.shared.playback("MDKSeekBacklog", "latest=\(seekID) outstanding=\(inFlightSeekIDs.count) target=\(String(format: "%.3f", target))") }
+
+        let immediateResult = player.seek(milliseconds(target), flags: .Default) { [weak self, weak player] actualMs in
             let callbackAt = Date().timeIntervalSince1970
-            let actual = actualMs >= 0 ? self.seconds(actualMs) : player.map { self.seconds($0.position) }
-            let latency = (callbackAt - requestedAt) * 1_000
-            if var pending = self.pendingSeekResume, pending.id == seekID { pending.callbackAt = callbackAt; self.pendingSeekResume = pending }
-            self.onSeekCompleted?(SeekResult(requestedAt: requestedAt, target: target, actualPosition: actual, bufferHit: latency < 150, completionLatencyMs: latency, measurement: "MDK seek callback"))
-            DiagnosticsLogger.shared.playback("MDKSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) callbackMs=\(String(format: "%.1f", latency)) actual=\(actual.map { String(format: "%.3f", $0) } ?? "nil") accepted=true current=\(self.pendingSeekResume?.id == seekID) unifiedTransport=\(self.sharedTransportSession != nil) direction=\(String(describing: direction))")
-            if self.shouldPlay, player?.state != .Playing { player?.state = .Playing }
+            DispatchQueue.main.async { [weak self, weak player] in
+                guard let self else { return }
+                let latency = (callbackAt - requestedAt) * 1_000
+                guard let player, currentPlayerGeneration == self.generation, self.player === player else {
+                    DiagnosticsLogger.shared.playback("MDKSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) callbackMs=\(String(format: "%.1f", latency)) result=\(actualMs) current=false action=discard-stale-player-generation requestGeneration=\(currentPlayerGeneration) activeGeneration=\(self.generation)")
+                    return
+                }
+
+                self.inFlightSeekIDs.remove(seekID)
+                let isCurrent = self.pendingSeekResume?.id == seekID
+                guard actualMs >= 0 else {
+                    DiagnosticsLogger.shared.playback("MDKSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) callbackMs=\(String(format: "%.1f", latency)) result=\(actualMs) current=\(isCurrent) action=ignored-callback outstanding=\(self.inFlightSeekIDs.count)")
+                    return
+                }
+
+                let actual = self.seconds(actualMs)
+                if var pending = self.pendingSeekResume, pending.id == seekID { pending.callbackAt = callbackAt; pending.callbackPosition = actual; self.pendingSeekResume = pending }
+                if isCurrent {
+                    self.onSeekCompleted?(SeekResult(requestedAt: requestedAt, target: target, actualPosition: actual, bufferHit: latency < 150, completionLatencyMs: latency, measurement: "MDK latest seek callback"))
+                    if self.shouldPlay, player.state != .Playing { player.state = .Playing }
+                }
+                DiagnosticsLogger.shared.playback("MDKSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) callbackMs=\(String(format: "%.1f", latency)) actual=\(String(format: "%.3f", actual)) current=\(isCurrent) action=\(isCurrent ? "complete-current" : "diagnostic-only") outstanding=\(self.inFlightSeekIDs.count) unifiedTransport=\(self.sharedTransportSession != nil) direction=\(String(describing: direction))")
+            }
         }
-        if accepted { scheduleSeekWatchdog(player: player, seekID: seekID, target: target, requestedAt: requestedAt) }
-        else {
-            if pendingSeekResume?.id == seekID { pendingSeekResume = nil }
-            onSeekCompleted?(SeekResult(requestedAt: requestedAt, target: target, actualPosition: self.seconds(player.position), bufferHit: false, completionLatencyMs: 0, measurement: "MDK seek rejected"))
-            DiagnosticsLogger.shared.playback("MDKSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) accepted=false unifiedTransport=\(sharedTransportSession != nil) direction=\(String(describing: direction))")
-        }
+        DiagnosticsLogger.shared.playback("MDKSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) phase=dispatch immediateResult=\(immediateResult) semantics=advisory outstanding=\(inFlightSeekIDs.count)")
+        scheduleSeekWatchdog(player: player, seekID: seekID, target: target, requestedAt: requestedAt, playerGeneration: currentPlayerGeneration)
     }
 
     func reload(at seconds: Double) {
@@ -306,20 +325,21 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         let bufferedEnd = duration > 0 ? min(duration, position + forwardBuffered) : position + forwardBuffered
         onSnapshot?(PlayerSnapshot(position: position, duration: duration, bufferedRanges: bufferedEnd > position ? [position...bufferedEnd] : [], isPlaying: isPlaying, isBuffering: buffering, waitingReason: buffering ? "MDK 等待媒体数据" : nil, errorMessage: hasStatus(status, bit: 31) ? "MDK media status invalid" : nil, didReachEnd: ended))
 
-        if let pending = pendingSeekResume, position > pending.target + 0.08 {
+        if let pending = pendingSeekResume, let callbackPosition = pending.callbackPosition, abs(position - callbackPosition) > 0.08 {
             let resumeMs = (now - pending.requestedAt) * 1_000
             let afterCallbackMs = pending.callbackAt.map { (now - $0) * 1_000 }
-            DiagnosticsLogger.shared.playback("MDKSeekHealth", "id=\(pending.id) target=\(String(format: "%.3f", pending.target)) firstAdvance=\(String(format: "%.3f", position)) resumeMs=\(String(format: "%.1f", resumeMs)) afterCallbackMs=\(afterCallbackMs.map { String(format: "%.1f", $0) } ?? "pending") playing=\(isPlaying) rawBuffering=\(rawBuffering) uiBuffering=\(buffering) bufferMs=\(player.buffered()) unifiedTransport=\(sharedTransportSession != nil)")
+            DiagnosticsLogger.shared.playback("MDKSeekHealth", "id=\(pending.id) target=\(String(format: "%.3f", pending.target)) callbackPosition=\(String(format: "%.3f", callbackPosition)) firstClockAdvance=\(String(format: "%.3f", position)) resumeMs=\(String(format: "%.1f", resumeMs)) afterCallbackMs=\(afterCallbackMs.map { String(format: "%.1f", $0) } ?? "pending") playing=\(isPlaying) rawBuffering=\(rawBuffering) uiBuffering=\(buffering) bufferMs=\(player.buffered()) outstanding=\(inFlightSeekIDs.count) unifiedTransport=\(sharedTransportSession != nil)")
             pendingSeekResume = nil
         }
     }
 
-    private func scheduleSeekWatchdog(player: swift_mdk.Player, seekID: Int, target: Double, requestedAt: TimeInterval) {
+    private func scheduleSeekWatchdog(player: swift_mdk.Player, seekID: Int, target: Double, requestedAt: TimeInterval, playerGeneration: Int) {
         DispatchQueue.main.asyncAfter(deadline: .now() + seekWatchdogSeconds) { [weak self, weak player] in
-            guard let self, let player, self.player === player, let pending = self.pendingSeekResume, pending.id == seekID else { return }
+            guard let self, let player, playerGeneration == self.generation, self.player === player, let pending = self.pendingSeekResume, pending.id == seekID else { return }
             let now = Date().timeIntervalSince1970
             let callbackMs = pending.callbackAt.map { ($0 - requestedAt) * 1_000 }
-            DiagnosticsLogger.shared.playback("MDKSeekWatchdog", "id=\(seekID) target=\(String(format: "%.3f", target)) elapsedMs=\(String(format: "%.1f", (now - requestedAt) * 1_000)) callbackMs=\(callbackMs.map { String(format: "%.1f", $0) } ?? "pending") position=\(String(format: "%.3f", self.seconds(player.position))) state=\(String(describing: player.state)) status=0x\(String(player.mediaStatus.rawValue, radix: 16)) bufferMs=\(player.buffered()) unifiedTransport=\(self.sharedTransportSession != nil)")
+            let callbackPosition = pending.callbackPosition.map { String(format: "%.3f", $0) } ?? "pending"
+            DiagnosticsLogger.shared.playback("MDKSeekWatchdog", "id=\(seekID) target=\(String(format: "%.3f", target)) elapsedMs=\(String(format: "%.1f", (now - requestedAt) * 1_000)) callbackMs=\(callbackMs.map { String(format: "%.1f", $0) } ?? "pending") callbackPosition=\(callbackPosition) position=\(String(format: "%.3f", self.seconds(player.position))) state=\(String(describing: player.state)) status=0x\(String(player.mediaStatus.rawValue, radix: 16)) bufferMs=\(player.buffered()) outstanding=\(self.inFlightSeekIDs.count) latest=\(self.pendingSeekResume?.id ?? -1) unifiedTransport=\(self.sharedTransportSession != nil)")
             if let session = self.sharedTransportSession {
                 Task {
                     let metrics = await session.metrics()
@@ -388,6 +408,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         transportHTTPServer = nil
         seekGeneration &+= 1
         pendingSeekResume = nil
+        inFlightSeekIDs.removeAll()
         if let player {
             player.onStateChanged(callback: nil)
             player.onMediaStatusChanged(callback: nil)
