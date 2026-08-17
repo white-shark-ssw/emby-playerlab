@@ -15,7 +15,12 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .ktvAVPlayer: return "旧 KTV AVPlayer"
-        case .ksAVIO: return "KSPlayer KSME（实验）"
+        case .ksAVIO:
+            #if MDK_LAB
+            return "MDK Metal（实验）"
+            #else
+            return "KSPlayer KSME（实验）"
+            #endif
         case .resourceLoaderAVPlayer: return "智能 AVPlayer"
         case .transportAVPlayer: return "统一缓存 AVPlayer"
         case .avPlayer: return "直连 AVPlayer"
@@ -52,7 +57,12 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
         case .transportAVPlayer: return "统一缓存 AVPlayer"
         case .avPlayer: return "诊断：直连 AVPlayer"
         case .mpv: return "MPV 兼容引擎"
-        case .ksAVIO: return "KSPlayer KSME（实验）"
+        case .ksAVIO:
+            #if MDK_LAB
+            return "MDK Metal（实验）"
+            #else
+            return "KSPlayer KSME（实验）"
+            #endif
         }
     }
 
