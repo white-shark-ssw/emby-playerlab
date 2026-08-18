@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [feat/mpv-compare-0.13.7-work]
+  pull_request:
+    branches: [ci/mpv-compare-0.13.7-base]
 
 permissions:
   contents: read
