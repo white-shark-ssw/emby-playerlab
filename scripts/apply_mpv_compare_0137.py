@@ -16,7 +16,8 @@ project_path.write_text(project)
 
 identity_path = Path("Sources/Core/AppIdentity.swift")
 identity = identity_path.read_text()
-identity = identity.replace('static let sourceVersion = "0.13.3"', 'static let sourceVersion = "0.13.7"')
+identity = identity.replace('static let sourceVersion = "0.13.6"', 'static let sourceVersion = "0.13.7"')
+identity = identity.replace('?? "0.13.6"', '?? "0.13.7"')
 identity_path.write_text(identity)
 
 path = Path("Sources/Player/MPVPlayerEngine.swift")
