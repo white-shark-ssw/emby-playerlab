@@ -1,0 +1,127 @@
+name: Build OnePlayer 0.13.15 Transport Stream Guard
+
+on:
+  push:
+    branches: [feat/transport-stream-guard-0.13.15]
+
+concurrency:
+  group: transport-stream-guard-01315-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Materialize Build82 source
+        run: |
+          set -euo pipefail
+          python3 scripts/materialize_transport_stream_guard_01315.py
+          if ! git diff --quiet -- Sources/Transport/DownloadFirstSparseStore.swift Sources/Transport/TransportHTTPServer.swift MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/UI/PlayerScreen.swift project.mdklab.yml; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add Sources/Transport/DownloadFirstSparseStore.swift Sources/Transport/TransportHTTPServer.swift MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/UI/PlayerScreen.swift project.mdklab.yml
+            git commit -m 'Fix localhost stream storm and teardown starvation'
+            git push origin HEAD
+          fi
+
+      - name: Verify transport guard contract and frozen buffer timeline
+        run: |
+          set -euo pipefail
+          test "$(git hash-object Sources/UI/BufferedTimelineSlider.swift)" = '4c0c772d104fb6b1537e9d89604acbc563114f62'
+          grep -q 'private final class ReadCancellationState' Sources/Transport/DownloadFirstSparseStore.swift
+          grep -q 'withTaskCancellationHandler(operation:' Sources/Transport/DownloadFirstSparseStore.swift
+          grep -q 'if cancellation.isCancelled { throw CancellationError() }' Sources/Transport/DownloadFirstSparseStore.swift
+          grep -q 'private let maximumClientStreams = 8' Sources/Transport/TransportHTTPServer.swift
+          grep -q 'action=evict-oldest' Sources/Transport/TransportHTTPServer.swift
+          grep -q 'hintBytes = min(responseRange.length, 1 \* 1_048_576)' Sources/Transport/TransportHTTPServer.swift
+          grep -q '!Task.isCancelled, !isStopped' Sources/Transport/TransportHTTPServer.swift
+          grep -q 'resetClientStreams(reason: "mdk-seek-' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -q 'close stop issued before orientation restore' Sources/UI/PlayerScreen.swift
+          grep -q 'onDisappear immediate stop' Sources/UI/PlayerScreen.swift
+          ! grep -q 'closingController.stop()' Sources/UI/PlayerScreen.swift
+          grep -q 'MARKETING_VERSION: "0.13.15"' project.mdklab.yml
+          grep -q 'CURRENT_PROJECT_VERSION: "82"' project.mdklab.yml
+          grep -q 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+
+      - name: Select Xcode and tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          swift --version
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build OnePlayer 0.13.15 Build82
+        id: release_build
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Upload release build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.15-build82-release-diagnostics
+          path: build.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Report release compiler failure
+        if: steps.release_build.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          grep -nE '(^|[[:space:]])(error:|fatal error:)|BUILD FAILED|SwiftCompile|CompileSwift' build.log | tail -250 || true
+          tail -120 build.log || true
+          exit 1
+
+      - name: Validate app identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.15' --build '82' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.15-build82-transport-stream-guard-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
+
+      - name: Upload CI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.15-build82-transport-stream-guard
+          path: |
+            OnePlayer-0.13.15-build82-transport-stream-guard-unsigned.ipa
+            OnePlayer-0.13.15-build82-transport-stream-guard-unsigned.ipa.sha256
+            app-validation.log
+            min-os-report.log
+          if-no-files-found: error
+          retention-days: 14
