@@ -38,10 +38,14 @@ final class TransportHTTPServer {
     private let logID = String(UUID().uuidString.lowercased().prefix(6))
     private let queue = DispatchQueue(label: "com.embyplayerlab.transport.http-server", qos: .userInitiated)
     private let lock = NSLock()
+    private let maximumClientStreams = 8
     private var listener: NWListener?
     private var localURL: URL?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var connectionTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
+    private var connectionOrder: [ObjectIdentifier] = []
+    private var streamGuardEvictionCount = 0
+    private var lastStreamGuardLogAt = Date.distantPast
     private var lastLoggedRequestStart: Int64?
     private var lastLoggedRequestAt = Date.distantPast
     private var stopped = false
@@ -252,7 +256,9 @@ final class TransportHTTPServer {
             let resource = try await session.resolve()
             let requestedRange = try parseRange(request.headers["range"], contentLength: resource.contentLength)
             let responseRange = requestedRange ?? ByteRange(lowerBound: 0, upperBound: resource.contentLength - 1)
-            await session.noteDemand(range: responseRange.lowerBound..<(responseRange.upperBound + 1))
+            let hintBytes = min(responseRange.length, 1 * 1_048_576)
+            let hintUpper = min(resource.contentLength, responseRange.lowerBound + hintBytes)
+            if hintUpper > responseRange.lowerBound { await session.noteDemand(range: responseRange.lowerBound..<hintUpper) }
             let status = requestedRange == nil ? 200 : 206
             let reason = status == 206 ? "Partial Content" : "OK"
             let contentType = resource.contentType ?? "video/mp4"
@@ -282,7 +288,7 @@ final class TransportHTTPServer {
 
             var cursor = responseRange.lowerBound
             let chunkSize = 512 * 1024
-            while cursor <= responseRange.upperBound, !Task.isCancelled {
+            while cursor <= responseRange.upperBound, !Task.isCancelled, !isStopped {
                 let length = min(chunkSize, Int(responseRange.upperBound - cursor + 1))
                 let data = try await session.read(offset: cursor, length: length)
                 guard !data.isEmpty else { break }
@@ -451,10 +457,42 @@ final class TransportHTTPServer {
     }
 
     private func registerConnection(_ connection: NWConnection) -> Bool {
+        let identifier = ObjectIdentifier(connection)
+        var evictedConnection: NWConnection?
+        var evictedTask: Task<Void, Never>?
+        var shouldLogEviction = false
+        var evictionCount = 0
+        var activeCount = 0
+
         lock.lock()
-        defer { lock.unlock() }
-        guard !stopped else { return false }
-        connections[ObjectIdentifier(connection)] = connection
+        guard !stopped else {
+            lock.unlock()
+            return false
+        }
+        while connections.count >= maximumClientStreams, let oldest = connectionOrder.first {
+            connectionOrder.removeFirst()
+            guard let staleConnection = connections.removeValue(forKey: oldest) else { continue }
+            evictedConnection = staleConnection
+            evictedTask = connectionTasks.removeValue(forKey: oldest)
+            streamGuardEvictionCount += 1
+            evictionCount = streamGuardEvictionCount
+            let now = Date()
+            if now.timeIntervalSince(lastStreamGuardLogAt) >= 1 {
+                lastStreamGuardLogAt = now
+                shouldLogEviction = true
+            }
+            break
+        }
+        connections[identifier] = connection
+        connectionOrder.append(identifier)
+        activeCount = connections.count
+        lock.unlock()
+
+        evictedTask?.cancel()
+        evictedConnection?.cancel()
+        if shouldLogEviction {
+            DiagnosticsLogger.shared.playback("TransportHTTPGuard", "server=\(logID) action=evict-oldest active=\(activeCount) limit=\(maximumClientStreams) evictions=\(evictionCount)")
+        }
         return true
     }
 
@@ -474,6 +512,7 @@ final class TransportHTTPServer {
         defer { lock.unlock() }
         guard connections[identifier] === connection else { return nil }
         connections[identifier] = nil
+        connectionOrder.removeAll { $0 == identifier }
         return connectionTasks.removeValue(forKey: identifier)
     }
 
@@ -483,6 +522,7 @@ final class TransportHTTPServer {
         guard !stopped else { return ([], []) }
         let currentConnections = Array(connections.values)
         connections.removeAll()
+        connectionOrder.removeAll() // takeClientStateForReset
         let currentTasks = Array(connectionTasks.values)
         connectionTasks.removeAll()
         return (currentConnections, currentTasks)
@@ -498,6 +538,7 @@ final class TransportHTTPServer {
         localURL = nil
         let currentConnections = Array(connections.values)
         connections.removeAll()
+        connectionOrder.removeAll() // takeServerStateForStop
         let currentTasks = Array(connectionTasks.values)
         connectionTasks.removeAll()
         return (currentListener, currentConnections, currentTasks)
@@ -512,6 +553,7 @@ final class TransportHTTPServer {
         localURL = nil
         let currentConnections = Array(connections.values)
         connections.removeAll()
+        connectionOrder.removeAll() // takeServerStateForRestart
         let currentTasks = Array(connectionTasks.values)
         connectionTasks.removeAll()
         return (true, currentListener, currentConnections, currentTasks)

@@ -136,9 +136,8 @@ struct PlayerScreen: View {
             wasAutoPausedForBackground = false
             pictureInPictureController.stopAndDetach()
             restoreOriginalBrightnessIfNeeded()
-            controller.pausePlayback()
-            let closingController = controller
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { closingController.stop() }
+            DiagnosticsLogger.shared.app("PlayerLifecycle", "onDisappear immediate stop closing=\(isClosing)")
+            controller.stop()
         }
         .onChange(of: controller.snapshot.isPlaying) { isPlaying in
             if !isPlaying, sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
@@ -813,9 +812,10 @@ struct PlayerScreen: View {
         centerFeedbackScale = 1
         temporaryRateHUD = nil
         adjustmentHUD = nil
-        controller.pausePlayback()
+        controller.stop()
         pictureInPictureController.stopAndDetach()
-        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; keep opaque player cover and persistent surface until portrait settles")
+        DiagnosticsLogger.shared.app("PlayerLifecycle", "close stop issued before orientation restore")
+        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; playback/transport stopped before portrait wait")
         AppOrientationCoordinator.shared.restoreMainInterfaceOrientation()
         waitForPortraitBeforeDismiss(attempt: 0)
     }

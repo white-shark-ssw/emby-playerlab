@@ -3,6 +3,23 @@ import Darwin
 import Foundation
 
 final class DownloadFirstSparseStore: @unchecked Sendable {
+    private final class ReadCancellationState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cancelled = false
+
+        func cancel() {
+            lock.lock()
+            cancelled = true
+            lock.unlock()
+        }
+
+        var isCancelled: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return cancelled
+        }
+    }
+
     enum StoreError: LocalizedError {
         case openFailed(Int32)
         case closed
@@ -130,19 +147,29 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
 
     func readWhenAvailable(offset: Int64, maximumLength: Int, timeout: TimeInterval = 30) async throws -> Data {
         guard maximumLength > 0, offset < contentLength else { return Data() }
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                guard let self else {
-                    continuation.resume(throwing: StoreError.closed)
-                    return
-                }
-                do {
-                    continuation.resume(returning: try self.blockingRead(offset: offset, maximumLength: maximumLength, timeout: timeout))
-                } catch {
-                    continuation.resume(throwing: error)
+        let cancellation = ReadCancellationState()
+        return try await withTaskCancellationHandler(operation: {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    guard let self else {
+                        continuation.resume(throwing: StoreError.closed)
+                        return
+                    }
+                    do {
+                        continuation.resume(returning: try self.blockingRead(offset: offset, maximumLength: maximumLength, timeout: timeout, cancellation: cancellation))
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
-        }
+        }, onCancel: { [weak self] in
+            cancellation.cancel()
+            guard let self else { return }
+            self.condition.lock()
+            self.condition.broadcast()
+            self.condition.unlock()
+        })
     }
 
     func availableLength(from offset: Int64, maximumLength: Int64) -> Int64 {
@@ -336,22 +363,25 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
         else if keepFiles { try? FileManager.default.removeItem(at: sessionMarkerURL) }
     }
 
-    private func blockingRead(offset: Int64, maximumLength: Int, timeout: TimeInterval) throws -> Data {
+    private func blockingRead(offset: Int64, maximumLength: Int, timeout: TimeInterval, cancellation: ReadCancellationState) throws -> Data {
         let deadline = Date().addingTimeInterval(timeout)
         var readableLength: Int64 = 0
         var fd: Int32 = -1
 
         condition.lock()
         defer { condition.unlock() }
-        while !closed {
+        while !closed && !cancellation.isCancelled {
             readableLength = rangeSet.contiguousLength(from: offset, maximumLength: Int64(maximumLength))
             if readableLength > 0 {
                 fd = fileDescriptor
                 break
             }
-            if !condition.wait(until: deadline) { break }
+            let wakeDeadline = min(deadline, Date().addingTimeInterval(0.25))
+            _ = condition.wait(until: wakeDeadline)
+            if Date() >= deadline { break }
         }
 
+        if cancellation.isCancelled { throw CancellationError() }
         if closed || fd < 0 { throw StoreError.closed }
         guard readableLength > 0 else { throw StoreError.timeout(offset: offset) }
 

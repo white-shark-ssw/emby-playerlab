@@ -253,6 +253,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         DiagnosticsLogger.shared.playback("MDKSeek", "id=\(intent.id) target=\(String(format: "%.3f", intent.target)) phase=native-arm retry=\(intent.retryCount) nativeOutstanding=\(nativeSeekOutstandingCount)")
 
         if let session = sharedTransportSession {
+            transportHTTPServer?.resetClientStreams(reason: "mdk-seek-\(intent.id)")
             Task { @MainActor [weak self, weak player] in
                 await session.prioritizeSeek(position: intent.target, duration: intent.duration)
                 guard let self, let player, intent.playerGeneration == self.generation, self.player === player, self.activeNativeSeek?.id == intent.id else { return }
