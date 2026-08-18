@@ -1,0 +1,74 @@
+name: Deliver Playback Architecture IPA
+
+on:
+  pull_request:
+    branches: [ci/playback-architecture-0.13.8-base]
+
+permissions:
+  contents: write
+
+jobs:
+  deliver:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode and tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          swift --version
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build OnePlayer 0.13.8 Build75
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Validate, package and checksum
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.8' --build '75' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+          rm -rf Payload && mkdir Payload && cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-DualEngine-0.13.8-build75-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          shasum -a 256 "$IPA" > "$IPA.sha256"
+          git archive --format=zip --output 'OnePlayer-DualEngine-0.13.8-build75-source.zip' feat/playback-architecture-0.13.8
+          shasum -a 256 'OnePlayer-DualEngine-0.13.8-build75-source.zip' > 'OnePlayer-DualEngine-0.13.8-build75-source.zip.sha256'
+
+      - name: Publish prerelease assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG='oneplayer-0.13.8-build75-dualengine-test'
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag; fi
+          gh release create "$TAG" \
+            OnePlayer-DualEngine-0.13.8-build75-unsigned.ipa \
+            OnePlayer-DualEngine-0.13.8-build75-unsigned.ipa.sha256 \
+            OnePlayer-DualEngine-0.13.8-build75-source.zip \
+            OnePlayer-DualEngine-0.13.8-build75-source.zip.sha256 \
+            app-validation.log min-os-report.log \
+            --repo "$GITHUB_REPOSITORY" \
+            --target feat/playback-architecture-0.13.8 \
+            --prerelease \
+            --title 'OnePlayer 0.13.8 Build75 Dual Engine Test' \
+            --notes 'CI-validated test package. MDK is the default high-performance engine; MPV is the high-compatibility engine. Playback buffer state is common-layer owned. Deployment target remains iOS 15.0.'
