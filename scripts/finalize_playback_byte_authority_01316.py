@@ -56,4 +56,34 @@ if raw_record in text:
     raise SystemExit('raw concrete read still pollutes playback authority samples')
 
 p.write_text(text)
-print('Build83 old raw-read authority paths removed')
+
+mdk = Path("MDKLab/App/MDKKSAVIOPlayerEngine.swift")
+mdk_text = mdk.read_text()
+old_recovery = r'''    func recoverStall(position: Double, duration: Double) {
+        guard let player else { return }
+        if let sharedTransportSession { Task { await sharedTransportSession.recoverStall(position: position, duration: duration) } }
+        DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) state=\(String(describing: player.state)) status=0x\(String(player.mediaStatus.rawValue, radix: 16)) unifiedTransport=\(sharedTransportSession != nil) action=prioritize-and-play")
+        if shouldPlay { player.state = .Playing }
+    }
+'''
+new_recovery = r'''    func recoverStall(position: Double, duration: Double) {
+        guard let player else { return }
+        if let sharedTransportSession { Task { await sharedTransportSession.recoverStall(position: position, duration: duration) } }
+        let status = player.mediaStatus.rawValue
+        let prematureEnd = hasStatus(status, bit: 6) && duration > 0 && position + max(3, duration * 0.005) < duration
+        if prematureEnd, shouldPlay {
+            DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) state=\(String(describing: player.state)) status=0x\(String(status, radix: 16)) unifiedTransport=\(sharedTransportSession != nil) action=native-seek-current-after-network-eof")
+            seek(to: position, direction: .absolute)
+            return
+        }
+        DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) state=\(String(describing: player.state)) status=0x\(String(status, radix: 16)) unifiedTransport=\(sharedTransportSession != nil) action=prioritize-and-play")
+        if shouldPlay { player.state = .Playing }
+    }
+'''
+if new_recovery not in mdk_text:
+    if old_recovery not in mdk_text:
+        raise SystemExit('MDK recoverStall anchor missing')
+    mdk_text = mdk_text.replace(old_recovery, new_recovery, 1)
+mdk.write_text(mdk_text)
+
+print('Build83 authority separation and MDK EOF recovery finalized')
