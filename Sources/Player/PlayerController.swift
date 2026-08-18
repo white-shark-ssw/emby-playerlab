@@ -27,6 +27,8 @@ final class PlayerController: ObservableObject {
     private let orchestrator: PlaybackOrchestrator
     private let transportContext: PlaybackTransportContext?
     private var preferredForwardBuffer: Double = 90
+    private var startupResumeTask: Task<Double, Never>?
+    private var startupTransportPrewarmTask: Task<Void, Never>?
     private var initialPlaybackTask: Task<Void, Never>?
     private var progressTask: Task<Void, Never>?
     private var feedbackTask: Task<Void, Never>?
@@ -97,8 +99,33 @@ final class PlayerController: ObservableObject {
         bindEngine()
     }
 
+    func prewarmStartup() {
+        guard !started else { return }
+        if startupResumeTask == nil {
+            startupResumeTask = Task { [weak self] in
+                guard let self else { return 0 }
+                let began = CACurrentMediaTime()
+                DiagnosticsLogger.shared.playback("StartupFastPath", "resume lookup begin item=\(self.source.itemId)")
+                let position = await self.resolveInitialPlaybackPosition()
+                DiagnosticsLogger.shared.playback("StartupFastPath", "resume lookup ready item=\(self.source.itemId) position=\(String(format: "%.3f", position)) ms=\(Int((CACurrentMediaTime() - began) * 1000))")
+                return position
+            }
+        }
+        if startupTransportPrewarmTask == nil, let session = transportContext?.session {
+            startupTransportPrewarmTask = Task { [weak self] in
+                guard let self else { return }
+                let began = CACurrentMediaTime()
+                DiagnosticsLogger.shared.playback("StartupFastPath", "transport resolve begin item=\(self.source.itemId)")
+                let ready = await session.prewarmStartupResolve()
+                guard !Task.isCancelled else { return }
+                DiagnosticsLogger.shared.playback("StartupFastPath", "transport resolve ready item=\(self.source.itemId) success=\(ready) ms=\(Int((CACurrentMediaTime() - began) * 1000))")
+            }
+        }
+    }
+
     func start(preferredForwardBuffer: Double) {
         guard !started else { return }
+        prewarmStartup()
         started = true
         self.preferredForwardBuffer = preferredForwardBuffer > 0 ? preferredForwardBuffer : 90
         configureAudioSession()
@@ -106,13 +133,17 @@ final class PlayerController: ObservableObject {
         initialPlaybackTask?.cancel()
         initialPlaybackTask = Task { [weak self] in
             guard let self else { return }
-            let startPosition = await self.resolveInitialPlaybackPosition()
+            let startPosition: Double
+            if let resumeTask = self.startupResumeTask { startPosition = await resumeTask.value }
+            else { startPosition = await self.resolveInitialPlaybackPosition() }
             guard !Task.isCancelled, self.started else { return }
-            if startPosition > 0.5, let session = self.transportContext?.session {
-                await session.prepareInitialPlayback(position: startPosition, duration: self.source.mediaSource.durationSeconds ?? 0)
+            let duration = self.source.mediaSource.durationSeconds ?? 0
+            if let session = self.transportContext?.session {
+                await session.releaseStartupPrewarm(initialPosition: startPosition, duration: duration)
                 guard !Task.isCancelled, self.started else { return }
             }
             self.initialPlaybackTask = nil
+            DiagnosticsLogger.shared.playback("StartupFastPath", "engine activation item=\(self.source.itemId) position=\(String(format: "%.3f", startPosition)) transportResolveStarted=\(self.startupTransportPrewarmTask != nil)")
             self.startEngine(at: startPosition)
         }
     }
@@ -183,6 +214,10 @@ final class PlayerController: ObservableObject {
         playbackSessionStarted = false
         DiagnosticsLogger.shared.log("Lifecycle", "player close requested engine=\(engineKind.title) position=\(snapshot.position)")
 
+        startupResumeTask?.cancel()
+        startupResumeTask = nil
+        startupTransportPrewarmTask?.cancel()
+        startupTransportPrewarmTask = nil
         initialPlaybackTask?.cancel()
         initialPlaybackTask = nil
         progressTask?.cancel()

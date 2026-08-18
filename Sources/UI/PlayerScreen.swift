@@ -120,6 +120,7 @@ struct PlayerScreen: View {
             originalScreenBrightness = UIScreen.main.brightness
             applyIndependentBrightnessIfNeeded()
             displayRefreshMonitor.start()
+            controller.prewarmStartup()
             AppOrientationCoordinator.shared.beginPlayerPresentation(source: controller.source)
         }
         .onDisappear {

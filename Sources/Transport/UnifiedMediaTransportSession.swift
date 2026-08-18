@@ -121,6 +121,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var playbackAdvancing = true
     private var playbackStarving = false
     private var awaitingInitialResumeDemand = false
+    private var startupResolveOnlyHold = false
+    private var startupPrewarmReleased = false
     private var initialResumeAnchorByte: Int64?
     private var initialResumeCandidateByte: Int64?
     private var initialResumeHistoryGuardUntil = Date.distantPast
@@ -180,6 +182,28 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         if !advancing { playbackStarving = false }
         DiagnosticsLogger.shared.playback("RollingCache", "playback advancing=\(advancing) center=\(cacheWindowCenter) refill=\(cacheRefillActive)")
         scheduleSlots(reason: advancing ? "playback-resumed" : "playback-paused-fill")
+    }
+
+    func prewarmStartupResolve() async -> Bool {
+        guard !stopped else { return false }
+        if !startupPrewarmReleased { startupResolveOnlyHold = true }
+        do {
+            _ = try await resolve()
+            return true
+        } catch {
+            DiagnosticsLogger.shared.playback("StartupFastPath", "transport resolve failed error=\(error.localizedDescription)")
+            return false
+        }
+    }
+
+    func releaseStartupPrewarm(initialPosition: Double, duration: Double) {
+        guard !stopped else { return }
+        startupPrewarmReleased = true
+        if initialPosition > 0.5 { prepareInitialPlayback(position: initialPosition, duration: duration) }
+        let wasHeld = startupResolveOnlyHold
+        startupResolveOnlyHold = false
+        DiagnosticsLogger.shared.playback("StartupFastPath", "transport scheduler release resume=\(initialPosition > 0.5) wasHeld=\(wasHeld) resolved=\(resource != nil)")
+        if resource != nil { scheduleSlots(reason: "startup-fast-path-release") }
     }
 
     func prepareInitialPlayback(position: Double, duration: Double) {
@@ -643,6 +667,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let upper = min(resource.contentLength, max(lower + 1, requestedUpper))
         let candidate = lower..<upper
         if metadata {
+            if let active = slotClaims.values.first(where: { ($0.role == .metadata || $0.role == .startupMetadata) && $0.range.contains(lower) }) {
+                DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "metadata reuse active range=\(active.range.lowerBound)-\(active.range.upperBound) request=\(candidate.lowerBound)-\(candidate.upperBound) reason=\(reason) action=no-duplicate-lane")
+                return
+            }
             if let existing = pendingMetadataRange, existing.contains(lower), existing.upperBound >= upper { return }
             pendingMetadataRange = candidate
         } else {
@@ -687,6 +715,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
     private func scheduleSlots(reason: String) {
         guard !stopped, let resource, let store else { return }
+        if startupResolveOnlyHold {
+            refreshMetrics(resource: resource)
+            return
+        }
 
         if !startupMetadataQueue.isEmpty || slotClaims.values.contains(where: { $0.role == .startupMetadata }) {
             for slot in [0, 1] where slotTasks[slot] == nil && !liveLaneResetPending.contains(slot) && !liveLaneSourceRefreshPending.contains(slot) {
