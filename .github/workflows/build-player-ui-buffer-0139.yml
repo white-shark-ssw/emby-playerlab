@@ -7,7 +7,7 @@ on:
     branches: [feat/playback-architecture-0.13.8]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -16,27 +16,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Materialize PlayerScreen timeline cache strip
+      - name: Verify materialized player UI and settings surface
         run: |
           set -euo pipefail
-          python3 scripts/materialize_player_screen_0139.py
           git diff --check
-          if ! git diff --quiet -- Sources/UI/PlayerScreen.swift; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add Sources/UI/PlayerScreen.swift
-            git commit -m 'Show transport cache strip in player timeline'
-            git push origin HEAD:feat/player-ui-buffer-0.13.9
-          fi
-
-      - name: Verify formal settings surface
-        run: |
-          set -euo pipefail
+          grep -q 'cacheByteRanges: controller.transportCacheRanges' Sources/UI/PlayerScreen.swift
           grep -q 'return "自动（高性能优先）"' Sources/Player/PlayerEngine.swift
           grep -q 'return "MDK高性能引擎"' Sources/Player/PlayerEngine.swift
           grep -q 'return "MPV高兼容引擎"' Sources/Player/PlayerEngine.swift
           if grep -q 'NavigationLink(destination: PlaybackLabView())' Sources/UI/OnePlayerSettingsViews.swift; then exit 1; fi
-          grep -q 'cacheByteRanges: controller.transportCacheRanges' Sources/UI/PlayerScreen.swift
 
       - name: Select Xcode and tools
         run: |
