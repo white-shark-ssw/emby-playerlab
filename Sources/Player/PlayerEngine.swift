@@ -134,8 +134,14 @@ struct PlayerSnapshot: Equatable {
 }
 
 struct PlaybackBufferState: Equatable {
+    /// Engine-internal instantaneous playable ranges. These may shrink/re-anchor during Seek
+    /// and are intentionally not rendered directly by the normal playback timeline.
     var livePlayableRanges: [ClosedRange<Double>] = []
+    /// Session-persistent verified media-time ranges retained for diagnostics and timeline facts.
     var verifiedHistoryRanges: [ClosedRange<Double>] = []
+    /// Stable media-time buffer endpoint for the normal single-track player UI.
+    /// Playback progress is always rendered above this layer.
+    var timelineBufferedEnd: Double = 0
     var isBuffering = false
     var waitingReason: String?
 }

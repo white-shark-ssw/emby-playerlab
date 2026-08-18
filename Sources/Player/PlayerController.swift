@@ -56,6 +56,7 @@ final class PlayerController: ObservableObject {
     private var lastHandledEngineError: String?
     private var lastBufferTimelineLogAt = Date.distantPast
     private var lastVerifiedMPVPosition: Double?
+    private var timelineBufferedRange: ClosedRange<Double>?
     private var stallWatchdogSuppressedUntil = Date.distantPast
     private var hasPlaybackAdvanced = false
     private var initialResumeConfirmationPending = false
@@ -194,6 +195,8 @@ final class PlayerController: ObservableObject {
         transportSummary = nil
         transportCacheFraction = 0
         transportCacheRanges = []
+        timelineBufferedRange = nil
+        bufferState = PlaybackBufferState()
         engineSwitchTask?.cancel()
         engineSwitchTask = nil
         startupFallbackTask?.cancel()
@@ -263,6 +266,7 @@ final class PlayerController: ObservableObject {
         pendingSeekTarget = target
         pendingSeekDirection = offset >= 0 ? .forward : .backward
         displayedPosition = target
+        prepareTimelineBufferForSeek(target, reason: offset >= 0 ? "double-tap-forward" : "double-tap-backward")
         suppressStallWatchdog(for: 3)
         DiagnosticsLogger.shared.log("SeekAnchor", "offset=\(offset) base=\(base) target=\(target) enginePosition=\(snapshot.position)")
         engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)
@@ -413,13 +417,101 @@ final class PlayerController: ObservableObject {
         let forward = max(0, end - value.position)
         let ranges = value.bufferedRanges.prefix(8).map { String(format: "%.2f-%.2f", $0.lowerBound, $0.upperBound) }.joined(separator: ",")
         let suffix = value.bufferedRanges.count > 8 ? ",..." : ""
-        DiagnosticsLogger.shared.log("BufferTimeline", "engine=\(engineKind.title) position=\(String(format: "%.3f", value.position)) forwardPlayable=\(String(format: "%.3f", forward)) playableRanges=[\(ranges)\(suffix)] buffering=\(value.isBuffering)")
+        DiagnosticsLogger.shared.log("BufferTimeline", "engine=\(engineKind.title) position=\(String(format: "%.3f", value.position)) forwardPlayable=\(String(format: "%.3f", forward)) timelineBufferedEnd=\(String(format: "%.3f", bufferState.timelineBufferedEnd)) playableRanges=[\(ranges)\(suffix)] buffering=\(value.isBuffering)")
     }
 
     var verifiedBufferedEnd: Double { verifiedBufferedRanges.map(\.upperBound).max() ?? 0 }
 
     private func updatePlaybackBufferState(from value: PlayerSnapshot) {
-        bufferState = PlaybackBufferState(livePlayableRanges: value.bufferedRanges, verifiedHistoryRanges: verifiedBufferedRanges, isBuffering: value.isBuffering, waitingReason: value.waitingReason)
+        updateTimelineBufferedRange(from: value)
+        bufferState = PlaybackBufferState(
+            livePlayableRanges: value.bufferedRanges,
+            verifiedHistoryRanges: verifiedBufferedRanges,
+            timelineBufferedEnd: timelineBufferedEnd(for: value.position),
+            isBuffering: value.isBuffering,
+            waitingReason: value.waitingReason
+        )
+    }
+
+    private func prepareTimelineBufferForSeek(_ target: Double, reason: String) {
+        let position = max(0, target)
+        let previousEnd = bufferState.timelineBufferedEnd
+        if let verified = verifiedRange(containing: position) {
+            timelineBufferedRange = verified
+        } else if let current = timelineBufferedRange,
+                  position <= current.upperBound + 0.75,
+                  position >= current.lowerBound - max(60, preferredForwardBuffer * 1.5) {
+            timelineBufferedRange = min(current.lowerBound, position)...max(current.upperBound, position)
+        } else {
+            timelineBufferedRange = position...position
+        }
+        bufferState.timelineBufferedEnd = timelineBufferedEnd(for: position)
+        if abs(previousEnd - bufferState.timelineBufferedEnd) > 0.05 {
+            DiagnosticsLogger.shared.log("BufferTimelineUI", "seek-handoff reason=\(reason) target=\(String(format: "%.3f", position)) previousEnd=\(String(format: "%.3f", previousEnd)) stableEnd=\(String(format: "%.3f", bufferState.timelineBufferedEnd))")
+        }
+    }
+
+    private func updateTimelineBufferedRange(from value: PlayerSnapshot) {
+        let position = max(0, value.position)
+
+        if let target = pendingSeekTarget {
+            if let verified = verifiedRange(containing: target) {
+                timelineBufferedRange = verified
+                return
+            }
+            if let current = timelineBufferedRange,
+               target <= current.upperBound + 0.75,
+               target >= current.lowerBound - max(60, preferredForwardBuffer * 1.5) {
+                return
+            }
+            if abs(position - target) <= 1.0, let live = liveRange(containing: position, in: value), live.upperBound > position + 0.25 {
+                timelineBufferedRange = min(target, position)...max(target, live.upperBound)
+            }
+            return
+        }
+
+        if let verified = verifiedRange(containing: position) {
+            if let current = timelineBufferedRange, rangesTouch(current, verified), rangeContains(current, position) || rangeContains(verified, position) {
+                timelineBufferedRange = min(current.lowerBound, verified.lowerBound)...max(current.upperBound, verified.upperBound)
+            } else {
+                timelineBufferedRange = verified
+            }
+            return
+        }
+
+        if let live = liveRange(containing: position, in: value), live.upperBound > position + 0.25 {
+            if let current = timelineBufferedRange, rangeContains(current, position) {
+                timelineBufferedRange = min(current.lowerBound, position)...max(current.upperBound, live.upperBound)
+            } else {
+                timelineBufferedRange = position...live.upperBound
+            }
+            return
+        }
+
+        if let current = timelineBufferedRange, rangeContains(current, position) { return }
+        timelineBufferedRange = position...position
+    }
+
+    private func timelineBufferedEnd(for position: Double) -> Double {
+        let raw = max(max(0, position), timelineBufferedRange?.upperBound ?? max(0, position))
+        let duration = effectiveDuration
+        return duration > 0 ? min(duration, raw) : raw
+    }
+
+    private func verifiedRange(containing position: Double) -> ClosedRange<Double>? {
+        verifiedBufferedRanges.first { rangeContains($0, position) }
+    }
+
+    private func liveRange(containing position: Double, in value: PlayerSnapshot) -> ClosedRange<Double>? {
+        value.bufferedRanges.first { rangeContains($0, position) }
+    }
+
+    private func rangeContains(_ range: ClosedRange<Double>, _ position: Double, tolerance: Double = 0.75) -> Bool {
+        range.lowerBound <= position + tolerance && range.upperBound >= position - tolerance
+    }
+
+    private func rangesTouch(_ lhs: ClosedRange<Double>, _ rhs: ClosedRange<Double>) -> Bool {
+        lhs.lowerBound <= rhs.upperBound + 1.0 && rhs.lowerBound <= lhs.upperBound + 1.0
     }
 
     private func updateVerifiedBufferedRanges(from value: PlayerSnapshot) {
@@ -562,6 +654,7 @@ final class PlayerController: ObservableObject {
         let target = clampPosition(displayedPosition)
         pendingSeekTarget = target
         pendingSeekDirection = .absolute
+        prepareTimelineBufferForSeek(target, reason: "scrub")
         suppressStallWatchdog(for: 3)
         engine.seek(to: target, direction: .absolute)
         #if MDK_LAB
@@ -711,7 +804,9 @@ final class PlayerController: ObservableObject {
         let fullRange = 0...duration
         guard verifiedBufferedRanges != [fullRange] else { return }
         verifiedBufferedRanges = [fullRange]
+        timelineBufferedRange = fullRange
         bufferState.verifiedHistoryRanges = verifiedBufferedRanges
+        bufferState.timelineBufferedEnd = duration
         DiagnosticsLogger.shared.log("BufferHistory", "transport cache complete bytes=\(metrics.cacheBytes)/\(metrics.resourceBytes) action=promote-full-duration duration=\(String(format: "%.3f", duration))")
     }
 
