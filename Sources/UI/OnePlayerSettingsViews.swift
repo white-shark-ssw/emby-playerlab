@@ -98,8 +98,6 @@ struct OnePlayerServerSettingsView: View {
                         NavigationLink(destination: CacheSettingsView()) { settingsRow("缓存管理", value: nil, systemImage: "externaldrive", showsChevron: true) }
                         Divider().padding(.leading, 46)
                         NavigationLink(destination: LogSettingsView()) { settingsRow("日志", value: nil, systemImage: "doc.text", showsChevron: true) }
-                        Divider().padding(.leading, 46)
-                        NavigationLink(destination: PlaybackLabView()) { settingsRow("播放器实验室", value: nil, systemImage: "wrench.and.screwdriver", showsChevron: true) }
                     }
                 }
                 .padding(.horizontal, 16)
