@@ -3,9 +3,12 @@ import SwiftUI
 struct BufferedTimelineSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
-    /// Playback-layer buffer semantics on the media TIME axis. UnifiedTransport byte
-    /// ranges are deliberately excluded because byte/file-size projection is invalid for VBR/MKV.
+    /// Playback-layer buffer semantics on the media TIME axis. These ranges come from
+    /// the active engine and are never synthesized from file-size ratios.
     let bufferState: PlaybackBufferState
+    /// UnifiedTransport cached BYTE ranges normalized to 0...1. They are rendered on
+    /// a separate thin cache strip and are never interpreted as media-time ranges.
+    let cacheByteRanges: [ClosedRange<Double>] = []
     let onEditingChanged: (Bool) -> Void
 
     @State private var isEditing = false
@@ -14,26 +17,41 @@ struct BufferedTimelineSlider: View {
         GeometryReader { geometry in
             let width = max(geometry.size.width, 1)
             let trackHeight: CGFloat = 10
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color(white: 0.16)).frame(height: trackHeight)
+            let cacheTrackHeight: CGFloat = 3
+            VStack(spacing: 4) {
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color(white: 0.16)).frame(height: trackHeight)
 
-                ForEach(Array(normalizedRanges(bufferState.verifiedHistoryRanges).enumerated()), id: \.offset) { _, verified in
-                    Capsule()
-                        .fill(Color(white: 0.32))
-                        .frame(width: max(2, width * CGFloat(verified.upperBound - verified.lowerBound)), height: trackHeight)
-                        .offset(x: width * CGFloat(verified.lowerBound))
+                    ForEach(Array(normalizedRanges(bufferState.verifiedHistoryRanges).enumerated()), id: \.offset) { _, verified in
+                        Capsule()
+                            .fill(Color(white: 0.48))
+                            .frame(width: max(2, width * CGFloat(verified.upperBound - verified.lowerBound)), height: trackHeight)
+                            .offset(x: width * CGFloat(verified.lowerBound))
+                    }
+
+                    ForEach(Array(normalizedRanges(bufferState.livePlayableRanges).enumerated()), id: \.offset) { _, live in
+                        Capsule()
+                            .fill(Color(white: 0.68))
+                            .frame(width: max(2, width * CGFloat(live.upperBound - live.lowerBound)), height: trackHeight)
+                            .offset(x: width * CGFloat(live.lowerBound))
+                    }
+
+                    Capsule().fill(Color.white).frame(width: progressWidth(totalWidth: width), height: 4)
                 }
+                .frame(height: trackHeight)
 
-                ForEach(Array(normalizedRanges(bufferState.livePlayableRanges).enumerated()), id: \.offset) { _, live in
-                    Capsule()
-                        .fill(Color(white: 0.58))
-                        .frame(width: max(2, width * CGFloat(live.upperBound - live.lowerBound)), height: trackHeight)
-                        .offset(x: width * CGFloat(live.lowerBound))
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color(white: 0.12)).frame(height: cacheTrackHeight)
+                    ForEach(Array(normalizedByteRanges(cacheByteRanges).enumerated()), id: \.offset) { _, cached in
+                        Capsule()
+                            .fill(Color(white: 0.42))
+                            .frame(width: max(1, width * CGFloat(cached.upperBound - cached.lowerBound)), height: cacheTrackHeight)
+                            .offset(x: width * CGFloat(cached.lowerBound))
+                    }
                 }
-
-                Capsule().fill(Color.white).frame(width: progressWidth(totalWidth: width), height: 4)
+                .frame(height: cacheTrackHeight)
             }
-            .frame(height: max(geometry.size.height, 24))
+            .frame(width: width, height: max(geometry.size.height, 24), alignment: .center)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -75,6 +93,14 @@ struct BufferedTimelineSlider: View {
             guard clippedUpper > clippedLower else { return nil }
             let lower = min(1, max(0, (clippedLower - range.lowerBound) / duration))
             let upper = min(1, max(0, (clippedUpper - range.lowerBound) / duration))
+            return upper > lower ? lower...upper : nil
+        }
+    }
+
+    private func normalizedByteRanges(_ ranges: [ClosedRange<Double>]) -> [ClosedRange<Double>] {
+        ranges.compactMap { item in
+            let lower = min(1, max(0, item.lowerBound))
+            let upper = min(1, max(0, item.upperBound))
             return upper > lower ? lower...upper : nil
         }
     }
