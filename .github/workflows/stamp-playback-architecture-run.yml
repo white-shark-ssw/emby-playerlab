@@ -23,7 +23,7 @@ jobs:
           set -euo pipefail
           mkdir -p docs/build
           for attempt in $(seq 1 12); do
-            RUN_JSON="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-playback-architecture.yml --commit "$GITHUB_SHA" --limit 1 --json databaseId,status,conclusion,headSha,createdAt 2>/dev/null || true)"
+            RUN_JSON="$(gh run list --repo "$GITHUB_REPOSITORY" --branch "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --limit 20 --json databaseId,status,conclusion,headSha,createdAt,name 2>/dev/null | python3 -c 'import json,sys; rows=json.load(sys.stdin); rows=[x for x in rows if x.get("name")=="Build Playback Architecture IPA"]; print(json.dumps(rows[:1], separators=(",",":")))' || true)"
             if [ "$RUN_JSON" != "[]" ] && [ -n "$RUN_JSON" ]; then break; fi
             sleep 5
           done
