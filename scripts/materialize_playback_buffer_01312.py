@@ -7,8 +7,25 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+engine_text = Path("Sources/Player/PlayerEngine.swift").read_text()
+controller_text = Path("Sources/Player/PlayerController.swift").read_text()
+slider_text = Path("Sources/UI/BufferedTimelineSlider.swift").read_text()
+project_text = Path("project.mdklab.yml").read_text()
+if (
+    "Engine-confirmed instantaneous playable media-time ranges" in engine_text
+    and "prepareTimelineBufferForSeek" not in controller_text
+    and "bufferState.verifiedHistoryRanges" in slider_text
+    and "bufferState.livePlayableRanges" in slider_text
+    and "timelineBufferedEnd" not in slider_text
+    and 'MARKETING_VERSION: "0.13.12"' in project_text
+    and 'CURRENT_PROJECT_VERSION: "79"' in project_text
+):
+    print("OnePlayer 0.13.12 multi-range playback buffer already materialized")
+    raise SystemExit(0)
+
+
 player_engine = Path("Sources/Player/PlayerEngine.swift")
-text = player_engine.read_text()
+text = engine_text
 text = replace_once(
     text,
     '''struct PlaybackBufferState: Equatable {
@@ -40,7 +57,7 @@ player_engine.write_text(text)
 
 
 controller = Path("Sources/Player/PlayerController.swift")
-text = controller.read_text()
+text = controller_text
 text = text.replace('    private var timelineBufferedRange: ClosedRange<Double>?\n', '')
 text = text.replace('        timelineBufferedRange = nil\n        bufferState = PlaybackBufferState()\n', '        bufferState = PlaybackBufferState()\n')
 text = text.replace('        prepareTimelineBufferForSeek(target, reason: offset >= 0 ? "double-tap-forward" : "double-tap-backward")\n', '')
@@ -181,7 +198,7 @@ struct BufferedTimelineSlider: View {
 
 
 project = Path("project.mdklab.yml")
-text = project.read_text()
+text = project_text
 text = text.replace("# OnePlayer 0.13.11 stabilizes the single-track playback timeline above instantaneous engine buffer re-anchoring.", "# OnePlayer 0.13.12 renders engine-live and session-verified media-time buffer ranges on one truthful timeline.")
 text = text.replace('MARKETING_VERSION: "0.13.11"', 'MARKETING_VERSION: "0.13.12"')
 text = text.replace('CURRENT_PROJECT_VERSION: "78"', 'CURRENT_PROJECT_VERSION: "79"')
