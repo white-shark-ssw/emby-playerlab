@@ -14,7 +14,7 @@ packages:
   KSPlayerShim:
     path: MDKLab/KSPlayerShim
 
-# MDK Lab 0.13.5 truthful-buffer and latest-wins seek baseline. Keep the pinned SDK fixed for this comparison round.
+# MDK Lab 0.13.6 active-native watchdog and rendered-frame seek recovery baseline. Keep the pinned SDK fixed for this comparison round.
 # Rapid user taps remain immediate at the UI layer; only native MDK seek dispatch is coalesced latest-wins.
 # The MDK lab CI audits both LC_BUILD_VERSION and legacy LC_VERSION_MIN_IPHONEOS slices.
 settings:
@@ -23,8 +23,8 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "15.0"
     ENABLE_USER_SCRIPT_SANDBOXING: "NO"
     CLANG_ENABLE_MODULES: "YES"
-    MARKETING_VERSION: "0.13.5"
-    CURRENT_PROJECT_VERSION: "72"
+    MARKETING_VERSION: "0.13.6"
+    CURRENT_PROJECT_VERSION: "73"
 
 targets:
   EmbyPlayerLab:
@@ -49,8 +49,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app
-        MARKETING_VERSION: "0.13.5"
-        CURRENT_PROJECT_VERSION: "72"
+        MARKETING_VERSION: "0.13.6"
+        CURRENT_PROJECT_VERSION: "73"
         PRODUCT_NAME: "OnePlayer"
         PRODUCT_MODULE_NAME: EmbyPlayerLab
         TARGETED_DEVICE_FAMILY: "1,2"

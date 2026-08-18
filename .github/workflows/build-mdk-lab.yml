@@ -70,6 +70,7 @@ jobs:
           sparse_store = Path("Sources/Transport/DownloadFirstSparseStore.swift").read_text()
           checks = {
               "iOS 15 deployment": 'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,
+              "MDK Lab 0.13.6 version": 'MARKETING_VERSION: "0.13.6"' in spec and 'CURRENT_PROJECT_VERSION: "73"' in spec,
               "MDK 0.38 revision pinned": "f112a85f2f51c5352439465204c1ae0fa51a9f18" in spec,
               "MPVKit excluded from MDK target": "MPVKit" not in spec,
               "KSPlayer public package excluded": "kingslay/KSPlayer" not in spec,
@@ -81,12 +82,18 @@ jobs:
               "MDK VT decoder": 'videoDecoders = ["VT", "FFmpeg"]' in engine,
               "MDK seek recovery metric": "MDKSeekHealth" in engine,
               "MDK seek buffering grace": "seekBufferingUIGraceSeconds" in engine and "MDKBuffering" in engine,
-              "MDK seek watchdog": "MDKSeekWatchdog" in engine and "nativeOutstanding=" in engine,
+              "MDK active native seek watchdog": "scheduleActiveNativeSeekWatchdog" in engine and "active-native-timeout" in engine and "active-native-hard-timeout" in engine,
+              "MDK watchdog restores latest target": "latestDesiredTarget" in engine and "MDKSeekWedge" in engine and "rebuild-player-at-latest-target" in engine,
+              "MDK visual seek completion": "MDKSeekFrame" in engine and "renderedFrameSerial" in engine and "first rendered frame after latest seek callback" in engine,
+              "MDK frame watchdog": "scheduleSeekFrameWatchdog" in engine and "callback-without-new-frame" in engine,
+              "MDK seek grace bound to native dispatch": "active-native-seek-grace" in engine and "seekBufferingGraceStartedAt = nativeStartedAt" in engine,
+              "MDK async pause and teardown": "OnePlayer.MDK.NativeControl" in engine and "MDKTeardown" in engine and "detachForAsyncTeardown" in engine,
+              "MDK premature EOF seek recovery": "premature-eof-during-seek" in engine,
               "MDK seek immediate result is advisory": "immediateResult" in engine and "semantics=advisory" in engine and "MDK seek rejected" not in engine,
               "MDK stale seek callbacks isolated": "discard-stale-player-generation" in engine and "diagnostic-only" in engine,
               "MDK native seek latest-wins": "activeNativeSeek" in engine and "queuedLatestSeek" in engine and "MDKSeekCoalesce" in engine,
               "MDK native seek single-flight": "dispatchQueuedSeekIfNeeded" in engine and "nativeSeekOutstandingCount" in engine,
-              "MDK seek anchor waits for latest callback": "snapshotCanCompleteSeekAnchor" in controller and "engineKind != .ksAVIO" in controller and "scheduleSeekAnchorRelease(expectedTarget: target)" in controller,
+              "MDK seek anchor waits for visual completion": "snapshotCanCompleteSeekAnchor" in controller and "engineKind != .ksAVIO" in controller and "scheduleSeekAnchorRelease(expectedTarget: target)" in controller,
               "Persistent sparse cache crash marker": "session.dirty" in sparse_store and "unclean previous session detected" in sparse_store,
               "Truthful time buffer timeline": "playableRanges: controller.snapshot.bufferedRanges" in Path("Sources/UI/PlayerScreen.swift").read_text() and "downloadCacheRanges" not in Path("Sources/UI/BufferedTimelineSlider.swift").read_text(),
               "Cached seek preserves warm bulk": "authority=cached-read action=keep-cache-window" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text(),
@@ -192,8 +199,8 @@ jobs:
           python3 scripts/validate_built_app.py \
             "$APP_PATH" \
             --bundle-id "com.embyplayerlab.app" \
-            --version "0.13.5" \
-            --build "72" \
+            --version "0.13.6" \
+            --build "73" \
             --display-name "OnePlayer" \
             --minimum-os "15.0" \
             --primary-icon "OnePlayerIcon" \
@@ -232,7 +239,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="OnePlayer-MDKLab-0.13.5-${GITHUB_SHA::7}-unsigned.ipa"
+          IPA_NAME="OnePlayer-MDKLab-0.13.6-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           /usr/bin/unzip -t "$IPA_NAME"
           shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
