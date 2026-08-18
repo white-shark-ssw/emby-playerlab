@@ -1,0 +1,45 @@
+name: Export Playback Architecture Artifact
+
+on:
+  pull_request:
+    branches: [ci/playback-architecture-0.13.8-base]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download already validated artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 32144743811
+          pattern: OnePlayer-DualEngine-*
+          path: export
+          merge-multiple: true
+
+      - name: Verify validated package
+        run: |
+          set -euo pipefail
+          ls -lah export
+          IPA="$(find export -maxdepth 1 -name 'OnePlayer-DualEngine-0.13.8-*-unsigned.ipa' -print -quit)"
+          SOURCE="$(find export -maxdepth 1 -name 'OnePlayer-DualEngine-0.13.8-build75-*-source.zip' -print -quit)"
+          test -n "$IPA" && test -f "$IPA"
+          test -n "$SOURCE" && test -f "$SOURCE"
+          (cd export && shasum -a 256 -c "$(basename "$IPA").sha256")
+          (cd export && shasum -a 256 -c "$(basename "$SOURCE").sha256")
+
+      - name: Publish temporary test release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG='oneplayer-0.13.8-build75-dualengine-test'
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+          gh release create "$TAG" export/* --repo "$GITHUB_REPOSITORY" --target feat/playback-architecture-0.13.8 --prerelease --title 'OnePlayer 0.13.8 Build75 Dual Engine Test' --notes 'Validated CI test assets for the OnePlayer 0.13.8 dual-engine playback architecture. MDK high-performance engine is default; MPV is the high-compatibility engine. Deployment target remains iOS 15.0.'
