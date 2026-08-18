@@ -500,7 +500,6 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         }
         var reanchored = false
         if startupTailMetadata { DiagnosticsLogger.shared.log("UnifiedStartup", "critical-tail-metadata range=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=actual-demand") }
-        if concretePlaybackDemand, !resumeHistoricalDependency { recordPlaybackDemand(offset: range.lowerBound) }
         if concretePlaybackDemand, authoritativeSeekDemand, !resumeHistoricalDependency, !cachedSeekRead {
             lastBlockingPlaybackDemand = range
             lastBlockingPlaybackDemandAt = Date()
@@ -612,29 +611,6 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             installUrgent(range: bounded, metadata: false, reason: "resume-historical-dependency")
             scheduleSlots(reason: "resume-historical-dependency")
             return
-        }
-
-        if concretePlaybackDemand, !reanchored, !awaitingInitialResumeDemand, Date() > pendingUserSeekUntil {
-            switch demandCoordinator.observe(offset: range.lowerBound, activeCenter: cacheWindowCenter, nearDistance: blockBytes * 4, starving: playbackStarving) {
-            case .nearHead:
-                advanceCacheWindowCenterFromRecentDemand(resource: resource)
-            case .holdCandidate(let samples):
-                if samples == 1 {
-                    DiagnosticsLogger.shared.playback("PlaybackDemand", "candidate center=\(cacheWindowCenter) offset=\(range.lowerBound) starving=\(playbackStarving) reason=\(reason)")
-                }
-            case .promote(let offset, let promotionReason):
-                let previous = cacheWindowCenter
-                playbackAnchor = offset
-                playbackDemandSamples.removeAll()
-                recordPlaybackDemand(offset: offset)
-                resetCacheWindowCenter(to: offset, resource: resource, reason: promotionReason)
-                reanchored = true
-                DiagnosticsLogger.shared.playback("PlaybackDemand", "promoted previous=\(previous) new=\(offset) reason=\(promotionReason) request=\(range.lowerBound)-\(range.upperBound)")
-                for slot in [0, 1] {
-                    guard let active = slotClaims[slot], !active.range.contains(offset) else { continue }
-                    if active.role == .sequential || active.role == .urgentPlayback { cancelSlot(slot, reason: "active-head-promoted") }
-                }
-            }
         }
 
         if store.availableLength(from: range.lowerBound, maximumLength: min(Int64(range.count), urgentBlockBytes)) > 0 {
@@ -937,21 +913,6 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         cacheEmergencyActive = false
         resetSequentialWave()
         DiagnosticsLogger.shared.playback("RollingCache", "center reset previous=\(previous) new=\(cacheWindowCenter) reason=\(reason)")
-    }
-
-    private func advanceCacheWindowCenterFromRecentDemand(resource: TransportResolvedResource) {
-        guard playbackAdvancing, !awaitingInitialResumeDemand, Date() > pendingUserSeekUntil else { return }
-        prunePlaybackDemandSamples()
-        guard let recentFloor = playbackDemandSamples.map(\.offset).min() else { return }
-        let candidate = min(max(0, recentFloor), max(0, resource.contentLength - 1))
-        guard candidate > cacheWindowCenter else { return }
-        let distance = candidate - cacheWindowCenter
-        guard distance <= blockBytes * 4 else { return }
-        let previous = cacheWindowCenter
-        cacheWindowCenter = candidate
-        playbackAnchor = candidate
-        DiagnosticsLogger.shared.playback("RollingCache", "center advanced previous=\(previous) new=\(cacheWindowCenter) delta=\(distance)")
-        scheduleSlots(reason: "window-center-advanced")
     }
 
     private func rollingRefillGapBytes(window: Int64) -> Int64 {
