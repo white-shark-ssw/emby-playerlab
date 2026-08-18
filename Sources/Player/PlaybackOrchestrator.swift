@@ -23,23 +23,16 @@ final class PlaybackOrchestrator {
     init(source: ResolvedPlaybackSource, preference: PlayerEnginePreference) {
         self.source = source
         self.automaticMode = preference.isAutomatic
-        let media = source.mediaSource
-        let nativeContainers: Set<String> = ["mp4", "mov", "m4v"]
-        let nativeVideo: Set<String> = ["h264", "hevc", "h265"]
-        let nativeAudio: Set<String> = ["aac", "alac", "mp3", "ac3", "eac3"]
-        let video = media.videoCodec?.lowercased() ?? ""
-        let audio = media.audioCodec?.lowercased() ?? ""
-        let nativeFriendly = nativeContainers.contains(media.normalizedContainer) && (video.isEmpty || nativeVideo.contains(video)) && (audio.isEmpty || nativeAudio.contains(audio))
-        let largeIndexedMP4 = media.normalizedContainer == "mp4" && ((media.size ?? 0) >= 4 * 1_073_741_824 || (media.durationSeconds ?? 0) >= 3_600)
-        let storedCompatibility = MediaCompatibilityStore.requiresCompatibilityEngine(itemId: source.itemId)
-        if preference.isAutomatic, storedCompatibility || largeIndexedMP4 || !nativeFriendly {
-            let compatibilityKind = PlayerEnginePreference.automaticCompatibilityKind
-            self.currentKind = compatibilityKind
-            let reason = storedCompatibility ? "stored-media-compatibility" : (largeIndexedMP4 ? "large-indexed-mp4" : "non-native-container-or-codec")
-            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=\(compatibilityKind.title)+UnifiedTransportV3 reason=\(reason)")
-        } else if preference.isAutomatic {
-            self.currentKind = .resourceLoaderAVPlayer
-            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=AVPlayerResourceLoader+UnifiedTransportV3 reason=native-friendly")
+        if preference.isAutomatic {
+            let storedCompatibility = MediaCompatibilityStore.requiresCompatibilityEngine(itemId: source.itemId)
+            if storedCompatibility {
+                let compatibilityKind = PlayerEnginePreference.automaticCompatibilityKind
+                self.currentKind = compatibilityKind
+                DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=\(compatibilityKind.title)+UnifiedTransportV3 reason=stored-media-compatibility")
+            } else {
+                self.currentKind = preference.resolved(for: source.mediaSource)
+                DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=\(currentKind.title)+UnifiedTransportV3 reason=high-performance-priority")
+            }
         } else {
             self.currentKind = preference.resolved(for: source.mediaSource)
         }
