@@ -3,6 +3,8 @@ name: Build OnePlayer 0.13.9 Buffer UI
 on:
   push:
     branches: [feat/player-ui-buffer-0.13.9]
+  pull_request:
+    branches: [feat/playback-architecture-0.13.8]
 
 permissions:
   contents: write
