@@ -22,7 +22,21 @@ struct BufferedTimelineSlider: View {
             let trackHeight: CGFloat = 6
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.20)).frame(height: trackHeight)
-                Rectangle().fill(Color.white.opacity(0.68)).frame(width: bufferedWidth(totalWidth: width), height: trackHeight)
+
+                ForEach(Array(normalizedRanges(bufferState.verifiedHistoryRanges).enumerated()), id: \.offset) { _, buffered in
+                    Rectangle()
+                        .fill(Color.white.opacity(0.38))
+                        .frame(width: max(1, width * CGFloat(buffered.upperBound - buffered.lowerBound)), height: trackHeight)
+                        .offset(x: width * CGFloat(buffered.lowerBound))
+                }
+
+                ForEach(Array(normalizedRanges(bufferState.livePlayableRanges).enumerated()), id: \.offset) { _, buffered in
+                    Rectangle()
+                        .fill(Color.white.opacity(0.68))
+                        .frame(width: max(1, width * CGFloat(buffered.upperBound - buffered.lowerBound)), height: trackHeight)
+                        .offset(x: width * CGFloat(buffered.lowerBound))
+                }
+
                 Rectangle().fill(Color.white).frame(width: progressWidth(totalWidth: width), height: trackHeight)
             }
             .frame(width: width, height: trackHeight)
@@ -60,6 +74,19 @@ struct BufferedTimelineSlider: View {
         }
     }
 
+    private func normalizedRanges(_ ranges: [ClosedRange<Double>]) -> [ClosedRange<Double>] {
+        let duration = range.upperBound - range.lowerBound
+        guard duration > 0 else { return [] }
+        return ranges.compactMap { item in
+            let clippedLower = max(range.lowerBound, item.lowerBound)
+            let clippedUpper = min(range.upperBound, item.upperBound)
+            guard clippedUpper > clippedLower else { return nil }
+            let lower = min(1, max(0, (clippedLower - range.lowerBound) / duration))
+            let upper = min(1, max(0, (clippedUpper - range.lowerBound) / duration))
+            return upper > lower ? lower...upper : nil
+        }
+    }
+
     private var accessibilityValue: String {
         let duration = max(0, range.upperBound - range.lowerBound)
         guard duration > 0 else { return "0%" }
@@ -71,10 +98,6 @@ struct BufferedTimelineSlider: View {
         let duration = range.upperBound - range.lowerBound
         guard duration > 0 else { return 0 }
         return CGFloat(min(max((value - range.lowerBound) / duration, 0), 1))
-    }
-
-    private func bufferedWidth(totalWidth: CGFloat) -> CGFloat {
-        totalWidth * fraction(for: max(value, bufferState.timelineBufferedEnd))
     }
 
     private func progressWidth(totalWidth: CGFloat) -> CGFloat { totalWidth * fraction(for: value) }
