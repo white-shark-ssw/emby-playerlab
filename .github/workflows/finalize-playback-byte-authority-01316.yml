@@ -1,0 +1,29 @@
+name: Finalize OnePlayer 0.13.16 Playback Byte Authority
+
+on:
+  push:
+    branches: [feat/playback-byte-authority-0.13.16]
+
+concurrency:
+  group: finalize-playback-byte-authority-01316
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove legacy raw-read authority paths
+        run: |
+          set -euo pipefail
+          python3 scripts/finalize_playback_byte_authority_01316.py
+          if ! git diff --quiet -- Sources/Transport/UnifiedMediaTransportSession.swift; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add Sources/Transport/UnifiedMediaTransportSession.swift
+            git commit -m 'Remove legacy raw-read cache authority paths'
+            git push origin HEAD
+          fi
