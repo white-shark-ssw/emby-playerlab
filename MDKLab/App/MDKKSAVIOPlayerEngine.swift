@@ -349,7 +349,14 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     func recoverStall(position: Double, duration: Double) {
         guard let player else { return }
         if let sharedTransportSession { Task { await sharedTransportSession.recoverStall(position: position, duration: duration) } }
-        DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) state=\(String(describing: player.state)) status=0x\(String(player.mediaStatus.rawValue, radix: 16)) unifiedTransport=\(sharedTransportSession != nil) action=prioritize-and-play")
+        let status = player.mediaStatus.rawValue
+        let prematureEnd = hasStatus(status, bit: 6) && duration > 0 && position + max(3, duration * 0.005) < duration
+        if prematureEnd, shouldPlay {
+            DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) state=\(String(describing: player.state)) status=0x\(String(status, radix: 16)) unifiedTransport=\(sharedTransportSession != nil) action=native-seek-current-after-network-eof")
+            seek(to: position, direction: .absolute)
+            return
+        }
+        DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) state=\(String(describing: player.state)) status=0x\(String(status, radix: 16)) unifiedTransport=\(sharedTransportSession != nil) action=prioritize-and-play")
         if shouldPlay { player.state = .Playing }
     }
 
