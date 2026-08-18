@@ -3,9 +3,9 @@ import SwiftUI
 struct BufferedTimelineSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
-    /// Engine-reported playable TIME ranges. The slider is a time axis, so byte-space
-    /// UnifiedTransport ranges must never be projected onto it by file-size ratio.
-    let playableRanges: [ClosedRange<Double>]
+    /// Playback-layer buffer semantics on the media TIME axis. UnifiedTransport byte
+    /// ranges are deliberately excluded because byte/file-size projection is invalid for VBR/MKV.
+    let bufferState: PlaybackBufferState
     let onEditingChanged: (Bool) -> Void
 
     @State private var isEditing = false
@@ -17,11 +17,18 @@ struct BufferedTimelineSlider: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Color(white: 0.16)).frame(height: trackHeight)
 
-                ForEach(Array(normalizedPlayableRanges.enumerated()), id: \.offset) { _, cached in
+                ForEach(Array(normalizedRanges(bufferState.verifiedHistoryRanges).enumerated()), id: \.offset) { _, verified in
                     Capsule()
-                        .fill(Color(white: 0.48))
-                        .frame(width: max(2, width * CGFloat(cached.upperBound - cached.lowerBound)), height: trackHeight)
-                        .offset(x: width * CGFloat(cached.lowerBound))
+                        .fill(Color(white: 0.32))
+                        .frame(width: max(2, width * CGFloat(verified.upperBound - verified.lowerBound)), height: trackHeight)
+                        .offset(x: width * CGFloat(verified.lowerBound))
+                }
+
+                ForEach(Array(normalizedRanges(bufferState.livePlayableRanges).enumerated()), id: \.offset) { _, live in
+                    Capsule()
+                        .fill(Color(white: 0.58))
+                        .frame(width: max(2, width * CGFloat(live.upperBound - live.lowerBound)), height: trackHeight)
+                        .offset(x: width * CGFloat(live.lowerBound))
                 }
 
                 Capsule().fill(Color.white).frame(width: progressWidth(totalWidth: width), height: 4)
@@ -59,10 +66,10 @@ struct BufferedTimelineSlider: View {
         }
     }
 
-    private var normalizedPlayableRanges: [ClosedRange<Double>] {
+    private func normalizedRanges(_ ranges: [ClosedRange<Double>]) -> [ClosedRange<Double>] {
         let duration = range.upperBound - range.lowerBound
         guard duration > 0 else { return [] }
-        return playableRanges.compactMap { item in
+        return ranges.compactMap { item in
             let clippedLower = max(range.lowerBound, item.lowerBound)
             let clippedUpper = min(range.upperBound, item.upperBound)
             guard clippedUpper > clippedLower else { return nil }
@@ -75,7 +82,8 @@ struct BufferedTimelineSlider: View {
     private var accessibilityValue: String {
         let duration = max(0, range.upperBound - range.lowerBound)
         guard duration > 0 else { return "0%" }
-        return "\(Int(((value - range.lowerBound) / duration * 100).rounded()))%"
+        let percent = Int(((value - range.lowerBound) / duration * 100).rounded())
+        return bufferState.isBuffering ? "\(percent)%，正在缓冲" : "\(percent)%"
     }
 
     private func fraction(for value: Double) -> CGFloat {

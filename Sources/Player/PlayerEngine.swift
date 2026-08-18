@@ -17,14 +17,14 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
         case .ktvAVPlayer: return "旧 KTV AVPlayer"
         case .ksAVIO:
             #if MDK_LAB
-            return "MDK Metal（实验）"
+            return "高性能引擎"
             #else
             return "KSPlayer KSME（实验）"
             #endif
         case .resourceLoaderAVPlayer: return "智能 AVPlayer"
         case .transportAVPlayer: return "统一缓存 AVPlayer"
         case .avPlayer: return "直连 AVPlayer"
-        case .mpv: return "MPV 兼容引擎"
+        case .mpv: return "高兼容引擎"
         }
     }
 
@@ -52,14 +52,14 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .automatic: return "自动（推荐）"
+        case .automatic: return "自动（高性能优先）"
         case .resourceLoaderAVPlayer: return "诊断：智能 AVPlayer"
         case .transportAVPlayer: return "统一缓存 AVPlayer"
         case .avPlayer: return "诊断：直连 AVPlayer"
-        case .mpv: return "MPV 兼容引擎"
+        case .mpv: return "高兼容引擎"
         case .ksAVIO:
             #if MDK_LAB
-            return "MDK Metal（实验）"
+            return "高性能引擎"
             #else
             return "KSPlayer KSME（实验）"
             #endif
@@ -79,7 +79,9 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
     }
 
     static var automaticCompatibilityKind: PlayerEngineKind {
-        #if canImport(Libmpv)
+        #if MDK_LAB && canImport(KSPlayer)
+        return .ksAVIO
+        #elseif canImport(Libmpv)
         return .mpv
         #elseif canImport(KSPlayer)
         return .ksAVIO
@@ -88,9 +90,17 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
         #endif
     }
 
+    static var defaultPreference: PlayerEnginePreference {
+        #if MDK_LAB && canImport(KSPlayer)
+        return .ksAVIO
+        #else
+        return .automatic
+        #endif
+    }
+
     static func persisted(rawValue: String?) -> PlayerEnginePreference {
-        let preference = rawValue.flatMap(PlayerEnginePreference.init(rawValue:)) ?? .automatic
-        return selectableCases.contains(preference) ? preference : .automatic
+        let preference = rawValue.flatMap(PlayerEnginePreference.init(rawValue:)) ?? defaultPreference
+        return selectableCases.contains(preference) ? preference : defaultPreference
     }
 
     var isAutomatic: Bool { self == .automatic }
@@ -103,6 +113,9 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
         case .mpv: return .mpv
         case .ksAVIO: return .ksAVIO
         case .automatic:
+            #if MDK_LAB && canImport(KSPlayer)
+            return .ksAVIO
+            #else
             let nativeContainers: Set<String> = ["mp4", "mov", "m4v"]
             let nativeVideo: Set<String> = ["h264", "hevc", "h265"]
             let nativeAudio: Set<String> = ["aac", "alac", "mp3", "ac3", "eac3"]
@@ -114,6 +127,7 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
                 return .resourceLoaderAVPlayer
             }
             return Self.automaticCompatibilityKind
+            #endif
         }
     }
 }
@@ -130,6 +144,13 @@ struct PlayerSnapshot: Equatable {
     var accessLogStalls = 0
     var droppedVideoFrames = 0
     var observedBitrate: Double = 0
+}
+
+struct PlaybackBufferState: Equatable {
+    var livePlayableRanges: [ClosedRange<Double>] = []
+    var verifiedHistoryRanges: [ClosedRange<Double>] = []
+    var isBuffering = false
+    var waitingReason: String?
 }
 
 struct SeekResult {

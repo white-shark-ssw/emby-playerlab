@@ -85,6 +85,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         let playerGeneration: Int
         var retryCount = 0
         var nativeStartedAt: TimeInterval?
+        var nativeStartFrameSerial: UInt64?
     }
 
     let kind: PlayerEngineKind = .ksAVIO
@@ -109,6 +110,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private var firstRenderedGeneration = -1
     private var seekGeneration = 0
     private let seekBufferingUIGraceSeconds: TimeInterval = 0.5
+    private let activeNativeSeekFastWatchdogSeconds: TimeInterval = 1.0
     private let activeNativeSeekWatchdogSeconds: TimeInterval = 2.0
     private let activeNativeSeekHardWatchdogSeconds: TimeInterval = 5.0
     private let seekFrameWatchdogSeconds: TimeInterval = 1.5
@@ -273,6 +275,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         var dispatchedIntent = intent
         let nativeStartedAt = Date().timeIntervalSince1970
         dispatchedIntent.nativeStartedAt = nativeStartedAt
+        dispatchedIntent.nativeStartFrameSerial = renderedFrameSerial
         activeNativeSeek = dispatchedIntent
         seekBufferingGraceStartedAt = nativeStartedAt
         seekBufferingGraceID = dispatchedIntent.id
@@ -324,6 +327,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
                 self.dispatchQueuedSeekIfNeeded(player: player)
             }
         }
+        scheduleActiveNativeSeekFastWatchdog(player: player, intent: dispatchedIntent)
         scheduleActiveNativeSeekWatchdog(player: player, intent: dispatchedIntent, hard: false)
         DiagnosticsLogger.shared.playback("MDKSeek", "id=\(dispatchedIntent.id) target=\(String(format: "%.3f", dispatchedIntent.target)) phase=native-dispatch immediateResult=\(immediateResult) semantics=advisory retry=\(dispatchedIntent.retryCount) nativeOutstanding=\(nativeSeekOutstandingCount)")
     }
@@ -447,6 +451,37 @@ final class KSAVIOPlayerEngine: PlayerEngine {
             pending.didLogClockAdvance = true
             pendingSeekResume = pending
             DiagnosticsLogger.shared.playback("MDKSeekHealth", "id=\(pending.id) target=\(String(format: "%.3f", pending.target)) callbackPosition=\(String(format: "%.3f", callbackPosition)) firstClockAdvance=\(String(format: "%.3f", position)) resumeMs=\(String(format: "%.1f", resumeMs)) afterCallbackMs=\(afterCallbackMs.map { String(format: "%.1f", $0) } ?? "pending") playing=\(isPlaying) rawBuffering=\(rawBuffering) uiBuffering=\(buffering) bufferMs=\(player.buffered()) nativeOutstanding=\(nativeSeekOutstandingCount) awaitingRenderedFrame=true unifiedTransport=\(sharedTransportSession != nil)")
+        }
+    }
+
+    private func scheduleActiveNativeSeekFastWatchdog(player: swift_mdk.Player, intent: NativeSeekIntent) {
+        guard let nativeStartedAt = intent.nativeStartedAt, let startFrameSerial = intent.nativeStartFrameSerial else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + activeNativeSeekFastWatchdogSeconds) { [weak self, weak player] in
+            guard let self, let player, intent.playerGeneration == self.generation, self.player === player, self.activeNativeSeek?.id == intent.id else { return }
+            guard self.renderedFrameSerial <= startFrameSerial else {
+                DiagnosticsLogger.shared.playback("MDKSeekFastWatchdog", "id=\(intent.id) elapsedNativeMs=\(String(format: "%.1f", (Date().timeIntervalSince1970 - nativeStartedAt) * 1_000)) action=defer-render-progress")
+                return
+            }
+            guard let session = self.sharedTransportSession else {
+                DiagnosticsLogger.shared.playback("MDKSeekFastWatchdog", "id=\(intent.id) elapsedNativeMs=\(String(format: "%.1f", (Date().timeIntervalSince1970 - nativeStartedAt) * 1_000)) action=defer-no-unified-transport")
+                return
+            }
+            Task { [weak self, weak player] in
+                let metrics = await session.metrics()
+                await MainActor.run {
+                    guard let self, let player, intent.playerGeneration == self.generation, self.player === player, self.activeNativeSeek?.id == intent.id else { return }
+                    let status = player.mediaStatus.rawValue
+                    let rawBuffering = self.hasStatus(status, bit: 3) || self.hasStatus(status, bit: 4)
+                    let bufferMs = player.buffered()
+                    let noRenderedProgress = self.renderedFrameSerial <= startFrameSerial
+                    let transportHealthy = metrics.rangeFailureCount == 0 && metrics.resourceBytes > 0 && (metrics.cacheBytes > 0 || metrics.currentDownloadBytesPerSecond >= 1_048_576 || metrics.activeRequestCount == 0)
+                    let engineDataHealthy = bufferMs >= 500 && !rawBuffering
+                    let shouldRecover = noRenderedProgress && transportHealthy && engineDataHealthy
+                    let recoveryTarget = self.latestDesiredTarget(fallback: intent.target)
+                    DiagnosticsLogger.shared.playback("MDKSeekFastWatchdog", "id=\(intent.id) target=\(String(format: "%.3f", intent.target)) elapsedNativeMs=\(String(format: "%.1f", (Date().timeIntervalSince1970 - nativeStartedAt) * 1_000)) frameSerial=\(self.renderedFrameSerial)/\(startFrameSerial) bufferMs=\(bufferMs) rawBuffering=\(rawBuffering) transportHealthy=\(transportHealthy) cacheBytes=\(metrics.cacheBytes) active=\(metrics.activeRequestCount) networkBps=\(Int(metrics.currentDownloadBytesPerSecond)) latestTarget=\(String(format: "%.3f", recoveryTarget)) action=\(shouldRecover ? "recover-latest-target" : "defer-standard-watchdog")")
+                    if shouldRecover { self.recoverWedgedSeek(reason: "active-native-fast-timeout", fallbackTarget: recoveryTarget, playerGeneration: intent.playerGeneration) }
+                }
+            }
         }
     }
 

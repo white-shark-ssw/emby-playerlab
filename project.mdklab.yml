@@ -11,20 +11,23 @@ packages:
   SwiftMDK:
     url: https://github.com/wang-bin/swift-mdk.git
     revision: f112a85f2f51c5352439465204c1ae0fa51a9f18
+  MPVKit:
+    url: https://github.com/mpvkit/MPVKit.git
+    exactVersion: 1.0.0
   KSPlayerShim:
     path: MDKLab/KSPlayerShim
 
-# MDK Lab 0.13.6 active-native watchdog and rendered-frame seek recovery baseline. Keep the pinned SDK fixed for this comparison round.
-# Rapid user taps remain immediate at the UI layer; only native MDK seek dispatch is coalesced latest-wins.
-# The MDK lab CI audits both LC_BUILD_VERSION and legacy LC_VERSION_MIN_IPHONEOS slices.
+# OnePlayer 0.13.8 dual-engine playback architecture baseline. MDK is the default high-performance engine; MPV is the high-compatibility engine.
+# Playback/session/transport/buffer semantics stay above engine adapters; engine-specific recovery remains inside each adapter.
+# The CI audits both LC_BUILD_VERSION and legacy LC_VERSION_MIN_IPHONEOS slices for iOS 15 compatibility.
 settings:
   base:
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "15.0"
     ENABLE_USER_SCRIPT_SANDBOXING: "NO"
     CLANG_ENABLE_MODULES: "YES"
-    MARKETING_VERSION: "0.13.6"
-    CURRENT_PROJECT_VERSION: "73"
+    MARKETING_VERSION: "0.13.8"
+    CURRENT_PROJECT_VERSION: "75"
 
 targets:
   EmbyPlayerLab:
@@ -44,13 +47,15 @@ targets:
     dependencies:
       - package: SwiftMDK
         product: swift-mdk
+      - package: MPVKit
+        product: MPVKit
       - package: KSPlayerShim
         product: KSPlayer
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app
-        MARKETING_VERSION: "0.13.6"
-        CURRENT_PROJECT_VERSION: "73"
+        MARKETING_VERSION: "0.13.8"
+        CURRENT_PROJECT_VERSION: "75"
         PRODUCT_NAME: "OnePlayer"
         PRODUCT_MODULE_NAME: EmbyPlayerLab
         TARGETED_DEVICE_FAMILY: "1,2"

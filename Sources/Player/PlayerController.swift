@@ -18,6 +18,7 @@ final class PlayerController: ObservableObject {
     @Published private(set) var transportCacheFraction: Double = 0
     @Published private(set) var transportCacheRanges: [ClosedRange<Double>] = []
     @Published private(set) var verifiedBufferedRanges: [ClosedRange<Double>] = []
+    @Published private(set) var bufferState = PlaybackBufferState()
 
     @Published private(set) var source: ResolvedPlaybackSource
 
@@ -417,6 +418,10 @@ final class PlayerController: ObservableObject {
 
     var verifiedBufferedEnd: Double { verifiedBufferedRanges.map(\.upperBound).max() ?? 0 }
 
+    private func updatePlaybackBufferState(from value: PlayerSnapshot) {
+        bufferState = PlaybackBufferState(livePlayableRanges: value.bufferedRanges, verifiedHistoryRanges: verifiedBufferedRanges, isBuffering: value.isBuffering, waitingReason: value.waitingReason)
+    }
+
     private func updateVerifiedBufferedRanges(from value: PlayerSnapshot) {
         guard !value.bufferedRanges.isEmpty else { return }
         if engineKind == .mpv {
@@ -486,6 +491,7 @@ final class PlayerController: ObservableObject {
                 if value.position > 0.25 { self.hasPlaybackAdvanced = true }
                 self.confirmInitialResumePlaybackIfNeeded(value)
                 self.updateVerifiedBufferedRanges(from: value)
+                self.updatePlaybackBufferState(from: value)
                 self.logBufferTimelineIfNeeded(value)
                 if self.engineTransitionAwaitingFirstSnapshot {
                     self.engineTransitionAwaitingFirstSnapshot = false
@@ -659,7 +665,7 @@ final class PlayerController: ObservableObject {
                 DiagnosticsLogger.shared.log("StartupFallback", "check item=\(self.source.itemId) attempt=\(attempt) downloaded=\(healthyBytes) cache=\(cacheBytes) speed=\(Int(speed))B/s active=\(active) healthy=\(transportHealthy)")
                 guard transportHealthy else { continue }
                 MediaCompatibilityStore.markCompatibilityEngineRequired(itemId: self.source.itemId, reason: "avplayer-startup-cannot-open")
-                self.stallMessage = "媒体数据下载正常，但 AVPlayer 无法打开容器；正在从当前播放点使用 MPV 兼容引擎重新打开。"
+                self.stallMessage = "媒体数据下载正常，但 AVPlayer 无法打开容器；正在从当前播放点使用 高兼容引擎重新打开。"
                 self.startupFallbackTask = nil
                 self.switchEngine(to: .mpv, reason: "启动阶段 Cannot Open，传输健康，受控回退到 MPV")
                 return
@@ -705,6 +711,7 @@ final class PlayerController: ObservableObject {
         let fullRange = 0...duration
         guard verifiedBufferedRanges != [fullRange] else { return }
         verifiedBufferedRanges = [fullRange]
+        bufferState.verifiedHistoryRanges = verifiedBufferedRanges
         DiagnosticsLogger.shared.log("BufferHistory", "transport cache complete bytes=\(metrics.cacheBytes)/\(metrics.resourceBytes) action=promote-full-duration duration=\(String(format: "%.3f", duration))")
     }
 
