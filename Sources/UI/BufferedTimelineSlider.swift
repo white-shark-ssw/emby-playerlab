@@ -4,6 +4,10 @@ struct BufferedTimelineSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     let bufferState: PlaybackBufferState
+    /// Current UnifiedTransport playback-byte cache ranges normalized to the media file's 0...1 byte space.
+    /// These ranges are the only visible buffer source. They grow when bytes are downloaded and disappear
+    /// when RollingCache actually evicts those bytes.
+    let cacheByteRanges: [ClosedRange<Double>]
     let onEditingChanged: (Bool) -> Void
 
     @State private var isEditing = false
@@ -12,8 +16,8 @@ struct BufferedTimelineSlider: View {
         self._value = value
         self.range = range
         self.bufferState = bufferState
+        self.cacheByteRanges = cacheByteRanges
         self.onEditingChanged = onEditingChanged
-        _ = cacheByteRanges
     }
 
     var body: some View {
@@ -23,18 +27,11 @@ struct BufferedTimelineSlider: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.white.opacity(0.20)).frame(height: trackHeight)
 
-                ForEach(Array(normalizedRanges(bufferState.verifiedHistoryRanges).enumerated()), id: \.offset) { _, buffered in
-                    Rectangle()
-                        .fill(Color.white.opacity(0.38))
-                        .frame(width: max(1, width * CGFloat(buffered.upperBound - buffered.lowerBound)), height: trackHeight)
-                        .offset(x: width * CGFloat(buffered.lowerBound))
-                }
-
-                ForEach(Array(normalizedRanges(bufferState.livePlayableRanges).enumerated()), id: \.offset) { _, buffered in
+                ForEach(Array(normalizedCacheRanges.enumerated()), id: \.offset) { _, cached in
                     Rectangle()
                         .fill(Color.white.opacity(0.68))
-                        .frame(width: max(1, width * CGFloat(buffered.upperBound - buffered.lowerBound)), height: trackHeight)
-                        .offset(x: width * CGFloat(buffered.lowerBound))
+                        .frame(width: max(1, width * CGFloat(cached.upperBound - cached.lowerBound)), height: trackHeight)
+                        .offset(x: width * CGFloat(cached.lowerBound))
                 }
 
                 Rectangle().fill(Color.white).frame(width: progressWidth(totalWidth: width), height: trackHeight)
@@ -74,15 +71,10 @@ struct BufferedTimelineSlider: View {
         }
     }
 
-    private func normalizedRanges(_ ranges: [ClosedRange<Double>]) -> [ClosedRange<Double>] {
-        let duration = range.upperBound - range.lowerBound
-        guard duration > 0 else { return [] }
-        return ranges.compactMap { item in
-            let clippedLower = max(range.lowerBound, item.lowerBound)
-            let clippedUpper = min(range.upperBound, item.upperBound)
-            guard clippedUpper > clippedLower else { return nil }
-            let lower = min(1, max(0, (clippedLower - range.lowerBound) / duration))
-            let upper = min(1, max(0, (clippedUpper - range.lowerBound) / duration))
+    private var normalizedCacheRanges: [ClosedRange<Double>] {
+        cacheByteRanges.compactMap { item in
+            let lower = min(1, max(0, item.lowerBound))
+            let upper = min(1, max(0, item.upperBound))
             return upper > lower ? lower...upper : nil
         }
     }
