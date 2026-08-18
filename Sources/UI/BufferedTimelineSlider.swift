@@ -8,10 +8,18 @@ struct BufferedTimelineSlider: View {
     let bufferState: PlaybackBufferState
     /// UnifiedTransport cached BYTE ranges normalized to 0...1. They are rendered on
     /// a separate thin cache strip and are never interpreted as media-time ranges.
-    let cacheByteRanges: [ClosedRange<Double>] = []
+    let cacheByteRanges: [ClosedRange<Double>]
     let onEditingChanged: (Bool) -> Void
 
     @State private var isEditing = false
+
+    init(value: Binding<Double>, range: ClosedRange<Double>, bufferState: PlaybackBufferState, cacheByteRanges: [ClosedRange<Double>] = [], onEditingChanged: @escaping (Bool) -> Void) {
+        self._value = value
+        self.range = range
+        self.bufferState = bufferState
+        self.cacheByteRanges = cacheByteRanges
+        self.onEditingChanged = onEditingChanged
+    }
 
     var body: some View {
         GeometryReader { geometry in
