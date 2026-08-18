@@ -135,6 +135,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var lastBlockingPlaybackDemand: Range<Int64>?
     private var lastBlockingPlaybackDemandAt = Date.distantPast
     private var playbackDemandSamples: [PlaybackDemandSample] = []
+    private var lastNetworkFailureAt = Date.distantPast
     private var sequentialWaveUpperBound: Int64 = 0
     private var sequentialWaveSegmentBytes: Int64 = 0
     private var startupMetadataPlanRange: Range<Int64>?
@@ -359,10 +360,42 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         pendingUserSeekUntil = Date().addingTimeInterval(4)
         pendingUserSeekPosition = max(0, position)
         pendingUserSeekDuration = max(0, duration)
+        demandCoordinator.reset()
         DiagnosticsLogger.shared.log(
             "UnifiedAnchor",
             "user-seek position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) byteGuess=disabled awaitingRealDemand=true anchor=\(playbackAnchor)"
         )
+    }
+
+    func reportPlaybackProgress(position: Double, isBuffering: Bool) async {
+        guard !stopped, let resource, !awaitingInitialResumeDemand, Date() > pendingUserSeekUntil else { return }
+        switch demandCoordinator.confirmPlaybackProgress(position: position, isBuffering: isBuffering, activeCenter: cacheWindowCenter, nearDistance: blockBytes * 4) {
+        case .hold:
+            return
+        case .advance(let offset):
+            let clamped = min(max(0, offset), max(0, resource.contentLength - 1))
+            guard clamped > cacheWindowCenter else { return }
+            let previous = cacheWindowCenter
+            cacheWindowCenter = clamped
+            playbackAnchor = clamped
+            cacheRefillActive = true
+            recordPlaybackDemand(offset: clamped)
+            DiagnosticsLogger.shared.playback("PlaybackByteAuthority", "action=advance previous=\(previous) new=\(clamped) mediaPosition=\(String(format: "%.3f", position)) source=engine-clock+real-byte")
+            scheduleSlots(reason: "playback-byte-authority-advance")
+        case .promote(let offset, let reason):
+            let clamped = min(max(0, offset), max(0, resource.contentLength - 1))
+            let previous = cacheWindowCenter
+            playbackAnchor = clamped
+            playbackDemandSamples.removeAll()
+            recordPlaybackDemand(offset: clamped)
+            resetCacheWindowCenter(to: clamped, resource: resource, reason: reason)
+            DiagnosticsLogger.shared.playback("PlaybackByteAuthority", "action=promote previous=\(previous) new=\(clamped) mediaPosition=\(String(format: "%.3f", position)) reason=\(reason)")
+            for slot in [0, 1] {
+                guard let active = slotClaims[slot], !active.range.contains(clamped) else { continue }
+                if active.role == .sequential || active.role == .urgentPlayback { cancelSlot(slot, reason: "clock-authority-promoted") }
+            }
+            scheduleSlots(reason: "playback-byte-authority-promote")
+        }
     }
 
     func recoverStall(position: Double, duration: Double) async {
@@ -438,6 +471,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let metadata = startupTailMetadata || (!concreteReason && isMetadataProbe(range, resource: resource))
         let pendingUserSeek = Date() <= pendingUserSeekUntil
         let concretePlaybackDemand = concreteReason && !metadata
+        if concretePlaybackDemand { demandCoordinator.observeDependency(offset: range.lowerBound) }
         if awaitingInitialResumeDemand, concretePlaybackDemand, reason == "concrete-read" || reason == "blocked-read" { initialResumeCandidateByte = range.lowerBound }
         let cachedReadDistance = range.lowerBound >= playbackAnchor ? range.lowerBound - playbackAnchor : playbackAnchor - range.lowerBound
         let cachedSeekRead = pendingUserSeek && reason == "concrete-read" && store.availableLength(from: range.lowerBound, maximumLength: min(Int64(range.count), urgentBlockBytes)) > 0 && cachedReadDistance >= max(8 * 1_048_576, blockBytes / 2)
@@ -1215,6 +1249,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             else if claim.role == .metadata, pendingMetadataRange == nil { pendingMetadataRange = claim.range }
             if claim.role == .urgentPlayback, pendingPlaybackUrgentRange == nil { pendingPlaybackUrgentRange = claim.range }
             metricsValue.rangeFailureCount += 1
+            lastNetworkFailureAt = Date()
             DiagnosticsLogger.shared.log(
                 "UnifiedSlot",
                 "slot=\(slot) failed role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) error=\(error.localizedDescription)"
@@ -1531,6 +1566,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         metricsValue.schedulerAnchorByte = center
         metricsValue.schedulerFrontierByte = map.frontierByte
         metricsValue.activeRequestCount = slotTasks.count
+        metricsValue.recentNetworkFailureAgeSeconds = lastNetworkFailureAt == .distantPast ? .infinity : max(0, Date().timeIntervalSince(lastNetworkFailureAt))
         metricsValue.elapsedSeconds = Date().timeIntervalSince(createdAt)
         pruneSpeedSamples()
         let speedWindow = max(1, Date().timeIntervalSince(speedSamples.first?.date ?? Date()))

@@ -92,8 +92,18 @@ final class PlaybackOrchestrator {
         return .reloadCurrent(reason: "当前引擎长时间未推进，尝试重载同一引擎")
     }
 
-    func actionForPrematureEOF(kind: PlayerEngineKind, reason: String) -> PlaybackRecoveryAction {
-        .reloadCurrent(reason: "疑似提前结束：\(reason)；保持当前引擎恢复")
+    func actionForPrematureEOF(kind: PlayerEngineKind, reason: String, snapshot: PlayerSnapshot, metrics: TransportMetricsSnapshot?) -> PlaybackRecoveryAction {
+        let duration = max(snapshot.duration, source.mediaSource.durationSeconds ?? 0)
+        let farFromEnd = duration > 0 && snapshot.position + max(3, duration * 0.005) < duration
+        let health = assessTransport(metrics: metrics)
+        let recentFailure = (metrics?.recentNetworkFailureAgeSeconds ?? .infinity) <= 8
+        let belowMediaRate = (metrics?.currentDownloadBytesPerSecond ?? 0) > 0 && (metrics?.currentDownloadBytesPerSecond ?? 0) < health.mediaBytesPerSecond * 1.10
+        let transportStarved = snapshot.isBuffering || recentFailure || belowMediaRate || !health.transportHealthy
+        DiagnosticsLogger.shared.playback("Orchestrator", "prematureEOF engine=\(kind.title) farFromEnd=\(farFromEnd) transportStarved=\(transportStarved) recentFailure=\(recentFailure) failureAge=\(String(format: "%.2f", metrics?.recentNetworkFailureAgeSeconds ?? .infinity)) networkBps=\(Int(metrics?.currentDownloadBytesPerSecond ?? 0)) mediaBps=\(Int(health.mediaBytesPerSecond)) reason=\(reason)")
+        if farFromEnd && transportStarved {
+            return .recoverTransport(message: "网络/缓存供给不足时出现提前 EOF，保持当前引擎并恢复当前位置数据，不重建播放器")
+        }
+        return .reloadCurrent(reason: "疑似提前结束：\(reason)；传输未显示饥饿，受控重载当前引擎")
     }
 
     func actionForEngineError(kind: PlayerEngineKind, message: String) -> PlaybackRecoveryAction? {

@@ -46,8 +46,10 @@ final class TransportHTTPServer {
     private var connectionOrder: [ObjectIdentifier] = []
     private var streamGuardEvictionCount = 0
     private var lastStreamGuardLogAt = Date.distantPast
-    private var lastLoggedRequestStart: Int64?
-    private var lastLoggedRequestAt = Date.distantPast
+    private var httpActivityRequests = 0
+    private var httpActivityCancels = 0
+    private var httpActivityLastStart: Int64?
+    private var httpActivityWindowStartedAt = Date.distantPast
     private var stopped = false
 
     init(session: TransportDataSession, fileExtension: String, stopSessionOnStop: Bool = true) {
@@ -274,12 +276,9 @@ final class TransportHTTPServer {
             }
             headers += "\r\n"
 
-            let logRequest = shouldLogRequest(method: request.method, range: responseRange)
+            let logRequest = recordHTTPActivity(requestStart: responseRange.lowerBound, cancelled: false)
             if logRequest {
-                DiagnosticsLogger.shared.log(
-                    "TransportHTTP",
-                    "server=\(logID) request method=\(request.method) status=\(status) start=\(responseRange.lowerBound) length=\(responseRange.length)"
-                )
+                DiagnosticsLogger.shared.playback("TransportHTTPActivity", activitySummary())
             }
 
             try await send(Data(headers.utf8), on: connection)
@@ -304,7 +303,7 @@ final class TransportHTTPServer {
                 )
             }
         } catch is CancellationError {
-            DiagnosticsLogger.shared.log("TransportHTTP", "server=\(logID) response cancelled")
+            if recordHTTPActivity(requestStart: nil, cancelled: true) { DiagnosticsLogger.shared.playback("TransportHTTPActivity", activitySummary()) }
         } catch {
             if isClientDisconnect(error) {
                 return
@@ -316,23 +315,30 @@ final class TransportHTTPServer {
         }
     }
 
-    private func shouldLogRequest(method: String, range: ByteRange) -> Bool {
-        if method == "HEAD" || range.length <= 2 { return true }
-
+    private func recordHTTPActivity(requestStart: Int64?, cancelled: Bool) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         let now = Date()
-        let movedEnough: Bool
-        if let lastLoggedRequestStart {
-            movedEnough = abs(range.lowerBound - lastLoggedRequestStart) >= 8 * 1_048_576
-        } else {
-            movedEnough = true
-        }
-        let timedOut = now.timeIntervalSince(lastLoggedRequestAt) >= 5
-        guard movedEnough || timedOut else { return false }
-        lastLoggedRequestStart = range.lowerBound
-        lastLoggedRequestAt = now
-        return true
+        if httpActivityWindowStartedAt == .distantPast { httpActivityWindowStartedAt = now }
+        if requestStart != nil { httpActivityRequests += 1 }
+        if cancelled { httpActivityCancels += 1 }
+        if let requestStart { httpActivityLastStart = requestStart }
+        return now.timeIntervalSince(httpActivityWindowStartedAt) >= 1
+    }
+
+    private func activitySummary() -> String {
+        lock.lock()
+        let now = Date()
+        let elapsed = max(0.001, now.timeIntervalSince(httpActivityWindowStartedAt))
+        let requests = httpActivityRequests
+        let cancels = httpActivityCancels
+        let lastStart = httpActivityLastStart ?? -1
+        let active = connections.count
+        httpActivityRequests = 0
+        httpActivityCancels = 0
+        httpActivityWindowStartedAt = now
+        lock.unlock()
+        return "server=\(logID) windowMs=\(Int(elapsed * 1000)) requests=\(requests) cancels=\(cancels) requestRate=\(String(format: "%.1f", Double(requests) / elapsed))/s active=\(active) lastStart=\(lastStart)"
     }
 
     private func send(_ data: Data, on connection: NWConnection) async throws {

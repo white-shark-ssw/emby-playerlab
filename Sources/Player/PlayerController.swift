@@ -62,6 +62,8 @@ final class PlayerController: ObservableObject {
     private var hasPlaybackAdvanced = false
     private var initialResumeConfirmationPending = false
     private var initialResumePlaybackBaseline: Double?
+    private var lastTransportPlaybackReportPosition: Double = -1
+    private var lastTransportPlaybackReportAt = Date.distantPast
 
     var ksAVIOView: UIView? {
         #if canImport(KSPlayer)
@@ -210,6 +212,8 @@ final class PlayerController: ObservableObject {
         userWantsPlayback = false
         initialResumeConfirmationPending = false
         initialResumePlaybackBaseline = nil
+        lastTransportPlaybackReportPosition = -1
+        lastTransportPlaybackReportAt = .distantPast
         let shouldReportStop = playbackSessionStarted
         playbackSessionStarted = false
         DiagnosticsLogger.shared.log("Lifecycle", "player close requested engine=\(engineKind.title) position=\(snapshot.position)")
@@ -534,6 +538,7 @@ final class PlayerController: ObservableObject {
                 self.updateVerifiedBufferedRanges(from: value)
                 self.updatePlaybackBufferState(from: value)
                 self.logBufferTimelineIfNeeded(value)
+                self.reportPlaybackClockToTransportIfNeeded(value)
                 if self.engineTransitionAwaitingFirstSnapshot {
                     self.engineTransitionAwaitingFirstSnapshot = false
                     if let error = value.errorMessage, !error.isEmpty { DiagnosticsLogger.shared.log("Engine", "Switch first snapshot error engine=\(self.engineKind.title) error=\(error)") }
@@ -578,6 +583,17 @@ final class PlayerController: ObservableObject {
                 DiagnosticsLogger.shared.log("Seek", "engine=\(self.engineKind.title) target=\(result.target) actual=\(actualText) bufferHit=\(result.bufferHit) completionMs=\(result.completionLatencyMs) measurement=\(result.measurement)")
             }
         }
+    }
+
+    private func reportPlaybackClockToTransportIfNeeded(_ value: PlayerSnapshot) {
+        guard let session = transportContext?.session, value.position.isFinite else { return }
+        let now = Date()
+        let positionMoved = abs(value.position - lastTransportPlaybackReportPosition) >= 0.10
+        let heartbeatDue = now.timeIntervalSince(lastTransportPlaybackReportAt) >= 0.50
+        guard positionMoved || heartbeatDue else { return }
+        lastTransportPlaybackReportPosition = value.position
+        lastTransportPlaybackReportAt = now
+        Task { await session.reportPlaybackProgress(position: value.position, isBuffering: value.isBuffering) }
     }
 
     private func confirmInitialResumePlaybackIfNeeded(_ value: PlayerSnapshot) {
@@ -670,7 +686,7 @@ final class PlayerController: ObservableObject {
             return
         }
 
-        switch orchestrator.actionForPrematureEOF(kind: engineKind, reason: decision.reason) {
+        switch orchestrator.actionForPrematureEOF(kind: engineKind, reason: decision.reason, snapshot: snapshot, metrics: lastTransportMetrics) {
         case .switchEngine(let next, let reason): prematureEOFMessage = "\(decision.reason)；App 正在自动切换到 \(next.title)。"; switchEngine(to: next, reason: reason)
         case .reloadCurrent(let reason): prematureEOFMessage = reason; engine.reload(at: snapshot.position); engine.play()
         case .recoverTransport(let message), .wait(let message): prematureEOFMessage = message; engine.recoverStall(position: snapshot.position, duration: effectiveDuration)

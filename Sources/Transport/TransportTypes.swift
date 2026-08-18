@@ -19,6 +19,7 @@ struct TransportMetricsSnapshot: Equatable {
     var cacheHitBytes: Int64 = 0
     var networkRequestCount: Int = 0
     var rangeFailureCount: Int = 0
+    var recentNetworkFailureAgeSeconds: Double = .infinity
     var activeRequestCount: Int = 0
     var resourceBytes: Int64 = 0
     var cacheBytes: Int64 = 0
