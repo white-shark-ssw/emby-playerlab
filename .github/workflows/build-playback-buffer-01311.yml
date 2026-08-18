@@ -3,6 +3,8 @@ name: Build OnePlayer 0.13.11 Stable Buffer
 on:
   push:
     branches: [feat/playback-buffer-stability-0.13.11]
+  pull_request:
+    branches: [feat/player-timeline-0.13.10]
 
 concurrency:
   group: playback-buffer-stability-01311-${{ github.ref }}
