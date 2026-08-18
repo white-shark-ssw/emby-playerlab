@@ -3,6 +3,8 @@ name: Build OnePlayer 0.13.10 Timeline
 on:
   push:
     branches: [feat/player-timeline-0.13.10]
+  pull_request:
+    branches: [feat/player-ui-buffer-0.13.9]
 
 permissions:
   contents: read
