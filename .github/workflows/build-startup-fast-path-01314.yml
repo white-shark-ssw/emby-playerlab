@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -19,19 +19,6 @@ jobs:
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
-
-      - name: Materialize startup fast path
-        run: |
-          set -euo pipefail
-          python3 scripts/materialize_startup_fast_path_01314.py
-          git diff --check
-          if ! git diff --quiet -- Sources/Player/PlayerController.swift Sources/UI/PlayerScreen.swift Sources/Transport/UnifiedMediaTransportSession.swift project.mdklab.yml; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add Sources/Player/PlayerController.swift Sources/UI/PlayerScreen.swift Sources/Transport/UnifiedMediaTransportSession.swift project.mdklab.yml
-            git commit -m 'Overlap startup resolve and resume lookup'
-            git push origin HEAD:feat/startup-fast-path-0.13.14
-          fi
 
       - name: Verify startup fast-path contract and frozen buffer timeline
         run: |
