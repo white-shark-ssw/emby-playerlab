@@ -78,7 +78,7 @@ jobs:
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP_PATH"
           test -d "$APP_PATH"
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.9' --build '76' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'AppIcon' --alternate-icon 'OnePlayerAltIcon' 2>&1 | tee app-validation.log
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.9' --build '76' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' 2>&1 | tee app-validation.log
 
       - name: Audit minimum OS and embedded frameworks
         id: min_os_audit
