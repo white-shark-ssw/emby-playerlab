@@ -70,15 +70,52 @@ jobs:
           tail -120 build.log || true
           exit 1
 
-      - name: Validate app identity and minimum OS
+      - name: Validate app identity
+        id: app_identity
+        continue-on-error: true
         run: |
           set -euo pipefail
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP_PATH"
           test -d "$APP_PATH"
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.9' --build '76' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'AppIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.9' --build '76' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'AppIcon' --alternate-icon 'OnePlayerAltIcon' 2>&1 | tee app-validation.log
+
+      - name: Audit minimum OS and embedded frameworks
+        id: min_os_audit
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
           chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log 2>&1 | tee min-os-console.log
+
+      - name: Upload app validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.9-build76-app-validation-diagnostics
+          path: |
+            app-validation.log
+            min-os-report.log
+            min-os-console.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Gate app validation
+        if: steps.app_identity.outcome == 'failure' || steps.min_os_audit.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          echo "app_identity=${{ steps.app_identity.outcome }}"
+          echo "min_os_audit=${{ steps.min_os_audit.outcome }}"
+          echo '===== app-validation.log ====='
+          cat app-validation.log 2>/dev/null || true
+          echo '===== min-os-console.log ====='
+          cat min-os-console.log 2>/dev/null || true
+          echo '===== min-os-report.log ====='
+          cat min-os-report.log 2>/dev/null || true
+          exit 1
 
       - name: Package unsigned IPA
         run: |
