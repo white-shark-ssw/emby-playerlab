@@ -17,7 +17,7 @@ packages:
   KSPlayerShim:
     path: MDKLab/KSPlayerShim
 
-# OnePlayer 0.13.9 formal player UI/buffer cleanup. MDK is the preferred high-performance engine; MPV is the high-compatibility engine.
+# OnePlayer 0.13.10 restores the single-track playback timeline: played > live buffered > unbuffered.
 # Playback/session/transport/buffer semantics stay above engine adapters; engine-specific recovery remains inside each adapter.
 # The CI audits both LC_BUILD_VERSION and legacy LC_VERSION_MIN_IPHONEOS slices for iOS 15 compatibility.
 settings:
@@ -26,8 +26,8 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "15.0"
     ENABLE_USER_SCRIPT_SANDBOXING: "NO"
     CLANG_ENABLE_MODULES: "YES"
-    MARKETING_VERSION: "0.13.9"
-    CURRENT_PROJECT_VERSION: "76"
+    MARKETING_VERSION: "0.13.10"
+    CURRENT_PROJECT_VERSION: "77"
 
 targets:
   EmbyPlayerLab:
@@ -54,8 +54,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app
-        MARKETING_VERSION: "0.13.9"
-        CURRENT_PROJECT_VERSION: "76"
+        MARKETING_VERSION: "0.13.10"
+        CURRENT_PROJECT_VERSION: "77"
         PRODUCT_NAME: "OnePlayer"
         PRODUCT_MODULE_NAME: EmbyPlayerLab
         TARGETED_DEVICE_FAMILY: "1,2"
