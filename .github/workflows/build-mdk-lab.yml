@@ -12,6 +12,16 @@ on:
       - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build-mdk-lab.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Sources/**"
+      - "MDKLab/**"
+      - "Config/**"
+      - "Resources/**"
+      - "project.mdklab.yml"
+      - "Podfile"
+      - ".github/workflows/build-mdk-lab.yml"
 
 permissions:
   contents: read
@@ -97,6 +107,10 @@ jobs:
           test -n "$APP_PATH"
           test -f "$APP_PATH/OnePlayer"
           plutil -p "$APP_PATH/Info.plist" | tee app-info.log
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")
+          BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")
+          test "$VERSION" = "0.13.31"
+          test "$BUILD" = "98"
           strings "$APP_PATH/OnePlayer" | grep -F 'MDK 本地文件实验'
           strings "$APP_PATH/OnePlayer" | grep -F 'LocalMDKLab'
           strings "$APP_PATH/OnePlayer" | grep -F 'source=local-file'
