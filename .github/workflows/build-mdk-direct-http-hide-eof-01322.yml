@@ -112,21 +112,6 @@ jobs:
           /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
           cat "$IPA.sha256"
 
-      - name: Commit validated Build89 source to experiment branch
-        run: |
-          set -euo pipefail
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add Sources/Player/PlayerController.swift Sources/UI/PlayerScreen.swift Sources/Core/AppIdentity.swift project.mdklab.yml
-          if git diff --cached --quiet; then
-            echo 'Build89 source already materialized.'
-          else
-            git commit -m 'fix: isolate MDK direct HTTP and hide premature EOF banner'
-            git fetch origin feat/recovery-isolation-0.13.17
-            git rebase origin/feat/recovery-isolation-0.13.17
-            git push origin HEAD:feat/recovery-isolation-0.13.17
-          fi
-
       - name: Upload final test package
         uses: actions/upload-artifact@v4
         with:
@@ -138,3 +123,21 @@ jobs:
             min-os-report.log
           if-no-files-found: error
           retention-days: 14
+
+      - name: Persist validated Build89 source to experiment branch
+        run: |
+          set -euo pipefail
+          git diff -- Sources/Player/PlayerController.swift Sources/UI/PlayerScreen.swift Sources/Core/AppIdentity.swift project.mdklab.yml > /tmp/build89-runtime.patch
+          if test ! -s /tmp/build89-runtime.patch; then
+            echo 'Build89 source already materialized.'
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin feat/recovery-isolation-0.13.17
+          git reset --hard origin/feat/recovery-isolation-0.13.17
+          git apply --3way /tmp/build89-runtime.patch
+          git add Sources/Player/PlayerController.swift Sources/UI/PlayerScreen.swift Sources/Core/AppIdentity.swift project.mdklab.yml
+          git diff --cached --check
+          git commit -m 'fix: isolate MDK direct HTTP and hide premature EOF banner'
+          git push origin HEAD:feat/recovery-isolation-0.13.17
