@@ -4,7 +4,7 @@ on:
   push:
     branches: [feat/local-file-playback-0.13.32]
   pull_request:
-    branches: [main]
+    branches: [feat/recovery-isolation-0.13.17]
   workflow_dispatch:
 
 concurrency:
