@@ -255,7 +255,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         DiagnosticsLogger.shared.playback("MDKSeek", "id=\(intent.id) target=\(String(format: "%.3f", intent.target)) phase=native-arm retry=\(intent.retryCount) nativeOutstanding=\(nativeSeekOutstandingCount)")
 
         if let session = sharedTransportSession {
-            transportHTTPServer?.resetClientStreams(reason: "mdk-seek-\(intent.id)")
+            DiagnosticsLogger.shared.playback("MDKSeekHTTP", "id=\(intent.id) action=preserve-existing-stream-before-native-seek")
             Task { @MainActor [weak self, weak player] in
                 await session.prioritizeSeek(position: intent.target, duration: intent.duration)
                 guard let self, let player, intent.playerGeneration == self.generation, self.player === player, self.activeNativeSeek?.id == intent.id else { return }
@@ -581,6 +581,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         guard playerGeneration == generation, player != nil else { return }
         let recoveryTarget = latestDesiredTarget(fallback: fallbackTarget)
         DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=\(reason) active=\(activeNativeSeek?.id ?? -1) queued=\(queuedLatestSeek?.id ?? -1) latestTarget=\(String(format: "%.3f", recoveryTarget)) action=rebuild-player-at-latest-target")
+        transportHTTPServer?.resetClientStreams(reason: "mdk-seek-wedge-\(reason)")
         activeNativeSeek = nil
         queuedLatestSeek = nil
         reload(at: recoveryTarget)

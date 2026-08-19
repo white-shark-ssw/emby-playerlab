@@ -27,8 +27,8 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "15.0"
     ENABLE_USER_SCRIPT_SANDBOXING: "NO"
     CLANG_ENABLE_MODULES: "YES"
-    MARKETING_VERSION: "0.13.17"
-    CURRENT_PROJECT_VERSION: "84"
+    MARKETING_VERSION: "0.13.18"
+    CURRENT_PROJECT_VERSION: "85"
 
 targets:
   EmbyPlayerLab:
@@ -55,8 +55,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app
-        MARKETING_VERSION: "0.13.17"
-        CURRENT_PROJECT_VERSION: "84"
+        MARKETING_VERSION: "0.13.18"
+        CURRENT_PROJECT_VERSION: "85"
         PRODUCT_NAME: "OnePlayer"
         PRODUCT_MODULE_NAME: EmbyPlayerLab
         TARGETED_DEVICE_FAMILY: "1,2"

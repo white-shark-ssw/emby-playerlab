@@ -287,15 +287,21 @@ final class TransportHTTPServer {
 
             var cursor = responseRange.lowerBound
             let chunkSize = 512 * 1024
-            while cursor <= responseRange.upperBound, !Task.isCancelled, !isStopped {
+            var terminationReason = "complete"
+            while cursor <= responseRange.upperBound {
+                if Task.isCancelled { terminationReason = "task-cancelled"; break }
+                if isStopped { terminationReason = "server-stopped"; break }
                 let length = min(chunkSize, Int(responseRange.upperBound - cursor + 1))
                 let data = try await session.read(offset: cursor, length: length)
-                guard !data.isEmpty else { break }
+                if data.isEmpty { terminationReason = "empty-read"; break }
                 try await send(data, on: connection)
                 cursor += Int64(data.count)
             }
 
             let sentBytes = max(0, cursor - responseRange.lowerBound)
+            if sentBytes < responseRange.length {
+                DiagnosticsLogger.shared.playback("TransportHTTPIntegrity", "server=\(logID) start=\(responseRange.lowerBound) expected=\(responseRange.length) sent=\(sentBytes) remaining=\(responseRange.length - sentBytes) reason=\(terminationReason)")
+            }
             if logRequest || sentBytes >= 8 * 1_048_576 {
                 DiagnosticsLogger.shared.playback(
                     "TransportHTTP",
