@@ -6,52 +6,35 @@ import UIKit
 
 @MainActor
 final class LocalMDKFileLabModel: ObservableObject {
-    @Published var selectedName = "尚未选择文件"
     @Published var snapshot = PlayerSnapshot()
-    @Published var seekTarget: Double = 0
-    @Published var isPresentingPicker = false
+    @Published var selectedName = "未选择文件"
+    @Published var statusText = "请选择已经完整下载到本机的异常视频。"
     @Published var isPlaying = false
 
     private var engine: KSAVIOPlayerEngine?
-    private var securityScopedURL: URL?
+    private var scopedURL: URL?
 
-    var playerView: UIView? { engine?.playerView }
-
-    func select(_ url: URL) {
+    func open(_ url: URL) {
         stop()
-        let granted = url.startAccessingSecurityScopedResource()
-        securityScopedURL = granted ? url : nil
+        let access = url.startAccessingSecurityScopedResource()
+        scopedURL = access ? url : nil
         selectedName = url.lastPathComponent
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey])
+        let bytes = values?.fileSize ?? 0
+        DiagnosticsLogger.shared.playback("LocalMDKLab", "open source=local-file name=\(url.lastPathComponent) ext=\(url.pathExtension.lowercased()) bytes=\(bytes) unifiedTransport=false embyReporting=false resume=false fallback=false")
+        statusText = "MDK 正在直接读取本地文件…"
 
-        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentTypeKey])
-        let size = values?.fileSize ?? 0
-        let ext = url.pathExtension.lowercased()
-        DiagnosticsLogger.shared.playback("LocalMDKLab", "event=file-selected source=local-file name=\(url.lastPathComponent) ext=\(ext) size=\(size) securityScoped=\(granted) emby=false unifiedTransport=false fallback=false")
-
-        let mediaSource = MediaSource(id: "local-mdk-lab", name: url.lastPathComponent, path: url.path, container: ext, directStreamURL: nil, supportsDirectPlay: true, supportsDirectStream: true, runTimeTicks: nil, size: Int64(size), requiredHTTPHeaders: nil, mediaStreams: nil)
-        let source = ResolvedPlaybackSource(itemId: "local-mdk-lab", itemName: url.lastPathComponent, mediaSource: mediaSource, playSessionId: nil, url: url, headers: [:])
-        let client = EmbyAPIClient(baseURL: URL(string: "http://127.0.0.1")!)
-        let newEngine = KSAVIOPlayerEngine(source: source, client: client, configuration: MediaTransportConfiguration.current(), sharedTransportSession: nil)
-        newEngine.onSnapshot = { [weak self] value in
+        let newEngine = KSAVIOPlayerEngine(sharedTransportSession: nil)
+        newEngine.onSnapshot = { [weak self] snapshot in
             Task { @MainActor in
                 guard let self else { return }
-                let previous = self.snapshot
-                self.snapshot = value
-                self.seekTarget = value.position
-                self.isPlaying = value.isPlaying
-                if previous.didReachEnd != value.didReachEnd || previous.errorMessage != value.errorMessage {
-                    DiagnosticsLogger.shared.playback("LocalMDKLab", "event=snapshot source=local-file position=\(String(format: "%.3f", value.position)) duration=\(String(format: "%.3f", value.duration)) playing=\(value.isPlaying) buffering=\(value.isBuffering) ended=\(value.didReachEnd) error=\(value.errorMessage ?? "none")")
-                }
+                self.snapshot = snapshot
+                self.isPlaying = snapshot.state == .playing
+                self.statusText = snapshot.errorMessage ?? self.status(for: snapshot.state)
             }
         }
-        newEngine.onSeekCompleted = { result in
-            DiagnosticsLogger.shared.playback("LocalMDKLab", "event=seek-complete source=local-file target=\(String(format: "%.3f", result.target)) actual=\(result.actualPosition.map { String(format: "%.3f", $0) } ?? "nil") latencyMs=\(String(format: "%.1f", result.completionLatencyMs))")
-        }
         engine = newEngine
-        snapshot = PlayerSnapshot()
-        seekTarget = 0
-        DiagnosticsLogger.shared.playback("LocalMDKLab", "event=prepare source=local-file urlScheme=file start=0 emby=false resume=false unifiedTransport=false fallback=false")
-        newEngine.prepare(url: url, headers: [:], preferredForwardBuffer: 0, startPosition: 0)
+        newEngine.prepare(url: url, headers: [:], resumePosition: 0)
         newEngine.play()
     }
 
@@ -60,109 +43,104 @@ final class LocalMDKFileLabModel: ObservableObject {
         if isPlaying { engine.pause() } else { engine.play() }
     }
 
-    func seek(to value: Double) {
+    func seek(by delta: TimeInterval) { seek(to: snapshot.position + delta) }
+
+    func seek(to target: TimeInterval) {
         guard let engine else { return }
-        DiagnosticsLogger.shared.playback("LocalMDKLab", "event=seek-request source=local-file from=\(String(format: "%.3f", snapshot.position)) target=\(String(format: "%.3f", value))")
-        engine.seek(to: value, direction: .absolute)
+        let bounded = max(0, snapshot.duration > 0 ? min(target, snapshot.duration) : target)
+        DiagnosticsLogger.shared.playback("LocalMDKLab", "seek source=local-file requested=\(String(format: "%.3f", bounded)) from=\(String(format: "%.3f", snapshot.position))")
+        engine.seek(to: bounded)
     }
 
     func stop() {
         if let engine {
-            DiagnosticsLogger.shared.playback("LocalMDKLab", "event=stop source=local-file position=\(String(format: "%.3f", snapshot.position)) duration=\(String(format: "%.3f", snapshot.duration)) ended=\(snapshot.didReachEnd) error=\(snapshot.errorMessage ?? "none")")
+            DiagnosticsLogger.shared.playback("LocalMDKLab", "stop source=local-file position=\(String(format: "%.3f", snapshot.position)) duration=\(String(format: "%.3f", snapshot.duration)) state=\(snapshot.state.rawValue)")
             engine.stop()
         }
         engine = nil
-        if let securityScopedURL { securityScopedURL.stopAccessingSecurityScopedResource() }
-        securityScopedURL = nil
+        if let scopedURL { scopedURL.stopAccessingSecurityScopedResource() }
+        scopedURL = nil
         isPlaying = false
+    }
+
+    private func status(for state: PlayerState) -> String {
+        switch state {
+        case .idle: return "空闲"
+        case .preparing: return "MDK prepare 中…"
+        case .playing: return "MDK 本地文件播放中"
+        case .paused: return "已暂停"
+        case .buffering: return "MDK buffering"
+        case .ended: return "MDK 报告播放结束"
+        case .failed: return "MDK 播放失败，请导出日志"
+        }
     }
 }
 
 struct LocalMDKFileLabView: View {
     @StateObject private var model = LocalMDKFileLabModel()
+    @State private var pickerPresented = false
+    @State private var scrubPosition: Double = 0
+    @State private var isScrubbing = false
 
     var body: some View {
-        VStack(spacing: 14) {
-            Text("MDK 本地文件实验")
-                .font(.headline)
-            Text("直接将系统文件交给 MDK；不经过 Emby、UnifiedTransport、网络缓存、Resume 或 MPV 自动接管。日志仍写入 OnePlayer 播放日志。")
-                .font(.footnote)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+        VStack(spacing: 16) {
+            Text("MDK 本地文件实验").font(.title2.bold())
+            Text("本入口只用于 A/B 诊断：本地 file URL → MDK。不会经过 Emby、STRM、302、115、UnifiedTransport，也不会自动切换 MPV。日志仍写入 OnePlayer 播放诊断。")
+                .font(.footnote).foregroundStyle(.secondary)
+            Button("选择本地视频") { pickerPresented = true }.buttonStyle(.borderedProminent)
+            Text(model.selectedName).font(.caption).lineLimit(2)
 
-            Button("选择本机视频") { model.isPresentingPicker = true }
-                .buttonStyle(.borderedProminent)
-            Text(model.selectedName)
-                .font(.footnote)
-                .lineLimit(2)
-
-            if let view = model.playerView {
-                LocalMDKSurface(view: view)
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                    .background(Color.black)
+            if let renderView = model.engineRenderView {
+                LocalMDKRenderContainer(renderView: renderView).aspectRatio(16 / 9, contentMode: .fit).background(Color.black)
             } else {
-                Rectangle().fill(Color.black).aspectRatio(16.0 / 9.0, contentMode: .fit)
+                Rectangle().fill(Color.black).aspectRatio(16 / 9, contentMode: .fit).overlay(Text("选择文件后由 MDK 直接渲染").foregroundStyle(.secondary))
             }
 
-            if model.snapshot.duration > 0 {
-                Slider(value: Binding(get: { min(model.seekTarget, model.snapshot.duration) }, set: { model.seekTarget = $0 }), in: 0...model.snapshot.duration, onEditingChanged: { editing in if !editing { model.seek(to: model.seekTarget) } })
-                Text("\(format(model.snapshot.position)) / \(format(model.snapshot.duration))")
-                    .font(.caption.monospacedDigit())
-            }
+            Text(model.statusText).font(.callout)
+            HStack {
+                Button("-10 秒") { model.seek(by: -10) }
+                Button(model.isPlaying ? "暂停" : "播放") { model.togglePlayback() }
+                Button("+10 秒") { model.seek(by: 10) }
+            }.buttonStyle(.bordered)
 
-            HStack(spacing: 24) {
-                Button { model.seek(to: max(0, model.snapshot.position - 10)) } label: { Image(systemName: "gobackward.10").font(.title2) }
-                Button { model.togglePlayback() } label: { Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").font(.title2) }
-                Button { model.seek(to: min(model.snapshot.duration > 0 ? model.snapshot.duration : .greatestFiniteMagnitude, model.snapshot.position + 10)) } label: { Image(systemName: "goforward.10").font(.title2) }
-            }
-
-            if model.snapshot.isBuffering { Text("MDK buffering").font(.caption).foregroundColor(.secondary) }
-            if let error = model.snapshot.errorMessage { Text(error).font(.caption).foregroundColor(.red) }
+            Slider(value: Binding(get: { isScrubbing ? scrubPosition : model.snapshot.position }, set: { scrubPosition = $0 }), in: 0...max(model.snapshot.duration, 1), onEditingChanged: { editing in
+                isScrubbing = editing
+                if !editing { model.seek(to: scrubPosition) }
+            })
+            Text("\(formatTime(isScrubbing ? scrubPosition : model.snapshot.position)) / \(formatTime(model.snapshot.duration))").font(.caption.monospacedDigit())
             Spacer()
         }
         .padding()
         .navigationTitle("MDK 本地实验")
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $model.isPresentingPicker) { LocalVideoDocumentPicker { url in model.select(url) } }
+        .fileImporter(isPresented: $pickerPresented, allowedContentTypes: [.movie, .video, .mpeg4Movie, .quickTimeMovie], allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls): if let url = urls.first { model.open(url) }
+            case .failure(let error): DiagnosticsLogger.shared.playback("LocalMDKLab", "picker-failed error=\(error.localizedDescription)")
+            }
+        }
         .onDisappear { model.stop() }
     }
 
-    private func format(_ seconds: Double) -> String {
-        guard seconds.isFinite, seconds >= 0 else { return "00:00" }
-        let value = Int(seconds.rounded(.down))
-        return String(format: "%02d:%02d", value / 60, value % 60)
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        guard seconds.isFinite && seconds >= 0 else { return "00:00" }
+        let total = Int(seconds.rounded(.down)); return String(format: "%02d:%02d", total / 60, total % 60)
     }
 }
 
-private struct LocalMDKSurface: UIViewRepresentable {
-    let view: UIView
-    func makeUIView(context: Context) -> UIView { view }
+private extension LocalMDKFileLabModel {
+    var engineRenderView: UIView? { engine?.renderView }
+}
+
+private struct LocalMDKRenderContainer: UIViewRepresentable {
+    let renderView: UIView
+    func makeUIView(context: Context) -> UIView { renderView }
     func updateUIView(_ uiView: UIView, context: Context) {}
-}
-
-private struct LocalVideoDocumentPicker: UIViewControllerRepresentable {
-    let onPick: (URL) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.movie, .video, .audiovisualContent], asCopy: false)
-        picker.allowsMultipleSelection = false
-        picker.delegate = context.coordinator
-        return picker
-    }
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
-
-    final class Coordinator: NSObject, UIDocumentPickerDelegate {
-        let onPick: (URL) -> Void
-        init(onPick: @escaping (URL) -> Void) { self.onPick = onPick }
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { if let url = urls.first { onPick(url) } }
-    }
 }
 
 #else
 
 struct LocalMDKFileLabView: View {
-    var body: some View { Text("当前构建未包含 MDK 实验引擎。") .navigationTitle("MDK 本地实验") }
+    var body: some View { Text("当前构建未包含 MDK 实验引擎。").navigationTitle("MDK 本地实验") }
 }
 
 #endif
