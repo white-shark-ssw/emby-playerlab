@@ -1,1 +1,1 @@
-Build89 validation trigger: hide premature EOF banner and test MDK direct Emby→302→115 HTTP path while reserving UnifiedTransport for MPV fallback.
+Build89 validation trigger v2: hide premature EOF banner and test MDK direct Emby→302→115 HTTP path while reserving UnifiedTransport for MPV fallback.
