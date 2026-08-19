@@ -17,6 +17,15 @@ if old in engine:
     engine = engine.replace(old, new, 1)
 elif new not in engine:
     raise SystemExit("recordRenderedFrame player.position marker missing")
-engine_path.write_text(engine)
 
-print("Build86 round2 package and main-thread getter patch applied")
+old_size = '''view.drawableSize'''
+new_size = '''view.currentPixelSize'''
+if old_size in engine:
+    if engine.count(old_size) != 1:
+        raise SystemExit(f"expected one legacy drawableSize reference, got {engine.count(old_size)}")
+    engine = engine.replace(old_size, new_size, 1)
+elif new_size not in engine:
+    raise SystemExit("currentPixelSize reference missing")
+
+engine_path.write_text(engine)
+print("Build86 round2 package, main-thread getter, and CAMetalLayer size patches applied")
