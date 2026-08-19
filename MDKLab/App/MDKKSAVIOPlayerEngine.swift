@@ -323,6 +323,14 @@ final class KSAVIOPlayerEngine: PlayerEngine {
                     DiagnosticsLogger.shared.playback("MDKSeek", "id=\(dispatchedIntent.id) target=\(String(format: "%.3f", dispatchedIntent.target)) callbackMs=\(String(format: "%.1f", requestLatency)) nativeMs=\(String(format: "%.1f", nativeLatency)) result=-2 current=false action=ignored-dispatch-latest")
                 } else {
                     let recoveryTarget = self.latestDesiredTarget(fallback: dispatchedIntent.target)
+                    let endedNow = self.hasStatus(player.mediaStatus.rawValue, bit: 6)
+                    if endedNow {
+                        self.pendingSeekResume = nil
+                        self.queuedLatestSeek = nil
+                        DiagnosticsLogger.shared.playback("MDKSeek", "id=\(dispatchedIntent.id) target=\(String(format: "%.3f", dispatchedIntent.target)) callbackMs=\(String(format: "%.1f", requestLatency)) nativeMs=\(String(format: "%.1f", nativeLatency)) result=\(actualMs) current=\(isCurrent) action=eof-negative-callback-in-place-reprepare latestTarget=\(String(format: "%.3f", recoveryTarget))")
+                        self.recoverStall(position: recoveryTarget, duration: dispatchedIntent.duration)
+                        return
+                    }
                     DiagnosticsLogger.shared.playback("MDKSeek", "id=\(dispatchedIntent.id) target=\(String(format: "%.3f", dispatchedIntent.target)) callbackMs=\(String(format: "%.1f", requestLatency)) nativeMs=\(String(format: "%.1f", nativeLatency)) result=\(actualMs) current=\(isCurrent) action=negative-callback-recover latestTarget=\(String(format: "%.3f", recoveryTarget))")
                     self.recoverWedgedSeek(reason: "negative-callback-\(actualMs)", fallbackTarget: recoveryTarget, playerGeneration: dispatchedIntent.playerGeneration)
                     return
@@ -460,8 +468,11 @@ final class KSAVIOPlayerEngine: PlayerEngine {
 
         if ended, duration > 0, position + max(3, duration * 0.005) < duration, activeNativeSeek != nil || queuedLatestSeek != nil || pendingSeekResume != nil {
             let recoveryTarget = latestDesiredTarget(fallback: position)
-            DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=premature-eof-during-seek position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) latestTarget=\(String(format: "%.3f", recoveryTarget)) action=rebuild-player-at-latest-target")
-            recoverWedgedSeek(reason: "premature-eof-during-seek", fallbackTarget: recoveryTarget, playerGeneration: generation)
+            activeNativeSeek = nil
+            queuedLatestSeek = nil
+            pendingSeekResume = nil
+            DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=premature-eof-during-seek position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) latestTarget=\(String(format: "%.3f", recoveryTarget)) action=in-place-reprepare-no-rebuild")
+            recoverStall(position: recoveryTarget, duration: duration)
             return
         }
 
