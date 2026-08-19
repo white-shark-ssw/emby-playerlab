@@ -1,10 +1,8 @@
 name: Build OnePlayer 0.13.32 Local Playback
 
 on:
-  push:
-    branches: [feat/local-file-playback-0.13.32]
   pull_request:
-    branches: [feat/recovery-isolation-0.13.17]
+    branches: [ci/local-file-playback-0.13.32-base]
   workflow_dispatch:
 
 concurrency:
