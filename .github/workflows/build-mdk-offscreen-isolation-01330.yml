@@ -25,9 +25,9 @@ jobs:
       - name: Materialize and audit Build97 offscreen isolation
         run: |
           set -euo pipefail
-          python3 scripts/materialize_mdk_offscreen_isolation_01330.py
+          python3 scripts/materialize_mdk_offscreen_isolation_01330_v2.py
           git diff --check
-          grep -Fq 'api.layer = nil' MDKLab/SwiftMDKOnePlayer/Sources/swift-mdk/MetalLayerRenderer.swift
+          grep -Fq 'Keep api.layer zero-initialized' MDKLab/SwiftMDKOnePlayer/Sources/swift-mdk/MetalLayerRenderer.swift
           grep -Fq 'acquireRenderTexture' MDKLab/SwiftMDKOnePlayer/Sources/swift-mdk/MetalLayerRenderer.swift
           grep -Fq 'blit.copy(from: source' MDKLab/SwiftMDKOnePlayer/Sources/swift-mdk/MetalLayerRenderer.swift
           grep -Fq 'renderer.prepareSurfaceSize(surfaceSize)' MDKLab/App/MDKKSAVIOPlayerEngine.swift
@@ -50,6 +50,7 @@ jobs:
           assert 'DispatchQueue.main.asyncAfter(deadline: .now() + firstFrameWatchdogSeconds)' not in engine
           assert 'DispatchQueue.main.asyncAfter(deadline: .now() + prepareWatchdogSeconds)' not in engine
           assert 'api.layer = bridge(obj: context.layer)' not in renderer
+          assert 'api.layer = nil' not in renderer
           assert 'layer.nextDrawable()' in renderer
           assert renderer.index('let result = player.renderVideo') < renderer.index('context.presentationResources()')
           assert 'MediaCompatibilityStore.markCompatibilityEngineRequired(itemId: source.itemId, reason: "mdk-native-isolation")' not in controller
