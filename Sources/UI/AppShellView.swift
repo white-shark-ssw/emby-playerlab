@@ -70,6 +70,8 @@ struct GlobalSettingsView: View {
                     }
 
                     settingsGroup {
+                        NavigationLink(destination: LocalMDKFileLabView()) { settingsRow("MDK 本地文件实验", systemImage: "doc.badge.gearshape") }
+                        Divider().padding(.leading, 48)
                         Button {
                             do { shareURL = try DiagnosticsLogger.shared.export() } catch {}
                         } label: {
