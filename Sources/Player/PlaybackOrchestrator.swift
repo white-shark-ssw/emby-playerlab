@@ -115,6 +115,10 @@ final class PlaybackOrchestrator {
             DiagnosticsLogger.shared.playback("Orchestrator", "engine error engine=\(kind.title) failureIsolation=triggered action=switch-mpv error=\(message)")
             return .switchEngine(.mpv, reason: "MDK native worker 超时；主线程仍响应，受控切换到 MPV 高兼容引擎")
         }
+        if kind == .ksAVIO, automaticMode, normalized.contains("mdk session unsafe") {
+            DiagnosticsLogger.shared.playback("Orchestrator", "engine error engine=\(kind.title) sessionUnsafe=true action=switch-mpv-immediate error=\(message)")
+            return .switchEngine(.mpv, reason: "MDK 当前会话已进入不安全状态；立即切换到 MPV 高兼容引擎")
+        }
         if kind == .ksAVIO, automaticMode, normalized.contains("mdk abnormal media recovery exhausted") {
             DiagnosticsLogger.shared.playback("Orchestrator", "engine error engine=\(kind.title) recoveryExhausted=true action=switch-mpv-immediate error=\(message)")
             return .switchEngine(.mpv, reason: "MDK 异常媒体恢复已用尽；立即切换到 MPV 高兼容引擎")
