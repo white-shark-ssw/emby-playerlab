@@ -10,12 +10,24 @@ public final class PlayerMetalLayerRenderer: @unchecked Sendable {
         let layer: CAMetalLayer
         private let lock = NSLock()
         private var drawable: CAMetalDrawable?
+        private var enabled = true
 
         init(layer: CAMetalLayer) { self.layer = layer }
 
-        func acquireTexture() -> MTLTexture? {
-            guard let next = layer.nextDrawable() else { return nil }
+        func setEnabled(_ value: Bool) {
             lock.lock()
+            enabled = value
+            if !value { drawable = nil }
+            lock.unlock()
+        }
+
+        func acquireTexture() -> MTLTexture? {
+            lock.lock()
+            let allowed = enabled
+            lock.unlock()
+            guard allowed, let next = layer.nextDrawable() else { return nil }
+            lock.lock()
+            guard enabled else { lock.unlock(); return nil }
             drawable = next
             lock.unlock()
             return next.texture
@@ -70,6 +82,7 @@ public final class PlayerMetalLayerRenderer: @unchecked Sendable {
             return bridge(obj: texture)
         }
 
+        context.setEnabled(true)
         lock.lock()
         self.player = player
         active = true
@@ -98,6 +111,7 @@ public final class PlayerMetalLayerRenderer: @unchecked Sendable {
         player = nil
         renderPending = false
         lock.unlock()
+        context.setEnabled(false)
         context.clearDrawable()
     }
 
@@ -124,12 +138,19 @@ public final class PlayerMetalLayerRenderer: @unchecked Sendable {
     private func render(_ player: Player) {
         let startedAt = CACurrentMediaTime()
         let result = player.renderVideo(vid: self)
-        if let drawable = context.takeDrawable(), let buffer = commandQueue.makeCommandBuffer() {
-            buffer.present(drawable)
-            buffer.commit()
+        lock.lock()
+        let shouldSubmit = active && self.player === player
+        lock.unlock()
+        if shouldSubmit {
+            if let drawable = context.takeDrawable(), let buffer = commandQueue.makeCommandBuffer() {
+                buffer.present(drawable)
+                buffer.commit()
+            }
+            onFrameSubmitted?(result)
+            onRenderCompleted?((CACurrentMediaTime() - startedAt) * 1_000)
+        } else {
+            context.clearDrawable()
         }
-        onFrameSubmitted?(result)
-        onRenderCompleted?((CACurrentMediaTime() - startedAt) * 1_000)
 
         var scheduleAgain = false
         lock.lock()

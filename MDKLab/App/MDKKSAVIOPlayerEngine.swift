@@ -38,6 +38,20 @@ private final class MDKRenderView: UIView {
     }
 }
 
+private final class MDKNativeQuarantineStore {
+    static let shared = MDKNativeQuarantineStore()
+    private let lock = NSLock()
+    private var retainedObjects: [AnyObject] = []
+
+    func retain(_ objects: AnyObject...) {
+        lock.lock()
+        retainedObjects.append(contentsOf: objects)
+        let count = retainedObjects.count
+        lock.unlock()
+        DiagnosticsLogger.shared.playback("MDKNativeIsolation", "operation=quarantine-retain objects=\(count) action=skip-native-destroy")
+    }
+}
+
 final class KSAVIOPlayerEngine: PlayerEngine {
     private struct PendingSeekResume {
         let id: Int
@@ -113,6 +127,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private var didConfigureGlobalIO = false
     private var prematureEOFRecoveryActive = false
     private var abnormalMediaRecoveryLevel = 0
+    private var nativeQuarantineActive = false
 
     var playerView: UIView? { view }
 
@@ -123,20 +138,26 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         guard let renderer = PlayerMetalLayerRenderer(layer: renderView.metalLayer) else { fatalError("Metal is unavailable") }
         self.view = renderView
         self.renderer = renderer
-        configureRenderer(renderer)
+        configureRenderer(renderer, generation: 0)
         renderView.onSurfaceChanged = { [weak self] size in self?.surfaceDidChange(size) }
         _ = client
         _ = configuration
         _ = ktvCacheSession
     }
 
-    private func configureRenderer(_ renderer: PlayerMetalLayerRenderer) {
-        renderer.onFrameSubmitted = { [weak self] result in
-            DispatchQueue.main.async { [weak self] in self?.recordRenderedFrame(result) }
+    private func configureRenderer(_ renderer: PlayerMetalLayerRenderer, generation rendererGeneration: Int) {
+        renderer.onFrameSubmitted = { [weak self, weak renderer] result in
+            DispatchQueue.main.async { [weak self, weak renderer] in
+                guard let self, let renderer, rendererGeneration == self.generation, self.renderer === renderer else {
+                    DiagnosticsLogger.shared.playback("MDKNativeIsolation", "operation=discard-stale-render-callback callbackGeneration=\(rendererGeneration) action=no-state-mutation")
+                    return
+                }
+                self.recordRenderedFrame(result)
+            }
         }
-        renderer.onRenderCompleted = { elapsedMs in
-            guard elapsedMs >= 250 else { return }
-            DiagnosticsLogger.shared.playback("MDKNativeIsolation", "operation=render completedMs=\(String(format: "%.1f", elapsedMs)) mainThread=false")
+        renderer.onRenderCompleted = { [weak self, weak renderer] elapsedMs in
+            guard let self, let renderer, rendererGeneration == self.generation, self.renderer === renderer, elapsedMs >= 250 else { return }
+            DiagnosticsLogger.shared.playback("MDKNativeIsolation", "operation=render completedMs=\(String(format: "%.1f", elapsedMs)) generation=\(rendererGeneration) mainThread=false")
         }
     }
 
@@ -202,8 +223,9 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         let age = CACurrentMediaTime() - lastRenderedFrameAt
         guard age >= 4 else { return }
         hasRenderedValidFrame = false
+        nativeQuarantineActive = true
         let message = "MDK native isolation render timeout"
-        DiagnosticsLogger.shared.playback("MDKNativeIsolation", "operation=render timeoutMs=\(Int(age * 1_000)) mainResponsive=true action=quarantine-engine")
+        DiagnosticsLogger.shared.playback("MDKNativeIsolation", "operation=render timeoutMs=\(Int(age * 1_000)) generation=\(generation) mainResponsive=true action=quarantine-engine-switch-mpv")
         onSnapshot?(PlayerSnapshot(position: lastNativePosition, duration: lastNativeDuration, isPlaying: false, isBuffering: false, waitingReason: "MDK 渲染线程未响应", errorMessage: message))
     }
 
@@ -214,7 +236,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         nativeControlQueue = DispatchQueue(label: "OnePlayer.MDK.NativeControl.\(currentGeneration)", qos: .userInitiated)
         guard let newRenderer = PlayerMetalLayerRenderer(layer: view.metalLayer) else { return }
         renderer = newRenderer
-        configureRenderer(newRenderer)
+        configureRenderer(newRenderer, generation: currentGeneration)
         startRenderWatchdog()
         self.preferredForwardBuffer = preferredForwardBuffer
         lastURL = url
@@ -690,8 +712,23 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private func recoverWedgedSeek(reason: String, fallbackTarget: Double, playerGeneration: Int) {
         guard playerGeneration == generation, player != nil else { return }
         let recoveryTarget = latestDesiredTarget(fallback: fallbackTarget)
-        DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=\(reason) active=\(activeNativeSeek?.id ?? -1) queued=\(queuedLatestSeek?.id ?? -1) latestTarget=\(String(format: "%.3f", recoveryTarget)) action=rebuild-player-at-latest-target")
-        transportHTTPServer?.resetClientStreams(reason: "mdk-seek-wedge-\(reason)")
+        let nativeUnresponsive = reason.contains("timeout") || reason.contains("callback-without-new-frame")
+        if nativeUnresponsive {
+            nativeQuarantineActive = true
+            activeNativeSeek = nil
+            queuedLatestSeek = nil
+            pendingSeekResume = nil
+            seekBufferingGraceStartedAt = nil
+            seekBufferingGraceID = nil
+            seekBufferingGraceTarget = nil
+            hasRenderedValidFrame = false
+            let message = "MDK native isolation seek wedge"
+            DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=\(reason) generation=\(playerGeneration) latestTarget=\(String(format: "%.3f", recoveryTarget)) action=quarantine-engine-switch-mpv sameProcessMDKRebuild=false")
+            onSnapshot?(PlayerSnapshot(position: recoveryTarget, duration: max(lastNativeDuration, source.mediaSource.durationSeconds ?? 0), isPlaying: false, isBuffering: false, errorMessage: message))
+            return
+        }
+        DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=\(reason) active=\(activeNativeSeek?.id ?? -1) queued=\(queuedLatestSeek?.id ?? -1) latestTarget=\(String(format: "%.3f", recoveryTarget)) action=rebuild-responsive-mdk-generation")
+        transportHTTPServer?.resetClientStreams(reason: "mdk-seek-recovery-\(reason)")
         activeNativeSeek = nil
         queuedLatestSeek = nil
         reload(at: recoveryTarget)
@@ -798,7 +835,13 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         didLogSeekBufferingGraceID = nil
         let oldRenderer = renderer
         oldRenderer.detach()
-        guard let oldPlayer = takePlayer() else { return }
+        guard let oldPlayer = takePlayer() else { nativeQuarantineActive = false; return }
+        if nativeQuarantineActive {
+            nativeQuarantineActive = false
+            MDKNativeQuarantineStore.shared.retain(oldPlayer, oldRenderer)
+            DiagnosticsLogger.shared.playback("MDKTeardown", "phase=ui-detached generation=\(generation) activeSeek=\(activeSeekID ?? -1) action=quarantine-retain-skip-native-stop mainResponsive=true")
+            return
+        }
         let teardownStartedAt = CACurrentMediaTime()
         DiagnosticsLogger.shared.playback("MDKTeardown", "phase=ui-detached generation=\(generation) activeSeek=\(activeSeekID ?? -1) action=isolated-native-stop mainResponsive=true")
         DispatchQueue.global(qos: .utility).async {
