@@ -12,6 +12,16 @@ on:
       - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build-mdk-lab.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Sources/**"
+      - "MDKLab/**"
+      - "Config/**"
+      - "Resources/**"
+      - "project.mdklab.yml"
+      - "Podfile"
+      - ".github/workflows/build-mdk-lab.yml"
 
 permissions:
   contents: read
@@ -36,7 +46,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           spec=Path('project.mdklab.yml').read_text(); local=Path('Sources/UI/LocalMDKFileLabView.swift').read_text(); shell=Path('Sources/UI/AppShellView.swift').read_text(); engine=Path('MDKLab/App/MDKKSAVIOPlayerEngine.swift').read_text()
-          checks={'iOS15':'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,'MDK condition':'SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MDK_LAB"' in spec,'swift-mdk linked':'product: swift-mdk' in spec,'MDK source':'- path: MDKLab/App' in spec,'real local MDK':'#if MDK_LAB && canImport(swift_mdk)' in local and 'KSAVIOPlayerEngine' in local,'settings entry':'LocalMDKFileLabView()' in shell,'bypass transport':'sharedTransportSession: nil' in local and 'unifiedTransport=false' in local,'no fallback':'fallback=false' in local,'diagnostics':'DiagnosticsLogger.shared.playback("LocalMDKLab"' in local,'same MDK condition':'#if MDK_LAB && canImport(swift_mdk)' in engine}
+          checks={'iOS15':'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,'MDK condition':'SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MDK_LAB"' in spec,'swift-mdk linked':'product: swift-mdk' in spec,'MDK source':'- path: MDKLab/App' in spec,'direct local MDK':'#if MDK_LAB && canImport(swift_mdk)' in local and 'LocalMDKDirectFilePlayer' in local and 'swift_mdk.Player()' in local,'settings entry':'LocalMDKFileLabView()' in shell,'bypass transport':'source=local-file' in local and 'unifiedTransport=false' in local,'no fallback':'fallback=false' in local,'diagnostics':'DiagnosticsLogger.shared.playback("LocalMDKLab"' in local,'direct file URL':'player.media = url.absoluteString' in local,'formal MDK engine':'#if MDK_LAB && canImport(swift_mdk)' in engine and 'final class KSAVIOPlayerEngine' in engine}
           for n,v in checks.items():
             print(('PASS' if v else 'FAIL'),n)
             if not v: raise SystemExit(n)
@@ -55,6 +65,7 @@ jobs:
           MIN_OS=$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP_PATH/Info.plist"); test "$MIN_OS" = "15.0"
           strings "$APP_PATH/OnePlayer" | grep -F 'MDK 本地文件实验'
           strings "$APP_PATH/OnePlayer" | grep -F 'LocalMDKLab'
+          strings "$APP_PATH/OnePlayer" | grep -F 'source=local-file'
           if strings "$APP_PATH/OnePlayer" | grep -F '当前构建未包含 MDK 实验引擎。'; then exit 1; fi
           mkdir Payload; cp -R "$APP_PATH" Payload/; zip -qry OnePlayer-local-mdk.ipa Payload
       - uses: actions/upload-artifact@v4
