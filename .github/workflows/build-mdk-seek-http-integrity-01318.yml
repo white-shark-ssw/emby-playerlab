@@ -1,17 +1,15 @@
 name: Build OnePlayer 0.13.18 MDK Seek HTTP Integrity
 
 on:
-  push:
+  pull_request:
     branches: [feat/recovery-isolation-0.13.17]
-    paths:
-      - .github/workflows/build-mdk-seek-http-integrity-01318.yml
 
 concurrency:
-  group: mdk-seek-http-integrity-01318-${{ github.ref }}
+  group: mdk-seek-http-integrity-01318-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -19,19 +17,6 @@ jobs:
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: feat/recovery-isolation-0.13.17
-
-      - name: Record Build85 run id
-        run: |
-          set -euo pipefail
-          mkdir -p .ci
-          printf 'run_id=%s\ntrigger_commit=%s\n' '${{ github.run_id }}' '${{ github.sha }}' > .ci/build85-run.txt
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add .ci/build85-run.txt
-          git commit -m 'ci: record Build85 workflow run' || true
-          git push origin HEAD:feat/recovery-isolation-0.13.17
 
       - name: Verify Build85 MDK seek and resume architecture
         run: |
@@ -127,12 +112,3 @@ jobs:
             min-os-report.log
           if-no-files-found: error
           retention-days: 14
-
-      - name: Record successful Build85 receipt
-        run: |
-          set -euo pipefail
-          SHA_LINE="$(cat OnePlayer-0.13.18-build85-mdk-seek-http-integrity-unsigned.ipa.sha256)"
-          printf 'run_id=%s\ncommit=%s\nsha256=%s\n' '${{ github.run_id }}' '${{ github.sha }}' "$SHA_LINE" > .ci/build85-success.txt
-          git add .ci/build85-success.txt
-          git commit -m 'ci: record Build85 successful artifact' || exit 0
-          git push origin HEAD:feat/recovery-isolation-0.13.17
