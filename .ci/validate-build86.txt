@@ -1,0 +1,1 @@
+Build86 validation trigger: MDK native render/main-thread isolation.
