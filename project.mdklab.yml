@@ -16,18 +16,16 @@ packages:
   KSPlayerShim:
     path: MDKLab/KSPlayerShim
 
-# OnePlayer 0.13.13 renders only current UnifiedTransport playback-byte cache ranges on the single player timeline.
-# Engine live/verified time ranges remain internal playback diagnostics and do not drive the visible buffer bar.
-# Playback/session/transport semantics stay above engine adapters; engine-specific recovery remains inside each adapter.
-# The CI audits both LC_BUILD_VERSION and legacy LC_VERSION_MIN_IPHONEOS slices for iOS 15 compatibility.
+# OnePlayer local-file playback lab is isolated from Emby/STRM/UnifiedTransport.
+# Existing network playback, cache, seek and MDK -> MPV fallback logic remain unchanged.
 settings:
   base:
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "15.0"
     ENABLE_USER_SCRIPT_SANDBOXING: "NO"
     CLANG_ENABLE_MODULES: "YES"
-    MARKETING_VERSION: "0.13.30"
-    CURRENT_PROJECT_VERSION: "97"
+    MARKETING_VERSION: "0.13.32"
+    CURRENT_PROJECT_VERSION: "99"
 
 targets:
   EmbyPlayerLab:
@@ -54,8 +52,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app
-        MARKETING_VERSION: "0.13.30"
-        CURRENT_PROJECT_VERSION: "97"
+        MARKETING_VERSION: "0.13.32"
+        CURRENT_PROJECT_VERSION: "99"
         PRODUCT_NAME: "OnePlayer"
         PRODUCT_MODULE_NAME: EmbyPlayerLab
         TARGETED_DEVICE_FAMILY: "1,2"
