@@ -1,1 +1,1 @@
-Build88 validation trigger: MDK io.avio=1 A/B with compact 2-second MPV fallback toast.
+Build88 validation trigger v2: corrected PlayerScreen toast insertion anchor; MDK io.avio=1 A/B unchanged.
