@@ -799,6 +799,7 @@ struct PlayerScreen: View {
 
     private func closePlayer() {
         guard !isClosing else { return }
+        DiagnosticsLogger.shared.app("PlayerLifecycle", "close tap received before engine stop engine=\(controller.engineKind.title)")
         isClosing = true
         orientationReady = false
         controlsHideWorkItem?.cancel()
