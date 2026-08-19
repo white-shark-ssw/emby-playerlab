@@ -88,6 +88,10 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private var player: swift_mdk.Player?
     private var stateTimer: DispatchSourceTimer?
     private var renderWatchdogTimer: Timer?
+    private let renderDispatchLock = NSLock()
+    private var renderDispatchPending = false
+    private var latestRenderResult: Double?
+    private let renderStateDispatchInterval: TimeInterval = 1.0 / 30.0
     private var hasRenderedValidFrame = false
     private var lastRenderedFrameAt = CACurrentMediaTime()
     private var lastNativeBuffering = false
@@ -158,12 +162,24 @@ final class KSAVIOPlayerEngine: PlayerEngine {
 
     private func configureRenderer(_ renderer: PlayerMetalLayerRenderer, generation rendererGeneration: Int) {
         renderer.onFrameSubmitted = { [weak self, weak renderer] result in
-            DispatchQueue.main.async { [weak self, weak renderer] in
-                guard let self, let renderer, rendererGeneration == self.generation, self.renderer === renderer else {
+            guard let self else { return }
+            self.renderDispatchLock.lock()
+            self.latestRenderResult = result
+            if self.renderDispatchPending { self.renderDispatchLock.unlock(); return }
+            self.renderDispatchPending = true
+            self.renderDispatchLock.unlock()
+            DispatchQueue.main.asyncAfter(deadline: .now() + self.renderStateDispatchInterval) { [weak self, weak renderer] in
+                guard let self else { return }
+                self.renderDispatchLock.lock()
+                let latest = self.latestRenderResult ?? result
+                self.latestRenderResult = nil
+                self.renderDispatchPending = false
+                self.renderDispatchLock.unlock()
+                guard let renderer, rendererGeneration == self.generation, self.renderer === renderer else {
                     DiagnosticsLogger.shared.playback("MDKNativeIsolation", "operation=discard-stale-render-callback callbackGeneration=\(rendererGeneration) action=no-state-mutation")
                     return
                 }
-                self.recordRenderedFrame(result)
+                self.recordRenderedFrame(latest)
             }
         }
         renderer.onRenderCompleted = { [weak self, weak renderer] elapsedMs in
@@ -550,6 +566,10 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         stateTimer = nil
         renderWatchdogTimer?.invalidate()
         renderWatchdogTimer = nil
+        renderDispatchLock.lock()
+        renderDispatchPending = false
+        latestRenderResult = nil
+        renderDispatchLock.unlock()
         transportPrepareTask?.cancel()
         transportPrepareTask = nil
         let server = transportHTTPServer
@@ -638,8 +658,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
             player.setProperty(name: "keep_open", value: "1")
             player.setProperty(name: "avio.multiple_requests", value: "1")
             player.setProperty(name: "avio.short_seek_size", value: String(avioShortSeekSizeBytes))
-            player.setProperty(name: "avio.reconnect", value: "1")
-            DiagnosticsLogger.shared.playback("MDKAVIO", "generation=\(currentGeneration) multipleRequests=1 shortSeekSize=\(avioShortSeekSizeBytes) reconnect=1 requestSize=unbounded transport=\(transportMode)")
+            DiagnosticsLogger.shared.playback("MDKAVIO", "generation=\(currentGeneration) multipleRequests=1 shortSeekSize=\(avioShortSeekSizeBytes) reconnect=off-localhost requestSize=unbounded transport=\(transportMode)")
             if compatLevel >= 2 {
                 player.setProperty(name: "avformat.err_detect", value: "ignore_err")
                 player.setProperty(name: "avformat.fflags", value: "+discardcorrupt")

@@ -379,6 +379,7 @@ final class PlayerController: ObservableObject {
         let shouldPlay = userWantsPlayback
         let previousKind = engineKind
         let previousEngine = engine
+        let fastMDKFallback = previousKind == .ksAVIO && kind == .mpv && reason != "用户切换"
         engineSwitchInProgress = true
         engineTransitionAwaitingFirstSnapshot = true
         engineSwitchSerial &+= 1
@@ -416,21 +417,15 @@ final class PlayerController: ObservableObject {
         engineSwitchTask?.cancel()
         engineSwitchTask = Task { [weak self] in
             guard let self else { return }
-            if let transportContext = self.transportContext { await transportContext.quiesceConsumers() }
-            guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
-            EngineTransitionBreadcrumb.record(stage: "transport-quiesced", from: previousKind, to: kind, position: resumePosition, reason: reason)
-            #if MDK_LAB
-            if previousKind == .ksAVIO, kind == .mpv, let session = self.transportContext?.session {
-                let ready = await session.prewarmStartupResolve()
+            if fastMDKFallback {
+                EngineTransitionBreadcrumb.record(stage: "transport-preserved", from: previousKind, to: kind, position: resumePosition, reason: reason)
+                DiagnosticsLogger.shared.playback("EngineTransition", "from=\(previousKind.title) to=\(kind.title) transport=preserve-live-unified settleMs=0 fastFallback=true")
+            } else {
+                if let transportContext = self.transportContext { await transportContext.quiesceConsumers() }
                 guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
-                await session.releaseStartupPrewarm(initialPosition: resumePosition, duration: self.effectiveDuration)
-                await session.setPlaybackAdvancing(shouldPlay)
-                DiagnosticsLogger.shared.playback("MDKDirectAB", "fallbackTransportWarm ready=\(ready) resume=\(String(format: "%.3f", resumePosition)) action=handoff-to-unified-mpv")
+                EngineTransitionBreadcrumb.record(stage: "transport-quiesced", from: previousKind, to: kind, position: resumePosition, reason: reason)
+                try? await Task.sleep(nanoseconds: 250_000_000)
             }
-            #endif
-            let settleNanoseconds: UInt64 = previousKind == .ksAVIO && kind == .mpv ? 50_000_000 : 250_000_000
-            DiagnosticsLogger.shared.playback("EngineTransition", "from=\(previousKind.title) to=\(kind.title) settleMs=\(settleNanoseconds / 1_000_000) fastFallback=\(previousKind == .ksAVIO && kind == .mpv)")
-            try? await Task.sleep(nanoseconds: settleNanoseconds)
             guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
 
             let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext)
@@ -753,7 +748,11 @@ final class PlayerController: ObservableObject {
         guard !engineSwitchInProgress, !engineTransitionAwaitingFirstSnapshot else { return }
         if scheduleStartupCompatibilityFallbackIfNeeded(message: message) { return }
         guard let action = orchestrator.actionForEngineError(kind: engineKind, message: message) else { return }
-        if case .switchEngine(let next, let reason) = action { stallMessage = "\(engineKind.title) 发生错误，正在自动切换到 \(next.title)。"; switchEngine(to: next, reason: reason) }
+        if case .switchEngine(let next, let reason) = action {
+            if engineKind == .ksAVIO, next == .mpv, message.lowercased().contains("mdk native isolation") { MediaCompatibilityStore.markCompatibilityEngineRequired(itemId: source.itemId, reason: "mdk-native-isolation") }
+            stallMessage = "\(engineKind.title) 发生错误，正在自动切换到 \(next.title)。"
+            switchEngine(to: next, reason: reason)
+        }
     }
 
     private func scheduleStartupCompatibilityFallbackIfNeeded(message: String) -> Bool {
