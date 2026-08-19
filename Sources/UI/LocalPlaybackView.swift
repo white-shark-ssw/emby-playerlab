@@ -147,7 +147,7 @@ struct LocalPlaybackView: View {
         VStack(spacing: 14) {
             Text("本地播放")
                 .font(.headline)
-            Text("直接播放“文件”App中的本机视频。该入口与 Emby、STRM、UnifiedTransport 和 Resume 完全隔离，不改动正常网络播放及 MDK → MPV 切换逻辑。")
+            Text("直接播放“文件”App中的本机视频。来自其他 App 文件提供器的视频会先由系统导入 OnePlayer，避免提供器不支持原地打开时点击文件无响应。该入口与 Emby、STRM、UnifiedTransport 和 Resume 完全隔离。")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -186,7 +186,12 @@ struct LocalPlaybackView: View {
         .padding()
         .navigationTitle("本地播放")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $model.isPresentingPicker) { LocalVideoDocumentPicker { url in model.select(url) } }
+        .sheet(isPresented: $model.isPresentingPicker) {
+            LocalVideoDocumentPicker { url in
+                model.isPresentingPicker = false
+                model.select(url)
+            }
+        }
         .onDisappear { model.stop() }
     }
 
@@ -219,7 +224,7 @@ private struct LocalVideoDocumentPicker: UIViewControllerRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.movie, .video, .audiovisualContent], asCopy: false)
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.movie, .video, .audiovisualContent], asCopy: true)
         picker.allowsMultipleSelection = false
         picker.delegate = context.coordinator
         return picker
@@ -229,7 +234,10 @@ private struct LocalVideoDocumentPicker: UIViewControllerRepresentable {
     final class Coordinator: NSObject, UIDocumentPickerDelegate {
         let onPick: (URL) -> Void
         init(onPick: @escaping (URL) -> Void) { self.onPick = onPick }
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { if let url = urls.first { onPick(url) } }
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard let url = urls.first else { return }
+            DispatchQueue.main.async { [onPick] in onPick(url) }
+        }
     }
 }
 
