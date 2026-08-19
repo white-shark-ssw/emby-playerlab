@@ -25,7 +25,6 @@ jobs:
       - name: Materialize and audit Build91 abnormal-media recovery
         run: |
           set -euo pipefail
-          python3 scripts/materialize_mdk_cache_bridge_01323.py
           python3 scripts/materialize_mdk_abnormal_profile_01324.py
           git diff --check
           grep -Fq 'private var mdkDirectHTTPABActive: Bool { false }' Sources/Player/PlayerController.swift
@@ -124,7 +123,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          git diff -- MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/Player/PlayerController.swift Sources/UI/PlayerScreen.swift Sources/Transport/TransportHTTPServer.swift Sources/Core/AppIdentity.swift project.mdklab.yml > /tmp/build91-runtime.patch
+          git diff -- MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/Core/AppIdentity.swift project.mdklab.yml > /tmp/build91-runtime.patch
           if test ! -s /tmp/build91-runtime.patch; then
             echo 'Build91 source already materialized.'
             exit 0
@@ -134,7 +133,7 @@ jobs:
           git fetch origin feat/recovery-isolation-0.13.17
           git reset --hard origin/feat/recovery-isolation-0.13.17
           git apply --3way /tmp/build91-runtime.patch
-          git add MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/Player/PlayerController.swift Sources/UI/PlayerScreen.swift Sources/Transport/TransportHTTPServer.swift Sources/Core/AppIdentity.swift project.mdklab.yml
+          git add MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/Core/AppIdentity.swift project.mdklab.yml
           git diff --cached --check
           git commit -m 'feat: add tiered MDK abnormal media recovery'
           git push origin HEAD:feat/recovery-isolation-0.13.17
