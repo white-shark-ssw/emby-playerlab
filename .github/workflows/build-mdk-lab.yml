@@ -61,12 +61,13 @@ jobs:
               "swift-mdk product linked": 'product: swift-mdk' in spec and 'path: MDKLab/SwiftMDKOnePlayer' in spec,
               "MDK engine source included": '- path: MDKLab/App' in spec,
               "local lab source included": '- path: Sources' in spec and 'LocalMDKFileLabView.swift' not in spec.split('excludes:', 1)[-1],
-              "local lab compiles real MDK path": '#if MDK_LAB && canImport(swift_mdk)' in local and 'KSAVIOPlayerEngine' in local,
+              "local lab compiles direct swift-mdk path": '#if MDK_LAB && canImport(swift_mdk)' in local and 'LocalMDKDirectFilePlayer' in local and 'swift_mdk.Player()' in local,
               "settings exposes local lab": 'LocalMDKFileLabView()' in shell and 'MDK 本地文件实验' in shell,
-              "local lab bypasses UnifiedTransport": 'sharedTransportSession: nil' in local and 'unifiedTransport=false' in local,
+              "local lab bypasses UnifiedTransport": 'source=local-file' in local and 'unifiedTransport=false' in local,
               "local lab disables MPV fallback": 'fallback=false' in local,
               "local lab diagnostics enabled": 'DiagnosticsLogger.shared.playback("LocalMDKLab"' in local,
-              "MDK engine compiled under same condition": '#if MDK_LAB && canImport(swift_mdk)' in engine,
+              "local lab uses local file URL directly": 'player.media = url.absoluteString' in local,
+              "formal MDK engine still compiled": '#if MDK_LAB && canImport(swift_mdk)' in engine and 'final class KSAVIOPlayerEngine' in engine,
           }
           for name, ok in checks.items():
               print(("PASS" if ok else "FAIL"), name)
@@ -98,6 +99,7 @@ jobs:
           plutil -p "$APP_PATH/Info.plist" | tee app-info.log
           strings "$APP_PATH/OnePlayer" | grep -F 'MDK 本地文件实验'
           strings "$APP_PATH/OnePlayer" | grep -F 'LocalMDKLab'
+          strings "$APP_PATH/OnePlayer" | grep -F 'source=local-file'
           if strings "$APP_PATH/OnePlayer" | grep -F '当前构建未包含 MDK 实验引擎。'; then echo '::error::fallback-only LocalMDK lab text found in MDK binary'; exit 1; fi
           echo "$APP_PATH" > app-path.txt
 
