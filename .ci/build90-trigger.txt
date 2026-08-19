@@ -1,0 +1,1 @@
+Build90 validation: restore UnifiedTransport high-speed cache to MDK, test HTTP/1.1 keep-alive bridge semantics, keep premature-EOF and stall recovery diagnostic-only, preserve iOS 15.0 deployment target.
