@@ -6,4 +6,7 @@ renderer = Path("MDKLab/SwiftMDKOnePlayer/Sources/swift-mdk/MetalLayerRenderer.s
 text = renderer.read_text()
 text = text.replace("        api.layer = nil\n", "        // Keep api.layer zero-initialized: MDK renders only into currentRenderTarget's offscreen texture.\n")
 renderer.write_text(text)
-print("Build97 v2 compile fix applied: mdkMetalRenderAPI.layer remains zero-initialized")
+engine = Path("MDKLab/App/MDKKSAVIOPlayerEngine.swift")
+engine_text = engine.read_text().replace("renderWatchdogTimer?.invalidate()", "renderWatchdogTimer?.cancel()")
+engine.write_text(engine_text)
+print("Build97 v2 compile fixes applied: zero-initialized MDK layer and DispatchSource watchdog cancellation")
