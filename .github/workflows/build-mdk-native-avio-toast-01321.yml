@@ -25,7 +25,7 @@ jobs:
       - name: Materialize and audit Build88 MDK native AVIO A-B
         run: |
           set -euo pipefail
-          python3 scripts/materialize_mdk_native_avio_toast_01321.py
+          python3 scripts/materialize_mdk_native_avio_toast_01321_v2.py
           git diff --check
           grep -Fq 'swift_mdk.setGlobalOption(name: "io.avio", value: 1)' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           grep -Fq 'mode=ffmpeg-native-avio option=io.avio value=1 customAVIO=false' MDKLab/App/MDKKSAVIOPlayerEngine.swift
