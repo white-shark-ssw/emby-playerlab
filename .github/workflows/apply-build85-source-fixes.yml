@@ -27,119 +27,68 @@ jobs:
               text = p.read_text()
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f"{path}: expected exactly one match, got {count}")
+                  raise SystemExit(f"{path}: expected exactly one match, got {count}: {old!r}")
               p.write_text(text.replace(old, new, 1))
 
-          replace_once(
-              "MDKLab/App/MDKKSAVIOPlayerEngine.swift",
-              '''        if let session = sharedTransportSession {
-              transportHTTPServer?.resetClientStreams(reason: "mdk-seek-\\(intent.id)")
-              Task { @MainActor [weak self, weak player] in
-          ''',
-              '''        if let session = sharedTransportSession {
-              DiagnosticsLogger.shared.playback("MDKSeekHTTP", "id=\\(intent.id) action=preserve-existing-stream-before-native-seek")
-              Task { @MainActor [weak self, weak player] in
-          ''')
+          def replace_after(path, anchor, old, new):
+              p = Path(path)
+              text = p.read_text()
+              anchor_index = text.find(anchor)
+              if anchor_index < 0:
+                  raise SystemExit(f"{path}: anchor missing: {anchor!r}")
+              prefix = text[:anchor_index]
+              suffix = text[anchor_index:]
+              count = suffix.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one anchored match, got {count}: {old!r}")
+              p.write_text(prefix + suffix.replace(old, new, 1))
 
           replace_once(
               "MDKLab/App/MDKKSAVIOPlayerEngine.swift",
-              '''        let recoveryTarget = latestDesiredTarget(fallback: fallbackTarget)
-              DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=\\(reason) active=\\(activeNativeSeek?.id ?? -1) queued=\\(queuedLatestSeek?.id ?? -1) latestTarget=\\(String(format: "%.3f", recoveryTarget)) action=rebuild-player-at-latest-target")
-              activeNativeSeek = nil
-              queuedLatestSeek = nil
-              reload(at: recoveryTarget)
-          ''',
-              '''        let recoveryTarget = latestDesiredTarget(fallback: fallbackTarget)
-              DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=\\(reason) active=\\(activeNativeSeek?.id ?? -1) queued=\\(queuedLatestSeek?.id ?? -1) latestTarget=\\(String(format: "%.3f", recoveryTarget)) action=rebuild-player-at-latest-target")
-              transportHTTPServer?.resetClientStreams(reason: "mdk-seek-wedge-\\(reason)")
-              activeNativeSeek = nil
-              queuedLatestSeek = nil
-              reload(at: recoveryTarget)
-          ''')
+              '            transportHTTPServer?.resetClientStreams(reason: "mdk-seek-\\(intent.id)")\n',
+              '            DiagnosticsLogger.shared.playback("MDKSeekHTTP", "id=\\(intent.id) action=preserve-existing-stream-before-native-seek")\n')
+
+          replace_after(
+              "MDKLab/App/MDKKSAVIOPlayerEngine.swift",
+              "    private func recoverWedgedSeek",
+              '        activeNativeSeek = nil\n        queuedLatestSeek = nil\n        reload(at: recoveryTarget)\n',
+              '        transportHTTPServer?.resetClientStreams(reason: "mdk-seek-wedge-\\(reason)")\n        activeNativeSeek = nil\n        queuedLatestSeek = nil\n        reload(at: recoveryTarget)\n')
 
           replace_once(
               "Sources/Transport/TransportHTTPServer.swift",
-              '''            var cursor = responseRange.lowerBound
-              let chunkSize = 512 * 1024
-              while cursor <= responseRange.upperBound, !Task.isCancelled, !isStopped {
-                  let length = min(chunkSize, Int(responseRange.upperBound - cursor + 1))
-                  let data = try await session.read(offset: cursor, length: length)
-                  guard !data.isEmpty else { break }
-                  try await send(data, on: connection)
-                  cursor += Int64(data.count)
-              }
+              '            let chunkSize = 512 * 1024\n            while cursor <= responseRange.upperBound, !Task.isCancelled, !isStopped {\n',
+              '            let chunkSize = 512 * 1024\n            var terminationReason = "complete"\n            while cursor <= responseRange.upperBound {\n                if Task.isCancelled { terminationReason = "task-cancelled"; break }\n                if isStopped { terminationReason = "server-stopped"; break }\n')
 
-              let sentBytes = max(0, cursor - responseRange.lowerBound)
-              if logRequest || sentBytes >= 8 * 1_048_576 {
-          ''',
-              '''            var cursor = responseRange.lowerBound
-              let chunkSize = 512 * 1024
-              var terminationReason = "complete"
-              while cursor <= responseRange.upperBound {
-                  if Task.isCancelled { terminationReason = "task-cancelled"; break }
-                  if isStopped { terminationReason = "server-stopped"; break }
-                  let length = min(chunkSize, Int(responseRange.upperBound - cursor + 1))
-                  let data = try await session.read(offset: cursor, length: length)
-                  if data.isEmpty { terminationReason = "empty-read"; break }
-                  try await send(data, on: connection)
-                  cursor += Int64(data.count)
-              }
+          replace_once(
+              "Sources/Transport/TransportHTTPServer.swift",
+              '                guard !data.isEmpty else { break }\n',
+              '                if data.isEmpty { terminationReason = "empty-read"; break }\n')
 
-              let sentBytes = max(0, cursor - responseRange.lowerBound)
-              if sentBytes < responseRange.length {
-                  DiagnosticsLogger.shared.playback("TransportHTTPIntegrity", "server=\\(logID) start=\\(responseRange.lowerBound) expected=\\(responseRange.length) sent=\\(sentBytes) remaining=\\(responseRange.length - sentBytes) reason=\\(terminationReason)")
-              }
-              if logRequest || sentBytes >= 8 * 1_048_576 {
-          ''')
+          replace_once(
+              "Sources/Transport/TransportHTTPServer.swift",
+              '            let sentBytes = max(0, cursor - responseRange.lowerBound)\n            if logRequest || sentBytes >= 8 * 1_048_576 {\n',
+              '            let sentBytes = max(0, cursor - responseRange.lowerBound)\n            if sentBytes < responseRange.length {\n                DiagnosticsLogger.shared.playback("TransportHTTPIntegrity", "server=\\(logID) start=\\(responseRange.lowerBound) expected=\\(responseRange.length) sent=\\(sentBytes) remaining=\\(responseRange.length - sentBytes) reason=\\(terminationReason)")\n            }\n            if logRequest || sentBytes >= 8 * 1_048_576 {\n')
 
           replace_once(
               "Sources/UI/EmbyMediaDetailView.swift",
-              '''        if let selectedEpisodeID, let selected = episodes.first(where: { $0.id == selectedEpisodeID }) { return selected }
-              if let resume = episodes.first(where: { $0.playbackProgress > 0.001 && !$0.isPlayed }) { return resume }
-          ''',
-              '''        if let selectedEpisodeID, let selected = episodes.first(where: { $0.id == selectedEpisodeID }) { return selected }
-              if hasPlaybackPositionOverride { return episodes.first }
-              if let resume = episodes.first(where: { $0.playbackProgress > 0.001 && !$0.isPlayed }) { return resume }
-          ''')
+              '        if let selectedEpisodeID, let selected = episodes.first(where: { $0.id == selectedEpisodeID }) { return selected }\n        if let resume = episodes.first(where: { $0.playbackProgress > 0.001 && !$0.isPlayed }) { return resume }\n',
+              '        if let selectedEpisodeID, let selected = episodes.first(where: { $0.id == selectedEpisodeID }) { return selected }\n        if hasPlaybackPositionOverride { return episodes.first }\n        if let resume = episodes.first(where: { $0.playbackProgress > 0.001 && !$0.isPlayed }) { return resume }\n')
 
           replace_once(
               "Sources/UI/EmbyMediaDetailView.swift",
-              '''    var primaryPlayButtonShowsResume: Bool {
-              guard !displayedPlayed, let playable = primaryPlayableItem else { return false }
-              return effectivePlaybackProgress(for: playable) > 0.001
-          }
-          ''',
-              '''    var primaryPlayButtonShowsResume: Bool {
-              guard !displayedPlayed, !hasPlaybackPositionOverride, let playable = primaryPlayableItem else { return false }
-              return effectivePlaybackProgress(for: playable) > 0.001
-          }
-          ''')
+              '        guard !displayedPlayed, let playable = primaryPlayableItem else { return false }\n',
+              '        guard !displayedPlayed, !hasPlaybackPositionOverride, let playable = primaryPlayableItem else { return false }\n')
 
           replace_once(
               "Sources/UI/EmbyMediaDetailView.swift",
-              '''    private func effectivePlaybackPositionTicks(for playable: LibraryItem) -> Int64? {
-              if playable.id == item.id && hasPlaybackPositionOverride { return playbackPositionOverrideTicks }
-              return playable.userData?.playbackPositionTicks
-          }
-          ''',
-              '''    private func effectivePlaybackPositionTicks(for playable: LibraryItem) -> Int64? {
-              if hasPlaybackPositionOverride { return playbackPositionOverrideTicks }
-              return playable.userData?.playbackPositionTicks
-          }
-          ''')
+              '        if playable.id == item.id && hasPlaybackPositionOverride { return playbackPositionOverrideTicks }\n',
+              '        if hasPlaybackPositionOverride { return playbackPositionOverrideTicks }\n')
 
-          replace_once(
+          replace_after(
               "Sources/UI/EmbyMediaDetailView.swift",
-              '''        do {
-              let info = try await client.playbackInfo(itemId: mediaItem.id)
-          ''',
-              '''        do {
-              if hasPlaybackPositionOverride, mediaItem.id != item.id {
-                  try? await client.setPlayed(itemId: mediaItem.id, played: false)
-                  DiagnosticsLogger.shared.log("EmbyDetail", "resume override cleared child item=\\(mediaItem.id) before playback")
-              }
-              let info = try await client.playbackInfo(itemId: mediaItem.id)
-          ''')
+              "    func play(_ mediaItem: LibraryItem) async",
+              '        do {\n            let info = try await client.playbackInfo(itemId: mediaItem.id)\n',
+              '        do {\n            if hasPlaybackPositionOverride, mediaItem.id != item.id {\n                try? await client.setPlayed(itemId: mediaItem.id, played: false)\n                DiagnosticsLogger.shared.log("EmbyDetail", "resume override cleared child item=\\(mediaItem.id) before playback")\n            }\n            let info = try await client.playbackInfo(itemId: mediaItem.id)\n')
 
           p = Path("project.mdklab.yml")
           text = p.read_text()
@@ -153,9 +102,11 @@ jobs:
           git diff --check
           grep -q 'MDKSeekHTTP.*preserve-existing-stream-before-native-seek' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           ! grep -q 'resetClientStreams(reason: "mdk-seek-\\(intent.id)' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -q 'resetClientStreams(reason: "mdk-seek-wedge-\\(reason)' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           grep -q 'TransportHTTPIntegrity' Sources/Transport/TransportHTTPServer.swift
           grep -q '!hasPlaybackPositionOverride' Sources/UI/EmbyMediaDetailView.swift
           grep -q 'if hasPlaybackPositionOverride { return episodes.first }' Sources/UI/EmbyMediaDetailView.swift
+          grep -q 'resume override cleared child item=' Sources/UI/EmbyMediaDetailView.swift
           grep -q 'MARKETING_VERSION: "0.13.18"' project.mdklab.yml
           grep -q 'CURRENT_PROJECT_VERSION: "85"' project.mdklab.yml
           grep -q 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
