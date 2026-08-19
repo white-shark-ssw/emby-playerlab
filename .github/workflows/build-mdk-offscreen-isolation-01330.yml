@@ -1,0 +1,154 @@
+name: Build OnePlayer 0.13.30 MDK Offscreen Isolation
+
+on:
+  pull_request:
+    branches: [feat/recovery-isolation-0.13.17]
+
+concurrency:
+  group: mdk-offscreen-isolation-01330-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.head_ref == 'validate/mdk-offscreen-isolation-0.13.30'
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/recovery-isolation-0.13.17
+          fetch-depth: 0
+
+      - name: Materialize and audit Build97 offscreen isolation
+        run: |
+          set -euo pipefail
+          python3 scripts/materialize_mdk_offscreen_isolation_01330.py
+          git diff --check
+          grep -Fq 'api.layer = nil' MDKLab/SwiftMDKOnePlayer/Sources/swift-mdk/MetalLayerRenderer.swift
+          grep -Fq 'acquireRenderTexture' MDKLab/SwiftMDKOnePlayer/Sources/swift-mdk/MetalLayerRenderer.swift
+          grep -Fq 'blit.copy(from: source' MDKLab/SwiftMDKOnePlayer/Sources/swift-mdk/MetalLayerRenderer.swift
+          grep -Fq 'renderer.prepareSurfaceSize(surfaceSize)' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'watchdogQueue=independent renderBridge=offscreen-texture' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let firstFrameWatchdogSeconds: TimeInterval = 2.0' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'persistentEngineRouting=false' Sources/Player/PlayerController.swift
+          grep -Fq 'storedCompatibilityIgnored=true' Sources/Player/PlaybackOrchestrator.swift
+          grep -Fq 'selectedResumeTarget=' Sources/UI/EmbyMediaDetailView.swift
+          grep -Fq 'MARKETING_VERSION: "0.13.30"' project.mdklab.yml
+          grep -Fq 'CURRENT_PROJECT_VERSION: "97"' project.mdklab.yml
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+          grep -Fq 'sourceVersion = "0.13.30"' Sources/Core/AppIdentity.swift
+          python3 - <<'PY'
+          from pathlib import Path
+          engine = Path('MDKLab/App/MDKKSAVIOPlayerEngine.swift').read_text()
+          renderer = Path('MDKLab/SwiftMDKOnePlayer/Sources/swift-mdk/MetalLayerRenderer.swift').read_text()
+          orchestrator = Path('Sources/Player/PlaybackOrchestrator.swift').read_text()
+          controller = Path('Sources/Player/PlayerController.swift').read_text()
+          assert 'Timer.scheduledTimer' not in engine
+          assert 'DispatchQueue.main.asyncAfter(deadline: .now() + firstFrameWatchdogSeconds)' not in engine
+          assert 'DispatchQueue.main.asyncAfter(deadline: .now() + prepareWatchdogSeconds)' not in engine
+          assert 'api.layer = bridge(obj: context.layer)' not in renderer
+          assert 'layer.nextDrawable()' in renderer
+          assert renderer.index('let result = player.renderVideo') < renderer.index('context.presentationResources()')
+          assert 'MediaCompatibilityStore.markCompatibilityEngineRequired(itemId: source.itemId, reason: "mdk-native-isolation")' not in controller
+          assert 'preferredKind == .ksAVIO' in orchestrator
+          print('Build97 offscreen/native-watchdog/per-session-routing checks OK')
+          PY
+
+      - name: Select Xcode and tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          swift --version
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build OnePlayer 0.13.30 Build97
+        id: release_build
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Upload release diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.30-build97-mdk-offscreen-isolation-release-diagnostics
+          path: build.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Report compiler failure
+        if: steps.release_build.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          grep -nE '(^|[[:space:]])(error:|fatal error:)|BUILD FAILED|SwiftCompile|CompileSwift|EmitSwiftModule' build.log | tail -300 || true
+          tail -180 build.log || true
+          exit 1
+
+      - name: Validate app identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.30' --build '97' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.30-build97-mdk-offscreen-isolation-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
+
+      - name: Upload final test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.30-build97-mdk-offscreen-isolation
+          path: |
+            OnePlayer-0.13.30-build97-mdk-offscreen-isolation-unsigned.ipa
+            OnePlayer-0.13.30-build97-mdk-offscreen-isolation-unsigned.ipa.sha256
+            app-validation.log
+            min-os-report.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Persist validated Build97 source to experiment branch
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          git diff -- MDKLab/SwiftMDKOnePlayer/Sources/swift-mdk/MetalLayerRenderer.swift MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/Player/PlayerController.swift Sources/Player/PlaybackOrchestrator.swift Sources/UI/EmbyMediaDetailView.swift Sources/Core/AppIdentity.swift project.mdklab.yml > /tmp/build97-runtime.patch
+          if test ! -s /tmp/build97-runtime.patch; then
+            echo 'Build97 source already materialized.'
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin feat/recovery-isolation-0.13.17
+          git reset --hard origin/feat/recovery-isolation-0.13.17
+          git apply --3way /tmp/build97-runtime.patch
+          git add MDKLab/SwiftMDKOnePlayer/Sources/swift-mdk/MetalLayerRenderer.swift MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/Player/PlayerController.swift Sources/Player/PlaybackOrchestrator.swift Sources/UI/EmbyMediaDetailView.swift Sources/Core/AppIdentity.swift project.mdklab.yml
+          git diff --cached --check
+          git commit -m 'fix: isolate MDK rendering from CAMetalLayer and keep fallback per-session'
+          git push origin HEAD:feat/recovery-isolation-0.13.17
