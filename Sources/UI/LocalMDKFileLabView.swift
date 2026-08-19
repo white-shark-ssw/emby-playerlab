@@ -205,9 +205,9 @@ final class LocalMDKFileLabModel: ObservableObject {
 
 struct LocalMDKFileLabView: View {
     @StateObject private var model = LocalMDKFileLabModel()
-    @State private var pickerPresented = false
-    @State private var scrubPosition: Double = 0
-    @State private var isScrubbing = false
+    @SwiftUI.State private var pickerPresented = false
+    @SwiftUI.State private var scrubPosition: Double = 0
+    @SwiftUI.State private var isScrubbing = false
 
     var body: some View {
         VStack(spacing: 16) {
