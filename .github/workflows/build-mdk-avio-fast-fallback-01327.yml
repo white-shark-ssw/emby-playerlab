@@ -52,7 +52,7 @@ jobs:
           assert 'guard age >= renderWatchdogTimeoutSeconds else { return }' in engine
           assert 'withTimeInterval: renderWatchdogPollSeconds' in engine
           assert engine.index('avio.multiple_requests') < engine.index('player.media = url.absoluteString')
-          assert 'MDK abnormal media recovery exhausted' in orchestrator
+          assert 'mdk abnormal media recovery exhausted' in orchestrator
           assert 'settleMs=' in controller
           print('Build94 AVIO/fallback source checks OK')
           PY
