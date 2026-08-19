@@ -16,7 +16,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Materialize architecture
-        run: python3 scripts/materialize_recovery_isolation_01317.py
+        run: |
+          python3 scripts/materialize_recovery_isolation_01317.py
+          python3 scripts/finalize_recovery_isolation_01317.py
       - name: Commit materialized sources
         run: |
           if git diff --quiet; then
