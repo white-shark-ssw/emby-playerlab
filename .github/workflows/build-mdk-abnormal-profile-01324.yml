@@ -1,0 +1,140 @@
+name: Build OnePlayer 0.13.24 MDK Abnormal Media
+
+on:
+  pull_request:
+    branches: [feat/recovery-isolation-0.13.17]
+
+concurrency:
+  group: mdk-abnormal-profile-01324-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.head_ref == 'validate/mdk-abnormal-profile-0.13.24'
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/recovery-isolation-0.13.17
+          fetch-depth: 0
+
+      - name: Materialize and audit Build91 abnormal-media recovery
+        run: |
+          set -euo pipefail
+          python3 scripts/materialize_mdk_cache_bridge_01323.py
+          python3 scripts/materialize_mdk_abnormal_profile_01324.py
+          git diff --check
+          grep -Fq 'private var mdkDirectHTTPABActive: Bool { false }' Sources/Player/PlayerController.swift
+          grep -Fq 'Connection: keep-alive' Sources/Transport/TransportHTTPServer.swift
+          grep -Fq 'Keep-Alive: timeout=30, max=100' Sources/Transport/TransportHTTPServer.swift
+          grep -Fq 'action=quarantine-eos-generation-and-rebuild samePlayerPrepare=false' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'let decoderList = compatLevel >= 2 ? ["FFmpeg", "VT"] : ["VT", "FFmpeg"]' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'player.setProperty(name: "avformat.err_detect", value: "ignore_err")' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'player.setProperty(name: "avformat.fflags", value: "+discardcorrupt")' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'globalDemuxTolerance=off' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          ! grep -Fq 'action=reprepare-same-player' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          ! grep -Fq 'setGlobalOption(name: "demuxer.max_errors"' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'MARKETING_VERSION: "0.13.24"' project.mdklab.yml
+          grep -Fq 'CURRENT_PROJECT_VERSION: "91"' project.mdklab.yml
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+          grep -Fq 'sourceVersion = "0.13.24"' Sources/Core/AppIdentity.swift
+
+      - name: Select Xcode and tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          swift --version
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build OnePlayer 0.13.24 Build91
+        id: release_build
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Upload release diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.24-build91-mdk-abnormal-media-release-diagnostics
+          path: build.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Report compiler failure
+        if: steps.release_build.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          grep -nE '(^|[[:space:]])(error:|fatal error:)|BUILD FAILED|SwiftCompile|CompileSwift|EmitSwiftModule' build.log | tail -300 || true
+          tail -180 build.log || true
+          exit 1
+
+      - name: Validate app identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.24' --build '91' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.24-build91-mdk-abnormal-media-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
+
+      - name: Upload final test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.24-build91-mdk-abnormal-media
+          path: |
+            OnePlayer-0.13.24-build91-mdk-abnormal-media-unsigned.ipa
+            OnePlayer-0.13.24-build91-mdk-abnormal-media-unsigned.ipa.sha256
+            app-validation.log
+            min-os-report.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Persist validated Build91 source to experiment branch
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          git diff -- MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/Player/PlayerController.swift Sources/UI/PlayerScreen.swift Sources/Transport/TransportHTTPServer.swift Sources/Core/AppIdentity.swift project.mdklab.yml > /tmp/build91-runtime.patch
+          if test ! -s /tmp/build91-runtime.patch; then
+            echo 'Build91 source already materialized.'
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin feat/recovery-isolation-0.13.17
+          git reset --hard origin/feat/recovery-isolation-0.13.17
+          git apply --3way /tmp/build91-runtime.patch
+          git add MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/Player/PlayerController.swift Sources/UI/PlayerScreen.swift Sources/Transport/TransportHTTPServer.swift Sources/Core/AppIdentity.swift project.mdklab.yml
+          git diff --cached --check
+          git commit -m 'feat: add tiered MDK abnormal media recovery'
+          git push origin HEAD:feat/recovery-isolation-0.13.17
