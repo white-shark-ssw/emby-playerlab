@@ -1,0 +1,1 @@
+Build90 validation v3: rerun after materializing both base and target app identity to 0.13.23 Build90; restore UnifiedTransport high-speed cache to MDK, test HTTP/1.1 keep-alive bridge, keep premature-EOF and stall recovery diagnostic-only, preserve iOS 15.0 deployment target.
