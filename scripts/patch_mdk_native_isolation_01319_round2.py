@@ -21,11 +21,12 @@ elif new not in engine:
 old_size = '''view.drawableSize'''
 new_size = '''view.currentPixelSize'''
 if old_size in engine:
-    if engine.count(old_size) != 1:
-        raise SystemExit(f"expected one legacy drawableSize reference, got {engine.count(old_size)}")
-    engine = engine.replace(old_size, new_size, 1)
-elif new_size not in engine:
-    raise SystemExit("currentPixelSize reference missing")
+    count = engine.count(old_size)
+    if count != 2:
+        raise SystemExit(f"expected two legacy drawableSize log reads, got {count}")
+    engine = engine.replace(old_size, new_size)
+elif engine.count(new_size) < 2:
+    raise SystemExit("currentPixelSize diagnostic references missing")
 
 engine_path.write_text(engine)
 print("Build86 round2 package, main-thread getter, and CAMetalLayer size patches applied")
