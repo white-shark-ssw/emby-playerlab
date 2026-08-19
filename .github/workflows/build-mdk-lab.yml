@@ -24,7 +24,7 @@ on:
       - ".github/workflows/build-mdk-lab.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: build-mdk-lab-${{ github.ref }}
@@ -58,7 +58,7 @@ jobs:
       - name: Validate current MDK local-file contract
         run: |
           set -euo pipefail
-          python3 - <<'PY'
+          python3 - <<'PY' 2>&1 | tee mdk-preflight.log
           from pathlib import Path
           spec = Path("project.mdklab.yml").read_text()
           local = Path("Sources/UI/LocalMDKFileLabView.swift").read_text()
@@ -143,4 +143,27 @@ jobs:
             app-info.log
             mdk-build.log
             mdk-package-resolution.log
+            mdk-preflight.log
           retention-days: 14
+
+      - name: Persist latest push result
+        if: always() && github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          {
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_number=${GITHUB_RUN_NUMBER}"
+            echo "source_sha=${GITHUB_SHA}"
+            echo "job_status=${{ job.status }}"
+            echo "version=0.13.31"
+            echo "build=98"
+            echo "minimum_os=15.0"
+            echo "--- errors ---"
+            grep -nEi 'error:|fatal error:|FAIL |Process completed with exit code' mdk-preflight.log mdk-package-resolution.log mdk-build.log app-info.log 2>/dev/null | tail -120 || true
+          } > .github/mdk-latest-run.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/mdk-latest-run.txt
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "ci: record MDK run ${GITHUB_RUN_ID}"
+          git push origin HEAD:feat/mdk-engine-lab
