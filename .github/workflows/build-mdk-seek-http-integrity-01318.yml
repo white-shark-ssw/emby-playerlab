@@ -27,18 +27,18 @@ jobs:
           set -euo pipefail
           test "$(git hash-object Sources/UI/BufferedTimelineSlider.swift)" = '4c0c772d104fb6b1537e9d89604acbc563114f62'
           grep -q 'MDKSeekHTTP.*preserve-existing-stream-before-native-seek' MDKLab/App/MDKKSAVIOPlayerEngine.swift
-          ! grep -q 'resetClientStreams(reason: "mdk-seek-\(intent.id)' MDKLab/App/MDKKSAVIOPlayerEngine.swift
-          grep -q 'resetClientStreams(reason: "mdk-seek-wedge-\(reason)' MDKLab/App/MDKKSAVIOPlayerEngine.swift
-          grep -q 'TransportHTTPIntegrity' Sources/Transport/TransportHTTPServer.swift
-          grep -q 'terminationReason = "task-cancelled"' Sources/Transport/TransportHTTPServer.swift
-          grep -q '!hasPlaybackPositionOverride' Sources/UI/EmbyMediaDetailView.swift
-          grep -q 'if hasPlaybackPositionOverride { return episodes.first }' Sources/UI/EmbyMediaDetailView.swift
-          grep -q 'resume override cleared child item=' Sources/UI/EmbyMediaDetailView.swift
-          grep -q 'PrematureEOFRecoveryCoordinator' Sources/Player/PrematureEOFRecoveryCoordinator.swift
-          grep -q 'maximumPendingEvents = 2_048' Sources/Diagnostics/DiagnosticsLogger.swift
-          grep -q 'MARKETING_VERSION: "0.13.18"' project.mdklab.yml
-          grep -q 'CURRENT_PROJECT_VERSION: "85"' project.mdklab.yml
-          grep -q 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+          ! grep -Fq 'resetClientStreams(reason: "mdk-seek-\(intent.id)")' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'resetClientStreams(reason: "mdk-seek-wedge-\(reason)")' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'TransportHTTPIntegrity' Sources/Transport/TransportHTTPServer.swift
+          grep -Fq 'terminationReason = "task-cancelled"' Sources/Transport/TransportHTTPServer.swift
+          grep -Fq '!hasPlaybackPositionOverride' Sources/UI/EmbyMediaDetailView.swift
+          grep -Fq 'if hasPlaybackPositionOverride { return episodes.first }' Sources/UI/EmbyMediaDetailView.swift
+          grep -Fq 'resume override cleared child item=' Sources/UI/EmbyMediaDetailView.swift
+          grep -Fq 'PrematureEOFRecoveryCoordinator' Sources/Player/PrematureEOFRecoveryCoordinator.swift
+          grep -Fq 'maximumPendingEvents = 2_048' Sources/Diagnostics/DiagnosticsLogger.swift
+          grep -Fq 'MARKETING_VERSION: "0.13.18"' project.mdklab.yml
+          grep -Fq 'CURRENT_PROJECT_VERSION: "85"' project.mdklab.yml
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
 
       - name: Select Xcode and tools
         run: |
