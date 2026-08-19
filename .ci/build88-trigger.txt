@@ -1,0 +1,1 @@
+Build88 validation trigger: MDK io.avio=1 A/B with compact 2-second MPV fallback toast.
