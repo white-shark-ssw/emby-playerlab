@@ -50,6 +50,7 @@ final class PlayerController: ObservableObject {
     private var screenScrubStartPosition: Double?
     private var engineGeneration = 0
     private var eofRetryCount = 0
+    private var prematureEOFRecovery = PrematureEOFRecoveryCoordinator()
     private var stallRecoveryCount = 0
     private var lastWatchdogPosition: Double = 0
     private var lastWatchdogBufferEnd: Double = 0
@@ -171,6 +172,7 @@ final class PlayerController: ObservableObject {
     private func startEngine(at startPosition: Double) {
         let position = max(0, startPosition)
         displayedPosition = position
+        prematureEOFRecovery.reset()
         initialResumeConfirmationPending = position > 0.5
         initialResumePlaybackBaseline = nil
         suppressStallWatchdog(for: engineKind == .mpv ? 12 : 6)
@@ -212,6 +214,7 @@ final class PlayerController: ObservableObject {
         userWantsPlayback = false
         initialResumeConfirmationPending = false
         initialResumePlaybackBaseline = nil
+        prematureEOFRecovery.reset()
         lastTransportPlaybackReportPosition = -1
         lastTransportPlaybackReportAt = .distantPast
         let shouldReportStop = playbackSessionStarted
@@ -533,6 +536,7 @@ final class PlayerController: ObservableObject {
                 guard generation == self.engineGeneration else { return }
                 let wasEnd = self.snapshot.didReachEnd
                 self.snapshot = value
+                self.prematureEOFRecovery.observe(snapshot: value)
                 if value.position > 0.25 { self.hasPlaybackAdvanced = true }
                 self.confirmInitialResumePlaybackIfNeeded(value)
                 self.updateVerifiedBufferedRanges(from: value)
@@ -569,6 +573,7 @@ final class PlayerController: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 guard generation == self.engineGeneration else { return }
+                self.prematureEOFRecovery.reset()
                 if let pending = self.pendingSeekTarget, abs(pending - result.target) < 0.01 {
                     self.seekAnchorReleaseTask?.cancel()
                     self.seekAnchorReleaseTask = nil
@@ -686,10 +691,27 @@ final class PlayerController: ObservableObject {
             return
         }
 
-        switch orchestrator.actionForPrematureEOF(kind: engineKind, reason: decision.reason, snapshot: snapshot, metrics: lastTransportMetrics) {
-        case .switchEngine(let next, let reason): prematureEOFMessage = "\(decision.reason)；App 正在自动切换到 \(next.title)。"; switchEngine(to: next, reason: reason)
-        case .reloadCurrent(let reason): prematureEOFMessage = reason; engine.reload(at: snapshot.position); engine.play()
-        case .recoverTransport(let message), .wait(let message): prematureEOFMessage = message; engine.recoverStall(position: snapshot.position, duration: effectiveDuration)
+        switch prematureEOFRecovery.begin(position: snapshot.position) {
+        case .recoverInPlace:
+            let action = orchestrator.actionForPrematureEOF(kind: engineKind, reason: decision.reason, snapshot: snapshot, metrics: lastTransportMetrics)
+            switch action {
+            case .recoverTransport(let message), .wait(let message):
+                prematureEOFMessage = message
+                DiagnosticsLogger.shared.playback("EOFRecovery", "state=recovering engine=\(engineKind.title) position=\(String(format: "%.3f", snapshot.position)) action=in-place")
+                engine.recoverStall(position: snapshot.position, duration: effectiveDuration)
+            case .reloadCurrent(let reason):
+                prematureEOFMessage = reason
+                DiagnosticsLogger.shared.playback("EOFRecovery", "state=recovering engine=\(engineKind.title) action=blocked-recursive-reload reason=\(reason)")
+                engine.recoverStall(position: snapshot.position, duration: effectiveDuration)
+            case .switchEngine(let next, let reason):
+                prematureEOFMessage = "\(decision.reason)；自动切换被恢复隔离层阻止，请手动选择 \(next.title)。"
+                DiagnosticsLogger.shared.playback("EOFRecovery", "state=recovering action=blocked-runtime-switch next=\(next.title) reason=\(reason)")
+            }
+        case .waitForCurrentRecovery:
+            DiagnosticsLogger.shared.playback("EOFRecovery", "state=recovering action=ignore-duplicate position=\(String(format: "%.3f", snapshot.position))")
+        case .quarantine:
+            prematureEOFMessage = "该媒体连续触发异常 EOF，MDK 已停止自动恢复以保护 App。可手动切换到 MPV高兼容引擎继续测试。"
+            DiagnosticsLogger.shared.playback("EOFRecovery", "state=quarantined engine=\(engineKind.title) position=\(String(format: "%.3f", snapshot.position)) action=no-rebuild")
         }
     }
 

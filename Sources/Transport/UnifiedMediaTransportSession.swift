@@ -169,6 +169,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var metricsValue = TransportMetricsSnapshot()
     private var speedSamples: [SpeedSample] = []
     private var lastMetricsLogAt = Date.distantPast
+    private var schedulerHintWindowStartedAt = Date.distantPast
+    private var schedulerHintCount = 0
+    private var schedulerHintLastRange: Range<Int64>?
+    private var schedulerHintLastReason = ""
 
     init(source: ResolvedPlaybackSource, configuration: MediaTransportConfiguration) {
         self.source = source
@@ -279,7 +283,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 store = cache
                 for range in cache.cachedRanges { rangeMap.insertPlayback(range) }
             }
-            DiagnosticsLogger.shared.log(
+            DiagnosticsLogger.shared.playback(
                 "UnifiedTransport",
                 "ready item=\(source.itemId) bytes=\(resolved.contentLength) slots=2 block=\(blockBytes) preloadWindow=\(preloadWindowBytes()) anchor=\(playbackAnchor) center=\(cacheWindowCenter) softMax=\(rollingSoftLimitBytes(window: preloadWindowBytes())) resumeGate=\(awaitingInitialResumeDemand) \(NetworkPathMonitor.shared.diagnosticSummary)"
             )
@@ -323,7 +327,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let concreteRange = offset..<min(resolved.contentLength, offset + Int64(requested))
         let concreteTailMetadata = isConcreteTailMetadataRead(concreteRange, resource: resolved)
         if concreteTailMetadata {
-            DiagnosticsLogger.shared.log("UnifiedMetadata", "concrete-tail range=\(concreteRange.lowerBound)-\(concreteRange.upperBound) bytes=\(concreteRange.count) center=\(cacheWindowCenter) pendingSeek=\(Date() <= pendingUserSeekUntil) action=metadata-no-anchor")
+            DiagnosticsLogger.shared.playback("UnifiedMetadata", "concrete-tail range=\(concreteRange.lowerBound)-\(concreteRange.upperBound) bytes=\(concreteRange.count) center=\(cacheWindowCenter) pendingSeek=\(Date() <= pendingUserSeekUntil) action=metadata-no-anchor")
         }
         acceptRealDemand(concreteRange, resource: resolved, reason: concreteTailMetadata ? "concrete-tail-metadata" : "concrete-read")
         let available = store.availableLength(from: offset, maximumLength: Int64(requested))
@@ -348,7 +352,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             let metadata = concreteTailMetadata || isMetadataProbe(probe, resource: resolved)
             let preferredLength = metadata ? metadataUrgentBlockBytes : urgentBlockBytes
             let demandEnd = min(resolved.contentLength, offset + max(Int64(requested), preferredLength))
-            DiagnosticsLogger.shared.log("UnifiedDemand", "timeout offset=\(offset) length=\(requested) metadata=\(metadata); force slot0")
+            DiagnosticsLogger.shared.playback("UnifiedDemand", "timeout offset=\(offset) length=\(requested) metadata=\(metadata); force slot0")
             installUrgent(range: offset..<demandEnd, metadata: metadata, reason: metadata ? "metadata-read-timeout" : "read-timeout")
             scheduleSlots(reason: "read-timeout")
             return try await store.readWhenAvailable(offset: offset, maximumLength: requested, timeout: 25)
@@ -361,7 +365,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         pendingUserSeekPosition = max(0, position)
         pendingUserSeekDuration = max(0, duration)
         demandCoordinator.reset()
-        DiagnosticsLogger.shared.log(
+        DiagnosticsLogger.shared.playback(
             "UnifiedAnchor",
             "user-seek position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) byteGuess=disabled awaitingRealDemand=true anchor=\(playbackAnchor)"
         )
@@ -408,16 +412,16 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             resetCacheWindowCenter(to: demand.lowerBound, resource: resource, reason: "stall-blocking-demand")
             let urgent = demand.lowerBound..<min(resource.contentLength, safeAdd(demand.lowerBound, urgentBlockBytes))
             if store?.contains(urgent) == true {
-                DiagnosticsLogger.shared.log("UnifiedDemand", "stall position=\(String(format: "%.3f", position)) previousAnchor=\(previous) anchor=\(playbackAnchor) blocked=\(demand.lowerBound)-\(demand.upperBound) action=blocking-demand-already-cached")
+                DiagnosticsLogger.shared.playback("UnifiedDemand", "stall position=\(String(format: "%.3f", position)) previousAnchor=\(previous) anchor=\(playbackAnchor) blocked=\(demand.lowerBound)-\(demand.upperBound) action=blocking-demand-already-cached")
             } else {
                 installUrgent(range: urgent, metadata: false, reason: "stall-last-blocking-demand")
-                DiagnosticsLogger.shared.log("UnifiedDemand", "stall position=\(String(format: "%.3f", position)) previousAnchor=\(previous) anchor=\(playbackAnchor) blocked=\(demand.lowerBound)-\(demand.upperBound) action=prioritize-blocking-demand")
+                DiagnosticsLogger.shared.playback("UnifiedDemand", "stall position=\(String(format: "%.3f", position)) previousAnchor=\(previous) anchor=\(playbackAnchor) blocked=\(demand.lowerBound)-\(demand.upperBound) action=prioritize-blocking-demand")
             }
             for slot in [0, 1] {
                 if let active = slotClaims[slot], active.role == .urgentPlayback, !active.range.contains(demand.lowerBound) { cancelSlot(slot, reason: "replace-stale-urgent") }
             }
         } else {
-            DiagnosticsLogger.shared.log("UnifiedDemand", "stall position=\(String(format: "%.3f", position)) anchor=\(playbackAnchor) action=keep-anchor-await-blocked-read")
+            DiagnosticsLogger.shared.playback("UnifiedDemand", "stall position=\(String(format: "%.3f", position)) anchor=\(playbackAnchor) action=keep-anchor-await-blocked-read")
         }
         scheduleSlots(reason: "stall")
     }
@@ -456,7 +460,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         store?.close(removeFiles: !configuration.keepLastCache)
         store = nil
         client.invalidate()
-        DiagnosticsLogger.shared.log("UnifiedTransport", "stopped item=\(source.itemId)")
+        DiagnosticsLogger.shared.playback("UnifiedTransport", "stopped item=\(source.itemId)")
     }
 
     private func acceptRealDemand(_ range: Range<Int64>, resource: TransportResolvedResource, reason: String) {
@@ -499,7 +503,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             DiagnosticsLogger.shared.playback("PlaybackDemand", "starvation inferred blockedRange=\(range.lowerBound)-\(range.upperBound) center=\(cacheWindowCenter)")
         }
         var reanchored = false
-        if startupTailMetadata { DiagnosticsLogger.shared.log("UnifiedStartup", "critical-tail-metadata range=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=actual-demand") }
+        if startupTailMetadata { DiagnosticsLogger.shared.playback("UnifiedStartup", "critical-tail-metadata range=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=actual-demand") }
         if concretePlaybackDemand, authoritativeSeekDemand, !resumeHistoricalDependency, !cachedSeekRead {
             lastBlockingPlaybackDemand = range
             lastBlockingPlaybackDemandAt = Date()
@@ -541,14 +545,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         // still settling. A cache miss, an explicit byte seek, or a sufficiently distant cached concrete
         // read may consume the token. Cached authority updates the logical head without resetting bulk IO.
         if pendingUserSeek, !metadata, !concretePlaybackDemand {
-            DiagnosticsLogger.shared.log(
+            DiagnosticsLogger.shared.playback(
                 "UnifiedAnchor",
                 "seek-candidate deferred request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) awaitingConcreteRead=true anchor=\(playbackAnchor)"
             )
             return
         }
         if pendingUserSeek, concretePlaybackDemand, !authoritativeSeekDemand {
-            DiagnosticsLogger.shared.log(
+            DiagnosticsLogger.shared.playback(
                 "UnifiedAnchor",
                 "seek concrete-read deferred request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) awaitingBlockedRead=true anchor=\(playbackAnchor)"
             )
@@ -559,7 +563,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         // connection merely because the demuxer considered a region. Concrete read()/byte-offset
         // demand remains authoritative; metadata hints are retained because tail indexes are startup-critical.
         if !concreteReason, !metadata {
-            DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "hint-only request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) action=keep-bulk")
+            recordSchedulerHint(range: range, reason: reason)
             scheduleSlots(reason: "hint-only")
             return
         }
@@ -582,13 +586,13 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 // A seek into bytes already present in the sparse store must not tear down the warmed
                 // 115/CDN sequential lanes. Keep cacheWindowCenter and bulk claims stable; subsequent
                 // real playback reads can naturally promote the center if the new head truly moves away.
-                DiagnosticsLogger.shared.log(
+                DiagnosticsLogger.shared.playback(
                     "UnifiedAnchor",
                     "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) authority=cached-read action=keep-cache-window center=\(cacheWindowCenter)"
                 )
             } else {
                 resetCacheWindowCenter(to: range.lowerBound, resource: resource, reason: "user-seek-real-demand")
-                DiagnosticsLogger.shared.log(
+                DiagnosticsLogger.shared.playback(
                     "UnifiedAnchor",
                     "real-demand reanchor previous=\(previous) new=\(playbackAnchor) request=\(range.lowerBound)-\(range.upperBound) reason=\(reason) authority=cache-miss action=reanchor-cache-window"
                 )
@@ -629,13 +633,13 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 let streamHead = min(active.range.upperBound, active.range.lowerBound + ready)
                 let gap = max(0, range.lowerBound - streamHead)
                 if gap > progressiveUrgentGapBytes {
-                    DiagnosticsLogger.shared.log("UnifiedDemand", "foreground active-gap slot=\(activeSlot) request=\(range.lowerBound)-\(range.upperBound) claim=\(active.range.lowerBound)-\(active.range.upperBound) head=\(streamHead) gap=\(gap) action=parallel-urgent")
+                    DiagnosticsLogger.shared.playback("UnifiedDemand", "foreground active-gap slot=\(activeSlot) request=\(range.lowerBound)-\(range.upperBound) claim=\(active.range.lowerBound)-\(active.range.upperBound) head=\(streamHead) gap=\(gap) action=parallel-urgent")
                     installUrgent(range: range, metadata: false, reason: "foreground-active-gap-\(reason)")
                     scheduleSlots(reason: "foreground-active-gap-\(reason)")
                     return
                 }
             }
-            DiagnosticsLogger.shared.log("UnifiedDemand", "reuse active foreground request=\(range.lowerBound)-\(range.upperBound) claim=\(active.range.lowerBound)-\(active.range.upperBound) role=\(active.role.rawValue) reason=\(reason)")
+            DiagnosticsLogger.shared.playback("UnifiedDemand", "reuse active foreground request=\(range.lowerBound)-\(range.upperBound) claim=\(active.range.lowerBound)-\(active.range.upperBound) role=\(active.role.rawValue) reason=\(reason)")
             return
         }
 
@@ -650,10 +654,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             let streamHead = min(claim.range.upperBound, claim.range.lowerBound + ready)
             let gap = max(0, range.lowerBound - streamHead)
             if gap <= progressiveUrgentGapBytes {
-                DiagnosticsLogger.shared.log("UnifiedDemand", "reuse active sequential stream slot=\(slot) request=\(range.lowerBound)-\(range.upperBound) claim=\(claim.range.lowerBound)-\(claim.range.upperBound) head=\(streamHead) gap=\(gap) reason=\(reason) action=wait-progressive-chunk")
+                DiagnosticsLogger.shared.playback("UnifiedDemand", "reuse active sequential stream slot=\(slot) request=\(range.lowerBound)-\(range.upperBound) claim=\(claim.range.lowerBound)-\(claim.range.upperBound) head=\(streamHead) gap=\(gap) reason=\(reason) action=wait-progressive-chunk")
                 return
             }
-            DiagnosticsLogger.shared.log("UnifiedDemand", "foreground gap slot=\(slot) request=\(range.lowerBound)-\(range.upperBound) claim=\(claim.range.lowerBound)-\(claim.range.upperBound) head=\(streamHead) gap=\(gap) action=parallel-urgent")
+            DiagnosticsLogger.shared.playback("UnifiedDemand", "foreground gap slot=\(slot) request=\(range.lowerBound)-\(range.upperBound) claim=\(claim.range.lowerBound)-\(claim.range.upperBound) head=\(streamHead) gap=\(gap) action=parallel-urgent")
             installUrgent(range: range, metadata: false, reason: "foreground-gap-\(reason)")
             scheduleSlots(reason: "foreground-gap-\(reason)")
             return
@@ -661,6 +665,22 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         installUrgent(range: range, metadata: metadata, reason: reason)
         scheduleSlots(reason: reason)
+    }
+
+    private func recordSchedulerHint(range: Range<Int64>, reason: String) {
+        let now = Date()
+        if schedulerHintWindowStartedAt == .distantPast { schedulerHintWindowStartedAt = now }
+        schedulerHintCount += 1
+        schedulerHintLastRange = range
+        schedulerHintLastReason = reason
+        let elapsed = now.timeIntervalSince(schedulerHintWindowStartedAt)
+        guard elapsed >= 1 else { return }
+        let last = schedulerHintLastRange
+        DiagnosticsLogger.shared.playback("UnifiedSchedulerActivity", "windowMs=\(Int(elapsed * 1000)) hints=\(schedulerHintCount) rate=\(String(format: "%.1f", Double(schedulerHintCount) / max(elapsed, 0.001)))/s last=\(last?.lowerBound ?? -1)-\(last?.upperBound ?? -1) reason=\(schedulerHintLastReason) action=keep-bulk")
+        schedulerHintWindowStartedAt = now
+        schedulerHintCount = 0
+        schedulerHintLastRange = nil
+        schedulerHintLastReason = ""
     }
 
     private func installUrgent(range: Range<Int64>, metadata: Bool, reason: String) {
@@ -678,7 +698,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let candidate = lower..<upper
         if metadata {
             if let active = slotClaims.values.first(where: { ($0.role == .metadata || $0.role == .startupMetadata) && $0.range.contains(lower) }) {
-                DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "metadata reuse active range=\(active.range.lowerBound)-\(active.range.upperBound) request=\(candidate.lowerBound)-\(candidate.upperBound) reason=\(reason) action=no-duplicate-lane")
+                DiagnosticsLogger.shared.playback("UnifiedSchedulerV2", "metadata reuse active range=\(active.range.lowerBound)-\(active.range.upperBound) request=\(candidate.lowerBound)-\(candidate.upperBound) reason=\(reason) action=no-duplicate-lane")
                 return
             }
             if let existing = pendingMetadataRange, existing.contains(lower), existing.upperBound >= upper { return }
@@ -687,17 +707,17 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             if let existing = pendingPlaybackUrgentRange, existing.contains(lower), existing.upperBound >= upper { return }
             pendingPlaybackUrgentRange = candidate
         }
-        DiagnosticsLogger.shared.log("UnifiedDemand", "urgent range=\(candidate.lowerBound)-\(candidate.upperBound) metadata=\(metadata) reason=\(reason) protectedBulk=\(preferredBulkSlot)")
+        DiagnosticsLogger.shared.playback("UnifiedDemand", "urgent range=\(candidate.lowerBound)-\(candidate.upperBound) metadata=\(metadata) reason=\(reason) protectedBulk=\(preferredBulkSlot)")
 
         if firstIdleForegroundSlot() != nil { return }
         let sequentialSlots = [0, 1].filter { slotClaims[$0]?.role == .sequential }
         if sequentialSlots.count == 2 {
             let serviceSlot = preferredBulkSlot == 0 ? 1 : 0
-            DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "foreground borrow slot=\(serviceSlot) preserveBulk=\(preferredBulkSlot) range=\(candidate.lowerBound)-\(candidate.upperBound)")
+            DiagnosticsLogger.shared.playback("UnifiedSchedulerV2", "foreground borrow slot=\(serviceSlot) preserveBulk=\(preferredBulkSlot) range=\(candidate.lowerBound)-\(candidate.upperBound)")
             cancelSlot(serviceSlot, reason: metadata ? "metadata-borrow-service-lane" : "foreground-borrow-service-lane")
         } else if sequentialSlots.count == 1 {
             let onlySequential = sequentialSlots[0]
-            DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "second foreground head borrows bulk slot=\(onlySequential) range=\(candidate.lowerBound)-\(candidate.upperBound)")
+            DiagnosticsLogger.shared.playback("UnifiedSchedulerV2", "second foreground head borrows bulk slot=\(onlySequential) range=\(candidate.lowerBound)-\(candidate.upperBound)")
             cancelSlot(onlySequential, reason: "second-foreground-head")
         }
     }
@@ -720,7 +740,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         }
         startupMetadataQueue = chunks
         for slot in [0, 1] where slotClaims[slot]?.role == .sequential { cancelSlot(slot, reason: "startup-metadata-preempt") }
-        DiagnosticsLogger.shared.log("UnifiedStartup", "actual-tail plan range=\(plan.lowerBound)-\(plan.upperBound) bytes=\(plan.count) segment=\(startupMetadataSegmentBytes) queued=\(startupMetadataQueue.count) reason=\(reason)")
+        DiagnosticsLogger.shared.playback("UnifiedStartup", "actual-tail plan range=\(plan.lowerBound)-\(plan.upperBound) bytes=\(plan.count) segment=\(startupMetadataSegmentBytes) queued=\(startupMetadataQueue.count) reason=\(reason)")
     }
 
     private func scheduleSlots(reason: String) {
@@ -746,11 +766,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         if let urgent = pendingPlaybackUrgentRange, store.contains(urgent) {
             pendingPlaybackUrgentRange = nil
-            DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "pending urgent satisfied range=\(urgent.lowerBound)-\(urgent.upperBound) action=drop-satisfied")
+            DiagnosticsLogger.shared.playback("UnifiedSchedulerV2", "pending urgent satisfied range=\(urgent.lowerBound)-\(urgent.upperBound) action=drop-satisfied")
         }
         if let metadata = pendingMetadataRange, store.contains(metadata) {
             pendingMetadataRange = nil
-            DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "pending metadata satisfied range=\(metadata.lowerBound)-\(metadata.upperBound) action=drop-satisfied")
+            DiagnosticsLogger.shared.playback("UnifiedSchedulerV2", "pending metadata satisfied range=\(metadata.lowerBound)-\(metadata.upperBound) action=drop-satisfied")
         }
 
         if let urgent = pendingPlaybackUrgentRange, let slot = firstIdleForegroundSlot() {
@@ -874,7 +894,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             if sequentialWaveSegmentBytes != segmentBytes || sequentialWaveUpperBound <= snapshot.frontierByte || sequentialWaveUpperBound <= center {
                 sequentialWaveSegmentBytes = segmentBytes
                 sequentialWaveUpperBound = min(forwardUpper, safeAdd(waveBase, segmentBytes * 2))
-                DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "frontier wave start=\(snapshot.frontierByte) base=\(waveBase) upper=\(sequentialWaveUpperBound) segment=\(segmentBytes) contiguous=\(contiguousBytes) center=\(center) action=strict-two-segment")
+                DiagnosticsLogger.shared.playback("UnifiedSchedulerV2", "frontier wave start=\(snapshot.frontierByte) base=\(waveBase) upper=\(sequentialWaveUpperBound) segment=\(segmentBytes) contiguous=\(contiguousBytes) center=\(center) action=strict-two-segment")
             }
             claimUpper = min(forwardUpper, sequentialWaveUpperBound)
             claimLookahead = 2
@@ -999,7 +1019,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         rangeMap.setDownloading(claim.range, lane: "slot\(slot)")
         metricsValue.activeRequestCount = slotTasks.count + 1
         metricsValue.networkRequestCount += 1
-        DiagnosticsLogger.shared.log(
+        DiagnosticsLogger.shared.playback(
             "UnifiedSlot",
             "slot=\(slot) start role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) reason=\(reason) anchor=\(playbackAnchor)"
         )
@@ -1039,14 +1059,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                             rangeMap.insertPlayback(writeOffset..<min(claim.range.upperBound, writeOffset + Int64(chunk.count)))
                             if attemptReceived == Int64(chunk.count) {
                                 let firstChunkSeconds = max(Date().timeIntervalSince(attemptStarted), 0.001)
-                                DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) first-chunk role=sequential range=\(remaining.lowerBound)-\(remaining.upperBound) bytes=\(chunk.count) ms=\(Int(firstChunkSeconds * 1000)) speedBps=\(Int(Double(chunk.count) / firstChunkSeconds))")
+                                DiagnosticsLogger.shared.playback("UnifiedSlot", "slot=\(slot) first-chunk role=sequential range=\(remaining.lowerBound)-\(remaining.upperBound) bytes=\(chunk.count) ms=\(Int(firstChunkSeconds * 1000)) speedBps=\(Int(Double(chunk.count) / firstChunkSeconds))")
                             }
                             observeSequentialChunk(slot: slot, generation: generation, bytes: Int64(chunk.count))
                             try Task.checkCancellation()
                             refreshMetrics(resource: resolved)
                         }
                     } catch MediaTransportError.expiredURL {
-                        DiagnosticsLogger.shared.log("UnifiedTransport", "slot=\(slot) refreshing expired 115 URL")
+                        DiagnosticsLogger.shared.playback("UnifiedTransport", "slot=\(slot) refreshing expired 115 URL")
                         resource = nil
                         resolved = try await resolve()
                         continue
@@ -1055,7 +1075,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 }
                 let elapsed = max(Date().timeIntervalSince(started), 0.001)
                 let bps = Double(receivedForClaim) / elapsed
-                DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) finish role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) bytes=\(receivedForClaim) speedBps=\(Int(bps)) progressive=true longRange=true")
+                DiagnosticsLogger.shared.playback("UnifiedSlot", "slot=\(slot) finish role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) bytes=\(receivedForClaim) speedBps=\(Int(bps)) progressive=true longRange=true")
                 finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: receivedForClaim > 0 ? receivedForClaim : nil, error: nil, completedSequentialBps: bps)
             } else {
                 var slowStartupRefreshUsed = false
@@ -1082,19 +1102,19 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                             if attemptReceived == Int64(chunk.count) {
                                 let firstChunkSeconds = max(Date().timeIntervalSince(attemptStarted), 0.001)
                                 let firstChunkBps = Double(chunk.count) / firstChunkSeconds
-                                DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) first-chunk role=\(claim.role.rawValue) range=\(remaining.lowerBound)-\(remaining.upperBound) bytes=\(chunk.count) ms=\(Int(firstChunkSeconds * 1000)) speedBps=\(Int(firstChunkBps))")
+                                DiagnosticsLogger.shared.playback("UnifiedSlot", "slot=\(slot) first-chunk role=\(claim.role.rawValue) range=\(remaining.lowerBound)-\(remaining.upperBound) bytes=\(chunk.count) ms=\(Int(firstChunkSeconds * 1000)) speedBps=\(Int(firstChunkBps))")
                                 if claim.role == .urgentPlayback { resolveUrgentRaceWinner(slot: slot, generation: generation, claim: claim) }
                                 if claim.role == .metadata, !slowStartupRefreshUsed, Date().timeIntervalSince(createdAt) < 35, firstChunkSeconds >= startupMetadataSlowFirstChunkSeconds, firstChunkBps < startupMetadataSlowFirstChunkBps {
                                     slowStartupRefreshUsed = true
                                     restartAfterSlowStartup = true
-                                    DiagnosticsLogger.shared.log("UnifiedRecovery", "slow-start metadata firstChunkMs=\(Int(firstChunkSeconds * 1000)) speedBps=\(Int(firstChunkBps)) received=\(receivedForClaim) action=refresh-115-source-and-resume")
+                                    DiagnosticsLogger.shared.playback("UnifiedRecovery", "slow-start metadata firstChunkMs=\(Int(firstChunkSeconds * 1000)) speedBps=\(Int(firstChunkBps)) received=\(receivedForClaim) action=refresh-115-source-and-resume")
                                     break
                                 }
                             }
                             refreshMetrics(resource: resolved)
                         }
                     } catch MediaTransportError.expiredURL {
-                        DiagnosticsLogger.shared.log("UnifiedTransport", "slot=\(slot) refreshing expired 115 URL")
+                        DiagnosticsLogger.shared.playback("UnifiedTransport", "slot=\(slot) refreshing expired 115 URL")
                         resource = nil
                         resolved = try await resolve()
                         continue
@@ -1108,7 +1128,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 }
                 let elapsed = max(Date().timeIntervalSince(started), 0.001)
                 let bps = Double(receivedForClaim) / elapsed
-                DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) finish role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) bytes=\(receivedForClaim) speedBps=\(Int(bps)) streamed=true")
+                DiagnosticsLogger.shared.playback("UnifiedSlot", "slot=\(slot) finish role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) bytes=\(receivedForClaim) speedBps=\(Int(bps)) streamed=true")
                 finishSlot(slot: slot, generation: generation, claim: claim, downloadedBytes: receivedForClaim > 0 ? receivedForClaim : nil, error: nil)
             }
         } catch is CancellationError {
@@ -1137,7 +1157,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 armLiveLaneResetRetry(slot: slot, attempt: 1)
             }
             laneHealth[slot] = LaneHealthState()
-            DiagnosticsLogger.shared.log("UnifiedHedge", "slot=\(slot) action=reset-race-loser success=\(reset) pending=\(!reset)")
+            DiagnosticsLogger.shared.playback("UnifiedHedge", "slot=\(slot) action=reset-race-loser success=\(reset) pending=\(!reset)")
         } else if startupRetry {
             startupMetadataQueue.insert(claim.range, at: 0)
             let reset = client.resetStreamLane(worker: slot, reason: "startup-metadata-straggler")
@@ -1145,7 +1165,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 liveLaneResetPending.insert(slot)
                 armLiveLaneResetRetry(slot: slot, attempt: 1)
             }
-            DiagnosticsLogger.shared.log("UnifiedStartup", "slot=\(slot) action=straggler-reset range=\(claim.range.lowerBound)-\(claim.range.upperBound) success=\(reset)")
+            DiagnosticsLogger.shared.playback("UnifiedStartup", "slot=\(slot) action=straggler-reset range=\(claim.range.lowerBound)-\(claim.range.upperBound) success=\(reset)")
         } else if liveRotation {
             let reset = client.resetStreamLane(worker: slot, reason: "live-lane-rotation")
             if !reset {
@@ -1161,7 +1181,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 live.lastRotationAt = .distantPast
             }
             liveLaneState[slot] = live
-            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=reset-after-cancel success=\(reset) pending=\(!reset) sourceRefresh=\(refreshSource)")
+            DiagnosticsLogger.shared.playback("UnifiedLiveLane", "slot=\(slot) action=reset-after-cancel success=\(reset) pending=\(!reset) sourceRefresh=\(refreshSource)")
             laneHealth[slot] = LaneHealthState()
             if refreshSource {
                 Task { [weak self] in await self?.refreshResolvedSourceAfterLaneRotation(slot: slot) }
@@ -1172,7 +1192,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         if claim.role == .startupMetadata, error == nil, let plan = startupMetadataPlanRange, startupMetadataQueue.isEmpty, !slotClaims.values.contains(where: { $0.role == .startupMetadata }), store?.contains(plan) == true {
             startupMetadataPlanCompleted = true
-            DiagnosticsLogger.shared.log("UnifiedStartup", "actual-tail plan complete range=\(plan.lowerBound)-\(plan.upperBound) bytes=\(plan.count)")
+            DiagnosticsLogger.shared.playback("UnifiedStartup", "actual-tail plan complete range=\(plan.lowerBound)-\(plan.upperBound) bytes=\(plan.count)")
         }
 
         if let downloadedBytes, downloadedBytes > 0 {
@@ -1186,21 +1206,21 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 successfulPrimaryBlocks += 1
                 if !secondaryEnabled, successfulPrimaryBlocks >= 1 {
                     secondaryEnabled = true
-                    DiagnosticsLogger.shared.log("UnifiedSlot", "secondary enabled after primary stable block")
+                    DiagnosticsLogger.shared.playback("UnifiedSlot", "secondary enabled after primary stable block")
                 }
                 if claim.range.lowerBound == 0, Int64(claim.range.count) <= largeFileInitialSequentialBlockBytes, source.mediaSource.normalizedContainer == "mp4", (resource?.contentLength ?? 0) >= 4 * 1_073_741_824 {
                     startupTailDemandGraceUntil = Date().addingTimeInterval(startupTailDemandGraceSeconds)
-                    DiagnosticsLogger.shared.log("UnifiedStartup", "head warmup complete range=\(claim.range.lowerBound)-\(claim.range.upperBound) action=await-actual-tail-demand graceMs=\(Int(startupTailDemandGraceSeconds * 1000))")
+                    DiagnosticsLogger.shared.playback("UnifiedStartup", "head warmup complete range=\(claim.range.lowerBound)-\(claim.range.upperBound) action=await-actual-tail-demand graceMs=\(Int(startupTailDemandGraceSeconds * 1000))")
                     armStartupTailGraceResume()
                 }
             }
             if (claim.role == .metadata || claim.role == .startupMetadata), downloadedBytes >= Int64(claim.range.count), !secondaryEnabled {
                 secondaryEnabled = true
-                DiagnosticsLogger.shared.log("UnifiedSlot", "secondary enabled after critical metadata")
+                DiagnosticsLogger.shared.playback("UnifiedSlot", "secondary enabled after critical metadata")
             }
             if slot == 0, claim.role == .urgentPlayback, downloadedBytes >= Int64(claim.range.count), pendingPlaybackUrgentRange == nil, pendingMetadataRange == nil, slotClaims[1]?.role != .metadata, !secondaryEnabled {
                 secondaryEnabled = true
-                DiagnosticsLogger.shared.log("UnifiedSlot", "secondary enabled after urgent playback settled")
+                DiagnosticsLogger.shared.playback("UnifiedSlot", "secondary enabled after urgent playback settled")
             }
             if slot == 1 { secondaryFailureCount = 0 }
         }
@@ -1211,7 +1231,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             if claim.role == .urgentPlayback, pendingPlaybackUrgentRange == nil { pendingPlaybackUrgentRange = claim.range }
             metricsValue.rangeFailureCount += 1
             lastNetworkFailureAt = Date()
-            DiagnosticsLogger.shared.log(
+            DiagnosticsLogger.shared.playback(
                 "UnifiedSlot",
                 "slot=\(slot) failed role=\(claim.role.rawValue) range=\(claim.range.lowerBound)-\(claim.range.upperBound) error=\(error.localizedDescription)"
             )
@@ -1238,11 +1258,11 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             guard refreshed.supportsByteRanges else { throw MediaTransportError.rangeUnsupported(statusCode: 200) }
             resource = refreshed
             liveLaneSourceRefreshPending.remove(slot)
-            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=refresh-115-source-success bytes=\(refreshed.contentLength)")
+            DiagnosticsLogger.shared.playback("UnifiedLiveLane", "slot=\(slot) action=refresh-115-source-success bytes=\(refreshed.contentLength)")
             scheduleSlots(reason: "live-lane-source-refreshed")
         } catch {
             liveLaneSourceRefreshPending.remove(slot)
-            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=refresh-115-source-failed error=\(error.localizedDescription)")
+            DiagnosticsLogger.shared.playback("UnifiedLiveLane", "slot=\(slot) action=refresh-115-source-failed error=\(error.localizedDescription)")
             scheduleSlots(reason: "live-lane-source-refresh-failed")
         }
     }
@@ -1262,7 +1282,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let peerProgressAt = startupMetadataLastProgressAt[peerSlot, default: .distantPast]
         guard peerProgressAt > startedAt else { return }
         startupMetadataRetryRequested.insert(slot)
-        DiagnosticsLogger.shared.log("UnifiedStartup", "slot=\(slot) action=straggler-cancel peer=\(peerSlot) peerProgressMsAgo=\(Int(Date().timeIntervalSince(peerProgressAt) * 1000)) range=\(slotClaims[slot]?.range.description ?? "none")")
+        DiagnosticsLogger.shared.playback("UnifiedStartup", "slot=\(slot) action=straggler-cancel peer=\(peerSlot) peerProgressMsAgo=\(Int(Date().timeIntervalSince(peerProgressAt) * 1000)) range=\(slotClaims[slot]?.range.description ?? "none")")
         cancelSlot(slot, reason: "startup-metadata-straggler")
     }
 
@@ -1293,7 +1313,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard liveLaneResetPending.contains(slot), !stopped else { return }
         if client.resetStreamLane(worker: slot, reason: "live-lane-retry-\(attempt)") {
             liveLaneResetPending.remove(slot)
-            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=reset-retry success=true attempt=\(attempt)")
+            DiagnosticsLogger.shared.playback("UnifiedLiveLane", "slot=\(slot) action=reset-retry success=true attempt=\(attempt)")
             scheduleSlots(reason: "live-lane-reset-ready")
             return
         }
@@ -1301,7 +1321,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             armLiveLaneResetRetry(slot: slot, attempt: attempt + 1)
         } else {
             liveLaneResetPending.remove(slot)
-            DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=reset-retry give-up attempt=\(attempt)")
+            DiagnosticsLogger.shared.playback("UnifiedLiveLane", "slot=\(slot) action=reset-retry give-up attempt=\(attempt)")
             scheduleSlots(reason: "live-lane-reset-give-up")
         }
     }
@@ -1319,7 +1339,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let peerSlot = slot == 0 ? 1 : 0
         guard let peerClaim = slotClaims[peerSlot], peerClaim.role == .sequential, !liveLaneResetPending.contains(peerSlot), !liveLaneSourceRefreshPending.contains(peerSlot) else { return }
         urgentHedgeRequested.insert(slot)
-        DiagnosticsLogger.shared.log("UnifiedHedge", "slot=\(slot) peer=\(peerSlot) action=hedge-urgent-first-byte afterMs=\(Int(urgentFirstByteHedgeSeconds * 1000)) range=\(claim.range.lowerBound)-\(claim.range.upperBound) peerRange=\(peerClaim.range.lowerBound)-\(peerClaim.range.upperBound)")
+        DiagnosticsLogger.shared.playback("UnifiedHedge", "slot=\(slot) peer=\(peerSlot) action=hedge-urgent-first-byte afterMs=\(Int(urgentFirstByteHedgeSeconds * 1000)) range=\(claim.range.lowerBound)-\(claim.range.upperBound) peerRange=\(peerClaim.range.lowerBound)-\(peerClaim.range.upperBound)")
         installUrgent(range: claim.range, metadata: false, reason: "urgent-first-byte-hedge")
         scheduleSlots(reason: "urgent-first-byte-hedge")
     }
@@ -1329,7 +1349,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let peerSlot = slot == 0 ? 1 : 0
         guard let peerClaim = slotClaims[peerSlot], peerClaim.role == .urgentPlayback, peerClaim.range == claim.range else { return }
         urgentRaceResetPending.insert(peerSlot)
-        DiagnosticsLogger.shared.log("UnifiedHedge", "winner=\(slot) loser=\(peerSlot) action=urgent-race-won range=\(claim.range.lowerBound)-\(claim.range.upperBound)")
+        DiagnosticsLogger.shared.playback("UnifiedHedge", "winner=\(slot) loser=\(peerSlot) action=urgent-race-won range=\(claim.range.lowerBound)-\(claim.range.upperBound)")
         cancelSlot(peerSlot, reason: "urgent-race-lost")
     }
 
@@ -1352,12 +1372,12 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             let peerFresh = peerLive.map { $0.recentBps > 0 && now.timeIntervalSince($0.lastSampleAt) <= 2.5 } ?? false
             let peerBps = peerFresh ? (peerLive?.recentBps ?? 0) : (peerCompleted?.averageBps ?? 0)
             if stalledSeconds >= liveLaneNoProgressPeerSeconds, peerBps >= 2 * 1_048_576 {
-                DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=midstream-no-progress stalledMs=\(Int(stalledSeconds * 1000)) peerBps=\(Int(peerBps)) received=\(live.receivedBytes)")
+                DiagnosticsLogger.shared.playback("UnifiedLiveLane", "slot=\(slot) action=midstream-no-progress stalledMs=\(Int(stalledSeconds * 1000)) peerBps=\(Int(peerBps)) received=\(live.receivedBytes)")
                 requestLiveLaneRotation(slot: slot, generation: generation, reason: "midstream-no-progress-peer-fast", observedBps: live.recentBps, peerBps: peerBps)
                 return
             }
             if stalledSeconds >= liveLaneNoProgressHardSeconds {
-                DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=midstream-hard-timeout stalledMs=\(Int(stalledSeconds * 1000)) peerBps=\(Int(peerBps)) received=\(live.receivedBytes)")
+                DiagnosticsLogger.shared.playback("UnifiedLiveLane", "slot=\(slot) action=midstream-hard-timeout stalledMs=\(Int(stalledSeconds * 1000)) peerBps=\(Int(peerBps)) received=\(live.receivedBytes)")
                 requestLiveLaneRotation(slot: slot, generation: generation, reason: "midstream-no-progress-hard", observedBps: live.recentBps, peerBps: peerBps)
                 return
             }
@@ -1438,7 +1458,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         else if live.recentBps >= max(absoluteFloorBps * 1.25, peerBps * 0.65) { live.slowStreak = 0 }
         liveLaneState[slot] = live
         let peakRatio = live.peakBps > 0 ? windowBps / live.peakBps : 1
-        DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) windowMs=\(Int(sampleSeconds * 1000)) windowBytes=\(sampleBytes) sampleBps=\(Int(windowBps)) avgBps=\(Int(live.recentBps)) peakBps=\(Int(live.peakBps)) healthyBps=\(Int(live.lastHealthyBps)) peakRatio=\(String(format: "%.2f", peakRatio)) badMs=\(Int(peakDropSeconds * 1000)) peerBps=\(Int(peerBps)) slowStreak=\(live.slowStreak)")
+        DiagnosticsLogger.shared.playback("UnifiedLiveLane", "slot=\(slot) windowMs=\(Int(sampleSeconds * 1000)) windowBytes=\(sampleBytes) sampleBps=\(Int(windowBps)) avgBps=\(Int(live.recentBps)) peakBps=\(Int(live.peakBps)) healthyBps=\(Int(live.lastHealthyBps)) peakRatio=\(String(format: "%.2f", peakRatio)) badMs=\(Int(peakDropSeconds * 1000)) peerBps=\(Int(peerBps)) slowStreak=\(live.slowStreak)")
 
         if sustainedPeakDrop {
             requestLiveLaneRotation(slot: slot, generation: generation, reason: "peak-collapse", observedBps: windowBps, peerBps: peerBps)
@@ -1464,7 +1484,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         liveLaneRotationRequested.insert(slot)
         if preferredBulkSlot == slot { preferredBulkSlot = slot == 0 ? 1 : 0 }
         let stage = refreshSource ? "refresh-302" : "reset-session"
-        DiagnosticsLogger.shared.log("UnifiedLiveLane", "slot=\(slot) action=rotate-live-lane stage=\(stage) rotation=\(live.rotationCount) reason=\(reason) observedBps=\(Int(observedBps)) peakBps=\(Int(live.peakBps)) healthyBps=\(Int(live.lastHealthyBps)) peerBps=\(Int(peerBps)) received=\(live.receivedBytes)")
+        DiagnosticsLogger.shared.playback("UnifiedLiveLane", "slot=\(slot) action=rotate-live-lane stage=\(stage) rotation=\(live.rotationCount) reason=\(reason) observedBps=\(Int(observedBps)) peakBps=\(Int(live.peakBps)) healthyBps=\(Int(live.lastHealthyBps)) peerBps=\(Int(peerBps)) received=\(live.receivedBytes)")
         cancelSlot(slot, reason: "live-lane-rotation-\(stage)")
     }
 
@@ -1485,14 +1505,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         if peerIsFresh {
             if current.averageBps >= peer.averageBps * 1.20, preferredBulkSlot != slot {
                 preferredBulkSlot = slot
-                DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "protected bulk changed slot=\(slot) avgBps=\(Int(current.averageBps)) peerAvgBps=\(Int(peer.averageBps))")
+                DiagnosticsLogger.shared.playback("UnifiedSchedulerV2", "protected bulk changed slot=\(slot) avgBps=\(Int(current.averageBps)) peerAvgBps=\(Int(peer.averageBps))")
             } else if peer.averageBps >= current.averageBps * 1.20, preferredBulkSlot == slot {
                 preferredBulkSlot = peerSlot
-                DiagnosticsLogger.shared.log("UnifiedSchedulerV2", "protected bulk changed slot=\(peerSlot) avgBps=\(Int(peer.averageBps)) peerAvgBps=\(Int(current.averageBps))")
+                DiagnosticsLogger.shared.playback("UnifiedSchedulerV2", "protected bulk changed slot=\(peerSlot) avgBps=\(Int(peer.averageBps)) peerAvgBps=\(Int(current.averageBps))")
             }
         }
 
-        DiagnosticsLogger.shared.log("UnifiedLaneHealth", "slot=\(slot) sampleBps=\(Int(bps)) avgBps=\(Int(current.averageBps)) peer=\(peerSlot) peerAvgBps=\(Int(peer.averageBps)) peerFresh=\(peerIsFresh) action=advisory-only protectedBulk=\(preferredBulkSlot)")
+        DiagnosticsLogger.shared.playback("UnifiedLaneHealth", "slot=\(slot) sampleBps=\(Int(bps)) avgBps=\(Int(current.averageBps)) peer=\(peerSlot) peerAvgBps=\(Int(peer.averageBps)) peerFresh=\(peerIsFresh) action=advisory-only protectedBulk=\(preferredBulkSlot)")
     }
 
     private func resumeAfterSecondaryCooldown() {
@@ -1502,7 +1522,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
     private func cancelSlot(_ slot: Int, reason: String) {
         guard let task = slotTasks[slot] else { return }
-        DiagnosticsLogger.shared.log("UnifiedSlot", "slot=\(slot) cancel reason=\(reason) claim=\(slotClaims[slot]?.range.description ?? "none")")
+        DiagnosticsLogger.shared.playback("UnifiedSlot", "slot=\(slot) cancel reason=\(reason) claim=\(slotClaims[slot]?.range.description ?? "none")")
         task.cancel()
     }
 
@@ -1542,7 +1562,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             let backwardLower = max(0, center - window)
             let forwardCached = forwardUpper > center ? rangeMap.playbackBytes(in: center..<forwardUpper) : 0
             let backwardCached = center > backwardLower ? rangeMap.playbackBytes(in: backwardLower..<center) : 0
-            DiagnosticsLogger.shared.log(
+            DiagnosticsLogger.shared.playback(
                 "UnifiedMap",
                 "anchor=\(playbackAnchor) center=\(center) frontier=\(map.frontierByte) contiguous=\(metricsValue.contiguousCacheBytes) forwardCached=\(forwardCached) backwardCached=\(backwardCached) window=\(window) cached=\(metricsValue.cacheBytes) metadata=\(map.metadataBytes) holes=\(map.holeCount) refill=\(cacheRefillActive) emergency=\(cacheEmergencyActive) starving=\(playbackStarving) advancing=\(playbackAdvancing) slot0=\(slot0) slot1=\(slot1) networkBps=\(Int(metricsValue.currentDownloadBytesPerSecond)) resumeGate=\(awaitingInitialResumeDemand)"
             )

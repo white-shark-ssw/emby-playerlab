@@ -100,10 +100,13 @@ final class PlaybackOrchestrator {
         let belowMediaRate = (metrics?.currentDownloadBytesPerSecond ?? 0) > 0 && (metrics?.currentDownloadBytesPerSecond ?? 0) < health.mediaBytesPerSecond * 1.10
         let transportStarved = snapshot.isBuffering || recentFailure || belowMediaRate || !health.transportHealthy
         DiagnosticsLogger.shared.playback("Orchestrator", "prematureEOF engine=\(kind.title) farFromEnd=\(farFromEnd) transportStarved=\(transportStarved) recentFailure=\(recentFailure) failureAge=\(String(format: "%.2f", metrics?.recentNetworkFailureAgeSeconds ?? .infinity)) networkBps=\(Int(metrics?.currentDownloadBytesPerSecond ?? 0)) mediaBps=\(Int(health.mediaBytesPerSecond)) reason=\(reason)")
-        if farFromEnd && transportStarved {
-            return .recoverTransport(message: "网络/缓存供给不足时出现提前 EOF，保持当前引擎并恢复当前位置数据，不重建播放器")
+        let unifiedKinds: Set<PlayerEngineKind> = [.resourceLoaderAVPlayer, .transportAVPlayer, .mpv, .ksAVIO]
+        if farFromEnd && unifiedKinds.contains(kind) {
+            let detail = transportStarved ? "当前传输存在饥饿/失败" : "当前传输仍健康，按异常媒体 EOF 处理"
+            return .recoverTransport(message: "提前 EOF：\(detail)；保持当前引擎原地恢复，不允许递归重建")
         }
-        return .reloadCurrent(reason: "疑似提前结束：\(reason)；传输未显示饥饿，受控重载当前引擎")
+        if farFromEnd && transportStarved { return .recoverTransport(message: "网络/缓存供给不足时出现提前 EOF，保持当前引擎恢复当前位置数据") }
+        return .reloadCurrent(reason: "疑似提前结束：\(reason)；仅非 UnifiedTransport 引擎允许受控重载")
     }
 
     func actionForEngineError(kind: PlayerEngineKind, message: String) -> PlaybackRecoveryAction? {

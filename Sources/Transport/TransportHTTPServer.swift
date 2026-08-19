@@ -101,7 +101,7 @@ final class TransportHTTPServer {
                                 return
                             }
                             self.setLocalURL(url)
-                            DiagnosticsLogger.shared.log(
+                            DiagnosticsLogger.shared.playback(
                                 "TransportHTTP",
                                 "server=\(self.logID) ready port=\(port.rawValue) pathToken=redacted"
                             )
@@ -148,7 +148,7 @@ final class TransportHTTPServer {
         state.listener?.cancel()
         state.tasks.forEach { $0.cancel() }
         state.connections.forEach { $0.cancel() }
-        DiagnosticsLogger.shared.log(
+        DiagnosticsLogger.shared.playback(
             "TransportHTTP",
             "server=\(logID) restarting listener connections=\(state.connections.count) tasks=\(state.tasks.count)"
         )
@@ -160,7 +160,7 @@ final class TransportHTTPServer {
         state.tasks.forEach { $0.cancel() }
         state.connections.forEach { $0.cancel() }
         guard !state.connections.isEmpty || !state.tasks.isEmpty else { return }
-        DiagnosticsLogger.shared.log(
+        DiagnosticsLogger.shared.playback(
             "TransportHTTP",
             "server=\(logID) reset streams connections=\(state.connections.count) tasks=\(state.tasks.count) reason=\(reason)"
         )
@@ -172,7 +172,7 @@ final class TransportHTTPServer {
         state.tasks.forEach { $0.cancel() }
         state.connections.forEach { $0.cancel() }
         if stopSessionOnStop { Task { await session.stop() } }
-        DiagnosticsLogger.shared.log("TransportHTTP", "server=\(logID) stopped sharedSession=\(!stopSessionOnStop)")
+        DiagnosticsLogger.shared.playback("TransportHTTP", "server=\(logID) stopped sharedSession=\(!stopSessionOnStop)")
     }
 
     private func accept(_ connection: NWConnection) {
@@ -187,7 +187,7 @@ final class TransportHTTPServer {
             switch state {
             case .failed(let error):
                 if !self.isClientDisconnect(error) {
-                    DiagnosticsLogger.shared.log("TransportHTTP", "server=\(self.logID) connection failed: \(error.localizedDescription)")
+                    DiagnosticsLogger.shared.playback("TransportHTTP", "server=\(self.logID) connection failed: \(error.localizedDescription)")
                 }
                 self.removeConnection(identifier, matching: connection)?.cancel()
             case .cancelled:
@@ -205,7 +205,7 @@ final class TransportHTTPServer {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self, weak connection] data, _, isComplete, error in
             guard let self, let connection else { return }
             if let error {
-                DiagnosticsLogger.shared.log("TransportHTTP", "server=\(self.logID) receive failed: \(error.localizedDescription)")
+                DiagnosticsLogger.shared.playback("TransportHTTP", "server=\(self.logID) receive failed: \(error.localizedDescription)")
                 connection.cancel()
                 return
             }
@@ -297,7 +297,7 @@ final class TransportHTTPServer {
 
             let sentBytes = max(0, cursor - responseRange.lowerBound)
             if logRequest || sentBytes >= 8 * 1_048_576 {
-                DiagnosticsLogger.shared.log(
+                DiagnosticsLogger.shared.playback(
                     "TransportHTTP",
                     "server=\(logID) response finished start=\(responseRange.lowerBound) sent=\(sentBytes)"
                 )
@@ -308,7 +308,7 @@ final class TransportHTTPServer {
             if isClientDisconnect(error) {
                 return
             }
-            DiagnosticsLogger.shared.log("TransportHTTP", "server=\(logID) response failed: \(error.localizedDescription)")
+            DiagnosticsLogger.shared.playback("TransportHTTP", "server=\(logID) response failed: \(error.localizedDescription)")
             if !responseStarted {
                 await sendError(status: 502, reason: "Bad Gateway", on: connection)
             }

@@ -125,6 +125,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private var seekBufferingGraceTarget: Double?
     private var didLogSeekBufferingGraceID: Int?
     private var didInstallLogHandler = false
+    private var prematureEOFRecoveryActive = false
 
     var playerView: UIView? { view }
 
@@ -159,6 +160,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         seekBufferingGraceID = nil
         seekBufferingGraceTarget = nil
         didLogSeekBufferingGraceID = nil
+        prematureEOFRecoveryActive = false
         installMDKLoggingIfNeeded()
 
         guard let sharedTransportSession else {
@@ -352,8 +354,29 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         let status = player.mediaStatus.rawValue
         let prematureEnd = hasStatus(status, bit: 6) && duration > 0 && position + max(3, duration * 0.005) < duration
         if prematureEnd, shouldPlay {
-            DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) state=\(String(describing: player.state)) status=0x\(String(status, radix: 16)) unifiedTransport=\(sharedTransportSession != nil) action=native-seek-current-after-network-eof")
-            seek(to: position, direction: .absolute)
+            guard !prematureEOFRecoveryActive else {
+                DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) action=wait-existing-eof-recovery")
+                return
+            }
+            prematureEOFRecoveryActive = true
+            transportHTTPServer?.resetClientStreams(reason: "mdk-premature-eof-reprepare")
+            let recoveryGeneration = generation
+            DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) state=\(String(describing: player.state)) status=0x\(String(status, radix: 16)) unifiedTransport=\(sharedTransportSession != nil) action=reprepare-same-player")
+            player.prepare(from: milliseconds(position), complete: { [weak self, weak player] preparedAtMs, boost in
+                guard let self, let player, recoveryGeneration == self.generation, self.player === player else { return false }
+                boost = true
+                DispatchQueue.main.async { [weak self, weak player] in
+                    guard let self, let player, recoveryGeneration == self.generation, self.player === player else { return }
+                    if preparedAtMs < 0 {
+                        self.prematureEOFRecoveryActive = false
+                        DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) preparedAtMs=\(preparedAtMs) action=reprepare-failed-no-rebuild")
+                        return
+                    }
+                    if self.shouldPlay { player.state = .Playing }
+                    DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) preparedAtMs=\(preparedAtMs) action=reprepare-ready-await-frame")
+                }
+                return true
+            })
             return
         }
         DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) state=\(String(describing: player.state)) status=0x\(String(status, radix: 16)) unifiedTransport=\(sharedTransportSession != nil) action=prioritize-and-play")
@@ -369,6 +392,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         shouldPlay = false
         generation &+= 1
         rateGeneration &+= 1
+        prematureEOFRecoveryActive = false
         stopPlayerOnly()
         onSnapshot = nil
         onSeekCompleted = nil
@@ -384,6 +408,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         applyHTTPHeaders(headers, to: player)
         attachCallbacks(to: player, generation: currentGeneration)
         view.bind(player)
+        player.setProperty(name: "keep_open", value: "1")
         player.media = url.absoluteString
         player.prepare(from: milliseconds(startPosition), complete: { [weak self, weak player] preparedAtMs, boost in
             guard let self, let player, currentGeneration == self.generation, self.player === player else { return false }
@@ -561,6 +586,10 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     }
 
     private func recordRenderedFrame(_ renderResult: Double) {
+        if prematureEOFRecoveryActive, renderResult.isFinite, renderResult >= 0 {
+            prematureEOFRecoveryActive = false
+            DiagnosticsLogger.shared.playback("MDKRecovery", "action=reprepare-first-frame recoveryComplete=true")
+        }
         if firstRenderedGeneration != generation {
             firstRenderedGeneration = generation
             DiagnosticsLogger.shared.playback("MDKFrame", "firstFrameSubmitted generation=\(generation) renderResult=\(renderResult) drawable=\(Int(view.drawableSize.width))x\(Int(view.drawableSize.height))")
@@ -594,6 +623,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         swift_mdk.setLogHandler { level, message in
             let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
+            if let marker = trimmed.range(of: "***buffering progress "), let percentEnd = trimmed[marker.upperBound...].firstIndex(of: "%"), let percent = Int(trimmed[marker.upperBound..<percentEnd]), percent != 0, percent != 25, percent != 50, percent != 75, percent != 100 { return }
             DiagnosticsLogger.shared.playback("MDKNative", "level=\(String(describing: level)) \(trimmed)")
         }
     }
