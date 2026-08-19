@@ -33,9 +33,10 @@ final class PlaybackOrchestrator {
         let largeIndexedMP4 = media.normalizedContainer == "mp4" && ((media.size ?? 0) >= 4 * 1_073_741_824 || (media.durationSeconds ?? 0) >= 3_600)
         let storedCompatibility = MediaCompatibilityStore.requiresCompatibilityEngine(itemId: source.itemId)
         if preference.isAutomatic, storedCompatibility || largeIndexedMP4 || !nativeFriendly {
-            self.currentKind = .mpv
+            let compatibilityKind = PlayerEnginePreference.automaticCompatibilityKind
+            self.currentKind = compatibilityKind
             let reason = storedCompatibility ? "stored-media-compatibility" : (largeIndexedMP4 ? "large-indexed-mp4" : "non-native-container-or-codec")
-            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=MPV+UnifiedTransportV3 reason=\(reason)")
+            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=\(compatibilityKind.title)+UnifiedTransportV3 reason=\(reason)")
         } else if preference.isAutomatic {
             self.currentKind = .resourceLoaderAVPlayer
             DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=AVPlayerResourceLoader+UnifiedTransportV3 reason=native-friendly")
@@ -84,7 +85,7 @@ final class PlaybackOrchestrator {
             "stall engine=\(kind.title) count=\(recoveryCount) transportHealthy=\(health.transportHealthy) \(health.reason) waiting=\(snapshot.waitingReason ?? "none") runtimeSwitch=disabled"
         )
 
-        if kind == .resourceLoaderAVPlayer || kind == .transportAVPlayer || kind == .mpv {
+        if kind == .resourceLoaderAVPlayer || kind == .transportAVPlayer || kind == .mpv || kind == .ksAVIO {
             let currentForward = snapshot.bufferedRanges.reduce(0.0) { result, range in
                 guard range.lowerBound <= snapshot.position + 0.25, range.upperBound >= snapshot.position - 0.10 else { return result }
                 return max(result, range.upperBound - snapshot.position)

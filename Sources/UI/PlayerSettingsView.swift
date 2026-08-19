@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PlayerSettingsView: View {
+    @AppStorage(PlayerPreferenceKeys.enginePreference) private var enginePreference = PlayerEnginePreference.automatic.rawValue
     @AppStorage(PlayerPreferenceKeys.backwardSeconds) private var backwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.forwardSeconds) private var forwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.bufferPreset) private var bufferPreset = BufferPreset.balanced.rawValue
@@ -21,6 +22,12 @@ struct PlayerSettingsView: View {
     var body: some View {
         NavigationView {
             Form {
+                Section(header: Text("播放器引擎"), footer: Text("KSPlayer KSME 仅在 KSPlayer Lab 构建中提供，用于与 MPV 真机对比；自动模式不会在运行中切换引擎。")) {
+                    Picker("播放引擎", selection: $enginePreference) {
+                        ForEach(PlayerEnginePreference.selectableCases) { preference in Text(preference.title).tag(preference.rawValue) }
+                    }
+                }
+
                 Section(header: Text("播放")) {
                     Picker("播放方向", selection: $orientationPolicy) {
                         ForEach(PlaybackOrientationPolicy.allCases) { policy in Text(policy.title).tag(policy.rawValue) }
@@ -62,6 +69,10 @@ struct PlayerSettingsView: View {
                 }
             }
             .navigationTitle("播放设置")
+            .onAppear {
+                let available = PlayerEnginePreference.persisted(rawValue: enginePreference)
+                if available.rawValue != enginePreference { enginePreference = available.rawValue }
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { presentationMode.wrappedValue.dismiss() } }
             }

@@ -1,6 +1,7 @@
 import Foundation
 
 enum PlayerPreferenceKeys {
+    static let enginePreference = "player.enginePreference"
     static let backwardSeconds = "seek.backwardSeconds"
     static let forwardSeconds = "seek.forwardSeconds"
     static let bufferPreset = "buffer.preset"

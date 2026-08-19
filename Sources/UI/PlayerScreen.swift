@@ -49,7 +49,9 @@ struct PlayerScreen: View {
     @State private var bufferingDownloadSpeed: Double = 0
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
-        _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: preference))
+        let storedEngineRaw = UserDefaults.standard.string(forKey: PlayerPreferenceKeys.enginePreference)
+        let effectivePreference = preference.isAutomatic ? PlayerEnginePreference.persisted(rawValue: storedEngineRaw) : preference
+        _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: effectivePreference))
         let defaultScaleRaw = UserDefaults.standard.string(forKey: PlayerPreferenceKeys.defaultScaleMode) ?? PlayerVideoScaleMode.fit.rawValue
         let defaultScale = PlayerVideoScaleMode(rawValue: defaultScaleRaw) ?? .fit
         _sessionOverrides = StateObject(wrappedValue: PlaybackSessionOverrides(defaultScaleMode: defaultScale))
@@ -179,6 +181,8 @@ struct PlayerScreen: View {
             Group {
                 if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {
                     MPVPlayerSurface(displayLayer: layer, onGeometrySettled: controller.rendererSurfaceDidSettle)
+                } else if controller.engineKind == .ksAVIO, let view = controller.ksAVIOView {
+                    KSAVIOPlayerSurface(playerView: view).id(ObjectIdentifier(view))
                 } else if let player = controller.avPlayer {
                     AVPlayerSurface(player: player, layoutPlan: plan, onPlayerLayerReady: pictureInPictureController.attach).id("avplayer")
                 } else { Color.black }
