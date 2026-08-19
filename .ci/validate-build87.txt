@@ -1,0 +1,1 @@
+Build87 validation trigger: quarantine MDK native getters/commands from MainActor.
