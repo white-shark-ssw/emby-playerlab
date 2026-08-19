@@ -1,0 +1,17 @@
+run_id=32293746636
+run_number=45
+source_sha=59e3fa066936082d41c27e4e8ef90a20035085b3
+job_status=failure
+version=0.13.31
+build=98
+minimum_os=15.0
+--- errors ---
+mdk-build.log:1656:/Users/runner/work/emby-playerlab/emby-playerlab/Pods/KTVHTTPCache/KTVHTTPCache/Classes/KTVHCDataStorage/KTVHCDataUnitQueue.m:27:44: warning: 'unarchiveObjectWithFile:' is deprecated: first deprecated in iOS 12.0 - Use +unarchivedObjectOfClass:fromData:error: instead [-Wdeprecated-declarations]
+mdk-build.log:1661:  157 | + (nullable id)unarchiveObjectWithFile:(NSString *)path API_DEPRECATED("Use +unarchivedObjectOfClass:fromData:error: instead", macosx(10.2,10.14), ios(2.0,12.0), watchos(2.0,5.0), tvos(9.0,12.0));
+mdk-build.log:1663:/Users/runner/work/emby-playerlab/emby-playerlab/Pods/KTVHTTPCache/KTVHTTPCache/Classes/KTVHCDataStorage/KTVHCDataUnitQueue.m:89:22: warning: 'archiveRootObject:toFile:' is deprecated: first deprecated in iOS 12.0 - Use +archivedDataWithRootObject:requiringSecureCoding:error: and -writeToURL:options:error: instead [-Wdeprecated-declarations]
+mdk-build.log:1668:   49 | + (BOOL)archiveRootObject:(id)rootObject toFile:(NSString *)path API_DEPRECATED("Use +archivedDataWithRootObject:requiringSecureCoding:error: and -writeToURL:options:error: instead", macosx(10.2,10.14), ios(2.0,12.0), watchos(2.0,5.0), tvos(9.0,12.0));
+mdk-build.log:2894:/Users/runner/work/emby-playerlab/emby-playerlab/Sources/UI/LocalMDKFileLabView.swift:208:6: error: 'State' is ambiguous for type lookup in this context
+mdk-build.log:2903:/Users/runner/work/emby-playerlab/emby-playerlab/Sources/UI/LocalMDKFileLabView.swift:209:6: error: 'State' is ambiguous for type lookup in this context
+mdk-build.log:2912:/Users/runner/work/emby-playerlab/emby-playerlab/Sources/UI/LocalMDKFileLabView.swift:210:6: error: 'State' is ambiguous for type lookup in this context
+mdk-build.log:2986:/Users/runner/work/emby-playerlab/emby-playerlab/Sources/UI/LocalMDKFileLabView.swift:242:36: error: cannot find '$pickerPresented' in scope
+mdk-build.log:2989:/Users/runner/work/emby-playerlab/emby-playerlab/Sources/UI/LocalMDKFileLabView.swift:217:44: error: cannot assign to property: 'self' is immutable
