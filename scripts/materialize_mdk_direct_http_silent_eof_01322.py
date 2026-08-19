@@ -51,8 +51,18 @@ controller = replace_once(
     "hold UnifiedTransport while MDK direct diagnostic runs")
 controller = replace_once(
     controller,
-    '''            if let transportContext = self.transportContext { await transportContext.quiesceConsumers() }\n            guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }\n            EngineTransitionBreadcrumb.record(stage: "transport-quiesced", from: previousKind, to: kind, position: resumePosition, reason: reason)\n\n            try? await Task.sleep(nanoseconds: 250_000_000)\n''',
-    '''            if let transportContext = self.transportContext { await transportContext.quiesceConsumers() }\n            guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }\n            EngineTransitionBreadcrumb.record(stage: "transport-quiesced", from: previousKind, to: kind, position: resumePosition, reason: reason)\n            #if MDK_LAB\n            if previousKind == .ksAVIO, kind == .mpv, let session = self.transportContext?.session {\n                await session.releaseStartupPrewarm(initialPosition: resumePosition, duration: self.effectiveDuration)\n                DiagnosticsLogger.shared.playback("MDKDirectHTTP", "phase=fallback position=\(String(format: "%.3f", resumePosition)) action=release-for-mpv-fallback")\n            }\n            #endif\n\n            try? await Task.sleep(nanoseconds: 250_000_000)\n''',
+    '''            if let transportContext = self.transportContext { await transportContext.quiesceConsumers() }\n            guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }\n            EngineTransitionBreadcrumb.record(stage: "transport-quiesced", from: previousKind, to: kind, position: resumePosition, reason: reason)\n            try? await Task.sleep(nanoseconds: 250_000_000)\n''',
+    r'''            if let transportContext = self.transportContext { await transportContext.quiesceConsumers() }
+            guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
+            EngineTransitionBreadcrumb.record(stage: "transport-quiesced", from: previousKind, to: kind, position: resumePosition, reason: reason)
+            #if MDK_LAB
+            if previousKind == .ksAVIO, kind == .mpv, let session = self.transportContext?.session {
+                await session.releaseStartupPrewarm(initialPosition: resumePosition, duration: self.effectiveDuration)
+                DiagnosticsLogger.shared.playback("MDKDirectHTTP", "phase=fallback position=\(String(format: "%.3f", resumePosition)) action=release-for-mpv-fallback")
+            }
+            #endif
+            try? await Task.sleep(nanoseconds: 250_000_000)
+''',
     "release UnifiedTransport for MPV fallback")
 CONTROLLER.write_text(controller)
 
