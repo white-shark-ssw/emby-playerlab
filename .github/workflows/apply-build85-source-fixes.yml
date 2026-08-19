@@ -1,0 +1,124 @@
+name: Apply Build85 Source Fixes
+
+on:
+  push:
+    branches: [feat/recovery-isolation-0.13.17]
+    paths:
+      - .github/workflows/apply-build85-source-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/recovery-isolation-0.13.17
+
+      - name: Apply MDK HTTP seek and resume-state fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, got {count}: {old!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          def replace_after(path, anchor, old, new):
+              p = Path(path)
+              text = p.read_text()
+              anchor_index = text.find(anchor)
+              if anchor_index < 0:
+                  raise SystemExit(f"{path}: anchor missing: {anchor!r}")
+              prefix = text[:anchor_index]
+              suffix = text[anchor_index:]
+              count = suffix.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one anchored match, got {count}: {old!r}")
+              p.write_text(prefix + suffix.replace(old, new, 1))
+
+          replace_once(
+              "MDKLab/App/MDKKSAVIOPlayerEngine.swift",
+              '            transportHTTPServer?.resetClientStreams(reason: "mdk-seek-\\(intent.id)")\n',
+              '            DiagnosticsLogger.shared.playback("MDKSeekHTTP", "id=\\(intent.id) action=preserve-existing-stream-before-native-seek")\n')
+
+          replace_after(
+              "MDKLab/App/MDKKSAVIOPlayerEngine.swift",
+              "    private func recoverWedgedSeek",
+              '        activeNativeSeek = nil\n        queuedLatestSeek = nil\n        reload(at: recoveryTarget)\n',
+              '        transportHTTPServer?.resetClientStreams(reason: "mdk-seek-wedge-\\(reason)")\n        activeNativeSeek = nil\n        queuedLatestSeek = nil\n        reload(at: recoveryTarget)\n')
+
+          replace_once(
+              "Sources/Transport/TransportHTTPServer.swift",
+              '            let chunkSize = 512 * 1024\n            while cursor <= responseRange.upperBound, !Task.isCancelled, !isStopped {\n',
+              '            let chunkSize = 512 * 1024\n            var terminationReason = "complete"\n            while cursor <= responseRange.upperBound {\n                if Task.isCancelled { terminationReason = "task-cancelled"; break }\n                if isStopped { terminationReason = "server-stopped"; break }\n')
+
+          replace_once(
+              "Sources/Transport/TransportHTTPServer.swift",
+              '                guard !data.isEmpty else { break }\n',
+              '                if data.isEmpty { terminationReason = "empty-read"; break }\n')
+
+          replace_once(
+              "Sources/Transport/TransportHTTPServer.swift",
+              '            let sentBytes = max(0, cursor - responseRange.lowerBound)\n            if logRequest || sentBytes >= 8 * 1_048_576 {\n',
+              '            let sentBytes = max(0, cursor - responseRange.lowerBound)\n            if sentBytes < responseRange.length {\n                DiagnosticsLogger.shared.playback("TransportHTTPIntegrity", "server=\\(logID) start=\\(responseRange.lowerBound) expected=\\(responseRange.length) sent=\\(sentBytes) remaining=\\(responseRange.length - sentBytes) reason=\\(terminationReason)")\n            }\n            if logRequest || sentBytes >= 8 * 1_048_576 {\n')
+
+          replace_once(
+              "Sources/UI/EmbyMediaDetailView.swift",
+              '        if let selectedEpisodeID, let selected = episodes.first(where: { $0.id == selectedEpisodeID }) { return selected }\n        if let resume = episodes.first(where: { $0.playbackProgress > 0.001 && !$0.isPlayed }) { return resume }\n',
+              '        if let selectedEpisodeID, let selected = episodes.first(where: { $0.id == selectedEpisodeID }) { return selected }\n        if hasPlaybackPositionOverride { return episodes.first }\n        if let resume = episodes.first(where: { $0.playbackProgress > 0.001 && !$0.isPlayed }) { return resume }\n')
+
+          replace_once(
+              "Sources/UI/EmbyMediaDetailView.swift",
+              '        guard !displayedPlayed, let playable = primaryPlayableItem else { return false }\n',
+              '        guard !displayedPlayed, !hasPlaybackPositionOverride, let playable = primaryPlayableItem else { return false }\n')
+
+          replace_once(
+              "Sources/UI/EmbyMediaDetailView.swift",
+              '        if playable.id == item.id && hasPlaybackPositionOverride { return playbackPositionOverrideTicks }\n',
+              '        if hasPlaybackPositionOverride { return playbackPositionOverrideTicks }\n')
+
+          replace_after(
+              "Sources/UI/EmbyMediaDetailView.swift",
+              "    func play(_ mediaItem: LibraryItem) async",
+              '        do {\n            let info = try await client.playbackInfo(itemId: mediaItem.id)\n',
+              '        do {\n            if hasPlaybackPositionOverride, mediaItem.id != item.id {\n                try? await client.setPlayed(itemId: mediaItem.id, played: false)\n                DiagnosticsLogger.shared.log("EmbyDetail", "resume override cleared child item=\\(mediaItem.id) before playback")\n            }\n            let info = try await client.playbackInfo(itemId: mediaItem.id)\n')
+
+          p = Path("project.mdklab.yml")
+          text = p.read_text()
+          if 'MARKETING_VERSION: "0.13.17"' not in text or 'CURRENT_PROJECT_VERSION: "84"' not in text:
+              raise SystemExit("project.mdklab.yml: Build84 version markers missing")
+          text = text.replace('MARKETING_VERSION: "0.13.17"', 'MARKETING_VERSION: "0.13.18"')
+          text = text.replace('CURRENT_PROJECT_VERSION: "84"', 'CURRENT_PROJECT_VERSION: "85"')
+          p.write_text(text)
+          PY
+
+          git diff --check
+          grep -q 'MDKSeekHTTP.*preserve-existing-stream-before-native-seek' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          ! grep -q 'resetClientStreams(reason: "mdk-seek-\\(intent.id)' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -q 'resetClientStreams(reason: "mdk-seek-wedge-\\(reason)' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -q 'TransportHTTPIntegrity' Sources/Transport/TransportHTTPServer.swift
+          grep -q '!hasPlaybackPositionOverride' Sources/UI/EmbyMediaDetailView.swift
+          grep -q 'if hasPlaybackPositionOverride { return episodes.first }' Sources/UI/EmbyMediaDetailView.swift
+          grep -q 'resume override cleared child item=' Sources/UI/EmbyMediaDetailView.swift
+          grep -q 'MARKETING_VERSION: "0.13.18"' project.mdklab.yml
+          grep -q 'CURRENT_PROJECT_VERSION: "85"' project.mdklab.yml
+          grep -q 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+
+      - name: Commit source fixes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/Transport/TransportHTTPServer.swift Sources/UI/EmbyMediaDetailView.swift project.mdklab.yml
+          if git diff --cached --quiet; then
+            echo 'No source changes required.'
+            exit 0
+          fi
+          git commit -m 'fix: preserve MDK HTTP stream across seeks and clear series resume state'
+          git push origin HEAD:feat/recovery-isolation-0.13.17

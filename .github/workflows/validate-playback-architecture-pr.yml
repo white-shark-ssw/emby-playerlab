@@ -1,0 +1,143 @@
+name: Validate Playback Architecture PR
+
+on:
+  pull_request:
+    branches: [ci/playback-architecture-0.13.8-base]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Validate source contract
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          python3 - <<'PY'
+          from pathlib import Path
+          spec=Path('project.mdklab.yml').read_text(); kind=Path('Sources/Player/PlayerEngine.swift').read_text(); controller=Path('Sources/Player/PlayerController.swift').read_text(); slider=Path('Sources/UI/BufferedTimelineSlider.swift').read_text(); screen=Path('Sources/UI/PlayerScreen.swift').read_text(); mdk=Path('MDKLab/App/MDKKSAVIOPlayerEngine.swift').read_text(); mpv=Path('Sources/Player/MPVPlayerEngine.swift').read_text()
+          checks={
+            'iOS15': 'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,
+            'version': 'MARKETING_VERSION: "0.13.8"' in spec and 'CURRENT_PROJECT_VERSION: "75"' in spec,
+            'MDK pin': 'f112a85f2f51c5352439465204c1ae0fa51a9f18' in spec,
+            'MPV pin': 'exactVersion: 1.0.0' in spec,
+            'dual target': 'product: swift-mdk' in spec and 'product: MPVKit' in spec,
+            'names': '高性能引擎' in kind and '高兼容引擎' in kind,
+            'default MDK': 'defaultPreference' in kind and 'return .ksAVIO' in kind,
+            'buffer model': 'PlaybackBufferState' in kind and 'bufferState = PlaybackBufferState' in controller,
+            'two layers': 'verifiedHistoryRanges' in slider and 'livePlayableRanges' in slider and 'transportCacheRanges' not in slider,
+            'screen buffer wiring': 'bufferState: controller.bufferState' in screen,
+            'controlled reopen exists': 'func switchEngine(to kind: PlayerEngineKind' in controller and 'quiesceConsumers()' in controller,
+            'MDK fast watchdog': 'activeNativeSeekFastWatchdogSeconds: TimeInterval = 1.0' in mdk and 'active-native-fast-timeout' in mdk and 'noRenderedProgress' in mdk and 'transportHealthy' in mdk,
+            'MDK fallback watchdog': 'activeNativeSeekWatchdogSeconds: TimeInterval = 2.0' in mdk and 'activeNativeSeekHardWatchdogSeconds: TimeInterval = 5.0' in mdk,
+            'MPV telemetry': 'MPVSeekEvent' in mpv and 'MPVSeekLanding' in mpv and 'absolute+keyframes' in mpv,
+          }
+          for n,v in checks.items():
+            print(('PASS' if v else 'FAIL'), n)
+            if not v: raise SystemExit(f'::error::{n}')
+          PY
+
+      - name: Generate project
+        run: xcodegen generate --spec project.mdklab.yml
+
+      - name: Install KTVHTTPCache 3.1.0
+        run: pod install --repo-update 2>&1 | tee pods-install.log
+
+      - name: Resolve MDK and MPV packages
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Build dual-engine Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.8' --build '75' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' 2>&1 | tee app-validation.log
+
+      - name: Validate minimum OS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" '15.0' '17.0' min-os-report.log build.log
+          APP_PATH="${{ steps.app.outputs.path }}"
+          : > framework-min-os-report.log
+          while IFS= read -r -d '' file; do
+            if file "$file" | grep -q 'Mach-O'; then xcrun vtool -show-build "$file" >> framework-min-os-report.log 2>&1 || true; fi
+          done < <(find "$APP_PATH" -type f -print0)
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          values=re.findall(r'\bminos\s+(\d+(?:\.\d+){1,2})', Path('framework-min-os-report.log').read_text(errors='ignore'))
+          def v(s): return tuple(map(int,s.split('.')))
+          bad=[x for x in values if v(x)>v('15.0')]
+          print('embedded minOS:', values)
+          if bad: raise SystemExit('::error::Embedded minimum OS exceeds iOS 15.0: '+repr(bad))
+          PY
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload && mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA_NAME="OnePlayer-DualEngine-0.13.8-${GITHUB_SHA::7}-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
+          SOURCE_ZIP="OnePlayer-DualEngine-0.13.8-build75-${GITHUB_SHA::7}-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-DualEngine-${{ github.sha }}
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            app-validation.log
+            min-os-report.log
+            framework-min-os-report.log
+            package-resolution.log
+            build.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summarize failure
+        if: failure()
+        run: |
+          grep -nEi '(^|[[:space:]])(error:|fatal error:)|::error::| failed:' build.log package-resolution.log pods-install.log app-validation.log min-os-report.log 2>/dev/null | head -240 >> "$GITHUB_STEP_SUMMARY" || true

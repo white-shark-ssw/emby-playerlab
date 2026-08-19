@@ -7,6 +7,7 @@ protocol TransportDataSession: AnyObject {
     func prioritizeSeek(position: Double, duration: Double) async
     func prioritizeOffset(_ offset: Int64) async
     func confirmConcretePlaybackByte(_ offset: Int64) async
+    func reportPlaybackProgress(position: Double, isBuffering: Bool) async
     func recoverStall(position: Double, duration: Double) async
     func setPlaybackAdvancing(_ advancing: Bool) async
     func confirmInitialResumePlayback() async
@@ -18,6 +19,7 @@ extension TransportDataSession {
     func noteDemand(range: Range<Int64>) async {}
     func prioritizeOffset(_ offset: Int64) async { await noteDemand(range: offset..<(offset + 1)) }
     func confirmConcretePlaybackByte(_ offset: Int64) async {}
+    func reportPlaybackProgress(position: Double, isBuffering: Bool) async {}
     func recoverStall(position: Double, duration: Double) async {}
     func setPlaybackAdvancing(_ advancing: Bool) async {}
     func confirmInitialResumePlayback() async {}

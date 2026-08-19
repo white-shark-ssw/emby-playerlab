@@ -1,0 +1,130 @@
+name: Build MDK Lab IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/mdk-engine-lab]
+    paths:
+      - "Sources/**"
+      - "MDKLab/**"
+      - "Config/**"
+      - "Resources/**"
+      - "project.mdklab.yml"
+      - "Podfile"
+      - ".github/workflows/build-mdk-lab.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-mdk-lab-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Prepare OnePlayer assets
+        run: python3 scripts/generate_oneplayer_icons.py
+
+      - name: Validate current MDK local-file contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          spec = Path("project.mdklab.yml").read_text()
+          local = Path("Sources/UI/LocalMDKFileLabView.swift").read_text()
+          shell = Path("Sources/UI/AppShellView.swift").read_text()
+          engine = Path("MDKLab/App/MDKKSAVIOPlayerEngine.swift").read_text()
+          checks = {
+              "iOS 15 deployment": 'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,
+              "current Build98 identity": 'MARKETING_VERSION: "0.13.31"' in spec and 'CURRENT_PROJECT_VERSION: "98"' in spec,
+              "MDK compilation condition enabled": 'SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MDK_LAB"' in spec,
+              "swift-mdk product linked": 'product: swift-mdk' in spec and 'path: MDKLab/SwiftMDKOnePlayer' in spec,
+              "MDK engine source included": '- path: MDKLab/App' in spec,
+              "local lab source included": '- path: Sources' in spec and 'LocalMDKFileLabView.swift' not in spec.split('excludes:', 1)[-1],
+              "local lab compiles real MDK path": '#if MDK_LAB && canImport(swift_mdk)' in local and 'KSAVIOPlayerEngine' in local,
+              "settings exposes local lab": 'LocalMDKFileLabView()' in shell and 'MDK 本地文件实验' in shell,
+              "local lab bypasses UnifiedTransport": 'sharedTransportSession: nil' in local and 'unifiedTransport=false' in local,
+              "local lab disables MPV fallback": 'fallback=false' in local,
+              "local lab diagnostics enabled": 'DiagnosticsLogger.shared.playback("LocalMDKLab"' in local,
+              "MDK engine compiled under same condition": '#if MDK_LAB && canImport(swift_mdk)' in engine,
+          }
+          for name, ok in checks.items():
+              print(("PASS" if ok else "FAIL"), name)
+              if not ok: raise SystemExit(f"::error::{name}")
+          PY
+
+      - name: Generate MDK Lab project
+        run: xcodegen generate --spec project.mdklab.yml
+
+      - name: Install KTVHTTPCache 3.1.0
+        run: pod install --repo-update
+
+      - name: Resolve packages
+        run: |
+          set -o pipefail
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -resolvePackageDependencies 2>&1 | tee mdk-package-resolution.log
+
+      - name: Build MDK local-file diagnostic IPA
+        run: |
+          set -o pipefail
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | tee mdk-build.log
+
+      - name: Locate and validate app
+        run: |
+          set -euo pipefail
+          APP_PATH=$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -type d | head -1)
+          test -n "$APP_PATH"
+          test -f "$APP_PATH/OnePlayer"
+          plutil -p "$APP_PATH/Info.plist" | tee app-info.log
+          strings "$APP_PATH/OnePlayer" | grep -F 'MDK 本地文件实验'
+          strings "$APP_PATH/OnePlayer" | grep -F 'LocalMDKLab'
+          if strings "$APP_PATH/OnePlayer" | grep -F '当前构建未包含 MDK 实验引擎。'; then echo '::error::fallback-only LocalMDK lab text found in MDK binary'; exit 1; fi
+          echo "$APP_PATH" > app-path.txt
+
+      - name: Validate minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH=$(cat app-path.txt)
+          MIN_OS=$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP_PATH/Info.plist")
+          echo "MinimumOSVersion=$MIN_OS"
+          test "$MIN_OS" = "15.0"
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH=$(cat app-path.txt)
+          rm -rf Payload OnePlayer-0.13.31-build98-local-mdk.ipa
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qry OnePlayer-0.13.31-build98-local-mdk.ipa Payload
+
+      - name: Upload MDK local diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.31-build98-local-mdk-${{ github.sha }}
+          path: |
+            OnePlayer-0.13.31-build98-local-mdk.ipa
+            app-info.log
+            mdk-build.log
+            mdk-package-resolution.log
+          retention-days: 14

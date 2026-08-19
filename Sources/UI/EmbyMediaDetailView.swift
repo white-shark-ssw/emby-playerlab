@@ -93,7 +93,7 @@ struct EmbyMediaDetailView: View {
         .fullScreenCover(isPresented: $showFullOverview) {
             EmbyOverviewOverlayView(text: model.normalizedOverview ?? "", backdropURL: heroImageURL)
         }
-        .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
+        .fullScreenCover(item: $model.selectedSource, onDismiss: { Task { await model.refreshPlaybackUserDataAfterPlayerDismiss() } }) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
     }
 
     private func hero(width: CGFloat, viewportHeight: CGFloat) -> some View {
@@ -1178,13 +1178,14 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         if isPlayable { return item }
         guard isSeries else { return nil }
         if let selectedEpisodeID, let selected = episodes.first(where: { $0.id == selectedEpisodeID }) { return selected }
+        if hasPlaybackPositionOverride { return episodes.first }
         if let resume = episodes.first(where: { $0.playbackProgress > 0.001 && !$0.isPlayed }) { return resume }
         if let unplayed = episodes.first(where: { !$0.isPlayed }) { return unplayed }
         return episodes.first
     }
 
     var primaryPlayButtonShowsResume: Bool {
-        guard !displayedPlayed, let playable = primaryPlayableItem else { return false }
+        guard !displayedPlayed, !hasPlaybackPositionOverride, let playable = primaryPlayableItem else { return false }
         return effectivePlaybackProgress(for: playable) > 0.001
     }
 
@@ -1204,7 +1205,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     }
 
     private func effectivePlaybackPositionTicks(for playable: LibraryItem) -> Int64? {
-        if playable.id == item.id && hasPlaybackPositionOverride { return playbackPositionOverrideTicks }
+        if hasPlaybackPositionOverride { return playbackPositionOverrideTicks }
         return playable.userData?.playbackPositionTicks
     }
 
@@ -1458,6 +1459,16 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         if desiredPlayed != syncedPlayed { startPlayedSyncIfNeeded() }
     }
 
+    func refreshPlaybackUserDataAfterPlayerDismiss() async {
+        let targetID = primaryPlayableItem?.id ?? item.id
+        DiagnosticsLogger.shared.log("EmbyDetail", "player dismissed; authoritative playback userdata refresh item=\(targetID) phase=immediate")
+        await refreshPlaybackUserData(itemID: targetID)
+        do { try await Task.sleep(nanoseconds: 400_000_000) } catch { return }
+        guard !Task.isCancelled else { return }
+        DiagnosticsLogger.shared.log("EmbyDetail", "player dismissed; authoritative playback userdata refresh item=\(targetID) phase=convergence")
+        await refreshPlaybackUserData(itemID: targetID)
+    }
+
     func refreshPlaybackUserData(itemID: String) async {
         do {
             let refreshed = try await client.libraryItem(itemId: itemID)
@@ -1469,8 +1480,15 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                 desiredPlayed = refreshed.isPlayed
             } else if let index = episodes.firstIndex(where: { $0.id == itemID }) {
                 episodes[index] = refreshed
+                selectedEpisodeID = itemID
+                if let season = seasonNumber(for: refreshed) {
+                    selectedSeason = season
+                    if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == itemID }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
+                }
+                hasPlaybackPositionOverride = false
+                playbackPositionOverrideTicks = nil
             }
-            DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refreshed item=\(itemID) positionTicks=\(refreshed.userData?.playbackPositionTicks ?? 0)")
+            DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refreshed item=\(itemID) positionTicks=\(refreshed.userData?.playbackPositionTicks ?? 0) selectedResumeTarget=\(selectedEpisodeID ?? item.id) override=\(hasPlaybackPositionOverride)")
         } catch {
             if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refresh failed item=\(itemID): \(error.localizedDescription)") }
         }
@@ -1482,6 +1500,10 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         errorMessage = nil
         defer { isResolvingPlayback = false }
         do {
+            if hasPlaybackPositionOverride, mediaItem.id != item.id {
+                try? await client.setPlayed(itemId: mediaItem.id, played: false)
+                DiagnosticsLogger.shared.log("EmbyDetail", "resume override cleared child item=\(mediaItem.id) before playback")
+            }
             let info = try await client.playbackInfo(itemId: mediaItem.id)
             guard let source = info.mediaSources.first(where: { $0.supportsDirectPlay == true }) ?? info.mediaSources.first else { throw EmbyAPIError.noMediaSource }
             selectedSource = try client.resolvePlaybackSource(itemId: mediaItem.id, itemName: mediaItem.name, mediaSource: source, playSessionId: info.playSessionId)

@@ -23,22 +23,19 @@ final class PlaybackOrchestrator {
     init(source: ResolvedPlaybackSource, preference: PlayerEnginePreference) {
         self.source = source
         self.automaticMode = preference.isAutomatic
-        let media = source.mediaSource
-        let nativeContainers: Set<String> = ["mp4", "mov", "m4v"]
-        let nativeVideo: Set<String> = ["h264", "hevc", "h265"]
-        let nativeAudio: Set<String> = ["aac", "alac", "mp3", "ac3", "eac3"]
-        let video = media.videoCodec?.lowercased() ?? ""
-        let audio = media.audioCodec?.lowercased() ?? ""
-        let nativeFriendly = nativeContainers.contains(media.normalizedContainer) && (video.isEmpty || nativeVideo.contains(video)) && (audio.isEmpty || nativeAudio.contains(audio))
-        let largeIndexedMP4 = media.normalizedContainer == "mp4" && ((media.size ?? 0) >= 4 * 1_073_741_824 || (media.durationSeconds ?? 0) >= 3_600)
-        let storedCompatibility = MediaCompatibilityStore.requiresCompatibilityEngine(itemId: source.itemId)
-        if preference.isAutomatic, storedCompatibility || largeIndexedMP4 || !nativeFriendly {
-            self.currentKind = .mpv
-            let reason = storedCompatibility ? "stored-media-compatibility" : (largeIndexedMP4 ? "large-indexed-mp4" : "non-native-container-or-codec")
-            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=MPV+UnifiedTransportV3 reason=\(reason)")
-        } else if preference.isAutomatic {
-            self.currentKind = .resourceLoaderAVPlayer
-            DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=AVPlayerResourceLoader+UnifiedTransportV3 reason=native-friendly")
+        if preference.isAutomatic {
+            let preferredKind = preference.resolved(for: source.mediaSource)
+            if preferredKind == .ksAVIO {
+                self.currentKind = preferredKind
+                DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=\(currentKind.title)+UnifiedTransportV3 reason=per-session-mdk-probe storedCompatibilityIgnored=true")
+            } else if MediaCompatibilityStore.requiresCompatibilityEngine(itemId: source.itemId) {
+                let compatibilityKind = PlayerEnginePreference.automaticCompatibilityKind
+                self.currentKind = compatibilityKind
+                DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=\(compatibilityKind.title)+UnifiedTransportV3 reason=stored-non-mdk-compatibility")
+            } else {
+                self.currentKind = preferredKind
+                DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=\(currentKind.title)+UnifiedTransportV3 reason=high-performance-priority")
+            }
         } else {
             self.currentKind = preference.resolved(for: source.mediaSource)
         }
@@ -84,7 +81,7 @@ final class PlaybackOrchestrator {
             "stall engine=\(kind.title) count=\(recoveryCount) transportHealthy=\(health.transportHealthy) \(health.reason) waiting=\(snapshot.waitingReason ?? "none") runtimeSwitch=disabled"
         )
 
-        if kind == .resourceLoaderAVPlayer || kind == .transportAVPlayer || kind == .mpv {
+        if kind == .resourceLoaderAVPlayer || kind == .transportAVPlayer || kind == .mpv || kind == .ksAVIO {
             let currentForward = snapshot.bufferedRanges.reduce(0.0) { result, range in
                 guard range.lowerBound <= snapshot.position + 0.25, range.upperBound >= snapshot.position - 0.10 else { return result }
                 return max(result, range.upperBound - snapshot.position)
@@ -98,11 +95,37 @@ final class PlaybackOrchestrator {
         return .reloadCurrent(reason: "当前引擎长时间未推进，尝试重载同一引擎")
     }
 
-    func actionForPrematureEOF(kind: PlayerEngineKind, reason: String) -> PlaybackRecoveryAction {
-        .reloadCurrent(reason: "疑似提前结束：\(reason)；保持当前引擎恢复")
+    func actionForPrematureEOF(kind: PlayerEngineKind, reason: String, snapshot: PlayerSnapshot, metrics: TransportMetricsSnapshot?) -> PlaybackRecoveryAction {
+        let duration = max(snapshot.duration, source.mediaSource.durationSeconds ?? 0)
+        let farFromEnd = duration > 0 && snapshot.position + max(3, duration * 0.005) < duration
+        let health = assessTransport(metrics: metrics)
+        let recentFailure = (metrics?.recentNetworkFailureAgeSeconds ?? .infinity) <= 8
+        let belowMediaRate = (metrics?.currentDownloadBytesPerSecond ?? 0) > 0 && (metrics?.currentDownloadBytesPerSecond ?? 0) < health.mediaBytesPerSecond * 1.10
+        let transportStarved = snapshot.isBuffering || recentFailure || belowMediaRate || !health.transportHealthy
+        DiagnosticsLogger.shared.playback("Orchestrator", "prematureEOF engine=\(kind.title) farFromEnd=\(farFromEnd) transportStarved=\(transportStarved) recentFailure=\(recentFailure) failureAge=\(String(format: "%.2f", metrics?.recentNetworkFailureAgeSeconds ?? .infinity)) networkBps=\(Int(metrics?.currentDownloadBytesPerSecond ?? 0)) mediaBps=\(Int(health.mediaBytesPerSecond)) reason=\(reason)")
+        let unifiedKinds: Set<PlayerEngineKind> = [.resourceLoaderAVPlayer, .transportAVPlayer, .mpv, .ksAVIO]
+        if farFromEnd && unifiedKinds.contains(kind) {
+            let detail = transportStarved ? "当前传输存在饥饿/失败" : "当前传输仍健康，按异常媒体 EOF 处理"
+            return .recoverTransport(message: "提前 EOF：\(detail)；保持当前引擎原地恢复，不允许递归重建")
+        }
+        if farFromEnd && transportStarved { return .recoverTransport(message: "网络/缓存供给不足时出现提前 EOF，保持当前引擎恢复当前位置数据") }
+        return .reloadCurrent(reason: "疑似提前结束：\(reason)；仅非 UnifiedTransport 引擎允许受控重载")
     }
 
     func actionForEngineError(kind: PlayerEngineKind, message: String) -> PlaybackRecoveryAction? {
+        let normalized = message.lowercased()
+        if kind == .ksAVIO, automaticMode, normalized.contains("mdk native isolation") {
+            DiagnosticsLogger.shared.playback("Orchestrator", "engine error engine=\(kind.title) failureIsolation=triggered action=switch-mpv error=\(message)")
+            return .switchEngine(.mpv, reason: "MDK native worker 超时；主线程仍响应，受控切换到 MPV 高兼容引擎")
+        }
+        if kind == .ksAVIO, automaticMode, normalized.contains("mdk session unsafe") {
+            DiagnosticsLogger.shared.playback("Orchestrator", "engine error engine=\(kind.title) sessionUnsafe=true action=switch-mpv-immediate error=\(message)")
+            return .switchEngine(.mpv, reason: "MDK 当前会话已进入不安全状态；立即切换到 MPV 高兼容引擎")
+        }
+        if kind == .ksAVIO, automaticMode, normalized.contains("mdk abnormal media recovery exhausted") {
+            DiagnosticsLogger.shared.playback("Orchestrator", "engine error engine=\(kind.title) recoveryExhausted=true action=switch-mpv-immediate error=\(message)")
+            return .switchEngine(.mpv, reason: "MDK 异常媒体恢复已用尽；立即切换到 MPV 高兼容引擎")
+        }
         DiagnosticsLogger.shared.log("Orchestrator", "engine error engine=\(kind.title) runtimeSwitch=disabled error=\(message)")
         return nil
     }

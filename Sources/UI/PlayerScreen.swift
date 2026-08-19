@@ -49,7 +49,9 @@ struct PlayerScreen: View {
     @State private var bufferingDownloadSpeed: Double = 0
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
-        _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: preference))
+        let storedEngineRaw = UserDefaults.standard.string(forKey: PlayerPreferenceKeys.enginePreference)
+        let effectivePreference = preference.isAutomatic ? PlayerEnginePreference.persisted(rawValue: storedEngineRaw) : preference
+        _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: effectivePreference))
         let defaultScaleRaw = UserDefaults.standard.string(forKey: PlayerPreferenceKeys.defaultScaleMode) ?? PlayerVideoScaleMode.fit.rawValue
         let defaultScale = PlayerVideoScaleMode(rawValue: defaultScaleRaw) ?? .fit
         _sessionOverrides = StateObject(wrappedValue: PlaybackSessionOverrides(defaultScaleMode: defaultScale))
@@ -96,6 +98,7 @@ struct PlayerScreen: View {
 
                 if controller.snapshot.isBuffering { bufferingIndicator }
                 statusMessages
+                if let message = controller.engineSwitchNotice { automaticEngineSwitchToast(message) }
 
                 if playbackSettingsPresented {
                     PlayerPlaybackSettingsPopover(
@@ -118,6 +121,7 @@ struct PlayerScreen: View {
             originalScreenBrightness = UIScreen.main.brightness
             applyIndependentBrightnessIfNeeded()
             displayRefreshMonitor.start()
+            controller.prewarmStartup()
             AppOrientationCoordinator.shared.beginPlayerPresentation(source: controller.source)
         }
         .onDisappear {
@@ -133,9 +137,8 @@ struct PlayerScreen: View {
             wasAutoPausedForBackground = false
             pictureInPictureController.stopAndDetach()
             restoreOriginalBrightnessIfNeeded()
-            controller.pausePlayback()
-            let closingController = controller
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { closingController.stop() }
+            DiagnosticsLogger.shared.app("PlayerLifecycle", "onDisappear immediate stop closing=\(isClosing)")
+            controller.stop()
         }
         .onChange(of: controller.snapshot.isPlaying) { isPlaying in
             if !isPlaying, sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
@@ -179,6 +182,8 @@ struct PlayerScreen: View {
             Group {
                 if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {
                     MPVPlayerSurface(displayLayer: layer, onGeometrySettled: controller.rendererSurfaceDidSettle)
+                } else if controller.engineKind == .ksAVIO, let view = controller.ksAVIOView {
+                    KSAVIOPlayerSurface(playerView: view).id(ObjectIdentifier(view))
                 } else if let player = controller.avPlayer {
                     AVPlayerSurface(player: player, layoutPlan: plan, onPlayerLayerReady: pictureInPictureController.attach).id("avplayer")
                 } else { Color.black }
@@ -318,7 +323,8 @@ struct PlayerScreen: View {
                 BufferedTimelineSlider(
                     value: Binding(get: { controller.displayedPosition }, set: { controller.updateScrubbing(to: $0) }),
                     range: 0...max(controller.effectiveDuration, 1),
-                    downloadCacheRanges: controller.transportCacheRanges,
+                    bufferState: controller.bufferState,
+                    cacheByteRanges: controller.transportCacheRanges,
                     onEditingChanged: { editing in
                         if editing {
                             controlsHideWorkItem?.cancel()
@@ -372,8 +378,8 @@ struct PlayerScreen: View {
     @ViewBuilder
     private var statusMessages: some View {
         VStack(spacing: 8) {
-            if let message = controller.prematureEOFMessage { statusBanner(title: "疑似提前结束", message: message, color: .red) }
-            if let message = controller.stallMessage { statusBanner(title: "播放停滞恢复", message: message, color: .orange) }
+            // Premature EOF stays diagnostic-only while automatic fallback is enabled.
+            // Stall recovery stays diagnostic-only; automatic recovery/fallback remains active.
             Spacer()
         }
         .padding(.top, 54)
@@ -416,6 +422,24 @@ struct PlayerScreen: View {
         .foregroundColor(.white)
         .clipShape(Capsule())
         .allowsHitTesting(false)
+    }
+
+    private func automaticEngineSwitchToast(_ message: String) -> some View {
+        VStack {
+            Text(message)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.ultraThinMaterial))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.white.opacity(0.14), lineWidth: 0.5))
+            Spacer()
+        }
+        .padding(.top, 64)
+        .allowsHitTesting(false)
+        .zIndex(30)
     }
 
     private func adjustmentHUDView(_ state: AdjustmentHUDState) -> some View { PlayerAdjustmentRulerHUD(adjustment: state.adjustment, value: state.value) }
@@ -794,6 +818,7 @@ struct PlayerScreen: View {
 
     private func closePlayer() {
         guard !isClosing else { return }
+        DiagnosticsLogger.shared.app("PlayerLifecycle", "close tap received before engine stop engine=\(controller.engineKind.title)")
         isClosing = true
         orientationReady = false
         controlsHideWorkItem?.cancel()
@@ -807,9 +832,10 @@ struct PlayerScreen: View {
         centerFeedbackScale = 1
         temporaryRateHUD = nil
         adjustmentHUD = nil
-        controller.pausePlayback()
+        controller.stop()
         pictureInPictureController.stopAndDetach()
-        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; keep opaque player cover and persistent surface until portrait settles")
+        DiagnosticsLogger.shared.app("PlayerLifecycle", "close stop issued before orientation restore")
+        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; playback/transport stopped before portrait wait")
         AppOrientationCoordinator.shared.restoreMainInterfaceOrientation()
         waitForPortraitBeforeDismiss(attempt: 0)
     }

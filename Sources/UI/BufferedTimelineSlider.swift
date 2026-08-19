@@ -3,31 +3,42 @@ import SwiftUI
 struct BufferedTimelineSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
-    /// Exact UnifiedTransport playback-byte cache coverage normalized to 0...1.
-    /// Sparse seeks remain sparse here: a hole is rendered as a hole instead of being
-    /// disguised by aggregate cacheBytes/resourceBytes.
-    let downloadCacheRanges: [ClosedRange<Double>]
+    let bufferState: PlaybackBufferState
+    /// Current UnifiedTransport playback-byte cache ranges normalized to the media file's 0...1 byte space.
+    /// These ranges are the only visible buffer source. They grow when bytes are downloaded and disappear
+    /// when RollingCache actually evicts those bytes.
+    let cacheByteRanges: [ClosedRange<Double>]
     let onEditingChanged: (Bool) -> Void
 
     @State private var isEditing = false
 
+    init(value: Binding<Double>, range: ClosedRange<Double>, bufferState: PlaybackBufferState, cacheByteRanges: [ClosedRange<Double>] = [], onEditingChanged: @escaping (Bool) -> Void) {
+        self._value = value
+        self.range = range
+        self.bufferState = bufferState
+        self.cacheByteRanges = cacheByteRanges
+        self.onEditingChanged = onEditingChanged
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let width = max(geometry.size.width, 1)
-            let trackHeight: CGFloat = 10
+            let trackHeight: CGFloat = 6
             ZStack(alignment: .leading) {
-                Capsule().fill(Color(white: 0.16)).frame(height: trackHeight)
+                Capsule().fill(Color.white.opacity(0.20)).frame(height: trackHeight)
 
-                ForEach(Array(normalizedDownloadRanges.enumerated()), id: \.offset) { _, cached in
-                    Capsule()
-                        .fill(Color(white: 0.48))
-                        .frame(width: max(2, width * CGFloat(cached.upperBound - cached.lowerBound)), height: trackHeight)
+                ForEach(Array(normalizedCacheRanges.enumerated()), id: \.offset) { _, cached in
+                    Rectangle()
+                        .fill(Color.white.opacity(0.68))
+                        .frame(width: max(1, width * CGFloat(cached.upperBound - cached.lowerBound)), height: trackHeight)
                         .offset(x: width * CGFloat(cached.lowerBound))
                 }
 
-                Capsule().fill(Color.white).frame(width: progressWidth(totalWidth: width), height: 4)
+                Rectangle().fill(Color.white).frame(width: progressWidth(totalWidth: width), height: trackHeight)
             }
-            .frame(height: max(geometry.size.height, 24))
+            .frame(width: width, height: trackHeight)
+            .clipShape(Capsule())
+            .frame(width: width, height: max(geometry.size.height, 32), alignment: .center)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -60,8 +71,8 @@ struct BufferedTimelineSlider: View {
         }
     }
 
-    private var normalizedDownloadRanges: [ClosedRange<Double>] {
-        downloadCacheRanges.compactMap { item in
+    private var normalizedCacheRanges: [ClosedRange<Double>] {
+        cacheByteRanges.compactMap { item in
             let lower = min(1, max(0, item.lowerBound))
             let upper = min(1, max(0, item.upperBound))
             return upper > lower ? lower...upper : nil
@@ -71,7 +82,8 @@ struct BufferedTimelineSlider: View {
     private var accessibilityValue: String {
         let duration = max(0, range.upperBound - range.lowerBound)
         guard duration > 0 else { return "0%" }
-        return "\(Int(((value - range.lowerBound) / duration * 100).rounded()))%"
+        let percent = Int(((value - range.lowerBound) / duration * 100).rounded())
+        return bufferState.isBuffering ? "\(percent)%，正在缓冲" : "\(percent)%"
     }
 
     private func fraction(for value: Double) -> CGFloat {

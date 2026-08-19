@@ -1,0 +1,75 @@
+name: EmbyPlayerLab
+
+options:
+  bundleIdPrefix: com.embyplayerlab
+  deploymentTarget:
+    iOS: "15.0"
+  xcodeVersion: "16.4"
+  createIntermediateGroups: true
+
+packages:
+  SwiftMDK:
+    path: MDKLab/SwiftMDKOnePlayer
+  MPVKit:
+    url: https://github.com/mpvkit/MPVKit.git
+    exactVersion: 1.0.0
+  KSPlayerShim:
+    path: MDKLab/KSPlayerShim
+
+# OnePlayer 0.13.13 renders only current UnifiedTransport playback-byte cache ranges on the single player timeline.
+# Engine live/verified time ranges remain internal playback diagnostics and do not drive the visible buffer bar.
+# Playback/session/transport semantics stay above engine adapters; engine-specific recovery remains inside each adapter.
+# The CI audits both LC_BUILD_VERSION and legacy LC_VERSION_MIN_IPHONEOS slices for iOS 15 compatibility.
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+    CLANG_ENABLE_MODULES: "YES"
+    MARKETING_VERSION: "0.13.31"
+    CURRENT_PROJECT_VERSION: "98"
+
+targets:
+  EmbyPlayerLab:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: Sources
+        excludes:
+          - AVIO/KSAVIOOptions.swift
+          - AVIO/KSPlayerSparseAVIOContext.swift
+          - AVIO/KTVKSPlayerOptions.swift
+          - Player/KSAVIOPlayerEngine.swift
+      - path: MDKLab/App
+      - path: Resources
+        buildPhase: resources
+    dependencies:
+      - package: SwiftMDK
+        product: swift-mdk
+      - package: MPVKit
+        product: MPVKit
+      - package: KSPlayerShim
+        product: KSPlayer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app
+        MARKETING_VERSION: "0.13.31"
+        CURRENT_PROJECT_VERSION: "98"
+        PRODUCT_NAME: "OnePlayer"
+        PRODUCT_MODULE_NAME: EmbyPlayerLab
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: "NO"
+        ASSETCATALOG_COMPILER_APPICON_NAME: OnePlayerIcon
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "OnePlayerAltIcon"
+        GENERATE_INFOPLIST_FILE: "NO"
+        INFOPLIST_FILE: Config/Info.plist
+        CODE_SIGNING_ALLOWED: "NO"
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGN_IDENTITY: ""
+        DEVELOPMENT_TEAM: ""
+        SWIFT_OBJC_BRIDGING_HEADER: Config/EmbyPlayerLab-Bridging-Header.h
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MDK_LAB"
+    scheme:
+      testTargets: []
+      gatherCoverageData: false
