@@ -26,6 +26,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/materialize_mdk_native_isolation_01319.py
+          python3 scripts/patch_mdk_native_isolation_01319_round2.py
           git diff --check
           grep -Fq 'path: MDKLab/SwiftMDKOnePlayer' project.mdklab.yml
           grep -Fq 'PlayerMetalLayerRenderer' MDKLab/App/MDKKSAVIOPlayerEngine.swift
@@ -34,8 +35,10 @@ jobs:
           grep -Fq 'action=isolated-native-stop mainResponsive=true' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           ! grep -Fq 'class MDKRenderView: MTKView' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           ! grep -Fq 'player.renderVideo(vid: self)' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          ! grep -Fq 'player.map { seconds($0.position) }' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           grep -Fq 'MDK native isolation render timeout' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           grep -Fq 'failureIsolation=triggered action=switch-mpv' Sources/Player/PlaybackOrchestrator.swift
+          ! grep -Fq '.testTarget(' MDKLab/SwiftMDKOnePlayer/Package.swift
           grep -Fq 'sourceVersion = "0.13.19"' Sources/Core/AppIdentity.swift
           grep -Fq 'MARKETING_VERSION: "0.13.19"' project.mdklab.yml
           grep -Fq 'CURRENT_PROJECT_VERSION: "86"' project.mdklab.yml
