@@ -27,7 +27,7 @@ jobs:
           git cat-file -e f7251574141afe47e64258f9823c9b8eaf7707a3^{commit}
           git diff --exit-code f7251574141afe47e64258f9823c9b8eaf7707a3 -- Sources/Player/PlayerController.swift Sources/Player/PlaybackOrchestrator.swift Sources/Player/MPVPlayerEngine.swift Sources/Transport
           grep -Fq 'action=switch-mpv' Sources/Player/PlaybackOrchestrator.swift
-          grep -Fq 'MDK native isolation' Sources/Player/PlaybackOrchestrator.swift
+          grep -Fq 'normalized.contains("mdk native isolation")' Sources/Player/PlaybackOrchestrator.swift
           echo 'MPV-switch baseline preserved.'
 
       - name: Validate local playback source contract
