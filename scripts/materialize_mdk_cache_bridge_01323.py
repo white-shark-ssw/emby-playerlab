@@ -11,6 +11,20 @@ def replace_once(path: str, old: str, new: str) -> None:
     p.write_text(text.replace(old, new, 1))
 
 
+def replace_all_exact(path: str, old: str, new: str, expected: int) -> None:
+    p = Path(path)
+    text = p.read_text()
+    old_count = text.count(old)
+    new_count = text.count(new)
+    if old_count == 0:
+        if new_count == expected:
+            return
+        raise SystemExit(f"unexpected materialized count in {path}: {new!r} count={new_count} expected={expected}")
+    if old_count != expected:
+        raise SystemExit(f"unexpected anchor count in {path}: {old!r} count={old_count} expected={expected}")
+    p.write_text(text.replace(old, new))
+
+
 # Build90 restores UnifiedTransport as the MDK media-byte authority.
 replace_once(
     "Sources/Player/PlayerController.swift",
@@ -153,9 +167,9 @@ if "async -> Bool" not in old_serve:
 server = server.replace('''                isComplete: true,''', '''                isComplete: false,''', 1)
 server_path.write_text(server)
 
-# Version/build identity. Keep the deployment target at iOS 15.0.
-replace_once("project.mdklab.yml", 'MARKETING_VERSION: "0.13.22"', 'MARKETING_VERSION: "0.13.23"')
-replace_once("project.mdklab.yml", 'CURRENT_PROJECT_VERSION: "89"', 'CURRENT_PROJECT_VERSION: "90"')
+# Version/build identity. project.mdklab.yml has both base and target overrides; both must advance together.
+replace_all_exact("project.mdklab.yml", 'MARKETING_VERSION: "0.13.22"', 'MARKETING_VERSION: "0.13.23"', expected=2)
+replace_all_exact("project.mdklab.yml", 'CURRENT_PROJECT_VERSION: "89"', 'CURRENT_PROJECT_VERSION: "90"', expected=2)
 replace_once("Sources/Core/AppIdentity.swift", 'sourceVersion = "0.13.22"', 'sourceVersion = "0.13.23"')
 
 print("Build90 materialized: UnifiedTransport MDK bridge v2 + silent recovery UI")
