@@ -1,1 +1,1 @@
-Build89 validation trigger v2: MDK native AVIO direct Emby->302->115 diagnostic, UnifiedTransport held resolve-only during MDK, silent premature EOF UI, MPV glass toast preserved.
+Build89 validation trigger v3: race-safe source back-write; MDK native AVIO direct Emby->302->115 diagnostic, UnifiedTransport resolve-only during MDK, silent premature EOF UI, MPV glass toast preserved.
