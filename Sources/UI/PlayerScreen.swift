@@ -98,6 +98,7 @@ struct PlayerScreen: View {
 
                 if controller.snapshot.isBuffering { bufferingIndicator }
                 statusMessages
+                if let message = controller.engineSwitchNotice { automaticEngineSwitchToast(message) }
 
                 if playbackSettingsPresented {
                     PlayerPlaybackSettingsPopover(
@@ -421,6 +422,24 @@ struct PlayerScreen: View {
         .foregroundColor(.white)
         .clipShape(Capsule())
         .allowsHitTesting(false)
+    }
+
+    private func automaticEngineSwitchToast(_ message: String) -> some View {
+        VStack {
+            Text(message)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.ultraThinMaterial))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.white.opacity(0.14), lineWidth: 0.5))
+            Spacer()
+        }
+        .padding(.top, 64)
+        .allowsHitTesting(false)
+        .zIndex(30)
     }
 
     private func adjustmentHUDView(_ state: AdjustmentHUDState) -> some View { PlayerAdjustmentRulerHUD(adjustment: state.adjustment, value: state.value) }

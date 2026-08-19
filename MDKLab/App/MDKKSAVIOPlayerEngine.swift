@@ -110,6 +110,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private var seekBufferingGraceTarget: Double?
     private var didLogSeekBufferingGraceID: Int?
     private var didInstallLogHandler = false
+    private var didConfigureGlobalIO = false
     private var prematureEOFRecoveryActive = false
 
     var playerView: UIView? { view }
@@ -237,6 +238,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         lastNativeIsPlaying = false
         lastNativeEnded = false
         installMDKLoggingIfNeeded()
+        configureMDKIOIfNeeded()
 
         guard let sharedTransportSession else {
             startMDKPlayer(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, generation: currentGeneration, transportMode: "direct-http302")
@@ -740,6 +742,13 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         let value = headers.sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }.map { "\($0.key): \($0.value)" }.joined(separator: "\r\n") + "\r\n"
         player.setProperty(name: "avio.headers", value: value)
         player.setProperty(name: "avformat.headers", value: value)
+    }
+
+    private func configureMDKIOIfNeeded() {
+        guard !didConfigureGlobalIO else { return }
+        didConfigureGlobalIO = true
+        swift_mdk.setGlobalOption(name: "io.avio", value: 1)
+        DiagnosticsLogger.shared.playback("MDKIO", "mode=ffmpeg-native-avio option=io.avio value=1 customAVIO=false transport=unified-localhost-ab")
     }
 
     private func installMDKLoggingIfNeeded() {

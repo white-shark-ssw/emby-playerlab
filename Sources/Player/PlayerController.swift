@@ -13,6 +13,7 @@ final class PlayerController: ObservableObject {
     @Published private(set) var lastSeekSummary = "尚未 Seek"
     @Published private(set) var prematureEOFMessage: String?
     @Published private(set) var stallMessage: String?
+    @Published private(set) var engineSwitchNotice: String?
     @Published private(set) var engineKind: PlayerEngineKind
     @Published private(set) var transportSummary: String?
     @Published private(set) var transportCacheFraction: Double = 0
@@ -37,6 +38,7 @@ final class PlayerController: ObservableObject {
     private var watchdogTask: Task<Void, Never>?
     private var transportMetricsTask: Task<Void, Never>?
     private var engineSwitchTask: Task<Void, Never>?
+    private var engineSwitchNoticeTask: Task<Void, Never>?
     private var startupFallbackTask: Task<Void, Never>?
     private var engineSwitchInProgress = false
     private var engineTransitionAwaitingFirstSnapshot = false
@@ -239,6 +241,9 @@ final class PlayerController: ObservableObject {
         bufferState = PlaybackBufferState()
         engineSwitchTask?.cancel()
         engineSwitchTask = nil
+        engineSwitchNoticeTask?.cancel()
+        engineSwitchNoticeTask = nil
+        engineSwitchNotice = nil
         startupFallbackTask?.cancel()
         startupFallbackTask = nil
         engineSwitchInProgress = false
@@ -395,7 +400,12 @@ final class PlayerController: ObservableObject {
         previousEngine.onSeekCompleted = nil
         engine = SuspendedPlayerEngine(kind: previousKind)
         resetWatchdog()
-        stallMessage = "正在自动切换到 \(kind.title)：\(reason)"
+        if kind == .mpv, reason != "用户切换" {
+            stallMessage = nil
+            showAutomaticMPVSwitchNotice()
+        } else {
+            stallMessage = reason == "用户切换" ? nil : "正在自动切换到 \(kind.title)：\(reason)"
+        }
         EngineTransitionBreadcrumb.record(stage: "old-callbacks-detached", from: previousKind, to: kind, position: resumePosition, reason: reason)
 
         previousEngine.stop()
@@ -712,6 +722,16 @@ final class PlayerController: ObservableObject {
         case .quarantine:
             prematureEOFMessage = "该媒体连续触发异常 EOF，MDK 已停止自动恢复以保护 App。可手动切换到 MPV高兼容引擎继续测试。"
             DiagnosticsLogger.shared.playback("EOFRecovery", "state=quarantined engine=\(engineKind.title) position=\(String(format: "%.3f", snapshot.position)) action=no-rebuild")
+        }
+    }
+
+    private func showAutomaticMPVSwitchNotice() {
+        engineSwitchNoticeTask?.cancel()
+        engineSwitchNotice = "自动切换为 MPV 高兼容引擎"
+        engineSwitchNoticeTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.engineSwitchNotice = nil
         }
     }
 
