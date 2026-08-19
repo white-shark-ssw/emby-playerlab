@@ -123,6 +123,8 @@ jobs:
             echo 'Build89 source already materialized.'
           else
             git commit -m 'fix: isolate MDK direct HTTP and hide premature EOF banner'
+            git fetch origin feat/recovery-isolation-0.13.17
+            git rebase origin/feat/recovery-isolation-0.13.17
             git push origin HEAD:feat/recovery-isolation-0.13.17
           fi
 
