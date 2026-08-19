@@ -88,13 +88,7 @@ final class PlayerController: ObservableObject {
         return nil
     }
 
-    private var mdkDirectHTTPABActive: Bool {
-        #if MDK_LAB
-        return engineKind == .ksAVIO
-        #else
-        return false
-        #endif
-    }
+    private var mdkDirectHTTPABActive: Bool { false }
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
         self.source = source
@@ -542,8 +536,8 @@ final class PlayerController: ObservableObject {
             return AVPlayerEngine(kind: .transportAVPlayer, transportSource: source, transportClient: client, transportConfiguration: configuration, sharedTransportSession: transportContext?.session)
         case .ksAVIO:
             #if canImport(KSPlayer)
-            DiagnosticsLogger.shared.playback("MDKDirectAB", "mode=direct-http302 sharedTransportPassed=false unifiedTransportReservedForFallback=true nasMediaProxy=false")
-            return KSAVIOPlayerEngine(source: source, client: client, configuration: configuration, sharedTransportSession: nil, ktvCacheSession: nil)
+            DiagnosticsLogger.shared.playback("MDKTransport", "mode=unified-localhost-v2 sharedTransportPassed=true highSpeedCache=true nasMediaProxy=false")
+            return KSAVIOPlayerEngine(source: source, client: client, configuration: configuration, sharedTransportSession: transportContext?.session, ktvCacheSession: nil)
             #else
             return SuspendedPlayerEngine(kind: .ksAVIO)
             #endif

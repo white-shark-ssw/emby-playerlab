@@ -222,11 +222,16 @@ final class TransportHTTPServer {
                 do {
                     let request = try self.parseRequest(headerData)
                     let identifier = ObjectIdentifier(connection)
+                    let remainder = accumulated.subdata(in: headerEnd.upperBound..<accumulated.endIndex)
                     let task = Task { [weak self, weak connection] in
                         guard let self, let connection else { return }
-                        await self.serve(request, on: connection)
-                        self.removeConnection(identifier, matching: connection)?.cancel()
-                        connection.cancel()
+                        let reusable = await self.serve(request, on: connection)
+                        guard !Task.isCancelled, reusable, !self.isStopped else {
+                            self.removeConnection(identifier, matching: connection)?.cancel()
+                            connection.cancel()
+                            return
+                        }
+                        self.receiveHeaders(on: connection, buffer: remainder)
                     }
                     self.storeTask(task, for: identifier, matching: connection)
                 } catch {
@@ -243,16 +248,17 @@ final class TransportHTTPServer {
         }
     }
 
-    private func serve(_ request: HTTPRequest, on connection: NWConnection) async {
+    private func serve(_ request: HTTPRequest, on connection: NWConnection) async -> Bool {
         guard request.path == "/\(token)/media.\(fileExtension)" else {
             await sendError(status: 404, reason: "Not Found", on: connection)
-            return
+            return false
         }
         guard request.method == "GET" || request.method == "HEAD" else {
             await sendError(status: 405, reason: "Method Not Allowed", on: connection)
-            return
+            return false
         }
 
+        let keepAlive = request.headers["connection"]?.lowercased() != "close"
         var responseStarted = false
         do {
             let resource = try await session.resolve()
@@ -270,7 +276,7 @@ final class TransportHTTPServer {
             headers += "Accept-Ranges: bytes\r\n"
             headers += "Content-Length: \(responseRange.length)\r\n"
             headers += "Cache-Control: no-store\r\n"
-            headers += "Connection: close\r\n"
+            headers += keepAlive ? "Connection: keep-alive\r\nKeep-Alive: timeout=30, max=100\r\n" : "Connection: close\r\n"
             if status == 206 {
                 headers += "Content-Range: bytes \(responseRange.lowerBound)-\(responseRange.upperBound)/\(resource.contentLength)\r\n"
             }
@@ -283,7 +289,7 @@ final class TransportHTTPServer {
 
             try await send(Data(headers.utf8), on: connection)
             responseStarted = true
-            guard request.method == "GET" else { return }
+            guard request.method == "GET" else { return keepAlive }
 
             var cursor = responseRange.lowerBound
             let chunkSize = 512 * 1024
@@ -305,19 +311,22 @@ final class TransportHTTPServer {
             if logRequest || sentBytes >= 8 * 1_048_576 {
                 DiagnosticsLogger.shared.playback(
                     "TransportHTTP",
-                    "server=\(logID) response finished start=\(responseRange.lowerBound) sent=\(sentBytes)"
+                    "server=\(logID) response finished start=\(responseRange.lowerBound) sent=\(sentBytes) keepAlive=\(keepAlive)"
                 )
             }
+            return keepAlive && sentBytes == responseRange.length
         } catch is CancellationError {
             if recordHTTPActivity(requestStart: nil, cancelled: true) { DiagnosticsLogger.shared.playback("TransportHTTPActivity", activitySummary()) }
+            return false
         } catch {
             if isClientDisconnect(error) {
-                return
+                return false
             }
             DiagnosticsLogger.shared.playback("TransportHTTP", "server=\(logID) response failed: \(error.localizedDescription)")
             if !responseStarted {
                 await sendError(status: 502, reason: "Bad Gateway", on: connection)
             }
+            return false
         }
     }
 
@@ -352,7 +361,7 @@ final class TransportHTTPServer {
             connection.send(
                 content: data,
                 contentContext: .defaultMessage,
-                isComplete: true,
+                isComplete: false,
                 completion: .contentProcessed { error in
                     if let error {
                         continuation.resume(throwing: error)
