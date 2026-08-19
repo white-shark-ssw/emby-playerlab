@@ -93,7 +93,7 @@ struct EmbyMediaDetailView: View {
         .fullScreenCover(isPresented: $showFullOverview) {
             EmbyOverviewOverlayView(text: model.normalizedOverview ?? "", backdropURL: heroImageURL)
         }
-        .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
+        .fullScreenCover(item: $model.selectedSource, onDismiss: { Task { await model.refreshPlaybackUserDataAfterPlayerDismiss() } }) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
     }
 
     private func hero(width: CGFloat, viewportHeight: CGFloat) -> some View {
@@ -1457,6 +1457,16 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         }
         playedSyncTask = nil
         if desiredPlayed != syncedPlayed { startPlayedSyncIfNeeded() }
+    }
+
+    func refreshPlaybackUserDataAfterPlayerDismiss() async {
+        let targetID = primaryPlayableItem?.id ?? item.id
+        DiagnosticsLogger.shared.log("EmbyDetail", "player dismissed; authoritative playback userdata refresh item=\(targetID) phase=immediate")
+        await refreshPlaybackUserData(itemID: targetID)
+        do { try await Task.sleep(nanoseconds: 400_000_000) } catch { return }
+        guard !Task.isCancelled else { return }
+        DiagnosticsLogger.shared.log("EmbyDetail", "player dismissed; authoritative playback userdata refresh item=\(targetID) phase=convergence")
+        await refreshPlaybackUserData(itemID: targetID)
     }
 
     func refreshPlaybackUserData(itemID: String) async {
