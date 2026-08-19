@@ -128,6 +128,14 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private var prematureEOFRecoveryActive = false
     private var abnormalMediaRecoveryLevel = 0
     private var nativeQuarantineActive = false
+    private let prepareWatchdogSeconds: TimeInterval = 3.0
+    private let firstFrameWatchdogSeconds: TimeInterval = 4.0
+    private let endConfirmationSeconds: TimeInterval = 1.0
+    private var preparingGeneration: Int?
+    private var preparedGeneration = -1
+    private var endCandidateSince: TimeInterval?
+    private var endCandidatePosition: Double = 0
+    private var endCandidateFrameSerial: UInt64 = 0
 
     var playerView: UIView? { view }
 
@@ -191,12 +199,15 @@ final class KSAVIOPlayerEngine: PlayerEngine {
 
     private func surfaceDidChange(_ size: CGSize) {
         DiagnosticsLogger.shared.playback("MDKSurface", "size=\(Int(size.width))x\(Int(size.height)) backend=CAMetalLayer mainNativeCall=false")
-        guard let player = currentPlayerReference() else { return }
         let currentGeneration = generation
+        guard preparedGeneration == currentGeneration, let player = currentPlayerReference() else {
+            DiagnosticsLogger.shared.playback("MDKPrepareGuard", "generation=\(currentGeneration) phase=surface-deferred prepared=\(preparedGeneration == currentGeneration)")
+            return
+        }
         let renderer = self.renderer
         let queue = nativeControlQueue
         queue.async { [weak self, weak player] in
-            guard let self, let player, self.isCurrentPlayer(player, generation: currentGeneration) else { return }
+            guard let self, let player, self.preparedGeneration == currentGeneration, self.isCurrentPlayer(player, generation: currentGeneration) else { return }
             renderer.setSurfaceSize(size, player: player)
         }
     }
@@ -204,9 +215,13 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private func requestPlayerState(playing: Bool, expectedPlayer: swift_mdk.Player? = nil, generation expectedGeneration: Int? = nil) {
         guard let player = expectedPlayer ?? currentPlayerReference() else { return }
         let currentGeneration = expectedGeneration ?? generation
+        guard preparedGeneration == currentGeneration else {
+            DiagnosticsLogger.shared.playback("MDKPrepareGuard", "generation=\(currentGeneration) phase=state-deferred requested=\(playing ? "playing" : "paused")")
+            return
+        }
         let queue = nativeControlQueue
         queue.async { [weak self, weak player] in
-            guard let self, let player, self.isCurrentPlayer(player, generation: currentGeneration) else { return }
+            guard let self, let player, self.preparedGeneration == currentGeneration, self.isCurrentPlayer(player, generation: currentGeneration) else { return }
             player.state = playing ? .Playing : .Paused
         }
     }
@@ -237,7 +252,6 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         guard let newRenderer = PlayerMetalLayerRenderer(layer: view.metalLayer) else { return }
         renderer = newRenderer
         configureRenderer(newRenderer, generation: currentGeneration)
-        startRenderWatchdog()
         self.preferredForwardBuffer = preferredForwardBuffer
         lastURL = url
         lastHeaders = headers
@@ -260,8 +274,14 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         lastNativeBufferMs = 0
         lastNativeIsPlaying = false
         lastNativeEnded = false
+        preparingGeneration = currentGeneration
+        preparedGeneration = -1
+        endCandidateSince = nil
+        endCandidatePosition = max(0, startPosition)
+        endCandidateFrameSerial = 0
         installMDKLoggingIfNeeded()
         configureMDKIOIfNeeded()
+        DiagnosticsLogger.shared.playback("MDKPrepareGuard", "generation=\(currentGeneration) phase=probation-start start=\(String(format: "%.3f", startPosition)) rendererBound=false statePoll=false")
 
         guard let sharedTransportSession else {
             startMDKPlayer(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition, generation: currentGeneration, transportMode: "direct-http302")
@@ -313,6 +333,10 @@ final class KSAVIOPlayerEngine: PlayerEngine {
             return
         }
         let currentPlayerGeneration = generation
+        guard preparedGeneration == currentPlayerGeneration else {
+            DiagnosticsLogger.shared.playback("MDKPrepareGuard", "generation=\(currentPlayerGeneration) phase=rate-deferred requested=\(String(format: "%.2f", clamped))")
+            return
+        }
         let startPosition = lastNativePosition
         let startedAt = CACurrentMediaTime()
         let queue = nativeControlQueue
@@ -332,6 +356,10 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     func seek(to targetSeconds: Double, direction: SeekDirection) {
         guard let player = currentPlayerReference() else { return }
         let target = max(0, targetSeconds)
+        guard preparedGeneration == generation else {
+            DiagnosticsLogger.shared.playback("MDKPrepareGuard", "generation=\(generation) phase=seek-deferred target=\(String(format: "%.3f", target))")
+            return
+        }
         let duration = max(source.mediaSource.durationSeconds ?? 0, lastNativeDuration)
         let requestedAt = Date().timeIntervalSince1970
         let currentPlayerGeneration = generation
@@ -508,6 +536,84 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         onSeekCompleted = nil
     }
 
+    private func quarantineCurrentGeneration(reason: String, position: Double, failedGeneration: Int, message: String) {
+        guard failedGeneration == generation, let oldPlayer = currentPlayerReference() else { return }
+        let oldRenderer = renderer
+        preparingGeneration = nil
+        preparedGeneration = -1
+        endCandidateSince = nil
+        stateTimer?.cancel()
+        stateTimer = nil
+        renderWatchdogTimer?.invalidate()
+        renderWatchdogTimer = nil
+        transportPrepareTask?.cancel()
+        transportPrepareTask = nil
+        let server = transportHTTPServer
+        transportHTTPServer = nil
+        server?.stop()
+        seekGeneration &+= 1
+        pendingSeekResume = nil
+        activeNativeSeek = nil
+        queuedLatestSeek = nil
+        seekBufferingGraceStartedAt = nil
+        seekBufferingGraceID = nil
+        seekBufferingGraceTarget = nil
+        didLogSeekBufferingGraceID = nil
+        hasRenderedValidFrame = false
+        oldRenderer.detach()
+        guard takePlayer() === oldPlayer else { return }
+        generation &+= 1
+        rateGeneration &+= 1
+        nativeQuarantineActive = false
+        MDKNativeQuarantineStore.shared.retain(oldPlayer, oldRenderer)
+        DiagnosticsLogger.shared.playback("MDKPrepareGuard", "generation=\(failedGeneration) phase=quarantine reason=\(reason) position=\(String(format: "%.3f", position)) action=switch-mpv skipNativeStop=true")
+        onSnapshot?(PlayerSnapshot(position: max(0, position), duration: max(lastNativeDuration, source.mediaSource.durationSeconds ?? 0), isPlaying: false, isBuffering: false, errorMessage: message))
+    }
+
+    private func activatePreparedPlayer(_ player: swift_mdk.Player, renderer: PlayerMetalLayerRenderer, surfaceSize: CGSize, generation currentGeneration: Int, preparedAtMs: Int64, requestedStart: Double, compatLevel: Int, decoderList: [String], transportMode: String, prepareStartedAt: TimeInterval) {
+        guard preparingGeneration == currentGeneration, isCurrentPlayer(player, generation: currentGeneration) else { return }
+        preparingGeneration = nil
+        preparedGeneration = currentGeneration
+        endCandidateSince = nil
+        let elapsedMs = (CACurrentMediaTime() - prepareStartedAt) * 1_000
+        DiagnosticsLogger.shared.playback("MDKPrepareGuard", "generation=\(currentGeneration) phase=prepared-activate callbackMs=\(String(format: "%.1f", elapsedMs)) preparedAtMs=\(preparedAtMs) rendererBound=false statePoll=false")
+        let queue = nativeControlQueue
+        queue.async { [weak self, weak player, weak renderer] in
+            guard let self, let player, let renderer, self.preparedGeneration == currentGeneration, self.isCurrentPlayer(player, generation: currentGeneration) else { return }
+            self.attachCallbacks(to: player, generation: currentGeneration)
+            renderer.bind(player)
+            renderer.setSurfaceSize(surfaceSize, player: player)
+            player.playbackRate = Float(self.playbackRate)
+            if self.shouldPlay { player.state = .Playing }
+            DispatchQueue.main.async { [weak self, weak player, weak renderer] in
+                guard let self, let player, let renderer, self.renderer === renderer, self.preparedGeneration == currentGeneration, self.isCurrentPlayer(player, generation: currentGeneration) else { return }
+                self.startStateTimer(player: player, generation: currentGeneration, queue: self.nativeControlQueue)
+                self.startRenderWatchdog()
+                self.scheduleFirstFrameWatchdog(player: player, generation: currentGeneration, startPosition: requestedStart)
+                DiagnosticsLogger.shared.playback("MDKPrepare", "preparedAtMs=\(preparedAtMs) requestedStart=\(String(format: "%.3f", requestedStart)) sourceFPS=\(self.sourceFrameRateText) compatLevel=\(compatLevel) videoDecoders=\(decoderList.joined(separator: ",")) transport=\(transportMode) probation=passed rendererBound=true statePoll=true")
+            }
+        }
+    }
+
+    private func schedulePrepareWatchdog(player: swift_mdk.Player, generation currentGeneration: Int, startPosition: Double, startedAt: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + prepareWatchdogSeconds) { [weak self, weak player] in
+            guard let self, let player, self.preparingGeneration == currentGeneration, self.isCurrentPlayer(player, generation: currentGeneration) else { return }
+            let elapsedMs = (CACurrentMediaTime() - startedAt) * 1_000
+            DiagnosticsLogger.shared.playback("MDKPrepareGuard", "generation=\(currentGeneration) phase=prepare-timeout elapsedMs=\(String(format: "%.1f", elapsedMs)) start=\(String(format: "%.3f", startPosition)) mainResponsive=true")
+            self.quarantineCurrentGeneration(reason: "prepare-timeout", position: startPosition, failedGeneration: currentGeneration, message: "MDK native prepare timeout")
+        }
+    }
+
+    private func scheduleFirstFrameWatchdog(player: swift_mdk.Player, generation currentGeneration: Int, startPosition: Double) {
+        let startSerial = renderedFrameSerial
+        DispatchQueue.main.asyncAfter(deadline: .now() + firstFrameWatchdogSeconds) { [weak self, weak player] in
+            guard let self, let player, self.preparedGeneration == currentGeneration, self.isCurrentPlayer(player, generation: currentGeneration), self.shouldPlay else { return }
+            guard !self.hasRenderedValidFrame, self.renderedFrameSerial <= startSerial else { return }
+            DiagnosticsLogger.shared.playback("MDKPrepareGuard", "generation=\(currentGeneration) phase=first-frame-timeout elapsedMs=\(Int(self.firstFrameWatchdogSeconds * 1_000)) position=\(String(format: "%.3f", self.lastNativePosition)) mainResponsive=true")
+            self.quarantineCurrentGeneration(reason: "first-frame-timeout", position: max(startPosition, self.lastNativePosition), failedGeneration: currentGeneration, message: "MDK native first frame timeout")
+        }
+    }
+
     private func startMDKPlayer(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double, generation currentGeneration: Int, transportMode: String) {
         guard currentGeneration == generation else { return }
         let player = swift_mdk.Player()
@@ -515,18 +621,16 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         let renderer = self.renderer
         let queue = nativeControlQueue
         let surfaceSize = view.currentPixelSize
-        startStateTimer(player: player, generation: currentGeneration, queue: queue)
-        queue.async { [weak self, weak player] in
-            guard let self, let player, self.isCurrentPlayer(player, generation: currentGeneration) else { return }
+        let prepareStartedAt = CACurrentMediaTime()
+        schedulePrepareWatchdog(player: player, generation: currentGeneration, startPosition: startPosition, startedAt: prepareStartedAt)
+        queue.async { [weak self, weak player, weak renderer] in
+            guard let self, let player, let renderer, self.preparingGeneration == currentGeneration, self.isCurrentPlayer(player, generation: currentGeneration) else { return }
             let compatLevel = self.abnormalMediaRecoveryLevel
             let decoderList = compatLevel >= 2 ? ["FFmpeg", "VT"] : ["VT", "FFmpeg"]
             player.videoDecoders = decoderList
             player.playbackRate = Float(self.playbackRate)
             player.setBufferRange(msMin: 1_000, msMax: Int64(max(3_000, min(30_000, preferredForwardBuffer * 1_000))), drop: false)
             self.applyHTTPHeaders(headers, to: player)
-            self.attachCallbacks(to: player, generation: currentGeneration)
-            renderer.bind(player)
-            renderer.setSurfaceSize(surfaceSize, player: player)
             player.setProperty(name: "keep_open", value: "1")
             if compatLevel >= 2 {
                 player.setProperty(name: "avformat.err_detect", value: "ignore_err")
@@ -535,14 +639,17 @@ final class KSAVIOPlayerEngine: PlayerEngine {
             let compatProfile = compatLevel == 0 ? "normal" : (compatLevel == 1 ? "fresh-player" : "software-tolerant")
             DiagnosticsLogger.shared.playback("MDKCompat", "generation=\(currentGeneration) level=\(compatLevel) profile=\(compatProfile) videoDecoders=\(decoderList.joined(separator: ",")) avformatTolerance=\(compatLevel >= 2 ? "ignore_err+discardcorrupt" : "off") globalDemuxTolerance=off")
             player.media = url.absoluteString
-            player.prepare(from: self.milliseconds(startPosition), complete: { [weak self, weak player] preparedAtMs, boost in
-                guard let self, let player, self.isCurrentPlayer(player, generation: currentGeneration) else { return false }
+            DiagnosticsLogger.shared.playback("MDKPrepareGuard", "generation=\(currentGeneration) phase=prepare-dispatch start=\(String(format: "%.3f", startPosition)) rendererBound=false statePoll=false nativeQueue=isolated")
+            player.prepare(from: self.milliseconds(startPosition), complete: { [weak self, weak player, weak renderer] preparedAtMs, boost in
                 boost = true
-                if self.shouldPlay { self.requestPlayerState(playing: true, expectedPlayer: player, generation: currentGeneration) }
-                DiagnosticsLogger.shared.playback("MDKPrepare", "preparedAtMs=\(preparedAtMs) requestedStart=\(String(format: "%.3f", startPosition)) sourceFPS=\(self.sourceFrameRateText) compatLevel=\(compatLevel) videoDecoders=\(decoderList.joined(separator: ",")) transport=\(transportMode) mainNativeCall=false")
+                guard let self, let player, let renderer else { return false }
+                DispatchQueue.main.async { [weak self, weak player, weak renderer] in
+                    guard let self, let player, let renderer else { return }
+                    self.activatePreparedPlayer(player, renderer: renderer, surfaceSize: surfaceSize, generation: currentGeneration, preparedAtMs: preparedAtMs, requestedStart: startPosition, compatLevel: compatLevel, decoderList: decoderList, transportMode: transportMode, prepareStartedAt: prepareStartedAt)
+                }
                 return true
             })
-            DiagnosticsLogger.shared.playback("MDK", "prepare item=\(self.source.itemId) version=\(swift_mdk.version()) transport=\(transportMode) localHost=\(url.host == "127.0.0.1") sharedTransport=\(self.sharedTransportSession != nil ? "active" : "unavailable") headers=\(headers.keys.sorted().joined(separator: ",")) rate=\(String(format: "%.2f", self.playbackRate)) nativeQueue=isolated")
+            DiagnosticsLogger.shared.playback("MDK", "prepare item=\(self.source.itemId) version=\(swift_mdk.version()) transport=\(transportMode) localHost=\(url.host == "127.0.0.1") sharedTransport=\(self.sharedTransportSession != nil ? "active" : "unavailable") headers=\(headers.keys.sorted().joined(separator: ",")) rate=\(String(format: "%.2f", self.playbackRate)) nativeQueue=isolated probation=true")
         }
     }
 
@@ -583,7 +690,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         let status = player.mediaStatus.rawValue
         let rawBuffering = hasStatus(status, bit: 3) || hasStatus(status, bit: 4)
         let ended = hasStatus(status, bit: 6)
-        let isPlaying = player.state == .Playing && !ended
+        let isPlaying = player.state == .Playing
         let bufferMs = player.buffered()
         DispatchQueue.main.async { [weak self, weak player] in
             guard let self, let player, self.isCurrentPlayer(player, generation: generation) else { return }
@@ -598,10 +705,42 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         lastNativeBuffering = rawBuffering
         lastNativeStatus = status
         lastNativeBufferMs = bufferMs
-        lastNativeIsPlaying = isPlaying
-        lastNativeEnded = ended
 
-        if ended, duration > 0, position + max(3, duration * 0.005) < duration, activeNativeSeek != nil || queuedLatestSeek != nil || pendingSeekResume != nil {
+        let farFromEnd = duration > 0 && position + max(3, duration * 0.005) < duration
+        var confirmedEnd = false
+        if ended, farFromEnd {
+            let seekActive = activeNativeSeek != nil || queuedLatestSeek != nil || pendingSeekResume != nil
+            if seekActive || rawBuffering {
+                endCandidateSince = nil
+            } else if let candidateSince = endCandidateSince {
+                let progressed = position > endCandidatePosition + 0.08 || renderedFrameSerial > endCandidateFrameSerial
+                if progressed {
+                    endCandidateSince = now
+                    endCandidatePosition = position
+                    endCandidateFrameSerial = renderedFrameSerial
+                } else if now - candidateSince >= endConfirmationSeconds {
+                    confirmedEnd = true
+                    DiagnosticsLogger.shared.playback("MDKEndCandidate", "state=confirmed position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) elapsedMs=\(Int((now - candidateSince) * 1_000)) frameSerial=\(renderedFrameSerial)")
+                }
+            } else {
+                endCandidateSince = now
+                endCandidatePosition = position
+                endCandidateFrameSerial = renderedFrameSerial
+                DiagnosticsLogger.shared.playback("MDKEndCandidate", "state=armed position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) rawStatus=0x\(String(status, radix: 16))")
+            }
+        } else if ended {
+            confirmedEnd = true
+            endCandidateSince = nil
+        } else {
+            if endCandidateSince != nil {
+                DiagnosticsLogger.shared.playback("MDKEndCandidate", "state=cancelled position=\(String(format: "%.3f", position)) reason=raw-end-cleared")
+            }
+            endCandidateSince = nil
+        }
+        lastNativeIsPlaying = isPlaying && !confirmedEnd
+        lastNativeEnded = confirmedEnd
+
+        if confirmedEnd, duration > 0, position + max(3, duration * 0.005) < duration, activeNativeSeek != nil || queuedLatestSeek != nil || pendingSeekResume != nil {
             let recoveryTarget = latestDesiredTarget(fallback: position)
             activeNativeSeek = nil
             queuedLatestSeek = nil
@@ -622,7 +761,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         let buffering = rawBuffering && !suppressSeekBuffering
         let forwardBuffered = seconds(bufferMs)
         let bufferedEnd = duration > 0 ? min(duration, position + forwardBuffered) : position + forwardBuffered
-        onSnapshot?(PlayerSnapshot(position: position, duration: duration, bufferedRanges: bufferedEnd > position ? [position...bufferedEnd] : [], isPlaying: isPlaying, isBuffering: buffering, waitingReason: buffering ? "MDK 等待媒体数据" : nil, errorMessage: hasStatus(status, bit: 31) ? "MDK media status invalid" : nil, didReachEnd: ended))
+        onSnapshot?(PlayerSnapshot(position: position, duration: duration, bufferedRanges: bufferedEnd > position ? [position...bufferedEnd] : [], isPlaying: isPlaying && !confirmedEnd, isBuffering: buffering, waitingReason: buffering ? "MDK 等待媒体数据" : nil, errorMessage: hasStatus(status, bit: 31) ? "MDK media status invalid" : nil, didReachEnd: confirmedEnd))
 
         if var pending = pendingSeekResume, !pending.didLogClockAdvance, let callbackPosition = pending.callbackPosition, abs(position - callbackPosition) > 0.08 {
             let resumeMs = (now - pending.requestedAt) * 1_000
@@ -815,6 +954,9 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private func milliseconds(_ seconds: Double) -> Int64 { Int64((max(0, seconds) * 1_000).rounded()) }
 
     private func stopPlayerOnly() {
+        preparingGeneration = nil
+        preparedGeneration = -1
+        endCandidateSince = nil
         stateTimer?.cancel()
         stateTimer = nil
         renderWatchdogTimer?.invalidate()
