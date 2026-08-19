@@ -749,7 +749,7 @@ final class PlayerController: ObservableObject {
         if scheduleStartupCompatibilityFallbackIfNeeded(message: message) { return }
         guard let action = orchestrator.actionForEngineError(kind: engineKind, message: message) else { return }
         if case .switchEngine(let next, let reason) = action {
-            if engineKind == .ksAVIO, next == .mpv, message.lowercased().contains("mdk native isolation") { MediaCompatibilityStore.markCompatibilityEngineRequired(itemId: source.itemId, reason: "mdk-native-isolation") }
+            if engineKind == .ksAVIO, next == .mpv { DiagnosticsLogger.shared.playback("Compatibility", "item=\(source.itemId) mdkFailureHistory=diagnostic-only persistentEngineRouting=false error=\(message)") }
             stallMessage = "\(engineKind.title) 发生错误，正在自动切换到 \(next.title)。"
             switchEngine(to: next, reason: reason)
         }

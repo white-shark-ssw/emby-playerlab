@@ -1470,8 +1470,15 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                 desiredPlayed = refreshed.isPlayed
             } else if let index = episodes.firstIndex(where: { $0.id == itemID }) {
                 episodes[index] = refreshed
+                selectedEpisodeID = itemID
+                if let season = seasonNumber(for: refreshed) {
+                    selectedSeason = season
+                    if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == itemID }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
+                }
+                hasPlaybackPositionOverride = false
+                playbackPositionOverrideTicks = nil
             }
-            DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refreshed item=\(itemID) positionTicks=\(refreshed.userData?.playbackPositionTicks ?? 0)")
+            DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refreshed item=\(itemID) positionTicks=\(refreshed.userData?.playbackPositionTicks ?? 0) selectedResumeTarget=\(selectedEpisodeID ?? item.id) override=\(hasPlaybackPositionOverride)")
         } catch {
             if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refresh failed item=\(itemID): \(error.localizedDescription)") }
         }

@@ -24,13 +24,16 @@ final class PlaybackOrchestrator {
         self.source = source
         self.automaticMode = preference.isAutomatic
         if preference.isAutomatic {
-            let storedCompatibility = MediaCompatibilityStore.requiresCompatibilityEngine(itemId: source.itemId)
-            if storedCompatibility {
+            let preferredKind = preference.resolved(for: source.mediaSource)
+            if preferredKind == .ksAVIO {
+                self.currentKind = preferredKind
+                DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=\(currentKind.title)+UnifiedTransportV3 reason=per-session-mdk-probe storedCompatibilityIgnored=true")
+            } else if MediaCompatibilityStore.requiresCompatibilityEngine(itemId: source.itemId) {
                 let compatibilityKind = PlayerEnginePreference.automaticCompatibilityKind
                 self.currentKind = compatibilityKind
-                DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=\(compatibilityKind.title)+UnifiedTransportV3 reason=stored-media-compatibility")
+                DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=\(compatibilityKind.title)+UnifiedTransportV3 reason=stored-non-mdk-compatibility")
             } else {
-                self.currentKind = preference.resolved(for: source.mediaSource)
+                self.currentKind = preferredKind
                 DiagnosticsLogger.shared.log("Compatibility", "item=\(source.itemId) automaticProfile=\(currentKind.title)+UnifiedTransportV3 reason=high-performance-priority")
             }
         } else {

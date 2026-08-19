@@ -8,43 +8,55 @@ import mdk
 public final class PlayerMetalLayerRenderer: @unchecked Sendable {
     private final class RenderContext: @unchecked Sendable {
         let layer: CAMetalLayer
+        let device: MTLDevice
         private let lock = NSLock()
-        private var drawable: CAMetalDrawable?
+        private var texture: MTLTexture?
         private var enabled = true
 
-        init(layer: CAMetalLayer) { self.layer = layer }
+        init(layer: CAMetalLayer, device: MTLDevice) {
+            self.layer = layer
+            self.device = device
+            resize(CGSize(width: 1, height: 1))
+        }
 
         func setEnabled(_ value: Bool) {
             lock.lock()
             enabled = value
-            if !value { drawable = nil }
             lock.unlock()
         }
 
-        func acquireTexture() -> MTLTexture? {
+        func resize(_ size: CGSize) {
+            let width = max(1, Int(size.width.rounded()))
+            let height = max(1, Int(size.height.rounded()))
             lock.lock()
-            let allowed = enabled
+            if let texture, texture.width == width, texture.height == height { lock.unlock(); return }
             lock.unlock()
-            guard allowed, let next = layer.nextDrawable() else { return nil }
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+            descriptor.usage = [.renderTarget, .shaderRead]
+            descriptor.storageMode = .private
+            guard let newTexture = device.makeTexture(descriptor: descriptor) else { return }
             lock.lock()
-            guard enabled else { lock.unlock(); return nil }
-            drawable = next
+            texture = newTexture
             lock.unlock()
-            return next.texture
         }
 
-        func takeDrawable() -> CAMetalDrawable? {
+        func acquireRenderTexture() -> MTLTexture? {
             lock.lock()
-            let value = drawable
-            drawable = nil
-            lock.unlock()
-            return value
+            defer { lock.unlock() }
+            guard enabled else { return nil }
+            return texture
         }
 
-        func clearDrawable() {
+        func presentationResources() -> (MTLTexture, CAMetalDrawable)? {
             lock.lock()
-            drawable = nil
+            guard enabled, let texture else { lock.unlock(); return nil }
             lock.unlock()
+            guard let drawable = layer.nextDrawable() else { return nil }
+            lock.lock()
+            let stillEnabled = enabled
+            lock.unlock()
+            guard stillEnabled else { return nil }
+            return (texture, drawable)
         }
     }
 
@@ -65,20 +77,22 @@ public final class PlayerMetalLayerRenderer: @unchecked Sendable {
         guard let device = MTLCreateSystemDefaultDevice(), let commandQueue = device.makeCommandQueue() else { return nil }
         self.device = device
         self.commandQueue = commandQueue
-        self.context = RenderContext(layer: layer)
+        self.context = RenderContext(layer: layer, device: device)
         self.renderQueue = DispatchQueue(label: "OnePlayer.MDK.Render.\(UUID().uuidString)", qos: .userInteractive)
         layer.device = device
         layer.pixelFormat = .bgra8Unorm
-        layer.framebufferOnly = true
+        layer.framebufferOnly = false
         layer.presentsWithTransaction = false
         if #available(iOS 11.0, macOS 10.13, tvOS 11.0, *) { layer.allowsNextDrawableTimeout = true }
     }
+
+    public func prepareSurfaceSize(_ size: CGSize) { context.resize(size) }
 
     public func bind(_ player: Player) {
         func currentRenderTarget(_ opaque: UnsafeRawPointer?) -> UnsafeRawPointer? {
             guard let opaque else { return nil }
             let context: RenderContext = bridge(ptr: opaque)
-            guard let texture = context.acquireTexture() else { return nil }
+            guard let texture = context.acquireRenderTexture() else { return nil }
             return bridge(obj: texture)
         }
 
@@ -96,12 +110,13 @@ public final class PlayerMetalLayerRenderer: @unchecked Sendable {
         api.cmdQueue = bridge(obj: commandQueue)
         api.opaque = bridge(obj: context)
         api.currentRenderTarget = currentRenderTarget
-        api.layer = bridge(obj: context.layer)
+        // Keep api.layer zero-initialized: MDK renders only into currentRenderTarget's offscreen texture.
         player.setRenderAPI(&api, vid: self)
         player.setRenderCallback { [weak self] in self?.requestRender() }
     }
 
     public func setSurfaceSize(_ size: CGSize, player: Player) {
+        context.resize(size)
         player.setVideoSurfaceSize(Int32(size.width.rounded()), Int32(size.height.rounded()), vid: self)
     }
 
@@ -112,7 +127,6 @@ public final class PlayerMetalLayerRenderer: @unchecked Sendable {
         renderPending = false
         lock.unlock()
         context.setEnabled(false)
-        context.clearDrawable()
     }
 
     public func invalidateNative(_ player: Player) {
@@ -141,15 +155,20 @@ public final class PlayerMetalLayerRenderer: @unchecked Sendable {
         lock.lock()
         let shouldSubmit = active && self.player === player
         lock.unlock()
+
         if shouldSubmit {
-            if let drawable = context.takeDrawable(), let buffer = commandQueue.makeCommandBuffer() {
+            if let (source, drawable) = context.presentationResources(), let buffer = commandQueue.makeCommandBuffer(), let blit = buffer.makeBlitCommandEncoder() {
+                let width = min(source.width, drawable.texture.width)
+                let height = min(source.height, drawable.texture.height)
+                if width > 0, height > 0 {
+                    blit.copy(from: source, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0), sourceSize: MTLSize(width: width, height: height, depth: 1), to: drawable.texture, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+                }
+                blit.endEncoding()
                 buffer.present(drawable)
                 buffer.commit()
             }
             onFrameSubmitted?(result)
             onRenderCompleted?((CACurrentMediaTime() - startedAt) * 1_000)
-        } else {
-            context.clearDrawable()
         }
 
         var scheduleAgain = false
