@@ -32,7 +32,7 @@ replace_once(
             return KSAVIOPlayerEngine(source: source, client: client, configuration: configuration, sharedTransportSession: transportContext?.session, ktvCacheSession: nil)'''
 )
 
-# Keep recovery diagnostics but do not show transient red/orange recovery banners to users.
+# Keep recovery diagnostics/recovery logic but hide transient recovery banners from users.
 replace_once(
     "Sources/UI/PlayerScreen.swift",
     '''            if let message = controller.stallMessage { statusBanner(title: "播放停滞恢复", message: message, color: .orange) }''',
@@ -42,17 +42,7 @@ replace_once(
 server_path = Path("Sources/Transport/TransportHTTPServer.swift")
 server = server_path.read_text()
 
-# HTTP/1.1 bridge v2: do not advertise forced close for normal media responses.
-server = server.replace(
-    '''            headers += "Cache-Control: no-store\\r\\n"\n            headers += "Connection: close\\r\\n"''',
-    '''            headers += "Cache-Control: no-store\\r\\n"\n            let keepAlive = request.headers["connection"]?.lowercased() != "close"\n            headers += keepAlive ? "Connection: keep-alive\\r\\nKeep-Alive: timeout=30, max=100\\r\\n" : "Connection: close\\r\\n"''',
-    1,
-)
-
-# Network.framework TCP is a byte stream. Avoid marking every header/body chunk as a complete message.
-server = server.replace('''                isComplete: true,''', '''                isComplete: false,''', 1)
-
-# Keep a completed HTTP/1.1 connection alive for a subsequent GET/HEAD instead of always cancelling it.
+# HTTP/1.1 bridge v2: reuse a normal connection unless the client explicitly asks to close.
 old_task = '''                    let task = Task { [weak self, weak connection] in
                         guard let self, let connection else { return }
                         await self.serve(request, on: connection)
@@ -77,7 +67,6 @@ if new_task not in server:
         raise SystemExit("missing TransportHTTP receive task anchor")
     server = server.replace(old_task, new_task, 1)
 
-# serve() reports whether the HTTP/1.1 connection is reusable after the response.
 start = server.find("    private func serve(_ request: HTTPRequest, on connection: NWConnection) async {")
 end = server.find("    private func recordHTTPActivity", start)
 if start < 0 or end < 0:
@@ -97,6 +86,17 @@ if "async -> Bool" not in old_serve:
     new_serve = new_serve.replace(
         '''            await sendError(status: 405, reason: "Method Not Allowed", on: connection)\n            return''',
         '''            await sendError(status: 405, reason: "Method Not Allowed", on: connection)\n            return false''',
+        1,
+    )
+    # Keep the reuse decision in function scope so HEAD, normal completion and errors can all return it.
+    new_serve = new_serve.replace(
+        '''        var responseStarted = false\n        do {''',
+        '''        let keepAlive = request.headers["connection"]?.lowercased() != "close"\n        var responseStarted = false\n        do {''',
+        1,
+    )
+    new_serve = new_serve.replace(
+        '''            headers += "Cache-Control: no-store\\r\\n"\n            headers += "Connection: close\\r\\n"''',
+        '''            headers += "Cache-Control: no-store\\r\\n"\n            headers += keepAlive ? "Connection: keep-alive\\r\\nKeep-Alive: timeout=30, max=100\\r\\n" : "Connection: close\\r\\n"''',
         1,
     )
     new_serve = new_serve.replace('''            guard request.method == "GET" else { return }''', '''            guard request.method == "GET" else { return keepAlive }''', 1)
@@ -121,17 +121,6 @@ if "async -> Bool" not in old_serve:
     new_serve = new_serve.replace(
         '''        } catch is CancellationError {
             if recordHTTPActivity(requestStart: nil, cancelled: true) { DiagnosticsLogger.shared.playback("TransportHTTPActivity", activitySummary()) }
-        } catch error:''',
-        '''        } catch is CancellationError {
-            if recordHTTPActivity(requestStart: nil, cancelled: true) { DiagnosticsLogger.shared.playback("TransportHTTPActivity", activitySummary()) }
-            return false
-        } catch error:''',
-        1,
-    )
-    # The actual source uses `catch {`, not `catch error:`. Handle it explicitly.
-    new_serve = new_serve.replace(
-        '''        } catch is CancellationError {
-            if recordHTTPActivity(requestStart: nil, cancelled: true) { DiagnosticsLogger.shared.playback("TransportHTTPActivity", activitySummary()) }
         } catch {''',
         '''        } catch is CancellationError {
             if recordHTTPActivity(requestStart: nil, cancelled: true) { DiagnosticsLogger.shared.playback("TransportHTTPActivity", activitySummary()) }
@@ -139,6 +128,7 @@ if "async -> Bool" not in old_serve:
         } catch {''',
         1,
     )
+    new_serve = new_serve.replace('''            if isClientDisconnect(error) {\n                return\n            }''', '''            if isClientDisconnect(error) {\n                return false\n            }''', 1)
     error_tail = '''            if !responseStarted {
                 await sendError(status: 502, reason: "Bad Gateway", on: connection)
             }
@@ -159,6 +149,8 @@ if "async -> Bool" not in old_serve:
     new_serve = new_serve.replace(error_tail, error_tail_new, 1)
     server = server[:start] + new_serve + server[end:]
 
+# Network.framework TCP is a byte stream. Do not mark every media chunk as a complete message.
+server = server.replace('''                isComplete: true,''', '''                isComplete: false,''', 1)
 server_path.write_text(server)
 
 # Version/build identity. Keep the deployment target at iOS 15.0.
