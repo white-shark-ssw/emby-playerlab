@@ -38,8 +38,8 @@ controller = replace_once(
     "skip UnifiedTransport release during direct MDK")
 controller = replace_once(
     controller,
-    '''        if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }\n''',
-    '''        if !mdkDirectHTTPABActive, let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }\n''',
+    '''        engine.play()\n        if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }\n        playbackSessionStarted = true\n''',
+    '''        engine.play()\n        if !mdkDirectHTTPABActive, let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }\n        playbackSessionStarted = true\n''',
     "skip UnifiedTransport playback advance during direct MDK startup")
 controller = replace_once(
     controller,
