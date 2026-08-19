@@ -88,6 +88,14 @@ final class PlayerController: ObservableObject {
         return nil
     }
 
+    private var mdkDirectHTTPABActive: Bool {
+        #if MDK_LAB
+        return engineKind == .ksAVIO
+        #else
+        return false
+        #endif
+    }
+
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
         self.source = source
         self.client = client
@@ -116,7 +124,7 @@ final class PlayerController: ObservableObject {
                 return position
             }
         }
-        if startupTransportPrewarmTask == nil, let session = transportContext?.session {
+        if !mdkDirectHTTPABActive, startupTransportPrewarmTask == nil, let session = transportContext?.session {
             startupTransportPrewarmTask = Task { [weak self] in
                 guard let self else { return }
                 let began = CACurrentMediaTime()
@@ -143,7 +151,7 @@ final class PlayerController: ObservableObject {
             else { startPosition = await self.resolveInitialPlaybackPosition() }
             guard !Task.isCancelled, self.started else { return }
             let duration = self.source.mediaSource.durationSeconds ?? 0
-            if let session = self.transportContext?.session {
+            if !self.mdkDirectHTTPABActive, let session = self.transportContext?.session {
                 await session.releaseStartupPrewarm(initialPosition: startPosition, duration: duration)
                 guard !Task.isCancelled, self.started else { return }
             }
@@ -182,7 +190,7 @@ final class PlayerController: ObservableObject {
         engine.prepare(url: source.url, headers: source.headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: position)
         if engineKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "prepare returned item=\(source.itemId)") }
         engine.play()
-        if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }
+        if !mdkDirectHTTPABActive, let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }
         playbackSessionStarted = true
 
         DiagnosticsLogger.shared.log(
@@ -293,12 +301,12 @@ final class PlayerController: ObservableObject {
         if userWantsPlayback {
             userWantsPlayback = false
             engine.pause()
-            if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(false) } }
+            if !mdkDirectHTTPABActive, let session = transportContext?.session { Task { await session.setPlaybackAdvancing(false) } }
             Task { await client.reportProgress(source: source, position: snapshot.position, paused: true, eventName: "Pause") }
         } else {
             userWantsPlayback = true
             engine.play()
-            if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }
+            if !mdkDirectHTTPABActive, let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }
             Task { await client.reportProgress(source: source, position: snapshot.position, paused: false, eventName: "Unpause") }
         }
     }
@@ -417,6 +425,15 @@ final class PlayerController: ObservableObject {
             if let transportContext = self.transportContext { await transportContext.quiesceConsumers() }
             guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
             EngineTransitionBreadcrumb.record(stage: "transport-quiesced", from: previousKind, to: kind, position: resumePosition, reason: reason)
+            #if MDK_LAB
+            if previousKind == .ksAVIO, kind == .mpv, let session = self.transportContext?.session {
+                let ready = await session.prewarmStartupResolve()
+                guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
+                await session.releaseStartupPrewarm(initialPosition: resumePosition, duration: self.effectiveDuration)
+                await session.setPlaybackAdvancing(shouldPlay)
+                DiagnosticsLogger.shared.playback("MDKDirectAB", "fallbackTransportWarm ready=\(ready) resume=\(String(format: "%.3f", resumePosition)) action=handoff-to-unified-mpv")
+            }
+            #endif
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
 
@@ -525,7 +542,8 @@ final class PlayerController: ObservableObject {
             return AVPlayerEngine(kind: .transportAVPlayer, transportSource: source, transportClient: client, transportConfiguration: configuration, sharedTransportSession: transportContext?.session)
         case .ksAVIO:
             #if canImport(KSPlayer)
-            return KSAVIOPlayerEngine(source: source, client: client, configuration: configuration, sharedTransportSession: transportContext?.session, ktvCacheSession: nil)
+            DiagnosticsLogger.shared.playback("MDKDirectAB", "mode=direct-http302 sharedTransportPassed=false unifiedTransportReservedForFallback=true nasMediaProxy=false")
+            return KSAVIOPlayerEngine(source: source, client: client, configuration: configuration, sharedTransportSession: nil, ktvCacheSession: nil)
             #else
             return SuspendedPlayerEngine(kind: .ksAVIO)
             #endif
@@ -601,7 +619,7 @@ final class PlayerController: ObservableObject {
     }
 
     private func reportPlaybackClockToTransportIfNeeded(_ value: PlayerSnapshot) {
-        guard let session = transportContext?.session, value.position.isFinite else { return }
+        guard !mdkDirectHTTPABActive, let session = transportContext?.session, value.position.isFinite else { return }
         let now = Date()
         let positionMoved = abs(value.position - lastTransportPlaybackReportPosition) >= 0.10
         let heartbeatDue = now.timeIntervalSince(lastTransportPlaybackReportAt) >= 0.50
@@ -626,7 +644,7 @@ final class PlayerController: ObservableObject {
         initialResumeConfirmationPending = false
         initialResumePlaybackBaseline = nil
         DiagnosticsLogger.shared.playback("Resume", "playback advanced baseline=\(String(format: "%.3f", baseline)) current=\(String(format: "%.3f", value.position)) action=confirm-real-byte-head")
-        if let session = transportContext?.session { Task { await session.confirmInitialResumePlayback() } }
+        if !mdkDirectHTTPABActive, let session = transportContext?.session { Task { await session.confirmInitialResumePlayback() } }
     }
 
     private func commitScrubbedPosition() {

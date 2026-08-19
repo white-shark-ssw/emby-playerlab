@@ -378,7 +378,7 @@ struct PlayerScreen: View {
     @ViewBuilder
     private var statusMessages: some View {
         VStack(spacing: 8) {
-            if let message = controller.prematureEOFMessage { statusBanner(title: "疑似提前结束", message: message, color: .red) }
+            // Premature EOF stays diagnostic-only while automatic fallback is enabled.
             if let message = controller.stallMessage { statusBanner(title: "播放停滞恢复", message: message, color: .orange) }
             Spacer()
         }
