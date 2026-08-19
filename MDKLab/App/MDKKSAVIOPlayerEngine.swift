@@ -112,6 +112,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private var didInstallLogHandler = false
     private var didConfigureGlobalIO = false
     private var prematureEOFRecoveryActive = false
+    private var abnormalMediaRecoveryLevel = 0
 
     var playerView: UIView? { view }
 
@@ -452,29 +453,17 @@ final class KSAVIOPlayerEngine: PlayerEngine {
                 DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) action=wait-existing-eof-recovery")
                 return
             }
-            prematureEOFRecoveryActive = true
-            transportHTTPServer?.resetClientStreams(reason: "mdk-premature-eof-reprepare")
-            let recoveryGeneration = generation
-            DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) playing=\(lastNativeIsPlaying) status=0x\(String(status, radix: 16)) unifiedTransport=\(sharedTransportSession != nil) action=reprepare-same-player nativeQueue=isolated")
-            let queue = nativeControlQueue
-            queue.async { [weak self, weak player] in
-                guard let self, let player, self.isCurrentPlayer(player, generation: recoveryGeneration) else { return }
-                player.prepare(from: self.milliseconds(position), complete: { [weak self, weak player] preparedAtMs, boost in
-                    guard let self, let player, self.isCurrentPlayer(player, generation: recoveryGeneration) else { return false }
-                    boost = true
-                    DispatchQueue.main.async { [weak self, weak player] in
-                        guard let self, let player, self.isCurrentPlayer(player, generation: recoveryGeneration) else { return }
-                        if preparedAtMs < 0 {
-                            self.prematureEOFRecoveryActive = false
-                            DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) preparedAtMs=\(preparedAtMs) action=reprepare-failed-no-rebuild")
-                            return
-                        }
-                        if self.shouldPlay { self.requestPlayerState(playing: true, expectedPlayer: player, generation: recoveryGeneration) }
-                        DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) preparedAtMs=\(preparedAtMs) action=reprepare-ready-await-frame")
-                    }
-                    return true
-                })
+            guard abnormalMediaRecoveryLevel < 2 else {
+                DiagnosticsLogger.shared.playback("MDKCompat", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) status=0x\(String(status, radix: 16)) level=\(abnormalMediaRecoveryLevel) action=exhausted-mdk-generations")
+                onSnapshot?(PlayerSnapshot(position: position, duration: duration, isPlaying: false, isBuffering: false, waitingReason: "MDK 异常媒体恢复已用尽", errorMessage: "MDK abnormal media recovery exhausted"))
+                return
             }
+            prematureEOFRecoveryActive = true
+            abnormalMediaRecoveryLevel += 1
+            let level = abnormalMediaRecoveryLevel
+            let profile = level == 1 ? "fresh-player" : "software-tolerant"
+            DiagnosticsLogger.shared.playback("MDKCompat", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) status=0x\(String(status, radix: 16)) level=\(level) profile=\(profile) action=quarantine-eos-generation-and-rebuild samePlayerPrepare=false unifiedTransport=\(sharedTransportSession != nil)")
+            reload(at: position)
             return
         }
         DiagnosticsLogger.shared.playback("MDKRecovery", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) playing=\(lastNativeIsPlaying) status=0x\(String(status, radix: 16)) unifiedTransport=\(sharedTransportSession != nil) action=prioritize-and-play source=cached-native-snapshot")
@@ -491,6 +480,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         generation &+= 1
         rateGeneration &+= 1
         prematureEOFRecoveryActive = false
+        abnormalMediaRecoveryLevel = 0
         stopPlayerOnly()
         onSnapshot = nil
         onSeekCompleted = nil
@@ -506,7 +496,9 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         startStateTimer(player: player, generation: currentGeneration, queue: queue)
         queue.async { [weak self, weak player] in
             guard let self, let player, self.isCurrentPlayer(player, generation: currentGeneration) else { return }
-            player.videoDecoders = ["VT", "FFmpeg"]
+            let compatLevel = self.abnormalMediaRecoveryLevel
+            let decoderList = compatLevel >= 2 ? ["FFmpeg", "VT"] : ["VT", "FFmpeg"]
+            player.videoDecoders = decoderList
             player.playbackRate = Float(self.playbackRate)
             player.setBufferRange(msMin: 1_000, msMax: Int64(max(3_000, min(30_000, preferredForwardBuffer * 1_000))), drop: false)
             self.applyHTTPHeaders(headers, to: player)
@@ -514,12 +506,18 @@ final class KSAVIOPlayerEngine: PlayerEngine {
             renderer.bind(player)
             renderer.setSurfaceSize(surfaceSize, player: player)
             player.setProperty(name: "keep_open", value: "1")
+            if compatLevel >= 2 {
+                player.setProperty(name: "avformat.err_detect", value: "ignore_err")
+                player.setProperty(name: "avformat.fflags", value: "+discardcorrupt")
+            }
+            let compatProfile = compatLevel == 0 ? "normal" : (compatLevel == 1 ? "fresh-player" : "software-tolerant")
+            DiagnosticsLogger.shared.playback("MDKCompat", "generation=\(currentGeneration) level=\(compatLevel) profile=\(compatProfile) videoDecoders=\(decoderList.joined(separator: ",")) avformatTolerance=\(compatLevel >= 2 ? "ignore_err+discardcorrupt" : "off") globalDemuxTolerance=off")
             player.media = url.absoluteString
             player.prepare(from: self.milliseconds(startPosition), complete: { [weak self, weak player] preparedAtMs, boost in
                 guard let self, let player, self.isCurrentPlayer(player, generation: currentGeneration) else { return false }
                 boost = true
                 if self.shouldPlay { self.requestPlayerState(playing: true, expectedPlayer: player, generation: currentGeneration) }
-                DiagnosticsLogger.shared.playback("MDKPrepare", "preparedAtMs=\(preparedAtMs) requestedStart=\(String(format: "%.3f", startPosition)) sourceFPS=\(self.sourceFrameRateText) videoDecoders=VT,FFmpeg transport=\(transportMode) mainNativeCall=false")
+                DiagnosticsLogger.shared.playback("MDKPrepare", "preparedAtMs=\(preparedAtMs) requestedStart=\(String(format: "%.3f", startPosition)) sourceFPS=\(self.sourceFrameRateText) compatLevel=\(compatLevel) videoDecoders=\(decoderList.joined(separator: ",")) transport=\(transportMode) mainNativeCall=false")
                 return true
             })
             DiagnosticsLogger.shared.playback("MDK", "prepare item=\(self.source.itemId) version=\(swift_mdk.version()) transport=\(transportMode) localHost=\(url.host == "127.0.0.1") sharedTransport=\(self.sharedTransportSession != nil ? "active" : "unavailable") headers=\(headers.keys.sorted().joined(separator: ",")) rate=\(String(format: "%.2f", self.playbackRate)) nativeQueue=isolated")
