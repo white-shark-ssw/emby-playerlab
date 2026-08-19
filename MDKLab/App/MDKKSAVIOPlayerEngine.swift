@@ -131,6 +131,9 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private let prepareWatchdogSeconds: TimeInterval = 3.0
     private let firstFrameWatchdogSeconds: TimeInterval = 4.0
     private let endConfirmationSeconds: TimeInterval = 1.0
+    private let renderWatchdogPollSeconds: TimeInterval = 0.25
+    private let renderWatchdogTimeoutSeconds: TimeInterval = 2.5
+    private let avioShortSeekSizeBytes = 2 * 1_048_576
     private var preparingGeneration: Int?
     private var preparedGeneration = -1
     private var endCandidateSince: TimeInterval?
@@ -228,7 +231,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
 
     private func startRenderWatchdog() {
         renderWatchdogTimer?.invalidate()
-        let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in self?.evaluateRenderLiveness() }
+        let timer = Timer.scheduledTimer(withTimeInterval: renderWatchdogPollSeconds, repeats: true) { [weak self] _ in self?.evaluateRenderLiveness() }
         renderWatchdogTimer = timer
         RunLoop.main.add(timer, forMode: .common)
     }
@@ -236,7 +239,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private func evaluateRenderLiveness() {
         guard shouldPlay, hasRenderedValidFrame, !lastNativeBuffering else { return }
         let age = CACurrentMediaTime() - lastRenderedFrameAt
-        guard age >= 4 else { return }
+        guard age >= renderWatchdogTimeoutSeconds else { return }
         hasRenderedValidFrame = false
         nativeQuarantineActive = true
         let message = "MDK native isolation render timeout"
@@ -504,8 +507,9 @@ final class KSAVIOPlayerEngine: PlayerEngine {
                 return
             }
             guard abnormalMediaRecoveryLevel < 2 else {
-                DiagnosticsLogger.shared.playback("MDKCompat", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) status=0x\(String(status, radix: 16)) level=\(abnormalMediaRecoveryLevel) action=exhausted-mdk-generations")
-                onSnapshot?(PlayerSnapshot(position: position, duration: duration, isPlaying: false, isBuffering: false, waitingReason: "MDK 异常媒体恢复已用尽", errorMessage: "MDK abnormal media recovery exhausted"))
+                let message = "MDK abnormal media recovery exhausted"
+                DiagnosticsLogger.shared.playback("MDKCompat", "position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) status=0x\(String(status, radix: 16)) level=\(abnormalMediaRecoveryLevel) action=exhausted-switch-mpv-immediate")
+                onSnapshot?(PlayerSnapshot(position: position, duration: duration, isPlaying: false, isBuffering: false, waitingReason: "MDK 异常媒体恢复已用尽", errorMessage: message))
                 return
             }
             prematureEOFRecoveryActive = true
@@ -632,6 +636,10 @@ final class KSAVIOPlayerEngine: PlayerEngine {
             player.setBufferRange(msMin: 1_000, msMax: Int64(max(3_000, min(30_000, preferredForwardBuffer * 1_000))), drop: false)
             self.applyHTTPHeaders(headers, to: player)
             player.setProperty(name: "keep_open", value: "1")
+            player.setProperty(name: "avio.multiple_requests", value: "1")
+            player.setProperty(name: "avio.short_seek_size", value: String(avioShortSeekSizeBytes))
+            player.setProperty(name: "avio.reconnect", value: "1")
+            DiagnosticsLogger.shared.playback("MDKAVIO", "generation=\(currentGeneration) multipleRequests=1 shortSeekSize=\(avioShortSeekSizeBytes) reconnect=1 requestSize=unbounded transport=\(transportMode)")
             if compatLevel >= 2 {
                 player.setProperty(name: "avformat.err_detect", value: "ignore_err")
                 player.setProperty(name: "avformat.fflags", value: "+discardcorrupt")

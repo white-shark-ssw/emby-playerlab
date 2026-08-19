@@ -428,7 +428,9 @@ final class PlayerController: ObservableObject {
                 DiagnosticsLogger.shared.playback("MDKDirectAB", "fallbackTransportWarm ready=\(ready) resume=\(String(format: "%.3f", resumePosition)) action=handoff-to-unified-mpv")
             }
             #endif
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            let settleNanoseconds: UInt64 = previousKind == .ksAVIO && kind == .mpv ? 50_000_000 : 250_000_000
+            DiagnosticsLogger.shared.playback("EngineTransition", "from=\(previousKind.title) to=\(kind.title) settleMs=\(settleNanoseconds / 1_000_000) fastFallback=\(previousKind == .ksAVIO && kind == .mpv)")
+            try? await Task.sleep(nanoseconds: settleNanoseconds)
             guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
 
             let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext)

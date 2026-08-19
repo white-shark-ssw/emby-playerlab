@@ -111,9 +111,13 @@ final class PlaybackOrchestrator {
 
     func actionForEngineError(kind: PlayerEngineKind, message: String) -> PlaybackRecoveryAction? {
         let normalized = message.lowercased()
-        if kind == .ksAVIO, normalized.contains("mdk native isolation"), automaticMode {
+        if kind == .ksAVIO, automaticMode, normalized.contains("mdk native isolation") {
             DiagnosticsLogger.shared.playback("Orchestrator", "engine error engine=\(kind.title) failureIsolation=triggered action=switch-mpv error=\(message)")
             return .switchEngine(.mpv, reason: "MDK native worker 超时；主线程仍响应，受控切换到 MPV 高兼容引擎")
+        }
+        if kind == .ksAVIO, automaticMode, normalized.contains("mdk abnormal media recovery exhausted") {
+            DiagnosticsLogger.shared.playback("Orchestrator", "engine error engine=\(kind.title) recoveryExhausted=true action=switch-mpv-immediate error=\(message)")
+            return .switchEngine(.mpv, reason: "MDK 异常媒体恢复已用尽；立即切换到 MPV 高兼容引擎")
         }
         DiagnosticsLogger.shared.log("Orchestrator", "engine error engine=\(kind.title) runtimeSwitch=disabled error=\(message)")
         return nil
