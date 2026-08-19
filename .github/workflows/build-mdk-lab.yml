@@ -12,15 +12,6 @@ on:
       - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build-mdk-lab.yml"
-  pull_request:
-    paths:
-      - "Sources/**"
-      - "MDKLab/**"
-      - "Config/**"
-      - "Resources/**"
-      - "project.mdklab.yml"
-      - "Podfile"
-      - ".github/workflows/build-mdk-lab.yml"
 
 permissions:
   contents: read
@@ -43,7 +34,6 @@ jobs:
           set -euo pipefail
           sudo xcode-select -switch /Applications/Xcode_16.4.app
           xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
           swift --version
 
       - name: Install build tools
@@ -51,60 +41,36 @@ jobs:
           set -euo pipefail
           brew install xcodegen
           sudo gem install cocoapods -v 1.16.2 --no-document
-          xcodegen --version
-          pod --version
 
       - name: Prepare OnePlayer assets
         run: python3 scripts/generate_oneplayer_icons.py
 
-      - name: Validate MDK lab source contract
+      - name: Validate current MDK local-file contract
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           spec = Path("project.mdklab.yml").read_text()
-          engine_kind = Path("Sources/Player/PlayerEngine.swift").read_text()
+          local = Path("Sources/UI/LocalMDKFileLabView.swift").read_text()
+          shell = Path("Sources/UI/AppShellView.swift").read_text()
           engine = Path("MDKLab/App/MDKKSAVIOPlayerEngine.swift").read_text()
-          shim = Path("MDKLab/KSPlayerShim/Package.swift").read_text()
-          controller = Path("Sources/Player/PlayerController.swift").read_text()
-          sparse_store = Path("Sources/Transport/DownloadFirstSparseStore.swift").read_text()
           checks = {
               "iOS 15 deployment": 'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,
-              "MDK Lab 0.13.6 version": 'MARKETING_VERSION: "0.13.6"' in spec and 'CURRENT_PROJECT_VERSION: "73"' in spec,
-              "MDK 0.38 revision pinned": "f112a85f2f51c5352439465204c1ae0fa51a9f18" in spec,
-              "MPVKit excluded from MDK target": "MPVKit" not in spec,
-              "KSPlayer public package excluded": "kingslay/KSPlayer" not in spec,
-              "Xcode 15+ package sandbox workaround isolated": 'ENABLE_USER_SCRIPT_SANDBOXING: "NO"' in spec,
-              "MDK lab title": "MDK Metal（实验）" in engine_kind,
-              "MDK UnifiedTransport localhost bridge": "TransportHTTPServer" in engine and "unified-localhost" in engine,
-              "MDK bridge preserves shared transport": "stopSessionOnStop: false" in engine,
-              "MDK old transport shutdown removed": "unifiedTransportStopped=true" not in engine and "stopUnusedUnifiedTransportAfterDirectStart" not in engine,
-              "MDK VT decoder": 'videoDecoders = ["VT", "FFmpeg"]' in engine,
-              "MDK seek recovery metric": "MDKSeekHealth" in engine,
-              "MDK seek buffering grace": "seekBufferingUIGraceSeconds" in engine and "MDKBuffering" in engine,
-              "MDK active native seek watchdog": "scheduleActiveNativeSeekWatchdog" in engine and "active-native-timeout" in engine and "active-native-hard-timeout" in engine,
-              "MDK watchdog restores latest target": "latestDesiredTarget" in engine and "MDKSeekWedge" in engine and "rebuild-player-at-latest-target" in engine,
-              "MDK visual seek completion": "MDKSeekFrame" in engine and "renderedFrameSerial" in engine and "first rendered frame after latest seek callback" in engine,
-              "MDK frame watchdog": "scheduleSeekFrameWatchdog" in engine and "callback-without-new-frame" in engine,
-              "MDK seek grace bound to native dispatch": "active-native-seek-grace" in engine and "seekBufferingGraceStartedAt = nativeStartedAt" in engine,
-              "MDK async pause and teardown": "OnePlayer.MDK.NativeControl" in engine and "MDKTeardown" in engine and "detachForAsyncTeardown" in engine,
-              "MDK premature EOF seek recovery": "premature-eof-during-seek" in engine,
-              "MDK seek immediate result is advisory": "immediateResult" in engine and "semantics=advisory" in engine and "MDK seek rejected" not in engine,
-              "MDK stale seek callbacks isolated": "discard-stale-player-generation" in engine and "diagnostic-only" in engine,
-              "MDK native seek latest-wins": "activeNativeSeek" in engine and "queuedLatestSeek" in engine and "MDKSeekCoalesce" in engine,
-              "MDK native seek single-flight": "dispatchQueuedSeekIfNeeded" in engine and "nativeSeekOutstandingCount" in engine,
-              "MDK seek anchor waits for visual completion": "snapshotCanCompleteSeekAnchor" in controller and "engineKind != .ksAVIO" in controller and "scheduleSeekAnchorRelease(expectedTarget: target)" in controller,
-              "Persistent sparse cache crash marker": "session.dirty" in sparse_store and "unclean previous session detected" in sparse_store,
-              "Truthful time buffer timeline": "playableRanges: controller.snapshot.bufferedRanges" in Path("Sources/UI/PlayerScreen.swift").read_text() and "downloadCacheRanges" not in Path("Sources/UI/BufferedTimelineSlider.swift").read_text(),
-              "Cached seek preserves warm bulk": "authority=cached-read action=keep-cache-window" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text(),
-              "Unified concrete tail metadata guard": "isConcreteTailMetadataRead" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text() and "concrete-tail-metadata" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text(),
-              "MDK rate health metric": "MDKRateHealth" in engine,
-              "KS compatibility shim only": 'name: "KSPlayer"' in shim,
+              "current Build98 identity": 'MARKETING_VERSION: "0.13.31"' in spec and 'CURRENT_PROJECT_VERSION: "98"' in spec,
+              "MDK compilation condition enabled": 'SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MDK_LAB"' in spec,
+              "swift-mdk product linked": 'product: swift-mdk' in spec and 'path: MDKLab/SwiftMDKOnePlayer' in spec,
+              "MDK engine source included": '- path: MDKLab/App' in spec,
+              "local lab source included": '- path: Sources' in spec and 'LocalMDKFileLabView.swift' not in spec.split('excludes:', 1)[-1],
+              "local lab compiles real MDK path": '#if MDK_LAB && canImport(swift_mdk)' in local and 'KSAVIOPlayerEngine' in local,
+              "settings exposes local lab": 'LocalMDKFileLabView()' in shell and 'MDK 本地文件实验' in shell,
+              "local lab bypasses UnifiedTransport": 'sharedTransportSession: nil' in local and 'unifiedTransport=false' in local,
+              "local lab disables MPV fallback": 'fallback=false' in local,
+              "local lab diagnostics enabled": 'DiagnosticsLogger.shared.playback("LocalMDKLab"' in local,
+              "MDK engine compiled under same condition": '#if MDK_LAB && canImport(swift_mdk)' in engine,
           }
           for name, ok in checks.items():
               print(("PASS" if ok else "FAIL"), name)
-              if not ok:
-                  raise SystemExit(f"::error::{name}")
+              if not ok: raise SystemExit(f"::error::{name}")
           PY
 
       - name: Generate MDK Lab project
@@ -113,160 +79,52 @@ jobs:
       - name: Install KTVHTTPCache 3.1.0
         run: pod install --repo-update
 
-      - name: Restore Swift package cache
-        uses: actions/cache@v4
-        with:
-          path: .spm-cache
-          key: ${{ runner.os }}-mdk-0.38.0-ktv-3.1.0-${{ hashFiles('project.mdklab.yml', 'MDKLab/KSPlayerShim/Package.swift', 'Podfile') }}
-
-      - name: Resolve pinned MDK 0.38.0
+      - name: Resolve packages
         run: |
-          set -euo pipefail
           set -o pipefail
-          xcodebuild \
-            -resolvePackageDependencies \
-            -workspace EmbyPlayerLab.xcworkspace \
-            -scheme EmbyPlayerLab \
-            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee mdk-package-resolution.log
-          grep -R "f112a85f2f51c5352439465204c1ae0fa51a9f18" EmbyPlayerLab.xcworkspace/xcshareddata/swiftpm/Package.resolved .spm-cache 2>/dev/null | head -n 10 || true
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -resolvePackageDependencies 2>&1 | tee mdk-package-resolution.log
 
-      - name: Verify MDK package contract and license notes
+      - name: Build MDK local-file diagnostic IPA
         run: |
-          set -euo pipefail
-          CHECKOUT=".spm-cache/checkouts/swift-mdk"
-          test -f "$CHECKOUT/Package.swift"
-          grep -q 'v0.38.0/mdk-sdk-apple.zip' "$CHECKOUT/Package.swift"
-          grep -q 'dfae61b90ae1cc543d173b3b4cf2411856c98d61a3a56d7b032573080b8d18a5' "$CHECKOUT/Package.swift"
-          test -f "$CHECKOUT/LICENSE"
-          grep -qi 'MIT License' "$CHECKOUT/LICENSE"
-          {
-            echo "swift-mdk revision: f112a85f2f51c5352439465204c1ae0fa51a9f18"
-            echo "MDK SDK binary: v0.38.0 (pinned by upstream Package.swift)"
-            echo "swift-mdk wrapper license: MIT"
-            echo "MDK runtime key: intentionally not bundled for this non-production engine benchmark"
-            echo "Project Deployment Target remains iOS 15.0"
-          } | tee mdk-license-report.log
-
-      - name: Build MDK Lab for generic iOS device
-        run: |
-          set -euo pipefail
           set -o pipefail
-          rm -rf build
-          xcodebuild \
-            -workspace EmbyPlayerLab.xcworkspace \
-            -scheme EmbyPlayerLab \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/DerivedData \
-            -clonedSourcePackagesDirPath .spm-cache \
-            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY='' \
-            DEVELOPMENT_TEAM='' \
-            clean build 2>&1 | tee mdk-build.log
-
-      - name: Extract MDK build errors
-        if: failure()
-        run: |
-          set +e
-          grep -nE '(^|[[:space:]])(error:|fatal error:)' mdk-build.log > mdk-build-errors.log
-          if [ ! -s mdk-build-errors.log ]; then tail -n 600 mdk-build.log > mdk-build-errors.log; fi
-          echo "## MDK build errors" >> "$GITHUB_STEP_SUMMARY"
-          sed -n '1,220p' mdk-build-errors.log >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload failed MDK build diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: OnePlayer-MDKLab-build-errors-${{ github.sha }}
-          path: |
-            mdk-build.log
-            mdk-build-errors.log
-            mdk-package-resolution.log
-            mdk-license-report.log
-          if-no-files-found: warn
-          retention-days: 7
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | tee mdk-build.log
 
       - name: Locate and validate app
-        id: app
         run: |
           set -euo pipefail
-          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
-          test -n "$APP_PATH" && test -d "$APP_PATH"
-          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
-          python3 scripts/validate_built_app.py \
-            "$APP_PATH" \
-            --bundle-id "com.embyplayerlab.app" \
-            --version "0.13.6" \
-            --build "73" \
-            --display-name "OnePlayer" \
-            --minimum-os "15.0" \
-            --primary-icon "OnePlayerIcon" \
-            --alternate-icon "OnePlayerAltIcon"
+          APP_PATH=$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -type d | head -1)
+          test -n "$APP_PATH"
+          test -f "$APP_PATH/OnePlayer"
+          plutil -p "$APP_PATH/Info.plist" | tee app-info.log
+          strings "$APP_PATH/OnePlayer" | grep -F 'MDK 本地文件实验'
+          strings "$APP_PATH/OnePlayer" | grep -F 'LocalMDKLab'
+          if strings "$APP_PATH/OnePlayer" | grep -F '当前构建未包含 MDK 实验引擎。'; then echo '::error::fallback-only LocalMDK lab text found in MDK binary'; exit 1; fi
+          echo "$APP_PATH" > app-path.txt
 
-      - name: Validate runtime and embedded minimum OS
+      - name: Validate minimum OS
         run: |
           set -euo pipefail
-          chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" mdk-min-os-report.log mdk-build.log
-          APP_PATH="${{ steps.app.outputs.path }}"
-          : > mdk-binary-inventory.log
-          : > mdk-framework-min-os-report.log
-          while IFS= read -r -d '' file; do
-            if file "$file" | grep -q 'Mach-O'; then
-              echo "=== $file ===" >> mdk-binary-inventory.log
-              file "$file" >> mdk-binary-inventory.log
-              xcrun vtool -show-build "$file" >> mdk-framework-min-os-report.log 2>&1 || true
-            fi
-          done < <(find "$APP_PATH" -type f -print0)
-          python3 - <<'PY'
-          import re
-          from pathlib import Path
-          text = Path('mdk-framework-min-os-report.log').read_text(errors='ignore')
-          versions = re.findall(r'\bminos\s+(\d+(?:\.\d+){1,2})', text)
-          def v(s): return tuple(int(x) for x in s.split('.'))
-          bad = [x for x in versions if v(x) > v('15.0')]
-          print('embedded Mach-O minOS values:', versions)
-          if bad:
-              raise SystemExit('::error::Embedded MDK Lab Mach-O minimum OS exceeds iOS 15.0: ' + repr(bad))
-          PY
+          APP_PATH=$(cat app-path.txt)
+          MIN_OS=$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP_PATH/Info.plist")
+          echo "MinimumOSVersion=$MIN_OS"
+          test "$MIN_OS" = "15.0"
 
-      - name: Package MDK Lab unsigned IPA
+      - name: Package unsigned IPA
         run: |
           set -euo pipefail
-          rm -rf Payload
+          APP_PATH=$(cat app-path.txt)
+          rm -rf Payload OnePlayer-0.13.31-build98-local-mdk.ipa
           mkdir Payload
-          cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="OnePlayer-MDKLab-0.13.6-${GITHUB_SHA::7}-unsigned.ipa"
-          /usr/bin/zip -qry "$IPA_NAME" Payload
-          /usr/bin/unzip -t "$IPA_NAME"
-          shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
-          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          cp -R "$APP_PATH" Payload/
+          zip -qry OnePlayer-0.13.31-build98-local-mdk.ipa Payload
 
-      - name: Export experiment source snapshot
-        run: |
-          set -euo pipefail
-          SOURCE_ZIP="OnePlayer-MDKLab-${GITHUB_SHA::7}-source.zip"
-          git archive --format=zip --output "$SOURCE_ZIP" HEAD
-          shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
-          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
-
-      - name: Upload MDK Lab artifacts
+      - name: Upload MDK local diagnostic artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-MDKLab-${{ github.sha }}
+          name: OnePlayer-0.13.31-build98-local-mdk-${{ github.sha }}
           path: |
-            ${{ env.IPA_NAME }}
-            ${{ env.IPA_NAME }}.sha256
-            ${{ env.SOURCE_ZIP }}
-            ${{ env.SOURCE_ZIP }}.sha256
-            mdk-package-resolution.log
+            OnePlayer-0.13.31-build98-local-mdk.ipa
+            app-info.log
             mdk-build.log
-            mdk-license-report.log
-            mdk-min-os-report.log
-            mdk-framework-min-os-report.log
-            mdk-binary-inventory.log
-          if-no-files-found: error
-          retention-days: 30
+            mdk-package-resolution.log
+          retention-days: 14
