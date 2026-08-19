@@ -5,7 +5,7 @@ import UIKit
 
 #if MDK_LAB && canImport(swift_mdk)
 
-private enum LocalPlaybackEngineChoice: String, CaseIterable, Identifiable {
+enum LocalPlaybackEngineChoice: String, CaseIterable, Identifiable {
     case mdk
     case mpv
 
