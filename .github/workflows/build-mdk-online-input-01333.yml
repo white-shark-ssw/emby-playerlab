@@ -6,6 +6,11 @@ on:
     paths:
       - "scripts/instrument_mdk_online_input.py"
       - ".github/workflows/build-mdk-online-input-01333.yml"
+  pull_request:
+    branches: [feat/mdk-online-input-diagnostics-0.13.33]
+    paths:
+      - "scripts/instrument_mdk_online_input.py"
+      - ".github/workflows/build-mdk-online-input-01333.yml"
   workflow_dispatch:
 
 concurrency:
