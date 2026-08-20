@@ -6,6 +6,11 @@ on:
     paths:
       - "scripts/inject_mdk_complete_cache_ab.py"
       - ".github/workflows/build-mdk-complete-cache-ab-01334.yml"
+  pull_request:
+    branches: [feat/mdk-online-input-diagnostics-0.13.33]
+    paths:
+      - "scripts/inject_mdk_complete_cache_ab.py"
+      - ".github/workflows/build-mdk-complete-cache-ab-01334.yml"
   workflow_dispatch:
 
 permissions:
