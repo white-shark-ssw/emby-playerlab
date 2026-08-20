@@ -62,8 +62,8 @@ replace_once(
 )
 replace_once(
     engine_path,
-    "        lastNativeBufferMs = bufferMs\n\n        let farFromEnd",
-    "        lastNativeBufferMs = bufferMs\n\n        if seekLowLatencyBufferActive, activeNativeSeek == nil, queuedLatestSeek == nil, pendingSeekResume == nil, bufferMs >= normalBufferMinMs, let player = currentPlayerReference() {\n            seekLowLatencyBufferActive = false\n            let currentGeneration = generation\n            let queue = nativeControlQueue\n            queue.async { [weak self, weak player] in\n                guard let self, let player, self.isCurrentPlayer(player, generation: currentGeneration) else { return }\n                player.setBufferRange(msMin: self.normalBufferMinMs, msMax: Int64(max(3_000, min(30_000, self.preferredForwardBuffer * 1_000))), drop: false)\n                DiagnosticsLogger.shared.playback(\"MDKSeekBuffer\", \"phase=restore-normal minMs=\\(self.normalBufferMinMs) bufferedMs=\\(bufferMs)\")\n            }\n        }\n\n        let farFromEnd",
+    "        lastNativeIsPlaying = isPlaying && !confirmedEnd\n        lastNativeEnded = confirmedEnd\n\n        if confirmedEnd",
+    "        lastNativeIsPlaying = isPlaying && !confirmedEnd\n        lastNativeEnded = confirmedEnd\n\n        if seekLowLatencyBufferActive, activeNativeSeek == nil, queuedLatestSeek == nil, pendingSeekResume == nil, bufferMs >= normalBufferMinMs, let player = currentPlayerReference() {\n            seekLowLatencyBufferActive = false\n            let currentGeneration = generation\n            let queue = nativeControlQueue\n            queue.async { [weak self, weak player] in\n                guard let self, let player, self.isCurrentPlayer(player, generation: currentGeneration) else { return }\n                player.setBufferRange(msMin: self.normalBufferMinMs, msMax: Int64(max(3_000, min(30_000, self.preferredForwardBuffer * 1_000))), drop: false)\n                DiagnosticsLogger.shared.playback(\"MDKSeekBuffer\", \"phase=restore-normal minMs=\\(self.normalBufferMinMs) bufferedMs=\\(bufferMs)\")\n            }\n        }\n\n        if confirmedEnd",
 )
 replace_once(
     engine_path,
