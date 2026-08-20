@@ -85,7 +85,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf build
-          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache MARKETING_VERSION=0.13.35 CURRENT_PROJECT_VERSION=102 IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
 
       - name: Report compiler failure
         if: steps.release_build.outcome == 'failure'
