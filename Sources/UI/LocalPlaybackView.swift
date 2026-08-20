@@ -1,3 +1,4 @@
+import AVFoundation
 import QuartzCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -33,12 +34,12 @@ final class LocalPlaybackModel: ObservableObject {
     @Published var seekTarget: Double = 0
     @Published var isPresentingPicker = false
     @Published var engineChoice: LocalPlaybackEngineChoice = .mdk
+    @Published private(set) var mdkView: UIView?
+    @Published private(set) var mpvLayer: CAMetalLayer?
 
     private var engine: PlayerEngine?
     private var selectedURL: URL?
     private var securityScopedURL: URL?
-    private(set) var mdkView: UIView?
-    private(set) var mpvLayer: CAMetalLayer?
 
     var isPlaying: Bool { snapshot.isPlaying }
 
@@ -86,6 +87,7 @@ final class LocalPlaybackModel: ObservableObject {
 
     private func start(at position: Double) {
         guard let url = selectedURL else { return }
+        configureAudioSession()
         let values = try? url.resourceValues(forKeys: [.fileSizeKey])
         let size = Int64(values?.fileSize ?? 0)
         let ext = url.pathExtension.lowercased()
@@ -100,6 +102,7 @@ final class LocalPlaybackModel: ObservableObject {
             mdkView = mdk.playerView
             mpvLayer = nil
             newEngine = mdk
+            DiagnosticsLogger.shared.playback("LocalPlayback", "event=surface-ready engine=mdk mount=KSAVIOPlayerSurface view=\(mdk.playerView.map { String(describing: ObjectIdentifier($0)) } ?? "nil")")
         case .mpv:
             #if canImport(Libmpv)
             let mpv = MPVPlayerEngine(sharedTransportSession: nil)
@@ -127,6 +130,18 @@ final class LocalPlaybackModel: ObservableObject {
         DiagnosticsLogger.shared.playback("LocalPlayback", "event=prepare engine=\(newEngine.kind.title) scheme=file start=\(String(format: "%.3f", position)) emby=false unifiedTransport=false automaticFallback=false")
         newEngine.prepare(url: url, headers: [:], preferredForwardBuffer: 0, startPosition: position)
         newEngine.play()
+    }
+
+    private func configureAudioSession() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playback, mode: .moviePlayback, options: [])
+            try session.setActive(true)
+            let outputs = session.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
+            DiagnosticsLogger.shared.playback("LocalPlaybackAudio", "active=true category=playback mode=moviePlayback output=\(outputs) volume=\(String(format: "%.2f", session.outputVolume))")
+        } catch {
+            DiagnosticsLogger.shared.playback("LocalPlaybackAudio", "active=false error=\(error.localizedDescription)")
+        }
     }
 
     private func stopEngineOnly() {
@@ -198,7 +213,7 @@ struct LocalPlaybackView: View {
     @ViewBuilder
     private var localSurface: some View {
         if model.engineChoice == .mdk, let view = model.mdkView {
-            LocalUIViewSurface(view: view)
+            KSAVIOPlayerSurface(playerView: view).id(ObjectIdentifier(view))
         } else if model.engineChoice == .mpv, let layer = model.mpvLayer {
             MPVPlayerSurface(displayLayer: layer)
         } else {
@@ -211,12 +226,6 @@ struct LocalPlaybackView: View {
         let value = Int(seconds.rounded(.down))
         return String(format: "%02d:%02d", value / 60, value % 60)
     }
-}
-
-private struct LocalUIViewSurface: UIViewRepresentable {
-    let view: UIView
-    func makeUIView(context: Context) -> UIView { view }
-    func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
 private struct LocalVideoDocumentPicker: UIViewControllerRepresentable {
