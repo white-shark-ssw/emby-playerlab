@@ -7,6 +7,12 @@ on:
       - "scripts/instrument_mdk_file_http_trace.py"
       - ".github/workflows/build-mdk-file-http-trace-01334.yml"
       - ".ci/mdk-file-http-trace-build101-trigger.txt"
+  pull_request:
+    branches: [ci/local-file-playback-0.13.32-base]
+    paths:
+      - "scripts/instrument_mdk_file_http_trace.py"
+      - ".github/workflows/build-mdk-file-http-trace-01334.yml"
+      - ".ci/mdk-file-http-trace-build101-trigger.txt"
   workflow_dispatch:
 
 concurrency:
