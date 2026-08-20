@@ -11,12 +11,7 @@ enum LocalPlaybackEngineChoice: String, CaseIterable, Identifiable {
     case mpv
 
     var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .mdk: return "MDK"
-        case .mpv: return "MPV"
-        }
-    }
+    var title: String { self == .mdk ? "MDK" : "MPV" }
 
     static var availableCases: [LocalPlaybackEngineChoice] {
         var result: [LocalPlaybackEngineChoice] = [.mdk]
@@ -88,21 +83,15 @@ final class LocalPlaybackModel: ObservableObject {
     private func start(at position: Double) {
         guard let url = selectedURL else { return }
         configureAudioSession()
-        let values = try? url.resourceValues(forKeys: [.fileSizeKey])
-        let size = Int64(values?.fileSize ?? 0)
-        let ext = url.pathExtension.lowercased()
-        let mediaSource = MediaSource(id: "local-file", name: url.lastPathComponent, path: url.path, container: ext, directStreamURL: nil, supportsDirectPlay: true, supportsDirectStream: true, runTimeTicks: nil, size: size, requiredHTTPHeaders: nil, mediaStreams: nil)
-        let source = ResolvedPlaybackSource(itemId: "local-file", itemName: url.lastPathComponent, mediaSource: mediaSource, playSessionId: nil, url: url, headers: [:])
 
         let newEngine: PlayerEngine
         switch engineChoice {
         case .mdk:
-            let client = EmbyAPIClient(baseURL: URL(string: "http://127.0.0.1")!)
-            let mdk = KSAVIOPlayerEngine(source: source, client: client, configuration: MediaTransportConfiguration.current(), sharedTransportSession: nil)
+            let mdk = LocalMDKDirectEngine()
             mdkView = mdk.playerView
             mpvLayer = nil
             newEngine = mdk
-            DiagnosticsLogger.shared.playback("LocalPlayback", "event=surface-ready engine=mdk mount=KSAVIOPlayerSurface view=\(mdk.playerView.map { String(describing: ObjectIdentifier($0)) } ?? "nil")")
+            DiagnosticsLogger.shared.playback("LocalPlayback", "event=surface-ready engine=mdk mount=MTKView-direct view=\(ObjectIdentifier(mdk.playerView))")
         case .mpv:
             #if canImport(Libmpv)
             let mpv = MPVPlayerEngine(sharedTransportSession: nil)
@@ -122,7 +111,7 @@ final class LocalPlaybackModel: ObservableObject {
             }
         }
         newEngine.onSeekCompleted = { result in
-            DiagnosticsLogger.shared.playback("LocalPlayback", "event=seek-complete target=\(String(format: "%.3f", result.target)) actual=\(result.actualPosition.map { String(format: "%.3f", $0) } ?? "nil") latencyMs=\(String(format: "%.1f", result.completionLatencyMs))")
+            DiagnosticsLogger.shared.playback("LocalPlayback", "event=seek-complete target=\(String(format: "%.3f", result.target)) actual=\(result.actualPosition.map { String(format: "%.3f", $0) } ?? "nil") latencyMs=\(String(format: "%.1f", result.completionLatencyMs)) measurement=\(result.measurement)")
         }
         engine = newEngine
         snapshot = PlayerSnapshot(position: position)
@@ -160,9 +149,8 @@ struct LocalPlaybackView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Text("本地播放")
-                .font(.headline)
-            Text("直接播放“文件”App中的本机视频。来自其他 App 文件提供器的视频会先由系统导入 OnePlayer，避免提供器不支持原地打开时点击文件无响应。该入口与 Emby、STRM、UnifiedTransport 和 Resume 完全隔离。")
+            Text("本地播放").font(.headline)
+            Text("直接播放“文件”App中的本机视频。本地 MDK 现在使用上游 MTKView 直出路径，用于验证媒体本身与在线播放输入链的差异；该入口与 Emby、STRM、UnifiedTransport 和 Resume 完全隔离。")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -172,20 +160,14 @@ struct LocalPlaybackView: View {
             }
             .pickerStyle(.segmented)
 
-            Button("选择本机视频") { model.isPresentingPicker = true }
-                .buttonStyle(.borderedProminent)
-            Text(model.selectedName)
-                .font(.footnote)
-                .lineLimit(2)
+            Button("选择本机视频") { model.isPresentingPicker = true }.buttonStyle(.borderedProminent)
+            Text(model.selectedName).font(.footnote).lineLimit(2)
 
-            localSurface
-                .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                .background(Color.black)
+            localSurface.aspectRatio(16.0 / 9.0, contentMode: .fit).background(Color.black)
 
             if model.snapshot.duration > 0 {
                 Slider(value: Binding(get: { min(model.seekTarget, model.snapshot.duration) }, set: { model.seekTarget = $0 }), in: 0...model.snapshot.duration, onEditingChanged: { editing in if !editing { model.seek(to: model.seekTarget) } })
-                Text("\(format(model.snapshot.position)) / \(format(model.snapshot.duration))")
-                    .font(.caption.monospacedDigit())
+                Text("\(format(model.snapshot.position)) / \(format(model.snapshot.duration))").font(.caption.monospacedDigit())
             }
 
             HStack(spacing: 28) {
@@ -254,8 +236,7 @@ private struct LocalVideoDocumentPicker: UIViewControllerRepresentable {
 
 struct LocalPlaybackView: View {
     var body: some View {
-        List { Text("当前构建未包含 MDK 本地播放能力。") }
-            .navigationTitle("本地播放")
+        List { Text("当前构建未包含 MDK 本地播放能力。") }.navigationTitle("本地播放")
     }
 }
 
