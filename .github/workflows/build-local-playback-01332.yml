@@ -36,15 +36,10 @@ jobs:
           grep -Fq 'NavigationLink(destination: LocalPlaybackView())' Sources/UI/AppShellView.swift
           grep -Fq 'UIDocumentPickerViewController(forOpeningContentTypes:' Sources/UI/LocalPlaybackView.swift
           grep -Fq 'asCopy: true' Sources/UI/LocalPlaybackView.swift
-          grep -Fq 'case mdk' Sources/UI/LocalPlaybackView.swift
-          grep -Fq 'case mpv' Sources/UI/LocalPlaybackView.swift
+          grep -Fq 'LocalMDKDirectEngine()' Sources/UI/LocalPlaybackView.swift
+          grep -Fq 'setRenderTarget(playerView, commandQueue: commandQueue, vid: playerView)' Sources/UI/LocalMDKDirectEngine.swift
+          grep -Fq 'MTKView-direct' Sources/UI/LocalMDKDirectEngine.swift
           grep -Fq 'MPVPlayerEngine(sharedTransportSession: nil)' Sources/UI/LocalPlaybackView.swift
-          grep -Fq 'KSAVIOPlayerEngine(source: source' Sources/UI/LocalPlaybackView.swift
-          grep -Fq 'KSAVIOPlayerSurface(playerView: view).id(ObjectIdentifier(view))' Sources/UI/LocalPlaybackView.swift
-          grep -Fq '@Published private(set) var mdkView: UIView?' Sources/UI/LocalPlaybackView.swift
-          grep -Fq 'setCategory(.playback, mode: .moviePlayback' Sources/UI/LocalPlaybackView.swift
-          grep -Fq 'LocalPlaybackAudio' Sources/UI/LocalPlaybackView.swift
-          if grep -Fq 'LocalUIViewSurface(view: view)' Sources/UI/LocalPlaybackView.swift; then echo '::error::legacy direct UIViewRepresentable MDK mount still present'; exit 1; fi
           grep -Fq 'unifiedTransport=false' Sources/UI/LocalPlaybackView.swift
           grep -Fq 'MARKETING_VERSION: "0.13.32"' project.mdklab.yml
           grep -Fq 'CURRENT_PROJECT_VERSION: "99"' project.mdklab.yml
@@ -93,8 +88,6 @@ jobs:
           python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.32' --build '99' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
           chmod +x scripts/check_min_os.sh
           scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
-          strings "$APP_PATH/OnePlayer" | grep -F 'LocalPlaybackAudio'
-          strings "$APP_PATH/OnePlayer" | grep -F 'mount=KSAVIOPlayerSurface'
 
       - name: Package unsigned IPA
         run: |
@@ -103,7 +96,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "$APP_PATH" Payload/
-          IPA='OnePlayer-0.13.32-build99-local-mdk-output-unsigned.ipa'
+          IPA='OnePlayer-0.13.32-build99-local-mdk-direct-unsigned.ipa'
           /usr/bin/zip -qry "$IPA" Payload
           /usr/bin/unzip -t "$IPA" >/dev/null
           /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
@@ -112,10 +105,10 @@ jobs:
       - name: Upload local playback test package
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.13.32-build99-local-mdk-output
+          name: OnePlayer-0.13.32-build99-local-mdk-direct
           path: |
-            OnePlayer-0.13.32-build99-local-mdk-output-unsigned.ipa
-            OnePlayer-0.13.32-build99-local-mdk-output-unsigned.ipa.sha256
+            OnePlayer-0.13.32-build99-local-mdk-direct-unsigned.ipa
+            OnePlayer-0.13.32-build99-local-mdk-direct-unsigned.ipa.sha256
             app-validation.log
             min-os-report.log
             build.log
