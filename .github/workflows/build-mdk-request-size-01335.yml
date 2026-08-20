@@ -95,15 +95,36 @@ jobs:
           tail -220 build.log || true
           exit 1
 
-      - name: Validate app identity and minimum OS
+      - name: Locate built app
         run: |
           set -euo pipefail
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "APP_PATH=$APP_PATH"
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Validate app identity
+        run: |
+          set -euo pipefail
           python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.35' --build '102' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+
+      - name: Validate minimum OS
+        run: |
+          set -euo pipefail
           chmod +x scripts/check_min_os.sh
           scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+
+      - name: Upload validation diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.35-build102-validation-diagnostics
+          path: |
+            app-validation.log
+            min-os-report.log
+            build.log
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Package unsigned IPA
         run: |
