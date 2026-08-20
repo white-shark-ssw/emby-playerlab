@@ -1,0 +1,143 @@
+name: Build OnePlayer 0.13.34 MDK Complete Cache AB
+
+on:
+  push:
+    branches: [ci/mdk-complete-cache-ab-0.13.34]
+    paths:
+      - "scripts/inject_mdk_complete_cache_ab.py"
+      - ".github/workflows/build-mdk-complete-cache-ab-01334.yml"
+  pull_request:
+    branches: [feat/mdk-online-input-diagnostics-0.13.33]
+    paths:
+      - "scripts/inject_mdk_complete_cache_ab.py"
+      - ".github/workflows/build-mdk-complete-cache-ab-01334.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mdk-complete-cache-ab-01334-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify known-good baseline is untouched
+        run: |
+          set -euo pipefail
+          BASE=f7251574141afe47e64258f9823c9b8eaf7707a3
+          git cat-file -e "$BASE^{commit}"
+          git diff --exit-code "$BASE" -- Sources/Player/PlayerController.swift Sources/Player/PlaybackOrchestrator.swift Sources/Player/MPVPlayerEngine.swift Sources/Transport/TransportDataSession.swift Sources/Transport/UnifiedMediaTransportSession.swift Sources/Transport/DownloadFirstSparseStore.swift MDKLab/App/MDKKSAVIOPlayerEngine.swift project.mdklab.yml Sources/Core/AppIdentity.swift
+          grep -Fq 'action=switch-mpv' Sources/Player/PlaybackOrchestrator.swift
+          grep -Fq 'TransportHTTPServer' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'iOS: "15.0"' project.mdklab.yml
+
+      - name: Inject strict same-cache MDK A/B experiment
+        run: |
+          set -euo pipefail
+          python3 scripts/inject_mdk_complete_cache_ab.py
+          grep -Fq 'acquireCompleteLocalFileURL' Sources/Transport/TransportDataSession.swift
+          grep -Fq 'completeFileURLIfAvailable' Sources/Transport/DownloadFirstSparseStore.swift
+          grep -Fq 'localFileConsumerPinned' Sources/Transport/UnifiedMediaTransportSession.swift
+          grep -Fq 'verdict=file-input-progressed' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'complete-cache-file-ab' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'MARKETING_VERSION: "0.13.34"' project.mdklab.yml
+          grep -Fq 'CURRENT_PROJECT_VERSION: "101"' project.mdklab.yml
+          grep -Fq 'sourceVersion = "0.13.34"' Sources/Core/AppIdentity.swift
+          git diff -- Sources/Transport/TransportDataSession.swift Sources/Transport/UnifiedMediaTransportSession.swift Sources/Transport/DownloadFirstSparseStore.swift MDKLab/App/MDKKSAVIOPlayerEngine.swift project.mdklab.yml Sources/Core/AppIdentity.swift > mdk-complete-cache-ab.patch
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          swift --version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Generate project and resolve dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Build Release for generic iOS device
+        id: release_build
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Report compiler failure
+        if: steps.release_build.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          grep -nE '(^|[[:space:]])(error:|fatal error:)|BUILD FAILED|SwiftCompile|CompileSwift|EmitSwiftModule' build.log | tail -350 || true
+          tail -250 build.log || true
+          exit 1
+
+      - name: Validate app identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.34' --build '101' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+          strings "$APP_PATH/OnePlayer" | grep -F 'MDKInputAB' >/dev/null
+          strings "$APP_PATH/OnePlayer" | grep -F 'complete-cache-file-ab' >/dev/null
+          strings "$APP_PATH/OnePlayer" | grep -F 'file-input-progressed' >/dev/null
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.34-build101-mdk-complete-cache-ab-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+
+      - name: Export transformed A/B source snapshot
+        run: |
+          set -euo pipefail
+          tar -czf OnePlayer-0.13.34-build101-mdk-complete-cache-ab-source.tgz Sources/Transport/TransportDataSession.swift Sources/Transport/UnifiedMediaTransportSession.swift Sources/Transport/DownloadFirstSparseStore.swift MDKLab/App/MDKKSAVIOPlayerEngine.swift project.mdklab.yml Sources/Core/AppIdentity.swift scripts/inject_mdk_complete_cache_ab.py
+
+      - name: Upload A/B diagnostic package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.34-build101-mdk-complete-cache-ab
+          path: |
+            OnePlayer-0.13.34-build101-mdk-complete-cache-ab-unsigned.ipa
+            OnePlayer-0.13.34-build101-mdk-complete-cache-ab-unsigned.ipa.sha256
+            OnePlayer-0.13.34-build101-mdk-complete-cache-ab-source.tgz
+            mdk-complete-cache-ab.patch
+            app-validation.log
+            min-os-report.log
+            build.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 14
