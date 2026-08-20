@@ -8,6 +8,11 @@ on:
       - "scripts/instrument_mdk_seek_sequence_trace.py"
       - "scripts/instrument_mdk_bounded_request_01335.py"
       - ".github/workflows/build-mdk-request-size-01335.yml"
+  pull_request:
+    branches: [ci/mdk-file-http-trace-0.13.34]
+    paths:
+      - "scripts/instrument_mdk_bounded_request_01335.py"
+      - ".github/workflows/build-mdk-request-size-01335.yml"
   workflow_dispatch:
 
 concurrency:
