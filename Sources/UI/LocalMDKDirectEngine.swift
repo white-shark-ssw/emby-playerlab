@@ -18,6 +18,12 @@ final class LocalMDKDirectEngine: NSObject, PlayerEngine, MTKViewDelegate, @unch
     private var lastURL: URL?
     private var shouldPlay = false
     private var firstFrameLogged = false
+    private var inputTraceSession = "unassigned"
+    private var inputTraceLastSecond = -1
+    private var inputTraceRenderCalls: UInt64 = 0
+    private var inputTraceLastRenderResult: Double?
+    private var inputTraceLastPosition: Double = 0
+    private var inputTraceLastStatus: Int32 = 0
 
     override init() {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { fatalError("Metal is unavailable") }
@@ -38,6 +44,13 @@ final class LocalMDKDirectEngine: NSObject, PlayerEngine, MTKViewDelegate, @unch
         stopPlayerOnly()
         lastURL = url
         firstFrameLogged = false
+        inputTraceSession = String(UUID().uuidString.prefix(8)).lowercased()
+        inputTraceLastSecond = -1
+        inputTraceRenderCalls = 0
+        inputTraceLastRenderResult = nil
+        inputTraceLastPosition = max(0, startPosition)
+        inputTraceLastStatus = 0
+        DiagnosticsLogger.shared.playback("MDKInputTrace", "session=\(inputTraceSession) source=file event=open start=\(String(format: "%.3f", startPosition)) scheme=\(url.scheme ?? "nil") name=\(url.lastPathComponent)")
         let player = swift_mdk.Player()
         self.player = player
         player.videoDecoders = ["VT", "FFmpeg"]
@@ -48,6 +61,14 @@ final class LocalMDKDirectEngine: NSObject, PlayerEngine, MTKViewDelegate, @unch
         player.setVideoSurfaceSize(Int32(max(1, size.width)), Int32(max(1, size.height)), vid: playerView)
         player.setRenderCallback { [weak self] in
             DispatchQueue.main.async { [weak self] in self?.playerView.setNeedsDisplay() }
+        }
+        player.onMediaStatusChanged { [weak self, weak player] status in
+            DispatchQueue.main.async { [weak self, weak player] in
+                guard let self, let player, self.player === player else { return }
+                self.inputTraceLastStatus = status.rawValue
+                DiagnosticsLogger.shared.playback("MDKInputTrace", "session=\(self.inputTraceSession) source=file event=status position=\(String(format: "%.3f", self.inputTraceLastPosition)) raw=0x\(String(status.rawValue, radix: 16)) renderCalls=\(self.inputTraceRenderCalls) renderValue=\(self.inputTraceLastRenderResult.map { String(format: "%.6f", $0) } ?? "nil")")
+            }
+            return true
         }
         player.media = url.absoluteString
         DiagnosticsLogger.shared.playback("LocalMDKDirect", "event=prepare path=file renderer=MTKView-direct mdkVersion=\(swift_mdk.version()) start=\(String(format: "%.3f", startPosition)) drawable=\(Int(size.width))x\(Int(size.height))")
@@ -109,6 +130,7 @@ final class LocalMDKDirectEngine: NSObject, PlayerEngine, MTKViewDelegate, @unch
     }
 
     private func stopPlayerOnly() {
+        if inputTraceSession != "unassigned" { DiagnosticsLogger.shared.playback("MDKInputTrace", "session=\(inputTraceSession) source=file event=stop position=\(String(format: "%.3f", inputTraceLastPosition)) raw=0x\(String(inputTraceLastStatus, radix: 16)) renderCalls=\(inputTraceRenderCalls) renderValue=\(inputTraceLastRenderResult.map { String(format: "%.6f", $0) } ?? "nil")") }
         stateTimer?.invalidate()
         stateTimer = nil
         if let player {
@@ -129,6 +151,14 @@ final class LocalMDKDirectEngine: NSObject, PlayerEngine, MTKViewDelegate, @unch
         let position = Double(player.position) / 1_000
         let duration = Double(player.mediaInfo.duration) / 1_000
         let isPlaying = player.state == .Playing
+        let status = player.mediaStatus.rawValue
+        inputTraceLastPosition = position
+        inputTraceLastStatus = status
+        let traceSecond = Int(max(0, position).rounded(.down))
+        if traceSecond != inputTraceLastSecond {
+            inputTraceLastSecond = traceSecond
+            DiagnosticsLogger.shared.playback("MDKInputTrace", "session=\(inputTraceSession) source=file event=progress position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) raw=0x\(String(status, radix: 16)) playing=\(isPlaying) bufferMs=\(player.buffered()) renderCalls=\(inputTraceRenderCalls) renderValue=\(inputTraceLastRenderResult.map { String(format: "%.6f", $0) } ?? "nil")")
+        }
         let buffered = Double(max(0, player.buffered())) / 1_000
         let bufferedEnd = duration > 0 ? min(duration, position + buffered) : position + buffered
         onSnapshot?(PlayerSnapshot(position: position, duration: duration, bufferedRanges: bufferedEnd > position ? [position...bufferedEnd] : [], isPlaying: isPlaying, isBuffering: false, errorMessage: nil, didReachEnd: false))
@@ -143,6 +173,9 @@ final class LocalMDKDirectEngine: NSObject, PlayerEngine, MTKViewDelegate, @unch
     func draw(in view: MTKView) {
         guard let player else { return }
         let result = player.renderVideo(vid: view)
+        inputTraceRenderCalls &+= 1
+        inputTraceLastRenderResult = result
+        if inputTraceRenderCalls == 1 || inputTraceRenderCalls % 30 == 0 { DiagnosticsLogger.shared.playback("MDKInputTrace", "session=\(inputTraceSession) source=file event=render renderCalls=\(inputTraceRenderCalls) position=\(String(format: "%.3f", inputTraceLastPosition)) renderValue=\(String(format: "%.6f", result))") }
         if !firstFrameLogged {
             firstFrameLogged = true
             let size = view.drawableSize

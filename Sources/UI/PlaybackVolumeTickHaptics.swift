@@ -42,11 +42,11 @@ final class PlaybackVolumeTickHaptics {
             let event = CHHapticEvent(
                 eventType: .hapticContinuous,
                 parameters: [
-                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.18),
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.41184),
                     CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.82)
                 ],
                 relativeTime: 0,
-                duration: 0.015
+                duration: 0.006
             )
             let pattern = try CHHapticPattern(events: [event], parameters: [])
             self.engine = engine

@@ -65,6 +65,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let blockBytes: Int64
     private let urgentBlockBytes: Int64 = 16 * 1_048_576
     private let progressiveUrgentGapBytes: Int64 = 2 * 1_048_576
+    private let seekProgressiveUrgentGapBytes: Int64 = 512 * 1024
     private let metadataUrgentBlockBytes: Int64 = 16 * 1_048_576
     private let startupMetadataSegmentBytes: Int64 = 1 * 1_048_576
     private let secondaryMetadataMaxBytes: Int64 = 2 * 1_048_576
@@ -100,7 +101,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let liveLaneProgressWatchdogIntervalSeconds: TimeInterval = 0.75
     private let liveLaneNoProgressPeerSeconds: TimeInterval = 1.25
     private let liveLaneNoProgressHardSeconds: TimeInterval = 2.75
-    private let urgentFirstByteHedgeSeconds: TimeInterval = 0.65
+    private let urgentFirstByteHedgeSeconds: TimeInterval = 0.35
     private let liveLaneSampleWindowSeconds: TimeInterval = 1.0
     private let liveLaneSampleMinimumBytes: Int64 = 1 * 1_048_576
     private let liveLaneResetCooldownSeconds: TimeInterval = 2
@@ -345,6 +346,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         do {
             let data = try await store.readWhenAvailable(offset: offset, maximumLength: requested, timeout: 20)
             refreshMetrics(resource: resolved)
+            let next = offset + Int64(data.count)
             return data
         } catch let error as DownloadFirstSparseStore.StoreError {
             guard case .timeout = error else { throw error }
@@ -355,7 +357,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             DiagnosticsLogger.shared.playback("UnifiedDemand", "timeout offset=\(offset) length=\(requested) metadata=\(metadata); force slot0")
             installUrgent(range: offset..<demandEnd, metadata: metadata, reason: metadata ? "metadata-read-timeout" : "read-timeout")
             scheduleSlots(reason: "read-timeout")
-            return try await store.readWhenAvailable(offset: offset, maximumLength: requested, timeout: 25)
+            let retryData = try await store.readWhenAvailable(offset: offset, maximumLength: requested, timeout: 25)
+            let retryNext = offset + Int64(retryData.count)
+            return retryData
         }
     }
 
@@ -474,6 +478,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let startupTailMetadata = isStartupTailMetadata(range, resource: resource)
         let metadata = startupTailMetadata || (!concreteReason && isMetadataProbe(range, resource: resource))
         let pendingUserSeek = Date() <= pendingUserSeekUntil
+        let progressiveGapLimit = pendingUserSeek ? seekProgressiveUrgentGapBytes : progressiveUrgentGapBytes
         let concretePlaybackDemand = concreteReason && !metadata
         if concretePlaybackDemand { demandCoordinator.observeDependency(offset: range.lowerBound) }
         if awaitingInitialResumeDemand, concretePlaybackDemand, reason == "concrete-read" || reason == "blocked-read" { initialResumeCandidateByte = range.lowerBound }
@@ -632,8 +637,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 let ready = store.availableLength(from: active.range.lowerBound, maximumLength: Int64(active.range.count))
                 let streamHead = min(active.range.upperBound, active.range.lowerBound + ready)
                 let gap = max(0, range.lowerBound - streamHead)
-                if gap > progressiveUrgentGapBytes {
-                    DiagnosticsLogger.shared.playback("UnifiedDemand", "foreground active-gap slot=\(activeSlot) request=\(range.lowerBound)-\(range.upperBound) claim=\(active.range.lowerBound)-\(active.range.upperBound) head=\(streamHead) gap=\(gap) action=parallel-urgent")
+                if gap > progressiveGapLimit {
+                    DiagnosticsLogger.shared.playback("UnifiedDemand", "foreground active-gap slot=\(activeSlot) request=\(range.lowerBound)-\(range.upperBound) claim=\(active.range.lowerBound)-\(active.range.upperBound) head=\(streamHead) gap=\(gap) gapLimit=\(progressiveGapLimit) userSeek=\(pendingUserSeek) action=parallel-urgent")
                     installUrgent(range: range, metadata: false, reason: "foreground-active-gap-\(reason)")
                     scheduleSlots(reason: "foreground-active-gap-\(reason)")
                     return
@@ -653,8 +658,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             let ready = store.availableLength(from: claim.range.lowerBound, maximumLength: Int64(claim.range.count))
             let streamHead = min(claim.range.upperBound, claim.range.lowerBound + ready)
             let gap = max(0, range.lowerBound - streamHead)
-            if gap <= progressiveUrgentGapBytes {
-                DiagnosticsLogger.shared.playback("UnifiedDemand", "reuse active sequential stream slot=\(slot) request=\(range.lowerBound)-\(range.upperBound) claim=\(claim.range.lowerBound)-\(claim.range.upperBound) head=\(streamHead) gap=\(gap) reason=\(reason) action=wait-progressive-chunk")
+            if gap <= progressiveGapLimit {
+                DiagnosticsLogger.shared.playback("UnifiedDemand", "reuse active sequential stream slot=\(slot) request=\(range.lowerBound)-\(range.upperBound) claim=\(claim.range.lowerBound)-\(claim.range.upperBound) head=\(streamHead) gap=\(gap) gapLimit=\(progressiveGapLimit) userSeek=\(pendingUserSeek) reason=\(reason) action=wait-progressive-chunk")
                 return
             }
             DiagnosticsLogger.shared.playback("UnifiedDemand", "foreground gap slot=\(slot) request=\(range.lowerBound)-\(range.upperBound) claim=\(claim.range.lowerBound)-\(claim.range.upperBound) head=\(streamHead) gap=\(gap) action=parallel-urgent")

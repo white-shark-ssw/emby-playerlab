@@ -14,7 +14,6 @@ enum PlayerPreferenceKeys {
     static let resumeWhenForegrounded = "player.resumeWhenForegrounded"
     static let defaultScaleMode = "player.defaultScaleMode"
     static let controlsAutoHideSeconds = "player.controlsAutoHideSeconds"
-    static let mdkAVIORequestSize2MiBEnabled = "player.mdkAVIORequestSize2MiBEnabled"
 }
 
 enum PlaybackOrientationPolicy: String, CaseIterable, Identifiable {

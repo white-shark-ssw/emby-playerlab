@@ -145,6 +145,11 @@ final class PlayerController: ObservableObject {
             else { startPosition = await self.resolveInitialPlaybackPosition() }
             guard !Task.isCancelled, self.started else { return }
             let duration = self.source.mediaSource.durationSeconds ?? 0
+            if startPosition > 0.5, let prewarmTask = self.startupTransportPrewarmTask {
+                await prewarmTask.value
+                guard !Task.isCancelled, self.started else { return }
+                DiagnosticsLogger.shared.playback("StartupFastPath", "cold resume transport resolve awaited item=\(self.source.itemId) position=\(String(format: "%.3f", startPosition))")
+            }
             if !self.mdkDirectHTTPABActive, let session = self.transportContext?.session {
                 await session.releaseStartupPrewarm(initialPosition: startPosition, duration: duration)
                 guard !Task.isCancelled, self.started else { return }

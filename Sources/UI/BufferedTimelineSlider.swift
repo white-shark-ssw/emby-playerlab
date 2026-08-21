@@ -5,8 +5,8 @@ struct BufferedTimelineSlider: View {
     let range: ClosedRange<Double>
     let bufferState: PlaybackBufferState
     /// Current UnifiedTransport playback-byte cache ranges normalized to the media file's 0...1 byte space.
-    /// These ranges are the only visible buffer source. They grow when bytes are downloaded and disappear
-    /// when RollingCache actually evicts those bytes.
+    /// Byte cache is a secondary visual layer. The engine-confirmed livePlayableRanges below
+    /// are the real media-time playable window.
     let cacheByteRanges: [ClosedRange<Double>]
     let onEditingChanged: (Bool) -> Void
 
@@ -29,9 +29,16 @@ struct BufferedTimelineSlider: View {
 
                 ForEach(Array(normalizedCacheRanges.enumerated()), id: \.offset) { _, cached in
                     Rectangle()
-                        .fill(Color.white.opacity(0.68))
+                        .fill(Color.white.opacity(0.32))
                         .frame(width: max(1, width * CGFloat(cached.upperBound - cached.lowerBound)), height: trackHeight)
                         .offset(x: width * CGFloat(cached.lowerBound))
+                }
+
+                ForEach(Array(normalizedLivePlayableRanges.enumerated()), id: \.offset) { _, playable in
+                    Rectangle()
+                        .fill(Color.white.opacity(0.78))
+                        .frame(width: max(1, width * CGFloat(playable.upperBound - playable.lowerBound)), height: trackHeight)
+                        .offset(x: width * CGFloat(playable.lowerBound))
                 }
 
                 Rectangle().fill(Color.white).frame(width: progressWidth(totalWidth: width), height: trackHeight)
@@ -68,6 +75,16 @@ struct BufferedTimelineSlider: View {
             @unknown default: break
             }
             onEditingChanged(false)
+        }
+    }
+
+    private var normalizedLivePlayableRanges: [ClosedRange<Double>] {
+        let duration = range.upperBound - range.lowerBound
+        guard duration > 0 else { return [] }
+        return bufferState.livePlayableRanges.compactMap { item in
+            let lower = min(1, max(0, (item.lowerBound - range.lowerBound) / duration))
+            let upper = min(1, max(0, (item.upperBound - range.lowerBound) / duration))
+            return upper > lower ? lower...upper : nil
         }
     }
 
