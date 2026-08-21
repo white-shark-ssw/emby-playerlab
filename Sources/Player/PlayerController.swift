@@ -485,8 +485,16 @@ final class PlayerController: ObservableObject {
     var verifiedBufferedEnd: Double { verifiedBufferedRanges.map(\.upperBound).max() ?? 0 }
 
     private func updatePlaybackBufferState(from value: PlayerSnapshot) {
+        let livePlayableRanges: [ClosedRange<Double>]
+        if !value.bufferedRanges.isEmpty {
+            livePlayableRanges = value.bufferedRanges
+        } else if !value.isBuffering {
+            livePlayableRanges = bufferState.livePlayableRanges.filter { $0.lowerBound <= value.position + 0.05 && $0.upperBound >= value.position - 0.05 }
+        } else {
+            livePlayableRanges = []
+        }
         bufferState = PlaybackBufferState(
-            livePlayableRanges: value.bufferedRanges,
+            livePlayableRanges: livePlayableRanges,
             verifiedHistoryRanges: verifiedBufferedRanges,
             isBuffering: value.isBuffering,
             waitingReason: value.waitingReason

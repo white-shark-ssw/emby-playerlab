@@ -227,7 +227,6 @@ final class MDKPlaybackHealthCoordinator {
         case let .nativeSeekTimeout(_, candidateSeekID, hard):
             guard phase == .nativeSeek, seekID == candidateSeekID else { return .ignore(reason: "phase=\(phase.rawValue)-seek=\(seekID ?? -1)") }
             if !hard { return .defer(reason: "native-seek-soft-probe") }
-            if wall >= 12 { return .fail(reason: "native-seek-absolute-limit") }
             if wall < 5 { return .defer(reason: "native-seek-minimum-window") }
             if idle < 2.5 { return .defer(reason: "native-seek-progress-recent") }
             return .fail(reason: "native-seek-no-progress")
@@ -235,7 +234,6 @@ final class MDKPlaybackHealthCoordinator {
             guard phase == .seekFrame, seekID == candidateSeekID else { return .ignore(reason: "phase=\(phase.rawValue)-seek=\(seekID ?? -1)") }
             guard shouldPlay else { return .ignore(reason: "playback-not-requested") }
             if !hard { return .defer(reason: "seek-frame-soft-probe") }
-            if wall >= 10 { return .fail(reason: "seek-frame-absolute-limit") }
             if wall < 4 { return .defer(reason: "seek-frame-minimum-window") }
             if idle < 2.5 || buffering { return .defer(reason: buffering ? "seek-frame-buffering" : "seek-frame-progress-recent") }
             return .fail(reason: "seek-frame-no-progress")
