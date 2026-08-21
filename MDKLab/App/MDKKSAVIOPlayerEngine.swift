@@ -119,7 +119,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private var generation = 0
     private var firstRenderedGeneration = -1
     private var seekGeneration = 0
-    private let seekBufferingUIGraceSeconds: TimeInterval = 3.0
+    private let seekBufferingUIGraceSeconds: TimeInterval = 0.5
     private let normalBufferMinMs: Int64 = 1_000
     private let seekBufferMinMs: Int64 = 200
     private let relativeSeekBufferMinMs: Int64 = 50

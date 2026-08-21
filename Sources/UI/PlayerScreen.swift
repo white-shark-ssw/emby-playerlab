@@ -326,6 +326,7 @@ struct PlayerScreen: View {
                     value: Binding(get: { controller.displayedPosition }, set: { controller.updateScrubbing(to: $0) }),
                     range: 0...max(controller.effectiveDuration, 1),
                     bufferState: controller.bufferState,
+                    cacheByteRanges: controller.transportCacheRanges,
                     onEditingChanged: { editing in
                         if editing {
                             controlsHideWorkItem?.cancel()
