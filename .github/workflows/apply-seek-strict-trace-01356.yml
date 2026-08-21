@@ -1,0 +1,49 @@
+name: Apply Strict Seek Trace 0.13.56
+
+on:
+  pull_request:
+    branches: [refactor/player-state-ownership-0.13.53]
+    paths:
+      - "scripts/migrate_seek_strict_trace_01356.py"
+      - ".github/workflows/apply-seek-strict-trace-01356.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply strict Seek trace migration
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/migrate_seek_strict_trace_01356.py
+          python3 scripts/migrate_seek_strict_trace_01356.py
+          git diff --check
+          grep -Fq 'MDKSeekTransportGate' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'SeekTransportRead' Sources/Transport/UnifiedMediaTransportSession.swift
+          grep -Fq 'networkBufferingVisible = value.isBuffering &&' Sources/Player/PlayerController.swift
+          grep -Fq 'if controller.networkBufferingVisible { bufferingIndicator }' Sources/UI/PlayerScreen.swift
+          grep -Fq 'cacheByteRanges: controller.transportCacheRanges' Sources/UI/PlayerScreen.swift
+          grep -Fq 'private let seekBufferingUIGraceSeconds: TimeInterval = 0.5' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let relativeSeekBufferMinMs: Int64 = 50' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let avioRequestSizeBytes = 2 * 1_048_576' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+
+      - name: Commit diagnostic source
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          git add -- Sources/Core/AppIdentity.swift Sources/Transport/PlaybackTransportContext.swift Sources/Transport/UnifiedMediaTransportSession.swift Sources/Player/PlayerController.swift Sources/UI/PlayerScreen.swift MDKLab/App/MDKKSAVIOPlayerEngine.swift docs/architecture/PLAYBACK_UI_CONTRACT.md
+          test -n "$(git diff --cached --name-only)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "diag: trace strict MDK seek path"
+          git push origin "HEAD:${HEAD_BRANCH}"
