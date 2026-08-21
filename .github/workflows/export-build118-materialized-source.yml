@@ -1,0 +1,87 @@
+name: Export Build118 Materialized Source
+
+on:
+  pull_request:
+    branches: [ci/mdk-seek-audio-ui-0.13.51]
+    paths:
+      - ".github/workflows/export-build118-materialized-source.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify frozen Build118 baseline
+        run: |
+          set -euo pipefail
+          git cat-file -e 06f8a73a7a66cdb3122f44a2ca2682e178071ea7^{commit}
+          test "$(git merge-base HEAD 06f8a73a7a66cdb3122f44a2ca2682e178071ea7)" = "06f8a73a7a66cdb3122f44a2ca2682e178071ea7"
+
+      - name: Materialize exact Build118 source
+        run: |
+          set -euo pipefail
+          scripts=(
+            scripts/instrument_mdk_file_http_trace.py
+            scripts/instrument_mdk_seek_sequence_trace.py
+            scripts/instrument_mdk_bounded_request_01335.py
+            scripts/instrument_mdk_precise_seek_truehd_01336.py
+            scripts/instrument_mdk_cold_resume_guard_01336.py
+            scripts/instrument_mdk_timeout_fallback_01336.py
+            scripts/instrument_mdk_seek_ui_haptics_01337.py
+            scripts/instrument_mdk_seek_low_latency_haptics_01338.py
+            scripts/instrument_mdk_cold_resume_first_frame_01339.py
+            scripts/instrument_mdk_native_latest_wins_01340.py
+            scripts/instrument_mdk_ignored_seek_settle_01341.py
+            scripts/instrument_mdk_two_stage_seek_01342.py
+            scripts/instrument_mdk_continuous_session_01343.py
+            scripts/instrument_mdk_seek_transport_tail_01344.py
+            scripts/instrument_mdk_avio_request_toggle_01345.py
+            scripts/instrument_player_idle_timer_01346.py
+            scripts/instrument_mdk_seek_fast_first_01347.py
+            scripts/instrument_mdk_seek_fast_only_01348.py
+            scripts/instrument_mdk_seek_frame_landing_fix_01349.py
+            scripts/instrument_mdk_seek_watchdog_ui_01350.py
+            scripts/instrument_mdk_seek_audio_ui_01351.py
+          )
+          python3 -m py_compile "${scripts[@]}"
+          for script in "${scripts[@]}"; do python3 "$script"; done
+          grep -Fq 'sourceVersion = "0.13.51"' Sources/Core/AppIdentity.swift
+          grep -Fq 'relative-fast-only' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'absolute-accurate' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'actualPosition: renderResult' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'guard activeNativeSeek == nil, pendingSeekResume == nil else { return }' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'bufferState.livePlayableRanges.compactMap' Sources/UI/BufferedTimelineSlider.swift
+          git diff --check
+
+      - name: Export materialized source and manifest
+        run: |
+          set -euo pipefail
+          rm -rf materialized-build118
+          mkdir -p materialized-build118
+          git diff --name-only | sort | tee materialized-build118/materialized-files.txt
+          git diff --stat > materialized-build118/materialized-stat.txt
+          git diff --binary > materialized-build118/build118-materialized.patch
+          while IFS= read -r path; do
+            test -f "$path" || continue
+            mkdir -p "materialized-build118/$(dirname "$path")"
+            cp "$path" "materialized-build118/$path"
+          done < materialized-build118/materialized-files.txt
+          printf 'baseline=%s\n' '06f8a73a7a66cdb3122f44a2ca2682e178071ea7' > materialized-build118/MANIFEST.txt
+          printf 'sourceVersion=0.13.51\n' >> materialized-build118/MANIFEST.txt
+          find materialized-build118 -type f -print0 | sort -z | xargs -0 shasum -a 256 > materialized-build118/SHA256SUMS.txt
+
+      - name: Upload exact Build118 materialized source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build118-materialized-source
+          path: materialized-build118
+          if-no-files-found: error
+          retention-days: 14
