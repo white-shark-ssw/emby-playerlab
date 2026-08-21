@@ -1,4 +1,5 @@
 import Foundation
+import QuartzCore
 
 /// Sole policy owner for automatic MDK health/fallback decisions.
 /// Timers may submit candidates, but only this coordinator decides whether the current generation is unhealthy.
@@ -68,9 +69,7 @@ final class MDKPlaybackHealthCoordinator {
         lock.unlock()
     }
 
-    func beginPrepare(generation: Int, now: TimeInterval = CACurrentMediaTime()) {
-        transition(to: .preparing, generation: generation, seekID: nil, target: nil, callbackLanding: nil, now: now)
-    }
+    func beginPrepare(generation: Int, now: TimeInterval = CACurrentMediaTime()) { transition(to: .preparing, generation: generation, seekID: nil, target: nil, callbackLanding: nil, now: now) }
 
     func beginFirstFrame(generation: Int, renderSerial: UInt64, now: TimeInterval = CACurrentMediaTime()) {
         lock.lock()
@@ -193,7 +192,7 @@ final class MDKPlaybackHealthCoordinator {
             case .idle, .playing: break
             }
         } else if activeRequests > 0, rangeFailures == 0 {
-            // An open request alone is not progress. Keep the previous timestamp so stalled sockets can time out.
+            // An open request alone is not progress. Keep the old timestamp so a stalled socket can time out.
         }
         lock.unlock()
     }
@@ -202,12 +201,10 @@ final class MDKPlaybackHealthCoordinator {
         lock.lock()
         defer { lock.unlock() }
         guard candidate.generation == generation else { return .ignore(reason: "generation-changed") }
-
         if case let .fatal(_, reason) = candidate { return .fail(reason: reason) }
 
         let wall = max(0, now - phaseStartedAt)
         let idle = max(0, now - lastProgressAt)
-
         switch candidate {
         case .prepareTimeout:
             guard phase == .preparing else { return .ignore(reason: "phase=\(phase.rawValue)") }
@@ -215,7 +212,6 @@ final class MDKPlaybackHealthCoordinator {
             if wall < 6 { return .defer(reason: "prepare-minimum-window") }
             if idle < 4 { return .defer(reason: "prepare-progress-recent") }
             return .fail(reason: "prepare-no-progress")
-
         case .firstFrameTimeout:
             guard phase == .firstFrame else { return .ignore(reason: "phase=\(phase.rawValue)") }
             guard shouldPlay else { return .ignore(reason: "playback-not-requested") }
@@ -223,13 +219,11 @@ final class MDKPlaybackHealthCoordinator {
             if wall < 5 { return .defer(reason: "first-frame-minimum-window") }
             if idle < 3 || buffering { return .defer(reason: buffering ? "first-frame-buffering" : "first-frame-progress-recent") }
             return .fail(reason: "first-frame-no-progress")
-
         case .renderTimeout:
             guard phase == .playing else { return .ignore(reason: "phase=\(phase.rawValue)") }
             guard shouldPlay, !buffering else { return .ignore(reason: buffering ? "buffering" : "playback-not-requested") }
             if idle < 3 { return .defer(reason: "render-progress-recent") }
             return .fail(reason: "render-no-progress")
-
         case let .nativeSeekTimeout(_, candidateSeekID, hard):
             guard phase == .nativeSeek, seekID == candidateSeekID else { return .ignore(reason: "phase=\(phase.rawValue)-seek=\(seekID ?? -1)") }
             if !hard { return .defer(reason: "native-seek-soft-probe") }
@@ -237,7 +231,6 @@ final class MDKPlaybackHealthCoordinator {
             if wall < 5 { return .defer(reason: "native-seek-minimum-window") }
             if idle < 2.5 { return .defer(reason: "native-seek-progress-recent") }
             return .fail(reason: "native-seek-no-progress")
-
         case let .seekFrameTimeout(_, candidateSeekID, hard):
             guard phase == .seekFrame, seekID == candidateSeekID else { return .ignore(reason: "phase=\(phase.rawValue)-seek=\(seekID ?? -1)") }
             guard shouldPlay else { return .ignore(reason: "playback-not-requested") }
@@ -246,7 +239,6 @@ final class MDKPlaybackHealthCoordinator {
             if wall < 4 { return .defer(reason: "seek-frame-minimum-window") }
             if idle < 2.5 || buffering { return .defer(reason: buffering ? "seek-frame-buffering" : "seek-frame-progress-recent") }
             return .fail(reason: "seek-frame-no-progress")
-
         case .fatal:
             return .fail(reason: "fatal")
         }
