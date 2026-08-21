@@ -29,14 +29,14 @@ struct BufferedTimelineSlider: View {
 
                 ForEach(Array(normalizedCacheRanges.enumerated()), id: \.offset) { _, cached in
                     Rectangle()
-                        .fill(Color.white.opacity(0.32))
+                        .fill(Color.white.opacity(0.18))
                         .frame(width: max(1, width * CGFloat(cached.upperBound - cached.lowerBound)), height: trackHeight)
                         .offset(x: width * CGFloat(cached.lowerBound))
                 }
 
                 ForEach(Array(normalizedLivePlayableRanges.enumerated()), id: \.offset) { _, playable in
                     Rectangle()
-                        .fill(Color.white.opacity(0.78))
+                        .fill(Color.white.opacity(0.92))
                         .frame(width: max(1, width * CGFloat(playable.upperBound - playable.lowerBound)), height: trackHeight)
                         .offset(x: width * CGFloat(playable.lowerBound))
                 }

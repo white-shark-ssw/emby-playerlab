@@ -120,7 +120,10 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
 }
 
 struct PlayerSnapshot: Equatable {
+    /// Engine playback clock. This is not proof that the frame is visible.
     var position: Double = 0
+    /// Timestamp of the latest frame actually submitted to the renderer, when the engine can provide it.
+    var renderedPosition: Double? = nil
     var duration: Double = 0
     var bufferedRanges: [ClosedRange<Double>] = []
     var isPlaying = false

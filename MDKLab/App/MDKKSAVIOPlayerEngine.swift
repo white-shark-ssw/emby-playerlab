@@ -456,10 +456,11 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         DiagnosticsLogger.shared.playback("MDKSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) phase=request generation=\(currentPlayerGeneration) nativeOutstanding=\(nativeSeekOutstandingCount) unifiedTransport=\(sharedTransportSession != nil) direction=\(String(describing: direction))")
         DiagnosticsLogger.shared.playback("MDKInputTrace", "session=\(inputTraceSession) source=\(inputTraceSource) event=seek-request seekID=\(seekID) target=\(String(format: "%.3f", target)) position=\(String(format: "%.3f", lastNativePosition)) generation=\(currentPlayerGeneration) frameSerial=\(renderedFrameSerial) raw=0x\(String(lastNativeStatus, radix: 16))")
 
-        let supersededNativeSeekID = activeNativeSeek?.id
-        queuedLatestSeek = nil
-        if let supersededNativeSeekID = supersededNativeSeekID {
-            DiagnosticsLogger.shared.playback("MDKSeekPreempt", "latest=\(seekID) target=\(String(format: "%.3f", target)) superseded=\(supersededNativeSeekID) action=native-latest-wins")
+        if let activeNativeSeek {
+            let replaced = queuedLatestSeek?.id
+            queuedLatestSeek = intent
+            DiagnosticsLogger.shared.playback("MDKSeekCoalesce", "latest=\(seekID) target=\(String(format: "%.3f", target)) active=\(activeNativeSeek.id) replacedQueued=\(replaced.map { String($0) } ?? "none") action=queue-latest-single-native")
+            return
         }
         dispatchNativeSeek(intent, player: player)
     }
@@ -975,11 +976,8 @@ final class KSAVIOPlayerEngine: PlayerEngine {
 
         if confirmedEnd, duration > 0, position + max(3, duration * 0.005) < duration, activeNativeSeek != nil || queuedLatestSeek != nil || pendingSeekResume != nil {
             let recoveryTarget = latestDesiredTarget(fallback: position)
-            activeNativeSeek = nil
-            queuedLatestSeek = nil
-            pendingSeekResume = nil
-            DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=premature-eof-during-seek position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) latestTarget=\(String(format: "%.3f", recoveryTarget)) action=in-place-reprepare-no-rebuild")
-            recoverStall(position: recoveryTarget, duration: duration)
+            DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=premature-eof-during-seek position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) latestTarget=\(String(format: "%.3f", recoveryTarget)) action=quarantine-generation")
+            quarantineCurrentGeneration(reason: "premature-eof-during-seek", position: recoveryTarget, failedGeneration: generation, message: "MDK premature EOF during seek")
             return
         }
 
@@ -994,7 +992,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         let buffering = rawBuffering && !suppressSeekBuffering
         let forwardBuffered = seconds(bufferMs)
         let bufferedEnd = duration > 0 ? min(duration, position + forwardBuffered) : position + forwardBuffered
-        onSnapshot?(PlayerSnapshot(position: position, duration: duration, bufferedRanges: bufferedEnd > position ? [position...bufferedEnd] : [], isPlaying: isPlaying && !confirmedEnd, isBuffering: buffering, waitingReason: buffering ? "MDK 等待媒体数据" : nil, errorMessage: hasStatus(status, bit: 31) ? "MDK media status invalid" : nil, didReachEnd: confirmedEnd))
+        onSnapshot?(PlayerSnapshot(position: position, renderedPosition: lastRenderedTimestamp, duration: duration, bufferedRanges: bufferedEnd > position ? [position...bufferedEnd] : [], isPlaying: isPlaying && !confirmedEnd, isBuffering: buffering, waitingReason: buffering ? "MDK 等待媒体数据" : nil, errorMessage: hasStatus(status, bit: 31) ? "MDK media status invalid" : nil, didReachEnd: confirmedEnd))
 
         if var pending = pendingSeekResume, !pending.didLogClockAdvance, let callbackPosition = pending.callbackPosition, abs(position - callbackPosition) > 0.08 {
             let resumeMs = (now - pending.requestedAt) * 1_000
@@ -1084,23 +1082,8 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private func recoverWedgedSeek(reason: String, fallbackTarget: Double, playerGeneration: Int) {
         guard playerGeneration == generation, player != nil else { return }
         let recoveryTarget = latestDesiredTarget(fallback: fallbackTarget)
-        let nativeUnresponsive = reason.contains("timeout") || reason.contains("callback-without-new-frame")
-        if nativeUnresponsive {
-            nativeQuarantineActive = true
-            activeNativeSeek = nil
-            queuedLatestSeek = nil
-            pendingSeekResume = nil
-            seekBufferingGraceStartedAt = nil
-            seekBufferingGraceID = nil
-            seekBufferingGraceTarget = nil
-            hasRenderedValidFrame = false
-            let message = "MDK native isolation seek wedge"
-            DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=\(reason) generation=\(playerGeneration) latestTarget=\(String(format: "%.3f", recoveryTarget)) action=quarantine-engine-switch-mpv sameProcessMDKRebuild=false")
-            onSnapshot?(PlayerSnapshot(position: recoveryTarget, duration: max(lastNativeDuration, source.mediaSource.durationSeconds ?? 0), isPlaying: false, isBuffering: false, errorMessage: message))
-            return
-        }
-        DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=\(reason) active=\(activeNativeSeek?.id ?? -1) queued=\(queuedLatestSeek?.id ?? -1) latestTarget=\(String(format: "%.3f", recoveryTarget)) action=quarantine-responsive-session-switch-mpv sameProcessMDKRebuild=false")
-        quarantineCurrentGeneration(reason: "responsive-seek-recovery-\(reason)", position: recoveryTarget, failedGeneration: playerGeneration, message: "MDK session unsafe seek recovery")
+        DiagnosticsLogger.shared.playback("MDKSeekWedge", "reason=\(reason) generation=\(playerGeneration) active=\(activeNativeSeek?.id ?? -1) queued=\(queuedLatestSeek?.id ?? -1) latestTarget=\(String(format: "%.3f", recoveryTarget)) action=quarantine-generation sameProcessMDKRebuild=false")
+        quarantineCurrentGeneration(reason: "seek-wedge-\(reason)", position: recoveryTarget, failedGeneration: playerGeneration, message: "MDK session unsafe seek recovery")
     }
 
     private func scheduleRateHealth(player: swift_mdk.Player, generation: Int, requested: Double, startedAt: TimeInterval, startPosition: Double, delay: TimeInterval) {
