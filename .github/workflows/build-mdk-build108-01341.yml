@@ -1,0 +1,157 @@
+name: Build OnePlayer 0.13.41 Build108
+
+on:
+  pull_request:
+    branches: [ci/mdk-precise-seek-truehd-0.13.36-coldresume]
+    paths:
+      - "scripts/instrument_mdk_ignored_seek_settle_01341.py"
+      - ".github/workflows/build-mdk-build108-01341.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: mdk-build108-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify frozen playback baseline
+        run: |
+          set -euo pipefail
+          git cat-file -e bc621ee437f82a043cabd074e9bd8f7d45e1bfb1^{commit}
+          grep -Fq 'iOS: "15.0"' project.mdklab.yml
+
+      - name: Materialize Build108
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/instrument_mdk_file_http_trace.py scripts/instrument_mdk_seek_sequence_trace.py scripts/instrument_mdk_bounded_request_01335.py scripts/instrument_mdk_precise_seek_truehd_01336.py scripts/instrument_mdk_cold_resume_guard_01336.py scripts/instrument_mdk_timeout_fallback_01336.py scripts/instrument_mdk_seek_ui_haptics_01337.py scripts/instrument_mdk_seek_low_latency_haptics_01338.py scripts/instrument_mdk_cold_resume_first_frame_01339.py scripts/instrument_mdk_native_latest_wins_01340.py scripts/instrument_mdk_ignored_seek_settle_01341.py
+          python3 scripts/instrument_mdk_file_http_trace.py
+          python3 scripts/instrument_mdk_seek_sequence_trace.py
+          python3 scripts/instrument_mdk_bounded_request_01335.py
+          python3 scripts/instrument_mdk_precise_seek_truehd_01336.py
+          python3 scripts/instrument_mdk_cold_resume_guard_01336.py
+          python3 scripts/instrument_mdk_timeout_fallback_01336.py
+          python3 scripts/instrument_mdk_seek_ui_haptics_01337.py
+          python3 scripts/instrument_mdk_seek_low_latency_haptics_01338.py
+          python3 scripts/instrument_mdk_cold_resume_first_frame_01339.py
+          python3 scripts/instrument_mdk_native_latest_wins_01340.py
+          python3 scripts/instrument_mdk_ignored_seek_settle_01341.py
+          grep -Fq 'private let avioRequestSizeBytes = 2 * 1_048_576' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'player.setProperty(name: "avio.request_size", value: String(avioRequestSizeBytes))' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'flags: .FromStart' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let seekBufferMinMs: Int64 = 200' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'reason=seek-settle-window graceMs=' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'phase=first-frame-grace' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'coldResumeFirstFrameHardLimitSeconds: TimeInterval = 12.0' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'action=native-latest-wins' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'action=discard-superseded-frame' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'action=defer-ignored-settle-check' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'action=retry-final-ignored' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'action=settled-without-retry' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          ! grep -Fq 'retry-ignored-once' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          ! grep -Fq 'queuedLatestSeek = intent' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'MDKAudioStartupFallback' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'phase=prepare-grace' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'cold resume transport resolve awaited' Sources/Player/PlayerController.swift
+          grep -Fq 'value: 0.3744' Sources/UI/PlaybackVolumeTickHaptics.swift
+          grep -Fq 'duration: 0.010' Sources/UI/PlaybackVolumeTickHaptics.swift
+          grep -Fq 'sourceVersion = "0.13.41"' Sources/Core/AppIdentity.swift
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+          git diff --check
+
+      - name: Select Xcode and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          swift --version
+
+      - name: Generate project and resolve dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build Release for generic iOS device
+        id: release_build
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.41 CURRENT_PROJECT_VERSION=108 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Report compiler failure
+        if: steps.release_build.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          grep -nE '(^|[[:space:]])(error:|fatal error:)|BUILD FAILED|SwiftCompile|CompileSwift|EmitSwiftModule' build.log | tail -300 || true
+          tail -220 build.log || true
+          exit 1
+
+      - name: Locate built app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Validate app identity
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.41' --build '108' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+
+      - name: Validate minimum OS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+
+      - name: Upload validation diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.41-build108-validation-diagnostics
+          path: |
+            app-validation.log
+            min-os-report.log
+            build.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.41-build108-mdk-ignored-seek-settle-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
+
+      - name: Upload Build108 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.41-build108-mdk-ignored-seek-settle
+          path: |
+            OnePlayer-0.13.41-build108-mdk-ignored-seek-settle-unsigned.ipa
+            OnePlayer-0.13.41-build108-mdk-ignored-seek-settle-unsigned.ipa.sha256
+            app-validation.log
+            min-os-report.log
+            build.log
+          if-no-files-found: error
+          retention-days: 14
