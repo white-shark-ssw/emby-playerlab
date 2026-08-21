@@ -26,7 +26,7 @@ jobs:
       - name: Verify flat-source ownership invariants
         run: |
           set -euo pipefail
-          grep -Fq 'sourceVersion = "0.13.51"' Sources/Core/AppIdentity.swift
+          grep -Fq 'sourceVersion = "0.13.54"' Sources/Core/AppIdentity.swift
           grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
           grep -Fq 'private let avioRequestSizeBytes = 2 * 1_048_576' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           grep -Fq 'mode=\(fastPreview ? "relative-fast-only" : "absolute-accurate")' MDKLab/App/MDKKSAVIOPlayerEngine.swift
@@ -35,12 +35,20 @@ jobs:
           grep -Fq 'renderedPosition: lastRenderedTimestamp' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           grep -Fq 'action=queue-latest-single-native' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           ! grep -Fq 'MDKSeekPreempt' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let healthCoordinator = MDKPlaybackHealthCoordinator()' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'authority=health-coordinator' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          test "$(grep -Fo 'quarantineCurrentGeneration(' MDKLab/App/MDKKSAVIOPlayerEngine.swift | wc -l | tr -d ' ')" = "2"
+          ! grep -Fq 'native-seek-absolute-limit' MDKLab/App/MDKPlaybackHealthCoordinator.swift
+          ! grep -Fq 'seek-frame-absolute-limit' MDKLab/App/MDKPlaybackHealthCoordinator.swift
           grep -Fq 'presentationPosition(for: value)' Sources/Player/PlayerController.swift
           grep -Fq 'return engineKind != .mpv && engineKind != .ksAVIO' Sources/Player/PlayerController.swift
+          grep -Fq 'livePlayableRanges = bufferState.livePlayableRanges.filter' Sources/Player/PlayerController.swift
           ! grep -Fq 'SeekDisplayAnchor' Sources/Player/PlayerController.swift
           ! grep -Fq 'liveTrackHeight' Sources/UI/BufferedTimelineSlider.swift
+          ! grep -Fq 'cacheByteRanges' Sources/UI/BufferedTimelineSlider.swift
           grep -Fq 'bufferState.livePlayableRanges.compactMap' Sources/UI/BufferedTimelineSlider.swift
-          grep -Fq 'Color.white.opacity(0.92)' Sources/UI/BufferedTimelineSlider.swift
+          grep -Fq 'Color.white.opacity(0.48)' Sources/UI/BufferedTimelineSlider.swift
+          ! grep -Fq 'cacheByteRanges: controller.transportCacheRanges' Sources/UI/PlayerScreen.swift
           ! grep -R 'python3 scripts/instrument_mdk_' .github/workflows/validate-flat-player-source.yml
           git diff --check
 
@@ -65,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf build
-          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.51 CURRENT_PROJECT_VERSION=118 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.54 CURRENT_PROJECT_VERSION=121 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
 
       - name: Validate minimum OS
         run: |
@@ -79,7 +87,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: flat-player-source-validation
+          name: flat-player-source-validation-0.13.54-build121
           path: |
             build.log
             min-os-report.log
