@@ -23,7 +23,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify flat-source invariants
+      - name: Verify flat-source ownership invariants
         run: |
           set -euo pipefail
           grep -Fq 'sourceVersion = "0.13.51"' Sources/Core/AppIdentity.swift
@@ -31,10 +31,16 @@ jobs:
           grep -Fq 'private let avioRequestSizeBytes = 2 * 1_048_576' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           grep -Fq 'mode=\(fastPreview ? "relative-fast-only" : "absolute-accurate")' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           grep -Fq 'actualPosition: renderResult' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'var renderedPosition: Double? = nil' Sources/Player/PlayerEngine.swift
+          grep -Fq 'renderedPosition: lastRenderedTimestamp' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'action=queue-latest-single-native' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          ! grep -Fq 'MDKSeekPreempt' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'presentationPosition(for: value)' Sources/Player/PlayerController.swift
           grep -Fq 'return engineKind != .mpv && engineKind != .ksAVIO' Sources/Player/PlayerController.swift
           ! grep -Fq 'SeekDisplayAnchor' Sources/Player/PlayerController.swift
           ! grep -Fq 'liveTrackHeight' Sources/UI/BufferedTimelineSlider.swift
           grep -Fq 'bufferState.livePlayableRanges.compactMap' Sources/UI/BufferedTimelineSlider.swift
+          grep -Fq 'Color.white.opacity(0.92)' Sources/UI/BufferedTimelineSlider.swift
           ! grep -R 'python3 scripts/instrument_mdk_' .github/workflows/validate-flat-player-source.yml
           git diff --check
 
