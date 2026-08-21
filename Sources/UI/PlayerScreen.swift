@@ -88,7 +88,6 @@ struct PlayerScreen: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(!isClosing && !playbackSettingsPresented)
 
-                if let feedback = controller.seekFeedback { feedbackView(feedback).scaleEffect(0.55) }
                 if let feedback = controller.scrubFeedback { feedbackView(feedback) }
                 if let temporaryRateHUD { rateFeedbackView(temporaryRateHUD) }
                 if let adjustmentHUD { adjustmentHUDView(adjustmentHUD) }
@@ -96,7 +95,16 @@ struct PlayerScreen: View {
                 controls
                 centerPlaybackControls
 
-                if controller.snapshot.isBuffering { bufferingIndicator }
+                if let feedback = controller.seekFeedback {
+                    VStack {
+                        Spacer()
+                        feedbackView(feedback).scaleEffect(0.55).padding(.bottom, 96)
+                    }
+                    .allowsHitTesting(false)
+                    .zIndex(12)
+                }
+
+                if controller.networkBufferingVisible { bufferingIndicator }
                 statusMessages
                 if let message = controller.engineSwitchNotice { automaticEngineSwitchToast(message) }
 
@@ -367,7 +375,7 @@ struct PlayerScreen: View {
         .allowsHitTesting(false)
         .task {
             bufferingDownloadSpeed = 0
-            while !Task.isCancelled && controller.snapshot.isBuffering {
+            while !Task.isCancelled && controller.networkBufferingVisible {
                 bufferingDownloadSpeed = await controller.currentDownloadBytesPerSecond()
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }

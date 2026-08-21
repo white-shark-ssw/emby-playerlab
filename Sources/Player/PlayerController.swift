@@ -20,6 +20,7 @@ final class PlayerController: ObservableObject {
     @Published private(set) var transportCacheRanges: [ClosedRange<Double>] = []
     @Published private(set) var verifiedBufferedRanges: [ClosedRange<Double>] = []
     @Published private(set) var bufferState = PlaybackBufferState()
+    @Published private(set) var networkBufferingVisible = false
 
     @Published private(set) var source: ResolvedPlaybackSource
 
@@ -246,6 +247,7 @@ final class PlayerController: ObservableObject {
         transportCacheFraction = 0
         transportCacheRanges = []
         bufferState = PlaybackBufferState()
+        networkBufferingVisible = false
         engineSwitchTask?.cancel()
         engineSwitchTask = nil
         engineSwitchNoticeTask?.cancel()
@@ -400,6 +402,7 @@ final class PlayerController: ObservableObject {
         transportMetricsTask = nil
         lastTransportMetrics = nil
         transportSummary = nil
+        networkBufferingVisible = false
         startupFallbackTask?.cancel()
         startupFallbackTask = nil
 
@@ -568,6 +571,7 @@ final class PlayerController: ObservableObject {
                 guard generation == self.engineGeneration else { return }
                 let wasEnd = self.snapshot.didReachEnd
                 self.snapshot = value
+                self.networkBufferingVisible = value.isBuffering && (self.transportContext?.starvationState.isStarving ?? false)
                 self.prematureEOFRecovery.observe(snapshot: value)
                 if value.position > 0.25 { self.hasPlaybackAdvanced = true }
                 self.confirmInitialResumePlaybackIfNeeded(value)
