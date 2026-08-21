@@ -1,0 +1,47 @@
+name: Apply Frozen Playback UI Contract 0.13.55
+
+on:
+  pull_request:
+    branches: [ci/mdk-seek-audio-ui-0.13.51]
+    paths:
+      - "scripts/migrate_frozen_playback_ui_contract_01355.py"
+      - ".github/workflows/apply-frozen-playback-ui-contract-01355.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply frozen UI contract
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/migrate_frozen_playback_ui_contract_01355.py
+          python3 scripts/migrate_frozen_playback_ui_contract_01355.py
+          git diff --check
+          grep -Fq 'seekBufferingUIGraceSeconds: TimeInterval = 0.5' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'cacheByteRanges: controller.transportCacheRanges' Sources/UI/PlayerScreen.swift
+          grep -Fq 'normalizedCacheRanges' Sources/UI/BufferedTimelineSlider.swift
+          ! grep -Fq 'normalizedLivePlayableRanges' Sources/UI/BufferedTimelineSlider.swift
+          grep -Fq '.hapticIntensity, value: 0.38' Sources/UI/PlaybackVolumeTickHaptics.swift
+          grep -Fq 'duration: 0.005' Sources/UI/PlaybackVolumeTickHaptics.swift
+
+      - name: Commit migrated Swift source
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          git add -- MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/UI/PlayerScreen.swift
+          test -n "$(git diff --cached --name-only)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: restore frozen buffering and timeline semantics"
+          git push origin "HEAD:${HEAD_BRANCH}"
