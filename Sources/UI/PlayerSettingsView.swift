@@ -13,6 +13,7 @@ struct PlayerSettingsView: View {
     @AppStorage(PlayerPreferenceKeys.resumeWhenForegrounded) private var resumeWhenForegrounded = false
     @AppStorage(PlayerPreferenceKeys.defaultScaleMode) private var defaultScaleMode = PlayerVideoScaleMode.fit.rawValue
     @AppStorage(PlayerPreferenceKeys.controlsAutoHideSeconds) private var controlsAutoHideSeconds = 3.0
+    @AppStorage(PlayerPreferenceKeys.mdkAVIORequestSize2MiBEnabled) private var mdkAVIORequestSize2MiBEnabled = true
 
     @Environment(\.presentationMode) private var presentationMode
     private let seekIntervals = [5, 10, 15, 20, 30, 60]
@@ -26,6 +27,10 @@ struct PlayerSettingsView: View {
                     Picker("播放引擎", selection: $enginePreference) {
                         ForEach(PlayerEnginePreference.selectableCases) { preference in Text(preference.title).tag(preference.rawValue) }
                     }
+                }
+
+                Section(header: Text("MDK 实验"), footer: Text("临时 A/B 开关，仅影响新建 MDK 播放会话。开启时保持 Build111 的 avio.request_size=2 MiB；关闭时恢复 Build102 之前的 unbounded request_size。short_seek_size 仍保持 2 MiB，其它 Seek、缓存和恢复逻辑不变。")) {
+                    Toggle("2 MiB AVIO 请求限制", isOn: $mdkAVIORequestSize2MiBEnabled)
                 }
 
                 Section(header: Text("播放")) {
