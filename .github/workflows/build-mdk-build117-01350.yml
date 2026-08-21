@@ -61,7 +61,7 @@ jobs:
           grep -Fq 'feedbackView(feedback).scaleEffect(0.30)' Sources/UI/PlayerScreen.swift
           grep -Fq 'bufferState.livePlayableRanges.compactMap' Sources/UI/BufferedTimelineSlider.swift
           grep -Fq 'Color.white.opacity(0.78)' Sources/UI/BufferedTimelineSlider.swift
-          grep -Fq '.hapticIntensity, value: 0.198' Sources/UI/PlaybackVolumeTickHaptics.swift
+          grep -Fq '.hapticIntensity, value: 0.41184' Sources/UI/PlaybackVolumeTickHaptics.swift
           grep -Fq 'duration: 0.006' Sources/UI/PlaybackVolumeTickHaptics.swift
           grep -Fq 'sourceVersion = "0.13.50"' Sources/Core/AppIdentity.swift
           grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
