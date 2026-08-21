@@ -47,8 +47,10 @@ replace_once(
     '''    private var normalizedLivePlayableRanges: [ClosedRange<Double>] {\n        let duration = range.upperBound - range.lowerBound\n        guard duration > 0 else { return [] }\n        return bufferState.livePlayableRanges.compactMap { item in\n            let lower = min(1, max(0, (item.lowerBound - range.lowerBound) / duration))\n            let upper = min(1, max(0, (item.upperBound - range.lowerBound) / duration))\n            return upper > lower ? lower...upper : nil\n        }\n    }\n\n    private var normalizedCacheRanges: [ClosedRange<Double>] {\n''',
 )
 
-replace_once(haptics_path, '                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.18),\n', '                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.198),\n')
-replace_once(haptics_path, '                duration: 0.015\n', '                duration: 0.006\n')
+# Build105 is the actual materialized baseline: intensity 0.3744 and 10ms duration.
+# User requested 6ms duration and +10% intensity from the current build.
+replace_once(haptics_path, '                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.3744),\n', '                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.41184),\n')
+replace_once(haptics_path, '                duration: 0.010\n', '                duration: 0.006\n')
 
 engine = Path(engine_path).read_text()
 identity = Path(identity_path).read_text()
@@ -64,7 +66,7 @@ assert 'normalizedLivePlayableRanges' in slider
 assert 'bufferState.livePlayableRanges.compactMap' in slider
 assert 'Color.white.opacity(0.32)' in slider
 assert 'Color.white.opacity(0.78)' in slider
-assert '.hapticIntensity, value: 0.198' in haptics
+assert '.hapticIntensity, value: 0.41184' in haptics
 assert 'duration: 0.006' in haptics
 assert 'sourceVersion = "0.13.50"' in identity
 assert 'iOS: "15.0"' in Path("project.mdklab.yml").read_text()
