@@ -1,0 +1,145 @@
+name: Build OnePlayer 0.13.56 Build123 Strict Seek Trace
+
+on:
+  pull_request:
+    branches: [refactor/player-state-ownership-0.13.53]
+    paths:
+      - ".github/workflows/build-seek-strict-trace-01356.yml"
+      - "MDKLab/**"
+      - "Sources/**"
+      - "project.mdklab.yml"
+      - "docs/architecture/PLAYBACK_UI_CONTRACT.md"
+  workflow_dispatch:
+
+concurrency:
+  group: seek-strict-build123-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify strict diagnostic contract
+        run: |
+          set -euo pipefail
+          grep -Fq 'sourceVersion = "0.13.56"' Sources/Core/AppIdentity.swift
+          grep -Fq 'MDKSeekTransportGate' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'SeekTransportRead' Sources/Transport/UnifiedMediaTransportSession.swift
+          grep -Fq 'SeekTransportTrace' Sources/Transport/UnifiedMediaTransportSession.swift
+          grep -Fq 'PlaybackTransportStarvationState' Sources/Transport/PlaybackTransportContext.swift
+          grep -Fq 'networkBufferingVisible = value.isBuffering &&' Sources/Player/PlayerController.swift
+          grep -Fq 'if controller.networkBufferingVisible { bufferingIndicator }' Sources/UI/PlayerScreen.swift
+          ! grep -Fq 'if controller.snapshot.isBuffering { bufferingIndicator }' Sources/UI/PlayerScreen.swift
+          grep -Fq 'padding(.bottom, 96)' Sources/UI/PlayerScreen.swift
+          grep -Fq 'cacheByteRanges: controller.transportCacheRanges' Sources/UI/PlayerScreen.swift
+          grep -Fq 'private let seekBufferingUIGraceSeconds: TimeInterval = 0.5' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let relativeSeekBufferMinMs: Int64 = 50' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let seekBufferMinMs: Int64 = 200' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let normalBufferMinMs: Int64 = 1_000' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let avioRequestSizeBytes = 2 * 1_048_576' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'let seekFlag: SeekFlag = dispatchedIntent.fastPreview ? .Default : .FromStart' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'action=queue-latest-single-native' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          ! grep -Fq 'MDKSeekPreempt' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'actualPosition: renderResult' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'authority=health-coordinator' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'value: 0.38' Sources/UI/PlaybackVolumeTickHaptics.swift
+          grep -Fq 'duration: 0.005' Sources/UI/PlaybackVolumeTickHaptics.swift
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+          ! grep -R 'python3 scripts/instrument_mdk_' .github/workflows/build-seek-strict-trace-01356.yml
+          git diff --check
+
+      - name: Select Xcode and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          swift --version
+
+      - name: Generate project and resolve dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build Release for generic iOS device
+        id: release_build
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.56 CURRENT_PROJECT_VERSION=123 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Report compiler failure
+        if: steps.release_build.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          grep -nE '(^|[[:space:]])(error:|fatal error:)|BUILD FAILED|SwiftCompile|CompileSwift|EmitSwiftModule' build.log | tail -300 || true
+          tail -220 build.log || true
+          exit 1
+
+      - name: Locate built app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Validate app identity
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.56' --build '123' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+
+      - name: Validate minimum OS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.56-build123-seek-strict-trace-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
+
+      - name: Upload Build123 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.56-build123-seek-strict-trace
+          path: |
+            OnePlayer-0.13.56-build123-seek-strict-trace-unsigned.ipa
+            OnePlayer-0.13.56-build123-seek-strict-trace-unsigned.ipa.sha256
+            app-validation.log
+            min-os-report.log
+            build.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload validation diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.56-build123-seek-strict-trace-diagnostics
+          path: |
+            app-validation.log
+            min-os-report.log
+            build.log
+          if-no-files-found: warn
+          retention-days: 14

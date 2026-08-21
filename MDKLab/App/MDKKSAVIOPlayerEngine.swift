@@ -475,7 +475,11 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         if let session = sharedTransportSession {
             DiagnosticsLogger.shared.playback("MDKSeekHTTP", "id=\(intent.id) action=preserve-existing-stream-before-native-seek")
             Task { @MainActor [weak self, weak player] in
+                let priorityStartedAt = Date().timeIntervalSince1970
+                DiagnosticsLogger.shared.playback("MDKSeekTransportGate", "id=\(intent.id) target=\(String(format: "%.3f", intent.target)) phase=begin")
                 await session.prioritizeSeek(position: intent.target, duration: intent.duration)
+                let priorityMs = (Date().timeIntervalSince1970 - priorityStartedAt) * 1_000
+                DiagnosticsLogger.shared.playback("MDKSeekTransportGate", "id=\(intent.id) target=\(String(format: "%.3f", intent.target)) phase=end waitMs=\(String(format: "%.1f", priorityMs))")
                 guard let self, let player, intent.playerGeneration == self.generation, self.player === player, self.activeNativeSeek?.id == intent.id else { return }
                 if let queued = self.queuedLatestSeek {
                     self.activeNativeSeek = nil
