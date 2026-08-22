@@ -1,0 +1,42 @@
+name: Probe MDK 0.38 SeekFlag Header
+
+on:
+  push:
+    branches: [diag/mdk-seek-incache-ab-0.13.57]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve exact MDK binary package
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          rm -rf .spm-cache
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+      - name: Print SeekFlag definition from resolved MDK 0.38 headers
+        run: |
+          set -euo pipefail
+          echo '--- resolved MDK files containing InCache ---'
+          MATCHES="$(grep -RIl --include='*.h' --include='*.hpp' --include='*.hh' 'InCache' .spm-cache 2>/dev/null || true)"
+          if [ -z "$MATCHES" ]; then
+            echo 'InCache not found under .spm-cache; searching SwiftPM caches'
+            MATCHES="$(grep -RIl --include='*.h' --include='*.hpp' --include='*.hh' 'InCache' "$HOME/Library/Caches/org.swift.swiftpm" 2>/dev/null || true)"
+          fi
+          test -n "$MATCHES"
+          printf '%s\n' "$MATCHES"
+          while IFS= read -r file; do
+            echo "===== $file ====="
+            grep -n -B12 -A20 'InCache' "$file" || true
+          done <<< "$MATCHES"
