@@ -8,6 +8,13 @@ on:
       - "MDKLab/**"
       - "Sources/**"
       - "project.mdklab.yml"
+  pull_request:
+    branches: [diag/mdk-seek-incache-ab-0.13.57]
+    paths:
+      - ".github/workflows/build-mdk-incache-accurate-ab-01358.yml"
+      - "MDKLab/**"
+      - "Sources/**"
+      - "project.mdklab.yml"
   workflow_dispatch:
 
 concurrency:
