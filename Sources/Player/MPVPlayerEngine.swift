@@ -813,6 +813,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         let generation = keyframeIndexGeneration
         keyframeIndexTask?.cancel()
         keyframeIndexTask = nil
+        keyframeObservationTask?.cancel()
+        keyframeObservationTask = nil
         keyframeIndexRetryWorkItem?.cancel()
         keyframeIndexRetryWorkItem = nil
         keyframeIndexRetryAttempt = 0
