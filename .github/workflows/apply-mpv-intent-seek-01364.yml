@@ -1,0 +1,44 @@
+name: Apply MPV Intent Seek 0.13.64
+
+on:
+  push:
+    branches: [diag/mpv-intent-seek-0.13.64]
+    paths:
+      - "scripts/migrate_mpv_intent_seek_01364.py"
+      - ".github/workflows/apply-mpv-intent-seek-01364.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/mpv-intent-seek-0.13.64
+          fetch-depth: 0
+      - name: Apply intent-aware MPV seek policy
+        run: |
+          set -euo pipefail
+          python3 scripts/migrate_mpv_intent_seek_01364.py
+          grep -Fq 'intent = "doubleTapFastSeek"' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'mode = "absolute+keyframes"' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'intent = "scrubReleasePreciseSeek"' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'mode = "absolute+exact"' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'hr-seek-framedrop", "yes"' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'sourceVersion = "0.13.64"' Sources/Core/AppIdentity.swift
+          git diff --check
+      - name: Commit Build131 runtime source
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No runtime source change required'
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Sources/Player/MPVPlayerEngine.swift
+          git commit -m 'mpv: preserve fast double-tap seek and isolate precise scrub'
+          git push origin HEAD:diag/mpv-intent-seek-0.13.64
