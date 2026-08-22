@@ -42,6 +42,7 @@ jobs:
           p = Path('scripts/apply_build141_nearest_keyframe_ab.py')
           s = p.read_text()
           s = s.replace('if text.count(reload_anchor) != 1:', 'if reload_anchor not in text:')
+          s = s.replace('if count != 1:', 'if count < 1:')
           p.write_text(s)
           PY
           python3 scripts/apply_build141_nearest_keyframe_ab.py
