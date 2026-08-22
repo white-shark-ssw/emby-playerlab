@@ -521,9 +521,12 @@ final class KSAVIOPlayerEngine: PlayerEngine {
             player.setBufferRange(msMin: activeSeekBufferMinMs, msMax: Int64(max(3_000, min(30_000, self.preferredForwardBuffer * 1_000))), drop: false)
             DiagnosticsLogger.shared.playback("MDKSeekBuffer", "id=\(dispatchedIntent.id) phase=low-latency minMs=\(activeSeekBufferMinMs) relativeMinMs=\(self.relativeSeekBufferMinMs) accurateMinMs=\(self.seekBufferMinMs) normalMinMs=\(self.normalBufferMinMs) direction=\(String(describing: dispatchedIntent.direction))")
             let seekFlag: SeekFlag = dispatchedIntent.fastPreview ? .AccurateFromStartInCache : .FromStart
-            let decoderProperty = player.property(name: "video.decoder") ?? "nil"
-            DiagnosticsLogger.shared.playback("MDKDecoderTrace", "id=\(dispatchedIntent.id) phase=pre-seek property=\(decoderProperty) requestedPolicy=unchanged-default-auto")
-            DiagnosticsLogger.shared.playback("MDKSeekMode", "id=\(dispatchedIntent.id) target=\(String(format: "%.3f", dispatchedIntent.target)) nativeMode=\(dispatchedIntent.fastPreview ? "accurate-incache" : "accurate") flagRaw=\(seekFlag.rawValue) cacheAware=\(dispatchedIntent.fastPreview) retry=\(dispatchedIntent.retryCount)")
+            let decoderPropertyBefore = player.property(name: "video.decoder") ?? "nil"
+            let experimentalDropPolicy = dispatchedIntent.fastPreview ? "bidir" : "auto"
+            if dispatchedIntent.fastPreview { player.setProperty(name: "video.decoder", value: "drop=bidir") }
+            let decoderPropertyAfter = player.property(name: "video.decoder") ?? "nil"
+            DiagnosticsLogger.shared.playback("MDKDecoderTrace", "id=\(dispatchedIntent.id) phase=pre-seek propertyBefore=\(decoderPropertyBefore) propertyAfter=\(decoderPropertyAfter) requestedPolicy=\(experimentalDropPolicy) scope=relative-native-seek-only")
+            DiagnosticsLogger.shared.playback("MDKSeekMode", "id=\(dispatchedIntent.id) target=\(String(format: "%.3f", dispatchedIntent.target)) nativeMode=\(dispatchedIntent.fastPreview ? "accurate-incache-bidir" : "accurate") flagRaw=\(seekFlag.rawValue) cacheAware=\(dispatchedIntent.fastPreview) retry=\(dispatchedIntent.retryCount)")
             let immediateResult = player.seek(self.milliseconds(dispatchedIntent.target), flags: seekFlag) { [weak self, weak player] actualMs in
                 let callbackAt = Date().timeIntervalSince1970
                 DispatchQueue.main.async { [weak self, weak player] in
@@ -537,6 +540,11 @@ final class KSAVIOPlayerEngine: PlayerEngine {
                     guard self.activeNativeSeek?.id == dispatchedIntent.id else {
                         DiagnosticsLogger.shared.playback("MDKSeek", "id=\(dispatchedIntent.id) target=\(String(format: "%.3f", dispatchedIntent.target)) callbackMs=\(String(format: "%.1f", requestLatency)) nativeMs=\(String(format: "%.1f", nativeLatency)) result=\(actualMs) action=discard-nonactive-native")
                         return
+                    }
+                    if dispatchedIntent.fastPreview {
+                        player.setProperty(name: "video.decoder", value: "drop=auto")
+                        let restoredDecoderProperty = player.property(name: "video.decoder") ?? "nil"
+                        DiagnosticsLogger.shared.playback("MDKDecoderTrace", "id=\(dispatchedIntent.id) phase=callback-restore requestedPolicy=auto property=\(restoredDecoderProperty) scope=relative-native-seek-only")
                     }
 
                     self.activeNativeSeek = nil
