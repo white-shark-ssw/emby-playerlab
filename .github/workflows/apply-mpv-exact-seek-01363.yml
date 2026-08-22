@@ -7,6 +7,12 @@ on:
       - "scripts/migrate_mpv_exact_seek_01363.py"
       - ".github/workflows/apply-mpv-exact-seek-01363.yml"
       - "Sources/Core/AppIdentity.swift"
+  pull_request:
+    branches: [fix/mdk-quarantine-audio-0.13.62]
+    paths:
+      - "scripts/migrate_mpv_exact_seek_01363.py"
+      - ".github/workflows/apply-mpv-exact-seek-01363.yml"
+      - "Sources/Core/AppIdentity.swift"
   workflow_dispatch:
 
 permissions:
