@@ -48,6 +48,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
     private var seekingPropertyActive = false
     private var keyframeIndexGeneration: UInt64 = 0
     private var keyframeIndexTask: Task<Void, Never>?
+    private var keyframeObservationTask: Task<Void, Never>?
     private var keyframeIndexRetryWorkItem: DispatchWorkItem?
     private var keyframeIndexRetryAttempt = 0
     private var keyframeIndexRetrySession: TransportDataSession?
@@ -428,7 +429,6 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                 self.latestNativeSeekDispatchID = seekID
                 self.activeSeekEventOwnerID = nil
                 DiagnosticsLogger.shared.log("MPVSeekFence", "id=\(seekID) phase=native-dispatch owner=awaiting-mpv-event-seek")
-                self.logKeyframeIndexObservation(seekID: seekID, target: target)
                 DiagnosticsLogger.shared.log("MPVSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) phase=native-dispatch prioritizeMs=\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) intent=\(intent) mode=\(mode) bufferHit=\(bufferHit) enginePosition=\(String(format: "%.3f", self.snapshot.position))")
                 self.command(handle, ["seek", String(format: "%.3f", target), mode])
             }
@@ -469,6 +469,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         keyframeIndexGeneration &+= 1
         keyframeIndexTask?.cancel()
         keyframeIndexTask = nil
+        keyframeObservationTask?.cancel()
+        keyframeObservationTask = nil
         keyframeIndexRetryWorkItem?.cancel()
         keyframeIndexRetryWorkItem = nil
         keyframeIndexRetryAttempt = 0
@@ -743,6 +745,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                 let delta = actualPosition - pending.target
                 DiagnosticsLogger.shared.log("MPVSeekFence", "id=\(pending.id) phase=playback-restart accepted=true owner=mpv-event-seek")
                 DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\(pending.id) target=\(String(format: "%.3f", pending.target)) actual=\(String(format: "%.3f", actualPosition)) delta=\(String(format: "%.3f", delta)) completionMs=\(String(format: "%.1f", latency)) bufferHit=\(pending.bufferHit) intent=\(pending.intent) mode=\(pending.mode) event=playback-restart")
+                self.logKeyframeIndexObservation(seekID: pending.id, target: pending.target, actual: actualPosition)
                 DispatchQueue.main.async { [weak self] in
                     self?.onSeekCompleted?(SeekResult(
                         requestedAt: pending.requestedAt,
@@ -810,6 +813,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         let generation = keyframeIndexGeneration
         keyframeIndexTask?.cancel()
         keyframeIndexTask = nil
+        keyframeObservationTask?.cancel()
+        keyframeObservationTask = nil
         keyframeIndexRetryWorkItem?.cancel()
         keyframeIndexRetryWorkItem = nil
         keyframeIndexRetryAttempt = 0
@@ -842,7 +847,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                     self.keyframeIndexRetryWorkItem = nil
                     self.keyframeIndexRetrySession = nil
                     self.keyframeIndexRetryContentLength = 0
-                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=ready generation=\(generation) attempt=\(attempt) entries=\(index.keyframes.count) stream=\(index.videoStreamIndex) timeBase=\(String(format: "%.9f", index.timeBaseSeconds)) streamStart=\(String(format: "%.3f", index.streamStartSeconds)) action=observe-only")
+                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=ready generation=\(generation) attempt=\(attempt) mode=\(index.mode) stream=\(index.videoStreamIndex) timeBase=\(String(format: "%.9f", index.timeBaseSeconds)) streamStart=\(String(format: "%.3f", index.streamStartSeconds)) action=observe-only")
                 case .unavailable(let reason):
                     self.keyframeIndex = nil
                     guard attempt <= Self.keyframeIndexRetryDelays.count else {
@@ -861,19 +866,38 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         }
     }
 
-    private func logKeyframeIndexObservation(seekID: UInt64, target: Double) {
+    private func logKeyframeIndexObservation(seekID: UInt64, target: Double, actual: Double) {
         guard let index = keyframeIndex else {
-            DiagnosticsLogger.shared.log("MPVKeyframeIndex", "id=\(seekID) target=\(String(format: "%.3f", target)) status=not-ready action=observe-only")
+            DiagnosticsLogger.shared.log("MPVKeyframeIndex", "id=\(seekID) target=\(String(format: "%.3f", target)) actual=\(String(format: "%.3f", actual)) status=not-ready action=observe-only")
             return
         }
-        let neighbors = index.neighbors(around: target)
-        let previous = neighbors.previous.map { String(format: "%.3f", $0) } ?? "none"
-        let next = neighbors.next.map { String(format: "%.3f", $0) } ?? "none"
-        let nearest = neighbors.nearest.map { String(format: "%.3f", $0) } ?? "none"
-        let previousDelta = neighbors.previous.map { String(format: "%.3f", $0 - target) } ?? "none"
-        let nextDelta = neighbors.next.map { String(format: "%.3f", $0 - target) } ?? "none"
-        let nearestDelta = neighbors.nearest.map { String(format: "%.3f", $0 - target) } ?? "none"
-        DiagnosticsLogger.shared.log("MPVKeyframeIndex", "id=\(seekID) target=\(String(format: "%.3f", target)) previous=\(previous) previousDelta=\(previousDelta) next=\(next) nextDelta=\(nextDelta) nearest=\(nearest) nearestDelta=\(nearestDelta) entries=\(index.keyframes.count) action=observe-only")
+        guard keyframeObservationTask == nil else {
+            DiagnosticsLogger.shared.log("MPVKeyframeIndex", "id=\(seekID) target=\(String(format: "%.3f", target)) actual=\(String(format: "%.3f", actual)) status=probe-busy action=observe-only")
+            return
+        }
+        keyframeObservationTask = Task { [weak self] in
+            let result = await index.neighbors(around: target)
+            guard !Task.isCancelled else { return }
+            self?.queue.async { [weak self] in
+                guard let self, !self.isStopping else { return }
+                self.keyframeObservationTask = nil
+                switch result {
+                case .ready(let neighbors):
+                    let previous = neighbors.previous.map { String(format: "%.3f", $0) } ?? "none"
+                    let next = neighbors.next.map { String(format: "%.3f", $0) } ?? "none"
+                    let nearest = neighbors.nearest.map { String(format: "%.3f", $0) } ?? "none"
+                    let previousDelta = neighbors.previous.map { String(format: "%.3f", $0 - target) } ?? "none"
+                    let nextDelta = neighbors.next.map { String(format: "%.3f", $0 - target) } ?? "none"
+                    let nearestDelta = neighbors.nearest.map { String(format: "%.3f", $0 - target) } ?? "none"
+                    let mpvDelta = actual - target
+                    let theoreticalGain = neighbors.nearest.map { abs(mpvDelta) - abs($0 - target) }
+                    let gainText = theoreticalGain.map { String(format: "%.3f", $0) } ?? "none"
+                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "id=\(seekID) target=\(String(format: "%.3f", target)) actual=\(String(format: "%.3f", actual)) mpvDelta=\(String(format: "%.3f", mpvDelta)) previous=\(previous) previousDelta=\(previousDelta) previousStatus=\(neighbors.previousStatus) next=\(next) nextDelta=\(nextDelta) nextStatus=\(neighbors.nextStatus) nearest=\(nearest) nearestDelta=\(nearestDelta) theoreticalGain=\(gainText) mode=native-seek-cache-only action=observe-only")
+                case .unavailable(let reason):
+                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "id=\(seekID) target=\(String(format: "%.3f", target)) actual=\(String(format: "%.3f", actual)) status=probe-unavailable reason=\(reason) mode=native-seek-cache-only action=observe-only")
+                }
+            }
+        }
     }
 
     private func refreshProperty(name: String, handle: OpaquePointer) {

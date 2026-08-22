@@ -4,37 +4,34 @@ struct OnePlayerKeyframeNeighbors {
     let previous: Double?
     let next: Double?
     let nearest: Double?
+    let previousStatus: String
+    let nextStatus: String
 }
 
-struct OnePlayerKeyframeIndex {
-    let keyframes: [Double]
+enum OnePlayerKeyframeNeighborProbeResult {
+    case ready(OnePlayerKeyframeNeighbors)
+    case unavailable(String)
+}
+
+final class OnePlayerKeyframeIndex: @unchecked Sendable {
     let videoStreamIndex: Int32
     let timeBaseSeconds: Double
     let streamStartSeconds: Double
+    let mode = "native-seek-cache-only"
 
-    func neighbors(around target: Double) -> OnePlayerKeyframeNeighbors {
-        guard !keyframes.isEmpty else { return OnePlayerKeyframeNeighbors(previous: nil, next: nil, nearest: nil) }
-        var low = 0
-        var high = keyframes.count
-        while low < high {
-            let mid = low + (high - low) / 2
-            if keyframes[mid] < target { low = mid + 1 }
-            else { high = mid }
-        }
-        if low < keyframes.count, abs(keyframes[low] - target) < 0.0005 {
-            let exact = keyframes[low]
-            return OnePlayerKeyframeNeighbors(previous: exact, next: exact, nearest: exact)
-        }
-        let previous = low > 0 ? keyframes[low - 1] : nil
-        let next = low < keyframes.count ? keyframes[low] : nil
-        let nearest: Double?
-        switch (previous, next) {
-        case let (previous?, next?): nearest = abs(target - previous) <= abs(next - target) ? previous : next
-        case let (previous?, nil): nearest = previous
-        case let (nil, next?): nearest = next
-        default: nearest = nil
-        }
-        return OnePlayerKeyframeNeighbors(previous: previous, next: next, nearest: nearest)
+    private let session: TransportDataSession
+    private let contentLength: Int64
+
+    init(session: TransportDataSession, contentLength: Int64, videoStreamIndex: Int32, timeBaseSeconds: Double, streamStartSeconds: Double) {
+        self.session = session
+        self.contentLength = contentLength
+        self.videoStreamIndex = videoStreamIndex
+        self.timeBaseSeconds = timeBaseSeconds
+        self.streamStartSeconds = streamStartSeconds
+    }
+
+    func neighbors(around target: Double) async -> OnePlayerKeyframeNeighborProbeResult {
+        await OnePlayerKeyframeIndexProbe.probeNeighbors(session: session, contentLength: contentLength, target: target)
     }
 }
 
@@ -43,9 +40,10 @@ enum OnePlayerKeyframeIndexBuildResult {
     case unavailable(String)
 }
 
-#if canImport(Libavformat) && canImport(Libavutil)
+#if canImport(Libavformat) && canImport(Libavutil) && canImport(Libavcodec)
 import Libavformat
 import Libavutil
+import Libavcodec
 
 private final class OnePlayerKeyframeReadBox: @unchecked Sendable {
     private let lock = NSLock()
@@ -137,13 +135,71 @@ private let onePlayerKeyframeSeekCallback: @convention(c) (UnsafeMutableRawPoint
     return Unmanaged<OnePlayerKeyframeAVIOState>.fromOpaque(opaque).takeUnretainedValue().seek(to: offset, whence: whence)
 }
 
+private final class OnePlayerKeyframeOpenedInput {
+    let state: OnePlayerKeyframeAVIOState
+    var avioContext: UnsafeMutablePointer<AVIOContext>?
+    var formatContext: UnsafeMutablePointer<AVFormatContext>?
+
+    private init(state: OnePlayerKeyframeAVIOState, avioContext: UnsafeMutablePointer<AVIOContext>, formatContext: UnsafeMutablePointer<AVFormatContext>) {
+        self.state = state
+        self.avioContext = avioContext
+        self.formatContext = formatContext
+    }
+
+    deinit {
+        state.cancel()
+        if formatContext != nil { avformat_close_input(&formatContext) }
+        if avioContext != nil { avio_context_free(&avioContext) }
+    }
+
+    static func open(session: TransportDataSession, contentLength: Int64) -> (OnePlayerKeyframeOpenedInput?, String?) {
+        guard contentLength > 0 else { return (nil, "invalid-content-length") }
+        let state = OnePlayerKeyframeAVIOState(session: session, contentLength: contentLength)
+        let bufferSize: Int32 = 64 * 1024
+        guard let rawBuffer = av_malloc(Int(bufferSize)) else { return (nil, "av-malloc-failed") }
+        let buffer = rawBuffer.assumingMemoryBound(to: UInt8.self)
+        var avioContext = avio_alloc_context(buffer, bufferSize, 0, Unmanaged.passUnretained(state).toOpaque(), onePlayerKeyframeReadCallback, nil, onePlayerKeyframeSeekCallback)
+        guard let avio = avioContext else {
+            av_free(rawBuffer)
+            return (nil, "avio-alloc-context-failed")
+        }
+        var formatContext: UnsafeMutablePointer<AVFormatContext>? = avformat_alloc_context()
+        guard formatContext != nil else {
+            avio_context_free(&avioContext)
+            return (nil, "avformat-alloc-context-failed")
+        }
+        formatContext?.pointee.pb = avio
+        formatContext?.pointee.flags |= Int32(0x0080)
+        let openStatus = avformat_open_input(&formatContext, nil, nil, nil)
+        guard openStatus >= 0, let context = formatContext else {
+            if let context = formatContext { avformat_free_context(context) }
+            formatContext = nil
+            avio_context_free(&avioContext)
+            return (nil, "avformat-open-input=\(openStatus)")
+        }
+        return (OnePlayerKeyframeOpenedInput(state: state, avioContext: avio, formatContext: context), nil)
+    }
+}
+
+private struct OnePlayerKeyframeStreamMetadata {
+    let videoIndex: Int32
+    let scale: Double
+    let startTimestamp: Int64?
+    let startSeconds: Double
+}
+
+private enum OnePlayerDirectionalKeyframeResult {
+    case value(Double, String)
+    case unavailable(String)
+}
+
 @_cdecl("oneplayer_keyframe_backend_libavformat_direct")
-func oneplayerKeyframeBackendProbe() -> Int32 { avformat_version() > 0 && avutil_version() > 0 ? 1 : 0 }
+func oneplayerKeyframeBackendProbe() -> Int32 { avformat_version() > 0 && avutil_version() > 0 && avcodec_version() > 0 ? 1 : 0 }
 
 enum OnePlayerKeyframeIndexProbe {
     static let backendMarker = "ONEPLAYER_KEYFRAME_BACKEND_LIBAVFORMAT_DIRECT"
-    static let indexMarker = "ONEPLAYER_KEYFRAME_INDEX_READONLY"
-    static var runtimeDescription: String { "\(backendMarker) \(indexMarker) backend=libavformat-direct probe=\(oneplayerKeyframeBackendProbe()) avformat=\(avformat_version()) avutil=\(avutil_version()) mode=cache-only-observe" }
+    static let indexMarker = "ONEPLAYER_KEYFRAME_NATIVE_SEEK_READONLY"
+    static var runtimeDescription: String { "\(backendMarker) \(indexMarker) backend=libavformat-direct probe=\(oneplayerKeyframeBackendProbe()) avformat=\(avformat_version()) avutil=\(avutil_version()) avcodec=\(avcodec_version()) mode=cache-only-native-seek-observe" }
 
     static func buildIndex(session: TransportDataSession, contentLength: Int64) async -> OnePlayerKeyframeIndexBuildResult {
         await withCheckedContinuation { continuation in
@@ -153,64 +209,99 @@ enum OnePlayerKeyframeIndexProbe {
         }
     }
 
+    static func probeNeighbors(session: TransportDataSession, contentLength: Int64, target: Double) async -> OnePlayerKeyframeNeighborProbeResult {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                continuation.resume(returning: probeNeighborsSynchronously(session: session, contentLength: contentLength, target: target))
+            }
+        }
+    }
+
     private static func buildIndexSynchronously(session: TransportDataSession, contentLength: Int64) -> OnePlayerKeyframeIndexBuildResult {
-        guard contentLength > 0 else { return .unavailable("invalid-content-length") }
-        let state = OnePlayerKeyframeAVIOState(session: session, contentLength: contentLength)
-        let bufferSize: Int32 = 64 * 1024
-        guard let rawBuffer = av_malloc(Int(bufferSize)) else { return .unavailable("av-malloc-failed") }
-        let buffer = rawBuffer.assumingMemoryBound(to: UInt8.self)
-        var avioContext = avio_alloc_context(buffer, bufferSize, 0, Unmanaged.passUnretained(state).toOpaque(), onePlayerKeyframeReadCallback, nil, onePlayerKeyframeSeekCallback)
-        guard avioContext != nil else {
-            av_free(rawBuffer)
-            return .unavailable("avio-alloc-context-failed")
-        }
-        defer {
-            state.cancel()
-            avio_context_free(&avioContext)
+        let opened = OnePlayerKeyframeOpenedInput.open(session: session, contentLength: contentLength)
+        guard let input = opened.0 else { return .unavailable(opened.1 ?? "open-failed") }
+        guard let metadata = streamMetadata(context: input.formatContext) else { return .unavailable("video-stream-or-timebase-unavailable") }
+        return .ready(OnePlayerKeyframeIndex(session: session, contentLength: contentLength, videoStreamIndex: metadata.videoIndex, timeBaseSeconds: metadata.scale, streamStartSeconds: metadata.startSeconds))
+    }
+
+    private static func probeNeighborsSynchronously(session: TransportDataSession, contentLength: Int64, target: Double) -> OnePlayerKeyframeNeighborProbeResult {
+        guard target.isFinite, target >= 0 else { return .unavailable("invalid-target") }
+        let previousResult = probeDirection(session: session, contentLength: contentLength, target: target, backward: true)
+        let nextResult = probeDirection(session: session, contentLength: contentLength, target: target, backward: false)
+
+        let previous: Double?
+        let previousStatus: String
+        switch previousResult {
+        case .value(let value, let status): previous = value; previousStatus = status
+        case .unavailable(let reason): previous = nil; previousStatus = reason
         }
 
-        var formatContext: UnsafeMutablePointer<AVFormatContext>? = avformat_alloc_context()
-        guard formatContext != nil else { return .unavailable("avformat-alloc-context-failed") }
-        formatContext?.pointee.pb = avioContext
-        formatContext?.pointee.flags |= Int32(0x0080)
-        let openStatus = avformat_open_input(&formatContext, nil, nil, nil)
-        guard openStatus >= 0, let context = formatContext else {
-            if let context = formatContext { avformat_free_context(context) }
-            formatContext = nil
-            return .unavailable("avformat-open-input=\(openStatus)")
+        let next: Double?
+        let nextStatus: String
+        switch nextResult {
+        case .value(let value, let status): next = value; nextStatus = status
+        case .unavailable(let reason): next = nil; nextStatus = reason
         }
-        defer { avformat_close_input(&formatContext) }
 
+        guard previous != nil || next != nil else { return .unavailable("previous=\(previousStatus) next=\(nextStatus)") }
+        let nearest: Double?
+        switch (previous, next) {
+        case let (previous?, next?): nearest = abs(target - previous) <= abs(next - target) ? previous : next
+        case let (previous?, nil): nearest = previous
+        case let (nil, next?): nearest = next
+        default: nearest = nil
+        }
+        return .ready(OnePlayerKeyframeNeighbors(previous: previous, next: next, nearest: nearest, previousStatus: previousStatus, nextStatus: nextStatus))
+    }
+
+    private static func probeDirection(session: TransportDataSession, contentLength: Int64, target: Double, backward: Bool) -> OnePlayerDirectionalKeyframeResult {
+        let opened = OnePlayerKeyframeOpenedInput.open(session: session, contentLength: contentLength)
+        guard let input = opened.0, let context = input.formatContext else { return .unavailable(opened.1 ?? "open-failed") }
+        guard let metadata = streamMetadata(context: context) else { return .unavailable("video-stream-or-timebase-unavailable") }
+        let relativeUnits = Int64((target / metadata.scale).rounded())
+        let targetTimestamp = (metadata.startTimestamp ?? 0) + relativeUnits
+        let flags = backward ? Int32(AVSEEK_FLAG_BACKWARD) : 0
+        let seekStatus = av_seek_frame(context, metadata.videoIndex, targetTimestamp, flags)
+        guard seekStatus >= 0 else { return .unavailable("av-seek-frame=\(seekStatus)") }
+
+        var packet: UnsafeMutablePointer<AVPacket>? = av_packet_alloc()
+        guard let packetPointer = packet else { return .unavailable("av-packet-alloc-failed") }
+        defer { av_packet_free(&packet) }
+
+        for scan in 0..<2048 {
+            let readStatus = av_read_frame(context, packetPointer)
+            guard readStatus >= 0 else { return .unavailable("av-read-frame=\(readStatus) scan=\(scan)") }
+            let isVideo = packetPointer.pointee.stream_index == metadata.videoIndex
+            let isKey = (packetPointer.pointee.flags & Int32(AV_PKT_FLAG_KEY)) != 0
+            let pts = packetPointer.pointee.pts
+            let dts = packetPointer.pointee.dts
+            let timestamp = pts != Int64.min ? pts : dts
+            av_packet_unref(packetPointer)
+            guard isVideo, isKey, timestamp != Int64.min else { continue }
+            let relativeTimestamp = metadata.startTimestamp.map { timestamp - $0 } ?? timestamp
+            let seconds = Double(relativeTimestamp) * metadata.scale
+            guard seconds.isFinite else { continue }
+            if backward {
+                if seconds <= target + 0.001 { return .value(max(0, seconds), "ok-backward scan=\(scan)") }
+            } else if seconds >= target - 0.001 {
+                return .value(max(0, seconds), "ok-forward scan=\(scan)")
+            }
+        }
+        return .unavailable("keyframe-not-found scan-limit=2048")
+    }
+
+    private static func streamMetadata(context: UnsafeMutablePointer<AVFormatContext>?) -> OnePlayerKeyframeStreamMetadata? {
+        guard let context else { return nil }
         let videoIndex = av_find_best_stream(context, AVMEDIA_TYPE_VIDEO, -1, -1, nil, 0)
-        guard videoIndex >= 0, let streams = context.pointee.streams, let stream = streams[Int(videoIndex)] else { return .unavailable("video-stream=\(videoIndex)") }
-        let entryCount = avformat_index_get_entries_count(stream)
-        guard entryCount > 0 else { return .unavailable("index-entry-count=\(entryCount)") }
+        guard videoIndex >= 0, let streams = context.pointee.streams, let stream = streams[Int(videoIndex)] else { return nil }
         let timeBase = stream.pointee.time_base
-        guard timeBase.den != 0 else { return .unavailable("invalid-time-base") }
+        guard timeBase.den != 0, timeBase.num != 0 else { return nil }
         let scale = Double(timeBase.num) / Double(timeBase.den)
-        let startTimestamp = stream.pointee.start_time
-        let hasStartTimestamp = startTimestamp != Int64.min
-        let startSeconds = hasStartTimestamp ? Double(startTimestamp) * scale : 0
-        var keyframes: [Double] = []
-        keyframes.reserveCapacity(Int(entryCount))
-
-        for index in 0..<entryCount {
-            guard let entry = avformat_index_get_entry(stream, index), (entry.pointee.flags & 1) != 0 else { continue }
-            let timestamp = entry.pointee.timestamp
-            guard timestamp != Int64.min else { continue }
-            let relativeTimestamp = hasStartTimestamp ? timestamp - startTimestamp : timestamp
-            let seconds = Double(relativeTimestamp) * scale
-            if seconds.isFinite, seconds >= -0.001 { keyframes.append(max(0, seconds)) }
-        }
-        guard !keyframes.isEmpty else { return .unavailable("keyframe-entry-count=0 total-index=\(entryCount)") }
-        keyframes.sort()
-        var unique: [Double] = []
-        unique.reserveCapacity(keyframes.count)
-        for value in keyframes {
-            if let last = unique.last, abs(last - value) < 0.0005 { continue }
-            unique.append(value)
-        }
-        return .ready(OnePlayerKeyframeIndex(keyframes: unique, videoStreamIndex: videoIndex, timeBaseSeconds: scale, streamStartSeconds: startSeconds))
+        guard scale.isFinite, scale > 0 else { return nil }
+        let rawStart = stream.pointee.start_time
+        let startTimestamp = rawStart == Int64.min ? nil : rawStart
+        let startSeconds = startTimestamp.map { Double($0) * scale } ?? 0
+        return OnePlayerKeyframeStreamMetadata(videoIndex: videoIndex, scale: scale, startTimestamp: startTimestamp, startSeconds: startSeconds)
     }
 }
 #else
@@ -219,8 +310,9 @@ func oneplayerKeyframeBackendProbe() -> Int32 { 0 }
 
 enum OnePlayerKeyframeIndexProbe {
     static let backendMarker = "ONEPLAYER_KEYFRAME_BACKEND_UNAVAILABLE"
-    static let indexMarker = "ONEPLAYER_KEYFRAME_INDEX_READONLY_UNAVAILABLE"
-    static var runtimeDescription: String { "\(backendMarker) \(indexMarker) backend=unavailable probe=\(oneplayerKeyframeBackendProbe()) reason=Libavformat-or-Libavutil-not-importable" }
-    static func buildIndex(session: TransportDataSession, contentLength: Int64) async -> OnePlayerKeyframeIndexBuildResult { .unavailable("Libavformat-or-Libavutil-not-importable") }
+    static let indexMarker = "ONEPLAYER_KEYFRAME_NATIVE_SEEK_UNAVAILABLE"
+    static var runtimeDescription: String { "\(backendMarker) \(indexMarker) backend=unavailable probe=\(oneplayerKeyframeBackendProbe()) reason=Libavformat-Libavutil-or-Libavcodec-not-importable" }
+    static func buildIndex(session: TransportDataSession, contentLength: Int64) async -> OnePlayerKeyframeIndexBuildResult { .unavailable("Libavformat-Libavutil-or-Libavcodec-not-importable") }
+    static func probeNeighbors(session: TransportDataSession, contentLength: Int64, target: Double) async -> OnePlayerKeyframeNeighborProbeResult { .unavailable("Libavformat-Libavutil-or-Libavcodec-not-importable") }
 }
 #endif
