@@ -521,6 +521,8 @@ final class KSAVIOPlayerEngine: PlayerEngine {
             player.setBufferRange(msMin: activeSeekBufferMinMs, msMax: Int64(max(3_000, min(30_000, self.preferredForwardBuffer * 1_000))), drop: false)
             DiagnosticsLogger.shared.playback("MDKSeekBuffer", "id=\(dispatchedIntent.id) phase=low-latency minMs=\(activeSeekBufferMinMs) relativeMinMs=\(self.relativeSeekBufferMinMs) accurateMinMs=\(self.seekBufferMinMs) normalMinMs=\(self.normalBufferMinMs) direction=\(String(describing: dispatchedIntent.direction))")
             let seekFlag: SeekFlag = dispatchedIntent.fastPreview ? .AccurateFromStartInCache : .FromStart
+            let decoderProperty = player.property(name: "video.decoder") ?? "nil"
+            DiagnosticsLogger.shared.playback("MDKDecoderTrace", "id=\(dispatchedIntent.id) phase=pre-seek property=\(decoderProperty) requestedPolicy=unchanged-default-auto")
             DiagnosticsLogger.shared.playback("MDKSeekMode", "id=\(dispatchedIntent.id) target=\(String(format: "%.3f", dispatchedIntent.target)) nativeMode=\(dispatchedIntent.fastPreview ? "accurate-incache" : "accurate") flagRaw=\(seekFlag.rawValue) cacheAware=\(dispatchedIntent.fastPreview) retry=\(dispatchedIntent.retryCount)")
             let immediateResult = player.seek(self.milliseconds(dispatchedIntent.target), flags: seekFlag) { [weak self, weak player] actualMs in
                 let callbackAt = Date().timeIntervalSince1970
@@ -1152,11 +1154,15 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private func installMDKLoggingIfNeeded() {
         guard !didInstallLogHandler else { return }
         didInstallLogHandler = true
-        swift_mdk.logLevel = .Info
+        swift_mdk.logLevel = .All
         swift_mdk.setLogHandler { level, message in
             let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
             if let marker = trimmed.range(of: "***buffering progress "), let percentEnd = trimmed[marker.upperBound...].firstIndex(of: "%"), let percent = Int(trimmed[marker.upperBound..<percentEnd]), percent != 0, percent != 25, percent != 50, percent != 75, percent != 100 { return }
+            if level == .Debug || level == .All {
+                let lower = trimmed.lowercased()
+                guard lower.contains("drop") || lower.contains("decoder") || lower.contains("seek") || lower.contains("sync") || lower.contains("vt") else { return }
+            }
             DiagnosticsLogger.shared.playback("MDKNative", "level=\(String(describing: level)) \(trimmed)")
         }
     }
