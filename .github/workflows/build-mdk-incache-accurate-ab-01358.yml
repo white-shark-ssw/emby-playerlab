@@ -54,7 +54,8 @@ jobs:
           grep -Fq 'authority=health-coordinator' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           grep -Fq 'private let seekBufferingUIGraceSeconds: TimeInterval = 0.5' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
-          ! grep -R 'migrate_mdk_seek_accurate_incache_01358' .github/workflows scripts 2>/dev/null || false
+          test ! -e scripts/migrate_mdk_seek_accurate_incache_01358.py
+          test ! -e .github/workflows/apply-mdk-seek-accurate-incache-01358.yml
           git diff --check
 
       - name: Select Xcode and install tools
