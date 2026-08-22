@@ -88,7 +88,7 @@ struct PlayerScreen: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(!isClosing && !playbackSettingsPresented)
 
-                if let feedback = controller.scrubFeedback { feedbackView(feedback) }
+                if let feedback = controller.scrubFeedback { feedbackView(feedback).scaleEffect(0.72).zIndex(40) }
                 if let temporaryRateHUD { rateFeedbackView(temporaryRateHUD) }
                 if let adjustmentHUD { adjustmentHUDView(adjustmentHUD) }
 
@@ -98,7 +98,7 @@ struct PlayerScreen: View {
                 if let feedback = controller.seekFeedback {
                     VStack {
                         Spacer()
-                        feedbackView(feedback).scaleEffect(0.55).padding(.bottom, 96)
+                        feedbackView(feedback).scaleEffect(0.55).padding(.bottom, 50)
                     }
                     .allowsHitTesting(false)
                     .zIndex(12)
