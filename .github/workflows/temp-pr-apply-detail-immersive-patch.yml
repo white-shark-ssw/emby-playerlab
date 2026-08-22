@@ -1,4 +1,4 @@
-name: Temp PR Build134 EX Scrub HUD
+name: Temp PR Build135 MPV Residual Refine
 
 on:
   pull_request:
@@ -9,17 +9,17 @@ permissions:
   contents: write
 
 jobs:
-  build134:
-    if: github.event.pull_request.head.ref == 'diag/scrub-hud-ex-0.13.67'
+  build135:
+    if: github.event.pull_request.head.ref == 'diag/mpv-residual-refine-0.13.68'
     runs-on: macos-15
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: diag/mpv-residual-refine-0.13.68
           fetch-depth: 0
 
-      - name: Apply exact EX scrub HUD patch
+      - name: Apply bounded residual refinement
         shell: bash
         run: |
           set -euo pipefail
@@ -28,101 +28,189 @@ jobs:
 
           app = Path('Sources/Core/AppIdentity.swift')
           text = app.read_text()
-          if '"0.13.67"' not in text:
-              count = text.count('"0.13.66"')
+          if '"0.13.68"' not in text:
+              count = text.count('"0.13.67"')
               if count != 2: raise SystemExit(f'AppIdentity mismatch: {count}')
-              app.write_text(text.replace('"0.13.66"', '"0.13.67"'))
+              app.write_text(text.replace('"0.13.67"', '"0.13.68"'))
 
-          player = Path('Sources/UI/PlayerScreen.swift')
-          text = player.read_text()
-          old_scrub = '                if let feedback = controller.scrubFeedback { feedbackView(feedback).scaleEffect(0.72).zIndex(40) }'
-          new_scrub = '''                if let feedback = controller.scrubFeedback {
-                    VStack {
-                        Spacer()
-                        screenScrubFeedbackView(feedback).padding(.bottom, 116)
-                    }
-                    .allowsHitTesting(false)
-                    .zIndex(40)
-                }'''
-          if 'screenScrubFeedbackView(feedback).padding(.bottom, 116)' not in text:
-              if text.count(old_scrub) != 1: raise SystemExit(f'PlayerScreen scrub anchor mismatch: {text.count(old_scrub)}')
-              text = text.replace(old_scrub, new_scrub, 1)
+          engine = Path('Sources/Player/MPVPlayerEngine.swift')
+          text = engine.read_text()
 
-          anchor = '    private func rateFeedbackView(_ rate: Double) -> some View {'
-          helper = '''    private func screenScrubFeedbackView(_ text: String) -> some View {
-        let lines = text.components(separatedBy: "\\n")
-        let timeParts = (lines.first ?? "").components(separatedBy: " / ")
-        let current = timeParts.first ?? ""
-        let duration = timeParts.count > 1 ? timeParts[1] : ""
-        let deltaRaw = lines.count > 1 ? lines[1] : ""
-        let deltaText = deltaRaw.replacingOccurrences(of: " 秒", with: "s")
-        let isBackward = deltaText.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("-")
+          old_struct = '''    private struct PendingSeek {
+        let id: UInt64
+        let requestedAt: TimeInterval
+        let target: Double
+        let bufferHit: Bool
+        let intent: String
+        let mode: String
+    }
+'''
+          new_struct = '''    private enum SeekStage: String { case startup, primaryKeyframe, residualRefine }
 
-        return VStack(spacing: 2) {
-            HStack(spacing: 3) {
-                Text(current).foregroundColor(.white)
-                if !duration.isEmpty { Text("/ " + duration).foregroundColor(.white.opacity(0.58)) }
-            }
-            .font(.system(size: 16, weight: .semibold))
-            .monospacedDigit()
-
-            if !deltaText.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: isBackward ? "backward.fill" : "forward.fill")
-                    Text(deltaText).monospacedDigit()
-                }
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Color(red: 0.11, green: 0.91, blue: 0.32))
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(minWidth: 142)
-        .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Color(red: 0.45, green: 0.43, blue: 0.42).opacity(0.88)))
-        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.5))
-        .allowsHitTesting(false)
+    private struct PendingSeek {
+        let id: UInt64
+        let requestedAt: TimeInterval
+        let target: Double
+        let bufferHit: Bool
+        let intent: String
+        let mode: String
+        var dispatchedAt: TimeInterval?
+        let stage: SeekStage
+        let primaryLanding: Double?
+        let primaryCompletionMs: Double?
+        let refineRequestedAt: TimeInterval?
     }
 
+    private static let residualRefineMinSeconds = 0.050
+    private static let residualRefineMaxSeconds = 1.250
 '''
-          if 'private func screenScrubFeedbackView(_ text: String)' not in text:
-              if text.count(anchor) != 1: raise SystemExit(f'PlayerScreen helper anchor mismatch: {text.count(anchor)}')
-              text = text.replace(anchor, helper + anchor, 1)
-          player.write_text(text)
+          if 'private static let residualRefineMaxSeconds = 1.250' not in text:
+              if text.count(old_struct) != 1: raise SystemExit(f'PendingSeek struct mismatch: {text.count(old_struct)}')
+              text = text.replace(old_struct, new_struct, 1)
 
-          for temp in [Path('.github/workflows/apply-build134-ex-scrub-hud.yml'), Path('docs/build134-trigger.txt')]:
-              if temp.exists(): temp.unlink()
+          old_startup = '        pendingSeek = startPosition > 0 ? PendingSeek(id: 0, requestedAt: CACurrentMediaTime(), target: startPosition, bufferHit: false, intent: "startupResume", mode: "loadfile-start") : nil'
+          new_startup = '        pendingSeek = startPosition > 0 ? PendingSeek(id: 0, requestedAt: CACurrentMediaTime(), target: startPosition, bufferHit: false, intent: "startupResume", mode: "loadfile-start", dispatchedAt: nil, stage: .startup, primaryLanding: nil, primaryCompletionMs: nil, refineRequestedAt: nil) : nil'
+          if new_startup not in text:
+              if text.count(old_startup) != 1: raise SystemExit(f'startup pending mismatch: {text.count(old_startup)}')
+              text = text.replace(old_startup, new_startup, 1)
+
+          old_pending = '        pendingSeek = PendingSeek(id: seekID, requestedAt: requestedAt, target: target, bufferHit: bufferHit, intent: intent, mode: mode)'
+          new_pending = '        pendingSeek = PendingSeek(id: seekID, requestedAt: requestedAt, target: target, bufferHit: bufferHit, intent: intent, mode: mode, dispatchedAt: nil, stage: .primaryKeyframe, primaryLanding: nil, primaryCompletionMs: nil, refineRequestedAt: nil)'
+          if new_pending not in text:
+              if text.count(old_pending) != 1: raise SystemExit(f'interactive pending mismatch: {text.count(old_pending)}')
+              text = text.replace(old_pending, new_pending, 1)
+
+          old_dispatch = '''                let dispatchAt = CACurrentMediaTime()
+                DiagnosticsLogger.shared.log("MPVSeek", "id=\\(seekID) target=\\(String(format: "%.3f", target)) phase=native-dispatch prioritizeMs=\\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) intent=\\(intent) mode=\\(mode) bufferHit=\\(bufferHit) enginePosition=\\(String(format: "%.3f", self.snapshot.position))")
+                self.command(handle, ["seek", String(format: "%.3f", target), mode])
+'''
+          new_dispatch = '''                let dispatchAt = CACurrentMediaTime()
+                if var current = self.pendingSeek, current.id == seekID, current.stage == .primaryKeyframe {
+                    current.dispatchedAt = dispatchAt
+                    self.pendingSeek = current
+                }
+                DiagnosticsLogger.shared.log("MPVSeek", "id=\\(seekID) target=\\(String(format: "%.3f", target)) phase=native-dispatch prioritizeMs=\\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) intent=\\(intent) mode=\\(mode) bufferHit=\\(bufferHit) enginePosition=\\(String(format: "%.3f", self.snapshot.position))")
+                self.command(handle, ["seek", String(format: "%.3f", target), mode])
+'''
+          if 'current.stage == .primaryKeyframe' not in text:
+              if text.count(old_dispatch) != 1: raise SystemExit(f'native dispatch mismatch: {text.count(old_dispatch)}')
+              text = text.replace(old_dispatch, new_dispatch, 1)
+
+          old_landing = '''            if let pending = pendingSeek {
+                pendingSeek = nil
+                let latency = (CACurrentMediaTime() - pending.requestedAt) * 1000
+                let delta = actualPosition - pending.target
+                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", delta)) completionMs=\\(String(format: "%.1f", latency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) event=playback-restart")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onSeekCompleted?(SeekResult(
+                        requestedAt: pending.requestedAt,
+                        target: pending.target,
+                        actualPosition: actualPosition,
+                        bufferHit: pending.bufferHit,
+                        completionLatencyMs: latency,
+                        measurement: "MPV playback-restart after latest seek"
+                    ))
+                }
+            } else {
+                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=none actual=\\(String(format: "%.3f", actualPosition)) event=playback-restart-without-pending")
+            }
+'''
+          new_landing = '''            if let pending = pendingSeek {
+                let now = CACurrentMediaTime()
+                if pending.stage != .startup, pending.dispatchedAt == nil {
+                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) actual=\\(String(format: "%.3f", actualPosition)) stage=\\(pending.stage.rawValue) event=playback-restart-before-latest-native-dispatch ignored=true")
+                    emitOnMain()
+                    return
+                }
+
+                switch pending.stage {
+                case .primaryKeyframe:
+                    let primaryLatency = (now - pending.requestedAt) * 1000
+                    let residual = pending.target - actualPosition
+                    let delta = actualPosition - pending.target
+                    let eligible = residual > Self.residualRefineMinSeconds && residual <= Self.residualRefineMaxSeconds
+                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", delta)) completionMs=\\(String(format: "%.1f", primaryLatency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) stage=primary event=playback-restart")
+                    DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=consider target=\\(String(format: "%.3f", pending.target)) keyframeLanding=\\(String(format: "%.3f", actualPosition)) residual=\\(String(format: "%.3f", residual)) min=\\(String(format: "%.3f", Self.residualRefineMinSeconds)) max=\\(String(format: "%.3f", Self.residualRefineMaxSeconds)) eligible=\\(eligible) primaryMs=\\(String(format: "%.1f", primaryLatency)) intent=\\(pending.intent)")
+
+                    if eligible {
+                        let refineRequestedAt = CACurrentMediaTime()
+                        pendingSeek = PendingSeek(id: pending.id, requestedAt: pending.requestedAt, target: pending.target, bufferHit: pending.bufferHit, intent: pending.intent, mode: "relative+exact", dispatchedAt: refineRequestedAt, stage: .residualRefine, primaryLanding: actualPosition, primaryCompletionMs: primaryLatency, refineRequestedAt: refineRequestedAt)
+                        DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=native-dispatch residual=\\(String(format: "%.3f", residual)) mode=relative+exact primaryLanding=\\(String(format: "%.3f", actualPosition)) target=\\(String(format: "%.3f", pending.target))")
+                        emitOnMain()
+                        command(handle, ["seek", String(format: "%.3f", residual), "relative+exact"])
+                        return
+                    }
+
+                    pendingSeek = nil
+                    let skipReason: String
+                    if abs(residual) <= Self.residualRefineMinSeconds { skipReason = "already-frame-close" }
+                    else if residual <= 0 { skipReason = "landing-not-before-target" }
+                    else { skipReason = "residual-over-cap" }
+                    DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=skip reason=\\(skipReason) residual=\\(String(format: "%.3f", residual)) finalDelta=\\(String(format: "%.3f", delta)) totalMs=\\(String(format: "%.1f", primaryLatency))")
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: primaryLatency, measurement: "MPV keyframe landing; residual refine skipped"))
+                    }
+
+                case .residualRefine:
+                    pendingSeek = nil
+                    let totalLatency = (now - pending.requestedAt) * 1000
+                    let refineLatency = pending.refineRequestedAt.map { (now - $0) * 1000 } ?? 0
+                    let finalDelta = actualPosition - pending.target
+                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", finalDelta)) completionMs=\\(String(format: "%.1f", totalLatency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) stage=refined event=playback-restart")
+                    DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=complete primaryLanding=\\(pending.primaryLanding.map { String(format: "%.3f", $0) } ?? "none") primaryMs=\\(pending.primaryCompletionMs.map { String(format: "%.1f", $0) } ?? "none") final=\\(String(format: "%.3f", actualPosition)) finalDelta=\\(String(format: "%.3f", finalDelta)) refineMs=\\(String(format: "%.1f", refineLatency)) totalMs=\\(String(format: "%.1f", totalLatency))")
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: totalLatency, measurement: "MPV keyframe landing + bounded relative exact residual refinement"))
+                    }
+
+                case .startup:
+                    pendingSeek = nil
+                    let latency = (now - pending.requestedAt) * 1000
+                    let delta = actualPosition - pending.target
+                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", delta)) completionMs=\\(String(format: "%.1f", latency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) stage=startup event=playback-restart")
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: latency, measurement: "MPV startup playback-restart"))
+                    }
+                }
+            } else {
+                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=none actual=\\(String(format: "%.3f", actualPosition)) event=playback-restart-without-pending")
+            }
+'''
+          if 'phase=complete primaryLanding=' not in text:
+              if text.count(old_landing) != 1: raise SystemExit(f'playback restart block mismatch: {text.count(old_landing)}')
+              text = text.replace(old_landing, new_landing, 1)
+
+          engine.write_text(text)
           PY
+
           git diff --check
           git status --short
 
-      - name: Commit Build134 source
-        shell: bash
+      - name: Commit Build135 source
         run: |
           set -euo pipefail
           git config user.name 'ChatGPT'
           git config user.email 'chatgpt@users.noreply.github.com'
-          git add -A
+          git add Sources/Core/AppIdentity.swift Sources/Player/MPVPlayerEngine.swift
           if ! git diff --cached --quiet; then
-            git commit -m 'Build134: match EX scrub HUD styling'
-            git push origin HEAD:diag/scrub-hud-ex-0.13.67
+            git commit -m 'Build135: add bounded MPV residual seek refinement'
+            git push origin HEAD:diag/mpv-residual-refine-0.13.68
           fi
 
-      - name: Verify Build134 contract
+      - name: Verify Build135 contract
         run: |
           set -euo pipefail
-          grep -Fq 'sourceVersion = "0.13.67"' Sources/Core/AppIdentity.swift
-          grep -Fq 'screenScrubFeedbackView(feedback).padding(.bottom, 116)' Sources/UI/PlayerScreen.swift
-          grep -Fq '.font(.system(size: 16, weight: .semibold))' Sources/UI/PlayerScreen.swift
-          grep -Fq '.font(.system(size: 13, weight: .semibold))' Sources/UI/PlayerScreen.swift
-          grep -Fq 'Color(red: 0.11, green: 0.91, blue: 0.32)' Sources/UI/PlayerScreen.swift
-          grep -Fq 'RoundedRectangle(cornerRadius: 11, style: .continuous)' Sources/UI/PlayerScreen.swift
+          grep -Fq 'sourceVersion = "0.13.68"' Sources/Core/AppIdentity.swift
+          grep -Fq 'private static let residualRefineMinSeconds = 0.050' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'private static let residualRefineMaxSeconds = 1.250' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'mode: "relative+exact"' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'phase=complete primaryLanding=' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'event=playback-restart-before-latest-native-dispatch ignored=true' Sources/Player/MPVPlayerEngine.swift
           grep -Fq 'intent = "doubleTapFastSeek"' Sources/Player/MPVPlayerEngine.swift
           grep -Fq 'intent = "scrubReleaseFastSeek"' Sources/Player/MPVPlayerEngine.swift
           test "$(grep -Fc 'mode = "absolute+keyframes"' Sources/Player/MPVPlayerEngine.swift)" -ge 2
+          grep -Fq 'screenScrubFeedbackView(feedback).padding(.bottom, 116)' Sources/UI/PlayerScreen.swift
           grep -Fq 'private static let fastSeekBurstWindow: CFTimeInterval = 1.0' Sources/Player/PlayerController.swift
           grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
-          test ! -e .github/workflows/apply-build134-ex-scrub-hud.yml
-          test ! -e docs/build134-trigger.txt
 
       - name: Select Xcode and install tools
         run: |
@@ -145,7 +233,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf build
-          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.67 CURRENT_PROJECT_VERSION=134 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.68 CURRENT_PROJECT_VERSION=135 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
 
       - name: Locate built app
         run: |
@@ -157,7 +245,7 @@ jobs:
       - name: Validate app identity
         run: |
           set -euo pipefail
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.67' --build '134' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.68' --build '135' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
 
       - name: Validate minimum OS
         run: |
@@ -171,21 +259,33 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "$APP_PATH" Payload/
-          IPA='OnePlayer-0.13.67-build134-ex-scrub-hud-unsigned.ipa'
+          IPA='OnePlayer-0.13.68-build135-mpv-residual-refine-unsigned.ipa'
           /usr/bin/zip -qry "$IPA" Payload
           /usr/bin/unzip -t "$IPA" >/dev/null
           /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
           cat "$IPA.sha256"
 
-      - name: Upload Build134 package
+      - name: Upload Build135 package
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.13.67-build134-ex-scrub-hud
+          name: OnePlayer-0.13.68-build135-mpv-residual-refine
           path: |
-            OnePlayer-0.13.67-build134-ex-scrub-hud-unsigned.ipa
-            OnePlayer-0.13.67-build134-ex-scrub-hud-unsigned.ipa.sha256
+            OnePlayer-0.13.68-build135-mpv-residual-refine-unsigned.ipa
+            OnePlayer-0.13.68-build135-mpv-residual-refine-unsigned.ipa.sha256
             app-validation.log
             min-os-report.log
             build.log
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.68-build135-mpv-residual-refine-diagnostics
+          path: |
+            app-validation.log
+            min-os-report.log
+            build.log
+          if-no-files-found: warn
           retention-days: 14
