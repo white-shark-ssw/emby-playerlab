@@ -421,7 +421,6 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             DiagnosticsLogger.shared.playback("KeyframeCacheRead", "offset=\(offset) requested=\(requested) available=\(available) result=miss reason=store-read-unavailable mode=cache-only-no-network")
             return nil
         }
-        DiagnosticsLogger.shared.playback("KeyframeCacheRead", "offset=\(offset) requested=\(requested) available=\(available) returned=\(data.count) result=hit mode=cache-only-no-network")
         return data
     }
 
