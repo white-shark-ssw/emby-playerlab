@@ -1,24 +1,12 @@
-name: Build OnePlayer 0.13.66 Build133 Player HUD Tune
-# Build133 source-ready trigger
+name: TEMP Validate OnePlayer 0.13.67 Build134 EX Scrub HUD
 
 on:
-  push:
-    branches: [diag/player-hud-tune-0.13.66]
-    paths:
-      - ".github/workflows/build-player-hud-01366.yml"
-      - "MDKLab/**"
-      - "Sources/**"
-      - "project.mdklab.yml"
   pull_request:
-    branches: [diag/mpv-fast-seek-0.13.65]
-    paths:
-      - ".github/workflows/build-player-hud-01366.yml"
-      - "Sources/**"
-      - "project.mdklab.yml"
-  workflow_dispatch:
+    branches: [diag/player-hud-tune-0.13.66]
+    types: [opened, synchronize, reopened]
 
 concurrency:
-  group: player-hud-build133-${{ github.ref }}
+  group: ex-scrub-hud-build134-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -33,18 +21,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify Build133 HUD contract
+      - name: Verify Build134 EX scrub HUD contract
         run: |
           set -euo pipefail
-          grep -Fq 'sourceVersion = "0.13.66"' Sources/Core/AppIdentity.swift
-          grep -Fq 'feedbackView(feedback).scaleEffect(0.72).zIndex(40)' Sources/UI/PlayerScreen.swift
+          grep -Fq 'sourceVersion = "0.13.67"' Sources/Core/AppIdentity.swift
+          grep -Fq 'screenScrubFeedbackView(feedback).padding(.bottom, 116)' Sources/UI/PlayerScreen.swift
+          grep -Fq '.font(.system(size: 16, weight: .semibold))' Sources/UI/PlayerScreen.swift
+          grep -Fq '.font(.system(size: 13, weight: .semibold))' Sources/UI/PlayerScreen.swift
+          grep -Fq 'Color(red: 0.11, green: 0.91, blue: 0.32)' Sources/UI/PlayerScreen.swift
+          grep -Fq 'RoundedRectangle(cornerRadius: 11, style: .continuous)' Sources/UI/PlayerScreen.swift
           grep -Fq 'feedbackView(feedback).scaleEffect(0.55).padding(.bottom, 50)' Sources/UI/PlayerScreen.swift
           grep -Fq 'intent = "doubleTapFastSeek"' Sources/Player/MPVPlayerEngine.swift
           grep -Fq 'intent = "scrubReleaseFastSeek"' Sources/Player/MPVPlayerEngine.swift
           test "$(grep -Fc 'mode = "absolute+keyframes"' Sources/Player/MPVPlayerEngine.swift)" -ge 2
           grep -Fq 'private var fastSeekLogicalTarget: Double?' Sources/Player/PlayerController.swift
           grep -Fq 'private static let fastSeekBurstWindow: CFTimeInterval = 1.0' Sources/Player/PlayerController.swift
-          test ! -e .github/workflows/apply-build133-player-hud.yml
           grep -Fq 'player.mute = true' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           grep -Fq 'private let avioRequestSizeBytes = 2 * 1_048_576' MDKLab/App/MDKKSAVIOPlayerEngine.swift
           grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
@@ -71,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf build
-          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.66 CURRENT_PROJECT_VERSION=133 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.67 CURRENT_PROJECT_VERSION=134 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
 
       - name: Locate built app
         run: |
@@ -83,7 +74,7 @@ jobs:
       - name: Validate app identity
         run: |
           set -euo pipefail
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.66' --build '133' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.67' --build '134' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
 
       - name: Validate minimum OS
         run: |
@@ -97,19 +88,19 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "$APP_PATH" Payload/
-          IPA='OnePlayer-0.13.66-build133-player-hud-tune-unsigned.ipa'
+          IPA='OnePlayer-0.13.67-build134-ex-scrub-hud-unsigned.ipa'
           /usr/bin/zip -qry "$IPA" Payload
           /usr/bin/unzip -t "$IPA" >/dev/null
           /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
           cat "$IPA.sha256"
 
-      - name: Upload Build133 package
+      - name: Upload Build134 package
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.13.66-build133-player-hud-tune
+          name: OnePlayer-0.13.67-build134-ex-scrub-hud
           path: |
-            OnePlayer-0.13.66-build133-player-hud-tune-unsigned.ipa
-            OnePlayer-0.13.66-build133-player-hud-tune-unsigned.ipa.sha256
+            OnePlayer-0.13.67-build134-ex-scrub-hud-unsigned.ipa
+            OnePlayer-0.13.67-build134-ex-scrub-hud-unsigned.ipa.sha256
             app-validation.log
             min-os-report.log
             build.log
@@ -120,7 +111,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.13.66-build133-player-hud-tune-diagnostics
+          name: OnePlayer-0.13.67-build134-ex-scrub-hud-diagnostics
           path: |
             app-validation.log
             min-os-report.log
