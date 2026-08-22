@@ -6,13 +6,12 @@ on:
     branches: [fix/keyframe-timeout-tail-0.13.77]
     paths:
       - "Sources/**"
-      - "scripts/apply_build144_keyframe_timeout_tail.py"
       - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build144-keyframe-timeout-tail.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: build144-keyframe-timeout-tail-${{ github.ref }}
@@ -28,23 +27,6 @@ jobs:
         with:
           ref: fix/keyframe-timeout-tail-0.13.77
           fetch-depth: 0
-
-      - name: Apply Build144 timeout-tail fix
-        run: |
-          set -euo pipefail
-          python3 scripts/apply_build144_keyframe_timeout_tail.py
-          git diff --check
-
-      - name: Persist Build144 real source
-        run: |
-          set -euo pipefail
-          git config user.name 'ChatGPT'
-          git config user.email 'chatgpt@users.noreply.github.com'
-          git add Sources/Player/MPVPlayerEngine.swift Sources/Transport/UnifiedMediaTransportSession.swift
-          if ! git diff --cached --quiet; then
-            git commit -m 'Build144: reduce keyframe timeout tail without added wait'
-            git push origin HEAD:fix/keyframe-timeout-tail-0.13.77
-          fi
 
       - name: Verify Build144 behavior and logging contract
         run: |
@@ -85,6 +67,7 @@ jobs:
           PY
           ! grep -Fq 'UserDefaults' Sources/Player/OnePlayerSessionKeyframeMap.swift
           ! grep -Fq 'FileManager' Sources/Player/OnePlayerSessionKeyframeMap.swift
+          test ! -e scripts/apply_build144_keyframe_timeout_tail.py
           grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
           git diff --check
 
