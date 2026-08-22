@@ -50,7 +50,9 @@ public enum SeekFlag : UInt32 {
     case KeyFrame = 256
     case FastFrom0 = 257
     case FastFromNow = 260
-    case Default = 258 // FromStart|KeyFrame
+    case InCache = 1024
+    case FastFromStartInCache = 1282 // FromStart|KeyFrame|InCache, verified against MDK v0.38.0 headers
+    case Default = 258 // Legacy wrapper default retained so prepare()/setNext()/unqualified seek behavior stays frozen for A/B
 }
 
 public enum VideoEffect : UInt32 {
