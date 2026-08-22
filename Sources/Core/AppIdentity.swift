@@ -3,8 +3,8 @@ import Foundation
 
 enum AppIdentity {
     static let clientName = "OnePlayer"
-    static let sourceVersion = "0.13.75"
-    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.13.75"
+    static let sourceVersion = "0.13.76"
+    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.13.76"
     static let ticksPerSecond: Double = 10_000_000
 
     static var deviceName: String {
@@ -26,5 +26,3 @@ enum AppIdentity {
         return value
     }
 }
-
-// Build142: ephemeral verified keyframe-gap session index; no persistence and no sidecar network demand.
