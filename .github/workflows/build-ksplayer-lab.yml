@@ -1,13 +1,21 @@
-name: Build OnePlayer 0.13.69 Build136 Seek Fence Keyframe Probe
+name: Build OnePlayer 0.13.70 Build137 Seek Event Fence Keyframe Index
 
 on:
   workflow_dispatch:
+  push:
+    branches: [diag/mpv-seek-event-fence-keyframe-index-0.13.70]
+    paths:
+      - "Sources/**"
+      - "scripts/apply_build137_seek_event_fence_index.py"
+      - "project.mdklab.yml"
+      - "Podfile"
+      - ".github/workflows/build-ksplayer-lab.yml"
   pull_request:
-    branches: [diag/scrub-hud-ex-0.13.67]
+    branches: [diag/mpv-seek-fence-keyframe-probe-0.13.69]
     types: [opened, synchronize, reopened]
     paths:
       - "Sources/**"
-      - "scripts/apply_build136_seek_fence_probe.py"
+      - "scripts/apply_build137_seek_event_fence_index.py"
       - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build-ksplayer-lab.yml"
@@ -16,55 +24,63 @@ permissions:
   contents: write
 
 concurrency:
-  group: build136-seek-fence-${{ github.ref }}
+  group: build137-seek-event-fence-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'diag/mpv-seek-fence-keyframe-probe-0.13.69'
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/diag/mpv-seek-event-fence-keyframe-index-0.13.70' || github.head_ref == 'diag/mpv-seek-event-fence-keyframe-index-0.13.70'
     runs-on: macos-15
     timeout-minutes: 180
 
     steps:
-      - name: Checkout Build136 experiment
+      - name: Checkout Build137 experiment
         uses: actions/checkout@v4
         with:
-          ref: diag/mpv-seek-fence-keyframe-probe-0.13.69
+          ref: diag/mpv-seek-event-fence-keyframe-index-0.13.70
           fetch-depth: 0
 
-      - name: Apply seek generation fence and keyframe backend probe
+      - name: Apply MPV event fence and read-only keyframe index
         run: |
           set -euo pipefail
-          python3 scripts/apply_build136_seek_fence_probe.py
+          python3 scripts/apply_build137_seek_event_fence_index.py
           git diff --check
           git status --short
 
-      - name: Persist Build136 real source
+      - name: Persist Build137 real source
         run: |
           set -euo pipefail
           git config user.name 'ChatGPT'
           git config user.email 'chatgpt@users.noreply.github.com'
-          git add Sources/Core/AppIdentity.swift Sources/Player/MPVPlayerEngine.swift Sources/Player/MPVKeyframeIndexProbe.swift
+          git add Sources/Core/AppIdentity.swift Sources/Diagnostics/DiagnosticsLogger.swift Sources/Transport/TransportDataSession.swift Sources/Transport/DownloadFirstMediaSession.swift Sources/Player/MPVKeyframeIndexProbe.swift Sources/Player/MPVPlayerEngine.swift
           if ! git diff --cached --quiet; then
-            git commit -m 'Build136: add MPV seeking epoch fence and keyframe backend probe'
-            git push origin HEAD:diag/mpv-seek-fence-keyframe-probe-0.13.69
+            git commit -m 'Build137: use MPV_EVENT_SEEK fence and read-only keyframe index'
+            git push origin HEAD:diag/mpv-seek-event-fence-keyframe-index-0.13.70
           fi
 
-      - name: Verify Build136 source contract
+      - name: Verify Build137 source contract
         run: |
           set -euo pipefail
-          grep -Fq 'sourceVersion = "0.13.69"' Sources/Core/AppIdentity.swift
-          grep -Fq 'private var activeSeekingEpochID: UInt64?' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq '("seeking", MPV_FORMAT_FLAG)' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'reason=no-latest-seeking-epoch' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'owner=seeking-epoch' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'OnePlayerKeyframeIndexProbe.runtimeDescription' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'canImport(Libavformat)' Sources/Player/MPVKeyframeIndexProbe.swift
-          grep -Fq 'ONEPLAYER_KEYFRAME_BACKEND_' Sources/Player/MPVKeyframeIndexProbe.swift
+          grep -Fq 'sourceVersion = "0.13.70"' Sources/Core/AppIdentity.swift
+          grep -Fq 'private var activeSeekEventOwnerID: UInt64?' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'owner=awaiting-mpv-event-seek' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'phase=mpv-event-seek owner=claimed' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'reason=no-latest-seek-event-owner' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'owner=mpv-event-seek' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'MPVSeekingState' Sources/Player/MPVPlayerEngine.swift
+          ! grep -Fq 'activeSeekingEpochID' Sources/Player/MPVPlayerEngine.swift
+          ! grep -Fq 'reason=no-latest-seeking-epoch' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'ONEPLAYER_KEYFRAME_INDEX_READONLY' Sources/Player/MPVKeyframeIndexProbe.swift
+          grep -Fq 'avformat_index_get_entries_count' Sources/Player/MPVKeyframeIndexProbe.swift
+          grep -Fq 'avformat_index_get_entry' Sources/Player/MPVKeyframeIndexProbe.swift
+          grep -Fq 'readCachedMetadata(offset: Int64, length: Int)' Sources/Transport/TransportDataSession.swift
+          grep -Fq 'func readCachedMetadata(offset: Int64, length: Int) async -> Data?' Sources/Transport/DownloadFirstMediaSession.swift
+          grep -Fq 'action=observe-only' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'category == "SeekTransportRead"' Sources/Diagnostics/DiagnosticsLogger.swift
+          grep -Fq 'waitMs < 5' Sources/Diagnostics/DiagnosticsLogger.swift
           grep -Fq 'intent = "doubleTapFastSeek"' Sources/Player/MPVPlayerEngine.swift
           grep -Fq 'intent = "scrubReleaseFastSeek"' Sources/Player/MPVPlayerEngine.swift
           test "$(grep -Fc 'mode = "absolute+keyframes"' Sources/Player/MPVPlayerEngine.swift)" -ge 2
-          ! grep -Fq 'residualRefineMaxSeconds' Sources/Player/MPVPlayerEngine.swift
           ! grep -Fq 'absolute+exact' Sources/Player/MPVPlayerEngine.swift
           grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
           git diff --check
@@ -93,11 +109,11 @@ jobs:
           pod install --repo-update
           xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
 
-      - name: Build Build136 Release
+      - name: Build Build137 Release
         run: |
           set -euo pipefail
           rm -rf build
-          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.69 CURRENT_PROJECT_VERSION=136 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.70 CURRENT_PROJECT_VERSION=137 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
 
       - name: Locate and validate app
         id: app
@@ -106,24 +122,25 @@ jobs:
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP_PATH" && test -d "$APP_PATH"
           echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.69' --build '136' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.70' --build '137' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
           chmod +x scripts/check_min_os.sh
           scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
 
-      - name: Detect keyframe index backend
+      - name: Detect read-only keyframe index backend
         run: |
           set -euo pipefail
           APP_PATH="${{ steps.app.outputs.path }}"
           EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Info.plist")"
           BIN="$APP_PATH/$EXECUTABLE"
-          if strings "$BIN" | grep -Fq 'ONEPLAYER_KEYFRAME_BACKEND_LIBAVFORMAT_DIRECT'; then
-            echo 'backend=libavformat-direct' | tee keyframe-backend-report.log
+          if strings "$BIN" | grep -Fq 'ONEPLAYER_KEYFRAME_BACKEND_LIBAVFORMAT_DIRECT' && strings "$BIN" | grep -Fq 'ONEPLAYER_KEYFRAME_INDEX_READONLY'; then
+            echo 'backend=libavformat-direct index=read-only cache-only-observe' | tee keyframe-index-report.log
           elif strings "$BIN" | grep -Fq 'ONEPLAYER_KEYFRAME_BACKEND_UNAVAILABLE'; then
-            echo 'backend=unavailable reason=Libavformat-or-Libavutil-not-importable-from-app-target' | tee keyframe-backend-report.log
+            echo 'backend=unavailable index=read-only-unavailable' | tee keyframe-index-report.log
           else
-            echo 'backend=unknown marker-missing' | tee keyframe-backend-report.log
+            echo 'backend=unknown marker-missing' | tee keyframe-index-report.log
+            exit 1
           fi
-          cat keyframe-backend-report.log
+          cat keyframe-index-report.log
 
       - name: Package unsigned IPA
         run: |
@@ -132,20 +149,20 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "$APP_PATH" Payload/
-          IPA='OnePlayer-0.13.69-build136-seek-fence-keyframe-probe-unsigned.ipa'
+          IPA='OnePlayer-0.13.70-build137-seek-event-fence-keyframe-index-unsigned.ipa'
           /usr/bin/zip -qry "$IPA" Payload
           /usr/bin/unzip -t "$IPA" >/dev/null
           /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
           cat "$IPA.sha256"
 
-      - name: Upload Build136 package
+      - name: Upload Build137 package
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.13.69-build136-seek-fence-keyframe-probe
+          name: OnePlayer-0.13.70-build137-seek-event-fence-keyframe-index
           path: |
-            OnePlayer-0.13.69-build136-seek-fence-keyframe-probe-unsigned.ipa
-            OnePlayer-0.13.69-build136-seek-fence-keyframe-probe-unsigned.ipa.sha256
-            keyframe-backend-report.log
+            OnePlayer-0.13.70-build137-seek-event-fence-keyframe-index-unsigned.ipa
+            OnePlayer-0.13.70-build137-seek-event-fence-keyframe-index-unsigned.ipa.sha256
+            keyframe-index-report.log
             app-validation.log
             min-os-report.log
             build.log
@@ -153,13 +170,13 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload Build136 diagnostics
+      - name: Upload Build137 diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.13.69-build136-seek-fence-keyframe-probe-diagnostics
+          name: OnePlayer-0.13.70-build137-seek-event-fence-keyframe-index-diagnostics
           path: |
-            keyframe-backend-report.log
+            keyframe-index-report.log
             app-validation.log
             min-os-report.log
             build.log
