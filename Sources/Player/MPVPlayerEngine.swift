@@ -43,6 +43,9 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
     private var lastPositionEmission: TimeInterval = 0
     private var playbackRateGeneration: UInt64 = 0
     private var seekGeneration: UInt64 = 0
+    private var latestNativeSeekDispatchID: UInt64?
+    private var activeSeekingEpochID: UInt64?
+    private var seekingPropertyActive = false
     private let sharedTransportSession: TransportDataSession?
     private var streamBridge: MPVUnifiedStreamBridge?
     private var streamPrepareTask: Task<Void, Never>?
@@ -414,6 +417,9 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
             self.queue.async { [weak self] in
                 guard let self, let handle = self.mpv else { return }
                 let dispatchAt = CACurrentMediaTime()
+                self.latestNativeSeekDispatchID = seekID
+                self.activeSeekingEpochID = nil
+                DiagnosticsLogger.shared.log("MPVSeekFence", "id=\(seekID) phase=native-dispatch owner=awaiting-seeking-true")
                 DiagnosticsLogger.shared.log("MPVSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) phase=native-dispatch prioritizeMs=\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) intent=\(intent) mode=\(mode) bufferHit=\(bufferHit) enginePosition=\(String(format: "%.3f", self.snapshot.position))")
                 self.command(handle, ["seek", String(format: "%.3f", target), mode])
             }
@@ -448,6 +454,9 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         // Prevent new callbacks before touching the handle.
         mpv_set_wakeup_callback(handle, nil, nil)
         pendingSeek = nil
+        latestNativeSeekDispatchID = nil
+        activeSeekingEpochID = nil
+        seekingPropertyActive = false
         pendingRendererLayout = nil
         streamPrepareTask?.cancel()
         streamPrepareTask = nil
@@ -531,6 +540,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         }
 
         DiagnosticsLogger.shared.log("MPVVideo", "renderer=gpu-next gpu-api=vulkan gpu-context=moltenvk layer=CAMetalLayer hwdec=videotoolbox")
+        DiagnosticsLogger.shared.log("MPVKeyframeIndex", OnePlayerKeyframeIndexProbe.runtimeDescription)
         observeProperties(handle)
         mpv_set_wakeup_callback(handle, { context in
             guard let context else { return }
@@ -652,6 +662,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
             ("demuxer-cache-idle", MPV_FORMAT_FLAG),
             ("seekable", MPV_FORMAT_FLAG),
             ("partially-seekable", MPV_FORMAT_FLAG),
+            ("seeking", MPV_FORMAT_FLAG),
             ("demuxer-via-network", MPV_FORMAT_FLAG)
         ]
         for (name, format) in properties { mpv_observe_property(handle, 0, name, format) }
@@ -687,9 +698,6 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
             DiagnosticsLogger.shared.log("MPVSeekEvent", "\(pendingText) position=\(String(format: "%.3f", snapshot.position)) event=seek")
             emitOnMain()
         case MPV_EVENT_PLAYBACK_RESTART:
-            snapshot.isBuffering = false
-            snapshot.waitingReason = nil
-
             var actualPosition = snapshot.position
             var queriedPosition = Double(0)
             if getProperty(handle: handle, name: "time-pos", format: MPV_FORMAT_DOUBLE, value: &queriedPosition) >= 0, queriedPosition.isFinite {
@@ -697,10 +705,23 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                 snapshot.position = queriedPosition
             }
 
+            if let pending = pendingSeek, pending.id > 0, activeSeekingEpochID != pending.id {
+                snapshot.isBuffering = true
+                snapshot.waitingReason = "MPV seek"
+                DiagnosticsLogger.shared.log("MPVSeekFence", "id=\(pending.id) phase=playback-restart ignored=true reason=no-latest-seeking-epoch actual=\(String(format: "%.3f", actualPosition)) nativeOwner=\(latestNativeSeekDispatchID.map(String.init) ?? "none") seekingOwner=\(activeSeekingEpochID.map(String.init) ?? "none") seeking=\(seekingPropertyActive)")
+                emitOnMain()
+                return
+            }
+
+            snapshot.isBuffering = false
+            snapshot.waitingReason = nil
             if let pending = pendingSeek {
                 pendingSeek = nil
+                latestNativeSeekDispatchID = nil
+                activeSeekingEpochID = nil
                 let latency = (CACurrentMediaTime() - pending.requestedAt) * 1000
                 let delta = actualPosition - pending.target
+                DiagnosticsLogger.shared.log("MPVSeekFence", "id=\(pending.id) phase=playback-restart accepted=true owner=seeking-epoch")
                 DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\(pending.id) target=\(String(format: "%.3f", pending.target)) actual=\(String(format: "%.3f", actualPosition)) delta=\(String(format: "%.3f", delta)) completionMs=\(String(format: "%.1f", latency)) bufferHit=\(pending.bufferHit) intent=\(pending.intent) mode=\(pending.mode) event=playback-restart")
                 DispatchQueue.main.async { [weak self] in
                     self?.onSeekCompleted?(SeekResult(
@@ -709,7 +730,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                         actualPosition: actualPosition,
                         bufferHit: pending.bufferHit,
                         completionLatencyMs: latency,
-                        measurement: "MPV playback-restart after latest seek"
+                        measurement: "MPV playback-restart after latest seeking epoch"
                     ))
                 }
             } else {
@@ -739,7 +760,13 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                 } else { DiagnosticsLogger.shared.log("MPVEndFile", "ignored transition event reason=\(reasonValue)") }
             }
         case MPV_EVENT_PROPERTY_CHANGE:
-            if let namePointer = event.data?.assumingMemoryBound(to: mpv_event_property.self).pointee.name { refreshProperty(name: String(cString: namePointer), handle: handle) }
+            if let propertyPointer = event.data?.assumingMemoryBound(to: mpv_event_property.self), let namePointer = propertyPointer.pointee.name {
+                let name = String(cString: namePointer)
+                if name == "seeking", propertyPointer.pointee.format == MPV_FORMAT_FLAG, let data = propertyPointer.pointee.data {
+                    let active = data.assumingMemoryBound(to: Int32.self).pointee != 0
+                    handleSeekingPropertyChange(active)
+                } else { refreshProperty(name: name, handle: handle) }
+            }
         case MPV_EVENT_LOG_MESSAGE:
             if let message = event.data?.assumingMemoryBound(to: mpv_event_log_message.self).pointee {
                 let prefix = String(cString: message.prefix)
@@ -750,6 +777,17 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
             DiagnosticsLogger.shared.log("MPV", "shutdown")
         default:
             break
+        }
+    }
+
+    private func handleSeekingPropertyChange(_ active: Bool) {
+        seekingPropertyActive = active
+        let pendingID = pendingSeek?.id
+        if active, let pending = pendingSeek, pending.id > 0, latestNativeSeekDispatchID == pending.id {
+            activeSeekingEpochID = pending.id
+            DiagnosticsLogger.shared.log("MPVSeekFence", "id=\(pending.id) phase=seeking-property active=true owner=claimed")
+        } else {
+            DiagnosticsLogger.shared.log("MPVSeekFence", "id=\(pendingID.map(String.init) ?? "none") phase=seeking-property active=\(active) nativeOwner=\(latestNativeSeekDispatchID.map(String.init) ?? "none") seekingOwner=\(activeSeekingEpochID.map(String.init) ?? "none")")
         }
     }
 
