@@ -6,7 +6,6 @@ on:
     branches: [refactor/keyframe-fast-seek-0.13.76]
     paths:
       - "Sources/**"
-      - "scripts/apply_build143_keyframe_fast_seek_cleanup.py"
       - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build143-keyframe-fast-seek.yml"
@@ -15,7 +14,7 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: build143-keyframe-fast-seek-${{ github.ref }}
@@ -33,23 +32,6 @@ jobs:
         with:
           ref: refactor/keyframe-fast-seek-0.13.76
           fetch-depth: 0
-
-      - name: Apply production keyframe fast-seek cleanup
-        run: |
-          set -euo pipefail
-          python3 scripts/apply_build143_keyframe_fast_seek_cleanup.py
-          git diff --check
-
-      - name: Persist Build143 real source
-        run: |
-          set -euo pipefail
-          git config user.name 'ChatGPT'
-          git config user.email 'chatgpt@users.noreply.github.com'
-          git add Sources/Player/MPVPlayerEngine.swift
-          if ! git diff --cached --quiet; then
-            git commit -m 'Build143: finalize production keyframe fast seek'
-            git push origin HEAD:refactor/keyframe-fast-seek-0.13.76
-          fi
 
       - name: Verify production seek contract
         run: |
@@ -84,6 +66,11 @@ jobs:
           ! grep -Fq 'fallback-buffer-miss' Sources/Player/MPVPlayerEngine.swift
           ! grep -Fq 'UserDefaults' Sources/Player/OnePlayerSessionKeyframeMap.swift
           ! grep -Fq 'FileManager' Sources/Player/OnePlayerSessionKeyframeMap.swift
+          test ! -e scripts/apply_build141_nearest_keyframe_ab.py
+          test ! -e scripts/apply_build142_session_keyframe_index.py
+          test ! -e scripts/apply_build143_keyframe_fast_seek_cleanup.py
+          test ! -e .github/workflows/build141-nearest-keyframe-ab.yml
+          test ! -e .github/workflows/build142-session-keyframe-index.yml
           grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
           git diff --check
 
