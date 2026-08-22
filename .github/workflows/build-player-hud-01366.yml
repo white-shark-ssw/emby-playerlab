@@ -1,8 +1,20 @@
 name: Build OnePlayer 0.13.66 Build133 Player HUD Tune
+# Build133 source-ready trigger
 
 on:
   push:
     branches: [diag/player-hud-tune-0.13.66]
+    paths:
+      - ".github/workflows/build-player-hud-01366.yml"
+      - "MDKLab/**"
+      - "Sources/**"
+      - "project.mdklab.yml"
+  pull_request:
+    branches: [diag/mpv-fast-seek-0.13.65]
+    paths:
+      - ".github/workflows/build-player-hud-01366.yml"
+      - "Sources/**"
+      - "project.mdklab.yml"
   workflow_dispatch:
 
 concurrency:

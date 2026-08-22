@@ -1,25 +1,25 @@
-name: Temp PR Build134 EX Scrub HUD
+name: TEMP Build134 EX Scrub HUD
 
 on:
   pull_request:
     branches: [diag/player-hud-tune-0.13.66]
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   build134:
-    if: github.event.pull_request.head.ref == 'diag/scrub-hud-ex-0.13.67'
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'diag/scrub-hud-ex-0.13.67'
     runs-on: macos-15
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: diag/scrub-hud-ex-0.13.67
           fetch-depth: 0
 
-      - name: Apply exact EX scrub HUD patch
+      - name: Apply EX-style scrub HUD
         shell: bash
         run: |
           set -euo pipefail
@@ -28,10 +28,10 @@ jobs:
 
           app = Path('Sources/Core/AppIdentity.swift')
           text = app.read_text()
-          if '"0.13.67"' not in text:
-              count = text.count('"0.13.66"')
-              if count != 2: raise SystemExit(f'AppIdentity mismatch: {count}')
-              app.write_text(text.replace('"0.13.66"', '"0.13.67"'))
+          count = text.count('"0.13.66"')
+          if count != 2:
+              raise SystemExit(f'AppIdentity: expected 2 version literals, found {count}')
+          app.write_text(text.replace('"0.13.66"', '"0.13.67"'))
 
           player = Path('Sources/UI/PlayerScreen.swift')
           text = player.read_text()
@@ -44,9 +44,9 @@ jobs:
                     .allowsHitTesting(false)
                     .zIndex(40)
                 }'''
-          if 'screenScrubFeedbackView(feedback).padding(.bottom, 116)' not in text:
-              if text.count(old_scrub) != 1: raise SystemExit(f'PlayerScreen scrub anchor mismatch: {text.count(old_scrub)}')
-              text = text.replace(old_scrub, new_scrub, 1)
+          if text.count(old_scrub) != 1:
+              raise SystemExit(f'PlayerScreen: expected scrub HUD anchor once, found {text.count(old_scrub)}')
+          text = text.replace(old_scrub, new_scrub)
 
           anchor = '    private func rateFeedbackView(_ rate: Double) -> some View {'
           helper = '''    private func screenScrubFeedbackView(_ text: String) -> some View {
@@ -84,14 +84,12 @@ jobs:
     }
 
 '''
-          if 'private func screenScrubFeedbackView(_ text: String)' not in text:
-              if text.count(anchor) != 1: raise SystemExit(f'PlayerScreen helper anchor mismatch: {text.count(anchor)}')
-              text = text.replace(anchor, helper + anchor, 1)
-          player.write_text(text)
-
-          for temp in [Path('.github/workflows/apply-build134-ex-scrub-hud.yml'), Path('docs/build134-trigger.txt')]:
-              if temp.exists(): temp.unlink()
+          if text.count(anchor) != 1:
+              raise SystemExit(f'PlayerScreen: expected helper anchor once, found {text.count(anchor)}')
+          player.write_text(text.replace(anchor, helper + anchor))
           PY
+
+          rm -f .github/workflows/apply-build134-ex-scrub-hud.yml
           git diff --check
           git status --short
 
@@ -99,13 +97,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'ChatGPT'
-          git config user.email 'chatgpt@users.noreply.github.com'
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m 'Build134: match EX scrub HUD styling'
-            git push origin HEAD:diag/scrub-hud-ex-0.13.67
-          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/UI/PlayerScreen.swift .github/workflows/apply-build134-ex-scrub-hud.yml
+          git commit -m "Build134: match EX scrub HUD styling"
+          git push origin HEAD:diag/scrub-hud-ex-0.13.67
 
       - name: Verify Build134 contract
         run: |
@@ -121,8 +117,6 @@ jobs:
           test "$(grep -Fc 'mode = "absolute+keyframes"' Sources/Player/MPVPlayerEngine.swift)" -ge 2
           grep -Fq 'private static let fastSeekBurstWindow: CFTimeInterval = 1.0' Sources/Player/PlayerController.swift
           grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
-          test ! -e .github/workflows/apply-build134-ex-scrub-hud.yml
-          test ! -e docs/build134-trigger.txt
 
       - name: Select Xcode and install tools
         run: |
