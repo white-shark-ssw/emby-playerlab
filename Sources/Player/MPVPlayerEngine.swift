@@ -707,7 +707,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                 activeSeekEventOwnerID = pending.id
                 DiagnosticsLogger.shared.log("MPVSeekFence", "id=\(pending.id) phase=mpv-event-seek owner=claimed")
             } else {
-                DiagnosticsLogger.shared.log("MPVSeekFence", "id=\(pendingSeek?.id.map(String.init) ?? "none") phase=mpv-event-seek owner=unclaimed nativeOwner=\(latestNativeSeekDispatchID.map(String.init) ?? "none")")
+                DiagnosticsLogger.shared.log("MPVSeekFence", "id=\(pendingSeek.map { String($0.id) } ?? "none") phase=mpv-event-seek owner=unclaimed nativeOwner=\(latestNativeSeekDispatchID.map(String.init) ?? "none")")
             }
             let pendingText = pendingSeek.map { "id=\($0.id) latestTarget=\(String(format: "%.3f", $0.target))" } ?? "id=none latestTarget=none"
             DiagnosticsLogger.shared.log("MPVSeekEvent", "\(pendingText) position=\(String(format: "%.3f", snapshot.position)) event=seek")
@@ -792,7 +792,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
 
     private func handleSeekingPropertyChange(_ active: Bool) {
         seekingPropertyActive = active
-        DiagnosticsLogger.shared.log("MPVSeekingState", "active=\(active) pending=\(pendingSeek?.id.map(String.init) ?? "none") nativeOwner=\(latestNativeSeekDispatchID.map(String.init) ?? "none") seekEventOwner=\(activeSeekEventOwnerID.map(String.init) ?? "none")")
+        DiagnosticsLogger.shared.log("MPVSeekingState", "active=\(active) pending=\(pendingSeek.map { String($0.id) } ?? "none") nativeOwner=\(latestNativeSeekDispatchID.map(String.init) ?? "none") seekEventOwner=\(activeSeekEventOwnerID.map(String.init) ?? "none")")
     }
 
     private func startKeyframeIndexDiagnostics(session: TransportDataSession, contentLength: Int64) {
