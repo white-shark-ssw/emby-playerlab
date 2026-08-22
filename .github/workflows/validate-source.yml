@@ -1,258 +1,249 @@
 name: Validate Source
 
 on:
-  workflow_dispatch:
   pull_request:
-  push:
-    branches: [main, master]
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
 
 concurrency:
-  group: validate-${{ github.event.pull_request.number || github.ref }}
+  group: build135-via-validator-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  validate:
+  build135:
+    if: github.event.pull_request.head.ref == 'ci/build135-residual-run'
     runs-on: macos-15
-    timeout-minutes: 120
-
+    timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Build135 experiment
+        uses: actions/checkout@v4
+        with:
+          ref: diag/mpv-residual-refine-0.13.68
+          fetch-depth: 0
 
-      - name: Initialize diagnostic logs
-        run: |
-          : > validate-build.log
-          : > build-settings.log
-          : > package-resolution.log
-          : > mpv-module-maps.log
-          : > pods-install.log
-          : > source-audit.log
-          : > built-info-plist.log
-          : > app-validation.log
-
-      - name: Validate current source configuration
+      - name: Apply bounded MPV residual refinement
+        shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY' 2>&1 | tee source-audit.log
-          import json
-          import plistlib
+          python3 - <<'PY'
           from pathlib import Path
 
-          def require(condition, message):
-              if not condition:
-                  raise SystemExit(f"::error::{message}")
+          app = Path('Sources/Core/AppIdentity.swift')
+          text = app.read_text()
+          if '"0.13.68"' not in text:
+              if text.count('"0.13.67"') != 2: raise SystemExit('AppIdentity version anchor mismatch')
+              app.write_text(text.replace('"0.13.67"', '"0.13.68"'))
 
-          project = Path("project.yml").read_text()
-          require('iOS: "15.0"' in project, "project.yml deploymentTarget.iOS must remain 15.0")
-          require('deploymentTarget: "15.0"' in project, "app deploymentTarget must remain 15.0")
-          require('PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app' in project, "unexpected bundle identifier")
-          require('PRODUCT_NAME: "OnePlayer"' in project, "unexpected product name")
-          require('ASSETCATALOG_COMPILER_APPICON_NAME: OnePlayerIcon' in project, "unexpected primary app icon name")
-          require('ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "OnePlayerAltIcon"' in project, "alternate app icon is not configured")
-          require('exactVersion: 1.0.0' in project, "MPVKit version changed unexpectedly")
+          engine = Path('Sources/Player/MPVPlayerEngine.swift')
+          text = engine.read_text()
 
-          with Path("Config/Info.plist").open("rb") as handle:
-              info = plistlib.load(handle)
-          require(info.get("CFBundleDisplayName") == "OnePlayer", "source display name must be OnePlayer")
-          require(info.get("CFBundleName") == "OnePlayer", "source bundle name must be OnePlayer")
-          require(str(info.get("CFBundleShortVersionString")) == "0.13.3", "source version must be 0.13.3")
-          require(str(info.get("CFBundleVersion")) == "69", "source build must be 69")
+          marker = '    private var seekGeneration: UInt64 = 0\n'
+          addition = '''    private var seekGeneration: UInt64 = 0
+    private var residualRefineSeekID: UInt64?
+    private var residualPrimaryLanding: Double?
+    private var residualPrimaryCompletionMs: Double?
+    private var residualRefineStartedAt: TimeInterval?
+    private var latestNativeSeekDispatchID: UInt64?
+    private static let residualRefineMinSeconds = 0.050
+    private static let residualRefineMaxSeconds = 1.250
+'''
+          if 'private static let residualRefineMaxSeconds = 1.250' not in text:
+              if text.count(marker) != 1: raise SystemExit('seekGeneration anchor mismatch')
+              text = text.replace(marker, addition, 1)
 
-          stale_brand_files = []
-          for root in (Path("Sources"), Path("Config")):
-              for candidate in root.rglob("*"):
-                  if not candidate.is_file() or candidate.suffix not in {".swift", ".plist", ".h", ".m", ".mm"}:
-                      continue
-                  try:
-                      body = candidate.read_text(errors="ignore")
-                  except Exception:
-                      continue
-                  if "OS player" in body:
-                      stale_brand_files.append(str(candidate))
-          require(not stale_brand_files, f"stale visible OS player branding remains: {stale_brand_files}")
+          old_reset = '''        let requestedAt = CACurrentMediaTime()
+        pendingSeek = PendingSeek(id: seekID, requestedAt: requestedAt, target: target, bufferHit: bufferHit, intent: intent, mode: mode)
+'''
+          new_reset = '''        let requestedAt = CACurrentMediaTime()
+        residualRefineSeekID = nil
+        residualPrimaryLanding = nil
+        residualPrimaryCompletionMs = nil
+        residualRefineStartedAt = nil
+        latestNativeSeekDispatchID = nil
+        pendingSeek = PendingSeek(id: seekID, requestedAt: requestedAt, target: target, bufferHit: bufferHit, intent: intent, mode: mode)
+'''
+          if 'residualRefineSeekID = nil\n        residualPrimaryLanding = nil' not in text:
+              if text.count(old_reset) != 1: raise SystemExit('interactive seek reset anchor mismatch')
+              text = text.replace(old_reset, new_reset, 1)
 
-          required = [
-              "Sources/Player/PlayerController.swift",
-              "Sources/Player/AVPlayerEngine.swift",
-              "Sources/Player/MPVPlayerEngine.swift",
-              "Sources/Transport/UnifiedMediaTransportSession.swift",
-              "Sources/Transport/RangeHTTPClient.swift",
-              "Sources/UI/OnePlayerSettingsViews.swift",
-              "scripts/assets/OnePlayerDefault256.b64.00",
-              "scripts/assets/OnePlayerDefault256.b64.01",
-              "scripts/assets/OnePlayerAlternate384.b64.00",
-              "scripts/assets/OnePlayerAlternate384.b64.01",
-              "scripts/generate_oneplayer_icons.py",
-              "scripts/check_min_os.sh",
-              "scripts/check_player_resume_foreground_ui.py",
-              "scripts/validate_built_app.py",
-          ]
-          missing = [path for path in required if not Path(path).is_file()]
-          require(not missing, f"required current source files are missing: {missing}")
+          old_dispatch = '''                let dispatchAt = CACurrentMediaTime()
+                DiagnosticsLogger.shared.log("MPVSeek", "id=\\(seekID) target=\\(String(format: "%.3f", target)) phase=native-dispatch prioritizeMs=\\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) intent=\\(intent) mode=\\(mode) bufferHit=\\(bufferHit) enginePosition=\\(String(format: "%.3f", self.snapshot.position))")
+'''
+          new_dispatch = '''                let dispatchAt = CACurrentMediaTime()
+                self.latestNativeSeekDispatchID = seekID
+                DiagnosticsLogger.shared.log("MPVSeek", "id=\\(seekID) target=\\(String(format: "%.3f", target)) phase=native-dispatch prioritizeMs=\\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) intent=\\(intent) mode=\\(mode) bufferHit=\\(bufferHit) enginePosition=\\(String(format: "%.3f", self.snapshot.position))")
+'''
+          if 'self.latestNativeSeekDispatchID = seekID' not in text:
+              if text.count(old_dispatch) != 1: raise SystemExit('native dispatch anchor mismatch')
+              text = text.replace(old_dispatch, new_dispatch, 1)
 
-          for name in ("OnePlayerIcon.appiconset", "OnePlayerAltIcon.appiconset"):
-              contents_path = Path("Resources/Assets.xcassets") / name / "Contents.json"
-              require(contents_path.is_file(), f"{name} Contents.json is missing")
-              contents = json.loads(contents_path.read_text())
-              filenames = [image.get("filename") for image in contents.get("images", []) if image.get("filename")]
-              require(len(filenames) == 18, f"{name} must declare 18 icon slots")
-          print("Current OnePlayer source configuration: OK")
+          old_landing = '''            if let pending = pendingSeek {
+                pendingSeek = nil
+                let latency = (CACurrentMediaTime() - pending.requestedAt) * 1000
+                let delta = actualPosition - pending.target
+                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", delta)) completionMs=\\(String(format: "%.1f", latency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) event=playback-restart")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onSeekCompleted?(SeekResult(
+                        requestedAt: pending.requestedAt,
+                        target: pending.target,
+                        actualPosition: actualPosition,
+                        bufferHit: pending.bufferHit,
+                        completionLatencyMs: latency,
+                        measurement: "MPV playback-restart after latest seek"
+                    ))
+                }
+            } else {
+                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=none actual=\\(String(format: "%.3f", actualPosition)) event=playback-restart-without-pending")
+            }
+'''
+          new_landing = '''            if let pending = pendingSeek {
+                let now = CACurrentMediaTime()
+                if pending.id > 0, residualRefineSeekID != pending.id, latestNativeSeekDispatchID != pending.id {
+                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) actual=\\(String(format: "%.3f", actualPosition)) event=playback-restart-before-latest-native-dispatch ignored=true")
+                    emitOnMain()
+                    return
+                }
+
+                if residualRefineSeekID == pending.id {
+                    pendingSeek = nil
+                    let totalLatency = (now - pending.requestedAt) * 1000
+                    let refineLatency = residualRefineStartedAt.map { (now - $0) * 1000 } ?? 0
+                    let finalDelta = actualPosition - pending.target
+                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", finalDelta)) completionMs=\\(String(format: "%.1f", totalLatency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=absolute+exact stage=refined event=playback-restart")
+                    DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=complete primaryLanding=\\(residualPrimaryLanding.map { String(format: "%.3f", $0) } ?? "none") primaryMs=\\(residualPrimaryCompletionMs.map { String(format: "%.1f", $0) } ?? "none") final=\\(String(format: "%.3f", actualPosition)) finalDelta=\\(String(format: "%.3f", finalDelta)) refineMs=\\(String(format: "%.1f", refineLatency)) totalMs=\\(String(format: "%.1f", totalLatency))")
+                    residualRefineSeekID = nil
+                    residualPrimaryLanding = nil
+                    residualPrimaryCompletionMs = nil
+                    residualRefineStartedAt = nil
+                    latestNativeSeekDispatchID = nil
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: totalLatency, measurement: "MPV keyframe landing + bounded absolute exact residual refinement"))
+                    }
+                } else if pending.id == 0 {
+                    pendingSeek = nil
+                    let latency = (now - pending.requestedAt) * 1000
+                    let delta = actualPosition - pending.target
+                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=0 target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", delta)) completionMs=\\(String(format: "%.1f", latency)) intent=\\(pending.intent) mode=\\(pending.mode) stage=startup event=playback-restart")
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: latency, measurement: "MPV startup playback-restart"))
+                    }
+                } else {
+                    let primaryLatency = (now - pending.requestedAt) * 1000
+                    let residual = pending.target - actualPosition
+                    let delta = actualPosition - pending.target
+                    let eligible = residual > Self.residualRefineMinSeconds && residual <= Self.residualRefineMaxSeconds
+                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", delta)) completionMs=\\(String(format: "%.1f", primaryLatency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) stage=primary event=playback-restart")
+                    DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=consider target=\\(String(format: "%.3f", pending.target)) keyframeLanding=\\(String(format: "%.3f", actualPosition)) residual=\\(String(format: "%.3f", residual)) eligible=\\(eligible) primaryMs=\\(String(format: "%.1f", primaryLatency))")
+                    if eligible {
+                        residualRefineSeekID = pending.id
+                        residualPrimaryLanding = actualPosition
+                        residualPrimaryCompletionMs = primaryLatency
+                        residualRefineStartedAt = now
+                        DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=native-dispatch residual=\\(String(format: "%.3f", residual)) mode=absolute+exact target=\\(String(format: "%.3f", pending.target))")
+                        emitOnMain()
+                        command(handle, ["seek", String(format: "%.3f", pending.target), "absolute+exact"])
+                        return
+                    }
+                    pendingSeek = nil
+                    latestNativeSeekDispatchID = nil
+                    let skipReason = residual <= Self.residualRefineMinSeconds ? "already-frame-close-or-past" : "residual-over-cap"
+                    DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=skip reason=\\(skipReason) residual=\\(String(format: "%.3f", residual)) finalDelta=\\(String(format: "%.3f", delta)) totalMs=\\(String(format: "%.1f", primaryLatency))")
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: primaryLatency, measurement: "MPV keyframe landing; residual refine skipped"))
+                    }
+                }
+            } else {
+                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=none actual=\\(String(format: "%.3f", actualPosition)) event=playback-restart-without-pending")
+            }
+'''
+          if 'phase=complete primaryLanding=' not in text:
+              if text.count(old_landing) != 1: raise SystemExit(f'playback restart anchor mismatch: {text.count(old_landing)}')
+              text = text.replace(old_landing, new_landing, 1)
+
+          engine.write_text(text)
           PY
+          git diff --check
 
-      - name: Select Xcode 16.4
+      - name: Verify Build135 contract
+        run: |
+          set -euo pipefail
+          grep -Fq 'sourceVersion = "0.13.68"' Sources/Core/AppIdentity.swift
+          grep -Fq 'residualRefineMaxSeconds = 1.250' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'mode=absolute+exact' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'phase=complete primaryLanding=' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'event=playback-restart-before-latest-native-dispatch ignored=true' Sources/Player/MPVPlayerEngine.swift
+          test "$(grep -Fc 'mode = "absolute+keyframes"' Sources/Player/MPVPlayerEngine.swift)" -ge 2
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+
+      - name: Select Xcode 16.4 and install tools
         run: |
           set -euo pipefail
           sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
           xcodebuild -version
           swift --version
 
-      - name: Install build tools
+      - name: Generate project and resolve dependencies
         run: |
           set -euo pipefail
-          brew install xcodegen
-          sudo gem install cocoapods -v 1.16.2 --no-document
-          xcodegen --version
-          pod --version
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
 
-      - name: Generate OnePlayer app icons
-        run: python3 scripts/generate_oneplayer_icons.py
-
-      - name: Generate project
-        run: xcodegen generate
-
-      - name: Validate player resume and foreground UI
-        run: python3 scripts/check_player_resume_foreground_ui.py
-
-      - name: Validate contiguous RangeMap
+      - name: Build Release for generic iOS device
         run: |
           set -euo pipefail
-          swiftc \
-            Sources/Transport/SparseByteRangeSet.swift \
-            Sources/Cache/PlaybackRangeMap.swift \
-            scripts/RangeMapSmoke.swift \
-            -o /tmp/emby-range-map-smoke
-          /tmp/emby-range-map-smoke
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.68 CURRENT_PROJECT_VERSION=135 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
 
-      - name: Install KTVHTTPCache 3.1.0
+      - name: Locate and validate app
         run: |
           set -euo pipefail
-          set -o pipefail
-          pod install --repo-update 2>&1 | tee pods-install.log
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.68' --build '135' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
 
-      - name: Restore Swift package cache
-        uses: actions/cache@v4
-        with:
-          path: .spm-cache
-          key: ${{ runner.os }}-mpvkit-1.0.0-ktv-3.1.0-${{ hashFiles('project.yml', 'Podfile') }}
-
-      - name: Resolve MPVKit
+      - name: Package unsigned IPA
         run: |
           set -euo pipefail
-          set -o pipefail
-          xcodebuild \
-            -resolvePackageDependencies \
-            -workspace EmbyPlayerLab.xcworkspace \
-            -scheme EmbyPlayerLab \
-            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.68-build135-mpv-residual-refine-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
 
-      - name: Inspect package module maps
-        if: always()
-        run: |
-          set -u
-          if [[ ! -d .spm-cache ]]; then
-            echo ".spm-cache does not exist after package resolution." | tee mpv-module-maps.log
-            exit 0
-          fi
-          MODULE_MAP_LIST="$(mktemp)"
-          find .spm-cache \( -path '*/Modules/module.modulemap' -o -path '*/module.modulemap' \) -type f | sort > "$MODULE_MAP_LIST"
-          if [[ ! -s "$MODULE_MAP_LIST" ]]; then
-            echo "No module.modulemap files found under .spm-cache." | tee mpv-module-maps.log
-            rm -f "$MODULE_MAP_LIST"
-            exit 0
-          fi
-          {
-            while IFS= read -r file; do
-              echo "===== $file ====="
-              sed -n '1,120p' "$file"
-            done < "$MODULE_MAP_LIST"
-          } | tee mpv-module-maps.log
-          rm -f "$MODULE_MAP_LIST"
-
-      - name: Check project settings
-        run: |
-          set -euo pipefail
-          set -o pipefail
-          xcodebuild \
-            -workspace EmbyPlayerLab.xcworkspace \
-            -scheme EmbyPlayerLab \
-            -showBuildSettings \
-            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee build-settings.log
-          grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 15.0' build-settings.log
-          grep -q 'SWIFT_VERSION = 5.0' build-settings.log
-          grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.embyplayerlab.app' build-settings.log
-          grep -q 'PRODUCT_NAME = OnePlayer' build-settings.log
-          grep -q 'ASSETCATALOG_COMPILER_APPICON_NAME = OnePlayerIcon' build-settings.log
-          grep -q 'ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = OnePlayerAltIcon' build-settings.log
-
-      - name: Compile for generic iOS device
-        run: |
-          set -euo pipefail
-          set -o pipefail
-          rm -rf build/DerivedData
-          xcodebuild \
-            -workspace EmbyPlayerLab.xcworkspace \
-            -scheme EmbyPlayerLab \
-            -configuration Debug \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/DerivedData \
-            -clonedSourcePackagesDirPath .spm-cache \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY='' \
-            DEVELOPMENT_TEAM='' \
-            build 2>&1 | tee validate-build.log
-
-      - name: Verify built OnePlayer name and alternate icon registration
-        run: |
-          set -euo pipefail
-          APP_PATH="$(find build/DerivedData/Build/Products/Debug-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
-          if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
-            echo "::error::Debug .app was not produced"
-            exit 1
-          fi
-          /usr/bin/plutil -p "$APP_PATH/Info.plist" 2>&1 | tee built-info-plist.log
-          python3 scripts/validate_built_app.py \
-            "$APP_PATH" \
-            --bundle-id "com.embyplayerlab.app" \
-            --version "0.13.3" \
-            --build "69" \
-            --display-name "OnePlayer" \
-            --primary-icon "OnePlayerIcon" \
-            --alternate-icon "OnePlayerAltIcon" 2>&1 | tee app-validation.log
-
-      - name: Summarize compiler errors
-        if: failure()
-        run: |
-          {
-            echo "## First validation/compiler errors"
-            echo '```text'
-            grep -nE '(^|[[:space:]])(error:|fatal error:)|::error::' source-audit.log validate-build.log build-settings.log package-resolution.log pods-install.log mpv-module-maps.log app-validation.log built-info-plist.log | head -180 || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload validation logs
-        if: always()
+      - name: Upload Build135 package
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-validation-logs-${{ github.sha }}
+          name: OnePlayer-0.13.68-build135-mpv-residual-refine
           path: |
-            source-audit.log
-            validate-build.log
-            build-settings.log
-            package-resolution.log
-            pods-install.log
-            mpv-module-maps.log
+            OnePlayer-0.13.68-build135-mpv-residual-refine-unsigned.ipa
+            OnePlayer-0.13.68-build135-mpv-residual-refine-unsigned.ipa.sha256
             app-validation.log
-            built-info-plist.log
+            min-os-report.log
+            build.log
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-build135-diagnostics
+          path: |
+            build.log
+            app-validation.log
+            min-os-report.log
+          if-no-files-found: warn
           retention-days: 14
