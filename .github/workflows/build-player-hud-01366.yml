@@ -1,15 +1,9 @@
-# Build134 PR validation trigger
-name: Build OnePlayer 0.13.67 Build134 EX Scrub HUD
+name: TEMP Validate OnePlayer 0.13.67 Build134 EX Scrub HUD
 
 on:
-  push:
-    branches: [diag/scrub-hud-ex-0.13.67]
-    paths:
-      - ".github/workflows/build-player-hud-01366.yml"
-      - "MDKLab/**"
-      - "Sources/**"
-      - "project.mdklab.yml"
-  workflow_dispatch:
+  pull_request:
+    branches: [diag/player-hud-tune-0.13.66]
+    types: [opened, synchronize, reopened]
 
 concurrency:
   group: ex-scrub-hud-build134-${{ github.ref }}
