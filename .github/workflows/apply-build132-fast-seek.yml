@@ -1,0 +1,238 @@
+name: Apply Build132 Fast Seek
+
+on:
+  push:
+    branches: [diag/mpv-fast-seek-0.13.65]
+    paths:
+      - ".github/workflows/apply-build132-fast-seek.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/mpv-fast-seek-0.13.65
+          fetch-depth: 0
+
+      - name: Apply Build132 source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path, old, new, expected=1):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} matches, found {count}")
+              p.write_text(text.replace(old, new))
+
+          app = Path('Sources/Core/AppIdentity.swift')
+          text = app.read_text()
+          count = text.count('"0.13.64"')
+          if count != 2:
+              raise SystemExit(f'AppIdentity: expected 2 version literals, found {count}')
+          app.write_text(text.replace('"0.13.64"', '"0.13.65"'))
+
+          replace_exact(
+              'Sources/Player/MPVPlayerEngine.swift',
+              '        case .absolute:\n            intent = "scrubReleasePreciseSeek"\n            mode = "absolute+exact"',
+              '        case .absolute:\n            intent = "scrubReleaseFastSeek"\n            mode = "absolute+keyframes"'
+          )
+
+          controller = Path('Sources/Player/PlayerController.swift')
+          text = controller.read_text()
+
+          old_state = '''    private var pendingSeekTarget: Double?\n    private var pendingSeekDirection: SeekDirection?\n    private var screenScrubStartPosition: Double?'''
+          new_state = '''    private var pendingSeekTarget: Double?\n    private var pendingSeekDirection: SeekDirection?\n    private var fastSeekLogicalTarget: Double?\n    private var lastFastSeekRequestAt: CFTimeInterval?\n    private static let fastSeekBurstWindow: CFTimeInterval = 1.0\n    private var screenScrubStartPosition: Double?'''
+          if text.count(old_state) != 1:
+              raise SystemExit('PlayerController: state anchor mismatch')
+          text = text.replace(old_state, new_state)
+
+          old_seek = '''    func seek(by offset: Double) {\n        seekAnchorReleaseTask?.cancel()\n        seekAnchorReleaseTask = nil\n        let base = pendingSeekTarget ?? snapshot.position\n        let target = clampPosition(base + offset)\n        pendingSeekTarget = target\n        pendingSeekDirection = offset >= 0 ? .forward : .backward\n        displayedPosition = target\n        suppressStallWatchdog(for: 3)\n        DiagnosticsLogger.shared.log("SeekAnchor", "offset=\\(offset) base=\\(base) target=\\(target) enginePosition=\\(snapshot.position)")\n        engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)'''
+          new_seek = '''    func seek(by offset: Double) {\n        seekAnchorReleaseTask?.cancel()\n        seekAnchorReleaseTask = nil\n        let now = CACurrentMediaTime()\n        let withinFastSeekBurst = lastFastSeekRequestAt.map { now - $0 <= Self.fastSeekBurstWindow } ?? false\n        let base = withinFastSeekBurst ? (fastSeekLogicalTarget ?? snapshot.position) : snapshot.position\n        let target = clampPosition(base + offset)\n        fastSeekLogicalTarget = target\n        lastFastSeekRequestAt = now\n        pendingSeekTarget = target\n        pendingSeekDirection = offset >= 0 ? .forward : .backward\n        displayedPosition = target\n        suppressStallWatchdog(for: 3)\n        DiagnosticsLogger.shared.log("SeekAnchor", "offset=\\(offset) base=\\(base) target=\\(target) enginePosition=\\(snapshot.position) logicalBurst=\\(withinFastSeekBurst)")\n        engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)'''
+          if text.count(old_seek) != 1:
+              raise SystemExit('PlayerController: seek(by:) anchor mismatch')
+          text = text.replace(old_seek, new_seek)
+
+          old_scrub_reset = '''        pendingSeekTarget = nil\n        pendingSeekDirection = nil\n        userIsScrubbing = true'''
+          new_scrub_reset = '''        pendingSeekTarget = nil\n        pendingSeekDirection = nil\n        fastSeekLogicalTarget = nil\n        lastFastSeekRequestAt = nil\n        userIsScrubbing = true'''
+          if text.count(old_scrub_reset) != 2:
+              raise SystemExit(f'PlayerController: expected 2 scrub reset anchors, found {text.count(old_scrub_reset)}')
+          text = text.replace(old_scrub_reset, new_scrub_reset)
+
+          old_commit = '''    private func commitScrubbedPosition() {\n        userIsScrubbing = false\n        let target = clampPosition(displayedPosition)\n        pendingSeekTarget = target'''
+          new_commit = '''    private func commitScrubbedPosition() {\n        userIsScrubbing = false\n        fastSeekLogicalTarget = nil\n        lastFastSeekRequestAt = nil\n        let target = clampPosition(displayedPosition)\n        pendingSeekTarget = target'''
+          if text.count(old_commit) != 1:
+              raise SystemExit('PlayerController: commit scrub anchor mismatch')
+          text = text.replace(old_commit, new_commit)
+
+          old_stop = '''        pendingSeekTarget = nil\n        pendingSeekDirection = nil\n        screenScrubStartPosition = nil\n        DiagnosticsLogger.shared.log("Lifecycle", "player close detached")'''
+          new_stop = '''        pendingSeekTarget = nil\n        pendingSeekDirection = nil\n        fastSeekLogicalTarget = nil\n        lastFastSeekRequestAt = nil\n        screenScrubStartPosition = nil\n        DiagnosticsLogger.shared.log("Lifecycle", "player close detached")'''
+          if text.count(old_stop) != 1:
+              raise SystemExit('PlayerController: stop reset anchor mismatch')
+          text = text.replace(old_stop, new_stop)
+
+          old_switch = '''        pendingSeekTarget = nil\n        pendingSeekDirection = nil\n        seekAnchorReleaseTask?.cancel()'''
+          new_switch = '''        pendingSeekTarget = nil\n        pendingSeekDirection = nil\n        fastSeekLogicalTarget = nil\n        lastFastSeekRequestAt = nil\n        seekAnchorReleaseTask?.cancel()'''
+          if text.count(old_switch) != 1:
+              raise SystemExit('PlayerController: engine switch reset anchor mismatch')
+          text = text.replace(old_switch, new_switch)
+
+          controller.write_text(text)
+          PY
+
+          cat > .github/workflows/build-mpv-fast-seek-01365.yml <<'YAML'
+          name: Build OnePlayer 0.13.65 Build132 MPV Fast Seek
+
+          on:
+            push:
+              branches: [diag/mpv-fast-seek-0.13.65]
+              paths:
+                - ".github/workflows/build-mpv-fast-seek-01365.yml"
+                - "MDKLab/**"
+                - "Sources/**"
+                - "project.mdklab.yml"
+            pull_request:
+              branches: [diag/mpv-intent-seek-0.13.64]
+              paths:
+                - ".github/workflows/build-mpv-fast-seek-01365.yml"
+                - "MDKLab/**"
+                - "Sources/**"
+                - "project.mdklab.yml"
+            workflow_dispatch:
+
+          concurrency:
+            group: mpv-fast-seek-build132-${{ github.ref }}
+            cancel-in-progress: true
+
+          permissions:
+            contents: read
+
+          jobs:
+            build:
+              runs-on: macos-15
+              timeout-minutes: 180
+              steps:
+                - uses: actions/checkout@v4
+                  with:
+                    fetch-depth: 0
+
+                - name: Verify Build132 fast Seek contract
+                  run: |
+                    set -euo pipefail
+                    grep -Fq 'sourceVersion = "0.13.65"' Sources/Core/AppIdentity.swift
+                    grep -Fq 'intent = "doubleTapFastSeek"' Sources/Player/MPVPlayerEngine.swift
+                    grep -Fq 'intent = "scrubReleaseFastSeek"' Sources/Player/MPVPlayerEngine.swift
+                    test "$(grep -Fc 'mode = "absolute+keyframes"' Sources/Player/MPVPlayerEngine.swift)" -ge 2
+                    ! grep -Fq 'scrubReleasePreciseSeek' Sources/Player/MPVPlayerEngine.swift
+                    ! grep -Fq 'mode = "absolute+exact"' Sources/Player/MPVPlayerEngine.swift
+                    grep -Fq 'private var fastSeekLogicalTarget: Double?' Sources/Player/PlayerController.swift
+                    grep -Fq 'private static let fastSeekBurstWindow: CFTimeInterval = 1.0' Sources/Player/PlayerController.swift
+                    grep -Fq 'let base = withinFastSeekBurst ? (fastSeekLogicalTarget ?? snapshot.position) : snapshot.position' Sources/Player/PlayerController.swift
+                    grep -Fq 'logicalBurst=\(withinFastSeekBurst)' Sources/Player/PlayerController.swift
+                    grep -Fq 'player.mute = true' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+                    grep -Fq 'private let avioRequestSizeBytes = 2 * 1_048_576' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+                    grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+                    test ! -e .github/workflows/apply-build132-fast-seek.yml
+                    git diff --check
+
+                - name: Select Xcode and install tools
+                  run: |
+                    set -euo pipefail
+                    sudo xcode-select -switch /Applications/Xcode_16.4.app
+                    brew install xcodegen
+                    sudo gem install cocoapods -v 1.16.2 --no-document
+                    xcodebuild -version
+                    swift --version
+
+                - name: Generate project and resolve dependencies
+                  run: |
+                    set -euo pipefail
+                    python3 scripts/generate_oneplayer_icons.py
+                    xcodegen generate --spec project.mdklab.yml
+                    pod install --repo-update
+                    xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+                - name: Build Release for generic iOS device
+                  run: |
+                    set -euo pipefail
+                    rm -rf build
+                    xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.65 CURRENT_PROJECT_VERSION=132 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+                - name: Locate built app
+                  run: |
+                    set -euo pipefail
+                    APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+                    test -n "$APP_PATH" && test -d "$APP_PATH"
+                    echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+                - name: Validate app identity
+                  run: |
+                    set -euo pipefail
+                    python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.65' --build '132' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+
+                - name: Validate minimum OS
+                  run: |
+                    set -euo pipefail
+                    chmod +x scripts/check_min_os.sh
+                    scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+
+                - name: Package unsigned IPA
+                  run: |
+                    set -euo pipefail
+                    rm -rf Payload
+                    mkdir Payload
+                    cp -R "$APP_PATH" Payload/
+                    IPA='OnePlayer-0.13.65-build132-mpv-fast-seek-unsigned.ipa'
+                    /usr/bin/zip -qry "$IPA" Payload
+                    /usr/bin/unzip -t "$IPA" >/dev/null
+                    /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+                    cat "$IPA.sha256"
+
+                - name: Upload Build132 package
+                  uses: actions/upload-artifact@v4
+                  with:
+                    name: OnePlayer-0.13.65-build132-mpv-fast-seek
+                    path: |
+                      OnePlayer-0.13.65-build132-mpv-fast-seek-unsigned.ipa
+                      OnePlayer-0.13.65-build132-mpv-fast-seek-unsigned.ipa.sha256
+                      app-validation.log
+                      min-os-report.log
+                      build.log
+                    if-no-files-found: error
+                    retention-days: 14
+
+                - name: Upload validation diagnostics on failure
+                  if: failure()
+                  uses: actions/upload-artifact@v4
+                  with:
+                    name: OnePlayer-0.13.65-build132-mpv-fast-seek-diagnostics
+                    path: |
+                      app-validation.log
+                      min-os-report.log
+                      build.log
+                    if-no-files-found: warn
+                    retention-days: 14
+          YAML
+
+          rm .github/workflows/apply-build132-fast-seek.yml
+          git diff --check
+          git status --short
+
+      - name: Commit Build132 sources and workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/Player/MPVPlayerEngine.swift Sources/Player/PlayerController.swift .github/workflows/build-mpv-fast-seek-01365.yml .github/workflows/apply-build132-fast-seek.yml
+          git commit -m "Build132: make MPV scrub fast and preserve logical double-tap targets"
+          git push origin HEAD:diag/mpv-fast-seek-0.13.65
