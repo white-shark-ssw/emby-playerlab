@@ -1,8 +1,11 @@
 name: Probe MDK 0.38 SeekFlag Header
 
 on:
-  push:
-    branches: [diag/mdk-seek-incache-ab-0.13.57]
+  pull_request:
+    branches: [diag/mdk-seek-trace-0.13.56]
+    paths:
+      - ".github/workflows/probe-mdk-seekflag-v038.yml"
+      - "MDKLab/SwiftMDKOnePlayer/**"
   workflow_dispatch:
 
 permissions:
