@@ -1,0 +1,96 @@
+name: Apply Build132 On PR
+
+on:
+  pull_request:
+    branches: [diag/mpv-intent-seek-0.13.64]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'diag/mpv-fast-seek-0.13.65'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/mpv-fast-seek-0.13.65
+          fetch-depth: 0
+
+      - name: Apply Build132 source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          app = Path('Sources/Core/AppIdentity.swift')
+          text = app.read_text()
+          if text.count('"0.13.64"') != 2:
+              raise SystemExit('AppIdentity version anchor mismatch')
+          app.write_text(text.replace('"0.13.64"', '"0.13.65"'))
+
+          mpv = Path('Sources/Player/MPVPlayerEngine.swift')
+          text = mpv.read_text()
+          old = '        case .absolute:\n            intent = "scrubReleasePreciseSeek"\n            mode = "absolute+exact"'
+          new = '        case .absolute:\n            intent = "scrubReleaseFastSeek"\n            mode = "absolute+keyframes"'
+          if text.count(old) != 1:
+              raise SystemExit('MPV scrub mode anchor mismatch')
+          mpv.write_text(text.replace(old, new))
+
+          controller = Path('Sources/Player/PlayerController.swift')
+          text = controller.read_text()
+          replacements = [
+              (
+                  '    private var pendingSeekTarget: Double?\n    private var pendingSeekDirection: SeekDirection?\n    private var screenScrubStartPosition: Double?',
+                  '    private var pendingSeekTarget: Double?\n    private var pendingSeekDirection: SeekDirection?\n    private var fastSeekLogicalTarget: Double?\n    private var lastFastSeekRequestAt: CFTimeInterval?\n    private static let fastSeekBurstWindow: CFTimeInterval = 1.0\n    private var screenScrubStartPosition: Double?',
+                  1,
+              ),
+              (
+                  '    func seek(by offset: Double) {\n        seekAnchorReleaseTask?.cancel()\n        seekAnchorReleaseTask = nil\n        let base = pendingSeekTarget ?? snapshot.position\n        let target = clampPosition(base + offset)\n        pendingSeekTarget = target\n        pendingSeekDirection = offset >= 0 ? .forward : .backward\n        displayedPosition = target\n        suppressStallWatchdog(for: 3)\n        DiagnosticsLogger.shared.log("SeekAnchor", "offset=\\(offset) base=\\(base) target=\\(target) enginePosition=\\(snapshot.position)")\n        engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)',
+                  '    func seek(by offset: Double) {\n        seekAnchorReleaseTask?.cancel()\n        seekAnchorReleaseTask = nil\n        let now = CACurrentMediaTime()\n        let withinFastSeekBurst = lastFastSeekRequestAt.map { now - $0 <= Self.fastSeekBurstWindow } ?? false\n        let base = withinFastSeekBurst ? (fastSeekLogicalTarget ?? snapshot.position) : snapshot.position\n        let target = clampPosition(base + offset)\n        fastSeekLogicalTarget = target\n        lastFastSeekRequestAt = now\n        pendingSeekTarget = target\n        pendingSeekDirection = offset >= 0 ? .forward : .backward\n        displayedPosition = target\n        suppressStallWatchdog(for: 3)\n        DiagnosticsLogger.shared.log("SeekAnchor", "offset=\\(offset) base=\\(base) target=\\(target) enginePosition=\\(snapshot.position) logicalBurst=\\(withinFastSeekBurst)")\n        engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)',
+                  1,
+              ),
+              (
+                  '        pendingSeekTarget = nil\n        pendingSeekDirection = nil\n        userIsScrubbing = true',
+                  '        pendingSeekTarget = nil\n        pendingSeekDirection = nil\n        fastSeekLogicalTarget = nil\n        lastFastSeekRequestAt = nil\n        userIsScrubbing = true',
+                  2,
+              ),
+              (
+                  '    private func commitScrubbedPosition() {\n        userIsScrubbing = false\n        let target = clampPosition(displayedPosition)',
+                  '    private func commitScrubbedPosition() {\n        userIsScrubbing = false\n        fastSeekLogicalTarget = nil\n        lastFastSeekRequestAt = nil\n        let target = clampPosition(displayedPosition)',
+                  1,
+              ),
+              (
+                  '        pendingSeekTarget = nil\n        pendingSeekDirection = nil\n        screenScrubStartPosition = nil\n        DiagnosticsLogger.shared.log("Lifecycle", "player close detached")',
+                  '        pendingSeekTarget = nil\n        pendingSeekDirection = nil\n        fastSeekLogicalTarget = nil\n        lastFastSeekRequestAt = nil\n        screenScrubStartPosition = nil\n        DiagnosticsLogger.shared.log("Lifecycle", "player close detached")',
+                  1,
+              ),
+              (
+                  '        pendingSeekTarget = nil\n        pendingSeekDirection = nil\n        seekAnchorReleaseTask?.cancel()',
+                  '        pendingSeekTarget = nil\n        pendingSeekDirection = nil\n        fastSeekLogicalTarget = nil\n        lastFastSeekRequestAt = nil\n        seekAnchorReleaseTask?.cancel()',
+                  1,
+              ),
+          ]
+          for old, new, expected in replacements:
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f'PlayerController anchor mismatch expected={expected} found={count}: {old[:70]}')
+              text = text.replace(old, new)
+          controller.write_text(text)
+          PY
+
+          rm -f .github/workflows/apply-build132-fast-seek.yml .github/workflows/apply-build132-on-pr.yml
+          git diff --check
+          git status --short
+
+      - name: Commit Build132 migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Build132: prioritize fast MPV Seek for double tap and scrub"
+          git push origin HEAD:diag/mpv-fast-seek-0.13.65
