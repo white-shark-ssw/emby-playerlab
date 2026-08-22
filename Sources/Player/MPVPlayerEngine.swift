@@ -48,7 +48,12 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
     private var seekingPropertyActive = false
     private var keyframeIndexGeneration: UInt64 = 0
     private var keyframeIndexTask: Task<Void, Never>?
+    private var keyframeIndexRetryWorkItem: DispatchWorkItem?
+    private var keyframeIndexRetryAttempt = 0
+    private var keyframeIndexRetrySession: TransportDataSession?
+    private var keyframeIndexRetryContentLength: Int64 = 0
     private var keyframeIndex: OnePlayerKeyframeIndex?
+    private static let keyframeIndexRetryDelays: [TimeInterval] = [1, 2, 4, 8, 16]
     private let sharedTransportSession: TransportDataSession?
     private var streamBridge: MPVUnifiedStreamBridge?
     private var streamPrepareTask: Task<Void, Never>?
@@ -464,6 +469,11 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         keyframeIndexGeneration &+= 1
         keyframeIndexTask?.cancel()
         keyframeIndexTask = nil
+        keyframeIndexRetryWorkItem?.cancel()
+        keyframeIndexRetryWorkItem = nil
+        keyframeIndexRetryAttempt = 0
+        keyframeIndexRetrySession = nil
+        keyframeIndexRetryContentLength = 0
         keyframeIndex = nil
         pendingRendererLayout = nil
         streamPrepareTask?.cancel()
@@ -800,8 +810,25 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         let generation = keyframeIndexGeneration
         keyframeIndexTask?.cancel()
         keyframeIndexTask = nil
+        keyframeIndexRetryWorkItem?.cancel()
+        keyframeIndexRetryWorkItem = nil
+        keyframeIndexRetryAttempt = 0
+        keyframeIndexRetrySession = session
+        keyframeIndexRetryContentLength = contentLength
         keyframeIndex = nil
-        DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=starting generation=\(generation) bytes=\(contentLength) mode=cache-only-observe")
+        DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=scheduled generation=\(generation) attempt=1 delayMs=0 bytes=\(contentLength) mode=cache-only-observe")
+        attemptKeyframeIndexDiagnostics(generation: generation)
+    }
+
+    private func attemptKeyframeIndexDiagnostics(generation: UInt64) {
+        guard !isStopping, keyframeIndexGeneration == generation, keyframeIndex == nil, keyframeIndexTask == nil,
+              let session = keyframeIndexRetrySession, keyframeIndexRetryContentLength > 0 else { return }
+        keyframeIndexRetryWorkItem?.cancel()
+        keyframeIndexRetryWorkItem = nil
+        keyframeIndexRetryAttempt += 1
+        let attempt = keyframeIndexRetryAttempt
+        let contentLength = keyframeIndexRetryContentLength
+        DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=starting generation=\(generation) attempt=\(attempt) bytes=\(contentLength) mode=cache-only-observe")
         keyframeIndexTask = Task { [weak self] in
             let result = await OnePlayerKeyframeIndexProbe.buildIndex(session: session, contentLength: contentLength)
             guard !Task.isCancelled else { return }
@@ -811,10 +838,24 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                 switch result {
                 case .ready(let index):
                     self.keyframeIndex = index
-                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=ready generation=\(generation) entries=\(index.keyframes.count) stream=\(index.videoStreamIndex) timeBase=\(String(format: "%.9f", index.timeBaseSeconds)) streamStart=\(String(format: "%.3f", index.streamStartSeconds)) action=observe-only")
+                    self.keyframeIndexRetryWorkItem?.cancel()
+                    self.keyframeIndexRetryWorkItem = nil
+                    self.keyframeIndexRetrySession = nil
+                    self.keyframeIndexRetryContentLength = 0
+                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=ready generation=\(generation) attempt=\(attempt) entries=\(index.keyframes.count) stream=\(index.videoStreamIndex) timeBase=\(String(format: "%.9f", index.timeBaseSeconds)) streamStart=\(String(format: "%.3f", index.streamStartSeconds)) action=observe-only")
                 case .unavailable(let reason):
                     self.keyframeIndex = nil
-                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=unavailable generation=\(generation) reason=\(reason) action=observe-only")
+                    guard attempt <= Self.keyframeIndexRetryDelays.count else {
+                        self.keyframeIndexRetrySession = nil
+                        self.keyframeIndexRetryContentLength = 0
+                        DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=unavailable-final generation=\(generation) attempts=\(attempt) reason=\(reason) action=observe-only")
+                        return
+                    }
+                    let delay = Self.keyframeIndexRetryDelays[attempt - 1]
+                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=retry-pending generation=\(generation) attempt=\(attempt) nextAttempt=\(attempt + 1) delayMs=\(Int(delay * 1000)) reason=\(reason) action=observe-only")
+                    let work = DispatchWorkItem { [weak self] in self?.attemptKeyframeIndexDiagnostics(generation: generation) }
+                    self.keyframeIndexRetryWorkItem = work
+                    self.queue.asyncAfter(deadline: .now() + delay, execute: work)
                 }
             }
         }
