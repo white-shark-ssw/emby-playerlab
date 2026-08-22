@@ -3,6 +3,16 @@ from pathlib import Path
 path = Path('Sources/Player/MPVPlayerEngine.swift')
 text = path.read_text()
 
+if 'private static let keyframeIndexRetryDelays: [TimeInterval] = [1, 2, 4, 8, 16]' in text:
+    required = ['status=retry-pending', 'status=unavailable-final', 'mode = "absolute+keyframes"', 'phase=mpv-event-seek owner=claimed']
+    missing = [marker for marker in required if marker not in text]
+    if missing:
+        raise SystemExit(f'Build138 materialized source incomplete: {missing}')
+    if 'absolute+exact' in text:
+        raise SystemExit('Build138 must not introduce exact seek')
+    print('Build138 source already materialized; contract verified.')
+    raise SystemExit(0)
+
 old_props = '''    private var keyframeIndexGeneration: UInt64 = 0
     private var keyframeIndexTask: Task<Void, Never>?
     private var keyframeIndex: OnePlayerKeyframeIndex?
