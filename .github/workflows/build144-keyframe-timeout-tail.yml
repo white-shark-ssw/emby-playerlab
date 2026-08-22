@@ -1,0 +1,213 @@
+name: Build OnePlayer 0.13.77 Build144 Keyframe Timeout Tail
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/keyframe-timeout-tail-0.13.77]
+    paths:
+      - "Sources/**"
+      - "scripts/apply_build144_keyframe_timeout_tail.py"
+      - "project.mdklab.yml"
+      - "Podfile"
+      - ".github/workflows/build144-keyframe-timeout-tail.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build144-keyframe-timeout-tail-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - name: Checkout Build144 source
+        uses: actions/checkout@v4
+        with:
+          ref: fix/keyframe-timeout-tail-0.13.77
+          fetch-depth: 0
+
+      - name: Apply Build144 timeout-tail fix
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_build144_keyframe_timeout_tail.py
+          git diff --check
+
+      - name: Persist Build144 real source
+        run: |
+          set -euo pipefail
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add Sources/Player/MPVPlayerEngine.swift Sources/Transport/UnifiedMediaTransportSession.swift
+          if ! git diff --cached --quiet; then
+            git commit -m 'Build144: reduce keyframe timeout tail without added wait'
+            git push origin HEAD:fix/keyframe-timeout-tail-0.13.77
+          fi
+
+      - name: Verify Build144 behavior and logging contract
+        run: |
+          set -euo pipefail
+          grep -Fq 'sourceVersion = "0.13.77"' Sources/Core/AppIdentity.swift
+          grep -Fq 'private static let keyframeLookupBudgetMs: Double = 20' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'dispatch-recheck-nearest-next' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'dispatch-recheck-nearest-previous-no-change' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'finalKeyframeAction.hasPrefix("fallback-")' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'self.sessionKeyframeMap.neighbors(around: target)' Sources/Player/MPVPlayerEngine.swift
+          test "$(grep -Fc 'self.command(handle, ["seek", String(format: "%.6f", finalDispatchTarget), mode])' Sources/Player/MPVPlayerEngine.swift)" -eq 1
+          ! grep -Fq 'absolute+exact' Sources/Player/MPVPlayerEngine.swift
+          ! grep -Fq 'result=hit mode=cache-only-no-network' Sources/Transport/UnifiedMediaTransportSession.swift
+          grep -Fq 'KeyframeCacheRead' Sources/Transport/UnifiedMediaTransportSession.swift
+          grep -Fq 'result=miss reason=resource-not-ready mode=cache-only-no-network' Sources/Transport/UnifiedMediaTransportSession.swift
+          grep -Fq 'case playback' Sources/Diagnostics/DiagnosticsLogger.swift
+          grep -Fq 'OnePlayer.Log.Playback.Enabled' Sources/Diagnostics/DiagnosticsLogger.swift
+          grep -Fq 'guard UserDefaults.standard.bool(forKey: channel.enabledKey)' Sources/Diagnostics/DiagnosticsLogger.swift
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('Sources/Transport/UnifiedMediaTransportSession.swift').read_text()
+          start = text.index('    func readCachedMetadata(offset: Int64, length: Int) async -> Data? {')
+          end = text.index('\n    func prioritizeSeek(', start)
+          body = text[start:end]
+          assert 'result=hit' not in body
+          assert 'print(' not in body
+          assert 'os_log' not in body
+          assert 'NSLog' not in body
+          assert body.count('DiagnosticsLogger.shared.playback("KeyframeCacheRead"') >= 3
+          mpv = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
+          seek_start = mpv.index('    func seek(to seconds: Double, direction: PlayerSeekDirection)')
+          seek_end = mpv.index('\n    private func claimKeyframeLookupIndex()', seek_start)
+          seek_body = mpv[seek_start:seek_end]
+          assert 'print(' not in seek_body
+          assert 'os_log' not in seek_body
+          assert 'NSLog' not in seek_body
+          assert seek_body.count('self.command(handle, ["seek"') == 1
+          PY
+          ! grep -Fq 'UserDefaults' Sources/Player/OnePlayerSessionKeyframeMap.swift
+          ! grep -Fq 'FileManager' Sources/Player/OnePlayerSessionKeyframeMap.swift
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+          git diff --check
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Create same-target FFmpeg compile contract
+        run: |
+          set -euo pipefail
+          cat > Sources/Player/Build144BackendCompileContract.swift <<'SWIFT'
+          #if !canImport(Libavformat)
+          #error("Build144 OnePlayer target cannot import Libavformat")
+          #endif
+          #if !canImport(Libavutil)
+          #error("Build144 OnePlayer target cannot import Libavutil")
+          #endif
+          #if !canImport(Libavcodec)
+          #error("Build144 OnePlayer target cannot import Libavcodec")
+          #endif
+          import Libavformat
+          import Libavutil
+          import Libavcodec
+          enum Build144BackendCompileContract { static func verify() -> UInt32 { avformat_version() ^ avutil_version() ^ avcodec_version() } }
+          SWIFT
+
+      - name: Generate project and resolve MPVKit
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Build Build144 Release
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.77 CURRENT_PROJECT_VERSION=144 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.77' --build '144' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+
+      - name: Verify Build144 keyframe backend
+        run: |
+          set -euo pipefail
+          APP_PATH="${{ steps.app.outputs.path }}"
+          EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Info.plist")"
+          BIN="$APP_PATH/$EXECUTABLE"
+          grep -Fq 'Build144BackendCompileContract.swift' build.log
+          grep -Fq 'MPVKeyframeIndexProbe.swift' build.log
+          grep -Fq 'OnePlayerSessionKeyframeMap.swift' build.log
+          grep -Fq -- '-framework Libavformat' build.log
+          grep -Fq -- '-framework Libavutil' build.log
+          grep -Fq -- '-framework Libavcodec' build.log
+          if ! nm -gU "$BIN" > keyframe-symbols.log 2>&1; then nm "$BIN" > keyframe-symbols.log 2>&1; fi
+          grep -Fq '_av_seek_frame' keyframe-symbols.log
+          grep -Fq '_av_read_frame' keyframe-symbols.log
+          grep -Fq '_av_packet_alloc' keyframe-symbols.log
+          grep -Fq '_avformat_open_input' keyframe-symbols.log
+          echo 'backend=libavformat-direct strategy=production-ephemeral-verified-gap-index lookup-budget-ms=20 dispatch-recheck=session-map-zero-wait keyframe-hit-log=suppressed logging=playback-switch-gated real-seek=single-absolute-keyframes cache=read-only-no-network persistence=none fence=mpv-event-seek' | tee keyframe-fast-seek-report.log
+          rm -f Sources/Player/Build144BackendCompileContract.swift
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="${{ steps.app.outputs.path }}"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.77-build144-keyframe-timeout-tail-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
+
+      - name: Upload Build144 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.77-build144-keyframe-timeout-tail
+          path: |
+            OnePlayer-0.13.77-build144-keyframe-timeout-tail-unsigned.ipa
+            OnePlayer-0.13.77-build144-keyframe-timeout-tail-unsigned.ipa.sha256
+            keyframe-fast-seek-report.log
+            keyframe-symbols.log
+            app-validation.log
+            min-os-report.log
+            build.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Build144 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.77-build144-keyframe-timeout-tail-diagnostics
+          path: |
+            keyframe-fast-seek-report.log
+            keyframe-symbols.log
+            app-validation.log
+            min-os-report.log
+            build.log
+            package-resolution.log
+          if-no-files-found: warn
+          retention-days: 14
