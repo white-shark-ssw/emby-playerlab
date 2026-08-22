@@ -1,40 +1,72 @@
-name: Build KSPlayer Lab IPA
+name: Build OnePlayer 0.13.69 Build136 Seek Fence Keyframe Probe
 
 on:
   workflow_dispatch:
   pull_request:
+    branches: [diag/scrub-hud-ex-0.13.67]
+    types: [opened, synchronize, reopened]
     paths:
       - "Sources/**"
-      - "Config/**"
-      - "Resources/**"
-      - "project.kslab.yml"
-      - "Podfile"
-      - ".github/workflows/build-ksplayer-lab.yml"
-  push:
-    branches: [main, master]
-    paths:
-      - "Sources/**"
-      - "Config/**"
-      - "Resources/**"
-      - "project.kslab.yml"
+      - "scripts/apply_build136_seek_fence_probe.py"
+      - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build-ksplayer-lab.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: build-ksplayer-lab-${{ github.ref }}
-  cancel-in-progress: true
+  group: build136-seek-fence-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'diag/mpv-seek-fence-keyframe-probe-0.13.69'
     runs-on: macos-15
-    timeout-minutes: 150
+    timeout-minutes: 180
 
     steps:
-      - name: Checkout
+      - name: Checkout Build136 experiment
         uses: actions/checkout@v4
+        with:
+          ref: diag/mpv-seek-fence-keyframe-probe-0.13.69
+          fetch-depth: 0
+
+      - name: Apply seek generation fence and keyframe backend probe
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_build136_seek_fence_probe.py
+          git diff --check
+          git status --short
+
+      - name: Persist Build136 real source
+        run: |
+          set -euo pipefail
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add Sources/Core/AppIdentity.swift Sources/Player/MPVPlayerEngine.swift Sources/Player/MPVKeyframeIndexProbe.swift
+          if ! git diff --cached --quiet; then
+            git commit -m 'Build136: add MPV seeking epoch fence and keyframe backend probe'
+            git push origin HEAD:diag/mpv-seek-fence-keyframe-probe-0.13.69
+          fi
+
+      - name: Verify Build136 source contract
+        run: |
+          set -euo pipefail
+          grep -Fq 'sourceVersion = "0.13.69"' Sources/Core/AppIdentity.swift
+          grep -Fq 'private var activeSeekingEpochID: UInt64?' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq '("seeking", MPV_FORMAT_FLAG)' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'reason=no-latest-seeking-epoch' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'owner=seeking-epoch' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'OnePlayerKeyframeIndexProbe.runtimeDescription' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'canImport(Libavformat)' Sources/Player/MPVKeyframeIndexProbe.swift
+          grep -Fq 'intent = "doubleTapFastSeek"' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'intent = "scrubReleaseFastSeek"' Sources/Player/MPVPlayerEngine.swift
+          test "$(grep -Fc 'mode = "absolute+keyframes"' Sources/Player/MPVPlayerEngine.swift)" -ge 2
+          ! grep -Fq 'residualRefineMaxSeconds' Sources/Player/MPVPlayerEngine.swift
+          ! grep -Fq 'absolute+exact' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+          git diff --check
 
       - name: Select Xcode 16.4
         run: |
@@ -52,108 +84,19 @@ jobs:
           xcodegen --version
           pod --version
 
-      - name: Prepare OnePlayer assets
-        run: python3 scripts/generate_oneplayer_icons.py
-
-      - name: Validate KSPlayer lab source contract
+      - name: Generate project and resolve MPVKit
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          spec = Path("project.kslab.yml").read_text()
-          engine = Path("Sources/Player/PlayerEngine.swift").read_text()
-          ks = Path("Sources/Player/KSAVIOPlayerEngine.swift").read_text()
-          screen = Path("Sources/UI/PlayerScreen.swift").read_text()
-          checks = {
-              "iOS 15 deployment": 'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,
-              "KSPlayer exact 2.3.4": "exactVersion: 2.3.4" in spec,
-              "MPVKit excluded from KS lab": "MPVKit" not in spec,
-              "experimental engine preference": "case ksAVIO" in engine and "KSPlayer KSME（实验）" in engine,
-              "shared AVIO engine": "KSPlayerSparseAVIOContext" in ks and "sharedTransportSession" in ks,
-              "hardware decode": "hardwareDecode=true" in ks and "player.playbackRate" in ks,
-              "KS surface restored": "KSAVIOPlayerSurface(playerView: view)" in screen,
-          }
-          for name, ok in checks.items():
-              print(("PASS" if ok else "FAIL"), name)
-              if not ok:
-                  raise SystemExit(f"::error::{name}")
-          PY
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
 
-      - name: Generate KSPlayer Lab project
-        run: xcodegen generate --spec project.kslab.yml
-
-      - name: Install KTVHTTPCache 3.1.0
-        run: pod install --repo-update
-
-      - name: Restore Swift package cache
-        uses: actions/cache@v4
-        with:
-          path: .spm-cache
-          key: ${{ runner.os }}-ksplayer-2.3.4-ktv-3.1.0-${{ hashFiles('project.kslab.yml', 'Podfile') }}
-
-      - name: Resolve KSPlayer 2.3.4
+      - name: Build Build136 Release
         run: |
           set -euo pipefail
-          set -o pipefail
-          xcodebuild \
-            -resolvePackageDependencies \
-            -workspace EmbyPlayerLab.xcworkspace \
-            -scheme EmbyPlayerLab \
-            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee ks-package-resolution.log
-          grep -R '"version" : "2.3.4"' EmbyPlayerLab.xcworkspace/xcshareddata/swiftpm/Package.resolved .spm-cache 2>/dev/null | head -n 5 || true
-
-      - name: Verify KSPlayer license and package minimums
-        run: |
-          set -euo pipefail
-          test -f .spm-cache/checkouts/KSPlayer/LICENSE
-          grep -q "GNU GENERAL PUBLIC LICENSE" .spm-cache/checkouts/KSPlayer/LICENSE
-          grep -q '.iOS(.v13)' .spm-cache/checkouts/KSPlayer/Package.swift
-          grep -q '.iOS(.v13)' .spm-cache/checkouts/FFmpegKit/Package.swift
-          echo "KSPlayer 2.3.4 public build: GPL-3.0; experiment artifact only." | tee ks-license-report.log
-          echo "KSPlayer declared minimum iOS: 13" | tee -a ks-license-report.log
-          echo "FFmpegKit declared minimum iOS: 13" | tee -a ks-license-report.log
-
-      - name: Build KSPlayer Lab for generic iOS device
-        run: |
-          set -euo pipefail
-          set -o pipefail
           rm -rf build
-          xcodebuild \
-            -workspace EmbyPlayerLab.xcworkspace \
-            -scheme EmbyPlayerLab \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/DerivedData \
-            -clonedSourcePackagesDirPath .spm-cache \
-            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY='' \
-            DEVELOPMENT_TEAM='' \
-            clean build 2>&1 | tee ks-build.log
-
-      - name: Extract KSPlayer build errors
-        if: failure()
-        run: |
-          set +e
-          grep -nE '(^|[[:space:]])(error:|fatal error:)' ks-build.log > ks-build-errors.log
-          if [ ! -s ks-build-errors.log ]; then tail -n 500 ks-build.log > ks-build-errors.log; fi
-          echo "## KSPlayer build errors" >> "$GITHUB_STEP_SUMMARY"
-          sed -n '1,200p' ks-build-errors.log >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload failed KSPlayer build diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: OnePlayer-KSPlayerLab-build-errors-${{ github.sha }}
-          path: |
-            ks-build.log
-            ks-build-errors.log
-            ks-package-resolution.log
-            ks-license-report.log
-          if-no-files-found: warn
-          retention-days: 7
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.69 CURRENT_PROJECT_VERSION=136 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
 
       - name: Locate and validate app
         id: app
@@ -162,77 +105,64 @@ jobs:
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP_PATH" && test -d "$APP_PATH"
           echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
-          python3 scripts/validate_built_app.py \
-            "$APP_PATH" \
-            --bundle-id "com.embyplayerlab.app" \
-            --version "0.13.3" \
-            --build "69" \
-            --display-name "OnePlayer" \
-            --minimum-os "15.0" \
-            --primary-icon "OnePlayerIcon" \
-            --alternate-icon "OnePlayerAltIcon"
-
-      - name: Validate runtime and embedded minimum OS
-        run: |
-          set -euo pipefail
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.69' --build '136' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
           chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" ks-min-os-report.log ks-build.log
-          python3 - <<'PY'
-          import plistlib
-          from pathlib import Path
-          bad = []
-          rows = []
-          for info in Path('.spm-cache').rglob('Info.plist'):
-              if '.xcframework' not in str(info) or 'ios-arm64' not in str(info):
-                  continue
-              try:
-                  data = plistlib.loads(info.read_bytes())
-              except Exception:
-                  continue
-              minimum = data.get('MinimumOSVersion')
-              if minimum:
-                  rows.append((str(info), str(minimum)))
-                  parts = tuple(int(x) for x in str(minimum).split('.')[:2])
-                  if parts > (15, 0):
-                      bad.append((str(info), str(minimum)))
-          Path('ks-framework-min-os-report.log').write_text('\n'.join(f'{v} {p}' for p, v in rows) + '\n')
-          if bad:
-              raise SystemExit('::error::KSPlayer/FFmpegKit binary target minimum OS exceeds 15.0: ' + repr(bad))
-          PY
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
 
-      - name: Package KSPlayer Lab unsigned IPA
+      - name: Detect keyframe index backend
         run: |
           set -euo pipefail
+          APP_PATH="${{ steps.app.outputs.path }}"
+          EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Info.plist")"
+          BIN="$APP_PATH/$EXECUTABLE"
+          if nm -gU "$BIN" | grep -q 'oneplayer_keyframe_backend_libavformat_direct'; then
+            echo 'backend=libavformat-direct' | tee keyframe-backend-report.log
+          elif nm -gU "$BIN" | grep -q 'oneplayer_keyframe_backend_unavailable'; then
+            echo 'backend=unavailable reason=Libavformat-or-Libavutil-not-importable-from-app-target' | tee keyframe-backend-report.log
+          else
+            echo 'backend=unknown probe-symbol-missing' | tee keyframe-backend-report.log
+            exit 1
+          fi
+          cat keyframe-backend-report.log
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="${{ steps.app.outputs.path }}"
           rm -rf Payload
           mkdir Payload
-          cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="OnePlayer-KSPlayerLab-0.13.3-${GITHUB_SHA::7}-unsigned.ipa"
-          /usr/bin/zip -qry "$IPA_NAME" Payload
-          /usr/bin/unzip -t "$IPA_NAME"
-          shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
-          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.69-build136-seek-fence-keyframe-probe-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
 
-      - name: Export experiment source snapshot
-        run: |
-          set -euo pipefail
-          SOURCE_ZIP="OnePlayer-KSPlayerLab-${GITHUB_SHA::7}-source.zip"
-          git archive --format=zip --output "$SOURCE_ZIP" HEAD
-          shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
-          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
-
-      - name: Upload KSPlayer Lab artifacts
+      - name: Upload Build136 package
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-KSPlayerLab-${{ github.sha }}
+          name: OnePlayer-0.13.69-build136-seek-fence-keyframe-probe
           path: |
-            ${{ env.IPA_NAME }}
-            ${{ env.IPA_NAME }}.sha256
-            ${{ env.SOURCE_ZIP }}
-            ${{ env.SOURCE_ZIP }}.sha256
-            ks-package-resolution.log
-            ks-build.log
-            ks-license-report.log
-            ks-min-os-report.log
-            ks-framework-min-os-report.log
+            OnePlayer-0.13.69-build136-seek-fence-keyframe-probe-unsigned.ipa
+            OnePlayer-0.13.69-build136-seek-fence-keyframe-probe-unsigned.ipa.sha256
+            keyframe-backend-report.log
+            app-validation.log
+            min-os-report.log
+            build.log
+            package-resolution.log
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
+
+      - name: Upload Build136 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.69-build136-seek-fence-keyframe-probe-diagnostics
+          path: |
+            keyframe-backend-report.log
+            app-validation.log
+            min-os-report.log
+            build.log
+            package-resolution.log
+          if-no-files-found: warn
+          retention-days: 14
