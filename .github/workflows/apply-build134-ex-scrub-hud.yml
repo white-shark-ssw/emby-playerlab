@@ -1,8 +1,8 @@
 name: Apply Build134 EX Scrub HUD
 
 on:
-  pull_request:
-    branches: [diag/player-hud-tune-0.13.66]
+  push:
+    branches: [diag/scrub-hud-ex-0.13.67]
     paths:
       - ".github/workflows/apply-build134-ex-scrub-hud.yml"
   workflow_dispatch:
