@@ -402,6 +402,29 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         }
     }
 
+    func readCachedMetadata(offset: Int64, length: Int) async -> Data? {
+        guard !stopped, length > 0, offset >= 0 else { return nil }
+        guard let resolved = resource, let store else {
+            DiagnosticsLogger.shared.playback("KeyframeCacheRead", "offset=\(offset) requested=\(length) result=miss reason=resource-not-ready mode=cache-only-no-network")
+            return nil
+        }
+        guard offset < resolved.contentLength else { return Data() }
+        let requested = min(length, Int(resolved.contentLength - offset))
+        guard requested > 0 else { return Data() }
+        let available = store.availableLength(from: offset, maximumLength: Int64(requested))
+        guard available > 0 else {
+            DiagnosticsLogger.shared.playback("KeyframeCacheRead", "offset=\(offset) requested=\(requested) available=0 result=miss mode=cache-only-no-network")
+            return nil
+        }
+        let count = min(requested, Int(available))
+        guard let data = try? await store.readWhenAvailable(offset: offset, maximumLength: count, timeout: 0), !data.isEmpty else {
+            DiagnosticsLogger.shared.playback("KeyframeCacheRead", "offset=\(offset) requested=\(requested) available=\(available) result=miss reason=store-read-unavailable mode=cache-only-no-network")
+            return nil
+        }
+        DiagnosticsLogger.shared.playback("KeyframeCacheRead", "offset=\(offset) requested=\(requested) available=\(available) returned=\(data.count) result=hit mode=cache-only-no-network")
+        return data
+    }
+
     func prioritizeSeek(position: Double, duration: Double) async {
         guard !stopped else { return }
         let now = Date()
