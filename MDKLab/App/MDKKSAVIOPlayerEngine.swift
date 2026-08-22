@@ -85,6 +85,7 @@ final class KSAVIOPlayerEngine: PlayerEngine {
     private let view: MDKRenderView
     private var renderer: PlayerMetalLayerRenderer
     private var nativeControlQueue = DispatchQueue(label: "OnePlayer.MDK.NativeControl.0", qos: .userInitiated)
+    private let quarantineAudioQueue = DispatchQueue(label: "OnePlayer.MDK.QuarantineAudio", qos: .userInitiated)
     private let playerLock = NSLock()
     private var player: swift_mdk.Player?
     private var stateTimer: DispatchSourceTimer?
@@ -698,6 +699,15 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         }
     }
 
+    private func silenceQuarantinedPlayer(_ player: swift_mdk.Player, reason: String, failedGeneration: Int) {
+        DiagnosticsLogger.shared.playback("MDKQuarantineAudio", "generation=\(failedGeneration) phase=request reason=\(reason) action=mute-retained-player")
+        quarantineAudioQueue.async { [weak player] in
+            guard let player else { return }
+            player.mute = true
+            DiagnosticsLogger.shared.playback("MDKQuarantineAudio", "generation=\(failedGeneration) phase=applied reason=\(reason) muted=true nativeStop=false")
+        }
+    }
+
     private func commitHealthFailure(reason: String, position: Double, failedGeneration: Int, message: String) {
         guard failedGeneration == generation, currentPlayerReference() != nil else { return }
         nativeQuarantineActive = true
@@ -740,8 +750,9 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         rateGeneration &+= 1
         healthCoordinator.reset(generation: generation)
         nativeQuarantineActive = false
+        silenceQuarantinedPlayer(oldPlayer, reason: reason, failedGeneration: failedGeneration)
         MDKNativeQuarantineStore.shared.retain(oldPlayer, oldRenderer)
-        DiagnosticsLogger.shared.playback("MDKPrepareGuard", "generation=\(failedGeneration) phase=quarantine reason=\(reason) position=\(String(format: "%.3f", position)) action=switch-mpv skipNativeStop=true")
+        DiagnosticsLogger.shared.playback("MDKPrepareGuard", "generation=\(failedGeneration) phase=quarantine reason=\(reason) position=\(String(format: "%.3f", position)) action=switch-mpv skipNativeStop=true quarantineMuted=true")
         onSnapshot?(PlayerSnapshot(position: max(0, position), duration: max(lastNativeDuration, source.mediaSource.durationSeconds ?? 0), isPlaying: false, isBuffering: false, errorMessage: message))
     }
 
@@ -1212,8 +1223,9 @@ final class KSAVIOPlayerEngine: PlayerEngine {
         guard let oldPlayer = takePlayer() else { nativeQuarantineActive = false; return }
         if nativeQuarantineActive {
             nativeQuarantineActive = false
+            silenceQuarantinedPlayer(oldPlayer, reason: "ui-stop-quarantine", failedGeneration: generation)
             MDKNativeQuarantineStore.shared.retain(oldPlayer, oldRenderer)
-            DiagnosticsLogger.shared.playback("MDKTeardown", "phase=ui-detached generation=\(generation) activeSeek=\(activeSeekID ?? -1) action=quarantine-retain-skip-native-stop mainResponsive=true")
+            DiagnosticsLogger.shared.playback("MDKTeardown", "phase=ui-detached generation=\(generation) activeSeek=\(activeSeekID ?? -1) action=quarantine-retain-skip-native-stop mainResponsive=true quarantineMuted=true")
             return
         }
         let teardownStartedAt = CACurrentMediaTime()
