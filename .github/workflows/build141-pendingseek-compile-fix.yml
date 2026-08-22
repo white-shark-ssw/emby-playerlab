@@ -1,0 +1,50 @@
+name: Build141 PendingSeek Compile Fix
+
+on:
+  push:
+    branches: [diag/nearest-keyframe-ab-0.13.74]
+    paths:
+      - ".github/workflows/build141-pendingseek-compile-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/nearest-keyframe-ab-0.13.74
+          fetch-depth: 0
+
+      - name: Patch startup PendingSeek initializer
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Sources/Player/MPVPlayerEngine.swift')
+          s = p.read_text()
+          old = '        pendingSeek = startPosition > 0 ? PendingSeek(id: 0, requestedAt: CACurrentMediaTime(), target: startPosition, bufferHit: false, intent: "startupResume", mode: "loadfile-start") : nil\n'
+          new = '        pendingSeek = startPosition > 0 ? PendingSeek(id: 0, requestedAt: CACurrentMediaTime(), target: startPosition, bufferHit: false, intent: "startupResume", mode: "loadfile-start", experimentArm: "startup", dispatchTarget: startPosition, preflightMs: 0, preflightAction: "startup-resume", previousKeyframe: nil, nextKeyframe: nil, nearestKeyframe: nil) : nil\n'
+          if new in s:
+              print('Build141 startup PendingSeek initializer already fixed')
+          else:
+              if s.count(old) != 1:
+                  raise SystemExit(f'expected exactly one startup PendingSeek anchor, found {s.count(old)}')
+              p.write_text(s.replace(old, new, 1))
+              print('Build141 startup PendingSeek initializer fixed')
+          PY
+          git diff --check
+          grep -Fq 'experimentArm: "startup", dispatchTarget: startPosition, preflightMs: 0, preflightAction: "startup-resume"' Sources/Player/MPVPlayerEngine.swift
+
+      - name: Persist source fix
+        run: |
+          set -euo pipefail
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add Sources/Player/MPVPlayerEngine.swift
+          if ! git diff --cached --quiet; then
+            git commit -m 'Build141: fix startup PendingSeek initializer'
+            git push origin HEAD:diag/nearest-keyframe-ab-0.13.74
+          fi
