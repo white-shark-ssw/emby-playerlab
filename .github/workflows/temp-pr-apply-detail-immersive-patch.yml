@@ -2,7 +2,7 @@ name: Temp PR Build134 EX Scrub HUD
 
 on:
   pull_request:
-    branches: [diag/player-hud-tune-0.13.66]
+    branches: [main]
     types: [opened, synchronize, reopened]
 
 permissions:
