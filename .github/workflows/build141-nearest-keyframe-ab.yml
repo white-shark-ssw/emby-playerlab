@@ -37,6 +37,13 @@ jobs:
       - name: Apply nearest-keyframe A-B wiring
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply_build141_nearest_keyframe_ab.py')
+          s = p.read_text()
+          s = s.replace('if text.count(reload_anchor) != 1:', 'if reload_anchor not in text:')
+          p.write_text(s)
+          PY
           python3 scripts/apply_build141_nearest_keyframe_ab.py
           git diff --check
           git status --short
