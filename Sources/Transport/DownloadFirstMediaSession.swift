@@ -188,6 +188,22 @@ actor DownloadFirstMediaSession: TransportDataSession {
         return data
     }
 
+    func readCachedMetadata(offset: Int64, length: Int) async -> Data? {
+        guard !stopped, length > 0, let resource = try? await resolve(), offset >= 0, offset < resource.contentLength, let store else { return nil }
+        let requestedLength = min(length, Int(resource.contentLength - offset))
+        guard requestedLength > 0 else { return Data() }
+        for attempt in 0..<8 {
+            guard !Task.isCancelled else { return nil }
+            let available = store.availableLength(from: offset, maximumLength: Int64(requestedLength))
+            if available > 0 {
+                let count = min(requestedLength, Int(available))
+                return try? await store.readWhenAvailable(offset: offset, maximumLength: count, timeout: 0)
+            }
+            if attempt < 7 { try? await Task.sleep(nanoseconds: 50_000_000) }
+        }
+        return nil
+    }
+
     func prioritizeSeek(position: Double, duration: Double) async {
         guard !stopped, position.isFinite, duration.isFinite, duration > 0 else { return }
         guard let resource = try? await resolve() else { return }

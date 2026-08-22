@@ -110,6 +110,7 @@ final class DiagnosticsLogger {
     }
 
     private func write(channel: DiagnosticsLogChannel, category: String, message: String) {
+        if shouldSuppressHighFrequencyEvent(category: category, message: message) { return }
         guard UserDefaults.standard.bool(forKey: channel.enabledKey) else {
             #if DEBUG
             print("[\(channel.rawValue)] [\(category)] \(SensitiveRedactor.redact(message))")
@@ -217,6 +218,16 @@ final class DiagnosticsLogger {
         try? Data().write(to: store.persistentURL, options: .atomic)
         store.persistentHandle = try? FileHandle(forWritingTo: store.persistentURL)
         try? store.persistentHandle?.seekToEnd()
+    }
+
+    private func shouldSuppressHighFrequencyEvent(category: String, message: String) -> Bool {
+        guard category == "SeekTransportRead" else { return false }
+        if message.contains("phase=begin") { return true }
+        guard message.contains("phase=end"), let marker = message.range(of: "waitMs=") else { return false }
+        let suffix = message[marker.upperBound...]
+        let token = suffix.prefix { $0.isNumber || $0 == "." || $0 == "-" }
+        guard let waitMs = Double(token) else { return false }
+        return waitMs < 5
     }
 
     private func playbackCategory(_ category: String, message: String) -> Bool {
