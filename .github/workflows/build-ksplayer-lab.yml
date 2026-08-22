@@ -137,14 +137,17 @@ jobs:
           APP_PATH="${{ steps.app.outputs.path }}"
           EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Info.plist")"
           BIN="$APP_PATH/$EXECUTABLE"
-          if strings "$BIN" | grep -Fq 'ONEPLAYER_KEYFRAME_BACKEND_LIBAVFORMAT_DIRECT' && strings "$BIN" | grep -Fq 'ONEPLAYER_KEYFRAME_INDEX_READONLY'; then
-            echo 'backend=libavformat-direct index=read-only cache-only-observe' | tee keyframe-index-report.log
-          elif strings "$BIN" | grep -Fq 'ONEPLAYER_KEYFRAME_BACKEND_UNAVAILABLE'; then
-            echo 'backend=unavailable index=read-only-unavailable' | tee keyframe-index-report.log
+          if ! nm -gU "$BIN" > keyframe-symbols.log 2>&1; then nm "$BIN" > keyframe-symbols.log 2>&1; fi
+          if grep -Fq 'oneplayer_keyframe_backend_libavformat_direct' keyframe-symbols.log; then
+            echo 'backend=libavformat-direct index=read-only cache-only-observe verification=mach-o-symbol' | tee keyframe-index-report.log
+          elif grep -Fq 'oneplayer_keyframe_backend_unavailable' keyframe-symbols.log; then
+            echo 'backend=unavailable index=read-only-unavailable verification=mach-o-symbol' | tee keyframe-index-report.log
           else
-            echo 'backend=unknown marker-missing' | tee keyframe-index-report.log
+            echo 'backend=unknown c-symbol-missing verification=mach-o-symbol' | tee keyframe-index-report.log
+            grep -i 'oneplayer_keyframe' keyframe-symbols.log || true
             exit 1
           fi
+          grep -i 'oneplayer_keyframe_backend' keyframe-symbols.log || true
           cat keyframe-index-report.log
 
       - name: Package unsigned IPA
@@ -168,6 +171,7 @@ jobs:
             OnePlayer-0.13.70-build137-seek-event-fence-keyframe-index-unsigned.ipa
             OnePlayer-0.13.70-build137-seek-event-fence-keyframe-index-unsigned.ipa.sha256
             keyframe-index-report.log
+            keyframe-symbols.log
             app-validation.log
             min-os-report.log
             build.log
@@ -182,6 +186,7 @@ jobs:
           name: OnePlayer-0.13.70-build137-seek-event-fence-keyframe-index-diagnostics
           path: |
             keyframe-index-report.log
+            keyframe-symbols.log
             app-validation.log
             min-os-report.log
             build.log
