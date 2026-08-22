@@ -10,6 +10,15 @@ on:
       - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build138-keyframe-index-retry.yml"
+  pull_request:
+    branches: [diag/mpv-seek-event-fence-keyframe-index-0.13.70]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "Sources/**"
+      - "scripts/apply_build138_keyframe_index_retry.py"
+      - "project.mdklab.yml"
+      - "Podfile"
+      - ".github/workflows/build138-keyframe-index-retry.yml"
 
 permissions:
   contents: write
@@ -20,6 +29,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name != 'pull_request' || github.head_ref == 'diag/keyframe-index-retry-0.13.71'
     runs-on: macos-15
     timeout-minutes: 180
     steps:
