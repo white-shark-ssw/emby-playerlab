@@ -48,8 +48,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
     private var seekingPropertyActive = false
     private var keyframeIndexGeneration: UInt64 = 0
     private var keyframeIndexTask: Task<Void, Never>?
-    private var keyframeObservationTask: Task<Void, Never>?
-    private var nearestPreflightBusy = false
+    private var keyframeBackfillTask: Task<Void, Never>?
+    private var keyframeLookupBusy = false
     private let sessionKeyframeMap = OnePlayerSessionKeyframeMap()
     private var keyframeIndexRetryWorkItem: DispatchWorkItem?
     private var keyframeIndexRetryAttempt = 0
@@ -57,7 +57,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
     private var keyframeIndexRetryContentLength: Int64 = 0
     private var keyframeIndex: OnePlayerKeyframeIndex?
     private static let keyframeIndexRetryDelays: [TimeInterval] = [1, 2, 4, 8, 16]
-    private static let nearestKeyframePreflightBudgetMs: Double = 20
+    private static let keyframeLookupBudgetMs: Double = 20
     private let sharedTransportSession: TransportDataSession?
     private var streamBridge: MPVUnifiedStreamBridge?
     private var streamPrepareTask: Task<Void, Never>?
@@ -77,28 +77,27 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         let bufferHit: Bool
         let intent: String
         let mode: String
-        let experimentArm: String
         var dispatchTarget: Double
-        var preflightMs: Double
-        var preflightAction: String
+        var keyframeLookupMs: Double
+        var keyframeAction: String
         var previousKeyframe: Double?
         var nextKeyframe: Double?
         var nearestKeyframe: Double?
     }
 
-    private enum NearestPreflightRaceResult {
+    private enum KeyframeLookupRaceResult {
         case probe(OnePlayerKeyframeNeighborProbeResult)
         case timeout
     }
 
-    private final class NearestPreflightGate: @unchecked Sendable {
+    private final class KeyframeLookupGate: @unchecked Sendable {
         private let lock = NSLock()
         private var finished = false
-        private let continuation: CheckedContinuation<NearestPreflightRaceResult, Never>
+        private let continuation: CheckedContinuation<KeyframeLookupRaceResult, Never>
 
-        init(continuation: CheckedContinuation<NearestPreflightRaceResult, Never>) { self.continuation = continuation }
+        init(continuation: CheckedContinuation<KeyframeLookupRaceResult, Never>) { self.continuation = continuation }
 
-        func finish(_ result: NearestPreflightRaceResult) {
+        func finish(_ result: KeyframeLookupRaceResult) {
             lock.lock()
             guard !finished else { lock.unlock(); return }
             finished = true
@@ -441,9 +440,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         seekGeneration &+= 1
         let seekID = seekGeneration
         let requestedAt = CACurrentMediaTime()
-        let experimentArm = "nearest-session-index"
-        pendingSeek = PendingSeek(id: seekID, requestedAt: requestedAt, target: target, bufferHit: bufferHit, intent: intent, mode: mode, experimentArm: experimentArm, dispatchTarget: target, preflightMs: 0, preflightAction: "pending", previousKeyframe: nil, nextKeyframe: nil, nearestKeyframe: nil)
-        DiagnosticsLogger.shared.log("MPVSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) phase=request intent=\(intent) mode=\(mode) bufferHit=\(bufferHit) experimentArm=\(experimentArm) enginePosition=\(String(format: "%.3f", snapshot.position)) direction=\(String(describing: direction))")
+        pendingSeek = PendingSeek(id: seekID, requestedAt: requestedAt, target: target, bufferHit: bufferHit, intent: intent, mode: mode, dispatchTarget: target, keyframeLookupMs: 0, keyframeAction: "pending", previousKeyframe: nil, nextKeyframe: nil, nearestKeyframe: nil)
+        DiagnosticsLogger.shared.log("MPVSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) phase=request intent=\(intent) mode=\(mode) bufferHit=\(bufferHit) enginePosition=\(String(format: "%.3f", snapshot.position)) direction=\(String(describing: direction))")
         // Never overwrite time-pos with the requested target. MPV may land on an
         // earlier keyframe, especially for malformed remote MP4 files.
         snapshot.didReachEnd = false
@@ -455,11 +453,11 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
             guard let self else { return }
             let priorityTask = Task { if let session = self.sharedTransportSession { await session.prioritizeSeek(position: target, duration: duration) } }
             var dispatchTarget = target
-            var preflightAction = "fallback-index-not-ready-or-busy"
+            var keyframeAction = "fallback-index-not-ready-or-busy"
             var previousKeyframe: Double?
             var nextKeyframe: Double?
             var nearestKeyframe: Double?
-            var preflightMs = Double(0)
+            var keyframeLookupMs = Double(0)
 
             if let cached = self.sessionKeyframeMap.neighbors(around: target) {
                 let neighbors = cached.neighbors
@@ -468,31 +466,30 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                 nearestKeyframe = neighbors.nearest
                 if let previous = neighbors.previous, let next = neighbors.next, let nearest = neighbors.nearest, abs(nearest - next) < 0.0005, abs(next - target) < abs(target - previous) {
                     dispatchTarget = next
-                    preflightAction = "session-gap-nearest-next"
+                    keyframeAction = "session-gap-nearest-next"
                 } else {
-                    preflightAction = "session-gap-nearest-previous-no-change"
+                    keyframeAction = "session-gap-nearest-previous-no-change"
                 }
-                DiagnosticsLogger.shared.log("MPVSessionKeyframeIndex", "id=\(seekID) phase=hit target=\(String(format: "%.3f", target)) previous=\(String(format: "%.3f", cached.gap.previous)) next=\(String(format: "%.3f", cached.gap.next)) gapCount=\(cached.count) action=\(preflightAction)")
-            } else if let index = self.claimNearestPreflightIndex() {
+            } else if let index = self.claimKeyframeLookupIndex() {
                 let preflightStartedAt = CACurrentMediaTime()
-                let race = await self.runNearestPreflight(index: index, target: target)
-                preflightMs = (CACurrentMediaTime() - preflightStartedAt) * 1000
+                let race = await self.runKeyframeLookup(index: index, target: target)
+                keyframeLookupMs = (CACurrentMediaTime() - preflightStartedAt) * 1000
                 switch race {
                 case .timeout:
-                    preflightAction = "fallback-time-budget"
+                    keyframeAction = "fallback-time-budget"
                 case .probe(.unavailable(let reason)):
-                    preflightAction = "fallback-probe-unavailable:\(reason)"
+                    keyframeAction = "fallback-probe-unavailable:\(reason)"
                 case .probe(.ready(let neighbors)):
                     previousKeyframe = neighbors.previous
                     nextKeyframe = neighbors.next
                     nearestKeyframe = neighbors.nearest
                     if let previous = neighbors.previous, let next = neighbors.next, let nearest = neighbors.nearest, abs(nearest - next) < 0.0005, abs(next - target) < abs(target - previous) {
                         dispatchTarget = next
-                        preflightAction = "probe-nearest-next"
+                        keyframeAction = "probe-nearest-next"
                     } else if neighbors.previous != nil, neighbors.next != nil {
-                        preflightAction = "probe-nearest-previous-no-change"
+                        keyframeAction = "probe-nearest-previous-no-change"
                     } else {
-                        preflightAction = "fallback-incomplete-neighbors"
+                        keyframeAction = "fallback-incomplete-neighbors"
                     }
                 }
             }
@@ -502,12 +499,12 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
             self.queue.async { [weak self] in
                 guard let self, let handle = self.mpv else { return }
                 guard var pending = self.pendingSeek, pending.id == seekID else {
-                    DiagnosticsLogger.shared.log("MPVNearestSeek", "id=\(seekID) phase=dispatch-skipped reason=stale-generation experimentArm=\(experimentArm) requestedTarget=\(String(format: "%.3f", target))")
+                    DiagnosticsLogger.shared.log("MPVFastSeek", "id=\(seekID) phase=dispatch-skipped reason=stale-generation requestedTarget=\(String(format: "%.3f", target))")
                     return
                 }
                 pending.dispatchTarget = dispatchTarget
-                pending.preflightMs = preflightMs
-                pending.preflightAction = preflightAction
+                pending.keyframeLookupMs = keyframeLookupMs
+                pending.keyframeAction = keyframeAction
                 pending.previousKeyframe = previousKeyframe
                 pending.nextKeyframe = nextKeyframe
                 pending.nearestKeyframe = nearestKeyframe
@@ -518,37 +515,34 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                 let previousText = previousKeyframe.map { String(format: "%.3f", $0) } ?? "none"
                 let nextText = nextKeyframe.map { String(format: "%.3f", $0) } ?? "none"
                 let nearestText = nearestKeyframe.map { String(format: "%.3f", $0) } ?? "none"
-                DiagnosticsLogger.shared.log("MPVNearestSeek", "id=\(seekID) phase=preflight experimentArm=\(experimentArm) requestedTarget=\(String(format: "%.3f", target)) dispatchTarget=\(String(format: "%.6f", dispatchTarget)) previous=\(previousText) next=\(nextText) nearest=\(nearestText) preflightMs=\(String(format: "%.1f", preflightMs)) budgetMs=\(String(format: "%.0f", Self.nearestKeyframePreflightBudgetMs)) action=\(preflightAction)")
+                DiagnosticsLogger.shared.log("MPVFastSeek", "id=\(seekID) phase=preflight requestedTarget=\(String(format: "%.3f", target)) dispatchTarget=\(String(format: "%.6f", dispatchTarget)) previous=\(previousText) next=\(nextText) nearest=\(nearestText) keyframeLookupMs=\(String(format: "%.1f", keyframeLookupMs)) budgetMs=\(String(format: "%.0f", Self.keyframeLookupBudgetMs)) action=\(keyframeAction)")
                 DiagnosticsLogger.shared.log("MPVSeekFence", "id=\(seekID) phase=native-dispatch owner=awaiting-mpv-event-seek")
-                DiagnosticsLogger.shared.log("MPVSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) dispatchTarget=\(String(format: "%.6f", dispatchTarget)) phase=native-dispatch prioritizeMs=\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) preflightMs=\(String(format: "%.1f", preflightMs)) experimentArm=\(experimentArm) intent=\(intent) mode=\(mode) bufferHit=\(bufferHit) enginePosition=\(String(format: "%.3f", self.snapshot.position))")
+                DiagnosticsLogger.shared.log("MPVSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) dispatchTarget=\(String(format: "%.6f", dispatchTarget)) phase=native-dispatch prioritizeMs=\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) keyframeLookupMs=\(String(format: "%.1f", keyframeLookupMs)) intent=\(intent) mode=\(mode) bufferHit=\(bufferHit) enginePosition=\(String(format: "%.3f", self.snapshot.position))")
                 self.command(handle, ["seek", String(format: "%.6f", dispatchTarget), mode])
             }
         }
     }
 
-    private func claimNearestPreflightIndex() -> OnePlayerKeyframeIndex? {
+    private func claimKeyframeLookupIndex() -> OnePlayerKeyframeIndex? {
         let claim = { () -> OnePlayerKeyframeIndex? in
-            guard !self.nearestPreflightBusy, self.keyframeObservationTask == nil, let index = self.keyframeIndex else { return nil }
-            self.nearestPreflightBusy = true
+            guard !self.keyframeLookupBusy, self.keyframeBackfillTask == nil, let index = self.keyframeIndex else { return nil }
+            self.keyframeLookupBusy = true
             return index
         }
         if DispatchQueue.getSpecific(key: queueKey) != nil { return claim() }
         return queue.sync(execute: claim)
     }
 
-    private func runNearestPreflight(index: OnePlayerKeyframeIndex, target: Double) async -> NearestPreflightRaceResult {
+    private func runKeyframeLookup(index: OnePlayerKeyframeIndex, target: Double) async -> KeyframeLookupRaceResult {
         await withCheckedContinuation { continuation in
-            let gate = NearestPreflightGate(continuation: continuation)
+            let gate = KeyframeLookupGate(continuation: continuation)
             Task { [weak self] in
                 let result = await index.neighbors(around: target)
-                if case .ready(let neighbors) = result, let self {
-                    let gapCount = self.sessionKeyframeMap.record(neighbors)
-                    DiagnosticsLogger.shared.log("MPVSessionKeyframeIndex", "phase=record source=preflight target=\(String(format: "%.3f", target)) gapCount=\(gapCount)")
-                }
                 gate.finish(.probe(result))
-                self?.queue.async { [weak self] in self?.nearestPreflightBusy = false }
+                if case .ready(let neighbors) = result, let self { _ = self.sessionKeyframeMap.record(neighbors) }
+                self?.queue.async { [weak self] in self?.keyframeLookupBusy = false }
             }
-            queue.asyncAfter(deadline: .now() + Self.nearestKeyframePreflightBudgetMs / 1000) { gate.finish(.timeout) }
+            queue.asyncAfter(deadline: .now() + Self.keyframeLookupBudgetMs / 1000) { gate.finish(.timeout) }
         }
     }
 
@@ -586,9 +580,9 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         keyframeIndexGeneration &+= 1
         keyframeIndexTask?.cancel()
         keyframeIndexTask = nil
-        keyframeObservationTask?.cancel()
-        keyframeObservationTask = nil
-        nearestPreflightBusy = false
+        keyframeBackfillTask?.cancel()
+        keyframeBackfillTask = nil
+        keyframeLookupBusy = false
         sessionKeyframeMap.clear()
         keyframeIndexRetryWorkItem?.cancel()
         keyframeIndexRetryWorkItem = nil
@@ -740,7 +734,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         compatibilityMode: Bool
     ) {
         snapshot = PlayerSnapshot(position: max(0, startPosition), isBuffering: true, waitingReason: compatibilityMode ? "MPV compatibility loading" : "MPV loading")
-        pendingSeek = startPosition > 0 ? PendingSeek(id: 0, requestedAt: CACurrentMediaTime(), target: startPosition, bufferHit: false, intent: "startupResume", mode: "loadfile-start", experimentArm: "startup", dispatchTarget: startPosition, preflightMs: 0, preflightAction: "startup-resume", previousKeyframe: nil, nextKeyframe: nil, nearestKeyframe: nil) : nil
+        pendingSeek = startPosition > 0 ? PendingSeek(id: 0, requestedAt: CACurrentMediaTime(), target: startPosition, bufferHit: false, intent: "startupResume", mode: "loadfile-start", dispatchTarget: startPosition, keyframeLookupMs: 0, keyframeAction: "startup-resume", previousKeyframe: nil, nextKeyframe: nil, nearestKeyframe: nil) : nil
         emitOnMain()
 
         queue.async { [weak self] in
@@ -826,7 +820,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
             snapshot.waitingReason = nil
             logAudioState(handle: handle, reason: "file-loaded")
             logVideoState(handle: handle, reason: "file-loaded")
-            if let session = sharedTransportSession, let bridge = streamBridge { startKeyframeIndexDiagnostics(session: session, contentLength: bridge.contentLength) }
+            if let session = sharedTransportSession, let bridge = streamBridge { startKeyframeIndexSupport(session: session, contentLength: bridge.contentLength) }
             emitOnMain()
         case MPV_EVENT_VIDEO_RECONFIG:
             logVideoOutputGeometry(handle: handle, reason: "video-reconfig")
@@ -867,8 +861,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                 let previousText = pending.previousKeyframe.map { String(format: "%.3f", $0) } ?? "none"
                 let nextText = pending.nextKeyframe.map { String(format: "%.3f", $0) } ?? "none"
                 let nearestText = pending.nearestKeyframe.map { String(format: "%.3f", $0) } ?? "none"
-                DiagnosticsLogger.shared.log("MPVNearestSeek", "id=\(pending.id) phase=landing experimentArm=\(pending.experimentArm) requestedTarget=\(String(format: "%.3f", pending.target)) dispatchTarget=\(String(format: "%.6f", pending.dispatchTarget)) actual=\(String(format: "%.3f", actualPosition)) requestedDelta=\(String(format: "%.3f", actualPosition - pending.target)) dispatchDelta=\(String(format: "%.3f", actualPosition - pending.dispatchTarget)) previous=\(previousText) next=\(nextText) nearest=\(nearestText) preflightMs=\(String(format: "%.1f", pending.preflightMs)) action=\(pending.preflightAction)")
-                if pending.previousKeyframe == nil || pending.nextKeyframe == nil { self.logKeyframeIndexObservation(seekID: pending.id, target: pending.target, actual: actualPosition) }
+                DiagnosticsLogger.shared.log("MPVFastSeek", "id=\(pending.id) phase=landing requestedTarget=\(String(format: "%.3f", pending.target)) dispatchTarget=\(String(format: "%.6f", pending.dispatchTarget)) actual=\(String(format: "%.3f", actualPosition)) requestedDelta=\(String(format: "%.3f", actualPosition - pending.target)) dispatchDelta=\(String(format: "%.3f", actualPosition - pending.dispatchTarget)) previous=\(previousText) next=\(nextText) nearest=\(nearestText) keyframeLookupMs=\(String(format: "%.1f", pending.keyframeLookupMs)) action=\(pending.keyframeAction)")
+                if pending.previousKeyframe == nil || pending.nextKeyframe == nil { self.backfillKeyframeGapAfterLanding(seekID: pending.id, target: pending.target) }
                 DispatchQueue.main.async { [weak self] in
                     self?.onSeekCompleted?(SeekResult(
                         requestedAt: pending.requestedAt,
@@ -931,26 +925,25 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         DiagnosticsLogger.shared.log("MPVSeekingState", "active=\(active) pending=\(pendingSeek.map { String($0.id) } ?? "none") nativeOwner=\(latestNativeSeekDispatchID.map(String.init) ?? "none") seekEventOwner=\(activeSeekEventOwnerID.map(String.init) ?? "none")")
     }
 
-    private func startKeyframeIndexDiagnostics(session: TransportDataSession, contentLength: Int64) {
+    private func startKeyframeIndexSupport(session: TransportDataSession, contentLength: Int64) {
         keyframeIndexGeneration &+= 1
         let generation = keyframeIndexGeneration
         keyframeIndexTask?.cancel()
         keyframeIndexTask = nil
-        keyframeObservationTask?.cancel()
-        keyframeObservationTask = nil
+        keyframeBackfillTask?.cancel()
+        keyframeBackfillTask = nil
         keyframeIndexRetryWorkItem?.cancel()
         keyframeIndexRetryWorkItem = nil
         keyframeIndexRetryAttempt = 0
         sessionKeyframeMap.clear()
-        DiagnosticsLogger.shared.log("MPVSessionKeyframeIndex", "phase=clear reason=new-media")
         keyframeIndexRetrySession = session
         keyframeIndexRetryContentLength = contentLength
         keyframeIndex = nil
-        DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=scheduled generation=\(generation) attempt=1 delayMs=0 bytes=\(contentLength) mode=cache-only-observe")
-        attemptKeyframeIndexDiagnostics(generation: generation)
+        DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=scheduled generation=\(generation) attempt=1 delayMs=0 bytes=\(contentLength) mode=cache-only")
+        attemptKeyframeIndexBuild(generation: generation)
     }
 
-    private func attemptKeyframeIndexDiagnostics(generation: UInt64) {
+    private func attemptKeyframeIndexBuild(generation: UInt64) {
         guard !isStopping, keyframeIndexGeneration == generation, keyframeIndex == nil, keyframeIndexTask == nil,
               let session = keyframeIndexRetrySession, keyframeIndexRetryContentLength > 0 else { return }
         keyframeIndexRetryWorkItem?.cancel()
@@ -958,7 +951,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         keyframeIndexRetryAttempt += 1
         let attempt = keyframeIndexRetryAttempt
         let contentLength = keyframeIndexRetryContentLength
-        DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=starting generation=\(generation) attempt=\(attempt) bytes=\(contentLength) mode=cache-only-observe")
+        DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=starting generation=\(generation) attempt=\(attempt) bytes=\(contentLength) mode=cache-only")
         keyframeIndexTask = Task { [weak self] in
             let result = await OnePlayerKeyframeIndexProbe.buildIndex(session: session, contentLength: contentLength)
             guard !Task.isCancelled else { return }
@@ -972,18 +965,18 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                     self.keyframeIndexRetryWorkItem = nil
                     self.keyframeIndexRetrySession = nil
                     self.keyframeIndexRetryContentLength = 0
-                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=ready generation=\(generation) attempt=\(attempt) mode=\(index.mode) stream=\(index.videoStreamIndex) timeBase=\(String(format: "%.9f", index.timeBaseSeconds)) streamStart=\(String(format: "%.3f", index.streamStartSeconds)) action=observe-only")
+                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=ready generation=\(generation) attempt=\(attempt) mode=\(index.mode) stream=\(index.videoStreamIndex) timeBase=\(String(format: "%.9f", index.timeBaseSeconds)) streamStart=\(String(format: "%.3f", index.streamStartSeconds)) action=fast-seek-support")
                 case .unavailable(let reason):
                     self.keyframeIndex = nil
                     guard attempt <= Self.keyframeIndexRetryDelays.count else {
                         self.keyframeIndexRetrySession = nil
                         self.keyframeIndexRetryContentLength = 0
-                        DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=unavailable-final generation=\(generation) attempts=\(attempt) reason=\(reason) action=observe-only")
+                        DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=unavailable-final generation=\(generation) attempts=\(attempt) reason=\(reason) action=fast-seek-support")
                         return
                     }
                     let delay = Self.keyframeIndexRetryDelays[attempt - 1]
-                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=retry-pending generation=\(generation) attempt=\(attempt) nextAttempt=\(attempt + 1) delayMs=\(Int(delay * 1000)) reason=\(reason) action=observe-only")
-                    let work = DispatchWorkItem { [weak self] in self?.attemptKeyframeIndexDiagnostics(generation: generation) }
+                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "status=retry-pending generation=\(generation) attempt=\(attempt) nextAttempt=\(attempt + 1) delayMs=\(Int(delay * 1000)) reason=\(reason) action=fast-seek-support")
+                    let work = DispatchWorkItem { [weak self] in self?.attemptKeyframeIndexBuild(generation: generation) }
                     self.keyframeIndexRetryWorkItem = work
                     self.queue.asyncAfter(deadline: .now() + delay, execute: work)
                 }
@@ -991,37 +984,20 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         }
     }
 
-    private func logKeyframeIndexObservation(seekID: UInt64, target: Double, actual: Double) {
-        guard let index = keyframeIndex else {
-            DiagnosticsLogger.shared.log("MPVKeyframeIndex", "id=\(seekID) target=\(String(format: "%.3f", target)) actual=\(String(format: "%.3f", actual)) status=not-ready action=observe-only")
-            return
-        }
-        guard keyframeObservationTask == nil, !nearestPreflightBusy else {
-            DiagnosticsLogger.shared.log("MPVKeyframeIndex", "id=\(seekID) target=\(String(format: "%.3f", target)) actual=\(String(format: "%.3f", actual)) status=probe-busy action=observe-only")
-            return
-        }
-        keyframeObservationTask = Task { [weak self] in
+    private func backfillKeyframeGapAfterLanding(seekID: UInt64, target: Double) {
+        guard let index = keyframeIndex, keyframeBackfillTask == nil, !keyframeLookupBusy else { return }
+        keyframeBackfillTask = Task { [weak self] in
             let result = await index.neighbors(around: target)
             guard !Task.isCancelled else { return }
             self?.queue.async { [weak self] in
                 guard let self, !self.isStopping else { return }
-                self.keyframeObservationTask = nil
+                self.keyframeBackfillTask = nil
                 switch result {
                 case .ready(let neighbors):
                     let gapCount = self.sessionKeyframeMap.record(neighbors)
-                    DiagnosticsLogger.shared.log("MPVSessionKeyframeIndex", "id=\(seekID) phase=record source=post-landing target=\(String(format: "%.3f", target)) gapCount=\(gapCount)")
-                    let previous = neighbors.previous.map { String(format: "%.3f", $0) } ?? "none"
-                    let next = neighbors.next.map { String(format: "%.3f", $0) } ?? "none"
-                    let nearest = neighbors.nearest.map { String(format: "%.3f", $0) } ?? "none"
-                    let previousDelta = neighbors.previous.map { String(format: "%.3f", $0 - target) } ?? "none"
-                    let nextDelta = neighbors.next.map { String(format: "%.3f", $0 - target) } ?? "none"
-                    let nearestDelta = neighbors.nearest.map { String(format: "%.3f", $0 - target) } ?? "none"
-                    let mpvDelta = actual - target
-                    let theoreticalGain = neighbors.nearest.map { abs(mpvDelta) - abs($0 - target) }
-                    let gainText = theoreticalGain.map { String(format: "%.3f", $0) } ?? "none"
-                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "id=\(seekID) target=\(String(format: "%.3f", target)) actual=\(String(format: "%.3f", actual)) mpvDelta=\(String(format: "%.3f", mpvDelta)) previous=\(previous) previousDelta=\(previousDelta) previousStatus=\(neighbors.previousStatus) next=\(next) nextDelta=\(nextDelta) nextStatus=\(neighbors.nextStatus) nearest=\(nearest) nearestDelta=\(nearestDelta) theoreticalGain=\(gainText) mode=native-seek-cache-only action=observe-only")
+                    DiagnosticsLogger.shared.log("MPVKeyframeBackfill", "id=\(seekID) target=\(String(format: "%.3f", target)) result=recorded gapCount=\(gapCount)")
                 case .unavailable(let reason):
-                    DiagnosticsLogger.shared.log("MPVKeyframeIndex", "id=\(seekID) target=\(String(format: "%.3f", target)) actual=\(String(format: "%.3f", actual)) status=probe-unavailable reason=\(reason) mode=native-seek-cache-only action=observe-only")
+                    DiagnosticsLogger.shared.log("MPVKeyframeBackfill", "id=\(seekID) target=\(String(format: "%.3f", target)) result=unavailable reason=\(reason)")
                 }
             }
         }
