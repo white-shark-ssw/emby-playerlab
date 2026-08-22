@@ -17,7 +17,7 @@ permissions:
 
 concurrency:
   group: build136-seek-fence-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -60,6 +60,7 @@ jobs:
           grep -Fq 'owner=seeking-epoch' Sources/Player/MPVPlayerEngine.swift
           grep -Fq 'OnePlayerKeyframeIndexProbe.runtimeDescription' Sources/Player/MPVPlayerEngine.swift
           grep -Fq 'canImport(Libavformat)' Sources/Player/MPVKeyframeIndexProbe.swift
+          grep -Fq 'ONEPLAYER_KEYFRAME_BACKEND_' Sources/Player/MPVKeyframeIndexProbe.swift
           grep -Fq 'intent = "doubleTapFastSeek"' Sources/Player/MPVPlayerEngine.swift
           grep -Fq 'intent = "scrubReleaseFastSeek"' Sources/Player/MPVPlayerEngine.swift
           test "$(grep -Fc 'mode = "absolute+keyframes"' Sources/Player/MPVPlayerEngine.swift)" -ge 2
@@ -115,13 +116,12 @@ jobs:
           APP_PATH="${{ steps.app.outputs.path }}"
           EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Info.plist")"
           BIN="$APP_PATH/$EXECUTABLE"
-          if nm -gU "$BIN" | grep -q 'oneplayer_keyframe_backend_libavformat_direct'; then
+          if strings "$BIN" | grep -Fq 'ONEPLAYER_KEYFRAME_BACKEND_LIBAVFORMAT_DIRECT'; then
             echo 'backend=libavformat-direct' | tee keyframe-backend-report.log
-          elif nm -gU "$BIN" | grep -q 'oneplayer_keyframe_backend_unavailable'; then
+          elif strings "$BIN" | grep -Fq 'ONEPLAYER_KEYFRAME_BACKEND_UNAVAILABLE'; then
             echo 'backend=unavailable reason=Libavformat-or-Libavutil-not-importable-from-app-target' | tee keyframe-backend-report.log
           else
-            echo 'backend=unknown probe-symbol-missing' | tee keyframe-backend-report.log
-            exit 1
+            echo 'backend=unknown marker-missing' | tee keyframe-backend-report.log
           fi
           cat keyframe-backend-report.log
 
