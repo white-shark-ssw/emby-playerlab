@@ -1,272 +1,292 @@
-name: Build MDK Lab IPA
+name: Build135 MPV Residual Refine IPA
 
 on:
-  workflow_dispatch:
-  push:
-    branches: [feat/mdk-engine-lab]
-    paths:
-      - "Sources/**"
-      - "MDKLab/**"
-      - "Config/**"
-      - "Resources/**"
-      - "project.mdklab.yml"
-      - "Podfile"
-      - ".github/workflows/build-mdk-lab.yml"
   pull_request:
-    paths:
-      - "Sources/**"
-      - "MDKLab/**"
-      - "Config/**"
-      - "Resources/**"
-      - "project.mdklab.yml"
-      - "Podfile"
-      - ".github/workflows/build-mdk-lab.yml"
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
-  contents: read
-
-concurrency:
-  group: build-mdk-lab-${{ github.ref }}
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  build:
+  build135:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'diag/mpv-residual-refine-0.13.68'
     runs-on: macos-15
-    timeout-minutes: 150
-
+    timeout-minutes: 180
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/mpv-residual-refine-0.13.68
+          fetch-depth: 0
 
-      - name: Select Xcode 16.4
-        run: |
-          set -euo pipefail
-          sudo xcode-select -switch /Applications/Xcode_16.4.app
-          xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
-          swift --version
-
-      - name: Install build tools
-        run: |
-          set -euo pipefail
-          brew install xcodegen
-          sudo gem install cocoapods -v 1.16.2 --no-document
-          xcodegen --version
-          pod --version
-
-      - name: Prepare OnePlayer assets
-        run: python3 scripts/generate_oneplayer_icons.py
-
-      - name: Validate MDK lab source contract
+      - name: Apply bounded residual refinement
+        shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          spec = Path("project.mdklab.yml").read_text()
-          engine_kind = Path("Sources/Player/PlayerEngine.swift").read_text()
-          engine = Path("MDKLab/App/MDKKSAVIOPlayerEngine.swift").read_text()
-          shim = Path("MDKLab/KSPlayerShim/Package.swift").read_text()
-          controller = Path("Sources/Player/PlayerController.swift").read_text()
-          sparse_store = Path("Sources/Transport/DownloadFirstSparseStore.swift").read_text()
-          checks = {
-              "iOS 15 deployment": 'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,
-              "MDK Lab 0.13.6 version": 'MARKETING_VERSION: "0.13.6"' in spec and 'CURRENT_PROJECT_VERSION: "73"' in spec,
-              "MDK 0.38 revision pinned": "f112a85f2f51c5352439465204c1ae0fa51a9f18" in spec,
-              "MPVKit excluded from MDK target": "MPVKit" not in spec,
-              "KSPlayer public package excluded": "kingslay/KSPlayer" not in spec,
-              "Xcode 15+ package sandbox workaround isolated": 'ENABLE_USER_SCRIPT_SANDBOXING: "NO"' in spec,
-              "MDK lab title": "MDK Metal（实验）" in engine_kind,
-              "MDK UnifiedTransport localhost bridge": "TransportHTTPServer" in engine and "unified-localhost" in engine,
-              "MDK bridge preserves shared transport": "stopSessionOnStop: false" in engine,
-              "MDK old transport shutdown removed": "unifiedTransportStopped=true" not in engine and "stopUnusedUnifiedTransportAfterDirectStart" not in engine,
-              "MDK VT decoder": 'videoDecoders = ["VT", "FFmpeg"]' in engine,
-              "MDK seek recovery metric": "MDKSeekHealth" in engine,
-              "MDK seek buffering grace": "seekBufferingUIGraceSeconds" in engine and "MDKBuffering" in engine,
-              "MDK active native seek watchdog": "scheduleActiveNativeSeekWatchdog" in engine and "active-native-timeout" in engine and "active-native-hard-timeout" in engine,
-              "MDK watchdog restores latest target": "latestDesiredTarget" in engine and "MDKSeekWedge" in engine and "rebuild-player-at-latest-target" in engine,
-              "MDK visual seek completion": "MDKSeekFrame" in engine and "renderedFrameSerial" in engine and "first rendered frame after latest seek callback" in engine,
-              "MDK frame watchdog": "scheduleSeekFrameWatchdog" in engine and "callback-without-new-frame" in engine,
-              "MDK seek grace bound to native dispatch": "active-native-seek-grace" in engine and "seekBufferingGraceStartedAt = nativeStartedAt" in engine,
-              "MDK async pause and teardown": "OnePlayer.MDK.NativeControl" in engine and "MDKTeardown" in engine and "detachForAsyncTeardown" in engine,
-              "MDK premature EOF seek recovery": "premature-eof-during-seek" in engine,
-              "MDK seek immediate result is advisory": "immediateResult" in engine and "semantics=advisory" in engine and "MDK seek rejected" not in engine,
-              "MDK stale seek callbacks isolated": "discard-stale-player-generation" in engine and "diagnostic-only" in engine,
-              "MDK native seek latest-wins": "activeNativeSeek" in engine and "queuedLatestSeek" in engine and "MDKSeekCoalesce" in engine,
-              "MDK native seek single-flight": "dispatchQueuedSeekIfNeeded" in engine and "nativeSeekOutstandingCount" in engine,
-              "MDK seek anchor waits for visual completion": "snapshotCanCompleteSeekAnchor" in controller and "engineKind != .ksAVIO" in controller and "scheduleSeekAnchorRelease(expectedTarget: target)" in controller,
-              "Persistent sparse cache crash marker": "session.dirty" in sparse_store and "unclean previous session detected" in sparse_store,
-              "Truthful time buffer timeline": "playableRanges: controller.snapshot.bufferedRanges" in Path("Sources/UI/PlayerScreen.swift").read_text() and "downloadCacheRanges" not in Path("Sources/UI/BufferedTimelineSlider.swift").read_text(),
-              "Cached seek preserves warm bulk": "authority=cached-read action=keep-cache-window" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text(),
-              "Unified concrete tail metadata guard": "isConcreteTailMetadataRead" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text() and "concrete-tail-metadata" in Path("Sources/Transport/UnifiedMediaTransportSession.swift").read_text(),
-              "MDK rate health metric": "MDKRateHealth" in engine,
-              "KS compatibility shim only": 'name: "KSPlayer"' in shim,
-          }
-          for name, ok in checks.items():
-              print(("PASS" if ok else "FAIL"), name)
-              if not ok:
-                  raise SystemExit(f"::error::{name}")
+
+          app = Path('Sources/Core/AppIdentity.swift')
+          text = app.read_text()
+          if '"0.13.68"' not in text:
+              count = text.count('"0.13.67"')
+              if count != 2: raise SystemExit(f'AppIdentity mismatch: {count}')
+              app.write_text(text.replace('"0.13.67"', '"0.13.68"'))
+
+          engine = Path('Sources/Player/MPVPlayerEngine.swift')
+          text = engine.read_text()
+
+          old_struct = '''    private struct PendingSeek {
+        let id: UInt64
+        let requestedAt: TimeInterval
+        let target: Double
+        let bufferHit: Bool
+        let intent: String
+        let mode: String
+    }
+'''
+          new_struct = '''    private enum SeekStage: String { case startup, primaryKeyframe, residualRefine }
+
+    private struct PendingSeek {
+        let id: UInt64
+        let requestedAt: TimeInterval
+        let target: Double
+        let bufferHit: Bool
+        let intent: String
+        let mode: String
+        var dispatchedAt: TimeInterval?
+        let stage: SeekStage
+        let primaryLanding: Double?
+        let primaryCompletionMs: Double?
+        let refineRequestedAt: TimeInterval?
+    }
+
+    private static let residualRefineMinSeconds = 0.050
+    private static let residualRefineMaxSeconds = 1.250
+'''
+          if 'private static let residualRefineMaxSeconds = 1.250' not in text:
+              if text.count(old_struct) != 1: raise SystemExit(f'PendingSeek struct mismatch: {text.count(old_struct)}')
+              text = text.replace(old_struct, new_struct, 1)
+
+          old_startup = '        pendingSeek = startPosition > 0 ? PendingSeek(id: 0, requestedAt: CACurrentMediaTime(), target: startPosition, bufferHit: false, intent: "startupResume", mode: "loadfile-start") : nil'
+          new_startup = '        pendingSeek = startPosition > 0 ? PendingSeek(id: 0, requestedAt: CACurrentMediaTime(), target: startPosition, bufferHit: false, intent: "startupResume", mode: "loadfile-start", dispatchedAt: nil, stage: .startup, primaryLanding: nil, primaryCompletionMs: nil, refineRequestedAt: nil) : nil'
+          if new_startup not in text:
+              if text.count(old_startup) != 1: raise SystemExit(f'startup pending mismatch: {text.count(old_startup)}')
+              text = text.replace(old_startup, new_startup, 1)
+
+          old_pending = '        pendingSeek = PendingSeek(id: seekID, requestedAt: requestedAt, target: target, bufferHit: bufferHit, intent: intent, mode: mode)'
+          new_pending = '        pendingSeek = PendingSeek(id: seekID, requestedAt: requestedAt, target: target, bufferHit: bufferHit, intent: intent, mode: mode, dispatchedAt: nil, stage: .primaryKeyframe, primaryLanding: nil, primaryCompletionMs: nil, refineRequestedAt: nil)'
+          if new_pending not in text:
+              if text.count(old_pending) != 1: raise SystemExit(f'interactive pending mismatch: {text.count(old_pending)}')
+              text = text.replace(old_pending, new_pending, 1)
+
+          old_dispatch = '''                let dispatchAt = CACurrentMediaTime()
+                DiagnosticsLogger.shared.log("MPVSeek", "id=\\(seekID) target=\\(String(format: "%.3f", target)) phase=native-dispatch prioritizeMs=\\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) intent=\\(intent) mode=\\(mode) bufferHit=\\(bufferHit) enginePosition=\\(String(format: "%.3f", self.snapshot.position))")
+                self.command(handle, ["seek", String(format: "%.3f", target), mode])
+'''
+          new_dispatch = '''                let dispatchAt = CACurrentMediaTime()
+                if var current = self.pendingSeek, current.id == seekID, current.stage == .primaryKeyframe {
+                    current.dispatchedAt = dispatchAt
+                    self.pendingSeek = current
+                }
+                DiagnosticsLogger.shared.log("MPVSeek", "id=\\(seekID) target=\\(String(format: "%.3f", target)) phase=native-dispatch prioritizeMs=\\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) intent=\\(intent) mode=\\(mode) bufferHit=\\(bufferHit) enginePosition=\\(String(format: "%.3f", self.snapshot.position))")
+                self.command(handle, ["seek", String(format: "%.3f", target), mode])
+'''
+          if 'current.stage == .primaryKeyframe' not in text:
+              if text.count(old_dispatch) != 1: raise SystemExit(f'native dispatch mismatch: {text.count(old_dispatch)}')
+              text = text.replace(old_dispatch, new_dispatch, 1)
+
+          old_landing = '''            if let pending = pendingSeek {
+                pendingSeek = nil
+                let latency = (CACurrentMediaTime() - pending.requestedAt) * 1000
+                let delta = actualPosition - pending.target
+                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", delta)) completionMs=\\(String(format: "%.1f", latency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) event=playback-restart")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onSeekCompleted?(SeekResult(
+                        requestedAt: pending.requestedAt,
+                        target: pending.target,
+                        actualPosition: actualPosition,
+                        bufferHit: pending.bufferHit,
+                        completionLatencyMs: latency,
+                        measurement: "MPV playback-restart after latest seek"
+                    ))
+                }
+            } else {
+                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=none actual=\\(String(format: "%.3f", actualPosition)) event=playback-restart-without-pending")
+            }
+'''
+          new_landing = '''            if let pending = pendingSeek {
+                let now = CACurrentMediaTime()
+                if pending.stage != .startup, pending.dispatchedAt == nil {
+                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) actual=\\(String(format: "%.3f", actualPosition)) stage=\\(pending.stage.rawValue) event=playback-restart-before-latest-native-dispatch ignored=true")
+                    emitOnMain()
+                    return
+                }
+
+                switch pending.stage {
+                case .primaryKeyframe:
+                    let primaryLatency = (now - pending.requestedAt) * 1000
+                    let residual = pending.target - actualPosition
+                    let delta = actualPosition - pending.target
+                    let eligible = residual > Self.residualRefineMinSeconds && residual <= Self.residualRefineMaxSeconds
+                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", delta)) completionMs=\\(String(format: "%.1f", primaryLatency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) stage=primary event=playback-restart")
+                    DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=consider target=\\(String(format: "%.3f", pending.target)) keyframeLanding=\\(String(format: "%.3f", actualPosition)) residual=\\(String(format: "%.3f", residual)) min=\\(String(format: "%.3f", Self.residualRefineMinSeconds)) max=\\(String(format: "%.3f", Self.residualRefineMaxSeconds)) eligible=\\(eligible) primaryMs=\\(String(format: "%.1f", primaryLatency)) intent=\\(pending.intent)")
+
+                    if eligible {
+                        let refineRequestedAt = CACurrentMediaTime()
+                        pendingSeek = PendingSeek(id: pending.id, requestedAt: pending.requestedAt, target: pending.target, bufferHit: pending.bufferHit, intent: pending.intent, mode: "relative+exact", dispatchedAt: refineRequestedAt, stage: .residualRefine, primaryLanding: actualPosition, primaryCompletionMs: primaryLatency, refineRequestedAt: refineRequestedAt)
+                        DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=native-dispatch residual=\\(String(format: "%.3f", residual)) mode=relative+exact primaryLanding=\\(String(format: "%.3f", actualPosition)) target=\\(String(format: "%.3f", pending.target))")
+                        emitOnMain()
+                        command(handle, ["seek", String(format: "%.3f", residual), "relative+exact"])
+                        return
+                    }
+
+                    pendingSeek = nil
+                    let skipReason: String
+                    if abs(residual) <= Self.residualRefineMinSeconds { skipReason = "already-frame-close" }
+                    else if residual <= 0 { skipReason = "landing-not-before-target" }
+                    else { skipReason = "residual-over-cap" }
+                    DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=skip reason=\\(skipReason) residual=\\(String(format: "%.3f", residual)) finalDelta=\\(String(format: "%.3f", delta)) totalMs=\\(String(format: "%.1f", primaryLatency))")
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: primaryLatency, measurement: "MPV keyframe landing; residual refine skipped"))
+                    }
+
+                case .residualRefine:
+                    pendingSeek = nil
+                    let totalLatency = (now - pending.requestedAt) * 1000
+                    let refineLatency = pending.refineRequestedAt.map { (now - $0) * 1000 } ?? 0
+                    let finalDelta = actualPosition - pending.target
+                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", finalDelta)) completionMs=\\(String(format: "%.1f", totalLatency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) stage=refined event=playback-restart")
+                    DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=complete primaryLanding=\\(pending.primaryLanding.map { String(format: "%.3f", $0) } ?? "none") primaryMs=\\(pending.primaryCompletionMs.map { String(format: "%.1f", $0) } ?? "none") final=\\(String(format: "%.3f", actualPosition)) finalDelta=\\(String(format: "%.3f", finalDelta)) refineMs=\\(String(format: "%.1f", refineLatency)) totalMs=\\(String(format: "%.1f", totalLatency))")
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: totalLatency, measurement: "MPV keyframe landing + bounded relative exact residual refinement"))
+                    }
+
+                case .startup:
+                    pendingSeek = nil
+                    let latency = (now - pending.requestedAt) * 1000
+                    let delta = actualPosition - pending.target
+                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", delta)) completionMs=\\(String(format: "%.1f", latency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) stage=startup event=playback-restart")
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: latency, measurement: "MPV startup playback-restart"))
+                    }
+                }
+            } else {
+                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=none actual=\\(String(format: "%.3f", actualPosition)) event=playback-restart-without-pending")
+            }
+'''
+          if 'phase=complete primaryLanding=' not in text:
+              if text.count(old_landing) != 1: raise SystemExit(f'playback restart block mismatch: {text.count(old_landing)}')
+              text = text.replace(old_landing, new_landing, 1)
+
+          engine.write_text(text)
           PY
 
-      - name: Generate MDK Lab project
-        run: xcodegen generate --spec project.mdklab.yml
+          git diff --check
+          git status --short
 
-      - name: Install KTVHTTPCache 3.1.0
-        run: pod install --repo-update
-
-      - name: Restore Swift package cache
-        uses: actions/cache@v4
-        with:
-          path: .spm-cache
-          key: ${{ runner.os }}-mdk-0.38.0-ktv-3.1.0-${{ hashFiles('project.mdklab.yml', 'MDKLab/KSPlayerShim/Package.swift', 'Podfile') }}
-
-      - name: Resolve pinned MDK 0.38.0
+      - name: Commit Build135 source
         run: |
           set -euo pipefail
-          set -o pipefail
-          xcodebuild \
-            -resolvePackageDependencies \
-            -workspace EmbyPlayerLab.xcworkspace \
-            -scheme EmbyPlayerLab \
-            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee mdk-package-resolution.log
-          grep -R "f112a85f2f51c5352439465204c1ae0fa51a9f18" EmbyPlayerLab.xcworkspace/xcshareddata/swiftpm/Package.resolved .spm-cache 2>/dev/null | head -n 10 || true
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add Sources/Core/AppIdentity.swift Sources/Player/MPVPlayerEngine.swift
+          if ! git diff --cached --quiet; then
+            git commit -m 'Build135: add bounded MPV residual seek refinement'
+            git push origin HEAD:diag/mpv-residual-refine-0.13.68
+          fi
 
-      - name: Verify MDK package contract and license notes
+      - name: Verify Build135 contract
         run: |
           set -euo pipefail
-          CHECKOUT=".spm-cache/checkouts/swift-mdk"
-          test -f "$CHECKOUT/Package.swift"
-          grep -q 'v0.38.0/mdk-sdk-apple.zip' "$CHECKOUT/Package.swift"
-          grep -q 'dfae61b90ae1cc543d173b3b4cf2411856c98d61a3a56d7b032573080b8d18a5' "$CHECKOUT/Package.swift"
-          test -f "$CHECKOUT/LICENSE"
-          grep -qi 'MIT License' "$CHECKOUT/LICENSE"
-          {
-            echo "swift-mdk revision: f112a85f2f51c5352439465204c1ae0fa51a9f18"
-            echo "MDK SDK binary: v0.38.0 (pinned by upstream Package.swift)"
-            echo "swift-mdk wrapper license: MIT"
-            echo "MDK runtime key: intentionally not bundled for this non-production engine benchmark"
-            echo "Project Deployment Target remains iOS 15.0"
-          } | tee mdk-license-report.log
+          grep -Fq 'sourceVersion = "0.13.68"' Sources/Core/AppIdentity.swift
+          grep -Fq 'private static let residualRefineMinSeconds = 0.050' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'private static let residualRefineMaxSeconds = 1.250' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'mode: "relative+exact"' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'phase=complete primaryLanding=' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'event=playback-restart-before-latest-native-dispatch ignored=true' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'intent = "doubleTapFastSeek"' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'intent = "scrubReleaseFastSeek"' Sources/Player/MPVPlayerEngine.swift
+          test "$(grep -Fc 'mode = "absolute+keyframes"' Sources/Player/MPVPlayerEngine.swift)" -ge 2
+          grep -Fq 'screenScrubFeedbackView(feedback).padding(.bottom, 116)' Sources/UI/PlayerScreen.swift
+          grep -Fq 'private static let fastSeekBurstWindow: CFTimeInterval = 1.0' Sources/Player/PlayerController.swift
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
 
-      - name: Build MDK Lab for generic iOS device
+      - name: Select Xcode and install tools
         run: |
           set -euo pipefail
-          set -o pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          swift --version
+
+      - name: Generate project and resolve dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build Release for generic iOS device
+        run: |
+          set -euo pipefail
           rm -rf build
-          xcodebuild \
-            -workspace EmbyPlayerLab.xcworkspace \
-            -scheme EmbyPlayerLab \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/DerivedData \
-            -clonedSourcePackagesDirPath .spm-cache \
-            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY='' \
-            DEVELOPMENT_TEAM='' \
-            clean build 2>&1 | tee mdk-build.log
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.68 CURRENT_PROJECT_VERSION=135 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
 
-      - name: Extract MDK build errors
-        if: failure()
-        run: |
-          set +e
-          grep -nE '(^|[[:space:]])(error:|fatal error:)' mdk-build.log > mdk-build-errors.log
-          if [ ! -s mdk-build-errors.log ]; then tail -n 600 mdk-build.log > mdk-build-errors.log; fi
-          echo "## MDK build errors" >> "$GITHUB_STEP_SUMMARY"
-          sed -n '1,220p' mdk-build-errors.log >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload failed MDK build diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: OnePlayer-MDKLab-build-errors-${{ github.sha }}
-          path: |
-            mdk-build.log
-            mdk-build-errors.log
-            mdk-package-resolution.log
-            mdk-license-report.log
-          if-no-files-found: warn
-          retention-days: 7
-
-      - name: Locate and validate app
-        id: app
+      - name: Locate built app
         run: |
           set -euo pipefail
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP_PATH" && test -d "$APP_PATH"
-          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
-          python3 scripts/validate_built_app.py \
-            "$APP_PATH" \
-            --bundle-id "com.embyplayerlab.app" \
-            --version "0.13.6" \
-            --build "73" \
-            --display-name "OnePlayer" \
-            --minimum-os "15.0" \
-            --primary-icon "OnePlayerIcon" \
-            --alternate-icon "OnePlayerAltIcon"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
-      - name: Validate runtime and embedded minimum OS
+      - name: Validate app identity
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.68' --build '135' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+
+      - name: Validate minimum OS
         run: |
           set -euo pipefail
           chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" mdk-min-os-report.log mdk-build.log
-          APP_PATH="${{ steps.app.outputs.path }}"
-          : > mdk-binary-inventory.log
-          : > mdk-framework-min-os-report.log
-          while IFS= read -r -d '' file; do
-            if file "$file" | grep -q 'Mach-O'; then
-              echo "=== $file ===" >> mdk-binary-inventory.log
-              file "$file" >> mdk-binary-inventory.log
-              xcrun vtool -show-build "$file" >> mdk-framework-min-os-report.log 2>&1 || true
-            fi
-          done < <(find "$APP_PATH" -type f -print0)
-          python3 - <<'PY'
-          import re
-          from pathlib import Path
-          text = Path('mdk-framework-min-os-report.log').read_text(errors='ignore')
-          versions = re.findall(r'\bminos\s+(\d+(?:\.\d+){1,2})', text)
-          def v(s): return tuple(int(x) for x in s.split('.'))
-          bad = [x for x in versions if v(x) > v('15.0')]
-          print('embedded Mach-O minOS values:', versions)
-          if bad:
-              raise SystemExit('::error::Embedded MDK Lab Mach-O minimum OS exceeds iOS 15.0: ' + repr(bad))
-          PY
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
 
-      - name: Package MDK Lab unsigned IPA
+      - name: Package unsigned IPA
         run: |
           set -euo pipefail
           rm -rf Payload
           mkdir Payload
-          cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="OnePlayer-MDKLab-0.13.6-${GITHUB_SHA::7}-unsigned.ipa"
-          /usr/bin/zip -qry "$IPA_NAME" Payload
-          /usr/bin/unzip -t "$IPA_NAME"
-          shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
-          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.68-build135-mpv-residual-refine-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
 
-      - name: Export experiment source snapshot
-        run: |
-          set -euo pipefail
-          SOURCE_ZIP="OnePlayer-MDKLab-${GITHUB_SHA::7}-source.zip"
-          git archive --format=zip --output "$SOURCE_ZIP" HEAD
-          shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
-          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
-
-      - name: Upload MDK Lab artifacts
+      - name: Upload Build135 package
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-MDKLab-${{ github.sha }}
+          name: OnePlayer-0.13.68-build135-mpv-residual-refine
           path: |
-            ${{ env.IPA_NAME }}
-            ${{ env.IPA_NAME }}.sha256
-            ${{ env.SOURCE_ZIP }}
-            ${{ env.SOURCE_ZIP }}.sha256
-            mdk-package-resolution.log
-            mdk-build.log
-            mdk-license-report.log
-            mdk-min-os-report.log
-            mdk-framework-min-os-report.log
-            mdk-binary-inventory.log
+            OnePlayer-0.13.68-build135-mpv-residual-refine-unsigned.ipa
+            OnePlayer-0.13.68-build135-mpv-residual-refine-unsigned.ipa.sha256
+            app-validation.log
+            min-os-report.log
+            build.log
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.68-build135-mpv-residual-refine-diagnostics
+          path: |
+            app-validation.log
+            min-os-report.log
+            build.log
+          if-no-files-found: warn
+          retention-days: 14
