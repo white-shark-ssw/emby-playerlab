@@ -197,3 +197,5 @@ jobs:
             package-resolution.log
           if-no-files-found: warn
           retention-days: 14
+
+# Final source-only production validation trigger.
