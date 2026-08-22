@@ -8,6 +8,13 @@ on:
       - "MDKLab/**"
       - "Sources/**"
       - "project.mdklab.yml"
+  pull_request:
+    branches: [diag/mdk-seek-incache-accurate-0.13.58]
+    paths:
+      - ".github/workflows/build-mdk-decoder-drop-trace-01359.yml"
+      - "MDKLab/**"
+      - "Sources/**"
+      - "project.mdklab.yml"
   workflow_dispatch:
 
 concurrency:
