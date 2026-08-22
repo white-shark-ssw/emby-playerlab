@@ -7,6 +7,7 @@ on:
     paths:
       - "Sources/**"
       - "scripts/apply_build137_seek_event_fence_index.py"
+      - "scripts/apply_build137_compile_fix.py"
       - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build-ksplayer-lab.yml"
@@ -16,6 +17,7 @@ on:
     paths:
       - "Sources/**"
       - "scripts/apply_build137_seek_event_fence_index.py"
+      - "scripts/apply_build137_compile_fix.py"
       - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build-ksplayer-lab.yml"
@@ -44,6 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/apply_build137_seek_event_fence_index.py
+          python3 scripts/apply_build137_compile_fix.py
           git diff --check
           git status --short
 
@@ -70,6 +73,7 @@ jobs:
           grep -Fq 'MPVSeekingState' Sources/Player/MPVPlayerEngine.swift
           ! grep -Fq 'activeSeekingEpochID' Sources/Player/MPVPlayerEngine.swift
           ! grep -Fq 'reason=no-latest-seeking-epoch' Sources/Player/MPVPlayerEngine.swift
+          ! grep -Fq 'pendingSeek?.id.map(String.init)' Sources/Player/MPVPlayerEngine.swift
           grep -Fq 'ONEPLAYER_KEYFRAME_INDEX_READONLY' Sources/Player/MPVKeyframeIndexProbe.swift
           grep -Fq 'avformat_index_get_entries_count' Sources/Player/MPVKeyframeIndexProbe.swift
           grep -Fq 'avformat_index_get_entry' Sources/Player/MPVKeyframeIndexProbe.swift
