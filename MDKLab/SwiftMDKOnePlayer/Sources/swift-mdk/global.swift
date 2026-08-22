@@ -51,7 +51,8 @@ public enum SeekFlag : UInt32 {
     case FastFrom0 = 257
     case FastFromNow = 260
     case InCache = 1024
-    case FastFromStartInCache = 1282 // FromStart|KeyFrame|InCache, verified against MDK v0.38.0 headers
+    case AccurateFromStartInCache = 1026 // FromStart|InCache, verified against MDK v0.38.0 headers
+    case FastFromStartInCache = 1282 // FromStart|KeyFrame|InCache, retained only for Build124 comparison
     case Default = 258 // Legacy wrapper default retained so prepare()/setNext()/unqualified seek behavior stays frozen for A/B
 }
 
