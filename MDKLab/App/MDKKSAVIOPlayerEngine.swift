@@ -520,8 +520,8 @@ final class KSAVIOPlayerEngine: PlayerEngine {
             }
             player.setBufferRange(msMin: activeSeekBufferMinMs, msMax: Int64(max(3_000, min(30_000, self.preferredForwardBuffer * 1_000))), drop: false)
             DiagnosticsLogger.shared.playback("MDKSeekBuffer", "id=\(dispatchedIntent.id) phase=low-latency minMs=\(activeSeekBufferMinMs) relativeMinMs=\(self.relativeSeekBufferMinMs) accurateMinMs=\(self.seekBufferMinMs) normalMinMs=\(self.normalBufferMinMs) direction=\(String(describing: dispatchedIntent.direction))")
-            let seekFlag: SeekFlag = dispatchedIntent.fastPreview ? .FastFromStartInCache : .FromStart
-            DiagnosticsLogger.shared.playback("MDKSeekMode", "id=\(dispatchedIntent.id) target=\(String(format: "%.3f", dispatchedIntent.target)) nativeMode=\(dispatchedIntent.fastPreview ? "keyframe-preview" : "accurate") flagRaw=\(seekFlag.rawValue) cacheAware=\(dispatchedIntent.fastPreview) retry=\(dispatchedIntent.retryCount)")
+            let seekFlag: SeekFlag = dispatchedIntent.fastPreview ? .AccurateFromStartInCache : .FromStart
+            DiagnosticsLogger.shared.playback("MDKSeekMode", "id=\(dispatchedIntent.id) target=\(String(format: "%.3f", dispatchedIntent.target)) nativeMode=\(dispatchedIntent.fastPreview ? "accurate-incache" : "accurate") flagRaw=\(seekFlag.rawValue) cacheAware=\(dispatchedIntent.fastPreview) retry=\(dispatchedIntent.retryCount)")
             let immediateResult = player.seek(self.milliseconds(dispatchedIntent.target), flags: seekFlag) { [weak self, weak player] actualMs in
                 let callbackAt = Date().timeIntervalSince1970
                 DispatchQueue.main.async { [weak self, weak player] in
