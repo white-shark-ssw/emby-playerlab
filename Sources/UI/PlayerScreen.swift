@@ -88,7 +88,7 @@ struct PlayerScreen: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(!isClosing && !playbackSettingsPresented)
 
-                if let feedback = controller.seekFeedback { feedbackView(feedback) }
+                if let feedback = controller.seekFeedback { feedbackView(feedback).scaleEffect(0.55) }
                 if let feedback = controller.scrubFeedback { feedbackView(feedback) }
                 if let temporaryRateHUD { rateFeedbackView(temporaryRateHUD) }
                 if let adjustmentHUD { adjustmentHUDView(adjustmentHUD) }
@@ -118,6 +118,7 @@ struct PlayerScreen: View {
         }
         .statusBar(hidden: true)
         .onAppear {
+            setPlaybackIdleTimerDisabled(true, reason: "player-appear")
             originalScreenBrightness = UIScreen.main.brightness
             applyIndependentBrightnessIfNeeded()
             displayRefreshMonitor.start()
@@ -125,6 +126,7 @@ struct PlayerScreen: View {
             AppOrientationCoordinator.shared.beginPlayerPresentation(source: controller.source)
         }
         .onDisappear {
+            setPlaybackIdleTimerDisabled(false, reason: "player-disappear")
             controlsHideWorkItem?.cancel()
             feedbackHideWorkItem?.cancel()
             adjustmentHideWorkItem?.cancel()
@@ -404,7 +406,7 @@ struct PlayerScreen: View {
             .monospacedDigit()
             .padding(.horizontal, 24)
             .padding(.vertical, 15)
-            .background(Color.black.opacity(0.62))
+            .background(.ultraThinMaterial)
             .foregroundColor(.white)
             .clipShape(Capsule())
             .allowsHitTesting(false)
@@ -577,6 +579,11 @@ struct PlayerScreen: View {
         controller.source.mediaSource.mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Video") == .orderedSame })?.displayAspectRatio
     }
 
+    private func setPlaybackIdleTimerDisabled(_ disabled: Bool, reason: String) {
+        if UIApplication.shared.isIdleTimerDisabled != disabled { UIApplication.shared.isIdleTimerDisabled = disabled }
+        DiagnosticsLogger.shared.playback("PlayerIdleTimer", "disabled=\(disabled) reason=\(reason)")
+    }
+
     private func activeWindowScene() -> UIWindowScene? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         return scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first(where: { $0.activationState == .foregroundInactive })
@@ -610,6 +617,7 @@ struct PlayerScreen: View {
     private func handleScenePhase(_ phase: ScenePhase) {
         switch phase {
         case .background:
+            setPlaybackIdleTimerDisabled(false, reason: "scene-background")
             resetTransientInteractions(reason: "background")
             playbackSettingsPresented = false
             restoreOriginalBrightnessIfNeeded()
@@ -621,6 +629,7 @@ struct PlayerScreen: View {
             wasAutoPausedForBackground = controller.pausePlayback()
             DiagnosticsLogger.shared.playback("Lifecycle", "background autoPause=\(wasAutoPausedForBackground)")
         case .active:
+            setPlaybackIdleTimerDisabled(true, reason: "scene-active")
             updateIndependentBrightnessForPlaybackContext()
             let shouldResume = wasAutoPausedForBackground && resumeWhenForegrounded && !audioInterruptionActive
             wasAutoPausedForBackground = false

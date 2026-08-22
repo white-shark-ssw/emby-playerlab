@@ -50,6 +50,8 @@ final class TransportHTTPServer {
     private var httpActivityCancels = 0
     private var httpActivityLastStart: Int64?
     private var httpActivityWindowStartedAt = Date.distantPast
+    private var httpResponseSequence: UInt64 = 0
+    private var activeResponseIDs: Set<UInt64> = []
     private var stopped = false
 
     init(session: TransportDataSession, fileExtension: String, stopSessionOnStop: Bool = true) {
@@ -249,6 +251,8 @@ final class TransportHTTPServer {
     }
 
     private func serve(_ request: HTTPRequest, on connection: NWConnection) async -> Bool {
+        let responseID = nextHTTPResponseID()
+        let responseStartedAt = Date()
         guard request.path == "/\(token)/media.\(fileExtension)" else {
             await sendError(status: 404, reason: "Not Found", on: connection)
             return false
@@ -270,6 +274,9 @@ final class TransportHTTPServer {
             let status = requestedRange == nil ? 200 : 206
             let reason = status == 206 ? "Partial Content" : "OK"
             let contentType = resource.contentType ?? "video/mp4"
+            let activeResponses = beginHTTPResponse(responseID)
+            defer { endHTTPResponse(responseID) }
+            DiagnosticsLogger.shared.playback("TransportHTTPLineage", "server=\(logID) id=\(responseID) phase=start method=\(request.method) status=\(status) start=\(responseRange.lowerBound) end=\(responseRange.upperBound) length=\(responseRange.length) active=\(activeResponses) keepAlive=\(keepAlive)")
 
             var headers = "HTTP/1.1 \(status) \(reason)\r\n"
             headers += "Content-Type: \(contentType)\r\n"
@@ -305,6 +312,8 @@ final class TransportHTTPServer {
             }
 
             let sentBytes = max(0, cursor - responseRange.lowerBound)
+            let elapsedMs = Int(Date().timeIntervalSince(responseStartedAt) * 1_000)
+            DiagnosticsLogger.shared.playback("TransportHTTPLineage", "server=\(logID) id=\(responseID) phase=finish start=\(responseRange.lowerBound) expected=\(responseRange.length) sent=\(sentBytes) reason=\(terminationReason) elapsedMs=\(elapsedMs) reusable=\(keepAlive && sentBytes == responseRange.length)")
             if sentBytes < responseRange.length {
                 DiagnosticsLogger.shared.playback("TransportHTTPIntegrity", "server=\(logID) start=\(responseRange.lowerBound) expected=\(responseRange.length) sent=\(sentBytes) remaining=\(responseRange.length - sentBytes) reason=\(terminationReason)")
             }
@@ -316,10 +325,14 @@ final class TransportHTTPServer {
             }
             return keepAlive && sentBytes == responseRange.length
         } catch is CancellationError {
+            let elapsedMs = Int(Date().timeIntervalSince(responseStartedAt) * 1_000)
+            DiagnosticsLogger.shared.playback("TransportHTTPLineage", "server=\(logID) id=\(responseID) phase=cancel elapsedMs=\(elapsedMs) reason=task-cancelled")
             if recordHTTPActivity(requestStart: nil, cancelled: true) { DiagnosticsLogger.shared.playback("TransportHTTPActivity", activitySummary()) }
             return false
         } catch {
             if isClientDisconnect(error) {
+                let elapsedMs = Int(Date().timeIntervalSince(responseStartedAt) * 1_000)
+                DiagnosticsLogger.shared.playback("TransportHTTPLineage", "server=\(logID) id=\(responseID) phase=disconnect elapsedMs=\(elapsedMs) error=\(error.localizedDescription)")
                 return false
             }
             DiagnosticsLogger.shared.playback("TransportHTTP", "server=\(logID) response failed: \(error.localizedDescription)")
@@ -328,6 +341,28 @@ final class TransportHTTPServer {
             }
             return false
         }
+    }
+
+    private func nextHTTPResponseID() -> UInt64 {
+        lock.lock()
+        httpResponseSequence &+= 1
+        let value = httpResponseSequence
+        lock.unlock()
+        return value
+    }
+
+    private func beginHTTPResponse(_ id: UInt64) -> Int {
+        lock.lock()
+        activeResponseIDs.insert(id)
+        let count = activeResponseIDs.count
+        lock.unlock()
+        return count
+    }
+
+    private func endHTTPResponse(_ id: UInt64) {
+        lock.lock()
+        activeResponseIDs.remove(id)
+        lock.unlock()
     }
 
     private func recordHTTPActivity(requestStart: Int64?, cancelled: Bool) -> Bool {

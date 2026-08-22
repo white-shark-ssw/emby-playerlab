@@ -4,9 +4,8 @@ struct BufferedTimelineSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     let bufferState: PlaybackBufferState
-    /// Current UnifiedTransport playback-byte cache ranges normalized to the media file's 0...1 byte space.
-    /// These ranges are the only visible buffer source. They grow when bytes are downloaded and disappear
-    /// when RollingCache actually evicts those bytes.
+    /// UnifiedTransport playback byte ranges that physically exist in the current rolling cache.
+    /// This is the sole gray timeline source. Engine live/verified time ranges remain diagnostics only.
     let cacheByteRanges: [ClosedRange<Double>]
     let onEditingChanged: (Bool) -> Void
 
@@ -29,8 +28,8 @@ struct BufferedTimelineSlider: View {
 
                 ForEach(Array(normalizedCacheRanges.enumerated()), id: \.offset) { _, cached in
                     Rectangle()
-                        .fill(Color.white.opacity(0.68))
-                        .frame(width: max(1, width * CGFloat(cached.upperBound - cached.lowerBound)), height: trackHeight)
+                        .fill(Color.white.opacity(0.52))
+                        .frame(width: max(2, width * CGFloat(cached.upperBound - cached.lowerBound)), height: trackHeight)
                         .offset(x: width * CGFloat(cached.lowerBound))
                 }
 

@@ -145,6 +145,11 @@ final class PlayerController: ObservableObject {
             else { startPosition = await self.resolveInitialPlaybackPosition() }
             guard !Task.isCancelled, self.started else { return }
             let duration = self.source.mediaSource.durationSeconds ?? 0
+            if startPosition > 0.5, let prewarmTask = self.startupTransportPrewarmTask {
+                await prewarmTask.value
+                guard !Task.isCancelled, self.started else { return }
+                DiagnosticsLogger.shared.playback("StartupFastPath", "cold resume transport resolve awaited item=\(self.source.itemId) position=\(String(format: "%.3f", startPosition))")
+            }
             if !self.mdkDirectHTTPABActive, let session = self.transportContext?.session {
                 await session.releaseStartupPrewarm(initialPosition: startPosition, duration: duration)
                 guard !Task.isCancelled, self.started else { return }
@@ -341,7 +346,7 @@ final class PlayerController: ObservableObject {
         pendingSeekTarget = nil
         pendingSeekDirection = nil
         userIsScrubbing = true
-        let start = snapshot.position
+        let start = displayedPosition
         screenScrubStartPosition = start
         displayedPosition = start
         scrubFeedback = "\(formatTime(start)) / \(formatTime(effectiveDuration))"
@@ -480,8 +485,16 @@ final class PlayerController: ObservableObject {
     var verifiedBufferedEnd: Double { verifiedBufferedRanges.map(\.upperBound).max() ?? 0 }
 
     private func updatePlaybackBufferState(from value: PlayerSnapshot) {
+        let livePlayableRanges: [ClosedRange<Double>]
+        if !value.bufferedRanges.isEmpty {
+            livePlayableRanges = value.bufferedRanges
+        } else if !value.isBuffering {
+            livePlayableRanges = bufferState.livePlayableRanges.filter { $0.lowerBound <= value.position + 0.05 && $0.upperBound >= value.position - 0.05 }
+        } else {
+            livePlayableRanges = []
+        }
         bufferState = PlaybackBufferState(
-            livePlayableRanges: value.bufferedRanges,
+            livePlayableRanges: livePlayableRanges,
             verifiedHistoryRanges: verifiedBufferedRanges,
             isBuffering: value.isBuffering,
             waitingReason: value.waitingReason
@@ -576,7 +589,7 @@ final class PlayerController: ObservableObject {
                     self.displayedPosition = value.position
                     DiagnosticsLogger.shared.log("SeekAnchor", "reached target=\(pending) actual=\(value.position)")
                 } else if !self.userIsScrubbing, self.pendingSeekTarget == nil {
-                    self.displayedPosition = value.position
+                    self.displayedPosition = self.presentationPosition(for: value)
                 }
 
                 if let error = value.errorMessage, !error.isEmpty, error != self.lastHandledEngineError {
@@ -658,11 +671,18 @@ final class PlayerController: ObservableObject {
             guard let self, !Task.isCancelled, let pending = self.pendingSeekTarget, abs(pending - expectedTarget) < 0.01 else { return }
             self.pendingSeekTarget = nil
             self.pendingSeekDirection = nil
-            self.displayedPosition = self.snapshot.position
-            DiagnosticsLogger.shared.log("SeekAnchor", "timeout target=\(expectedTarget) actual=\(self.snapshot.position)")
+            if let rendered = self.snapshot.renderedPosition { self.displayedPosition = rendered }
+            DiagnosticsLogger.shared.log("SeekAnchor", "timeout target=\(expectedTarget) clock=\(self.snapshot.position) rendered=\(self.snapshot.renderedPosition.map { String(format: "%.3f", $0) } ?? "nil") presentation=renderer-backed")
         }
     }
 
+
+    private func presentationPosition(for value: PlayerSnapshot) -> Double {
+        #if MDK_LAB
+        if engineKind == .ksAVIO, let rendered = value.renderedPosition { return rendered }
+        #endif
+        return value.position
+    }
 
     private var snapshotCanCompleteSeekAnchor: Bool {
         #if MDK_LAB

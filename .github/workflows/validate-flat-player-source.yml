@@ -1,0 +1,104 @@
+name: Validate Flat Player Source
+
+on:
+  pull_request:
+    branches: [ci/mdk-seek-audio-ui-0.13.51]
+    paths:
+      - "MDKLab/**"
+      - "Sources/**"
+      - "project.mdklab.yml"
+      - "docs/architecture/PLAYER_STATE_OWNERSHIP.md"
+      - "docs/architecture/PLAYBACK_UI_CONTRACT.md"
+      - "docs/PROJECT_WORKING_RULES.md"
+      - ".github/workflows/validate-flat-player-source.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify flat-source ownership invariants
+        run: |
+          set -euo pipefail
+          grep -Fq 'sourceVersion = "0.13.55"' Sources/Core/AppIdentity.swift
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+          grep -Fq 'private let avioRequestSizeBytes = 2 * 1_048_576' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'mode=\(fastPreview ? "relative-fast-only" : "absolute-accurate")' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'actualPosition: renderResult' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'var renderedPosition: Double? = nil' Sources/Player/PlayerEngine.swift
+          grep -Fq 'renderedPosition: lastRenderedTimestamp' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'action=queue-latest-single-native' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          ! grep -Fq 'MDKSeekPreempt' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let healthCoordinator = MDKPlaybackHealthCoordinator()' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'authority=health-coordinator' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          test "$(grep -Fo 'quarantineCurrentGeneration(' MDKLab/App/MDKKSAVIOPlayerEngine.swift | wc -l | tr -d ' ')" = "2"
+          ! grep -Fq 'native-seek-absolute-limit' MDKLab/App/MDKPlaybackHealthCoordinator.swift
+          ! grep -Fq 'seek-frame-absolute-limit' MDKLab/App/MDKPlaybackHealthCoordinator.swift
+          grep -Fq 'seekBufferingUIGraceSeconds: TimeInterval = 0.5' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          ! grep -Fq 'seekBufferingUIGraceSeconds: TimeInterval = 3.0' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'presentationPosition(for: value)' Sources/Player/PlayerController.swift
+          grep -Fq 'return engineKind != .mpv && engineKind != .ksAVIO' Sources/Player/PlayerController.swift
+          ! grep -Fq 'SeekDisplayAnchor' Sources/Player/PlayerController.swift
+          ! grep -Fq 'liveTrackHeight' Sources/UI/BufferedTimelineSlider.swift
+          grep -Fq 'let cacheByteRanges: [ClosedRange<Double>]' Sources/UI/BufferedTimelineSlider.swift
+          grep -Fq 'normalizedCacheRanges' Sources/UI/BufferedTimelineSlider.swift
+          ! grep -Fq 'normalizedLivePlayableRanges' Sources/UI/BufferedTimelineSlider.swift
+          ! grep -Fq 'bufferState.livePlayableRanges.compactMap' Sources/UI/BufferedTimelineSlider.swift
+          grep -Fq 'Color.white.opacity(0.52)' Sources/UI/BufferedTimelineSlider.swift
+          grep -Fq 'cacheByteRanges: controller.transportCacheRanges' Sources/UI/PlayerScreen.swift
+          grep -Fq '.hapticIntensity, value: 0.38' Sources/UI/PlaybackVolumeTickHaptics.swift
+          grep -Fq 'duration: 0.005' Sources/UI/PlaybackVolumeTickHaptics.swift
+          grep -Fq 'UnifiedMediaTransportSession.cachedByteRanges()' docs/architecture/PLAYBACK_UI_CONTRACT.md
+          grep -Fq 'first 500ms' docs/architecture/PLAYBACK_UI_CONTRACT.md
+          ! grep -R 'python3 scripts/instrument_mdk_' .github/workflows/validate-flat-player-source.yml
+          git diff --check
+
+      - name: Select Xcode and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          swift --version
+
+      - name: Generate project and resolve dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build flattened source directly
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.55 CURRENT_PROJECT_VERSION=122 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Validate minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+
+      - name: Upload direct-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flat-player-source-validation-0.13.55-build122
+          path: |
+            build.log
+            min-os-report.log
+          if-no-files-found: warn
+          retention-days: 14
