@@ -26,3 +26,5 @@ enum AppIdentity {
         return value
     }
 }
+
+// Build141 CI trigger: nearest-keyframe A/B source has already been materialized.
