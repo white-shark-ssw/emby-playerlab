@@ -61,7 +61,7 @@ jobs:
           assert 'NSLog' not in body
           assert body.count('DiagnosticsLogger.shared.playback("KeyframeCacheRead"') >= 3
           mpv = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
-          seek_start = mpv.index('    func seek(to seconds: Double, direction: PlayerSeekDirection)')
+          seek_start = mpv.index('    func seek(to seconds: Double, direction: SeekDirection)')
           seek_end = mpv.index('\n    private func claimKeyframeLookupIndex()', seek_start)
           seek_body = mpv[seek_start:seek_end]
           assert 'print(' not in seek_body
