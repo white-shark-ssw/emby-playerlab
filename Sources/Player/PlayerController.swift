@@ -50,6 +50,9 @@ final class PlayerController: ObservableObject {
     private var userIsScrubbing = false
     private var pendingSeekTarget: Double?
     private var pendingSeekDirection: SeekDirection?
+    private var fastSeekLogicalTarget: Double?
+    private var lastFastSeekRequestAt: CFTimeInterval?
+    private static let fastSeekBurstWindow: CFTimeInterval = 1.0
     private var screenScrubStartPosition: Double?
     private var engineGeneration = 0
     private var eofRetryCount = 0
@@ -294,6 +297,8 @@ final class PlayerController: ObservableObject {
 
         pendingSeekTarget = nil
         pendingSeekDirection = nil
+        fastSeekLogicalTarget = nil
+        lastFastSeekRequestAt = nil
         screenScrubStartPosition = nil
         DiagnosticsLogger.shared.log("Lifecycle", "player close detached")
     }
@@ -315,13 +320,17 @@ final class PlayerController: ObservableObject {
     func seek(by offset: Double) {
         seekAnchorReleaseTask?.cancel()
         seekAnchorReleaseTask = nil
-        let base = pendingSeekTarget ?? snapshot.position
+        let now = CACurrentMediaTime()
+        let withinFastSeekBurst = lastFastSeekRequestAt.map { now - $0 <= Self.fastSeekBurstWindow } ?? false
+        let base = withinFastSeekBurst ? (fastSeekLogicalTarget ?? snapshot.position) : snapshot.position
         let target = clampPosition(base + offset)
+        fastSeekLogicalTarget = target
+        lastFastSeekRequestAt = now
         pendingSeekTarget = target
         pendingSeekDirection = offset >= 0 ? .forward : .backward
         displayedPosition = target
         suppressStallWatchdog(for: 3)
-        DiagnosticsLogger.shared.log("SeekAnchor", "offset=\(offset) base=\(base) target=\(target) enginePosition=\(snapshot.position)")
+        DiagnosticsLogger.shared.log("SeekAnchor", "offset=\(offset) base=\(base) target=\(target) enginePosition=\(snapshot.position) logicalBurst=\(withinFastSeekBurst)")
         engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)
         #if MDK_LAB
         if engineKind == .ksAVIO { scheduleSeekAnchorRelease(expectedTarget: target) }
@@ -335,6 +344,8 @@ final class PlayerController: ObservableObject {
         seekAnchorReleaseTask = nil
         pendingSeekTarget = nil
         pendingSeekDirection = nil
+        fastSeekLogicalTarget = nil
+        lastFastSeekRequestAt = nil
         userIsScrubbing = true
         screenScrubStartPosition = nil
     }
@@ -347,6 +358,8 @@ final class PlayerController: ObservableObject {
         seekAnchorReleaseTask = nil
         pendingSeekTarget = nil
         pendingSeekDirection = nil
+        fastSeekLogicalTarget = nil
+        lastFastSeekRequestAt = nil
         userIsScrubbing = true
         let start = displayedPosition
         screenScrubStartPosition = start
@@ -396,6 +409,8 @@ final class PlayerController: ObservableObject {
 
         pendingSeekTarget = nil
         pendingSeekDirection = nil
+        fastSeekLogicalTarget = nil
+        lastFastSeekRequestAt = nil
         seekAnchorReleaseTask?.cancel()
         seekAnchorReleaseTask = nil
         transportMetricsTask?.cancel()
@@ -657,6 +672,8 @@ final class PlayerController: ObservableObject {
 
     private func commitScrubbedPosition() {
         userIsScrubbing = false
+        fastSeekLogicalTarget = nil
+        lastFastSeekRequestAt = nil
         let target = clampPosition(displayedPosition)
         pendingSeekTarget = target
         pendingSeekDirection = .absolute
