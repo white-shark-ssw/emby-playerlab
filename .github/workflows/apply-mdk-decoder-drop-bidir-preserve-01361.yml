@@ -1,0 +1,45 @@
+name: Apply MDK Decoder Drop Bidir Preserve 0.13.61
+
+on:
+  push:
+    branches: [diag/mdk-decoder-drop-bidir-preserve-0.13.61]
+    paths:
+      - "scripts/migrate_mdk_decoder_drop_bidir_preserve_01361.py"
+      - ".github/workflows/apply-mdk-decoder-drop-bidir-preserve-01361.yml"
+      - "Sources/Core/AppIdentity.swift"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/mdk-decoder-drop-bidir-preserve-0.13.61
+          fetch-depth: 0
+      - name: Apply corrected bidir decoder-drop experiment
+        run: |
+          set -euo pipefail
+          python3 scripts/migrate_mdk_decoder_drop_bidir_preserve_01361.py
+          grep -Fq 'decoderPropertyParts.append("drop=bidir")' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'value: decoderPropertyDuring' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'value: decoderPropertyBefore' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'accurate-incache-bidir-preserve' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'preserveExistingOptions=true' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'sourceVersion = "0.13.61"' Sources/Core/AppIdentity.swift
+          git diff --check
+      - name: Commit Build128 runtime source
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No runtime source change required'
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          git commit -m 'mdk: preserve decoder options during bidir seek experiment'
+          git push origin HEAD:diag/mdk-decoder-drop-bidir-preserve-0.13.61
