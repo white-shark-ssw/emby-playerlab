@@ -60,6 +60,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         let requestedAt: TimeInterval
         let target: Double
         let bufferHit: Bool
+        let intent: String
+        let mode: String
     }
 
     private struct EnhancementBaseline {
@@ -383,11 +385,21 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         let duration = snapshot.duration
         let target = min(max(0, seconds), duration > 0 ? duration : seconds)
         let bufferHit = snapshot.bufferedRanges.contains(where: { $0.contains(target) })
+        let intent: String
+        let mode: String
+        switch direction {
+        case .forward, .backward:
+            intent = "doubleTapFastSeek"
+            mode = "absolute+keyframes"
+        case .absolute:
+            intent = "scrubReleasePreciseSeek"
+            mode = "absolute+exact"
+        }
         seekGeneration &+= 1
         let seekID = seekGeneration
         let requestedAt = CACurrentMediaTime()
-        pendingSeek = PendingSeek(id: seekID, requestedAt: requestedAt, target: target, bufferHit: bufferHit)
-        DiagnosticsLogger.shared.log("MPVSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) phase=request bufferHit=\(bufferHit) enginePosition=\(String(format: "%.3f", snapshot.position)) direction=\(String(describing: direction))")
+        pendingSeek = PendingSeek(id: seekID, requestedAt: requestedAt, target: target, bufferHit: bufferHit, intent: intent, mode: mode)
+        DiagnosticsLogger.shared.log("MPVSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) phase=request intent=\(intent) mode=\(mode) bufferHit=\(bufferHit) enginePosition=\(String(format: "%.3f", snapshot.position)) direction=\(String(describing: direction))")
         // Never overwrite time-pos with the requested target. MPV may land on an
         // earlier keyframe, especially for malformed remote MP4 files.
         snapshot.didReachEnd = false
@@ -401,9 +413,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
             let prioritizedAt = CACurrentMediaTime()
             self.queue.async { [weak self] in
                 guard let self, let handle = self.mpv else { return }
-                let mode = "absolute+keyframes"
                 let dispatchAt = CACurrentMediaTime()
-                DiagnosticsLogger.shared.log("MPVSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) phase=native-dispatch prioritizeMs=\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) mode=\(mode) bufferHit=\(bufferHit) enginePosition=\(String(format: "%.3f", self.snapshot.position))")
+                DiagnosticsLogger.shared.log("MPVSeek", "id=\(seekID) target=\(String(format: "%.3f", target)) phase=native-dispatch prioritizeMs=\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) intent=\(intent) mode=\(mode) bufferHit=\(bufferHit) enginePosition=\(String(format: "%.3f", self.snapshot.position))")
                 self.command(handle, ["seek", String(format: "%.3f", target), mode])
             }
         }
@@ -507,6 +518,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         check(mpv_set_option_string(handle, "cache", "yes"), operation: "enable cache")
         check(mpv_set_option_string(handle, "demuxer-seekable-cache", "yes"), operation: "seekable cache")
         check(mpv_set_option_string(handle, "hr-seek", "no"), operation: "disable precise seek")
+        check(mpv_set_option_string(handle, "hr-seek-framedrop", "yes"), operation: "enable precise seek frame drop")
         check(mpv_set_option_string(handle, "network-timeout", "30"), operation: "network timeout")
         check(mpv_set_option_string(handle, "demuxer-termination-timeout", "2"), operation: "demuxer termination timeout")
         check(mpv_set_option_string(handle, "sub-auto", "fuzzy"), operation: "subtitle auto")
@@ -689,7 +701,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                 pendingSeek = nil
                 let latency = (CACurrentMediaTime() - pending.requestedAt) * 1000
                 let delta = actualPosition - pending.target
-                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\(pending.id) target=\(String(format: "%.3f", pending.target)) actual=\(String(format: "%.3f", actualPosition)) delta=\(String(format: "%.3f", delta)) completionMs=\(String(format: "%.1f", latency)) bufferHit=\(pending.bufferHit) event=playback-restart")
+                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\(pending.id) target=\(String(format: "%.3f", pending.target)) actual=\(String(format: "%.3f", actualPosition)) delta=\(String(format: "%.3f", delta)) completionMs=\(String(format: "%.1f", latency)) bufferHit=\(pending.bufferHit) intent=\(pending.intent) mode=\(pending.mode) event=playback-restart")
                 DispatchQueue.main.async { [weak self] in
                     self?.onSeekCompleted?(SeekResult(
                         requestedAt: pending.requestedAt,
