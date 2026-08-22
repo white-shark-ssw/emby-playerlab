@@ -38,12 +38,20 @@ final class TransportHTTPServer {
     private let logID = String(UUID().uuidString.lowercased().prefix(6))
     private let queue = DispatchQueue(label: "com.embyplayerlab.transport.http-server", qos: .userInitiated)
     private let lock = NSLock()
+    private let maximumClientStreams = 8
     private var listener: NWListener?
     private var localURL: URL?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var connectionTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
-    private var lastLoggedRequestStart: Int64?
-    private var lastLoggedRequestAt = Date.distantPast
+    private var connectionOrder: [ObjectIdentifier] = []
+    private var streamGuardEvictionCount = 0
+    private var lastStreamGuardLogAt = Date.distantPast
+    private var httpActivityRequests = 0
+    private var httpActivityCancels = 0
+    private var httpActivityLastStart: Int64?
+    private var httpActivityWindowStartedAt = Date.distantPast
+    private var httpResponseSequence: UInt64 = 0
+    private var activeResponseIDs: Set<UInt64> = []
     private var stopped = false
 
     init(session: TransportDataSession, fileExtension: String, stopSessionOnStop: Bool = true) {
@@ -95,7 +103,7 @@ final class TransportHTTPServer {
                                 return
                             }
                             self.setLocalURL(url)
-                            DiagnosticsLogger.shared.log(
+                            DiagnosticsLogger.shared.playback(
                                 "TransportHTTP",
                                 "server=\(self.logID) ready port=\(port.rawValue) pathToken=redacted"
                             )
@@ -142,7 +150,7 @@ final class TransportHTTPServer {
         state.listener?.cancel()
         state.tasks.forEach { $0.cancel() }
         state.connections.forEach { $0.cancel() }
-        DiagnosticsLogger.shared.log(
+        DiagnosticsLogger.shared.playback(
             "TransportHTTP",
             "server=\(logID) restarting listener connections=\(state.connections.count) tasks=\(state.tasks.count)"
         )
@@ -154,7 +162,7 @@ final class TransportHTTPServer {
         state.tasks.forEach { $0.cancel() }
         state.connections.forEach { $0.cancel() }
         guard !state.connections.isEmpty || !state.tasks.isEmpty else { return }
-        DiagnosticsLogger.shared.log(
+        DiagnosticsLogger.shared.playback(
             "TransportHTTP",
             "server=\(logID) reset streams connections=\(state.connections.count) tasks=\(state.tasks.count) reason=\(reason)"
         )
@@ -166,7 +174,7 @@ final class TransportHTTPServer {
         state.tasks.forEach { $0.cancel() }
         state.connections.forEach { $0.cancel() }
         if stopSessionOnStop { Task { await session.stop() } }
-        DiagnosticsLogger.shared.log("TransportHTTP", "server=\(logID) stopped sharedSession=\(!stopSessionOnStop)")
+        DiagnosticsLogger.shared.playback("TransportHTTP", "server=\(logID) stopped sharedSession=\(!stopSessionOnStop)")
     }
 
     private func accept(_ connection: NWConnection) {
@@ -181,7 +189,7 @@ final class TransportHTTPServer {
             switch state {
             case .failed(let error):
                 if !self.isClientDisconnect(error) {
-                    DiagnosticsLogger.shared.log("TransportHTTP", "server=\(self.logID) connection failed: \(error.localizedDescription)")
+                    DiagnosticsLogger.shared.playback("TransportHTTP", "server=\(self.logID) connection failed: \(error.localizedDescription)")
                 }
                 self.removeConnection(identifier, matching: connection)?.cancel()
             case .cancelled:
@@ -199,7 +207,7 @@ final class TransportHTTPServer {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self, weak connection] data, _, isComplete, error in
             guard let self, let connection else { return }
             if let error {
-                DiagnosticsLogger.shared.log("TransportHTTP", "server=\(self.logID) receive failed: \(error.localizedDescription)")
+                DiagnosticsLogger.shared.playback("TransportHTTP", "server=\(self.logID) receive failed: \(error.localizedDescription)")
                 connection.cancel()
                 return
             }
@@ -216,11 +224,16 @@ final class TransportHTTPServer {
                 do {
                     let request = try self.parseRequest(headerData)
                     let identifier = ObjectIdentifier(connection)
+                    let remainder = accumulated.subdata(in: headerEnd.upperBound..<accumulated.endIndex)
                     let task = Task { [weak self, weak connection] in
                         guard let self, let connection else { return }
-                        await self.serve(request, on: connection)
-                        self.removeConnection(identifier, matching: connection)?.cancel()
-                        connection.cancel()
+                        let reusable = await self.serve(request, on: connection)
+                        guard !Task.isCancelled, reusable, !self.isStopped else {
+                            self.removeConnection(identifier, matching: connection)?.cancel()
+                            connection.cancel()
+                            return
+                        }
+                        self.receiveHeaders(on: connection, buffer: remainder)
                     }
                     self.storeTask(task, for: identifier, matching: connection)
                 } catch {
@@ -237,96 +250,145 @@ final class TransportHTTPServer {
         }
     }
 
-    private func serve(_ request: HTTPRequest, on connection: NWConnection) async {
+    private func serve(_ request: HTTPRequest, on connection: NWConnection) async -> Bool {
+        let responseID = nextHTTPResponseID()
+        let responseStartedAt = Date()
         guard request.path == "/\(token)/media.\(fileExtension)" else {
             await sendError(status: 404, reason: "Not Found", on: connection)
-            return
+            return false
         }
         guard request.method == "GET" || request.method == "HEAD" else {
             await sendError(status: 405, reason: "Method Not Allowed", on: connection)
-            return
+            return false
         }
 
+        let keepAlive = request.headers["connection"]?.lowercased() != "close"
         var responseStarted = false
         do {
             let resource = try await session.resolve()
             let requestedRange = try parseRange(request.headers["range"], contentLength: resource.contentLength)
             let responseRange = requestedRange ?? ByteRange(lowerBound: 0, upperBound: resource.contentLength - 1)
-            await session.noteDemand(range: responseRange.lowerBound..<(responseRange.upperBound + 1))
+            let hintBytes = min(responseRange.length, 1 * 1_048_576)
+            let hintUpper = min(resource.contentLength, responseRange.lowerBound + hintBytes)
+            if hintUpper > responseRange.lowerBound { await session.noteDemand(range: responseRange.lowerBound..<hintUpper) }
             let status = requestedRange == nil ? 200 : 206
             let reason = status == 206 ? "Partial Content" : "OK"
             let contentType = resource.contentType ?? "video/mp4"
+            let activeResponses = beginHTTPResponse(responseID)
+            defer { endHTTPResponse(responseID) }
+            DiagnosticsLogger.shared.playback("TransportHTTPLineage", "server=\(logID) id=\(responseID) phase=start method=\(request.method) status=\(status) start=\(responseRange.lowerBound) end=\(responseRange.upperBound) length=\(responseRange.length) active=\(activeResponses) keepAlive=\(keepAlive)")
 
             var headers = "HTTP/1.1 \(status) \(reason)\r\n"
             headers += "Content-Type: \(contentType)\r\n"
             headers += "Accept-Ranges: bytes\r\n"
             headers += "Content-Length: \(responseRange.length)\r\n"
             headers += "Cache-Control: no-store\r\n"
-            headers += "Connection: close\r\n"
+            headers += keepAlive ? "Connection: keep-alive\r\nKeep-Alive: timeout=30, max=100\r\n" : "Connection: close\r\n"
             if status == 206 {
                 headers += "Content-Range: bytes \(responseRange.lowerBound)-\(responseRange.upperBound)/\(resource.contentLength)\r\n"
             }
             headers += "\r\n"
 
-            let logRequest = shouldLogRequest(method: request.method, range: responseRange)
+            let logRequest = recordHTTPActivity(requestStart: responseRange.lowerBound, cancelled: false)
             if logRequest {
-                DiagnosticsLogger.shared.log(
-                    "TransportHTTP",
-                    "server=\(logID) request method=\(request.method) status=\(status) start=\(responseRange.lowerBound) length=\(responseRange.length)"
-                )
+                DiagnosticsLogger.shared.playback("TransportHTTPActivity", activitySummary())
             }
 
             try await send(Data(headers.utf8), on: connection)
             responseStarted = true
-            guard request.method == "GET" else { return }
+            guard request.method == "GET" else { return keepAlive }
 
             var cursor = responseRange.lowerBound
             let chunkSize = 512 * 1024
-            while cursor <= responseRange.upperBound, !Task.isCancelled {
+            var terminationReason = "complete"
+            while cursor <= responseRange.upperBound {
+                if Task.isCancelled { terminationReason = "task-cancelled"; break }
+                if isStopped { terminationReason = "server-stopped"; break }
                 let length = min(chunkSize, Int(responseRange.upperBound - cursor + 1))
                 let data = try await session.read(offset: cursor, length: length)
-                guard !data.isEmpty else { break }
+                if data.isEmpty { terminationReason = "empty-read"; break }
                 try await send(data, on: connection)
                 cursor += Int64(data.count)
             }
 
             let sentBytes = max(0, cursor - responseRange.lowerBound)
+            let elapsedMs = Int(Date().timeIntervalSince(responseStartedAt) * 1_000)
+            DiagnosticsLogger.shared.playback("TransportHTTPLineage", "server=\(logID) id=\(responseID) phase=finish start=\(responseRange.lowerBound) expected=\(responseRange.length) sent=\(sentBytes) reason=\(terminationReason) elapsedMs=\(elapsedMs) reusable=\(keepAlive && sentBytes == responseRange.length)")
+            if sentBytes < responseRange.length {
+                DiagnosticsLogger.shared.playback("TransportHTTPIntegrity", "server=\(logID) start=\(responseRange.lowerBound) expected=\(responseRange.length) sent=\(sentBytes) remaining=\(responseRange.length - sentBytes) reason=\(terminationReason)")
+            }
             if logRequest || sentBytes >= 8 * 1_048_576 {
-                DiagnosticsLogger.shared.log(
+                DiagnosticsLogger.shared.playback(
                     "TransportHTTP",
-                    "server=\(logID) response finished start=\(responseRange.lowerBound) sent=\(sentBytes)"
+                    "server=\(logID) response finished start=\(responseRange.lowerBound) sent=\(sentBytes) keepAlive=\(keepAlive)"
                 )
             }
+            return keepAlive && sentBytes == responseRange.length
         } catch is CancellationError {
-            DiagnosticsLogger.shared.log("TransportHTTP", "server=\(logID) response cancelled")
+            let elapsedMs = Int(Date().timeIntervalSince(responseStartedAt) * 1_000)
+            DiagnosticsLogger.shared.playback("TransportHTTPLineage", "server=\(logID) id=\(responseID) phase=cancel elapsedMs=\(elapsedMs) reason=task-cancelled")
+            if recordHTTPActivity(requestStart: nil, cancelled: true) { DiagnosticsLogger.shared.playback("TransportHTTPActivity", activitySummary()) }
+            return false
         } catch {
             if isClientDisconnect(error) {
-                return
+                let elapsedMs = Int(Date().timeIntervalSince(responseStartedAt) * 1_000)
+                DiagnosticsLogger.shared.playback("TransportHTTPLineage", "server=\(logID) id=\(responseID) phase=disconnect elapsedMs=\(elapsedMs) error=\(error.localizedDescription)")
+                return false
             }
-            DiagnosticsLogger.shared.log("TransportHTTP", "server=\(logID) response failed: \(error.localizedDescription)")
+            DiagnosticsLogger.shared.playback("TransportHTTP", "server=\(logID) response failed: \(error.localizedDescription)")
             if !responseStarted {
                 await sendError(status: 502, reason: "Bad Gateway", on: connection)
             }
+            return false
         }
     }
 
-    private func shouldLogRequest(method: String, range: ByteRange) -> Bool {
-        if method == "HEAD" || range.length <= 2 { return true }
+    private func nextHTTPResponseID() -> UInt64 {
+        lock.lock()
+        httpResponseSequence &+= 1
+        let value = httpResponseSequence
+        lock.unlock()
+        return value
+    }
 
+    private func beginHTTPResponse(_ id: UInt64) -> Int {
+        lock.lock()
+        activeResponseIDs.insert(id)
+        let count = activeResponseIDs.count
+        lock.unlock()
+        return count
+    }
+
+    private func endHTTPResponse(_ id: UInt64) {
+        lock.lock()
+        activeResponseIDs.remove(id)
+        lock.unlock()
+    }
+
+    private func recordHTTPActivity(requestStart: Int64?, cancelled: Bool) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         let now = Date()
-        let movedEnough: Bool
-        if let lastLoggedRequestStart {
-            movedEnough = abs(range.lowerBound - lastLoggedRequestStart) >= 8 * 1_048_576
-        } else {
-            movedEnough = true
-        }
-        let timedOut = now.timeIntervalSince(lastLoggedRequestAt) >= 5
-        guard movedEnough || timedOut else { return false }
-        lastLoggedRequestStart = range.lowerBound
-        lastLoggedRequestAt = now
-        return true
+        if httpActivityWindowStartedAt == .distantPast { httpActivityWindowStartedAt = now }
+        if requestStart != nil { httpActivityRequests += 1 }
+        if cancelled { httpActivityCancels += 1 }
+        if let requestStart { httpActivityLastStart = requestStart }
+        return now.timeIntervalSince(httpActivityWindowStartedAt) >= 1
+    }
+
+    private func activitySummary() -> String {
+        lock.lock()
+        let now = Date()
+        let elapsed = max(0.001, now.timeIntervalSince(httpActivityWindowStartedAt))
+        let requests = httpActivityRequests
+        let cancels = httpActivityCancels
+        let lastStart = httpActivityLastStart ?? -1
+        let active = connections.count
+        httpActivityRequests = 0
+        httpActivityCancels = 0
+        httpActivityWindowStartedAt = now
+        lock.unlock()
+        return "server=\(logID) windowMs=\(Int(elapsed * 1000)) requests=\(requests) cancels=\(cancels) requestRate=\(String(format: "%.1f", Double(requests) / elapsed))/s active=\(active) lastStart=\(lastStart)"
     }
 
     private func send(_ data: Data, on connection: NWConnection) async throws {
@@ -334,7 +396,7 @@ final class TransportHTTPServer {
             connection.send(
                 content: data,
                 contentContext: .defaultMessage,
-                isComplete: true,
+                isComplete: false,
                 completion: .contentProcessed { error in
                     if let error {
                         continuation.resume(throwing: error)
@@ -451,10 +513,42 @@ final class TransportHTTPServer {
     }
 
     private func registerConnection(_ connection: NWConnection) -> Bool {
+        let identifier = ObjectIdentifier(connection)
+        var evictedConnection: NWConnection?
+        var evictedTask: Task<Void, Never>?
+        var shouldLogEviction = false
+        var evictionCount = 0
+        var activeCount = 0
+
         lock.lock()
-        defer { lock.unlock() }
-        guard !stopped else { return false }
-        connections[ObjectIdentifier(connection)] = connection
+        guard !stopped else {
+            lock.unlock()
+            return false
+        }
+        while connections.count >= maximumClientStreams, let oldest = connectionOrder.first {
+            connectionOrder.removeFirst()
+            guard let staleConnection = connections.removeValue(forKey: oldest) else { continue }
+            evictedConnection = staleConnection
+            evictedTask = connectionTasks.removeValue(forKey: oldest)
+            streamGuardEvictionCount += 1
+            evictionCount = streamGuardEvictionCount
+            let now = Date()
+            if now.timeIntervalSince(lastStreamGuardLogAt) >= 1 {
+                lastStreamGuardLogAt = now
+                shouldLogEviction = true
+            }
+            break
+        }
+        connections[identifier] = connection
+        connectionOrder.append(identifier)
+        activeCount = connections.count
+        lock.unlock()
+
+        evictedTask?.cancel()
+        evictedConnection?.cancel()
+        if shouldLogEviction {
+            DiagnosticsLogger.shared.playback("TransportHTTPGuard", "server=\(logID) action=evict-oldest active=\(activeCount) limit=\(maximumClientStreams) evictions=\(evictionCount)")
+        }
         return true
     }
 
@@ -474,6 +568,7 @@ final class TransportHTTPServer {
         defer { lock.unlock() }
         guard connections[identifier] === connection else { return nil }
         connections[identifier] = nil
+        connectionOrder.removeAll { $0 == identifier }
         return connectionTasks.removeValue(forKey: identifier)
     }
 
@@ -483,6 +578,7 @@ final class TransportHTTPServer {
         guard !stopped else { return ([], []) }
         let currentConnections = Array(connections.values)
         connections.removeAll()
+        connectionOrder.removeAll() // takeClientStateForReset
         let currentTasks = Array(connectionTasks.values)
         connectionTasks.removeAll()
         return (currentConnections, currentTasks)
@@ -498,6 +594,7 @@ final class TransportHTTPServer {
         localURL = nil
         let currentConnections = Array(connections.values)
         connections.removeAll()
+        connectionOrder.removeAll() // takeServerStateForStop
         let currentTasks = Array(connectionTasks.values)
         connectionTasks.removeAll()
         return (currentListener, currentConnections, currentTasks)
@@ -512,6 +609,7 @@ final class TransportHTTPServer {
         localURL = nil
         let currentConnections = Array(connections.values)
         connections.removeAll()
+        connectionOrder.removeAll() // takeServerStateForRestart
         let currentTasks = Array(connectionTasks.values)
         connectionTasks.removeAll()
         return (true, currentListener, currentConnections, currentTasks)

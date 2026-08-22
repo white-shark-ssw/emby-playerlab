@@ -1,0 +1,113 @@
+name: Build OnePlayer 0.13.14 Startup Fast Path
+
+on:
+  push:
+    branches: [feat/startup-fast-path-0.13.14]
+  pull_request:
+    branches: [feat/transport-cache-timeline-0.13.13]
+
+concurrency:
+  group: startup-fast-path-01314-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify startup fast-path contract and frozen buffer timeline
+        run: |
+          set -euo pipefail
+          test "$(git hash-object Sources/UI/BufferedTimelineSlider.swift)" = '4c0c772d104fb6b1537e9d89604acbc563114f62'
+          grep -q 'controller.prewarmStartup()' Sources/UI/PlayerScreen.swift
+          grep -q 'func prewarmStartup()' Sources/Player/PlayerController.swift
+          grep -q 'prewarmStartupResolve()' Sources/Player/PlayerController.swift
+          grep -q 'releaseStartupPrewarm' Sources/Player/PlayerController.swift
+          grep -q 'startupResolveOnlyHold' Sources/Transport/UnifiedMediaTransportSession.swift
+          grep -q 'action=no-duplicate-lane' Sources/Transport/UnifiedMediaTransportSession.swift
+          grep -q 'role == .metadata || $0.role == .startupMetadata' Sources/Transport/UnifiedMediaTransportSession.swift
+          grep -q 'MARKETING_VERSION: "0.13.14"' project.mdklab.yml
+          grep -q 'CURRENT_PROJECT_VERSION: "81"' project.mdklab.yml
+          grep -q 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+
+      - name: Select Xcode and tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          swift --version
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build OnePlayer 0.13.14 Build81
+        id: release_build
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Upload release build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.14-build81-release-diagnostics
+          path: build.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Report release compiler failure
+        if: steps.release_build.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          grep -nE '(^|[[:space:]])(error:|fatal error:)|BUILD FAILED|SwiftCompile|CompileSwift' build.log | tail -250 || true
+          tail -120 build.log || true
+          exit 1
+
+      - name: Validate app identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.14' --build '81' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.14-build81-startup-fast-path-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
+
+      - name: Upload CI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.14-build81-startup-fast-path
+          path: |
+            OnePlayer-0.13.14-build81-startup-fast-path-unsigned.ipa
+            OnePlayer-0.13.14-build81-startup-fast-path-unsigned.ipa.sha256
+            app-validation.log
+            min-os-report.log
+          if-no-files-found: error
+          retention-days: 14

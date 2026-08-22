@@ -72,10 +72,17 @@ final class RangeHTTPClient {
             DiagnosticsLogger.shared.log("TransportRange", "lane=\(lane.label) start=\(range.lowerBound) length=\(range.count) status=\(http.statusCode) expired=true redirects=\(delegate.redirects.count)")
             throw MediaTransportError.expiredURL(statusCode: http.statusCode)
         }
-        guard http.statusCode == 206 else { throw MediaTransportError.rangeUnsupported(statusCode: http.statusCode) }
+        guard http.statusCode == 206 else {
+            DiagnosticsLogger.shared.log("TransportRangeTrace", "lane=\(lane.label) start=\(range.lowerBound) end=\(range.upperBound - 1) status=\(http.statusCode) contentRange=\(http.value(forHTTPHeaderField: "Content-Range") ?? "nil") contentLength=\(http.value(forHTTPHeaderField: "Content-Length") ?? "nil") actual=\(data.count) action=reject-non206")
+            throw MediaTransportError.rangeUnsupported(statusCode: http.statusCode)
+        }
 
         let expected = Int(range.upperBound - range.lowerBound)
-        guard data.count == expected else { throw MediaTransportError.shortRead(expected: expected, actual: data.count) }
+        DiagnosticsLogger.shared.log("TransportRangeTrace", "lane=\(lane.label) start=\(range.lowerBound) end=\(range.upperBound - 1) status=206 expected=\(expected) actual=\(data.count) contentRange=\(http.value(forHTTPHeaderField: "Content-Range") ?? "nil") contentLength=\(http.value(forHTTPHeaderField: "Content-Length") ?? "nil") redirects=\(delegate.redirects.count)")
+        guard data.count == expected else {
+            DiagnosticsLogger.shared.log("TransportRangeTrace", "lane=\(lane.label) start=\(range.lowerBound) expected=\(expected) actual=\(data.count) action=short-read-error")
+            throw MediaTransportError.shortRead(expected: expected, actual: data.count)
+        }
 
         let elapsed = max(Date().timeIntervalSince(startedAt), 0.001)
         let speed = Double(data.count) / elapsed

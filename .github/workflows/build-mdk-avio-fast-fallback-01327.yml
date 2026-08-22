@@ -1,0 +1,154 @@
+name: Build OnePlayer 0.13.27 MDK AVIO Fast Fallback
+
+on:
+  pull_request:
+    branches: [feat/recovery-isolation-0.13.17]
+
+concurrency:
+  group: mdk-avio-fast-fallback-01327-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.head_ref == 'validate/mdk-avio-fast-fallback-0.13.27'
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/recovery-isolation-0.13.17
+          fetch-depth: 0
+
+      - name: Materialize and audit Build94 AVIO fast fallback
+        run: |
+          set -euo pipefail
+          python3 scripts/materialize_mdk_avio_fast_fallback_01327.py
+          git diff --check
+          grep -Fq 'player.setProperty(name: "avio.multiple_requests", value: "1")' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'player.setProperty(name: "avio.short_seek_size", value: String(avioShortSeekSizeBytes))' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'player.setProperty(name: "avio.reconnect", value: "1")' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let avioShortSeekSizeBytes = 2 * 1_048_576' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let renderWatchdogPollSeconds: TimeInterval = 0.25' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let renderWatchdogTimeoutSeconds: TimeInterval = 2.5' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'action=exhausted-switch-mpv-immediate' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'recoveryExhausted=true action=switch-mpv-immediate' Sources/Player/PlaybackOrchestrator.swift
+          grep -Fq 'settleNanoseconds: UInt64 = previousKind == .ksAVIO && kind == .mpv ? 50_000_000 : 250_000_000' Sources/Player/PlayerController.swift
+          grep -Fq 'Connection: keep-alive' Sources/Transport/TransportHTTPServer.swift
+          grep -Fq 'action=preserve-existing-stream-before-native-seek' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let prepareWatchdogSeconds: TimeInterval = 3.0' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'private let firstFrameWatchdogSeconds: TimeInterval = 4.0' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'MARKETING_VERSION: "0.13.27"' project.mdklab.yml
+          grep -Fq 'CURRENT_PROJECT_VERSION: "94"' project.mdklab.yml
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+          grep -Fq 'sourceVersion = "0.13.27"' Sources/Core/AppIdentity.swift
+          python3 - <<'PY'
+          from pathlib import Path
+          engine = Path('MDKLab/App/MDKKSAVIOPlayerEngine.swift').read_text()
+          controller = Path('Sources/Player/PlayerController.swift').read_text()
+          orchestrator = Path('Sources/Player/PlaybackOrchestrator.swift').read_text()
+          assert 'guard age >= renderWatchdogTimeoutSeconds else { return }' in engine
+          assert 'withTimeInterval: renderWatchdogPollSeconds' in engine
+          assert engine.index('avio.multiple_requests') < engine.index('player.media = url.absoluteString')
+          assert 'mdk abnormal media recovery exhausted' in orchestrator
+          assert 'settleMs=' in controller
+          print('Build94 AVIO/fallback source checks OK')
+          PY
+
+      - name: Select Xcode and tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          swift --version
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build OnePlayer 0.13.27 Build94
+        id: release_build
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Upload release diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.27-build94-mdk-avio-fast-fallback-release-diagnostics
+          path: build.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Report compiler failure
+        if: steps.release_build.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          grep -nE '(^|[[:space:]])(error:|fatal error:)|BUILD FAILED|SwiftCompile|CompileSwift|EmitSwiftModule' build.log | tail -300 || true
+          tail -180 build.log || true
+          exit 1
+
+      - name: Validate app identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.27' --build '94' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.27-build94-mdk-avio-fast-fallback-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
+
+      - name: Upload final test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.27-build94-mdk-avio-fast-fallback
+          path: |
+            OnePlayer-0.13.27-build94-mdk-avio-fast-fallback-unsigned.ipa
+            OnePlayer-0.13.27-build94-mdk-avio-fast-fallback-unsigned.ipa.sha256
+            app-validation.log
+            min-os-report.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Persist validated Build94 source to experiment branch
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          git diff -- MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/Player/PlayerController.swift Sources/Player/PlaybackOrchestrator.swift Sources/Core/AppIdentity.swift project.mdklab.yml > /tmp/build94-runtime.patch
+          if test ! -s /tmp/build94-runtime.patch; then
+            echo 'Build94 source already materialized.'
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin feat/recovery-isolation-0.13.17
+          git reset --hard origin/feat/recovery-isolation-0.13.17
+          git apply --3way /tmp/build94-runtime.patch
+          git add MDKLab/App/MDKKSAVIOPlayerEngine.swift Sources/Player/PlayerController.swift Sources/Player/PlaybackOrchestrator.swift Sources/Core/AppIdentity.swift project.mdklab.yml
+          git diff --cached --check
+          git commit -m 'fix: coalesce MDK AVIO seeks and accelerate fallback'
+          git push origin HEAD:feat/recovery-isolation-0.13.17

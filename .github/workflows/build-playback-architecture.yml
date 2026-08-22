@@ -1,0 +1,242 @@
+name: Build Playback Architecture IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/playback-architecture-0.13.8]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: playback-architecture-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: macos-15
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Materialize OnePlayer 0.13.8 architecture
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_playback_arch_0138.py
+          git diff --check
+          grep -q 'MARKETING_VERSION: "0.13.8"' project.mdklab.yml
+          grep -q 'CURRENT_PROJECT_VERSION: "75"' project.mdklab.yml
+          grep -q 'exactVersion: 1.0.0' project.mdklab.yml
+          grep -q '高性能引擎' Sources/Player/PlayerEngine.swift
+          grep -q '高兼容引擎' Sources/Player/PlayerEngine.swift
+          grep -q 'bufferState: controller.bufferState' Sources/UI/PlayerScreen.swift
+          grep -q 'activeNativeSeekFastWatchdogSeconds: TimeInterval = 1.0' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+
+      - name: Commit materialized source to formal branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add project.yml project.mdklab.yml Sources/Core/AppIdentity.swift Sources/Player/MPVPlayerEngine.swift Sources/Player/PlayerEngine.swift Sources/Player/PlayerController.swift Sources/UI/BufferedTimelineSlider.swift Sources/UI/PlayerScreen.swift Sources/UI/PlayerSettingsView.swift MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat: materialize OnePlayer 0.13.8 playback architecture'
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+          echo "BUILD_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Prepare OnePlayer assets
+        run: python3 scripts/generate_oneplayer_icons.py
+
+      - name: Validate playback architecture contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          spec = Path('project.mdklab.yml').read_text()
+          kind = Path('Sources/Player/PlayerEngine.swift').read_text()
+          controller = Path('Sources/Player/PlayerController.swift').read_text()
+          slider = Path('Sources/UI/BufferedTimelineSlider.swift').read_text()
+          screen = Path('Sources/UI/PlayerScreen.swift').read_text()
+          mdk = Path('MDKLab/App/MDKKSAVIOPlayerEngine.swift').read_text()
+          mpv = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
+          checks = {
+              'iOS 15 deployment': 'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,
+              '0.13.8 Build75': 'MARKETING_VERSION: "0.13.8"' in spec and 'CURRENT_PROJECT_VERSION: "75"' in spec,
+              'MDK 0.38 pin': 'f112a85f2f51c5352439465204c1ae0fa51a9f18' in spec,
+              'MPVKit 1.0.0 pin': 'exactVersion: 1.0.0' in spec,
+              'dual engine target': 'product: swift-mdk' in spec and 'product: MPVKit' in spec,
+              'high performance default': 'defaultPreference' in kind and 'return .ksAVIO' in kind and '高性能引擎' in kind,
+              'high compatibility name': '高兼容引擎' in kind,
+              'common buffer state': 'PlaybackBufferState' in kind and 'bufferState = PlaybackBufferState' in controller,
+              'two time layers': 'verifiedHistoryRanges' in slider and 'livePlayableRanges' in slider,
+              'UI consumes playback buffer state': 'bufferState: controller.bufferState' in screen,
+              'timeline never uses transport bytes': 'transportCacheRanges' not in slider and 'resourceBytes' not in slider,
+              'controlled switch preserved': 'func switchEngine(to kind: PlayerEngineKind' in controller and 'quiesceConsumers()' in controller,
+              'MDK latest wins preserved': 'queuedLatestSeek' in mdk and 'MDKSeekCoalesce' in mdk,
+              'MDK 1s healthy fast recovery': 'activeNativeSeekFastWatchdogSeconds: TimeInterval = 1.0' in mdk and 'transportHealthy' in mdk and 'noRenderedProgress' in mdk and 'active-native-fast-timeout' in mdk,
+              'MDK 2s/5s fallback preserved': 'activeNativeSeekWatchdogSeconds: TimeInterval = 2.0' in mdk and 'activeNativeSeekHardWatchdogSeconds: TimeInterval = 5.0' in mdk,
+              'MPV compare telemetry retained': 'MPVSeekEvent' in mpv and 'MPVSeekLanding' in mpv and 'absolute+keyframes' in mpv,
+          }
+          for name, ok in checks.items():
+              print(('PASS' if ok else 'FAIL'), name)
+              if not ok: raise SystemExit(f'::error::{name}')
+          PY
+
+      - name: Generate dual-engine project
+        run: xcodegen generate --spec project.mdklab.yml
+
+      - name: Install KTVHTTPCache 3.1.0
+        run: |
+          set -euo pipefail
+          pod install --repo-update 2>&1 | tee pods-install.log
+
+      - name: Restore Swift package cache
+        uses: actions/cache@v4
+        with:
+          path: .spm-cache
+          key: ${{ runner.os }}-dual-mdk038-mpv100-ktv310-${{ hashFiles('project.mdklab.yml', 'MDKLab/KSPlayerShim/Package.swift', 'Podfile') }}
+
+      - name: Resolve pinned MDK and MPV packages
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+          grep -R 'f112a85f2f51c5352439465204c1ae0fa51a9f18' EmbyPlayerLab.xcworkspace/xcshareddata/swiftpm/Package.resolved .spm-cache 2>/dev/null | head -n 5 || true
+          grep -R 'MPVKit' EmbyPlayerLab.xcworkspace/xcshareddata/swiftpm/Package.resolved .spm-cache 2>/dev/null | head -n 10 || true
+
+      - name: Verify dependency contracts
+        run: |
+          set -euo pipefail
+          MDK_CHECKOUT='.spm-cache/checkouts/swift-mdk'
+          test -f "$MDK_CHECKOUT/Package.swift"
+          grep -q 'v0.38.0/mdk-sdk-apple.zip' "$MDK_CHECKOUT/Package.swift"
+          grep -q 'dfae61b90ae1cc543d173b3b4cf2411856c98d61a3a56d7b032573080b8d18a5' "$MDK_CHECKOUT/Package.swift"
+          test -f "$MDK_CHECKOUT/LICENSE"
+          grep -qi 'MIT License' "$MDK_CHECKOUT/LICENSE"
+          {
+            echo 'OnePlayer 0.13.8 Build75'
+            echo 'Deployment Target: iOS 15.0'
+            echo 'iOS 17.0 target device compatibility required'
+            echo 'swift-mdk revision: f112a85f2f51c5352439465204c1ae0fa51a9f18 (MDK SDK 0.38.0)'
+            echo 'MPVKit: exact 1.0.0'
+          } | tee dependency-report.log
+
+      - name: Build dual-engine app for generic iOS device
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+
+      - name: Extract build errors
+        if: failure()
+        run: |
+          set +e
+          grep -nE '(^|[[:space:]])(error:|fatal error:)|::error::' build.log package-resolution.log pods-install.log > build-errors.log
+          if [ ! -s build-errors.log ]; then tail -n 800 build.log > build-errors.log; fi
+          sed -n '1,240p' build-errors.log >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.8' --build '75' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' 2>&1 | tee app-validation.log
+
+      - name: Validate runtime and embedded minimum OS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" '15.0' '17.0' min-os-report.log build.log
+          APP_PATH="${{ steps.app.outputs.path }}"
+          : > binary-inventory.log
+          : > framework-min-os-report.log
+          while IFS= read -r -d '' file; do
+            if file "$file" | grep -q 'Mach-O'; then
+              echo "=== $file ===" >> binary-inventory.log
+              file "$file" >> binary-inventory.log
+              xcrun vtool -show-build "$file" >> framework-min-os-report.log 2>&1 || true
+            fi
+          done < <(find "$APP_PATH" -type f -print0)
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('framework-min-os-report.log').read_text(errors='ignore')
+          versions = re.findall(r'\bminos\s+(\d+(?:\.\d+){1,2})', text)
+          def v(s): return tuple(int(x) for x in s.split('.'))
+          bad = [x for x in versions if v(x) > v('15.0')]
+          print('embedded Mach-O minOS values:', versions)
+          if bad: raise SystemExit('::error::Embedded Mach-O minimum OS exceeds iOS 15.0: ' + repr(bad))
+          PY
+
+      - name: Package unsigned IPA and exact source
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${BUILD_SHA:0:7}"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA_NAME="OnePlayer-DualEngine-0.13.8-${SHORT_SHA}-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
+          SOURCE_ZIP="OnePlayer-DualEngine-0.13.8-build75-${SHORT_SHA}-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Upload dual-engine artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-DualEngine-${{ github.run_id }}
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            app-validation.log
+            min-os-report.log
+            framework-min-os-report.log
+            binary-inventory.log
+            dependency-report.log
+            package-resolution.log
+            build.log
+          if-no-files-found: error
+          retention-days: 30

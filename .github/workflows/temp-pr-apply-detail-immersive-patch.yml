@@ -1,4 +1,4 @@
-name: Temp PR Build135 MPV Residual Refine
+name: Temp PR apply detail immersive patch
 
 on:
   pull_request:
@@ -9,283 +9,58 @@ permissions:
   contents: write
 
 jobs:
-  build135:
-    if: github.event.pull_request.head.ref == 'diag/mpv-residual-refine-0.13.68'
-    runs-on: macos-15
-    timeout-minutes: 180
+  patch:
+    if: github.event.pull_request.head.ref == 'chatgpt/detail-immersive-toggle-navigation-race-20260811'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: diag/mpv-residual-refine-0.13.68
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-
-      - name: Apply bounded residual refinement
-        shell: bash
+      - name: Apply exact source patch
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          app = Path('Sources/Core/AppIdentity.swift')
-          text = app.read_text()
-          if '"0.13.68"' not in text:
-              count = text.count('"0.13.67"')
-              if count != 2: raise SystemExit(f'AppIdentity mismatch: {count}')
-              app.write_text(text.replace('"0.13.67"', '"0.13.68"'))
-
-          engine = Path('Sources/Player/MPVPlayerEngine.swift')
-          text = engine.read_text()
-
-          old_struct = '''    private struct PendingSeek {
-        let id: UInt64
-        let requestedAt: TimeInterval
-        let target: Double
-        let bufferHit: Bool
-        let intent: String
-        let mode: String
-    }
+          root = Path('Sources/UI/EmbyServerRootViewV3.swift')
+          text = root.read_text()
+          old = '''                    }
+                    .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
+                    .ignoresSafeArea(.container, edges: .bottom)
 '''
-          new_struct = '''    private enum SeekStage: String { case startup, primaryKeyframe, residualRefine }
-
-    private struct PendingSeek {
-        let id: UInt64
-        let requestedAt: TimeInterval
-        let target: Double
-        let bufferHit: Bool
-        let intent: String
-        let mode: String
-        var dispatchedAt: TimeInterval?
-        let stage: SeekStage
-        let primaryLanding: Double?
-        let primaryCompletionMs: Double?
-        let refineRequestedAt: TimeInterval?
-    }
-
-    private static let residualRefineMinSeconds = 0.050
-    private static let residualRefineMaxSeconds = 1.250
+          new = '''                    }
+                    .environment(\\.serverDockContent, AnyView(serverTabBar))
+                    .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
+                    .ignoresSafeArea(.container, edges: .bottom)
 '''
-          if 'private static let residualRefineMaxSeconds = 1.250' not in text:
-              if text.count(old_struct) != 1: raise SystemExit(f'PendingSeek struct mismatch: {text.count(old_struct)}')
-              text = text.replace(old_struct, new_struct, 1)
+          if '.environment(\\.serverDockContent, AnyView(serverTabBar))' not in text:
+              if text.count(old) != 1: raise SystemExit(f'root patch mismatch: {text.count(old)}')
+              text = text.replace(old, new, 1)
+              root.write_text(text)
 
-          old_startup = '        pendingSeek = startPosition > 0 ? PendingSeek(id: 0, requestedAt: CACurrentMediaTime(), target: startPosition, bufferHit: false, intent: "startupResume", mode: "loadfile-start") : nil'
-          new_startup = '        pendingSeek = startPosition > 0 ? PendingSeek(id: 0, requestedAt: CACurrentMediaTime(), target: startPosition, bufferHit: false, intent: "startupResume", mode: "loadfile-start", dispatchedAt: nil, stage: .startup, primaryLanding: nil, primaryCompletionMs: nil, refineRequestedAt: nil) : nil'
-          if new_startup not in text:
-              if text.count(old_startup) != 1: raise SystemExit(f'startup pending mismatch: {text.count(old_startup)}')
-              text = text.replace(old_startup, new_startup, 1)
+          detail = Path('Sources/UI/EmbyMediaDetailView.swift')
+          text = detail.read_text()
+          if 'let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom' in text:
+              text = text.replace('            let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom\n', '', 1)
+              count = text.count('.frame(width: geometry.size.width, height: fullHeight)')
+              if count != 2: raise SystemExit(f'detail frame mismatch: {count}')
+              text = text.replace('.frame(width: geometry.size.width, height: fullHeight)', '.frame(width: geometry.size.width, height: geometry.size.height)')
+          if '.hidesServerDockWhileVisible()' in text:
+              if text.count('        .hidesServerDockWhileVisible()\n') != 1: raise SystemExit('detail modifier mismatch')
+              text = text.replace('        .hidesServerDockWhileVisible()\n', '        .detailPagePresentation()\n        .onAppear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-appear item=\\(model.item.id)") }\n        .onDisappear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-disappear item=\\(model.item.id)") }\n', 1)
+          detail.write_text(text)
 
-          old_pending = '        pendingSeek = PendingSeek(id: seekID, requestedAt: requestedAt, target: target, bufferHit: bufferHit, intent: intent, mode: mode)'
-          new_pending = '        pendingSeek = PendingSeek(id: seekID, requestedAt: requestedAt, target: target, bufferHit: bufferHit, intent: intent, mode: mode, dispatchedAt: nil, stage: .primaryKeyframe, primaryLanding: nil, primaryCompletionMs: nil, refineRequestedAt: nil)'
-          if new_pending not in text:
-              if text.count(old_pending) != 1: raise SystemExit(f'interactive pending mismatch: {text.count(old_pending)}')
-              text = text.replace(old_pending, new_pending, 1)
-
-          old_dispatch = '''                let dispatchAt = CACurrentMediaTime()
-                DiagnosticsLogger.shared.log("MPVSeek", "id=\\(seekID) target=\\(String(format: "%.3f", target)) phase=native-dispatch prioritizeMs=\\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) intent=\\(intent) mode=\\(mode) bufferHit=\\(bufferHit) enginePosition=\\(String(format: "%.3f", self.snapshot.position))")
-                self.command(handle, ["seek", String(format: "%.3f", target), mode])
-'''
-          new_dispatch = '''                let dispatchAt = CACurrentMediaTime()
-                if var current = self.pendingSeek, current.id == seekID, current.stage == .primaryKeyframe {
-                    current.dispatchedAt = dispatchAt
-                    self.pendingSeek = current
-                }
-                DiagnosticsLogger.shared.log("MPVSeek", "id=\\(seekID) target=\\(String(format: "%.3f", target)) phase=native-dispatch prioritizeMs=\\(String(format: "%.1f", (prioritizedAt - requestedAt) * 1000)) dispatchMs=\\(String(format: "%.1f", (dispatchAt - requestedAt) * 1000)) intent=\\(intent) mode=\\(mode) bufferHit=\\(bufferHit) enginePosition=\\(String(format: "%.3f", self.snapshot.position))")
-                self.command(handle, ["seek", String(format: "%.3f", target), mode])
-'''
-          if 'current.stage == .primaryKeyframe' not in text:
-              if text.count(old_dispatch) != 1: raise SystemExit(f'native dispatch mismatch: {text.count(old_dispatch)}')
-              text = text.replace(old_dispatch, new_dispatch, 1)
-
-          old_landing = '''            if let pending = pendingSeek {
-                pendingSeek = nil
-                let latency = (CACurrentMediaTime() - pending.requestedAt) * 1000
-                let delta = actualPosition - pending.target
-                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", delta)) completionMs=\\(String(format: "%.1f", latency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) event=playback-restart")
-                DispatchQueue.main.async { [weak self] in
-                    self?.onSeekCompleted?(SeekResult(
-                        requestedAt: pending.requestedAt,
-                        target: pending.target,
-                        actualPosition: actualPosition,
-                        bufferHit: pending.bufferHit,
-                        completionLatencyMs: latency,
-                        measurement: "MPV playback-restart after latest seek"
-                    ))
-                }
-            } else {
-                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=none actual=\\(String(format: "%.3f", actualPosition)) event=playback-restart-without-pending")
-            }
-'''
-          new_landing = '''            if let pending = pendingSeek {
-                let now = CACurrentMediaTime()
-                if pending.stage != .startup, pending.dispatchedAt == nil {
-                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) actual=\\(String(format: "%.3f", actualPosition)) stage=\\(pending.stage.rawValue) event=playback-restart-before-latest-native-dispatch ignored=true")
-                    emitOnMain()
-                    return
-                }
-
-                switch pending.stage {
-                case .primaryKeyframe:
-                    let primaryLatency = (now - pending.requestedAt) * 1000
-                    let residual = pending.target - actualPosition
-                    let delta = actualPosition - pending.target
-                    let eligible = residual > Self.residualRefineMinSeconds && residual <= Self.residualRefineMaxSeconds
-                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", delta)) completionMs=\\(String(format: "%.1f", primaryLatency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) stage=primary event=playback-restart")
-                    DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=consider target=\\(String(format: "%.3f", pending.target)) keyframeLanding=\\(String(format: "%.3f", actualPosition)) residual=\\(String(format: "%.3f", residual)) min=\\(String(format: "%.3f", Self.residualRefineMinSeconds)) max=\\(String(format: "%.3f", Self.residualRefineMaxSeconds)) eligible=\\(eligible) primaryMs=\\(String(format: "%.1f", primaryLatency)) intent=\\(pending.intent)")
-
-                    if eligible {
-                        let refineRequestedAt = CACurrentMediaTime()
-                        pendingSeek = PendingSeek(id: pending.id, requestedAt: pending.requestedAt, target: pending.target, bufferHit: pending.bufferHit, intent: pending.intent, mode: "relative+exact", dispatchedAt: refineRequestedAt, stage: .residualRefine, primaryLanding: actualPosition, primaryCompletionMs: primaryLatency, refineRequestedAt: refineRequestedAt)
-                        DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=native-dispatch residual=\\(String(format: "%.3f", residual)) mode=relative+exact primaryLanding=\\(String(format: "%.3f", actualPosition)) target=\\(String(format: "%.3f", pending.target))")
-                        emitOnMain()
-                        command(handle, ["seek", String(format: "%.3f", residual), "relative+exact"])
-                        return
-                    }
-
-                    pendingSeek = nil
-                    let skipReason: String
-                    if abs(residual) <= Self.residualRefineMinSeconds { skipReason = "already-frame-close" }
-                    else if residual <= 0 { skipReason = "landing-not-before-target" }
-                    else { skipReason = "residual-over-cap" }
-                    DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=skip reason=\\(skipReason) residual=\\(String(format: "%.3f", residual)) finalDelta=\\(String(format: "%.3f", delta)) totalMs=\\(String(format: "%.1f", primaryLatency))")
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: primaryLatency, measurement: "MPV keyframe landing; residual refine skipped"))
-                    }
-
-                case .residualRefine:
-                    pendingSeek = nil
-                    let totalLatency = (now - pending.requestedAt) * 1000
-                    let refineLatency = pending.refineRequestedAt.map { (now - $0) * 1000 } ?? 0
-                    let finalDelta = actualPosition - pending.target
-                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", finalDelta)) completionMs=\\(String(format: "%.1f", totalLatency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) stage=refined event=playback-restart")
-                    DiagnosticsLogger.shared.log("MPVSeekRefine", "id=\\(pending.id) phase=complete primaryLanding=\\(pending.primaryLanding.map { String(format: "%.3f", $0) } ?? "none") primaryMs=\\(pending.primaryCompletionMs.map { String(format: "%.1f", $0) } ?? "none") final=\\(String(format: "%.3f", actualPosition)) finalDelta=\\(String(format: "%.3f", finalDelta)) refineMs=\\(String(format: "%.1f", refineLatency)) totalMs=\\(String(format: "%.1f", totalLatency))")
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: totalLatency, measurement: "MPV keyframe landing + bounded relative exact residual refinement"))
-                    }
-
-                case .startup:
-                    pendingSeek = nil
-                    let latency = (now - pending.requestedAt) * 1000
-                    let delta = actualPosition - pending.target
-                    DiagnosticsLogger.shared.log("MPVSeekLanding", "id=\\(pending.id) target=\\(String(format: "%.3f", pending.target)) actual=\\(String(format: "%.3f", actualPosition)) delta=\\(String(format: "%.3f", delta)) completionMs=\\(String(format: "%.1f", latency)) bufferHit=\\(pending.bufferHit) intent=\\(pending.intent) mode=\\(pending.mode) stage=startup event=playback-restart")
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: latency, measurement: "MPV startup playback-restart"))
-                    }
-                }
-            } else {
-                DiagnosticsLogger.shared.log("MPVSeekLanding", "id=none actual=\\(String(format: "%.3f", actualPosition)) event=playback-restart-without-pending")
-            }
-'''
-          if 'phase=complete primaryLanding=' not in text:
-              if text.count(old_landing) != 1: raise SystemExit(f'playback restart block mismatch: {text.count(old_landing)}')
-              text = text.replace(old_landing, new_landing, 1)
-
-          engine.write_text(text)
+          staged = Path('.github/workflows/one-shot-detail-immersive-patch.yml')
+          if staged.exists(): staged.unlink()
           PY
-
           git diff --check
-          git status --short
-
-      - name: Commit Build135 source
-        run: |
-          set -euo pipefail
+          if git diff --quiet; then
+            echo 'Already patched.'
+            exit 0
+          fi
           git config user.name 'ChatGPT'
           git config user.email 'chatgpt@users.noreply.github.com'
-          git add Sources/Core/AppIdentity.swift Sources/Player/MPVPlayerEngine.swift
-          if ! git diff --cached --quiet; then
-            git commit -m 'Build135: add bounded MPV residual seek refinement'
-            git push origin HEAD:diag/mpv-residual-refine-0.13.68
-          fi
-
-      - name: Verify Build135 contract
-        run: |
-          set -euo pipefail
-          grep -Fq 'sourceVersion = "0.13.68"' Sources/Core/AppIdentity.swift
-          grep -Fq 'private static let residualRefineMinSeconds = 0.050' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'private static let residualRefineMaxSeconds = 1.250' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'mode: "relative+exact"' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'phase=complete primaryLanding=' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'event=playback-restart-before-latest-native-dispatch ignored=true' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'intent = "doubleTapFastSeek"' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'intent = "scrubReleaseFastSeek"' Sources/Player/MPVPlayerEngine.swift
-          test "$(grep -Fc 'mode = "absolute+keyframes"' Sources/Player/MPVPlayerEngine.swift)" -ge 2
-          grep -Fq 'screenScrubFeedbackView(feedback).padding(.bottom, 116)' Sources/UI/PlayerScreen.swift
-          grep -Fq 'private static let fastSeekBurstWindow: CFTimeInterval = 1.0' Sources/Player/PlayerController.swift
-          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
-
-      - name: Select Xcode and install tools
-        run: |
-          set -euo pipefail
-          sudo xcode-select -switch /Applications/Xcode_16.4.app
-          brew install xcodegen
-          sudo gem install cocoapods -v 1.16.2 --no-document
-          xcodebuild -version
-          swift --version
-
-      - name: Generate project and resolve dependencies
-        run: |
-          set -euo pipefail
-          python3 scripts/generate_oneplayer_icons.py
-          xcodegen generate --spec project.mdklab.yml
-          pod install --repo-update
-          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
-
-      - name: Build Release for generic iOS device
-        run: |
-          set -euo pipefail
-          rm -rf build
-          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.68 CURRENT_PROJECT_VERSION=135 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
-
-      - name: Locate built app
-        run: |
-          set -euo pipefail
-          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
-          test -n "$APP_PATH" && test -d "$APP_PATH"
-          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
-
-      - name: Validate app identity
-        run: |
-          set -euo pipefail
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.68' --build '135' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
-
-      - name: Validate minimum OS
-        run: |
-          set -euo pipefail
-          chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
-
-      - name: Package unsigned IPA
-        run: |
-          set -euo pipefail
-          rm -rf Payload
-          mkdir Payload
-          cp -R "$APP_PATH" Payload/
-          IPA='OnePlayer-0.13.68-build135-mpv-residual-refine-unsigned.ipa'
-          /usr/bin/zip -qry "$IPA" Payload
-          /usr/bin/unzip -t "$IPA" >/dev/null
-          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
-          cat "$IPA.sha256"
-
-      - name: Upload Build135 package
-        uses: actions/upload-artifact@v4
-        with:
-          name: OnePlayer-0.13.68-build135-mpv-residual-refine
-          path: |
-            OnePlayer-0.13.68-build135-mpv-residual-refine-unsigned.ipa
-            OnePlayer-0.13.68-build135-mpv-residual-refine-unsigned.ipa.sha256
-            app-validation.log
-            min-os-report.log
-            build.log
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload diagnostics on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: OnePlayer-0.13.68-build135-mpv-residual-refine-diagnostics
-          path: |
-            app-validation.log
-            min-os-report.log
-            build.log
-          if-no-files-found: warn
-          retention-days: 14
+          git add -A
+          git commit -m 'feat: wire immersive detail viewport and dock mode [detail-immersive-patched]'
+          git push origin HEAD:chatgpt/detail-immersive-toggle-navigation-race-20260811

@@ -49,7 +49,9 @@ struct PlayerScreen: View {
     @State private var bufferingDownloadSpeed: Double = 0
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
-        _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: preference))
+        let storedEngineRaw = UserDefaults.standard.string(forKey: PlayerPreferenceKeys.enginePreference)
+        let effectivePreference = preference.isAutomatic ? PlayerEnginePreference.persisted(rawValue: storedEngineRaw) : preference
+        _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: effectivePreference))
         let defaultScaleRaw = UserDefaults.standard.string(forKey: PlayerPreferenceKeys.defaultScaleMode) ?? PlayerVideoScaleMode.fit.rawValue
         let defaultScale = PlayerVideoScaleMode(rawValue: defaultScaleRaw) ?? .fit
         _sessionOverrides = StateObject(wrappedValue: PlaybackSessionOverrides(defaultScaleMode: defaultScale))
@@ -86,16 +88,32 @@ struct PlayerScreen: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(!isClosing && !playbackSettingsPresented)
 
-                if let feedback = controller.seekFeedback { feedbackView(feedback) }
-                if let feedback = controller.scrubFeedback { feedbackView(feedback) }
+                if let feedback = controller.scrubFeedback {
+                    VStack {
+                        Spacer()
+                        screenScrubFeedbackView(feedback).padding(.bottom, 116)
+                    }
+                    .allowsHitTesting(false)
+                    .zIndex(40)
+                }
                 if let temporaryRateHUD { rateFeedbackView(temporaryRateHUD) }
                 if let adjustmentHUD { adjustmentHUDView(adjustmentHUD) }
 
                 controls
                 centerPlaybackControls
 
-                if controller.snapshot.isBuffering { bufferingIndicator }
+                if let feedback = controller.seekFeedback {
+                    VStack {
+                        Spacer()
+                        feedbackView(feedback).scaleEffect(0.55).padding(.bottom, 50)
+                    }
+                    .allowsHitTesting(false)
+                    .zIndex(12)
+                }
+
+                if controller.networkBufferingVisible { bufferingIndicator }
                 statusMessages
+                if let message = controller.engineSwitchNotice { automaticEngineSwitchToast(message) }
 
                 if playbackSettingsPresented {
                     PlayerPlaybackSettingsPopover(
@@ -115,12 +133,15 @@ struct PlayerScreen: View {
         }
         .statusBar(hidden: true)
         .onAppear {
+            setPlaybackIdleTimerDisabled(true, reason: "player-appear")
             originalScreenBrightness = UIScreen.main.brightness
             applyIndependentBrightnessIfNeeded()
             displayRefreshMonitor.start()
+            controller.prewarmStartup()
             AppOrientationCoordinator.shared.beginPlayerPresentation(source: controller.source)
         }
         .onDisappear {
+            setPlaybackIdleTimerDisabled(false, reason: "player-disappear")
             controlsHideWorkItem?.cancel()
             feedbackHideWorkItem?.cancel()
             adjustmentHideWorkItem?.cancel()
@@ -133,9 +154,8 @@ struct PlayerScreen: View {
             wasAutoPausedForBackground = false
             pictureInPictureController.stopAndDetach()
             restoreOriginalBrightnessIfNeeded()
-            controller.pausePlayback()
-            let closingController = controller
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { closingController.stop() }
+            DiagnosticsLogger.shared.app("PlayerLifecycle", "onDisappear immediate stop closing=\(isClosing)")
+            controller.stop()
         }
         .onChange(of: controller.snapshot.isPlaying) { isPlaying in
             if !isPlaying, sessionOverrides.temporaryPlaybackRate != nil { endTemporaryRate() }
@@ -179,6 +199,8 @@ struct PlayerScreen: View {
             Group {
                 if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {
                     MPVPlayerSurface(displayLayer: layer, onGeometrySettled: controller.rendererSurfaceDidSettle)
+                } else if controller.engineKind == .ksAVIO, let view = controller.ksAVIOView {
+                    KSAVIOPlayerSurface(playerView: view).id(ObjectIdentifier(view))
                 } else if let player = controller.avPlayer {
                     AVPlayerSurface(player: player, layoutPlan: plan, onPlayerLayerReady: pictureInPictureController.attach).id("avplayer")
                 } else { Color.black }
@@ -318,7 +340,8 @@ struct PlayerScreen: View {
                 BufferedTimelineSlider(
                     value: Binding(get: { controller.displayedPosition }, set: { controller.updateScrubbing(to: $0) }),
                     range: 0...max(controller.effectiveDuration, 1),
-                    downloadCacheRanges: controller.transportCacheRanges,
+                    bufferState: controller.bufferState,
+                    cacheByteRanges: controller.transportCacheRanges,
                     onEditingChanged: { editing in
                         if editing {
                             controlsHideWorkItem?.cancel()
@@ -359,7 +382,7 @@ struct PlayerScreen: View {
         .allowsHitTesting(false)
         .task {
             bufferingDownloadSpeed = 0
-            while !Task.isCancelled && controller.snapshot.isBuffering {
+            while !Task.isCancelled && controller.networkBufferingVisible {
                 bufferingDownloadSpeed = await controller.currentDownloadBytesPerSecond()
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
@@ -372,8 +395,8 @@ struct PlayerScreen: View {
     @ViewBuilder
     private var statusMessages: some View {
         VStack(spacing: 8) {
-            if let message = controller.prematureEOFMessage { statusBanner(title: "疑似提前结束", message: message, color: .red) }
-            if let message = controller.stallMessage { statusBanner(title: "播放停滞恢复", message: message, color: .orange) }
+            // Premature EOF stays diagnostic-only while automatic fallback is enabled.
+            // Stall recovery stays diagnostic-only; automatic recovery/fallback remains active.
             Spacer()
         }
         .padding(.top, 54)
@@ -398,10 +421,44 @@ struct PlayerScreen: View {
             .monospacedDigit()
             .padding(.horizontal, 24)
             .padding(.vertical, 15)
-            .background(Color.black.opacity(0.62))
+            .background(.ultraThinMaterial)
             .foregroundColor(.white)
             .clipShape(Capsule())
             .allowsHitTesting(false)
+    }
+
+    private func screenScrubFeedbackView(_ text: String) -> some View {
+        let lines = text.components(separatedBy: "\n")
+        let timeParts = (lines.first ?? "").components(separatedBy: " / ")
+        let current = timeParts.first ?? ""
+        let duration = timeParts.count > 1 ? timeParts[1] : ""
+        let deltaRaw = lines.count > 1 ? lines[1] : ""
+        let deltaText = deltaRaw.replacingOccurrences(of: " 秒", with: "s")
+        let isBackward = deltaText.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("-")
+
+        return VStack(spacing: 2) {
+            HStack(spacing: 3) {
+                Text(current).foregroundColor(.white)
+                if !duration.isEmpty { Text("/ " + duration).foregroundColor(.white.opacity(0.58)) }
+            }
+            .font(.system(size: 16, weight: .semibold))
+            .monospacedDigit()
+
+            if !deltaText.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: isBackward ? "backward.fill" : "forward.fill")
+                    Text(deltaText).monospacedDigit()
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Color(red: 0.11, green: 0.91, blue: 0.32))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(minWidth: 142)
+        .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Color(red: 0.45, green: 0.43, blue: 0.42).opacity(0.88)))
+        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+        .allowsHitTesting(false)
     }
 
     private func rateFeedbackView(_ rate: Double) -> some View {
@@ -416,6 +473,24 @@ struct PlayerScreen: View {
         .foregroundColor(.white)
         .clipShape(Capsule())
         .allowsHitTesting(false)
+    }
+
+    private func automaticEngineSwitchToast(_ message: String) -> some View {
+        VStack {
+            Text(message)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.ultraThinMaterial))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.white.opacity(0.14), lineWidth: 0.5))
+            Spacer()
+        }
+        .padding(.top, 64)
+        .allowsHitTesting(false)
+        .zIndex(30)
     }
 
     private func adjustmentHUDView(_ state: AdjustmentHUDState) -> some View { PlayerAdjustmentRulerHUD(adjustment: state.adjustment, value: state.value) }
@@ -553,6 +628,11 @@ struct PlayerScreen: View {
         controller.source.mediaSource.mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Video") == .orderedSame })?.displayAspectRatio
     }
 
+    private func setPlaybackIdleTimerDisabled(_ disabled: Bool, reason: String) {
+        if UIApplication.shared.isIdleTimerDisabled != disabled { UIApplication.shared.isIdleTimerDisabled = disabled }
+        DiagnosticsLogger.shared.playback("PlayerIdleTimer", "disabled=\(disabled) reason=\(reason)")
+    }
+
     private func activeWindowScene() -> UIWindowScene? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         return scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first(where: { $0.activationState == .foregroundInactive })
@@ -586,6 +666,7 @@ struct PlayerScreen: View {
     private func handleScenePhase(_ phase: ScenePhase) {
         switch phase {
         case .background:
+            setPlaybackIdleTimerDisabled(false, reason: "scene-background")
             resetTransientInteractions(reason: "background")
             playbackSettingsPresented = false
             restoreOriginalBrightnessIfNeeded()
@@ -597,6 +678,7 @@ struct PlayerScreen: View {
             wasAutoPausedForBackground = controller.pausePlayback()
             DiagnosticsLogger.shared.playback("Lifecycle", "background autoPause=\(wasAutoPausedForBackground)")
         case .active:
+            setPlaybackIdleTimerDisabled(true, reason: "scene-active")
             updateIndependentBrightnessForPlaybackContext()
             let shouldResume = wasAutoPausedForBackground && resumeWhenForegrounded && !audioInterruptionActive
             wasAutoPausedForBackground = false
@@ -794,6 +876,7 @@ struct PlayerScreen: View {
 
     private func closePlayer() {
         guard !isClosing else { return }
+        DiagnosticsLogger.shared.app("PlayerLifecycle", "close tap received before engine stop engine=\(controller.engineKind.title)")
         isClosing = true
         orientationReady = false
         controlsHideWorkItem?.cancel()
@@ -807,9 +890,10 @@ struct PlayerScreen: View {
         centerFeedbackScale = 1
         temporaryRateHUD = nil
         adjustmentHUD = nil
-        controller.pausePlayback()
+        controller.stop()
         pictureInPictureController.stopAndDetach()
-        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; keep opaque player cover and persistent surface until portrait settles")
+        DiagnosticsLogger.shared.app("PlayerLifecycle", "close stop issued before orientation restore")
+        DiagnosticsLogger.shared.playback("Lifecycle", "close button tapped; playback/transport stopped before portrait wait")
         AppOrientationCoordinator.shared.restoreMainInterfaceOrientation()
         waitForPortraitBeforeDismiss(attempt: 0)
     }
