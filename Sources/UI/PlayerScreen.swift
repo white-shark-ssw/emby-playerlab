@@ -88,7 +88,14 @@ struct PlayerScreen: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(!isClosing && !playbackSettingsPresented)
 
-                if let feedback = controller.scrubFeedback { feedbackView(feedback).scaleEffect(0.72).zIndex(40) }
+                if let feedback = controller.scrubFeedback {
+                    VStack {
+                        Spacer()
+                        screenScrubFeedbackView(feedback).padding(.bottom, 116)
+                    }
+                    .allowsHitTesting(false)
+                    .zIndex(40)
+                }
                 if let temporaryRateHUD { rateFeedbackView(temporaryRateHUD) }
                 if let adjustmentHUD { adjustmentHUDView(adjustmentHUD) }
 
@@ -418,6 +425,40 @@ struct PlayerScreen: View {
             .foregroundColor(.white)
             .clipShape(Capsule())
             .allowsHitTesting(false)
+    }
+
+    private func screenScrubFeedbackView(_ text: String) -> some View {
+        let lines = text.components(separatedBy: "\n")
+        let timeParts = (lines.first ?? "").components(separatedBy: " / ")
+        let current = timeParts.first ?? ""
+        let duration = timeParts.count > 1 ? timeParts[1] : ""
+        let deltaRaw = lines.count > 1 ? lines[1] : ""
+        let deltaText = deltaRaw.replacingOccurrences(of: " 秒", with: "s")
+        let isBackward = deltaText.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("-")
+
+        return VStack(spacing: 2) {
+            HStack(spacing: 3) {
+                Text(current).foregroundColor(.white)
+                if !duration.isEmpty { Text("/ " + duration).foregroundColor(.white.opacity(0.58)) }
+            }
+            .font(.system(size: 16, weight: .semibold))
+            .monospacedDigit()
+
+            if !deltaText.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: isBackward ? "backward.fill" : "forward.fill")
+                    Text(deltaText).monospacedDigit()
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Color(red: 0.11, green: 0.91, blue: 0.32))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(minWidth: 142)
+        .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Color(red: 0.45, green: 0.43, blue: 0.42).opacity(0.88)))
+        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+        .allowsHitTesting(false)
     }
 
     private func rateFeedbackView(_ rate: Double) -> some View {
