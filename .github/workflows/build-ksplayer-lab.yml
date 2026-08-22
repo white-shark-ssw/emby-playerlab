@@ -106,6 +106,26 @@ jobs:
           xcodegen --version
           pod --version
 
+      - name: Create same-target FFmpeg compile contract
+        run: |
+          set -euo pipefail
+          cat > Sources/Player/Build137BackendCompileContract.swift <<'SWIFT'
+          #if !canImport(Libavformat)
+          #error("Build137 OnePlayer target cannot import Libavformat")
+          #endif
+          #if !canImport(Libavutil)
+          #error("Build137 OnePlayer target cannot import Libavutil")
+          #endif
+          import Libavformat
+          import Libavutil
+
+          enum Build137BackendCompileContract {
+              static func verify() -> UInt32 { avformat_version() ^ avutil_version() }
+          }
+          SWIFT
+          grep -Fq '#error("Build137 OnePlayer target cannot import Libavformat")' Sources/Player/Build137BackendCompileContract.swift
+          grep -Fq '#error("Build137 OnePlayer target cannot import Libavutil")' Sources/Player/Build137BackendCompileContract.swift
+
       - name: Generate project and resolve MPVKit
         run: |
           set -euo pipefail
@@ -131,24 +151,24 @@ jobs:
           chmod +x scripts/check_min_os.sh
           scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
 
-      - name: Detect read-only keyframe index backend
+      - name: Verify read-only keyframe index backend
         run: |
           set -euo pipefail
           APP_PATH="${{ steps.app.outputs.path }}"
           EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Info.plist")"
           BIN="$APP_PATH/$EXECUTABLE"
+          grep -Fq 'Build137BackendCompileContract.swift' build.log
+          grep -Fq 'MPVKeyframeIndexProbe.swift' build.log
+          grep -Fq -- '-framework Libavformat' build.log
+          grep -Fq -- '-framework Libavutil' build.log
           if ! nm -gU "$BIN" > keyframe-symbols.log 2>&1; then nm "$BIN" > keyframe-symbols.log 2>&1; fi
-          if grep -Fq 'oneplayer_keyframe_backend_libavformat_direct' keyframe-symbols.log; then
-            echo 'backend=libavformat-direct index=read-only cache-only-observe verification=mach-o-symbol' | tee keyframe-index-report.log
-          elif grep -Fq 'oneplayer_keyframe_backend_unavailable' keyframe-symbols.log; then
-            echo 'backend=unavailable index=read-only-unavailable verification=mach-o-symbol' | tee keyframe-index-report.log
-          else
-            echo 'backend=unknown c-symbol-missing verification=mach-o-symbol' | tee keyframe-index-report.log
-            grep -i 'oneplayer_keyframe' keyframe-symbols.log || true
-            exit 1
-          fi
-          grep -i 'oneplayer_keyframe_backend' keyframe-symbols.log || true
-          cat keyframe-index-report.log
+          grep -Fq '_avformat_index_get_entries_count' keyframe-symbols.log
+          grep -Fq '_avformat_index_get_entry' keyframe-symbols.log
+          grep -Fq '_avformat_open_input' keyframe-symbols.log
+          grep -Fq '_avformat_version' keyframe-symbols.log
+          echo 'backend=libavformat-direct index=read-only cache-only-observe verification=same-target-unconditional-import-contract' | tee keyframe-index-report.log
+          grep -E '_avformat_(index_get_entries_count|index_get_entry|open_input|version)' keyframe-symbols.log | tee -a keyframe-index-report.log
+          rm -f Sources/Player/Build137BackendCompileContract.swift
 
       - name: Package unsigned IPA
         run: |
