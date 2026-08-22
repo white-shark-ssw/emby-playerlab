@@ -392,8 +392,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
             intent = "doubleTapFastSeek"
             mode = "absolute+keyframes"
         case .absolute:
-            intent = "scrubReleasePreciseSeek"
-            mode = "absolute+exact"
+            intent = "scrubReleaseFastSeek"
+            mode = "absolute+keyframes"
         }
         seekGeneration &+= 1
         let seekID = seekGeneration
