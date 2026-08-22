@@ -1,0 +1,45 @@
+name: Apply MDK Decoder Drop Trace 0.13.59
+
+on:
+  push:
+    branches: [diag/mdk-decoder-drop-trace-0.13.59]
+    paths:
+      - "scripts/migrate_mdk_decoder_drop_trace_01359.py"
+      - ".github/workflows/apply-mdk-decoder-drop-trace-01359.yml"
+      - "Sources/Core/AppIdentity.swift"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/mdk-decoder-drop-trace-0.13.59
+          fetch-depth: 0
+      - name: Apply decoder trace instrumentation
+        run: |
+          set -euo pipefail
+          python3 scripts/migrate_mdk_decoder_drop_trace_01359.py
+          grep -Fq 'swift_mdk.logLevel = .All' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'MDKDecoderTrace' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'requestedPolicy=unchanged-default-auto' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'dispatchedIntent.fastPreview ? .AccurateFromStartInCache : .FromStart' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          ! grep -Fq 'player.setProperty(name: "video.decoder"' MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          grep -Fq 'sourceVersion = "0.13.59"' Sources/Core/AppIdentity.swift
+          git diff --check
+      - name: Commit Build126 runtime source
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No runtime source change required'
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add MDKLab/App/MDKKSAVIOPlayerEngine.swift
+          git commit -m 'mdk: trace decoder drop behavior without policy changes'
+          git push origin HEAD:diag/mdk-decoder-drop-trace-0.13.59
