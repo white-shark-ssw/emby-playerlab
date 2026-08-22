@@ -9,6 +9,12 @@ on:
       - "MDKLab/**"
       - "Sources/**"
       - "project.mdklab.yml"
+  pull_request:
+    branches: [diag/mpv-fast-seek-0.13.65]
+    paths:
+      - ".github/workflows/build-player-hud-01366.yml"
+      - "Sources/**"
+      - "project.mdklab.yml"
   workflow_dispatch:
 
 concurrency:
