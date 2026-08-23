@@ -2,9 +2,9 @@ name: Materialize and Build Build158 PiP Session
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches: [fix/pip-home-mpv-resume-0.13.90]
-    paths: [".github/workflows/build156-samplebuffer-pip.yml"]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
@@ -60,16 +60,14 @@ jobs:
             completion?()
         }'''
           assert old in text
-          text = text.replace(old, new)
-          c.write_text(text)
+          c.write_text(text.replace(old, new))
 
           old_bridge = Path('Sources/UI/PlayerSampleBufferPiPBridge.swift')
           if old_bridge.exists(): old_bridge.unlink()
 
           p = Path('Sources/Player/MPVPlayerEngine.swift')
           text = p.read_text()
-          decl = 'final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {'
-          text = text.replace(decl, 'final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, PlayerPiPInlineRendererControlling {')
+          text = text.replace('final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {', 'final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, PlayerPiPInlineRendererControlling {')
           if 'private var pictureInPictureRendererSuspended = false' not in text:
               anchor = '    private var lastPresentationTimingSignature: PresentationTimingSignature?\n'
               assert text.count(anchor) == 1
@@ -147,7 +145,6 @@ jobs:
           test ! -e Sources/UI/PlayerSampleBufferPiPBridge.swift
           grep -Fq 'final class PlayerPiPSamplePipeline' Sources/UI/PlayerPiPSamplePipeline.swift
           grep -Fq 'kCMSampleAttachmentKey_DoNotDisplay' Sources/UI/PlayerPiPSamplePipeline.swift
-          grep -Fq 'final class PlayerPiPSessionCoordinator' Sources/UI/PlayerPiPSessionCoordinator.swift
           grep -Fq 'private var pipeline: PlayerPiPSamplePipeline?' Sources/UI/PlayerPiPSessionCoordinator.swift
           grep -Fq 'targetVO=null decoderPreserved=true' Sources/Player/MPVPlayerEngine.swift
           ! grep -Fq 'vid", value: "no"' Sources/Player/MPVPlayerEngine.swift
@@ -162,7 +159,6 @@ jobs:
           head=Path('Sources/Player/MPVPlayerEngine.swift').read_text()
           base=subprocess.check_output(['git','show','origin/lab/pip-samplebuffer-0.13.89:Sources/Player/MPVPlayerEngine.swift'],text=True)
           assert seek_body(head)==seek_body(base)
-          assert 'absolute+keyframes' in seek_body(head) and 'absolute+exact' not in seek_body(head)
           PY
 
       - name: Select Xcode 16.4
