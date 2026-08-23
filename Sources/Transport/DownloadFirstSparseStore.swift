@@ -105,6 +105,10 @@ final class DownloadFirstSparseStore: @unchecked Sendable {
             fileDescriptor = -1
             throw StoreError.openFailed(code)
         }
+        if let bootstrap = StartupRangeBootstrapCache.shared.take(cacheKey: cacheKey, contentLength: contentLength, etag: etag, lastModified: lastModified), !bootstrap.isEmpty {
+            try write(bootstrap, at: 0)
+            DiagnosticsLogger.shared.playback("StartupBootstrap", "sparse-cache seeded bytes=\(min(bootstrap.count, Int(contentLength))) action=avoid-second-head-range")
+        }
         if keepFiles { try? Data("dirty\n".utf8).write(to: sessionMarkerURL, options: .atomic) }
         lastPersistedBytes = rangeSet.totalBytes
     }
