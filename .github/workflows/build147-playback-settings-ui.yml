@@ -1,4 +1,5 @@
 name: Build OnePlayer 0.13.80 Build147 Playback Settings UI
+# Build147 isolated UI test package; playback core remains frozen.
 
 on:
   workflow_dispatch:
