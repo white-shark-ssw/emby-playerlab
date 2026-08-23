@@ -1,258 +1,274 @@
 name: Validate Source
 
 on:
-  workflow_dispatch:
   pull_request:
-  push:
-    branches: [main, master]
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
 
 concurrency:
-  group: validate-${{ github.event.pull_request.number || github.ref }}
+  group: build159-final-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   validate:
     runs-on: macos-15
-    timeout-minutes: 120
-
+    timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Build159 source
+        uses: actions/checkout@v4
+        with:
+          ref: fix/pip-vo-timebase-0.13.92
+          fetch-depth: 0
 
-      - name: Initialize diagnostic logs
-        run: |
-          : > validate-build.log
-          : > build-settings.log
-          : > package-resolution.log
-          : > mpv-module-maps.log
-          : > pods-install.log
-          : > source-audit.log
-          : > built-info-plist.log
-          : > app-validation.log
-
-      - name: Validate current source configuration
+      - name: Materialize final Build159 source
         run: |
           set -euo pipefail
-          python3 - <<'PY' 2>&1 | tee source-audit.log
-          import json
-          import plistlib
+          python3 - <<'PY'
           from pathlib import Path
 
-          def require(condition, message):
-              if not condition:
-                  raise SystemExit(f"::error::{message}")
+          path = Path('Sources/Player/MPVPlayerEngine.swift')
+          text = path.read_text()
+          old_decl = 'final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {'
+          new_decl = 'final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, PlayerPiPInlineRendererControlling {'
+          if old_decl in text: text = text.replace(old_decl, new_decl)
 
-          project = Path("project.yml").read_text()
-          require('iOS: "15.0"' in project, "project.yml deploymentTarget.iOS must remain 15.0")
-          require('deploymentTarget: "15.0"' in project, "app deploymentTarget must remain 15.0")
-          require('PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app' in project, "unexpected bundle identifier")
-          require('PRODUCT_NAME: "OnePlayer"' in project, "unexpected product name")
-          require('ASSETCATALOG_COMPILER_APPICON_NAME: OnePlayerIcon' in project, "unexpected primary app icon name")
-          require('ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "OnePlayerAltIcon"' in project, "alternate app icon is not configured")
-          require('exactVersion: 1.0.0' in project, "MPVKit version changed unexpectedly")
+          field_anchor = '    private var lastPresentationTimingSignature: PresentationTimingSignature?\n'
+          if 'private var pictureInPictureRendererSuspended = false' not in text:
+              if text.count(field_anchor) != 1: raise SystemExit('MPV PiP field anchor mismatch')
+              text = text.replace(field_anchor, field_anchor + '    private var pictureInPictureRendererSuspended = false\n', 1)
 
-          with Path("Config/Info.plist").open("rb") as handle:
-              info = plistlib.load(handle)
-          require(info.get("CFBundleDisplayName") == "OnePlayer", "source display name must be OnePlayer")
-          require(info.get("CFBundleName") == "OnePlayer", "source bundle name must be OnePlayer")
-          require(str(info.get("CFBundleShortVersionString")) == "0.13.3", "source version must be 0.13.3")
-          require(str(info.get("CFBundleVersion")) == "69", "source build must be 69")
+          if 'func suspendInlineRendererForPictureInPicture' not in text:
+              anchor = '''    func play() { setPropertyAsync(name: "pause", value: "no") }
+    func pause() { setPropertyAsync(name: "pause", value: "yes") }
 
-          stale_brand_files = []
-          for root in (Path("Sources"), Path("Config")):
-              for candidate in root.rglob("*"):
-                  if not candidate.is_file() or candidate.suffix not in {".swift", ".plist", ".h", ".m", ".mm"}:
-                      continue
-                  try:
-                      body = candidate.read_text(errors="ignore")
-                  except Exception:
-                      continue
-                  if "OS player" in body:
-                      stale_brand_files.append(str(candidate))
-          require(not stale_brand_files, f"stale visible OS player branding remains: {stale_brand_files}")
+    func setPlaybackRate(_ rate: Double) {'''
+              if text.count(anchor) != 1: raise SystemExit('MPV play/pause anchor mismatch')
+              methods = '''    func play() { setPropertyAsync(name: "pause", value: "no") }
+    func pause() { setPropertyAsync(name: "pause", value: "yes") }
 
-          required = [
-              "Sources/Player/PlayerController.swift",
-              "Sources/Player/AVPlayerEngine.swift",
-              "Sources/Player/MPVPlayerEngine.swift",
-              "Sources/Transport/UnifiedMediaTransportSession.swift",
-              "Sources/Transport/RangeHTTPClient.swift",
-              "Sources/UI/OnePlayerSettingsViews.swift",
-              "scripts/assets/OnePlayerDefault256.b64.00",
-              "scripts/assets/OnePlayerDefault256.b64.01",
-              "scripts/assets/OnePlayerAlternate384.b64.00",
-              "scripts/assets/OnePlayerAlternate384.b64.01",
-              "scripts/generate_oneplayer_icons.py",
-              "scripts/check_min_os.sh",
-              "scripts/check_player_resume_foreground_ui.py",
-              "scripts/validate_built_app.py",
-          ]
-          missing = [path for path in required if not Path(path).is_file()]
-          require(not missing, f"required current source files are missing: {missing}")
+    func suspendInlineRendererForPictureInPicture(completion: @escaping (Bool) -> Void) {
+        queue.async { [weak self] in
+            guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }
+            if self.pictureInPictureRendererSuspended { DispatchQueue.main.async { completion(true) }; return }
+            let previousVO = self.getStringProperty(handle: handle, name: "current-vo") ?? "unknown"
+            guard self.setPropertyChecked(handle: handle, name: "vo", value: "null") else {
+                DiagnosticsLogger.shared.log("MPVPiP", "vo suspend request failed previousVO=\(previousVO)")
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            self.waitForPictureInPictureVO(handle: handle, target: "null", attempt: 0) { [weak self] ready, currentVO in
+                guard let self else { DispatchQueue.main.async { completion(false) }; return }
+                self.pictureInPictureRendererSuspended = ready
+                DiagnosticsLogger.shared.log("MPVPiP", "vo suspend ready=\(ready) previousVO=\(previousVO) currentVO=\(currentVO) decoderPreserved=true")
+                DispatchQueue.main.async { completion(ready) }
+            }
+        }
+    }
 
-          for name in ("OnePlayerIcon.appiconset", "OnePlayerAltIcon.appiconset"):
-              contents_path = Path("Resources/Assets.xcassets") / name / "Contents.json"
-              require(contents_path.is_file(), f"{name} Contents.json is missing")
-              contents = json.loads(contents_path.read_text())
-              filenames = [image.get("filename") for image in contents.get("images", []) if image.get("filename")]
-              require(len(filenames) == 18, f"{name} must declare 18 icon slots")
-          print("Current OnePlayer source configuration: OK")
+    func resumeInlineRendererAfterPictureInPicture(completion: @escaping (Bool) -> Void) {
+        queue.async { [weak self] in
+            guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }
+            guard self.pictureInPictureRendererSuspended else { DispatchQueue.main.async { completion(true) }; return }
+            guard self.setPropertyChecked(handle: handle, name: "vo", value: "gpu-next") else {
+                DiagnosticsLogger.shared.log("MPVPiP", "vo restore request failed")
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            self.waitForPictureInPictureVO(handle: handle, target: "gpu-next", attempt: 0) { [weak self] ready, currentVO in
+                guard let self else { DispatchQueue.main.async { completion(false) }; return }
+                if ready { self.pictureInPictureRendererSuspended = false }
+                let drawable = self.displayLayer.drawableSize
+                DiagnosticsLogger.shared.log("MPVPiP", "vo restore ready=\(ready) currentVO=\(currentVO) drawable=\(Int(drawable.width))x\(Int(drawable.height)) decoderPreserved=true")
+                DispatchQueue.main.async { completion(ready) }
+            }
+        }
+    }
+
+    private func waitForPictureInPictureVO(handle: OpaquePointer, target: String, attempt: Int, completion: @escaping (Bool, String) -> Void) {
+        guard let currentHandle = mpv, currentHandle == handle, !isStopping else { completion(false, "detached"); return }
+        let currentVO = getStringProperty(handle: handle, name: "current-vo") ?? "unknown"
+        let voMatched = target == "null" ? currentVO.contains("null") : currentVO.contains("gpu-next")
+        let drawable = displayLayer.drawableSize
+        let drawableReady = target == "null" || (drawable.width > 1 && drawable.height > 1)
+        if voMatched && drawableReady { completion(true, currentVO); return }
+        guard attempt < 40 else { completion(false, currentVO); return }
+        queue.asyncAfter(deadline: .now() + 0.01) { [weak self] in self?.waitForPictureInPictureVO(handle: handle, target: target, attempt: attempt + 1, completion: completion) }
+    }
+
+    func setPlaybackRate(_ rate: Double) {'''
+              text = text.replace(anchor, methods, 1)
+
+              fallback = '''    func play() {}
+    func pause() {}
+    func setVideoGeometry(panscan: Double, aspectOverride: String?) {}'''
+              if text.count(fallback) != 1: raise SystemExit('MPV fallback anchor mismatch')
+              replacement = '''    func play() {}
+    func pause() {}
+    func suspendInlineRendererForPictureInPicture(completion: @escaping (Bool) -> Void) { completion(false) }
+    func resumeInlineRendererAfterPictureInPicture(completion: @escaping (Bool) -> Void) { completion(false) }
+    func setVideoGeometry(panscan: Double, aspectOverride: String?) {}'''
+              text = text.replace(fallback, replacement, 1)
+
+          create_anchor = '''        enhancementBaseline = nil
+        lastPresentationTimingSignature = nil
+
+        check(mpv_request_log_messages(handle, "warn"), operation: "request logs")'''
+          if text.count(create_anchor) == 1:
+              text = text.replace(create_anchor, '''        enhancementBaseline = nil
+        lastPresentationTimingSignature = nil
+        pictureInPictureRendererSuspended = false
+
+        check(mpv_request_log_messages(handle, "warn"), operation: "request logs")''', 1)
+
+          stop_anchor = '''        snapshot = PlayerSnapshot()
+        enhancementBaseline = nil
+        lastPresentationTimingSignature = nil
+
+        let flushLayer = { [displayLayer] in'''
+          if text.count(stop_anchor) == 1:
+              text = text.replace(stop_anchor, '''        snapshot = PlayerSnapshot()
+        enhancementBaseline = nil
+        lastPresentationTimingSignature = nil
+        pictureInPictureRendererSuspended = false
+
+        let flushLayer = { [displayLayer] in''', 1)
+          path.write_text(text)
+
+          coordinator_path = Path('Sources/UI/PlayerPiPSessionCoordinator.swift')
+          coordinator = coordinator_path.read_text()
+          old_guard = '''        guard UIApplication.shared.applicationState != .background else {
+            pendingForegroundRestore = { [weak self] in self?.restoreInlineRendererWhenForeground(reason: reason, completion: completion) }
+            DiagnosticsLogger.shared.playback("PiPSession", "renderer restore deferred reason=\(reason) appState=background")
+            return
+        }'''
+          new_guard = '''        guard UIApplication.shared.applicationState == .active else {
+            pendingForegroundRestore = { [weak self] in self?.restoreInlineRendererWhenForeground(reason: reason, completion: completion) }
+            DiagnosticsLogger.shared.playback("PiPSession", "renderer restore deferred reason=\(reason) appState=\(UIApplication.shared.applicationState.rawValue) wait=didBecomeActive")
+            return
+        }'''
+          if old_guard in coordinator: coordinator = coordinator.replace(old_guard, new_guard, 1)
+          if 'playbackController.engine as? PlayerPiPInlineRendererControlling' not in coordinator: raise SystemExit('Coordinator engine renderer adapter missing')
+          coordinator_path.write_text(coordinator)
           PY
+          git diff --check
+          git add Sources/Player/MPVPlayerEngine.swift Sources/UI/PlayerPiPSessionCoordinator.swift
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Build159: finalize MPV PiP VO lifecycle"
+            git push origin HEAD:fix/pip-vo-timebase-0.13.92
+          fi
+
+      - name: Verify Build159 contracts
+        run: |
+          set -euo pipefail
+          grep -Fq 'sourceVersion = "0.13.92"' Sources/Core/AppIdentity.swift
+          grep -Fq 'homePolicy=didStart-immediate' Sources/UI/PlayerPiPSessionCoordinator.swift
+          grep -Fq 'playbackController.engine as? PlayerPiPInlineRendererControlling' Sources/UI/PlayerPiPSessionCoordinator.swift
+          grep -Fq 'applicationState == .active' Sources/UI/PlayerPiPSessionCoordinator.swift
+          grep -Fq 'displayLayer.flush()' Sources/UI/PlayerPiPSessionCoordinator.swift
+          ! grep -Fq 'CMTimebaseSetTime(timebase, time: CMTime(seconds: playbackController.snapshot.position' Sources/UI/PlayerPiPSessionCoordinator.swift
+          grep -Fq 'PlayerEngine, PlaybackPresentationEngineAdapter, PlayerPiPInlineRendererControlling' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'name: "vo", value: "null"' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'name: "vo", value: "gpu-next"' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'decoderPreserved=true' Sources/Player/MPVPlayerEngine.swift
+          ! grep -Fq 'vid", value: "no"' Sources/Player/MPVPlayerEngine.swift
+          ! grep -Fq 'PlayerPiPInlineRendererControlling' Sources/UI/MPVPlayerSurface.swift
+          grep -Fq 'kCMSampleAttachmentKey_DoNotDisplay' Sources/UI/PlayerPiPSamplePipeline.swift
+          test ! -e Sources/UI/PlayerSampleBufferPiPBridge.swift
+          git fetch origin refactor/pip-session-0.13.91 --depth=1
+          test -z "$(git diff --name-only origin/refactor/pip-session-0.13.91...HEAD -- Sources/Player/PlayerController.swift Sources/Player/KSAVIOPlayerEngine.swift Sources/Transport/UnifiedMediaTransportSession.swift Sources/Player/PlaybackPresentationCoordinator.swift Sources/Player/PlaybackPresentationAdapters.swift MDKLab)"
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          def seek_body(text):
+              s = text.index('    func seek(to seconds: Double, direction: SeekDirection)')
+              e = text.index('\n    private func claimKeyframeLookupIndex()', s)
+              return text[s:e]
+          head = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
+          base = subprocess.check_output(['git', 'show', 'origin/refactor/pip-session-0.13.91:Sources/Player/MPVPlayerEngine.swift'], text=True)
+          assert seek_body(head) == seek_body(base)
+          assert 'absolute+keyframes' in seek_body(head)
+          assert 'absolute+exact' not in seek_body(head)
+          PY
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+          git diff --check
 
       - name: Select Xcode 16.4
         run: |
-          set -euo pipefail
           sudo xcode-select -switch /Applications/Xcode_16.4.app
           xcodebuild -version
           swift --version
 
       - name: Install build tools
         run: |
-          set -euo pipefail
           brew install xcodegen
           sudo gem install cocoapods -v 1.16.2 --no-document
-          xcodegen --version
-          pod --version
 
-      - name: Generate OnePlayer app icons
-        run: python3 scripts/generate_oneplayer_icons.py
-
-      - name: Generate project
-        run: xcodegen generate
-
-      - name: Validate player resume and foreground UI
-        run: python3 scripts/check_player_resume_foreground_ui.py
-
-      - name: Validate contiguous RangeMap
+      - name: Generate project and resolve dependencies
         run: |
           set -euo pipefail
-          swiftc \
-            Sources/Transport/SparseByteRangeSet.swift \
-            Sources/Cache/PlaybackRangeMap.swift \
-            scripts/RangeMapSmoke.swift \
-            -o /tmp/emby-range-map-smoke
-          /tmp/emby-range-map-smoke
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
 
-      - name: Install KTVHTTPCache 3.1.0
+      - name: Build Build159 Release
         run: |
           set -euo pipefail
-          set -o pipefail
-          pod install --repo-update 2>&1 | tee pods-install.log
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.92 CURRENT_PROJECT_VERSION=159 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
 
-      - name: Restore Swift package cache
-        uses: actions/cache@v4
-        with:
-          path: .spm-cache
-          key: ${{ runner.os }}-mpvkit-1.0.0-ktv-3.1.0-${{ hashFiles('project.yml', 'Podfile') }}
-
-      - name: Resolve MPVKit
+      - name: Locate and validate app
+        id: app
         run: |
           set -euo pipefail
-          set -o pipefail
-          xcodebuild \
-            -resolvePackageDependencies \
-            -workspace EmbyPlayerLab.xcworkspace \
-            -scheme EmbyPlayerLab \
-            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.92' --build '159' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
 
-      - name: Inspect package module maps
-        if: always()
-        run: |
-          set -u
-          if [[ ! -d .spm-cache ]]; then
-            echo ".spm-cache does not exist after package resolution." | tee mpv-module-maps.log
-            exit 0
-          fi
-          MODULE_MAP_LIST="$(mktemp)"
-          find .spm-cache \( -path '*/Modules/module.modulemap' -o -path '*/module.modulemap' \) -type f | sort > "$MODULE_MAP_LIST"
-          if [[ ! -s "$MODULE_MAP_LIST" ]]; then
-            echo "No module.modulemap files found under .spm-cache." | tee mpv-module-maps.log
-            rm -f "$MODULE_MAP_LIST"
-            exit 0
-          fi
-          {
-            while IFS= read -r file; do
-              echo "===== $file ====="
-              sed -n '1,120p' "$file"
-            done < "$MODULE_MAP_LIST"
-          } | tee mpv-module-maps.log
-          rm -f "$MODULE_MAP_LIST"
-
-      - name: Check project settings
+      - name: Package unsigned IPA
         run: |
           set -euo pipefail
-          set -o pipefail
-          xcodebuild \
-            -workspace EmbyPlayerLab.xcworkspace \
-            -scheme EmbyPlayerLab \
-            -showBuildSettings \
-            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee build-settings.log
-          grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 15.0' build-settings.log
-          grep -q 'SWIFT_VERSION = 5.0' build-settings.log
-          grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.embyplayerlab.app' build-settings.log
-          grep -q 'PRODUCT_NAME = OnePlayer' build-settings.log
-          grep -q 'ASSETCATALOG_COMPILER_APPICON_NAME = OnePlayerIcon' build-settings.log
-          grep -q 'ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = OnePlayerAltIcon' build-settings.log
+          APP_PATH="${{ steps.app.outputs.path }}"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.92-build159-pip-vo-timebase-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
 
-      - name: Compile for generic iOS device
-        run: |
-          set -euo pipefail
-          set -o pipefail
-          rm -rf build/DerivedData
-          xcodebuild \
-            -workspace EmbyPlayerLab.xcworkspace \
-            -scheme EmbyPlayerLab \
-            -configuration Debug \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/DerivedData \
-            -clonedSourcePackagesDirPath .spm-cache \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY='' \
-            DEVELOPMENT_TEAM='' \
-            build 2>&1 | tee validate-build.log
-
-      - name: Verify built OnePlayer name and alternate icon registration
-        run: |
-          set -euo pipefail
-          APP_PATH="$(find build/DerivedData/Build/Products/Debug-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
-          if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
-            echo "::error::Debug .app was not produced"
-            exit 1
-          fi
-          /usr/bin/plutil -p "$APP_PATH/Info.plist" 2>&1 | tee built-info-plist.log
-          python3 scripts/validate_built_app.py \
-            "$APP_PATH" \
-            --bundle-id "com.embyplayerlab.app" \
-            --version "0.13.3" \
-            --build "69" \
-            --display-name "OnePlayer" \
-            --primary-icon "OnePlayerIcon" \
-            --alternate-icon "OnePlayerAltIcon" 2>&1 | tee app-validation.log
-
-      - name: Summarize compiler errors
-        if: failure()
-        run: |
-          {
-            echo "## First validation/compiler errors"
-            echo '```text'
-            grep -nE '(^|[[:space:]])(error:|fatal error:)|::error::' source-audit.log validate-build.log build-settings.log package-resolution.log pods-install.log mpv-module-maps.log app-validation.log built-info-plist.log | head -180 || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload validation logs
-        if: always()
+      - name: Upload Build159 package
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-validation-logs-${{ github.sha }}
+          name: OnePlayer-0.13.92-build159-pip-vo-timebase
           path: |
-            source-audit.log
-            validate-build.log
-            build-settings.log
-            package-resolution.log
-            pods-install.log
-            mpv-module-maps.log
+            OnePlayer-0.13.92-build159-pip-vo-timebase-unsigned.ipa
+            OnePlayer-0.13.92-build159-pip-vo-timebase-unsigned.ipa.sha256
             app-validation.log
-            built-info-plist.log
+            min-os-report.log
+            build.log
+            package-resolution.log
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Build159 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.92-build159-pip-vo-timebase-failure
+          path: |
+            build.log
+            package-resolution.log
+            app-validation.log
+            min-os-report.log
+          if-no-files-found: ignore
           retention-days: 14
