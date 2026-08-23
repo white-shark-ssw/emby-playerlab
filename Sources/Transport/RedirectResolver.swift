@@ -74,6 +74,18 @@ final class RedirectCaptureDelegate: NSObject, URLSessionTaskDelegate {
 
 struct RedirectResolver {
     func resolve(source: ResolvedPlaybackSource) async throws -> TransportResolvedResource {
+        if let task = PlaybackClickResolveRegistry.shared.task(for: source) {
+            DiagnosticsLogger.shared.playback("StartupFastPath", "transport resolve joined click-prewarm item=\(source.itemId)")
+            do { return try await task.value }
+            catch {
+                PlaybackClickResolveRegistry.shared.discard(source: source)
+                throw error
+            }
+        }
+        return try await resolveNetwork(source: source)
+    }
+
+    func resolveNetwork(source: ResolvedPlaybackSource) async throws -> TransportResolvedResource {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.timeoutIntervalForRequest = 30

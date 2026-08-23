@@ -393,6 +393,7 @@ struct ResolvedPlaybackSource: Identifiable, Hashable {
     let itemName: String
     let mediaSource: MediaSource
     let playSessionId: String?
+    let initialPlaybackPositionTicks: Int64?
     let url: URL
     let headers: [String: String]
 }

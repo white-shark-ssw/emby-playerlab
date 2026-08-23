@@ -1061,6 +1061,8 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     @Published var selectedSource: ResolvedPlaybackSource?
     @Published var mediaSources: [MediaSource] = []
     @Published var mediaMetadataItem: LibraryItem?
+    private var mediaPlaySessionId: String?
+    private var mediaPlaybackInfoLoadedAt: Date?
     @Published private var desiredFavorite: Bool
     @Published private var desiredPlayed: Bool
     @Published private var hasPlaybackPositionOverride = false
@@ -1373,12 +1375,16 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         guard let mediaItem else {
             mediaSources = []
             mediaMetadataItem = nil
+            mediaPlaySessionId = nil
+            mediaPlaybackInfoLoadedAt = nil
             return
         }
         do {
             let info = try await client.playbackInfo(itemId: mediaItem.id)
             mediaSources = info.mediaSources
             mediaMetadataItem = mediaItem
+            mediaPlaySessionId = info.playSessionId
+            mediaPlaybackInfoLoadedAt = Date()
         } catch {
             if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "media metadata failed: \(error.localizedDescription)") }
         }
@@ -1494,9 +1500,29 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                 try? await client.setPlayed(itemId: mediaItem.id, played: false)
                 DiagnosticsLogger.shared.log("EmbyDetail", "resume override cleared child item=\(mediaItem.id) before playback")
             }
-            let info = try await client.playbackInfo(itemId: mediaItem.id)
-            guard let source = info.mediaSources.first(where: { $0.supportsDirectPlay == true }) ?? info.mediaSources.first else { throw EmbyAPIError.noMediaSource }
-            selectedSource = try client.resolvePlaybackSource(itemId: mediaItem.id, itemName: mediaItem.name, mediaSource: source, playSessionId: info.playSessionId)
+
+            let initialTicks: Int64 = {
+                if hasPlaybackPositionOverride { return max(0, playbackPositionOverrideTicks ?? 0) }
+                if mediaItem.isPlayed { return 0 }
+                return max(0, mediaItem.userData?.playbackPositionTicks ?? 0)
+            }()
+
+            let resolved: ResolvedPlaybackSource
+            if mediaMetadataItem?.id == mediaItem.id,
+               let cachedSource = mediaSources.first(where: { $0.supportsDirectPlay == true }) ?? mediaSources.first,
+               let loadedAt = mediaPlaybackInfoLoadedAt,
+               Date().timeIntervalSince(loadedAt) <= 60 {
+                resolved = try client.resolvePlaybackSource(itemId: mediaItem.id, itemName: mediaItem.name, mediaSource: cachedSource, playSessionId: mediaPlaySessionId, initialPlaybackPositionTicks: initialTicks)
+                DiagnosticsLogger.shared.playback("StartupFastPath", "click source reused item=\(mediaItem.id) playbackInfoAgeMs=\(Int(Date().timeIntervalSince(loadedAt) * 1000)) resumeTicks=\(initialTicks)")
+            } else {
+                let info = try await client.playbackInfo(itemId: mediaItem.id)
+                guard let source = info.mediaSources.first(where: { $0.supportsDirectPlay == true }) ?? info.mediaSources.first else { throw EmbyAPIError.noMediaSource }
+                resolved = try client.resolvePlaybackSource(itemId: mediaItem.id, itemName: mediaItem.name, mediaSource: source, playSessionId: info.playSessionId, initialPlaybackPositionTicks: initialTicks)
+                DiagnosticsLogger.shared.playback("StartupFastPath", "click source refreshed item=\(mediaItem.id) resumeTicks=\(initialTicks)")
+            }
+
+            PlaybackClickResolveRegistry.shared.arm(source: resolved)
+            selectedSource = resolved
         } catch {
             if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
         }
