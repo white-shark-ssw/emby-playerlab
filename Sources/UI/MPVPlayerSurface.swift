@@ -38,6 +38,20 @@ final class MPVSurfaceUIView: UIView {
         setNeedsLayout()
     }
 
+    func takeDisplayLayerForPictureInPicture() -> CAMetalLayer? {
+        guard let displayLayer else { return nil }
+        displayLayer.removeFromSuperlayer()
+        DiagnosticsLogger.shared.playback("PiP", "MPV renderer detached from inline surface")
+        return displayLayer
+    }
+
+    func restoreDisplayLayerAfterPictureInPicture(_ layer: CAMetalLayer) {
+        attach(layer)
+        setNeedsLayout()
+        if window != nil { layoutIfNeeded() }
+        DiagnosticsLogger.shared.playback("PiP", "MPV renderer restored to inline surface")
+    }
+
     func detach() {
         guard let displayLayer else { return }
         DiagnosticsLogger.shared.log("MPVSurface", "detach surface=\(ObjectIdentifier(self)) generation=\(layoutGeneration)")
