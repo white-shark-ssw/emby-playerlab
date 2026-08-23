@@ -132,7 +132,7 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isPossible = controller.isPictureInPicturePossible || AVPictureInPictureController.isPictureInPictureSupported()
-                DiagnosticsLogger.shared.playback("PiP", "samplebuffer possible=\(controller.isPictureInPicturePossible) ready=\(self.displayLayer?.isReadyForDisplay ?? false) first=\(self.firstSampleEnqueued)")
+                DiagnosticsLogger.shared.playback("PiP", "samplebuffer possible=\(controller.isPictureInPicturePossible) status=\(self.displayLayer?.status.rawValue ?? -1) first=\(self.firstSampleEnqueued)")
                 self.startIfReady()
             }
         }
@@ -150,7 +150,7 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
 
     private func startIfReady() {
         guard startPending, firstSampleEnqueued, let controller, let displayLayer else { return }
-        guard controller.isPictureInPicturePossible, displayLayer.isReadyForDisplay else { return }
+        guard controller.isPictureInPicturePossible, displayLayer.status != .failed else { return }
         startPending = false
         startTimeout?.cancel(); startTimeout = nil
         startPoll?.cancel(); startPoll = nil
@@ -162,7 +162,7 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
         startTimeout?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.startPending else { return }
-            DiagnosticsLogger.shared.playback("PiP", "samplebuffer start timeout possible=\(self.controller?.isPictureInPicturePossible ?? false) layerReady=\(self.displayLayer?.isReadyForDisplay ?? false) first=\(self.firstSampleEnqueued) status=\(self.displayLayer?.status.rawValue ?? -1)")
+            DiagnosticsLogger.shared.playback("PiP", "samplebuffer start timeout possible=\(self.controller?.isPictureInPicturePossible ?? false) status=\(self.displayLayer?.status.rawValue ?? -1) first=\(self.firstSampleEnqueued) status=\(self.displayLayer?.status.rawValue ?? -1)")
             self.reset(reason: "start-timeout")
         }
         startTimeout = work

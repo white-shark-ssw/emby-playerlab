@@ -418,7 +418,7 @@ final class PlayerSampleBufferPiPBridge: @unchecked Sendable {
         var blockBuffer: CMBlockBuffer?
         var status = CMBlockBufferCreateEmpty(allocator: kCFAllocatorDefault, capacity: 0, flags: 0, blockBufferOut: &blockBuffer)
         guard status == kCMBlockBufferNoErr, let blockBuffer else { return nil }
-        status = CMBlockBufferAppendMemoryBlock(blockBuffer, memoryBlock: nil, blockLength: data.count, blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0, dataLength: data.count, flags: kCMBlockBufferAssureMemoryNow)
+        status = CMBlockBufferAppendMemoryBlock(blockBuffer, memoryBlock: nil, length: data.count, blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0, dataLength: data.count, flags: 0)
         guard status == kCMBlockBufferNoErr else { return nil }
         let copyStatus: OSStatus = data.withUnsafeBytes { raw in
             guard let base = raw.baseAddress else { return -1 }
