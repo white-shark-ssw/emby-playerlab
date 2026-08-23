@@ -1,16 +1,19 @@
 name: Build OnePlayer 0.13.92 Build159 PiP VO Timebase
 
 on:
-  pull_request:
-    branches: [refactor/pip-session-0.13.91]
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+  push:
+    branches: [fix/pip-vo-timebase-0.13.92]
+    paths:
+      - "Sources/**"
+      - ".github/workflows/build156-samplebuffer-pip.yml"
 
 permissions:
   contents: write
 
 concurrency:
   group: build159-pip-vo-timebase-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -20,9 +23,10 @@ jobs:
       - name: Checkout Build159 source
         uses: actions/checkout@v4
         with:
+          ref: fix/pip-vo-timebase-0.13.92
           fetch-depth: 0
 
-      - name: Materialize MPV PiP VO lifecycle
+      - name: Materialize final Build159 source
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -94,7 +98,7 @@ jobs:
         let drawable = displayLayer.drawableSize
         let drawableReady = target == "null" || (drawable.width > 1 && drawable.height > 1)
         if voMatched && drawableReady { completion(true, currentVO); return }
-        guard attempt < 20 else { completion(false, currentVO); return }
+        guard attempt < 40 else { completion(false, currentVO); return }
         queue.asyncAfter(deadline: .now() + 0.01) { [weak self] in
             self?.waitForPictureInPictureVO(handle: handle, target: target, attempt: attempt + 1, completion: completion)
         }
@@ -114,14 +118,55 @@ jobs:
     func setVideoGeometry(panscan: Double, aspectOverride: String?) {}'''
               text = text.replace(fallback, replacement, 1)
 
+          create_anchor = '''        enhancementBaseline = nil
+        lastPresentationTimingSignature = nil
+
+        check(mpv_request_log_messages(handle, "warn"), operation: "request logs")'''
+          if text.count(create_anchor) == 1:
+              text = text.replace(create_anchor, '''        enhancementBaseline = nil
+        lastPresentationTimingSignature = nil
+        pictureInPictureRendererSuspended = false
+
+        check(mpv_request_log_messages(handle, "warn"), operation: "request logs")''', 1)
+
+          stop_anchor = '''        snapshot = PlayerSnapshot()
+        enhancementBaseline = nil
+        lastPresentationTimingSignature = nil
+
+        let flushLayer = { [displayLayer] in'''
+          if text.count(stop_anchor) == 1:
+              text = text.replace(stop_anchor, '''        snapshot = PlayerSnapshot()
+        enhancementBaseline = nil
+        lastPresentationTimingSignature = nil
+        pictureInPictureRendererSuspended = false
+
+        let flushLayer = { [displayLayer] in''', 1)
           path.write_text(text)
+
+          coordinator_path = Path('Sources/UI/PlayerPiPSessionCoordinator.swift')
+          coordinator = coordinator_path.read_text()
+          old_guard = '''        guard UIApplication.shared.applicationState != .background else {
+            pendingForegroundRestore = { [weak self] in self?.restoreInlineRendererWhenForeground(reason: reason, completion: completion) }
+            DiagnosticsLogger.shared.playback("PiPSession", "renderer restore deferred reason=\(reason) appState=background")
+            return
+        }'''
+          new_guard = '''        guard UIApplication.shared.applicationState == .active else {
+            pendingForegroundRestore = { [weak self] in self?.restoreInlineRendererWhenForeground(reason: reason, completion: completion) }
+            DiagnosticsLogger.shared.playback("PiPSession", "renderer restore deferred reason=\(reason) appState=\(UIApplication.shared.applicationState.rawValue) wait=didBecomeActive")
+            return
+        }'''
+          if old_guard in coordinator:
+              coordinator = coordinator.replace(old_guard, new_guard, 1)
+          if 'playbackController.engine as? PlayerPiPInlineRendererControlling' not in coordinator:
+              raise SystemExit('Coordinator engine renderer adapter missing')
+          coordinator_path.write_text(coordinator)
           PY
           git diff --check
-          git add Sources/Player/MPVPlayerEngine.swift
+          git add Sources/Player/MPVPlayerEngine.swift Sources/UI/PlayerPiPSessionCoordinator.swift
           if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "Build159: add MPV PiP video-output lifecycle"
+            git commit -m "Build159: finalize MPV PiP VO lifecycle"
             git push origin HEAD:fix/pip-vo-timebase-0.13.92
           fi
 
@@ -130,6 +175,8 @@ jobs:
           set -euo pipefail
           grep -Fq 'sourceVersion = "0.13.92"' Sources/Core/AppIdentity.swift
           grep -Fq 'homePolicy=didStart-immediate' Sources/UI/PlayerPiPSessionCoordinator.swift
+          grep -Fq 'playbackController.engine as? PlayerPiPInlineRendererControlling' Sources/UI/PlayerPiPSessionCoordinator.swift
+          grep -Fq 'applicationState == .active' Sources/UI/PlayerPiPSessionCoordinator.swift
           grep -Fq 'displayLayer.flush()' Sources/UI/PlayerPiPSessionCoordinator.swift
           ! grep -Fq 'CMTimebaseSetTime(timebase, time: CMTime(seconds: playbackController.snapshot.position' Sources/UI/PlayerPiPSessionCoordinator.swift
           grep -Fq 'PlayerEngine, PlaybackPresentationEngineAdapter, PlayerPiPInlineRendererControlling' Sources/Player/MPVPlayerEngine.swift
