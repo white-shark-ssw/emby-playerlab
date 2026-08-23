@@ -14,6 +14,20 @@ final class KSAVIOSurfaceUIView: UIView {
         addSubview(playerView)
     }
 
+    func takePlayerViewForPictureInPicture() -> UIView? {
+        guard let attachedView else { return nil }
+        attachedView.removeFromSuperview()
+        DiagnosticsLogger.shared.playback("PiP", "MDK renderer detached from inline surface")
+        return attachedView
+    }
+
+    func restorePlayerViewAfterPictureInPicture(_ playerView: UIView) {
+        attach(playerView)
+        setNeedsLayout()
+        if window != nil { layoutIfNeeded() }
+        DiagnosticsLogger.shared.playback("PiP", "MDK renderer restored to inline surface")
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         attachedView?.frame = bounds
