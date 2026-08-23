@@ -67,12 +67,12 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
     }
 
     static var selectableCases: [PlayerEnginePreference] {
-        var result: [PlayerEnginePreference] = [.automatic]
-        #if MDK_LAB && canImport(KSPlayer)
-        result.append(.ksAVIO)
-        #endif
+        var result: [PlayerEnginePreference] = []
         #if canImport(Libmpv)
         result.append(.mpv)
+        #endif
+        #if MDK_LAB && canImport(KSPlayer)
+        result.append(.ksAVIO)
         #endif
         return result
     }
@@ -89,11 +89,13 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
         #endif
     }
 
-    static var defaultPreference: PlayerEnginePreference { .automatic }
+    static var defaultPreference: PlayerEnginePreference {
+        selectableCases.first ?? .mpv
+    }
 
     static func persisted(rawValue: String?) -> PlayerEnginePreference {
-        let preference = rawValue.flatMap(PlayerEnginePreference.init(rawValue:)) ?? defaultPreference
-        return selectableCases.contains(preference) ? preference : defaultPreference
+        guard let preference = rawValue.flatMap(PlayerEnginePreference.init(rawValue:)), selectableCases.contains(preference) else { return defaultPreference }
+        return preference
     }
 
     var isAutomatic: Bool { self == .automatic }
