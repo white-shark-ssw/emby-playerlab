@@ -1,1 +1,2 @@
 trigger Build159 final Release validation
+synchronize after main workflow registration
