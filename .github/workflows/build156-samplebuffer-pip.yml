@@ -9,9 +9,12 @@ on:
       - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build156-samplebuffer-pip.yml"
+  pull_request:
+    branches: [lab/pip-samplebuffer-0.13.89]
+    types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: build158-pip-session-${{ github.ref }}
@@ -27,312 +30,41 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Materialize Build158 PiP architecture once
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          changed = False
-
-          old_bridge = Path('Sources/UI/PlayerSampleBufferPiPBridge.swift')
-          pipeline_path = Path('Sources/UI/PlayerPiPSamplePipeline.swift')
-          if old_bridge.exists() and not pipeline_path.exists():
-              text = old_bridge.read_text()
-              start = text.index('final class PlayerSampleBufferPiPBridge')
-              fallback = text.index('#else', start)
-              prefix = text[:start]
-              pipeline = r'''final class PlayerPiPSamplePipeline: @unchecked Sendable {
-    struct SampleEnvelope: @unchecked Sendable {
-        let buffer: CMSampleBuffer
-        let pts: Double
-        let keyframe: Bool
-        let generation: UInt64
-        let displayable: Bool
-    }
-
-    private struct SeekRequest { let generation: UInt64; let position: Double }
-
-    var onSample: ((SampleEnvelope) -> Void)?
-    var onReady: ((String) -> Void)?
-    var onFailure: ((String) -> Void)?
-
-    private let session: TransportDataSession
-    private let startPosition: Double
-    private let queue = DispatchQueue(label: "OnePlayer.PiP.SamplePipeline", qos: .userInitiated)
-    private let lock = NSLock()
-    private var cancelled = false
-    private var paused = false
-    private var input: OnePlayerPiPOpenedInput?
-    private var generation: UInt64 = 1
-    private var pendingSeek: SeekRequest?
-    private var pacingAnchorPosition: Double
-    private var pacingAnchorWall = CACurrentMediaTime()
-
-    init(session: TransportDataSession, startPosition: Double) {
-        self.session = session
-        self.startPosition = max(0, startPosition)
-        pacingAnchorPosition = max(0, startPosition)
-        pendingSeek = SeekRequest(generation: 1, position: max(0, startPosition))
-    }
-
-    @discardableResult
-    func start() -> UInt64 { queue.async { [weak self] in self?.run() }; return 1 }
-
-    @discardableResult
-    func seek(to position: Double) -> UInt64 {
-        lock.lock()
-        generation &+= 1
-        let value = generation
-        let target = max(0, position)
-        pendingSeek = SeekRequest(generation: value, position: target)
-        pacingAnchorPosition = target
-        pacingAnchorWall = CACurrentMediaTime()
-        lock.unlock()
-        return value
-    }
-
-    func stop() { lock.lock(); cancelled = true; lock.unlock(); input?.state.cancel() }
-
-    func setPaused(_ value: Bool) {
-        lock.lock()
-        let now = CACurrentMediaTime()
-        if paused != value {
-            if !paused { pacingAnchorPosition += max(0, now - pacingAnchorWall) }
-            pacingAnchorWall = now
-            paused = value
-        }
-        lock.unlock()
-    }
-
-    private func run() {
-        let resolved: TransportResolvedResource
-        do {
-            let semaphore = DispatchSemaphore(value: 0)
-            var value: TransportResolvedResource?
-            var failure: Error?
-            Task { [session] in
-                do { value = try await session.resolve() } catch { failure = error }
-                semaphore.signal()
-            }
-            if semaphore.wait(timeout: .now() + 8.0) == .timedOut { fail("resolve-timeout"); return }
-            if let failure { fail("resolve=\(failure.localizedDescription)"); return }
-            guard let resolvedValue = value else { fail("resolve-empty"); return }
-            resolved = resolvedValue
-        }
-
-        let opened = OnePlayerPiPOpenedInput.open(session: session, contentLength: resolved.contentLength)
-        guard let input = opened.0, let context = input.formatContext else { fail(opened.1 ?? "open-failed"); return }
-        self.input = input
-        guard let streams = context.pointee.streams else { fail("streams-unavailable"); return }
-        let videoIndex = av_find_best_stream(context, AVMEDIA_TYPE_VIDEO, -1, -1, nil, 0)
-        guard videoIndex >= 0, let stream = streams[Int(videoIndex)], let codecParameters = stream.pointee.codecpar else { fail("video-stream-unavailable"); return }
-        guard let configuration = OnePlayerPiPCodecBuilder.make(codecParameters: codecParameters) else {
-            let codecName = String(cString: avcodec_get_name(codecParameters.pointee.codec_id))
-            fail("unsupported-codec-or-extradata codec=\(codecName)")
-            return
-        }
-
-        let timeBase = stream.pointee.time_base
-        guard timeBase.den != 0, timeBase.num != 0 else { fail("invalid-timebase"); return }
-        let timeScale = Double(timeBase.num) / Double(timeBase.den)
-        let rawStart = stream.pointee.start_time
-        let startTimestamp: Int64? = rawStart == Int64.min ? nil : rawStart
-        let frameRate = rationalValue(stream.pointee.avg_frame_rate)
-        let fallbackDuration = frameRate > 0 ? 1.0 / frameRate : 1.0 / 30.0
-        onReady?("codec=\(configuration.codecName) bytes=\(resolved.contentLength) start=\(String(format: "%.3f", startPosition)) persistentDemux=true")
-
-        var packet: UnsafeMutablePointer<AVPacket>? = av_packet_alloc()
-        guard let packetPointer = packet else { fail("av-packet-alloc-failed"); return }
-        defer { av_packet_free(&packet) }
-
-        var activeGeneration: UInt64 = 0
-        var prerollTarget = startPosition
-        var awaitingVisibleFrame = true
-
-        while !isCancelled {
-            if let request = takePendingSeek() {
-                let targetTimestamp = (startTimestamp ?? 0) + Int64((request.position / timeScale).rounded())
-                let status = request.position > 0.05 ? av_seek_frame(context, videoIndex, targetTimestamp, Int32(AVSEEK_FLAG_BACKWARD)) : 0
-                guard status >= 0 else { fail("seek=\(status) generation=\(request.generation)"); return }
-                avformat_flush(context)
-                activeGeneration = request.generation
-                prerollTarget = request.position
-                awaitingVisibleFrame = true
-                DiagnosticsLogger.shared.playback("PiPPipeline", "seek-applied target=\(String(format: "%.3f", request.position)) generation=\(request.generation) mode=persistent-demux-backward-preroll")
-            }
-
-            if isPaused && !awaitingVisibleFrame { Thread.sleep(forTimeInterval: 0.02); continue }
-            let readStatus = av_read_frame(context, packetPointer)
-            guard readStatus >= 0 else { fail("av-read-frame=\(readStatus)"); return }
-            guard packetPointer.pointee.stream_index == videoIndex else { av_packet_unref(packetPointer); continue }
-
-            let rawPTS = packetPointer.pointee.pts != Int64.min ? packetPointer.pointee.pts : packetPointer.pointee.dts
-            guard rawPTS != Int64.min, packetPointer.pointee.size > 0, let rawData = packetPointer.pointee.data else { av_packet_unref(packetPointer); continue }
-            let ptsUnits = startTimestamp.map { rawPTS - $0 } ?? rawPTS
-            let dtsRaw = packetPointer.pointee.dts
-            let dtsUnits = dtsRaw == Int64.min ? ptsUnits : (startTimestamp.map { dtsRaw - $0 } ?? dtsRaw)
-            let pts = max(0, Double(ptsUnits) * timeScale)
-            let dts = max(0, Double(dtsUnits) * timeScale)
-            let packetDuration = packetPointer.pointee.duration > 0 ? Double(packetPointer.pointee.duration) * timeScale : fallbackDuration
-            let keyframe = (packetPointer.pointee.flags & Int32(AV_PKT_FLAG_KEY)) != 0
-            var data = Data(bytes: rawData, count: Int(packetPointer.pointee.size))
-            av_packet_unref(packetPointer)
-            data = OnePlayerPiPCodecBuilder.normalizePacket(data, configuration: configuration)
-
-            let displayable = !awaitingVisibleFrame || pts >= prerollTarget - 0.05
-            guard let sample = makeSampleBuffer(data: data, configuration: configuration, pts: pts, dts: dts, duration: packetDuration, keyframe: keyframe, displayable: displayable) else { fail("sample-buffer-create-failed pts=\(pts)"); return }
-            if displayable && awaitingVisibleFrame {
-                awaitingVisibleFrame = false
-                DiagnosticsLogger.shared.playback("PiPPipeline", "preroll-complete target=\(String(format: "%.3f", prerollTarget)) firstVisible=\(String(format: "%.3f", pts)) generation=\(activeGeneration)")
-            }
-            if displayable { throttleIfAhead(pts: pts) }
-            onSample?(SampleEnvelope(buffer: sample, pts: pts, keyframe: keyframe, generation: activeGeneration, displayable: displayable))
-        }
-    }
-
-    private func takePendingSeek() -> SeekRequest? { lock.lock(); defer { lock.unlock() }; let value = pendingSeek; pendingSeek = nil; return value }
-    private var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
-    private var isPaused: Bool { lock.lock(); defer { lock.unlock() }; return paused }
-
-    private func currentPacingPosition() -> Double {
-        lock.lock(); defer { lock.unlock() }
-        return paused ? pacingAnchorPosition : pacingAnchorPosition + max(0, CACurrentMediaTime() - pacingAnchorWall)
-    }
-
-    private func throttleIfAhead(pts: Double) {
-        while !isCancelled, !isPaused, pts > currentPacingPosition() + 1.0 { Thread.sleep(forTimeInterval: 0.01) }
-    }
-
-    private func fail(_ message: String) { if !isCancelled { onFailure?(message) } }
-
-    private func rationalValue(_ value: AVRational) -> Double {
-        guard value.den != 0 else { return 0 }
-        let result = Double(value.num) / Double(value.den)
-        return result.isFinite && result > 0 ? result : 0
-    }
-
-    private func makeSampleBuffer(data: Data, configuration: OnePlayerPiPCodecConfiguration, pts: Double, dts: Double, duration: Double, keyframe: Bool, displayable: Bool) -> CMSampleBuffer? {
-        var blockBuffer: CMBlockBuffer?
-        var status = CMBlockBufferCreateEmpty(allocator: kCFAllocatorDefault, capacity: 0, flags: 0, blockBufferOut: &blockBuffer)
-        guard status == kCMBlockBufferNoErr, let blockBuffer else { return nil }
-        status = CMBlockBufferAppendMemoryBlock(blockBuffer, memoryBlock: nil, length: data.count, blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0, dataLength: data.count, flags: 0)
-        guard status == kCMBlockBufferNoErr else { return nil }
-        let copyStatus: OSStatus = data.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return -1 }
-            return CMBlockBufferReplaceDataBytes(with: base, blockBuffer: blockBuffer, offsetIntoDestination: 0, dataLength: data.count)
-        }
-        guard copyStatus == kCMBlockBufferNoErr else { return nil }
-
-        var timing = CMSampleTimingInfo(duration: CMTime(seconds: max(0.001, duration), preferredTimescale: 60000), presentationTimeStamp: CMTime(seconds: pts, preferredTimescale: 60000), decodeTimeStamp: CMTime(seconds: dts, preferredTimescale: 60000))
-        var sampleSize = data.count
-        var sampleBuffer: CMSampleBuffer?
-        status = CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: blockBuffer, formatDescription: configuration.formatDescription, sampleCount: 1, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleSizeEntryCount: 1, sampleSizeArray: &sampleSize, sampleBufferOut: &sampleBuffer)
-        guard status == noErr, let sampleBuffer else { return nil }
-        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true) as? [NSMutableDictionary], let attachment = attachments.first {
-            if !keyframe { attachment[kCMSampleAttachmentKey_NotSync] = true }
-            if !displayable { attachment[kCMSampleAttachmentKey_DoNotDisplay] = true }
-        }
-        return sampleBuffer
-    }
-}
-'''
-              fallback_class = r'''final class PlayerPiPSamplePipeline: @unchecked Sendable {
-    struct SampleEnvelope: @unchecked Sendable { let buffer: CMSampleBuffer; let pts: Double; let keyframe: Bool; let generation: UInt64; let displayable: Bool }
-    var onSample: ((SampleEnvelope) -> Void)?
-    var onReady: ((String) -> Void)?
-    var onFailure: ((String) -> Void)?
-    private var generation: UInt64 = 1
-    init(session: TransportDataSession, startPosition: Double) {}
-    func start() -> UInt64 { onFailure?("ffmpeg-modules-unavailable"); return generation }
-    func stop() {}
-    func setPaused(_ value: Bool) {}
-    func seek(to position: Double) -> UInt64 { generation &+= 1; return generation }
-}'''
-              pipeline_path.write_text(prefix + pipeline + '\n#else\n' + fallback_class + '\n#endif\n')
-              old_bridge.unlink()
-              changed = True
-
-          coordinator = Path('Sources/UI/PlayerPiPSessionCoordinator.swift')
-          text = coordinator.read_text()
-          if 'PlayerSampleBufferPiPBridge' in text:
-              coordinator.write_text(text.replace('PlayerSampleBufferPiPBridge', 'PlayerPiPSamplePipeline'))
-              changed = True
-
-          mpv = Path('Sources/Player/MPVPlayerEngine.swift')
-          text = mpv.read_text()
-          old_decl = 'final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {'
-          new_decl = 'final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, PlayerPiPInlineRendererControlling {'
-          if old_decl in text:
-              text = text.replace(old_decl, new_decl)
-              changed = True
-          if 'private var pictureInPictureRendererSuspended = false' not in text:
-              anchor = '    private var lastPresentationTimingSignature: PresentationTimingSignature?\n'
-              assert text.count(anchor) == 1
-              text = text.replace(anchor, anchor + '    private var pictureInPictureRendererSuspended = false\n', 1)
-              changed = True
-          if 'func suspendInlineRendererForPictureInPicture' not in text:
-              anchor = '''    func play() { setPropertyAsync(name: "pause", value: "no") }\n    func pause() { setPropertyAsync(name: "pause", value: "yes") }\n\n    func setPlaybackRate(_ rate: Double) {'''
-              assert text.count(anchor) == 1
-              replacement = '''    func play() { setPropertyAsync(name: "pause", value: "no") }\n    func pause() { setPropertyAsync(name: "pause", value: "yes") }\n\n    func suspendInlineRendererForPictureInPicture(completion: @escaping (Bool) -> Void) {\n        queue.async { [weak self] in\n            guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }\n            if self.pictureInPictureRendererSuspended { DispatchQueue.main.async { completion(true) }; return }\n            let previousVO = self.getStringProperty(handle: handle, name: "current-vo") ?? self.getStringProperty(handle: handle, name: "vo") ?? "unknown"\n            let success = self.setPropertyChecked(handle: handle, name: "vo", value: "null")\n            if success { self.pictureInPictureRendererSuspended = true }\n            DiagnosticsLogger.shared.log("MPVPiP", "inline-renderer suspend success=\\(success) previousVO=\\(previousVO) targetVO=null decoderPreserved=true")\n            DispatchQueue.main.async { completion(success) }\n        }\n    }\n\n    func resumeInlineRendererAfterPictureInPicture(completion: @escaping (Bool) -> Void) {\n        queue.async { [weak self] in\n            guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }\n            guard self.pictureInPictureRendererSuspended else { DispatchQueue.main.async { completion(true) }; return }\n            let success = self.setPropertyChecked(handle: handle, name: "vo", value: "gpu-next")\n            guard success else { DispatchQueue.main.async { completion(false) }; return }\n            self.pollPictureInPictureRendererRestore(handle: handle, attempt: 0, completion: completion)\n        }\n    }\n\n    private func pollPictureInPictureRendererRestore(handle: OpaquePointer, attempt: Int, completion: @escaping (Bool) -> Void) {\n        guard let currentHandle = mpv, currentHandle == handle, !isStopping else { DispatchQueue.main.async { completion(false) }; return }\n        let currentVO = getStringProperty(handle: handle, name: "current-vo") ?? "unknown"\n        if let viewport = rendererViewportSize(handle: handle), currentVO != "null" {\n            pictureInPictureRendererSuspended = false\n            DiagnosticsLogger.shared.log("MPVPiP", "inline-renderer restore ready=true vo=\\(currentVO) viewport=\\(Int(viewport.width))x\\(Int(viewport.height)) attempts=\\(attempt)")\n            DispatchQueue.main.async { completion(true) }\n            return\n        }\n        guard attempt < 60 else {\n            pictureInPictureRendererSuspended = false\n            DiagnosticsLogger.shared.log("MPVPiP", "inline-renderer restore ready=false vo=\\(currentVO) attempts=\\(attempt)")\n            DispatchQueue.main.async { completion(false) }\n            return\n        }\n        queue.asyncAfter(deadline: .now() + 0.025) { [weak self] in self?.pollPictureInPictureRendererRestore(handle: handle, attempt: attempt + 1, completion: completion) }\n    }\n\n    func setPlaybackRate(_ rate: Double) {'''
-              text = text.replace(anchor, replacement, 1)
-              fallback_anchor = '''    func play() {}\n    func pause() {}\n    func setVideoGeometry(panscan: Double, aspectOverride: String?) {}'''
-              assert text.count(fallback_anchor) == 1
-              text = text.replace(fallback_anchor, '''    func play() {}\n    func pause() {}\n    func suspendInlineRendererForPictureInPicture(completion: @escaping (Bool) -> Void) { completion(false) }\n    func resumeInlineRendererAfterPictureInPicture(completion: @escaping (Bool) -> Void) { completion(false) }\n    func setVideoGeometry(panscan: Double, aspectOverride: String?) {}''', 1)
-              changed = True
-          mpv.write_text(text)
-
-          if changed:
-              print('Build158 architecture materialized')
-          else:
-              print('Build158 architecture already materialized')
-          PY
-          git diff --check
-          if ! git diff --quiet; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add -A Sources
-            git commit -m 'Build158: materialize PiP session architecture'
-            git push origin HEAD:refactor/pip-session-0.13.91
-            exit 0
-          fi
-
-      - name: Verify Build158 architecture
+      - name: Verify Build158 contracts
         run: |
           set -euo pipefail
           grep -Fq 'sourceVersion = "0.13.91"' Sources/Core/AppIdentity.swift
           grep -Fq 'final class PlayerPiPSessionCoordinator' Sources/UI/PlayerPiPSessionCoordinator.swift
-          grep -Fq 'enum State: String' Sources/UI/PlayerPiPSessionCoordinator.swift
           grep -Fq 'final class PlayerPiPSamplePipeline' Sources/UI/PlayerPiPSamplePipeline.swift
-          grep -Fq 'persistentDemux=true' Sources/UI/PlayerPiPSamplePipeline.swift
           grep -Fq 'kCMSampleAttachmentKey_DoNotDisplay' Sources/UI/PlayerPiPSamplePipeline.swift
-          grep -Fq 'homePolicy=same-main-runloop' Sources/UI/PlayerPiPSessionCoordinator.swift
-          grep -Fq 'suspendInlineRendererForPictureInPicture' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'name: "vo", value: "null"' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'name: "vo", value: "gpu-next"' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'persistentDemux=true' Sources/UI/PlayerPiPSamplePipeline.swift
+          grep -Fq 'pictureInPictureControllerWillStartPictureInPicture' Sources/UI/PlayerPiPSessionCoordinator.swift
+          grep -Fq 'policy=system-first' Sources/UI/PlayerPiPSessionCoordinator.swift
+          grep -Fq 'final class MPVSurfaceUIView: UIView, PlayerPiPInlineRendererControlling' Sources/UI/MPVPlayerSurface.swift
+          grep -Fq 'final class KSAVIOSurfaceUIView: UIView, PlayerPiPInlineRendererControlling' Sources/UI/KSAVIOPlayerSurface.swift
+          grep -Fq 'pictureInPictureController.toggle(using: controller)' Sources/UI/PlayerScreen.swift
           test ! -e Sources/UI/PlayerSampleBufferPiPBridge.swift
-          ! grep -R -Fq 'vid", value: "no"' Sources/UI Sources/Player/MPVPlayerEngine.swift
-          ! grep -R -Fq 'switchEngine(to: .transportAVPlayer' Sources/UI
+          ! grep -Fq 'switchEngine(to: .transportAVPlayer' Sources/UI/PlayerPictureInPictureController.swift
+          ! grep -Fq 'activeVideoCallSourceView:' Sources/UI/PlayerPictureInPictureController.swift
+          ! grep -Fq 'vid", value: "no"' Sources/Player/MPVPlayerEngine.swift
 
           git fetch origin lab/pip-samplebuffer-0.13.89 --depth=1
+          test -z "$(git diff --name-only origin/lab/pip-samplebuffer-0.13.89...HEAD -- Sources/Player/PlayerController.swift Sources/Player/MPVPlayerEngine.swift Sources/Player/KSAVIOPlayerEngine.swift Sources/Transport/UnifiedMediaTransportSession.swift Sources/Player/PlaybackPresentationCoordinator.swift Sources/Player/PlaybackPresentationAdapters.swift MDKLab)"
+
           python3 - <<'PY'
           from pathlib import Path
           import subprocess
-          head = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
-          base = subprocess.check_output(['git','show','origin/lab/pip-samplebuffer-0.13.89:Sources/Player/MPVPlayerEngine.swift'], text=True)
           def seek_body(text):
-              start = text.index('    func seek(to seconds: Double, direction: SeekDirection)')
-              end = text.index('\n    private func claimKeyframeLookupIndex()', start)
-              return text[start:end]
+              s = text.index('    func seek(to seconds: Double, direction: SeekDirection)')
+              e = text.index('\n    private func claimKeyframeLookupIndex()', s)
+              return text[s:e]
+          head = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
+          base = subprocess.check_output(['git', 'show', 'origin/lab/pip-samplebuffer-0.13.89:Sources/Player/MPVPlayerEngine.swift'], text=True)
           assert seek_body(head) == seek_body(base)
-          controller = Path('Sources/Player/PlayerController.swift').read_text()
-          start = controller.index('    func seek(by offset: Double)')
-          end = controller.index('\n    func beginScrubbing()', start)
-          assert 'engine.seek(to: target' in controller[start:end]
           assert 'absolute+keyframes' in seek_body(head)
           assert 'absolute+exact' not in seek_body(head)
           PY
-          test -z "$(git diff --name-only origin/lab/pip-samplebuffer-0.13.89...HEAD -- Sources/Player/PlayerController.swift Sources/Player/KSAVIOPlayerEngine.swift Sources/Player/PlaybackPresentationCoordinator.swift Sources/Player/PlaybackPresentationAdapters.swift Sources/Transport/UnifiedMediaTransportSession.swift MDKLab)"
+
           grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
           git diff --check
 
@@ -349,6 +81,8 @@ jobs:
           set -euo pipefail
           brew install xcodegen
           sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
 
       - name: Generate project and resolve dependencies
         run: |
