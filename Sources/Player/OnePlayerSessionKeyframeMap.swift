@@ -1,6 +1,6 @@
 import Foundation
 
-struct OnePlayerSessionKeyframeGap: Sendable {
+private struct OnePlayerSessionKeyframeGap: Sendable {
     let previous: Double
     let next: Double
 
@@ -10,7 +10,7 @@ struct OnePlayerSessionKeyframeGap: Sendable {
 
     func neighbors(around target: Double) -> OnePlayerKeyframeNeighbors {
         let nearest = abs(target - previous) <= abs(next - target) ? previous : next
-        return OnePlayerKeyframeNeighbors(previous: previous, next: next, nearest: nearest, previousStatus: "session-gap-cache", nextStatus: "session-gap-cache")
+        return OnePlayerKeyframeNeighbors(previous: previous, next: next, nearest: nearest)
     }
 }
 
@@ -37,7 +37,7 @@ final class OnePlayerSessionKeyframeMap: @unchecked Sendable {
         return gaps.count
     }
 
-    func neighbors(around target: Double) -> (neighbors: OnePlayerKeyframeNeighbors, gap: OnePlayerSessionKeyframeGap, count: Int)? {
+    func neighbors(around target: Double) -> OnePlayerKeyframeNeighbors? {
         guard target.isFinite, target >= 0 else { return nil }
         lock.lock()
         defer { lock.unlock() }
@@ -54,7 +54,7 @@ final class OnePlayerSessionKeyframeMap: @unchecked Sendable {
             if best == nil || candidate.span < best!.span { best = candidate }
         }
         guard let gap = best else { return nil }
-        return (gap.neighbors(around: target), gap, gaps.count)
+        return gap.neighbors(around: target)
     }
 
     var count: Int {
