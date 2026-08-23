@@ -14,6 +14,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         case sequential
         case urgentPlayback
         case metadata
+        case keyframeMetadata
         case startupMetadata
     }
 
@@ -36,6 +37,16 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let serial: Int
         let target: Double
         let startedAt: Date
+    }
+
+    private struct KeyframeMetadataMissKey: Hashable {
+        let offset: Int64
+        let reason: String
+    }
+
+    private struct KeyframeMetadataMissState {
+        var lastLoggedAt: Date
+        var suppressedCount: Int
     }
 
     private struct LaneHealthState {
@@ -74,6 +85,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let progressiveUrgentGapBytes: Int64 = 2 * 1_048_576
     private let seekProgressiveUrgentGapBytes: Int64 = 512 * 1024
     private let metadataUrgentBlockBytes: Int64 = 16 * 1_048_576
+    private let keyframeMetadataRefillBytes: Int64 = 512 * 1024
+    private let maximumKeyframeMetadataRefillQueue = 16
+    private let keyframeMetadataMissLogIntervalSeconds: TimeInterval = 5
     private let startupMetadataSegmentBytes: Int64 = 1 * 1_048_576
     private let secondaryMetadataMaxBytes: Int64 = 2 * 1_048_576
     private let initialSequentialBlockBytes: Int64 = 4 * 1_048_576
@@ -144,6 +158,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let seekTraceRetentionSeconds: TimeInterval = 5
     private var pendingPlaybackUrgentRange: Range<Int64>?
     private var pendingMetadataRange: Range<Int64>?
+    private var pendingKeyframeMetadataRanges: [Range<Int64>] = []
+    private var keyframeMetadataMissStates: [KeyframeMetadataMissKey: KeyframeMetadataMissState] = [:]
     private var lastBlockingPlaybackDemand: Range<Int64>?
     private var lastBlockingPlaybackDemandAt = Date.distantPast
     private var playbackDemandSamples: [PlaybackDemandSample] = []
@@ -405,7 +421,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     func readCachedMetadata(offset: Int64, length: Int) async -> Data? {
         guard !stopped, length > 0, offset >= 0 else { return nil }
         guard let resolved = resource, let store else {
-            DiagnosticsLogger.shared.playback("KeyframeCacheRead", "offset=\(offset) requested=\(length) result=miss reason=resource-not-ready mode=cache-only-no-network")
+            logKeyframeMetadataMiss(offset: offset, requested: length, reason: "resource-not-ready", refillRange: nil)
             return nil
         }
         guard offset < resolved.contentLength else { return Data() }
@@ -413,15 +429,75 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         guard requested > 0 else { return Data() }
         let available = store.availableLength(from: offset, maximumLength: Int64(requested))
         guard available > 0 else {
-            DiagnosticsLogger.shared.playback("KeyframeCacheRead", "offset=\(offset) requested=\(requested) available=0 result=miss mode=cache-only-no-network")
+            let refill = enqueueKeyframeMetadataRefill(offset: offset, requested: requested, resource: resolved)
+            logKeyframeMetadataMiss(offset: offset, requested: requested, reason: "not-cached", refillRange: refill)
             return nil
         }
         let count = min(requested, Int(available))
         guard let data = try? await store.readWhenAvailable(offset: offset, maximumLength: count, timeout: 0), !data.isEmpty else {
-            DiagnosticsLogger.shared.playback("KeyframeCacheRead", "offset=\(offset) requested=\(requested) available=\(available) result=miss reason=store-read-unavailable mode=cache-only-no-network")
+            logKeyframeMetadataMiss(offset: offset, requested: requested, reason: "store-read-unavailable", refillRange: nil)
             return nil
         }
         return data
+    }
+
+    @discardableResult
+    private func enqueueKeyframeMetadataRefill(offset: Int64, requested: Int, resource: TransportResolvedResource) -> Range<Int64>? {
+        guard !stopped, let store, requested > 0, offset >= 0, offset < resource.contentLength else { return nil }
+        let lower = min(max(0, offset), max(0, resource.contentLength - 1))
+        let upper = min(resource.contentLength, safeAdd(lower, max(Int64(requested), keyframeMetadataRefillBytes)))
+        guard upper > lower else { return nil }
+        let candidate = lower..<upper
+        if store.contains(candidate) { return candidate }
+        if let active = slotClaims.values.first(where: { $0.role == .keyframeMetadata && $0.range.contains(lower) }) { return active.range }
+        if let existing = pendingKeyframeMetadataRanges.first(where: { $0.contains(lower) && $0.upperBound >= candidate.upperBound }) { return existing }
+
+        var merged = candidate
+        pendingKeyframeMetadataRanges.removeAll { existing in
+            let overlapsOrTouches = existing.lowerBound <= merged.upperBound && merged.lowerBound <= existing.upperBound
+            guard overlapsOrTouches else { return false }
+            merged = min(existing.lowerBound, merged.lowerBound)..<max(existing.upperBound, merged.upperBound)
+            return true
+        }
+        pendingKeyframeMetadataRanges.append(merged)
+        if pendingKeyframeMetadataRanges.count > maximumKeyframeMetadataRefillQueue {
+            pendingKeyframeMetadataRanges.removeFirst(pendingKeyframeMetadataRanges.count - maximumKeyframeMetadataRefillQueue)
+        }
+        DiagnosticsLogger.shared.playback("KeyframeMetadataRefill", "action=queued range=\(merged.lowerBound)-\(merged.upperBound) bytes=\(merged.count) queue=\(pendingKeyframeMetadataRanges.count) priority=background-below-urgent source=keyframe-cache-miss")
+        scheduleSlots(reason: "keyframe-metadata-refill")
+        return merged
+    }
+
+    private func logKeyframeMetadataMiss(offset: Int64, requested: Int, reason: String, refillRange: Range<Int64>?) {
+        let key = KeyframeMetadataMissKey(offset: offset, reason: reason)
+        let now = Date()
+        if var state = keyframeMetadataMissStates[key] {
+            if now.timeIntervalSince(state.lastLoggedAt) < keyframeMetadataMissLogIntervalSeconds {
+                state.suppressedCount += 1
+                keyframeMetadataMissStates[key] = state
+                return
+            }
+            let suppressed = state.suppressedCount
+            state.lastLoggedAt = now
+            state.suppressedCount = 0
+            keyframeMetadataMissStates[key] = state
+            let refill = refillRange.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "none"
+            DiagnosticsLogger.shared.playback("KeyframeCacheRead", "offset=\(offset) requested=\(requested) result=miss reason=\(reason) repeated=\(suppressed) refill=\(refill) mode=cache-read-deferred-unified-refill")
+            return
+        }
+        keyframeMetadataMissStates[key] = KeyframeMetadataMissState(lastLoggedAt: now, suppressedCount: 0)
+        let refill = refillRange.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "none"
+        DiagnosticsLogger.shared.playback("KeyframeCacheRead", "offset=\(offset) requested=\(requested) result=miss reason=\(reason) repeated=0 refill=\(refill) mode=cache-read-deferred-unified-refill")
+    }
+
+    private func finishKeyframeMetadataRefillLog(range: Range<Int64>, result: String) {
+        var suppressed = 0
+        let keys = keyframeMetadataMissStates.keys.filter { range.contains($0.offset) }
+        for key in keys {
+            suppressed += keyframeMetadataMissStates[key]?.suppressedCount ?? 0
+            keyframeMetadataMissStates.removeValue(forKey: key)
+        }
+        DiagnosticsLogger.shared.playback("KeyframeMetadataRefill", "result=\(result) range=\(range.lowerBound)-\(range.upperBound) bytes=\(range.count) suppressedMisses=\(suppressed) queue=\(pendingKeyframeMetadataRanges.count)")
     }
 
     func prioritizeSeek(position: Double, duration: Double) async {
@@ -525,6 +601,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         for task in slotTasks.values { task.cancel() }
         slotTasks.removeAll()
         slotClaims.removeAll()
+        pendingKeyframeMetadataRanges.removeAll(keepingCapacity: false)
+        keyframeMetadataMissStates.removeAll(keepingCapacity: false)
         rangeMap.clearDownloading(lane: "slot0")
         rangeMap.clearDownloading(lane: "slot1")
         store?.close(removeFiles: !configuration.keepLastCache)
@@ -783,6 +861,13 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         DiagnosticsLogger.shared.playback("UnifiedDemand", "urgent range=\(candidate.lowerBound)-\(candidate.upperBound) metadata=\(metadata) reason=\(reason) protectedBulk=\(preferredBulkSlot)")
 
         if firstIdleForegroundSlot() != nil { return }
+        if let keyframeClaim = slotClaims.first(where: { $0.value.role == .keyframeMetadata }) {
+            if !pendingKeyframeMetadataRanges.contains(where: { $0.lowerBound == keyframeClaim.value.range.lowerBound && $0.upperBound == keyframeClaim.value.range.upperBound }) {
+                pendingKeyframeMetadataRanges.insert(keyframeClaim.value.range, at: 0)
+            }
+            cancelSlot(keyframeClaim.key, reason: "urgent-preempts-keyframe-metadata")
+            return
+        }
         let sequentialSlots = [0, 1].filter { slotClaims[$0]?.role == .sequential }
         if sequentialSlots.count == 2 {
             let serviceSlot = preferredBulkSlot == 0 ? 1 : 0
@@ -812,7 +897,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             cursor = chunk.upperBound
         }
         startupMetadataQueue = chunks
-        for slot in [0, 1] where slotClaims[slot]?.role == .sequential { cancelSlot(slot, reason: "startup-metadata-preempt") }
+        for slot in [0, 1] where slotClaims[slot]?.role == .sequential || slotClaims[slot]?.role == .keyframeMetadata { cancelSlot(slot, reason: "startup-metadata-preempt") }
         DiagnosticsLogger.shared.playback("UnifiedStartup", "actual-tail plan range=\(plan.lowerBound)-\(plan.upperBound) bytes=\(plan.count) segment=\(startupMetadataSegmentBytes) queued=\(startupMetadataQueue.count) reason=\(reason)")
     }
 
@@ -875,6 +960,18 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             if slotTasks[0] == nil, !liveLaneResetPending.contains(0), !liveLaneSourceRefreshPending.contains(0), let range = nextSequentialClaim(resource: resource) { startSlot(0, claim: SlotClaim(range: range, role: .sequential), reason: reason) }
             refreshMetrics(resource: resource)
             return
+        }
+
+        if !pendingKeyframeMetadataRanges.isEmpty, !slotClaims.values.contains(where: { $0.role == .keyframeMetadata }), let slot = firstIdleForegroundSlot() {
+            while !pendingKeyframeMetadataRanges.isEmpty {
+                let range = pendingKeyframeMetadataRanges.removeFirst()
+                if store.contains(range) {
+                    finishKeyframeMetadataRefillLog(range: range, result: "already-cached")
+                    continue
+                }
+                startSlot(slot, claim: SlotClaim(range: range, role: .keyframeMetadata), reason: "keyframe-metadata-\(reason)")
+                break
+            }
         }
 
         let order = preferredBulkSlot == 0 ? [0, 1] : [1, 0]
@@ -1171,7 +1268,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                             recordNetworkBytes(Int64(chunk.count))
                             let writtenLower = claim.range.lowerBound + receivedForClaim - Int64(chunk.count)
                             let written = writtenLower..<min(claim.range.upperBound, writtenLower + Int64(chunk.count))
-                            if claim.role == .metadata || claim.role == .startupMetadata { rangeMap.insertMetadata(written) } else { rangeMap.insertPlayback(written) }
+                            if claim.role == .metadata || claim.role == .startupMetadata || claim.role == .keyframeMetadata { rangeMap.insertMetadata(written) } else { rangeMap.insertPlayback(written) }
                             if attemptReceived == Int64(chunk.count) {
                                 let firstChunkSeconds = max(Date().timeIntervalSince(attemptStarted), 0.001)
                                 let firstChunkBps = Double(chunk.count) / firstChunkSeconds
@@ -1270,7 +1367,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
 
         if let downloadedBytes, downloadedBytes > 0 {
             let written = claim.range.lowerBound..<min(claim.range.upperBound, claim.range.lowerBound + downloadedBytes)
-            if claim.role == .metadata || claim.role == .startupMetadata { rangeMap.insertMetadata(written) }
+            if claim.role == .metadata || claim.role == .startupMetadata || claim.role == .keyframeMetadata { rangeMap.insertMetadata(written) }
             else { rangeMap.insertPlayback(written) }
             // Network bytes/speed are recorded per received chunk so long 32 MiB requests do not
             // display as zero throughput until the entire Range finishes.
@@ -1296,6 +1393,14 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 DiagnosticsLogger.shared.playback("UnifiedSlot", "secondary enabled after urgent playback settled")
             }
             if slot == 1 { secondaryFailureCount = 0 }
+        }
+
+        if claim.role == .keyframeMetadata {
+            let refillResult: String
+            if error == nil, (downloadedBytes ?? 0) >= Int64(claim.range.count) { refillResult = "completed" }
+            else if let error, isCancellation(error) { refillResult = "preempted" }
+            else { refillResult = "failed-or-partial" }
+            finishKeyframeMetadataRefillLog(range: claim.range, result: refillResult)
         }
 
         if let error, !isCancellation(error) {
