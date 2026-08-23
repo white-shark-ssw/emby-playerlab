@@ -21,6 +21,8 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
     private var startTimeout: DispatchWorkItem?
     private var startPoll: DispatchWorkItem?
     private var firstSampleEnqueued = false
+    private var inlineVideoSuspendedForPiP = false
+    private var automaticHomeWorkItem: DispatchWorkItem?
 
     func attach(playerLayer: AVPlayerLayer) {
         _ = playerLayer
@@ -199,7 +201,56 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
         DiagnosticsLogger.shared.playback("PiP", "samplebuffer bridge restart position=\(String(format: "%.3f", position))")
     }
 
+    private func prepareInlineVideoForBackgroundAndReturnHome() {
+        guard let playbackController else { scheduleAutomaticReturnHome(); return }
+        if let mpvEngine = playbackController.engine as? MPVPlayerEngine {
+            mpvEngine.suspendVideoOutputForPictureInPicture { [weak self] success in
+                guard let self else { return }
+                self.inlineVideoSuspendedForPiP = success
+                DiagnosticsLogger.shared.playback("PiP", "inline MPV video suspend success=\(success) before-auto-home")
+                if success { self.scheduleAutomaticReturnHome() }
+            }
+        } else {
+            DiagnosticsLogger.shared.playback("PiP", "inline video suspend not-required engine=\(playbackController.engineKind.title)")
+            scheduleAutomaticReturnHome()
+        }
+    }
+
+    private func scheduleAutomaticReturnHome() {
+        automaticHomeWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.controller?.isPictureInPictureActive == true else { return }
+            let selector = NSSelectorFromString("suspend")
+            let application = UIApplication.shared
+            guard application.responds(to: selector) else {
+                DiagnosticsLogger.shared.playback("PiP", "auto-home unavailable selector=suspend")
+                return
+            }
+            DiagnosticsLogger.shared.playback("PiP", "auto-home request after-start privateSelector=suspend")
+            _ = application.perform(selector)
+        }
+        automaticHomeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+    }
+
+    private func restoreInlineVideoWhenForeground(reason: String, completion: @escaping () -> Void) {
+        guard inlineVideoSuspendedForPiP else { completion(); return }
+        guard UIApplication.shared.applicationState != .background else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.restoreInlineVideoWhenForeground(reason: reason, completion: completion) }
+            return
+        }
+        guard let playbackController else { inlineVideoSuspendedForPiP = false; completion(); return }
+        guard let mpvEngine = playbackController.engine as? MPVPlayerEngine else { inlineVideoSuspendedForPiP = false; completion(); return }
+        mpvEngine.resumeVideoOutputFromPictureInPicture { [weak self] success in
+            guard let self else { completion(); return }
+            self.inlineVideoSuspendedForPiP = false
+            DiagnosticsLogger.shared.playback("PiP", "inline MPV video restore success=\(success) reason=\(reason)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.10, execute: completion)
+        }
+    }
+
     private func reset(reason: String) {
+        automaticHomeWorkItem?.cancel(); automaticHomeWorkItem = nil
         startTimeout?.cancel(); startTimeout = nil
         startPoll?.cancel(); startPoll = nil
         startPending = false
@@ -215,6 +266,7 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
         activeSession = nil
         playbackController = nil
         firstSampleEnqueued = false
+        inlineVideoSuspendedForPiP = false
         isActive = false
         isPossible = AVPictureInPictureController.isPictureInPictureSupported()
         DiagnosticsLogger.shared.playback("PiP", "samplebuffer reset reason=\(reason)")
@@ -223,11 +275,19 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         isActive = true
         DiagnosticsLogger.shared.playback("PiP", "started samplebuffer=true avplayer=false engine=\(playbackController?.engineKind.title ?? "unknown")")
+        prepareInlineVideoForBackgroundAndReturnHome()
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        DiagnosticsLogger.shared.playback("PiP", "stopped samplebuffer=true position=\(String(format: "%.3f", playbackController?.snapshot.position ?? 0))")
-        reset(reason: "stopped")
+        DiagnosticsLogger.shared.playback("PiP", "stopped samplebuffer=true position=\(String(format: "%.3f", playbackController?.snapshot.position ?? 0)) appState=\(UIApplication.shared.applicationState.rawValue)")
+        bridge?.stop()
+        restoreInlineVideoWhenForeground(reason: "pip-stopped") { [weak self] in self?.reset(reason: "stopped") }
+    }
+
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
+        automaticHomeWorkItem?.cancel(); automaticHomeWorkItem = nil
+        DiagnosticsLogger.shared.playback("PiP", "restore-user-interface requested appState=\(UIApplication.shared.applicationState.rawValue)")
+        restoreInlineVideoWhenForeground(reason: "system-return-to-player") { completionHandler(true) }
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
