@@ -27,8 +27,11 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var activeGeneration: UInt64 = 0
     private var pendingSkipGeneration: UInt64?
     private var pendingSkipCompletion: (@Sendable () -> Void)?
+    private var logicalPiPPosition: Double = 0
+    private var pipWantsPlayback = true
     private var foregroundObserver: NSObjectProtocol?
     private var pendingForegroundRestore: (() -> Void)?
+    private var homeRequested = false
     private let homeCoordinator = PlayerPiPHomeCoordinator()
 
     override init() {
@@ -66,7 +69,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         reset(reason: "prepare-new")
         state = .preparingSource
         self.playbackController = playbackController
-        inlineRenderer = sourceView as? PlayerPiPInlineRendererControlling
+        inlineRenderer = (playbackController.engine as? PlayerPiPInlineRendererControlling) ?? (sourceView as? PlayerPiPInlineRendererControlling)
         activeSession = session
 
         let host = PlayerPiPSourceHostView(frame: sourceView.frame)
@@ -78,10 +81,17 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         layer.videoGravity = .resizeAspect
         var timebase: CMTimebase?
         let status = CMTimebaseCreateWithSourceClock(allocator: kCFAllocatorDefault, sourceClock: CMClockGetHostTimeClock(), timebaseOut: &timebase)
-        guard status == noErr, let timebase else { DiagnosticsLogger.shared.playback("PiPSession", "prepare failed reason=timebase status=\(status)"); reset(reason: "timebase-failed"); return }
+        guard status == noErr, let timebase else {
+            DiagnosticsLogger.shared.playback("PiPSession", "prepare failed reason=timebase status=\(status)")
+            reset(reason: "timebase-failed")
+            return
+        }
+
         let position = max(0, playbackController.snapshot.position)
+        logicalPiPPosition = position
+        pipWantsPlayback = playbackController.playbackControlIsPlaying
         CMTimebaseSetTime(timebase, time: CMTime(seconds: position, preferredTimescale: 60000))
-        CMTimebaseSetRate(timebase, rate: playbackController.playbackControlIsPlaying ? 1 : 0)
+        CMTimebaseSetRate(timebase, rate: pipWantsPlayback ? 1 : 0)
         layer.controlTimebase = timebase
         controlTimebase = timebase
         displayLayer = layer
@@ -99,10 +109,10 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         pipeline.onReady = { info in DispatchQueue.main.async { DiagnosticsLogger.shared.playback("PiPSession", "pipeline ready \(info)") } }
         pipeline.onFailure = { [weak self] reason in DispatchQueue.main.async { self?.handlePipelineFailure(reason) } }
         pipeline.onSample = { [weak self] envelope in DispatchQueue.main.async { self?.enqueue(envelope) } }
-        pipeline.setPaused(!playbackController.playbackControlIsPlaying)
+        pipeline.setPaused(!pipWantsPlayback)
         activeGeneration = pipeline.start()
         scheduleStartTimeout()
-        DiagnosticsLogger.shared.playback("PiPSession", "prepared engine=\(playbackController.engineKind.title) position=\(String(format: "%.3f", position)) generation=\(activeGeneration) possible=\(systemController.isPictureInPicturePossible) renderer=\(inlineRenderer == nil ? "none" : "surface")")
+        DiagnosticsLogger.shared.playback("PiPSession", "prepared engine=\(playbackController.engineKind.title) position=\(String(format: \"%.3f\", position)) generation=\(activeGeneration) possible=\(systemController.isPictureInPicturePossible) renderer=\(inlineRenderer == nil ? \"none\" : \"engine-or-surface\")")
     }
 
     private func enqueue(_ envelope: PlayerPiPSamplePipeline.SampleEnvelope) {
@@ -112,24 +122,27 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             if state != .active && state != .restoring { failAndRestore(reason: "display-layer-failed") }
             return
         }
+
         displayLayer.enqueue(envelope.buffer)
         guard envelope.displayable else { return }
+        logicalPiPPosition = envelope.pts
 
         if !firstVisibleSampleEnqueued {
             firstVisibleSampleEnqueued = true
-            DiagnosticsLogger.shared.playback("PiPSession", "first-visible-sample pts=\(String(format: "%.3f", envelope.pts)) generation=\(envelope.generation) key=\(envelope.keyframe)")
+            DiagnosticsLogger.shared.playback("PiPSession", "first-visible-sample pts=\(String(format: \"%.3f\", envelope.pts)) generation=\(envelope.generation) key=\(envelope.keyframe)")
             pollStart(attempt: 0)
         }
+
         if pendingSkipGeneration == envelope.generation {
             let completion = pendingSkipCompletion
             pendingSkipCompletion = nil
             pendingSkipGeneration = nil
             if let timebase = controlTimebase {
                 CMTimebaseSetTime(timebase, time: CMTime(seconds: envelope.pts, preferredTimescale: 60000))
-                CMTimebaseSetRate(timebase, rate: playbackController?.playbackControlIsPlaying == true ? 1 : 0)
+                CMTimebaseSetRate(timebase, rate: pipWantsPlayback ? 1 : 0)
             }
             controller?.invalidatePlaybackState()
-            DiagnosticsLogger.shared.playback("PiPSession", "seek-visible targetPts=\(String(format: "%.3f", envelope.pts)) generation=\(envelope.generation) rateRestored=\(playbackController?.playbackControlIsPlaying == true)")
+            DiagnosticsLogger.shared.playback("PiPSession", "seek-visible targetPts=\(String(format: \"%.3f\", envelope.pts)) generation=\(envelope.generation) requestedPlaying=\(pipWantsPlayback)")
             completion?()
         }
     }
@@ -160,7 +173,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         guard controller.isPictureInPicturePossible, displayLayer.status != .failed else { return }
         startPoll?.cancel(); startPoll = nil
         state = .startingSystem
-        DiagnosticsLogger.shared.playback("PiPSession", "system-start begin homePolicy=willStart")
+        DiagnosticsLogger.shared.playback("PiPSession", "system-start begin homePolicy=didStart-immediate")
         controller.startPictureInPicture()
     }
 
@@ -175,19 +188,21 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: work)
     }
 
-    private func requestHomeAfterRendererSuspend() {
+    private func suspendRendererThenRequestHome() {
+        guard !homeRequested else { return }
         let requestHome = { [weak self] in
-            guard let self else { return }
+            guard let self, !self.homeRequested else { return }
+            self.homeRequested = true
             let requested = self.homeCoordinator.requestHome()
-            DiagnosticsLogger.shared.playback("PiPSession", "home-request issued=\(requested) state=\(self.state.rawValue)")
+            DiagnosticsLogger.shared.playback("PiPSession", "home-request issued=\(requested) state=\(self.state.rawValue) policy=didStart-immediate")
         }
+
         guard !inlineRendererSuspended, let inlineRenderer else { requestHome(); return }
         inlineRenderer.suspendInlineRendererForPictureInPicture { [weak self] success in
-            guard let self else { return }
+            guard let self, self.state == .active || self.state == .startingSystem else { return }
             self.inlineRendererSuspended = success
-            DiagnosticsLogger.shared.playback("PiPSession", "inline-renderer suspend success=\(success) phase=system-will-start")
-            guard success else { return }
-            requestHome()
+            DiagnosticsLogger.shared.playback("PiPSession", "inline-renderer suspend success=\(success) phase=system-did-start")
+            if success { requestHome() }
         }
     }
 
@@ -196,7 +211,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         if state == .active {
             state = .stopping
             controller?.stopPictureInPicture()
-        } else if state != .restoring && state != .stopping { failAndRestore(reason: "pipeline-failed") }
+        } else if state != .restoring && state != .stopping {
+            failAndRestore(reason: "pipeline-failed")
+        }
     }
 
     private func failAndRestore(reason: String) {
@@ -239,7 +256,10 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         controller?.delegate = nil; controller = nil
         activeSession = nil; playbackController = nil; inlineRenderer = nil
         firstVisibleSampleEnqueued = false; activeGeneration = 0
+        logicalPiPPosition = 0
+        pipWantsPlayback = true
         inlineRendererSuspended = false
+        homeRequested = false
         state = .idle
         onActiveChanged?(false)
         onPossibleChanged?(AVPictureInPictureController.isPictureInPictureSupported())
@@ -247,19 +267,19 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     }
 
     func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        DiagnosticsLogger.shared.playback("PiPSession", "system-will-start appState=\(UIApplication.shared.applicationState.rawValue)")
-        requestHomeAfterRendererSuspend()
+        DiagnosticsLogger.shared.playback("PiPSession", "system-will-start appState=\(UIApplication.shared.applicationState.rawValue) homeDeferredUntilDidStart=true")
     }
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         startTimeout?.cancel(); startTimeout = nil
         state = .active
         onActiveChanged?(true)
-        DiagnosticsLogger.shared.playback("PiPSession", "system-started engine=\(playbackController?.engineKind.title ?? "unknown") appState=\(UIApplication.shared.applicationState.rawValue)")
+        DiagnosticsLogger.shared.playback("PiPSession", "system-started engine=\(playbackController?.engineKind.title ?? \"unknown\") appState=\(UIApplication.shared.applicationState.rawValue)")
+        suspendRendererThenRequestHome()
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        DiagnosticsLogger.shared.playback("PiPSession", "system-stopped position=\(String(format: "%.3f", playbackController?.snapshot.position ?? 0)) appState=\(UIApplication.shared.applicationState.rawValue) previousState=\(state.rawValue)")
+        DiagnosticsLogger.shared.playback("PiPSession", "system-stopped position=\(String(format: \"%.3f\", logicalPiPPosition)) appState=\(UIApplication.shared.applicationState.rawValue) previousState=\(state.rawValue)")
         state = .stopping
         pipeline?.stop()
         restoreInlineRendererWhenForeground(reason: "system-stopped") { [weak self] in self?.reset(reason: "system-stopped") }
@@ -281,18 +301,16 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         return CMTimeRange(start: .zero, duration: CMTime(seconds: max(0.001, playbackController.effectiveDuration), preferredTimescale: 60000))
     }
 
-    func pictureInPictureControllerIsPlaybackPaused(_ pictureInPictureController: AVPictureInPictureController) -> Bool { !(playbackController?.playbackControlIsPlaying ?? false) }
+    func pictureInPictureControllerIsPlaybackPaused(_ pictureInPictureController: AVPictureInPictureController) -> Bool { !pipWantsPlayback }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, setPlaying playing: Bool) {
         guard let playbackController else { return }
+        pipWantsPlayback = playing
         if playbackController.playbackControlIsPlaying != playing { playbackController.togglePlayPause() }
         pipeline?.setPaused(!playing)
-        if let timebase = controlTimebase {
-            CMTimebaseSetTime(timebase, time: CMTime(seconds: playbackController.snapshot.position, preferredTimescale: 60000))
-            CMTimebaseSetRate(timebase, rate: playing ? 1 : 0)
-        }
+        if pendingSkipGeneration == nil, let timebase = controlTimebase { CMTimebaseSetRate(timebase, rate: playing ? 1 : 0) }
         pictureInPictureController.invalidatePlaybackState()
-        DiagnosticsLogger.shared.playback("PiPSession", "set-playing=\(playing) position=\(String(format: "%.3f", playbackController.snapshot.position))")
+        DiagnosticsLogger.shared.playback("PiPSession", "set-playing=\(playing) logicalPosition=\(String(format: \"%.3f\", logicalPiPPosition)) pendingSeek=\(pendingSkipGeneration != nil)")
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, didTransitionToRenderSize newRenderSize: CMVideoDimensions) {
@@ -303,18 +321,21 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         guard let playbackController, let pipeline, let displayLayer, let timebase = controlTimebase else { completionHandler(); return }
         let delta = CMTimeGetSeconds(skipInterval)
         guard delta.isFinite else { completionHandler(); return }
-        let target = min(max(0, playbackController.snapshot.position + delta), max(playbackController.effectiveDuration, 0))
 
+        let target = min(max(0, logicalPiPPosition + delta), max(playbackController.effectiveDuration, 0))
+        logicalPiPPosition = target
         pendingSkipCompletion?()
-        displayLayer.flushAndRemoveImage()
-        CMTimebaseSetTime(timebase, time: CMTime(seconds: target, preferredTimescale: 60000))
+        pendingSkipCompletion = nil
+        pendingSkipGeneration = nil
+
+        displayLayer.flush()
         CMTimebaseSetRate(timebase, rate: 0)
         playbackController.seek(by: delta)
         activeGeneration = pipeline.seek(to: target)
         pendingSkipGeneration = activeGeneration
         pendingSkipCompletion = completionHandler
         pictureInPictureController.invalidatePlaybackState()
-        DiagnosticsLogger.shared.playback("PiPSession", "seek requested delta=\(String(format: "%.3f", delta)) target=\(String(format: "%.3f", target)) generation=\(activeGeneration) pipeline=persistent")
+        DiagnosticsLogger.shared.playback("PiPSession", "seek requested delta=\(String(format: \"%.3f\", delta)) target=\(String(format: \"%.3f\", target)) generation=\(activeGeneration) pipeline=persistent currentImagePreserved=true")
     }
 
     func pictureInPictureControllerShouldProhibitBackgroundAudioPlayback(_ pictureInPictureController: AVPictureInPictureController) -> Bool { false }
