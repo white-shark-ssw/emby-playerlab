@@ -62,11 +62,10 @@ jobs:
               'override func viewDidAppear',
               'custom renderer source ready; starting system PiP with inline renderer still attached',
               'custom renderer start timeout',
+              'contentController.onContentVisible = { [weak self] in',
+              'self?.activateCustomRendererIfNeeded()',
           ]:
               assert token in pip, token
-          prepared = pip.index('custom renderer prepared source=MPV inline-preserved=true')
-          transferred = pip.index('custom renderer transferred source=MPV phase=content-visible')
-          assert prepared < transferred
 
           mpv_surface = Path('Sources/UI/MPVPlayerSurface.swift').read_text()
           assert 'displayLayerHostedExternally' in mpv_surface
