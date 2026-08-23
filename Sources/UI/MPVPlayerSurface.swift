@@ -10,6 +10,7 @@ final class MPVSurfaceUIView: UIView {
     private var lastReportedGeometry: RendererSurfaceGeometry?
     private var layoutGeneration: UInt64 = 0
     private var presentationGateObserver: NSObjectProtocol?
+    private var displayLayerHostedExternally = false
     var onGeometrySettled: ((RendererSurfaceGeometry) -> Void)?
 
     override init(frame: CGRect) {
@@ -28,6 +29,7 @@ final class MPVSurfaceUIView: UIView {
         if displayLayer !== layer {
             displayLayer?.removeFromSuperlayer()
             displayLayer = layer
+            displayLayerHostedExternally = false
             layer.masksToBounds = true
             layer.isHidden = false
             self.layer.insertSublayer(layer, at: 0)
@@ -35,18 +37,27 @@ final class MPVSurfaceUIView: UIView {
             lastReportedGeometry = nil
             DiagnosticsLogger.shared.log("MPVSurface", "attach surface=\(ObjectIdentifier(self)) layer=CAMetalLayer host=UIViewRepresentable lifecycle=persistent drawableOwner=moltenvk")
         }
+        guard !displayLayerHostedExternally else { return }
         setNeedsLayout()
     }
 
     func takeDisplayLayerForPictureInPicture() -> CAMetalLayer? {
-        guard let displayLayer else { return nil }
+        guard let displayLayer, !displayLayerHostedExternally else { return nil }
+        displayLayerHostedExternally = true
         displayLayer.removeFromSuperlayer()
-        DiagnosticsLogger.shared.playback("PiP", "MPV renderer detached from inline surface")
+        DiagnosticsLogger.shared.playback("PiP", "MPV renderer detached after PiP content became visible")
         return displayLayer
     }
 
     func restoreDisplayLayerAfterPictureInPicture(_ layer: CAMetalLayer) {
-        attach(layer)
+        guard displayLayer === layer else { return }
+        displayLayerHostedExternally = false
+        layer.removeFromSuperlayer()
+        layer.masksToBounds = true
+        layer.isHidden = false
+        self.layer.insertSublayer(layer, at: 0)
+        bringSubviewToFront(presentationCoverView)
+        lastReportedGeometry = nil
         setNeedsLayout()
         if window != nil { layoutIfNeeded() }
         DiagnosticsLogger.shared.playback("PiP", "MPV renderer restored to inline surface")
@@ -54,9 +65,10 @@ final class MPVSurfaceUIView: UIView {
 
     func detach() {
         guard let displayLayer else { return }
-        DiagnosticsLogger.shared.log("MPVSurface", "detach surface=\(ObjectIdentifier(self)) generation=\(layoutGeneration)")
+        DiagnosticsLogger.shared.log("MPVSurface", "detach surface=\(ObjectIdentifier(self)) generation=\(layoutGeneration) hostedExternally=\(displayLayerHostedExternally)")
         displayLayer.removeFromSuperlayer()
         self.displayLayer = nil
+        displayLayerHostedExternally = false
         lastGeometryLog = ""
         lastReportedGeometry = nil
     }
@@ -75,7 +87,7 @@ final class MPVSurfaceUIView: UIView {
         super.layoutSubviews()
         presentationCoverView.frame = bounds
         bringSubviewToFront(presentationCoverView)
-        guard let displayLayer else { return }
+        guard let displayLayer, !displayLayerHostedExternally else { return }
         layoutGeneration &+= 1
         let generation = layoutGeneration
         let scale = window?.screen.nativeScale ?? UIScreen.main.nativeScale
@@ -112,13 +124,14 @@ final class MPVSurfaceUIView: UIView {
             lastReportedGeometry = nil
             DiagnosticsLogger.shared.log("MPVSurface", "foreground presentation replay epoch=\(gate.epoch) reason=renderer-ack-required")
         }
+        guard !displayLayerHostedExternally else { return }
         setNeedsLayout()
         if window != nil { layoutIfNeeded() }
     }
 
     private func scheduleGeometryProbe(generation: UInt64, attempt: Int) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
-            guard let self, self.layoutGeneration == generation, self.window != nil else { return }
+            guard let self, self.layoutGeneration == generation, self.window != nil, !self.displayLayerHostedExternally else { return }
             let geometry = self.logGeometry(stage: attempt == 0 ? "settled" : "probe\(attempt)", generation: generation, force: true)
             guard let geometry else { return }
             if self.reportGeometryIfReady(geometry) { return }
@@ -137,7 +150,7 @@ final class MPVSurfaceUIView: UIView {
 
     @discardableResult
     private func logGeometry(stage: String, generation: UInt64, force: Bool = false) -> RendererSurfaceGeometry? {
-        guard let displayLayer else { return nil }
+        guard let displayLayer, !displayLayerHostedExternally else { return nil }
         let scale = displayLayer.contentsScale > 0 ? displayLayer.contentsScale : (window?.screen.nativeScale ?? UIScreen.main.nativeScale)
         let expectedDrawable = CGSize(width: max(2, (bounds.width * scale).rounded()), height: max(2, (bounds.height * scale).rounded()))
         let windowSize = window?.bounds.size ?? .zero

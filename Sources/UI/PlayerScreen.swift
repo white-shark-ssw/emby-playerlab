@@ -31,7 +31,7 @@ struct PlayerScreen: View {
     @State private var isClosing = false
     @State private var orientationReady = false
     @State private var playbackStarted = false
-    @State private var presentationDidAppear = false
+    @State private var initialOrientationStarted = false
     @State private var controlsVisible = true
     @State private var centerFeedbackVisible = false
     @State private var centerFeedbackScale: CGFloat = 1
@@ -65,9 +65,9 @@ struct PlayerScreen: View {
             Color.black.ignoresSafeArea()
             playerSurface.ignoresSafeArea()
 
-            if !orientationReady || isClosing { Color.black.ignoresSafeArea().allowsHitTesting(false) }
+            if isClosing { Color.black.ignoresSafeArea().allowsHitTesting(false) }
 
-            if orientationReady && !isClosing {
+            if !isClosing {
                 PlaybackGestureOverlay(
                     volumeHapticsEnabled: volumeHapticsEnabled,
                     resetGeneration: gestureResetGeneration,
@@ -139,6 +139,7 @@ struct PlayerScreen: View {
             displayRefreshMonitor.start()
             controller.prewarmStartup()
             AppOrientationCoordinator.shared.beginPlayerPresentation(source: controller.source)
+            DispatchQueue.main.async { beginInitialOrientationIfNeeded(reason: "onAppear") }
         }
         .onDisappear {
             setPlaybackIdleTimerDisabled(false, reason: "player-disappear")
@@ -514,21 +515,18 @@ struct PlayerScreen: View {
         (controller.source.mediaSource.mediaStreams ?? []).contains { $0.type?.caseInsensitiveCompare("Audio") == .orderedSame || $0.type?.caseInsensitiveCompare("Subtitle") == .orderedSame }
     }
 
-    private func handlePresentationDidAppear() {
-        guard !presentationDidAppear, !isClosing else { return }
-        presentationDidAppear = true
-        DiagnosticsLogger.shared.playback("Lifecycle", "player cover fully appeared; initial orientation may begin")
+    private func handlePresentationDidAppear() { beginInitialOrientationIfNeeded(reason: "viewDidAppear-fallback") }
+
+    private func beginInitialOrientationIfNeeded(reason: String) {
+        guard !initialOrientationStarted, !isClosing else { return }
+        initialOrientationStarted = true
+        DiagnosticsLogger.shared.playback("Lifecycle", "initial orientation begin trigger=\(reason) playerUIAlreadyVisible=true")
         prepareInitialOrientation()
     }
 
     private func handlePlayerSurfaceMounted() {
-        guard !isClosing else { return }
-        if !orientationReady {
-            DiagnosticsLogger.shared.playback("PlayerUI", "player surface mounted persistently; waiting for orientation readiness before engine activation")
-            return
-        }
-        guard !playbackStarted else { return }
-        DiagnosticsLogger.shared.playback("PlayerUI", "final-orientation persistent player surface mounted; engine activation may begin")
+        guard !isClosing, !playbackStarted else { return }
+        DiagnosticsLogger.shared.playback("PlayerUI", "persistent player surface mounted; engine activation begins in parallel orientationReady=\(orientationReady)")
         startPlaybackIfNeeded()
     }
 
@@ -540,7 +538,7 @@ struct PlayerScreen: View {
             startPlaybackIfNeeded()
             return
         }
-        beginOrientationTransition(to: target, reason: "initial", shouldStartPlayback: true)
+        beginOrientationTransition(to: target, reason: "initial", shouldStartPlayback: false)
     }
 
     private func beginOrientationTransition(to target: UIInterfaceOrientation, reason: String, shouldStartPlayback: Bool) {
@@ -603,10 +601,10 @@ struct PlayerScreen: View {
     }
 
     private func startPlaybackIfNeeded() {
-        guard !playbackStarted, !isClosing, orientationReady else { return }
+        guard !playbackStarted, !isClosing else { return }
         playbackStarted = true
         let preset = BufferPreset(rawValue: bufferPresetRaw) ?? .balanced
-        DiagnosticsLogger.shared.playback("PlayerUI", "startup engine activation after mounted final-orientation surface")
+        DiagnosticsLogger.shared.playback("PlayerUI", "startup engine activation after persistent surface mount orientationReady=\(orientationReady)")
         controller.start(preferredForwardBuffer: preset.seconds)
         scheduleControlsHide()
     }

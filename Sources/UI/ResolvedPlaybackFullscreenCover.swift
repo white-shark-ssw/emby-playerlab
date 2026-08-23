@@ -64,8 +64,8 @@ private struct ResolvedPlaybackFullscreenPresenter<Content: View>: UIViewControl
                     DiagnosticsLogger.shared.playback("PlayerUI", "fullscreen player dismissed transition=crossDissolve")
                 }
                 hostController = host
-                DiagnosticsLogger.shared.playback("PlayerUI", "fullscreen player present transition=crossDissolve style=overFullScreen")
-                presenter.present(host, animated: true) { [weak self] in self?.presenting = false }
+                DiagnosticsLogger.shared.playback("PlayerUI", "fullscreen player present transition=immediate style=overFullScreen")
+                presenter.present(host, animated: false) { [weak self] in self?.presenting = false }
             } else if let host = hostController, !dismissing {
                 dismissing = true
                 host.dismiss(animated: true) { [weak self] in
