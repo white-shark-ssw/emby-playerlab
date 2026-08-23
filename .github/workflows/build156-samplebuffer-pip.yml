@@ -14,7 +14,7 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: build156-samplebuffer-pip-${{ github.ref }}
@@ -29,50 +29,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Apply iOS 17.0 compile fixes once
-        if: github.event_name == 'push'
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          pip = Path('Sources/UI/PlayerPictureInPictureController.swift')
-          text = pip.read_text()
-          replacements = [
-              ('ready=\\(self.displayLayer?.isReadyForDisplay ?? false)', 'status=\\(self.displayLayer?.status.rawValue ?? -1)'),
-              ('guard controller.isPictureInPicturePossible, displayLayer.isReadyForDisplay else { return }', 'guard controller.isPictureInPicturePossible, displayLayer.status != .failed else { return }'),
-              ('layerReady=\\(self.displayLayer?.isReadyForDisplay ?? false)', 'status=\\(self.displayLayer?.status.rawValue ?? -1)'),
-          ]
-          changed = False
-          for old, new in replacements:
-              if old in text:
-                  assert text.count(old) == 1, (old, text.count(old))
-                  text = text.replace(old, new)
-                  changed = True
-          assert 'isReadyForDisplay' not in text
-          if changed: pip.write_text(text)
-
-          bridge = Path('Sources/UI/PlayerSampleBufferPiPBridge.swift')
-          text = bridge.read_text()
-          old = 'CMBlockBufferAppendMemoryBlock(blockBuffer, memoryBlock: nil, blockLength: data.count, blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0, dataLength: data.count, flags: kCMBlockBufferAssureMemoryNow)'
-          new = 'CMBlockBufferAppendMemoryBlock(blockBuffer, memoryBlock: nil, length: data.count, blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0, dataLength: data.count, flags: 0)'
-          if old in text:
-              assert text.count(old) == 1
-              text = text.replace(old, new)
-              bridge.write_text(text)
-          assert 'blockLength: data.count' not in bridge.read_text()
-          assert 'kCMBlockBufferAssureMemoryNow' not in bridge.read_text()
-          PY
-          rm -f .github/workflows/build156-apply-compile-fixes.yml
-          git diff --check
-          if ! git diff --quiet; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add Sources/UI/PlayerPictureInPictureController.swift Sources/UI/PlayerSampleBufferPiPBridge.swift .github/workflows/build156-apply-compile-fixes.yml || true
-            git commit -m 'Build156: fix iOS 17.0 SampleBuffer compile compatibility'
-            git push origin HEAD:lab/pip-samplebuffer-0.13.89
-          fi
 
       - name: Verify Build156 contracts
         run: |
