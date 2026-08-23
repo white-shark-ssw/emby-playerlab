@@ -1,23 +1,23 @@
-name: Build OnePlayer 0.13.89 Build156 SampleBuffer PiP
+name: Build OnePlayer 0.13.91 Build158 PiP Session
 
 on:
   workflow_dispatch:
   push:
-    branches: [lab/pip-samplebuffer-0.13.89]
+    branches: [refactor/pip-session-0.13.91]
     paths:
       - "Sources/**"
       - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build156-samplebuffer-pip.yml"
   pull_request:
-    branches: [perf/click-start-parallel-0.13.87]
+    branches: [lab/pip-samplebuffer-0.13.89]
     types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
 
 concurrency:
-  group: build156-samplebuffer-pip-${{ github.ref }}
+  group: build158-pip-session-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,50 +25,46 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 180
     steps:
-      - name: Checkout Build156 source
+      - name: Checkout Build158 source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Verify Build156 contracts
+      - name: Verify Build158 contracts
         run: |
           set -euo pipefail
-          grep -Fq 'sourceVersion = "0.13.89"' Sources/Core/AppIdentity.swift
-          grep -Fq 'ContentSource(sampleBufferDisplayLayer:' Sources/UI/PlayerPictureInPictureController.swift
-          grep -Fq 'AVPictureInPictureSampleBufferPlaybackDelegate' Sources/UI/PlayerPictureInPictureController.swift
-          grep -Fq 'PlayerSampleBufferPiPBridge' Sources/UI/PlayerSampleBufferPiPBridge.swift
-          grep -Fq 'import Libavformat' Sources/UI/PlayerSampleBufferPiPBridge.swift
-          grep -Fq 'CMVideoFormatDescriptionCreateFromHEVCParameterSets' Sources/UI/PlayerSampleBufferPiPBridge.swift
-          grep -Fq 'CMVideoFormatDescriptionCreateFromH264ParameterSets' Sources/UI/PlayerSampleBufferPiPBridge.swift
-          grep -Fq 'PlaybackTransportSessionRegistry.shared.session' Sources/UI/PlayerPictureInPictureController.swift
+          grep -Fq 'sourceVersion = "0.13.91"' Sources/Core/AppIdentity.swift
+          grep -Fq 'final class PlayerPiPSessionCoordinator' Sources/UI/PlayerPiPSessionCoordinator.swift
+          grep -Fq 'final class PlayerPiPSamplePipeline' Sources/UI/PlayerPiPSamplePipeline.swift
+          grep -Fq 'kCMSampleAttachmentKey_DoNotDisplay' Sources/UI/PlayerPiPSamplePipeline.swift
+          grep -Fq 'persistentDemux=true' Sources/UI/PlayerPiPSamplePipeline.swift
+          grep -Fq 'pictureInPictureControllerWillStartPictureInPicture' Sources/UI/PlayerPiPSessionCoordinator.swift
+          grep -Fq 'policy=system-first' Sources/UI/PlayerPiPSessionCoordinator.swift
+          grep -Fq 'final class MPVSurfaceUIView: UIView, PlayerPiPInlineRendererControlling' Sources/UI/MPVPlayerSurface.swift
+          grep -Fq 'final class KSAVIOSurfaceUIView: UIView, PlayerPiPInlineRendererControlling' Sources/UI/KSAVIOPlayerSurface.swift
           grep -Fq 'pictureInPictureController.toggle(using: controller)' Sources/UI/PlayerScreen.swift
+          test ! -e Sources/UI/PlayerSampleBufferPiPBridge.swift
           ! grep -Fq 'switchEngine(to: .transportAVPlayer' Sources/UI/PlayerPictureInPictureController.swift
-          ! grep -Fq 'AVPictureInPictureController(playerLayer:' Sources/UI/PlayerPictureInPictureController.swift
           ! grep -Fq 'activeVideoCallSourceView:' Sources/UI/PlayerPictureInPictureController.swift
-          ! grep -Fq 'takeDisplayLayerForPictureInPicture' Sources/UI/PlayerPictureInPictureController.swift
-          ! grep -Fq 'isReadyForDisplay' Sources/UI/PlayerPictureInPictureController.swift
+          ! grep -Fq 'vid", value: "no"' Sources/Player/MPVPlayerEngine.swift
+
+          git fetch origin lab/pip-samplebuffer-0.13.89 --depth=1
+          test -z "$(git diff --name-only origin/lab/pip-samplebuffer-0.13.89...HEAD -- Sources/Player/PlayerController.swift Sources/Player/MPVPlayerEngine.swift Sources/Player/KSAVIOPlayerEngine.swift Sources/Transport/UnifiedMediaTransportSession.swift Sources/Player/PlaybackPresentationCoordinator.swift Sources/Player/PlaybackPresentationAdapters.swift MDKLab)"
 
           python3 - <<'PY'
           from pathlib import Path
-          controller = Path('Sources/Player/PlayerController.swift').read_text()
-          seek_start = controller.index('    func seek(by offset: Double)')
-          seek_end = controller.index('\n    func beginScrubbing()', seek_start)
-          assert 'engine.seek(to: target' in controller[seek_start:seek_end]
-
-          mpv = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
-          start = mpv.index('    func seek(to seconds: Double, direction: SeekDirection)')
-          end = mpv.index('\n    private func claimKeyframeLookupIndex()', start)
-          body = mpv[start:end]
-          assert body.count('self.command(handle, ["seek"') == 1
-          assert 'absolute+keyframes' in body
-          assert 'absolute+exact' not in body
-
-          screen = Path('Sources/UI/PlayerScreen.swift').read_text()
-          assert screen.count('pictureInPictureController.toggle(using: controller)') == 1
+          import subprocess
+          def seek_body(text):
+              s = text.index('    func seek(to seconds: Double, direction: SeekDirection)')
+              e = text.index('\n    private func claimKeyframeLookupIndex()', s)
+              return text[s:e]
+          head = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
+          base = subprocess.check_output(['git', 'show', 'origin/lab/pip-samplebuffer-0.13.89:Sources/Player/MPVPlayerEngine.swift'], text=True)
+          assert seek_body(head) == seek_body(base)
+          assert 'absolute+keyframes' in seek_body(head)
+          assert 'absolute+exact' not in seek_body(head)
           PY
 
-          git fetch origin perf/click-start-parallel-0.13.87 --depth=1
-          test -z "$(git diff --name-only origin/perf/click-start-parallel-0.13.87...HEAD -- Sources/Player/MPVPlayerEngine.swift Sources/Player/KSAVIOPlayerEngine.swift Sources/Player/PlaybackPresentationCoordinator.swift Sources/Player/PlaybackPresentationAdapters.swift Sources/Transport/UnifiedMediaTransportSession.swift MDKLab)"
           grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
           git diff --check
 
@@ -96,11 +92,11 @@ jobs:
           pod install --repo-update
           xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
 
-      - name: Build Build156 Release
+      - name: Build Build158 Release
         run: |
           set -euo pipefail
           rm -rf build
-          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.89 CURRENT_PROJECT_VERSION=156 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.91 CURRENT_PROJECT_VERSION=158 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
 
       - name: Locate and validate app
         id: app
@@ -109,7 +105,7 @@ jobs:
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP_PATH" && test -d "$APP_PATH"
           echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.89' --build '156' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.91' --build '158' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
           chmod +x scripts/check_min_os.sh
           scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
 
@@ -120,19 +116,19 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "$APP_PATH" Payload/
-          IPA='OnePlayer-0.13.89-build156-samplebuffer-pip-unsigned.ipa'
+          IPA='OnePlayer-0.13.91-build158-pip-session-unsigned.ipa'
           /usr/bin/zip -qry "$IPA" Payload
           /usr/bin/unzip -t "$IPA" >/dev/null
           /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
           cat "$IPA.sha256"
 
-      - name: Upload Build156 package
+      - name: Upload Build158 package
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.13.89-build156-samplebuffer-pip
+          name: OnePlayer-0.13.91-build158-pip-session
           path: |
-            OnePlayer-0.13.89-build156-samplebuffer-pip-unsigned.ipa
-            OnePlayer-0.13.89-build156-samplebuffer-pip-unsigned.ipa.sha256
+            OnePlayer-0.13.91-build158-pip-session-unsigned.ipa
+            OnePlayer-0.13.91-build158-pip-session-unsigned.ipa.sha256
             app-validation.log
             min-os-report.log
             build.log
@@ -140,11 +136,11 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload Build156 diagnostics
+      - name: Upload Build158 diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.13.89-build156-samplebuffer-pip-failure
+          name: OnePlayer-0.13.91-build158-pip-session-failure
           path: |
             build.log
             package-resolution.log

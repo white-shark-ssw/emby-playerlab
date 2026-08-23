@@ -301,12 +301,16 @@ private enum OnePlayerPiPCodecBuilder {
     }
 }
 
-final class PlayerSampleBufferPiPBridge: @unchecked Sendable {
+final class PlayerPiPSamplePipeline: @unchecked Sendable {
     struct SampleEnvelope: @unchecked Sendable {
         let buffer: CMSampleBuffer
         let pts: Double
         let keyframe: Bool
+        let generation: UInt64
+        let displayable: Bool
     }
+
+    private struct SeekRequest { let generation: UInt64; let position: Double }
 
     var onSample: ((SampleEnvelope) -> Void)?
     var onReady: ((String) -> Void)?
@@ -314,20 +318,51 @@ final class PlayerSampleBufferPiPBridge: @unchecked Sendable {
 
     private let session: TransportDataSession
     private let startPosition: Double
-    private let queue = DispatchQueue(label: "OnePlayer.PiP.SampleBuffer", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "OnePlayer.PiP.SamplePipeline", qos: .userInitiated)
     private let lock = NSLock()
     private var cancelled = false
     private var paused = false
     private var input: OnePlayerPiPOpenedInput?
+    private var generation: UInt64 = 1
+    private var pendingSeek: SeekRequest?
+    private var pacingAnchorPosition: Double
+    private var pacingAnchorWall = CACurrentMediaTime()
 
     init(session: TransportDataSession, startPosition: Double) {
         self.session = session
         self.startPosition = max(0, startPosition)
+        pacingAnchorPosition = max(0, startPosition)
+        pendingSeek = SeekRequest(generation: 1, position: max(0, startPosition))
     }
 
-    func start() { queue.async { [weak self] in self?.run() } }
+    @discardableResult
+    func start() -> UInt64 { queue.async { [weak self] in self?.run() }; return 1 }
+
+    @discardableResult
+    func seek(to position: Double) -> UInt64 {
+        lock.lock()
+        generation &+= 1
+        let value = generation
+        let target = max(0, position)
+        pendingSeek = SeekRequest(generation: value, position: target)
+        pacingAnchorPosition = target
+        pacingAnchorWall = CACurrentMediaTime()
+        lock.unlock()
+        return value
+    }
+
     func stop() { lock.lock(); cancelled = true; lock.unlock(); input?.state.cancel() }
-    func setPaused(_ value: Bool) { lock.lock(); paused = value; lock.unlock() }
+
+    func setPaused(_ value: Bool) {
+        lock.lock()
+        let now = CACurrentMediaTime()
+        if paused != value {
+            if !paused { pacingAnchorPosition += max(0, now - pacingAnchorWall) }
+            pacingAnchorWall = now
+            paused = value
+        }
+        lock.unlock()
+    }
 
     private func run() {
         let resolved: TransportResolvedResource
@@ -364,22 +399,29 @@ final class PlayerSampleBufferPiPBridge: @unchecked Sendable {
         let startTimestamp: Int64? = rawStart == Int64.min ? nil : rawStart
         let frameRate = rationalValue(stream.pointee.avg_frame_rate)
         let fallbackDuration = frameRate > 0 ? 1.0 / frameRate : 1.0 / 30.0
+        onReady?("codec=\(configuration.codecName) bytes=\(resolved.contentLength) start=\(String(format: "%.3f", startPosition)) persistentDemux=true")
 
-        if startPosition > 0.05 {
-            let target = (startTimestamp ?? 0) + Int64((startPosition / timeScale).rounded())
-            let status = av_seek_frame(context, videoIndex, target, Int32(AVSEEK_FLAG_BACKWARD))
-            guard status >= 0 else { fail("seek=\(status)"); return }
-            avformat_flush(context)
-        }
-
-        onReady?("codec=\(configuration.codecName) bytes=\(resolved.contentLength) start=\(String(format: "%.3f", startPosition))")
         var packet: UnsafeMutablePointer<AVPacket>? = av_packet_alloc()
         guard let packetPointer = packet else { fail("av-packet-alloc-failed"); return }
         defer { av_packet_free(&packet) }
-        let wallStarted = CACurrentMediaTime()
+
+        var activeGeneration: UInt64 = 0
+        var prerollTarget = startPosition
+        var awaitingVisibleFrame = true
 
         while !isCancelled {
-            if isPaused { Thread.sleep(forTimeInterval: 0.03); continue }
+            if let request = takePendingSeek() {
+                let targetTimestamp = (startTimestamp ?? 0) + Int64((request.position / timeScale).rounded())
+                let status = request.position > 0.05 ? av_seek_frame(context, videoIndex, targetTimestamp, Int32(AVSEEK_FLAG_BACKWARD)) : 0
+                guard status >= 0 else { fail("seek=\(status) generation=\(request.generation)"); return }
+                avformat_flush(context)
+                activeGeneration = request.generation
+                prerollTarget = request.position
+                awaitingVisibleFrame = true
+                DiagnosticsLogger.shared.playback("PiPPipeline", "seek-applied target=\(String(format: "%.3f", request.position)) generation=\(request.generation) mode=persistent-demux-backward-preroll")
+            }
+
+            if isPaused && !awaitingVisibleFrame { Thread.sleep(forTimeInterval: 0.02); continue }
             let readStatus = av_read_frame(context, packetPointer)
             guard readStatus >= 0 else { fail("av-read-frame=\(readStatus)"); return }
             guard packetPointer.pointee.stream_index == videoIndex else { av_packet_unref(packetPointer); continue }
@@ -396,16 +438,31 @@ final class PlayerSampleBufferPiPBridge: @unchecked Sendable {
             var data = Data(bytes: rawData, count: Int(packetPointer.pointee.size))
             av_packet_unref(packetPointer)
             data = OnePlayerPiPCodecBuilder.normalizePacket(data, configuration: configuration)
-            guard let sample = makeSampleBuffer(data: data, configuration: configuration, pts: pts, dts: dts, duration: packetDuration, keyframe: keyframe) else { fail("sample-buffer-create-failed pts=\(pts)"); return }
 
-            let expected = startPosition + max(0, CACurrentMediaTime() - wallStarted)
-            while !isCancelled, pts > expected + 3.0 { Thread.sleep(forTimeInterval: 0.02); break }
-            onSample?(SampleEnvelope(buffer: sample, pts: pts, keyframe: keyframe))
+            let displayable = !awaitingVisibleFrame || pts >= prerollTarget - 0.05
+            guard let sample = makeSampleBuffer(data: data, configuration: configuration, pts: pts, dts: dts, duration: packetDuration, keyframe: keyframe, displayable: displayable) else { fail("sample-buffer-create-failed pts=\(pts)"); return }
+            if displayable && awaitingVisibleFrame {
+                awaitingVisibleFrame = false
+                DiagnosticsLogger.shared.playback("PiPPipeline", "preroll-complete target=\(String(format: "%.3f", prerollTarget)) firstVisible=\(String(format: "%.3f", pts)) generation=\(activeGeneration)")
+            }
+            if displayable { throttleIfAhead(pts: pts) }
+            onSample?(SampleEnvelope(buffer: sample, pts: pts, keyframe: keyframe, generation: activeGeneration, displayable: displayable))
         }
     }
 
+    private func takePendingSeek() -> SeekRequest? { lock.lock(); defer { lock.unlock() }; let value = pendingSeek; pendingSeek = nil; return value }
     private var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
     private var isPaused: Bool { lock.lock(); defer { lock.unlock() }; return paused }
+
+    private func currentPacingPosition() -> Double {
+        lock.lock(); defer { lock.unlock() }
+        return paused ? pacingAnchorPosition : pacingAnchorPosition + max(0, CACurrentMediaTime() - pacingAnchorWall)
+    }
+
+    private func throttleIfAhead(pts: Double) {
+        while !isCancelled, !isPaused, pts > currentPacingPosition() + 1.0 { Thread.sleep(forTimeInterval: 0.01) }
+    }
+
     private func fail(_ message: String) { if !isCancelled { onFailure?(message) } }
 
     private func rationalValue(_ value: AVRational) -> Double {
@@ -414,7 +471,7 @@ final class PlayerSampleBufferPiPBridge: @unchecked Sendable {
         return result.isFinite && result > 0 ? result : 0
     }
 
-    private func makeSampleBuffer(data: Data, configuration: OnePlayerPiPCodecConfiguration, pts: Double, dts: Double, duration: Double, keyframe: Bool) -> CMSampleBuffer? {
+    private func makeSampleBuffer(data: Data, configuration: OnePlayerPiPCodecConfiguration, pts: Double, dts: Double, duration: Double, keyframe: Bool, displayable: Bool) -> CMSampleBuffer? {
         var blockBuffer: CMBlockBuffer?
         var status = CMBlockBufferCreateEmpty(allocator: kCFAllocatorDefault, capacity: 0, flags: 0, blockBufferOut: &blockBuffer)
         guard status == kCMBlockBufferNoErr, let blockBuffer else { return nil }
@@ -431,19 +488,24 @@ final class PlayerSampleBufferPiPBridge: @unchecked Sendable {
         var sampleBuffer: CMSampleBuffer?
         status = CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: blockBuffer, formatDescription: configuration.formatDescription, sampleCount: 1, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleSizeEntryCount: 1, sampleSizeArray: &sampleSize, sampleBufferOut: &sampleBuffer)
         guard status == noErr, let sampleBuffer else { return nil }
-        if !keyframe, let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true) as? [NSMutableDictionary], let attachment = attachments.first { attachment[kCMSampleAttachmentKey_NotSync] = true }
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true) as? [NSMutableDictionary], let attachment = attachments.first {
+            if !keyframe { attachment[kCMSampleAttachmentKey_NotSync] = true }
+            if !displayable { attachment[kCMSampleAttachmentKey_DoNotDisplay] = true }
+        }
         return sampleBuffer
     }
 }
 #else
-final class PlayerSampleBufferPiPBridge: @unchecked Sendable {
-    struct SampleEnvelope: @unchecked Sendable { let buffer: CMSampleBuffer; let pts: Double; let keyframe: Bool }
+final class PlayerPiPSamplePipeline: @unchecked Sendable {
+    struct SampleEnvelope: @unchecked Sendable { let buffer: CMSampleBuffer; let pts: Double; let keyframe: Bool; let generation: UInt64; let displayable: Bool }
     var onSample: ((SampleEnvelope) -> Void)?
     var onReady: ((String) -> Void)?
     var onFailure: ((String) -> Void)?
+    private var generation: UInt64 = 1
     init(session: TransportDataSession, startPosition: Double) {}
-    func start() { onFailure?("ffmpeg-modules-unavailable") }
+    func start() -> UInt64 { onFailure?("ffmpeg-modules-unavailable"); return generation }
     func stop() {}
     func setPaused(_ value: Bool) {}
+    func seek(to position: Double) -> UInt64 { generation &+= 1; return generation }
 }
 #endif
