@@ -1,1 +1,2 @@
 trigger Build158 materialize workflow
+synchronize
