@@ -4,8 +4,6 @@ struct OnePlayerKeyframeNeighbors {
     let previous: Double?
     let next: Double?
     let nearest: Double?
-    let previousStatus: String
-    let nextStatus: String
 }
 
 enum OnePlayerKeyframeNeighborProbeResult {
@@ -47,16 +45,15 @@ import Libavcodec
 
 private final class OnePlayerKeyframeReadBox: @unchecked Sendable {
     private let lock = NSLock()
-    private var completed = false
     private var data: Data?
 
     func store(_ value: Data?) {
-        lock.lock(); data = value; completed = true; lock.unlock()
+        lock.lock(); data = value; lock.unlock()
     }
 
-    func load() -> (Bool, Data?) {
+    func load() -> Data? {
         lock.lock(); defer { lock.unlock() }
-        return (completed, data)
+        return data
     }
 }
 
@@ -91,8 +88,7 @@ private final class OnePlayerKeyframeAVIOState: @unchecked Sendable {
             task.cancel()
             return -5
         }
-        let result = box.load()
-        guard result.0, let data = result.1, !data.isEmpty else { return -5 }
+        guard let data = box.load(), !data.isEmpty else { return -5 }
         data.withUnsafeBytes { raw in
             if let base = raw.baseAddress { memcpy(buffer, base, data.count) }
         }
@@ -189,7 +185,7 @@ private struct OnePlayerKeyframeStreamMetadata {
 }
 
 private enum OnePlayerDirectionalKeyframeResult {
-    case value(Double, String)
+    case value(Double)
     case unavailable(String)
 }
 
@@ -230,20 +226,20 @@ enum OnePlayerKeyframeIndexProbe {
         let nextResult = probeDirection(session: session, contentLength: contentLength, target: target, backward: false)
 
         let previous: Double?
-        let previousStatus: String
+        let previousFailure: String?
         switch previousResult {
-        case .value(let value, let status): previous = value; previousStatus = status
-        case .unavailable(let reason): previous = nil; previousStatus = reason
+        case .value(let value): previous = value; previousFailure = nil
+        case .unavailable(let reason): previous = nil; previousFailure = reason
         }
 
         let next: Double?
-        let nextStatus: String
+        let nextFailure: String?
         switch nextResult {
-        case .value(let value, let status): next = value; nextStatus = status
-        case .unavailable(let reason): next = nil; nextStatus = reason
+        case .value(let value): next = value; nextFailure = nil
+        case .unavailable(let reason): next = nil; nextFailure = reason
         }
 
-        guard previous != nil || next != nil else { return .unavailable("previous=\(previousStatus) next=\(nextStatus)") }
+        guard previous != nil || next != nil else { return .unavailable("previous=\(previousFailure ?? "unknown") next=\(nextFailure ?? "unknown")") }
         let nearest: Double?
         switch (previous, next) {
         case let (previous?, next?): nearest = abs(target - previous) <= abs(next - target) ? previous : next
@@ -251,7 +247,7 @@ enum OnePlayerKeyframeIndexProbe {
         case let (nil, next?): nearest = next
         default: nearest = nil
         }
-        return .ready(OnePlayerKeyframeNeighbors(previous: previous, next: next, nearest: nearest, previousStatus: previousStatus, nextStatus: nextStatus))
+        return .ready(OnePlayerKeyframeNeighbors(previous: previous, next: next, nearest: nearest))
     }
 
     private static func probeDirection(session: TransportDataSession, contentLength: Int64, target: Double, backward: Bool) -> OnePlayerDirectionalKeyframeResult {
@@ -282,9 +278,9 @@ enum OnePlayerKeyframeIndexProbe {
             let seconds = Double(relativeTimestamp) * metadata.scale
             guard seconds.isFinite else { continue }
             if backward {
-                if seconds <= target + 0.001 { return .value(max(0, seconds), "ok-backward scan=\(scan)") }
+                if seconds <= target + 0.001 { return .value(max(0, seconds)) }
             } else if seconds >= target - 0.001 {
-                return .value(max(0, seconds), "ok-forward scan=\(scan)")
+                return .value(max(0, seconds))
             }
         }
         return .unavailable("keyframe-not-found scan-limit=2048")

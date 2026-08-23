@@ -428,15 +428,11 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         let target = min(max(0, seconds), duration > 0 ? duration : seconds)
         let bufferHit = snapshot.bufferedRanges.contains(where: { $0.contains(target) })
         let intent: String
-        let mode: String
         switch direction {
-        case .forward, .backward:
-            intent = "doubleTapFastSeek"
-            mode = "absolute+keyframes"
-        case .absolute:
-            intent = "scrubReleaseFastSeek"
-            mode = "absolute+keyframes"
+        case .forward, .backward: intent = "doubleTapFastSeek"
+        case .absolute: intent = "scrubReleaseFastSeek"
         }
+        let mode = "absolute+keyframes"
         seekGeneration &+= 1
         let seekID = seekGeneration
         let requestedAt = CACurrentMediaTime()
@@ -459,8 +455,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
             var nearestKeyframe: Double?
             var keyframeLookupMs = Double(0)
 
-            if let cached = self.sessionKeyframeMap.neighbors(around: target) {
-                let neighbors = cached.neighbors
+            if let neighbors = self.sessionKeyframeMap.neighbors(around: target) {
                 previousKeyframe = neighbors.previous
                 nextKeyframe = neighbors.next
                 nearestKeyframe = neighbors.nearest
@@ -507,8 +502,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
                 var finalPreviousKeyframe = previousKeyframe
                 var finalNextKeyframe = nextKeyframe
                 var finalNearestKeyframe = nearestKeyframe
-                if finalKeyframeAction.hasPrefix("fallback-"), let cached = self.sessionKeyframeMap.neighbors(around: target) {
-                    let neighbors = cached.neighbors
+                if finalKeyframeAction.hasPrefix("fallback-"), let neighbors = self.sessionKeyframeMap.neighbors(around: target) {
                     finalPreviousKeyframe = neighbors.previous
                     finalNextKeyframe = neighbors.next
                     finalNearestKeyframe = neighbors.nearest
