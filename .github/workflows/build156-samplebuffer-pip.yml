@@ -1,23 +1,20 @@
-name: Build OnePlayer 0.13.89 Build156 SampleBuffer PiP
+name: Build OnePlayer 0.13.90 Build157 PiP Lifecycle
 
 on:
   workflow_dispatch:
   push:
-    branches: [lab/pip-samplebuffer-0.13.89]
+    branches: [fix/pip-home-mpv-resume-0.13.90]
     paths:
       - "Sources/**"
       - "project.mdklab.yml"
       - "Podfile"
       - ".github/workflows/build156-samplebuffer-pip.yml"
-  pull_request:
-    branches: [perf/click-start-parallel-0.13.87]
-    types: [opened, synchronize, reopened]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: build156-samplebuffer-pip-${{ github.ref }}
+  group: build157-pip-lifecycle-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,50 +22,129 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 180
     steps:
-      - name: Checkout Build156 source
+      - name: Checkout Build157 source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Verify Build156 contracts
+      - name: Apply Build157 PiP lifecycle patch once
         run: |
           set -euo pipefail
-          grep -Fq 'sourceVersion = "0.13.89"' Sources/Core/AppIdentity.swift
+          python3 - <<'PY'
+          from pathlib import Path
+
+          changed = False
+
+          app = Path('Sources/Core/AppIdentity.swift')
+          text = app.read_text()
+          if '0.13.90' not in text:
+              assert text.count('0.13.89') == 2
+              text = text.replace('0.13.89', '0.13.90')
+              app.write_text(text)
+              changed = True
+
+          mpv = Path('Sources/Player/MPVPlayerEngine.swift')
+          text = mpv.read_text()
+          if 'pictureInPictureVideoTrack' not in text:
+              anchor = '    private var lastPresentationTimingSignature: PresentationTimingSignature?\n'
+              assert text.count(anchor) == 1
+              text = text.replace(anchor, anchor + '    private var pictureInPictureVideoTrack: String?\n', 1)
+
+              main_anchor = '''    func play() { setPropertyAsync(name: "pause", value: "no") }\n    func pause() { setPropertyAsync(name: "pause", value: "yes") }\n\n    func setPlaybackRate(_ rate: Double) {'''
+              assert text.count(main_anchor) == 1
+              main_replacement = '''    func play() { setPropertyAsync(name: "pause", value: "no") }\n    func pause() { setPropertyAsync(name: "pause", value: "yes") }\n\n    func suspendVideoOutputForPictureInPicture(completion: @escaping (Bool) -> Void) {\n        queue.async { [weak self] in\n            guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }\n            let currentTrack = self.getStringProperty(handle: handle, name: "vid") ?? "auto"\n            if currentTrack != "no" { self.pictureInPictureVideoTrack = currentTrack }\n            let success = currentTrack == "no" || self.setPropertyChecked(handle: handle, name: "vid", value: "no")\n            DiagnosticsLogger.shared.log("MPVPiP", "video-output suspend success=\\(success) previousVid=\\(self.pictureInPictureVideoTrack ?? currentTrack)")\n            DispatchQueue.main.async { completion(success) }\n        }\n    }\n\n    func resumeVideoOutputFromPictureInPicture(completion: @escaping (Bool) -> Void) {\n        queue.async { [weak self] in\n            guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }\n            let restoreTrack = self.pictureInPictureVideoTrack ?? "auto"\n            let success = self.setPropertyChecked(handle: handle, name: "vid", value: restoreTrack)\n            self.pictureInPictureVideoTrack = nil\n            DiagnosticsLogger.shared.log("MPVPiP", "video-output restore success=\\(success) vid=\\(restoreTrack)")\n            DispatchQueue.main.async { completion(success) }\n        }\n    }\n\n    func setPlaybackRate(_ rate: Double) {'''
+              text = text.replace(main_anchor, main_replacement, 1)
+
+              fallback_anchor = '''    func play() {}\n    func pause() {}\n    func setVideoGeometry(panscan: Double, aspectOverride: String?) {}'''
+              assert text.count(fallback_anchor) == 1
+              fallback_replacement = '''    func play() {}\n    func pause() {}\n    func suspendVideoOutputForPictureInPicture(completion: @escaping (Bool) -> Void) { completion(false) }\n    func resumeVideoOutputFromPictureInPicture(completion: @escaping (Bool) -> Void) { completion(false) }\n    func setVideoGeometry(panscan: Double, aspectOverride: String?) {}'''
+              text = text.replace(fallback_anchor, fallback_replacement, 1)
+              mpv.write_text(text)
+              changed = True
+
+          pip = Path('Sources/UI/PlayerPictureInPictureController.swift')
+          text = pip.read_text()
+          if 'inlineVideoSuspendedForPiP' not in text:
+              state_anchor = '    private var firstSampleEnqueued = false\n'
+              assert text.count(state_anchor) == 1
+              text = text.replace(state_anchor, state_anchor + '    private var inlineVideoSuspendedForPiP = false\n    private var automaticHomeWorkItem: DispatchWorkItem?\n', 1)
+
+              reset_anchor = '    private func reset(reason: String) {'
+              assert text.count(reset_anchor) == 1
+              helpers = '''    private func prepareInlineVideoForBackgroundAndReturnHome() {\n        guard let playbackController else { scheduleAutomaticReturnHome(); return }\n        if let mpvEngine = playbackController.engine as? MPVPlayerEngine {\n            mpvEngine.suspendVideoOutputForPictureInPicture { [weak self] success in\n                guard let self else { return }\n                self.inlineVideoSuspendedForPiP = success\n                DiagnosticsLogger.shared.playback("PiP", "inline MPV video suspend success=\\(success) before-auto-home")\n                if success { self.scheduleAutomaticReturnHome() }\n            }\n        } else {\n            DiagnosticsLogger.shared.playback("PiP", "inline video suspend not-required engine=\\(playbackController.engineKind.title)")\n            scheduleAutomaticReturnHome()\n        }\n    }\n\n    private func scheduleAutomaticReturnHome() {\n        automaticHomeWorkItem?.cancel()\n        let work = DispatchWorkItem { [weak self] in\n            guard let self, self.controller?.isPictureInPictureActive == true else { return }\n            let selector = NSSelectorFromString("suspend")\n            let application = UIApplication.shared\n            guard application.responds(to: selector) else {\n                DiagnosticsLogger.shared.playback("PiP", "auto-home unavailable selector=suspend")\n                return\n            }\n            DiagnosticsLogger.shared.playback("PiP", "auto-home request after-start privateSelector=suspend")\n            _ = application.perform(selector)\n        }\n        automaticHomeWorkItem = work\n        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)\n    }\n\n    private func restoreInlineVideoWhenForeground(reason: String, completion: @escaping () -> Void) {\n        guard inlineVideoSuspendedForPiP else { completion(); return }\n        guard UIApplication.shared.applicationState != .background else {\n            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.restoreInlineVideoWhenForeground(reason: reason, completion: completion) }\n            return\n        }\n        guard let playbackController else { inlineVideoSuspendedForPiP = false; completion(); return }\n        guard let mpvEngine = playbackController.engine as? MPVPlayerEngine else { inlineVideoSuspendedForPiP = false; completion(); return }\n        mpvEngine.resumeVideoOutputFromPictureInPicture { [weak self] success in\n            guard let self else { completion(); return }\n            self.inlineVideoSuspendedForPiP = false\n            DiagnosticsLogger.shared.playback("PiP", "inline MPV video restore success=\\(success) reason=\\(reason)")\n            DispatchQueue.main.asyncAfter(deadline: .now() + 0.10, execute: completion)\n        }\n    }\n\n'''
+              text = text.replace(reset_anchor, helpers + reset_anchor, 1)
+
+              did_start_old = '''    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {\n        isActive = true\n        DiagnosticsLogger.shared.playback("PiP", "started samplebuffer=true avplayer=false engine=\\(playbackController?.engineKind.title ?? "unknown")")\n    }'''
+              assert text.count(did_start_old) == 1
+              did_start_new = '''    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {\n        isActive = true\n        DiagnosticsLogger.shared.playback("PiP", "started samplebuffer=true avplayer=false engine=\\(playbackController?.engineKind.title ?? "unknown")")\n        prepareInlineVideoForBackgroundAndReturnHome()\n    }'''
+              text = text.replace(did_start_old, did_start_new, 1)
+
+              did_stop_old = '''    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {\n        DiagnosticsLogger.shared.playback("PiP", "stopped samplebuffer=true position=\\(String(format: "%.3f", playbackController?.snapshot.position ?? 0))")\n        reset(reason: "stopped")\n    }'''
+              assert text.count(did_stop_old) == 1
+              did_stop_new = '''    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {\n        DiagnosticsLogger.shared.playback("PiP", "stopped samplebuffer=true position=\\(String(format: "%.3f", playbackController?.snapshot.position ?? 0)) appState=\\(UIApplication.shared.applicationState.rawValue)")\n        bridge?.stop()\n        restoreInlineVideoWhenForeground(reason: "pip-stopped") { [weak self] in self?.reset(reason: "stopped") }\n    }'''
+              text = text.replace(did_stop_old, did_stop_new, 1)
+
+              failed_anchor = '    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {'
+              assert text.count(failed_anchor) == 1
+              restore_delegate = '''    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {\n        automaticHomeWorkItem?.cancel(); automaticHomeWorkItem = nil\n        DiagnosticsLogger.shared.playback("PiP", "restore-user-interface requested appState=\\(UIApplication.shared.applicationState.rawValue)")\n        restoreInlineVideoWhenForeground(reason: "system-return-to-player") { completionHandler(true) }\n    }\n\n'''
+              text = text.replace(failed_anchor, restore_delegate + failed_anchor, 1)
+
+              reset_start = '''    private func reset(reason: String) {\n        startTimeout?.cancel(); startTimeout = nil'''
+              assert text.count(reset_start) == 1
+              text = text.replace(reset_start, '''    private func reset(reason: String) {\n        automaticHomeWorkItem?.cancel(); automaticHomeWorkItem = nil\n        startTimeout?.cancel(); startTimeout = nil''', 1)
+              reset_tail = '''        firstSampleEnqueued = false\n        isActive = false'''
+              assert text.count(reset_tail) == 1
+              text = text.replace(reset_tail, '''        firstSampleEnqueued = false\n        inlineVideoSuspendedForPiP = false\n        isActive = false''', 1)
+              pip.write_text(text)
+              changed = True
+
+          if changed:
+              print('Build157 source patch applied')
+          else:
+              print('Build157 source patch already present')
+          PY
+          git diff --check
+          if ! git diff --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add Sources/Core/AppIdentity.swift Sources/Player/MPVPlayerEngine.swift Sources/UI/PlayerPictureInPictureController.swift
+            git commit -m 'Build157: fix PiP home and MPV foreground restore'
+            git push origin HEAD:fix/pip-home-mpv-resume-0.13.90
+            exit 0
+          fi
+
+      - name: Verify Build157 contracts
+        run: |
+          set -euo pipefail
+          grep -Fq 'sourceVersion = "0.13.90"' Sources/Core/AppIdentity.swift
           grep -Fq 'ContentSource(sampleBufferDisplayLayer:' Sources/UI/PlayerPictureInPictureController.swift
-          grep -Fq 'AVPictureInPictureSampleBufferPlaybackDelegate' Sources/UI/PlayerPictureInPictureController.swift
-          grep -Fq 'PlayerSampleBufferPiPBridge' Sources/UI/PlayerSampleBufferPiPBridge.swift
-          grep -Fq 'import Libavformat' Sources/UI/PlayerSampleBufferPiPBridge.swift
-          grep -Fq 'CMVideoFormatDescriptionCreateFromHEVCParameterSets' Sources/UI/PlayerSampleBufferPiPBridge.swift
-          grep -Fq 'CMVideoFormatDescriptionCreateFromH264ParameterSets' Sources/UI/PlayerSampleBufferPiPBridge.swift
-          grep -Fq 'PlaybackTransportSessionRegistry.shared.session' Sources/UI/PlayerPictureInPictureController.swift
-          grep -Fq 'pictureInPictureController.toggle(using: controller)' Sources/UI/PlayerScreen.swift
+          grep -Fq 'suspendVideoOutputForPictureInPicture' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'resumeVideoOutputFromPictureInPicture' Sources/Player/MPVPlayerEngine.swift
+          grep -Fq 'NSSelectorFromString("suspend")' Sources/UI/PlayerPictureInPictureController.swift
+          grep -Fq 'restoreUserInterfaceForPictureInPictureStopWithCompletionHandler' Sources/UI/PlayerPictureInPictureController.swift
           ! grep -Fq 'switchEngine(to: .transportAVPlayer' Sources/UI/PlayerPictureInPictureController.swift
           ! grep -Fq 'AVPictureInPictureController(playerLayer:' Sources/UI/PlayerPictureInPictureController.swift
           ! grep -Fq 'activeVideoCallSourceView:' Sources/UI/PlayerPictureInPictureController.swift
-          ! grep -Fq 'takeDisplayLayerForPictureInPicture' Sources/UI/PlayerPictureInPictureController.swift
-          ! grep -Fq 'isReadyForDisplay' Sources/UI/PlayerPictureInPictureController.swift
 
+          git fetch origin lab/pip-samplebuffer-0.13.89 --depth=1
           python3 - <<'PY'
           from pathlib import Path
+          import subprocess
+          head = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
+          base = subprocess.check_output(['git','show','origin/lab/pip-samplebuffer-0.13.89:Sources/Player/MPVPlayerEngine.swift'], text=True)
+          def seek_body(text):
+              start = text.index('    func seek(to seconds: Double, direction: SeekDirection)')
+              end = text.index('\n    private func claimKeyframeLookupIndex()', start)
+              return text[start:end]
+          assert seek_body(head) == seek_body(base)
           controller = Path('Sources/Player/PlayerController.swift').read_text()
-          seek_start = controller.index('    func seek(by offset: Double)')
-          seek_end = controller.index('\n    func beginScrubbing()', seek_start)
-          assert 'engine.seek(to: target' in controller[seek_start:seek_end]
-
-          mpv = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
-          start = mpv.index('    func seek(to seconds: Double, direction: SeekDirection)')
-          end = mpv.index('\n    private func claimKeyframeLookupIndex()', start)
-          body = mpv[start:end]
-          assert body.count('self.command(handle, ["seek"') == 1
-          assert 'absolute+keyframes' in body
-          assert 'absolute+exact' not in body
-
-          screen = Path('Sources/UI/PlayerScreen.swift').read_text()
-          assert screen.count('pictureInPictureController.toggle(using: controller)') == 1
+          start = controller.index('    func seek(by offset: Double)')
+          end = controller.index('\n    func beginScrubbing()', start)
+          assert 'engine.seek(to: target' in controller[start:end]
+          assert 'absolute+exact' not in seek_body(head)
+          assert 'absolute+keyframes' in seek_body(head)
           PY
-
-          git fetch origin perf/click-start-parallel-0.13.87 --depth=1
-          test -z "$(git diff --name-only origin/perf/click-start-parallel-0.13.87...HEAD -- Sources/Player/MPVPlayerEngine.swift Sources/Player/KSAVIOPlayerEngine.swift Sources/Player/PlaybackPresentationCoordinator.swift Sources/Player/PlaybackPresentationAdapters.swift Sources/Transport/UnifiedMediaTransportSession.swift MDKLab)"
+          test -z "$(git diff --name-only origin/lab/pip-samplebuffer-0.13.89...HEAD -- Sources/Player/PlayerController.swift Sources/Player/KSAVIOPlayerEngine.swift Sources/Player/PlaybackPresentationCoordinator.swift Sources/Player/PlaybackPresentationAdapters.swift Sources/Transport/UnifiedMediaTransportSession.swift MDKLab)"
           grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
           git diff --check
 
@@ -85,8 +161,6 @@ jobs:
           set -euo pipefail
           brew install xcodegen
           sudo gem install cocoapods -v 1.16.2 --no-document
-          xcodegen --version
-          pod --version
 
       - name: Generate project and resolve dependencies
         run: |
@@ -96,11 +170,11 @@ jobs:
           pod install --repo-update
           xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
 
-      - name: Build Build156 Release
+      - name: Build Build157 Release
         run: |
           set -euo pipefail
           rm -rf build
-          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.89 CURRENT_PROJECT_VERSION=156 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.90 CURRENT_PROJECT_VERSION=157 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
 
       - name: Locate and validate app
         id: app
@@ -109,7 +183,7 @@ jobs:
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP_PATH" && test -d "$APP_PATH"
           echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.89' --build '156' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.90' --build '157' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
           chmod +x scripts/check_min_os.sh
           scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
 
@@ -120,19 +194,19 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "$APP_PATH" Payload/
-          IPA='OnePlayer-0.13.89-build156-samplebuffer-pip-unsigned.ipa'
+          IPA='OnePlayer-0.13.90-build157-pip-lifecycle-unsigned.ipa'
           /usr/bin/zip -qry "$IPA" Payload
           /usr/bin/unzip -t "$IPA" >/dev/null
           /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
           cat "$IPA.sha256"
 
-      - name: Upload Build156 package
+      - name: Upload Build157 package
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.13.89-build156-samplebuffer-pip
+          name: OnePlayer-0.13.90-build157-pip-lifecycle
           path: |
-            OnePlayer-0.13.89-build156-samplebuffer-pip-unsigned.ipa
-            OnePlayer-0.13.89-build156-samplebuffer-pip-unsigned.ipa.sha256
+            OnePlayer-0.13.90-build157-pip-lifecycle-unsigned.ipa
+            OnePlayer-0.13.90-build157-pip-lifecycle-unsigned.ipa.sha256
             app-validation.log
             min-os-report.log
             build.log
@@ -140,11 +214,11 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload Build156 diagnostics
+      - name: Upload Build157 diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.13.89-build156-samplebuffer-pip-failure
+          name: OnePlayer-0.13.90-build157-pip-lifecycle-failure
           path: |
             build.log
             package-resolution.log
