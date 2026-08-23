@@ -72,7 +72,7 @@ jobs:
           assert 'DiagnosticsLogger.shared.playback("KeyframeCacheRead"' in body
           assert 'DiagnosticsLogger.shared.playback("KeyframeMetadataRefill"' in body
           assert 'result=hit' not in body
-          assert 'scheduleSlots(reason: "keyframe-seek-cleanup")' in body
+          assert 'scheduleSlots(reason: "keyframe-metadata-refill")' in body
           seek = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
           seek_start = seek.index('    func seek(to seconds: Double, direction: SeekDirection)')
           seek_end = seek.index('\n    private func claimKeyframeLookupIndex()', seek_start)
