@@ -81,7 +81,6 @@ struct PlayerPlaybackSettingsPopover: View {
             separator
             actionRow(title: "超画", systemImage: "sparkles", leadingCheck: videoEnhancementEnabled) {
                 videoEnhancementEnabled.toggle()
-                onPreferencesChanged()
             }
             separator
             actionRow(title: "运动平滑", systemImage: "waveform.path", trailingChevron: true, action: showMotionSmoothing)
@@ -107,7 +106,6 @@ struct PlayerPlaybackSettingsPopover: View {
                 separator
                 Button {
                     motionSmoothingRaw = mode.rawValue
-                    onPreferencesChanged()
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "checkmark")

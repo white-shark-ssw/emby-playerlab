@@ -4,15 +4,17 @@ import UIKit
 
 @MainActor
 final class DisplayRefreshRateMonitor: NSObject, ObservableObject {
-    @Published private(set) var framesPerSecond: Double
+    let framesPerSecond: Double
+    @Published private(set) var measuredFramesPerSecond: Double
 
     private var displayLink: CADisplayLink?
     private var lastTimestamp: CFTimeInterval?
     private var samples: [Double] = []
 
     override init() {
-        let maximum = max(60, UIScreen.main.maximumFramesPerSecond)
-        framesPerSecond = Double(maximum)
+        let maximum = Double(max(60, UIScreen.main.maximumFramesPerSecond))
+        framesPerSecond = maximum
+        measuredFramesPerSecond = maximum
         super.init()
     }
 
@@ -43,10 +45,10 @@ final class DisplayRefreshRateMonitor: NSObject, ObservableObject {
         guard samples.count >= 12 else { return }
         let sorted = samples.sorted()
         let median = sorted[sorted.count / 2]
-        let clamped = min(Double(max(60, UIScreen.main.maximumFramesPerSecond)), max(30, median))
-        if abs(clamped - framesPerSecond) >= 1 {
-            framesPerSecond = clamped
-            DiagnosticsLogger.shared.playback("DisplayTiming", "measured=\(String(format: "%.2f", clamped)) maximum=\(UIScreen.main.maximumFramesPerSecond)")
+        let clamped = min(framesPerSecond, max(30, median))
+        if abs(clamped - measuredFramesPerSecond) >= 1 {
+            measuredFramesPerSecond = clamped
+            DiagnosticsLogger.shared.playback("DisplayTiming", "measured=\(String(format: "%.2f", clamped)) maximum=\(UIScreen.main.maximumFramesPerSecond) controlTarget=\(String(format: "%.0f", framesPerSecond))")
         }
     }
 }
