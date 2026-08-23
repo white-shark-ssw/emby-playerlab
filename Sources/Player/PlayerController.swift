@@ -165,6 +165,17 @@ final class PlayerController: ObservableObject {
     }
 
     private func resolveInitialPlaybackPosition() async -> Double {
+        if let ticks = source.initialPlaybackPositionTicks {
+            let seconds = max(0, Double(ticks) / AppIdentity.ticksPerSecond)
+            let duration = source.mediaSource.durationSeconds ?? 0
+            if duration > 0, seconds / duration >= 0.995 {
+                DiagnosticsLogger.shared.playback("Resume", "item=\(source.itemId) source-hint treated-as-complete ticks=\(ticks)")
+                return 0
+            }
+            let resolved = duration > 0 ? min(seconds, duration) : seconds
+            DiagnosticsLogger.shared.playback("Resume", "item=\(source.itemId) source-hint position=\(String(format: "%.3f", resolved)) duration=\(String(format: "%.3f", duration))")
+            return resolved
+        }
         do {
             let item = try await client.libraryItem(itemId: source.itemId)
             guard item.isPlayed == false,
