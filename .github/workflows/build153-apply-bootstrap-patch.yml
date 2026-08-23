@@ -1,0 +1,150 @@
+name: Build153 Apply Startup Bootstrap Patch
+
+on:
+  pull_request:
+    branches: [fix/fast-start-pip-0.13.85]
+    types: [opened]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.ref == 'perf/startup-range-bootstrap-0.13.86' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build153 head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Apply exact Build153 bootstrap patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, got {count}: {old[:120]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          # Transport result carries the real bytes fetched while resolving redirects.
+          replace_once(
+              'Sources/Transport/TransportTypes.swift',
+              '''struct TransportResolvedResource: Equatable {\n    let originalURL: URL\n    let finalURL: URL\n    let requestHeaders: [String: String]\n    let contentLength: Int64\n    let contentType: String?\n    let supportsByteRanges: Bool\n    let etag: String?\n    let lastModified: String?\n    let redirectCount: Int\n    let looksLike115CDN: Bool\n}\n''',
+              '''struct TransportResolvedResource: Equatable {\n    let originalURL: URL\n    let finalURL: URL\n    let requestHeaders: [String: String]\n    let contentLength: Int64\n    let contentType: String?\n    let supportsByteRanges: Bool\n    let etag: String?\n    let lastModified: String?\n    let redirectCount: Int\n    let looksLike115CDN: Bool\n}\n\nstruct TransportBootstrapResult {\n    let resource: TransportResolvedResource\n    let data: Data\n    let range: Range<Int64>\n}\n'''
+          )
+
+          # Keep the existing 1-byte resolver for URL refreshes; add a real-byte startup bootstrap.
+          bootstrap_method = r'''
+    func resolveWithBootstrap(source: ResolvedPlaybackSource, maximumBytes: Int) async throws -> TransportBootstrapResult {
+        let bootstrapBytes = max(64 * 1024, maximumBytes)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 45
+        configuration.waitsForConnectivity = true
+        configuration.httpMaximumConnectionsPerHost = 4
+
+        let session = URLSession(configuration: configuration)
+        defer { session.finishTasksAndInvalidate() }
+
+        var request = URLRequest(url: source.url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 30
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        request.setValue("EmbyPlayerLab/\(AppIdentity.sourceVersion)", forHTTPHeaderField: "User-Agent")
+        source.headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        request.setValue("bytes=0-\(bootstrapBytes - 1)", forHTTPHeaderField: "Range")
+
+        let delegate = RedirectCaptureDelegate(initialOrigin: source.url)
+        let began = Date()
+        let (rawData, response) = try await session.data(for: request, delegate: delegate)
+        guard let http = response as? HTTPURLResponse, let finalURL = http.url else { throw MediaTransportError.invalidResponse }
+        if http.statusCode == 403 || http.statusCode == 410 { throw MediaTransportError.expiredURL(statusCode: http.statusCode) }
+        guard http.statusCode == 206 || http.statusCode == 200 else { throw MediaTransportError.rangeUnsupported(statusCode: http.statusCode) }
+
+        let contentLength = Self.totalLength(from: http)
+        guard contentLength > 0 else { throw MediaTransportError.unavailableContentLength }
+        let acceptsRanges = http.statusCode == 206 || http.value(forHTTPHeaderField: "Accept-Ranges")?.lowercased().contains("bytes") == true
+        guard acceptsRanges else { throw MediaTransportError.rangeUnsupported(statusCode: http.statusCode) }
+
+        let host = finalURL.host?.lowercased() ?? ""
+        let path = finalURL.path.lowercased()
+        let looksLike115 = host.contains("115") || host.contains("115cdn") || path.contains("115cdn")
+
+        var finalHeaders = delegate.latestHeaders.isEmpty ? source.headers : delegate.latestHeaders
+        ["Range", "Host", "Content-Length", "Authorization", "X-Emby-Token", "X-MediaBrowser-Token"].forEach { finalHeaders.removeValue(forKey: $0) }
+        if let cookieStorage = session.configuration.httpCookieStorage,
+           let cookies = cookieStorage.cookies(for: finalURL),
+           !cookies.isEmpty,
+           let cookie = HTTPCookie.requestHeaderFields(with: cookies)["Cookie"] {
+            finalHeaders["Cookie"] = cookie
+        }
+
+        let acceptedCount = min(rawData.count, bootstrapBytes, Int(contentLength))
+        guard acceptedCount > 0 else { throw MediaTransportError.invalidResponse }
+        let data = acceptedCount == rawData.count ? rawData : Data(rawData.prefix(acceptedCount))
+        let resource = TransportResolvedResource(
+            originalURL: source.url,
+            finalURL: finalURL,
+            requestHeaders: finalHeaders,
+            contentLength: contentLength,
+            contentType: http.mimeType,
+            supportsByteRanges: acceptsRanges,
+            etag: http.value(forHTTPHeaderField: "ETag"),
+            lastModified: http.value(forHTTPHeaderField: "Last-Modified"),
+            redirectCount: delegate.redirects.count,
+            looksLike115CDN: looksLike115
+        )
+        let elapsedMs = Int(max(0, Date().timeIntervalSince(began)) * 1000)
+        DiagnosticsLogger.shared.playback("StartupBootstrap", "status=\(http.statusCode) redirects=\(delegate.redirects.count) bytes=\(data.count) total=\(contentLength) ms=\(elapsedMs) finalHost=\(finalURL.host ?? "unknown")")
+        return TransportBootstrapResult(resource: resource, data: data, range: 0..<Int64(data.count))
+    }
+
+'''
+          replace_once('Sources/Transport/RedirectResolver.swift', 'struct RedirectResolver {\n    func resolve(source: ResolvedPlaybackSource) async throws -> TransportResolvedResource {\n', 'struct RedirectResolver {\n' + bootstrap_method + '    func resolve(source: ResolvedPlaybackSource) async throws -> TransportResolvedResource {\n')
+
+          # Unified transport: resolve with 1 MiB of real media, then seed the sparse cache.
+          replace_once('Sources/Transport/UnifiedMediaTransportSession.swift', '    private var resolveTask: Task<TransportResolvedResource, Error>?\n', '    private var resolveTask: Task<TransportBootstrapResult, Error>?\n')
+          replace_once(
+              'Sources/Transport/UnifiedMediaTransportSession.swift',
+              '''        let snapshot = source\n        let resolver = resolver\n        let task = Task<TransportResolvedResource, Error> { try await resolver.resolve(source: snapshot) }\n        resolveTask = task\n        do {\n            let resolved = try await task.value\n''',
+              '''        let snapshot = source\n        let resolver = resolver\n        let bootstrapBytes = Int(startupMetadataSegmentBytes)\n        let task = Task<TransportBootstrapResult, Error> { try await resolver.resolveWithBootstrap(source: snapshot, maximumBytes: bootstrapBytes) }\n        resolveTask = task\n        do {\n            let bootstrap = try await task.value\n            let resolved = bootstrap.resource\n'''
+          )
+          replace_once(
+              'Sources/Transport/UnifiedMediaTransportSession.swift',
+              '''                store = cache\n                for range in cache.cachedRanges { rangeMap.insertPlayback(range) }\n            }\n            DiagnosticsLogger.shared.playback(\n''',
+              '''                store = cache\n                for range in cache.cachedRanges { rangeMap.insertPlayback(range) }\n            }\n            if !bootstrap.data.isEmpty, let store = store {\n                let count = min(bootstrap.data.count, Int(resolved.contentLength))\n                if count > 0 {\n                    let data = count == bootstrap.data.count ? bootstrap.data : Data(bootstrap.data.prefix(count))\n                    let range = bootstrap.range.lowerBound..<(bootstrap.range.lowerBound + Int64(count))\n                    try store.write(data, at: range.lowerBound)\n                    rangeMap.insertPlayback(range)\n                    metricsValue.bytesDownloaded += Int64(count)\n                    metricsValue.networkRequestCount += 1\n                    metricsValue.elapsedSeconds = Date().timeIntervalSince(createdAt)\n                    DiagnosticsLogger.shared.playback("StartupBootstrap", "cache-seeded range=\(range.lowerBound)-\(range.upperBound) bytes=\(count) action=first-read-cache-hit")\n                }\n            }\n            DiagnosticsLogger.shared.playback(\n'''
+          )
+
+          # Resume playback no longer serially waits for the prewarm task before engine activation.
+          replace_once(
+              'Sources/Player/PlayerController.swift',
+              '''            if startPosition > 0.5, let prewarmTask = self.startupTransportPrewarmTask {\n                await prewarmTask.value\n                guard !Task.isCancelled, self.started else { return }\n                DiagnosticsLogger.shared.playback("StartupFastPath", "cold resume transport resolve awaited item=\\(self.source.itemId) position=\\(String(format: "%.3f", startPosition))")\n            }\n''',
+              '''            if startPosition > 0.5, self.startupTransportPrewarmTask != nil {\n                DiagnosticsLogger.shared.playback("StartupFastPath", "cold resume transport bootstrap overlaps engine activation item=\\(self.source.itemId) position=\\(String(format: "%.3f", startPosition))")\n            }\n'''
+          )
+
+          replace_once('Sources/Core/AppIdentity.swift', '    static let sourceVersion = "0.13.85"\n', '    static let sourceVersion = "0.13.86"\n')
+          replace_once('Sources/Core/AppIdentity.swift', '    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.13.85"\n', '    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.13.86"\n')
+          PY
+
+          git diff --check
+          grep -Fq 'resolveWithBootstrap' Sources/Transport/RedirectResolver.swift
+          grep -Fq 'StartupBootstrap' Sources/Transport/UnifiedMediaTransportSession.swift
+          grep -Fq 'cold resume transport bootstrap overlaps engine activation' Sources/Player/PlayerController.swift
+          ! grep -Fq 'cold resume transport resolve awaited' Sources/Player/PlayerController.swift
+          grep -Fq 'sourceVersion = "0.13.86"' Sources/Core/AppIdentity.swift
+
+      - name: Commit Build153 source patch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Sources/Core/AppIdentity.swift Sources/Player/PlayerController.swift Sources/Transport/TransportTypes.swift Sources/Transport/RedirectResolver.swift Sources/Transport/UnifiedMediaTransportSession.swift
+          git commit -m 'perf: bootstrap first media range during startup resolve'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
