@@ -25,7 +25,7 @@ final class MPVMetalLayer: CAMetalLayer {
 }
 
 #if canImport(Libmpv)
-final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
+final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, PlayerPiPInlineRendererControlling {
     let kind: PlayerEngineKind = .mpv
     var onSnapshot: ((PlayerSnapshot) -> Void)?
     var onSeekCompleted: ((SeekResult) -> Void)?
@@ -63,6 +63,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
     private var streamPrepareTask: Task<Void, Never>?
     private var enhancementBaseline: EnhancementBaseline?
     private var lastPresentationTimingSignature: PresentationTimingSignature?
+    private var pictureInPictureRendererSuspended = false
 
     private struct Configuration {
         let url: URL
@@ -180,6 +181,55 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
 
     func play() { setPropertyAsync(name: "pause", value: "no") }
     func pause() { setPropertyAsync(name: "pause", value: "yes") }
+
+    func suspendInlineRendererForPictureInPicture(completion: @escaping (Bool) -> Void) {
+        queue.async { [weak self] in
+            guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }
+            if self.pictureInPictureRendererSuspended { DispatchQueue.main.async { completion(true) }; return }
+            let previousVO = self.getStringProperty(handle: handle, name: "current-vo") ?? "unknown"
+            guard self.setPropertyChecked(handle: handle, name: "vo", value: "null") else {
+                DiagnosticsLogger.shared.log("MPVPiP", "vo suspend request failed previousVO=\(previousVO)")
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            self.waitForPictureInPictureVO(handle: handle, target: "null", attempt: 0) { [weak self] ready, currentVO in
+                guard let self else { DispatchQueue.main.async { completion(false) }; return }
+                self.pictureInPictureRendererSuspended = ready
+                DiagnosticsLogger.shared.log("MPVPiP", "vo suspend ready=\(ready) previousVO=\(previousVO) currentVO=\(currentVO) decoderPreserved=true")
+                DispatchQueue.main.async { completion(ready) }
+            }
+        }
+    }
+
+    func resumeInlineRendererAfterPictureInPicture(completion: @escaping (Bool) -> Void) {
+        queue.async { [weak self] in
+            guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }
+            guard self.pictureInPictureRendererSuspended else { DispatchQueue.main.async { completion(true) }; return }
+            guard self.setPropertyChecked(handle: handle, name: "vo", value: "gpu-next") else {
+                DiagnosticsLogger.shared.log("MPVPiP", "vo restore request failed")
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            self.waitForPictureInPictureVO(handle: handle, target: "gpu-next", attempt: 0) { [weak self] ready, currentVO in
+                guard let self else { DispatchQueue.main.async { completion(false) }; return }
+                if ready { self.pictureInPictureRendererSuspended = false }
+                let drawable = self.displayLayer.drawableSize
+                DiagnosticsLogger.shared.log("MPVPiP", "vo restore ready=\(ready) currentVO=\(currentVO) drawable=\(Int(drawable.width))x\(Int(drawable.height)) decoderPreserved=true")
+                DispatchQueue.main.async { completion(ready) }
+            }
+        }
+    }
+
+    private func waitForPictureInPictureVO(handle: OpaquePointer, target: String, attempt: Int, completion: @escaping (Bool, String) -> Void) {
+        guard let currentHandle = mpv, currentHandle == handle, !isStopping else { completion(false, "detached"); return }
+        let currentVO = getStringProperty(handle: handle, name: "current-vo") ?? "unknown"
+        let voMatched = target == "null" ? currentVO.contains("null") : currentVO.contains("gpu-next")
+        let drawable = displayLayer.drawableSize
+        let drawableReady = target == "null" || (drawable.width > 1 && drawable.height > 1)
+        if voMatched && drawableReady { completion(true, currentVO); return }
+        guard attempt < 40 else { completion(false, currentVO); return }
+        queue.asyncAfter(deadline: .now() + 0.01) { [weak self] in self?.waitForPictureInPictureVO(handle: handle, target: target, attempt: attempt + 1, completion: completion) }
+    }
 
     func setPlaybackRate(_ rate: Double) {
         let clamped = min(8, max(0.15, rate))
@@ -584,6 +634,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         snapshot = PlayerSnapshot()
         enhancementBaseline = nil
         lastPresentationTimingSignature = nil
+        pictureInPictureRendererSuspended = false
 
         let flushLayer = { [displayLayer] in
             displayLayer.contents = nil
@@ -606,6 +657,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
         isStopping = false
         enhancementBaseline = nil
         lastPresentationTimingSignature = nil
+        pictureInPictureRendererSuspended = false
 
         check(mpv_request_log_messages(handle, "warn"), operation: "request logs")
         try require(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &displayLayer), operation: "set CAMetalLayer")
@@ -1192,7 +1244,7 @@ enum MPVEngineError: LocalizedError {
 }
 
 #else
-final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
+final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, PlayerPiPInlineRendererControlling {
     let kind: PlayerEngineKind = .mpv
     var onSnapshot: ((PlayerSnapshot) -> Void)?
     var onSeekCompleted: ((SeekResult) -> Void)?
@@ -1215,6 +1267,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
     func reloadForBadInterleavedMP4(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double, reason: String) { prepare(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition) }
     func play() {}
     func pause() {}
+    func suspendInlineRendererForPictureInPicture(completion: @escaping (Bool) -> Void) { completion(false) }
+    func resumeInlineRendererAfterPictureInPicture(completion: @escaping (Bool) -> Void) { completion(false) }
     func setVideoGeometry(panscan: Double, aspectOverride: String?) {}
     func applyPresentationPlan(_ plan: PlaybackPresentationPlan, completion: @escaping (PlaybackPresentationAcknowledgement) -> Void) { completion(.unsupported) }
 

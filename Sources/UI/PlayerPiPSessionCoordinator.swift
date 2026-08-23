@@ -223,9 +223,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
 
     private func restoreInlineRendererWhenForeground(reason: String, completion: @escaping () -> Void) {
         guard inlineRendererSuspended else { completion(); return }
-        guard UIApplication.shared.applicationState != .background else {
+        guard UIApplication.shared.applicationState == .active else {
             pendingForegroundRestore = { [weak self] in self?.restoreInlineRendererWhenForeground(reason: reason, completion: completion) }
-            DiagnosticsLogger.shared.playback("PiPSession", "renderer restore deferred reason=\(reason) appState=background")
+            DiagnosticsLogger.shared.playback("PiPSession", "renderer restore deferred reason=\(reason) appState=\(UIApplication.shared.applicationState.rawValue) wait=didBecomeActive")
             return
         }
         guard let inlineRenderer else { inlineRendererSuspended = false; completion(); return }
