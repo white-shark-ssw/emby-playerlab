@@ -242,7 +242,7 @@ struct PlayerScreen: View {
 
             if capabilities.supportsPictureInPicture {
                 Button {
-                    pictureInPictureController.toggle()
+                    pictureInPictureController.toggle(using: controller)
                     showControls()
                 } label: {
                     Image(systemName: "pip").font(.system(size: 19, weight: .semibold)).frame(width: 42, height: 42)
