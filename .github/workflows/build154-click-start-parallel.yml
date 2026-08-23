@@ -1,0 +1,163 @@
+name: Build OnePlayer 0.13.87 Build154 Click Start Parallel
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [perf/click-start-parallel-0.13.87]
+    paths:
+      - "Sources/**"
+      - "project.mdklab.yml"
+      - "Podfile"
+      - ".github/workflows/build154-click-start-parallel.yml"
+  pull_request:
+    branches: [fix/fast-start-pip-0.13.85]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build154-click-start-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - name: Checkout Build154 source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Build154 contracts
+        run: |
+          set -euo pipefail
+          grep -Fq 'sourceVersion = "0.13.87"' Sources/Core/AppIdentity.swift
+          grep -Fq 'let initialPlaybackPositionTicks: Int64?' Sources/Models/EmbyModels.swift
+          grep -Fq 'source-hint position=' Sources/Player/PlayerController.swift
+          grep -Fq 'click source reused' Sources/UI/EmbyMediaDetailView.swift
+          grep -Fq 'PlaybackClickResolveRegistry.shared.arm(source: resolved)' Sources/UI/EmbyMediaDetailView.swift
+          grep -Fq 'click transport resolve armed' Sources/Transport/PlaybackClickResolveRegistry.swift
+          grep -Fq 'transport resolve joined click-prewarm' Sources/Transport/RedirectResolver.swift
+          grep -Fq 'request.setValue("bytes=0-0"' Sources/Transport/RedirectResolver.swift
+          ! grep -Fq 'StartupBootstrap' Sources/Transport/RedirectResolver.swift
+
+          python3 - <<'PY'
+          from pathlib import Path
+          all_swift = list(Path('Sources').rglob('*.swift'))
+          uses = []
+          for p in all_swift:
+              text = p.read_text()
+              if 'PlaybackClickResolveRegistry.shared.arm' in text:
+                  uses.append(str(p))
+          assert uses == ['Sources/UI/EmbyMediaDetailView.swift'], uses
+
+          detail = Path('Sources/UI/EmbyMediaDetailView.swift').read_text()
+          play_start = detail.index('    func play(_ mediaItem: LibraryItem) async {')
+          play_end = detail.index('\n    }\n}', play_start) + len('\n    }')
+          play_body = detail[play_start:play_end]
+          assert 'PlaybackClickResolveRegistry.shared.arm(source: resolved)' in play_body
+          assert 'initialPlaybackPositionTicks: initialTicks' in play_body
+
+          controller = Path('Sources/Player/PlayerController.swift').read_text()
+          seek_start = controller.index('    func seek(by offset: Double)')
+          seek_end = controller.index('\n    func beginScrubbing()', seek_start)
+          seek_body = controller[seek_start:seek_end]
+          assert 'engine.seek(to: target' in seek_body
+
+          mpv = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
+          start = mpv.index('    func seek(to seconds: Double, direction: SeekDirection)')
+          end = mpv.index('\n    private func claimKeyframeLookupIndex()', start)
+          body = mpv[start:end]
+          assert body.count('self.command(handle, ["seek"') == 1
+          assert 'absolute+keyframes' in body
+          assert 'absolute+exact' not in body
+          PY
+
+          git fetch origin fix/fast-start-pip-0.13.85 --depth=1
+          test -z "$(git diff --name-only origin/fix/fast-start-pip-0.13.85...HEAD -- Sources/Transport/UnifiedMediaTransportSession.swift Sources/Player/MPVPlayerEngine.swift Sources/Player/KSAVIOPlayerEngine.swift Sources/Player/PlaybackPresentationCoordinator.swift Sources/Player/PlaybackPresentationAdapters.swift Sources/UI/PlayerPictureInPictureController.swift Sources/UI/MPVPlayerSurface.swift Sources/UI/KSAVIOPlayerSurface.swift MDKLab)"
+
+          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
+          git diff --check
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Generate project and resolve dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate --spec project.mdklab.yml
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Build Build154 Release
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.87 CURRENT_PROJECT_VERSION=154 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.87' --build '154' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="${{ steps.app.outputs.path }}"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA='OnePlayer-0.13.87-build154-click-start-parallel-unsigned.ipa'
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" >/dev/null
+          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
+          cat "$IPA.sha256"
+
+      - name: Upload Build154 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.87-build154-click-start-parallel
+          path: |
+            OnePlayer-0.13.87-build154-click-start-parallel-unsigned.ipa
+            OnePlayer-0.13.87-build154-click-start-parallel-unsigned.ipa.sha256
+            app-validation.log
+            min-os-report.log
+            build.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Build154 diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.13.87-build154-click-start-parallel-failure
+          path: |
+            build.log
+            package-resolution.log
+            app-validation.log
+            min-os-report.log
+          if-no-files-found: ignore
+          retention-days: 14
