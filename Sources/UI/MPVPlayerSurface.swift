@@ -3,15 +3,13 @@ import QuartzCore
 import SwiftUI
 import UIKit
 
-final class MPVSurfaceUIView: UIView, PlayerPiPInlineRendererControlling {
+final class MPVSurfaceUIView: UIView {
     private var displayLayer: CAMetalLayer?
     private let presentationCoverView = UIView()
     private var lastGeometryLog = ""
     private var lastReportedGeometry: RendererSurfaceGeometry?
     private var layoutGeneration: UInt64 = 0
     private var presentationGateObserver: NSObjectProtocol?
-    private var displayLayerHostedExternally = false
-    private var pictureInPictureDetachedLayer: CAMetalLayer?
     var onGeometrySettled: ((RendererSurfaceGeometry) -> Void)?
 
     override init(frame: CGRect) {
@@ -30,8 +28,6 @@ final class MPVSurfaceUIView: UIView, PlayerPiPInlineRendererControlling {
         if displayLayer !== layer {
             displayLayer?.removeFromSuperlayer()
             displayLayer = layer
-            displayLayerHostedExternally = false
-            pictureInPictureDetachedLayer = nil
             layer.masksToBounds = true
             layer.isHidden = false
             self.layer.insertSublayer(layer, at: 0)
@@ -39,66 +35,14 @@ final class MPVSurfaceUIView: UIView, PlayerPiPInlineRendererControlling {
             lastReportedGeometry = nil
             DiagnosticsLogger.shared.log("MPVSurface", "attach surface=\(ObjectIdentifier(self)) layer=CAMetalLayer host=UIViewRepresentable lifecycle=persistent drawableOwner=moltenvk")
         }
-        guard !displayLayerHostedExternally else { return }
         setNeedsLayout()
-    }
-
-    func takeDisplayLayerForPictureInPicture() -> CAMetalLayer? {
-        guard let displayLayer, !displayLayerHostedExternally else { return nil }
-        displayLayerHostedExternally = true
-        displayLayer.removeFromSuperlayer()
-        DiagnosticsLogger.shared.playback("PiPRenderer", "MPV inline layer detached surface=\(ObjectIdentifier(self))")
-        return displayLayer
-    }
-
-    func restoreDisplayLayerAfterPictureInPicture(_ layer: CAMetalLayer) {
-        guard displayLayer === layer else { return }
-        displayLayerHostedExternally = false
-        layer.removeFromSuperlayer()
-        layer.masksToBounds = true
-        layer.isHidden = false
-        self.layer.insertSublayer(layer, at: 0)
-        bringSubviewToFront(presentationCoverView)
-        lastReportedGeometry = nil
-        setNeedsLayout()
-        if window != nil { layoutIfNeeded() }
-        DiagnosticsLogger.shared.playback("PiPRenderer", "MPV inline layer restored surface=\(ObjectIdentifier(self))")
-    }
-
-    func suspendInlineRendererForPictureInPicture(completion: @escaping (Bool) -> Void) {
-        if let pictureInPictureDetachedLayer, displayLayerHostedExternally {
-            DiagnosticsLogger.shared.playback("PiPRenderer", "MPV suspend already-detached layer=\(ObjectIdentifier(pictureInPictureDetachedLayer))")
-            completion(true)
-            return
-        }
-        guard let layer = takeDisplayLayerForPictureInPicture() else {
-            DiagnosticsLogger.shared.playback("PiPRenderer", "MPV suspend failed reason=no-inline-layer")
-            completion(false)
-            return
-        }
-        pictureInPictureDetachedLayer = layer
-        completion(true)
-    }
-
-    func resumeInlineRendererAfterPictureInPicture(completion: @escaping (Bool) -> Void) {
-        guard let layer = pictureInPictureDetachedLayer else {
-            completion(!displayLayerHostedExternally)
-            return
-        }
-        pictureInPictureDetachedLayer = nil
-        restoreDisplayLayerAfterPictureInPicture(layer)
-        let restored = !displayLayerHostedExternally && layer.superlayer === self.layer
-        DiagnosticsLogger.shared.playback("PiPRenderer", "MPV resume restored=\(restored) drawable=\(Int(layer.drawableSize.width))x\(Int(layer.drawableSize.height))")
-        completion(restored)
     }
 
     func detach() {
         guard let displayLayer else { return }
-        DiagnosticsLogger.shared.log("MPVSurface", "detach surface=\(ObjectIdentifier(self)) generation=\(layoutGeneration) hostedExternally=\(displayLayerHostedExternally)")
+        DiagnosticsLogger.shared.log("MPVSurface", "detach surface=\(ObjectIdentifier(self)) generation=\(layoutGeneration)")
         displayLayer.removeFromSuperlayer()
         self.displayLayer = nil
-        displayLayerHostedExternally = false
-        pictureInPictureDetachedLayer = nil
         lastGeometryLog = ""
         lastReportedGeometry = nil
     }
@@ -117,7 +61,7 @@ final class MPVSurfaceUIView: UIView, PlayerPiPInlineRendererControlling {
         super.layoutSubviews()
         presentationCoverView.frame = bounds
         bringSubviewToFront(presentationCoverView)
-        guard let displayLayer, !displayLayerHostedExternally else { return }
+        guard let displayLayer else { return }
         layoutGeneration &+= 1
         let generation = layoutGeneration
         let scale = window?.screen.nativeScale ?? UIScreen.main.nativeScale
@@ -154,14 +98,13 @@ final class MPVSurfaceUIView: UIView, PlayerPiPInlineRendererControlling {
             lastReportedGeometry = nil
             DiagnosticsLogger.shared.log("MPVSurface", "foreground presentation replay epoch=\(gate.epoch) reason=renderer-ack-required")
         }
-        guard !displayLayerHostedExternally else { return }
         setNeedsLayout()
         if window != nil { layoutIfNeeded() }
     }
 
     private func scheduleGeometryProbe(generation: UInt64, attempt: Int) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
-            guard let self, self.layoutGeneration == generation, self.window != nil, !self.displayLayerHostedExternally else { return }
+            guard let self, self.layoutGeneration == generation, self.window != nil else { return }
             let geometry = self.logGeometry(stage: attempt == 0 ? "settled" : "probe\(attempt)", generation: generation, force: true)
             guard let geometry else { return }
             if self.reportGeometryIfReady(geometry) { return }
@@ -180,13 +123,13 @@ final class MPVSurfaceUIView: UIView, PlayerPiPInlineRendererControlling {
 
     @discardableResult
     private func logGeometry(stage: String, generation: UInt64, force: Bool = false) -> RendererSurfaceGeometry? {
-        guard let displayLayer, !displayLayerHostedExternally else { return nil }
+        guard let displayLayer else { return nil }
         let scale = displayLayer.contentsScale > 0 ? displayLayer.contentsScale : (window?.screen.nativeScale ?? UIScreen.main.nativeScale)
         let expectedDrawable = CGSize(width: max(2, (bounds.width * scale).rounded()), height: max(2, (bounds.height * scale).rounded()))
         let windowSize = window?.bounds.size ?? .zero
         let orientation = window?.windowScene?.interfaceOrientation.rawValue ?? 0
         let actualDrawable = displayLayer.drawableSize
-        let geometry = "surface=\(ObjectIdentifier(self)) stage=\(stage) generation=\(generation) view=\(Int(bounds.width))x\(Int(bounds.height)) layer=\(Int(displayLayer.bounds.width))x\(Int(displayLayer.bounds.height)) drawable=\(Int(actualDrawable.width))x\(Int(actualDrawable.height)) expected=\(Int(expectedDrawable.width))x\(Int(expectedDrawable.height)) window=\(Int(windowSize.width))x\(Int(windowSize.height)) orientation=\(orientation) scale=\(String(format: "%.2f", scale)) lifecycle=persistent drawableOwner=moltenvk delegateOwner=unchanged covered=\(!presentationCoverView.isHidden)"
+        let geometry = "surface=\(ObjectIdentifier(self)) stage=\(stage) generation=\(generation) view=\(Int(bounds.width))x\(Int(bounds.height)) layer=\(Int(displayLayer.bounds.width))x\(Int(displayLayer.bounds.height)) drawable=\(Int(actualDrawable.width))x\(Int(actualDrawable.height)) expected=\(Int(expectedDrawable.width))x\(Int(expectedDrawable.height)) window=\(Int(windowSize.width))x\(Int(windowSize.height)) orientation=\(orientation) scale=\(String(format: \"%.2f\", scale)) lifecycle=persistent drawableOwner=moltenvk delegateOwner=unchanged covered=\(!presentationCoverView.isHidden)"
         if force || geometry != lastGeometryLog {
             lastGeometryLog = geometry
             DiagnosticsLogger.shared.log("MPVSurface", geometry)
