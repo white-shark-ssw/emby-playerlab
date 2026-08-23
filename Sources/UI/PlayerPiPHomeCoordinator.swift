@@ -12,6 +12,7 @@ final class PlayerPiPHomeCoordinator {
         }
         DiagnosticsLogger.shared.playback("PiPHome", "request begin state=\(application.applicationState.rawValue)")
         _ = application.perform(selector)
+        DiagnosticsLogger.shared.playback("PiPHome", "request dispatched selector=suspend")
         return true
     }
 }
