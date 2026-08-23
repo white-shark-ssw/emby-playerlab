@@ -129,7 +129,7 @@ final class MPVSurfaceUIView: UIView {
         let windowSize = window?.bounds.size ?? .zero
         let orientation = window?.windowScene?.interfaceOrientation.rawValue ?? 0
         let actualDrawable = displayLayer.drawableSize
-        let geometry = "surface=\(ObjectIdentifier(self)) stage=\(stage) generation=\(generation) view=\(Int(bounds.width))x\(Int(bounds.height)) layer=\(Int(displayLayer.bounds.width))x\(Int(displayLayer.bounds.height)) drawable=\(Int(actualDrawable.width))x\(Int(actualDrawable.height)) expected=\(Int(expectedDrawable.width))x\(Int(expectedDrawable.height)) window=\(Int(windowSize.width))x\(Int(windowSize.height)) orientation=\(orientation) scale=\(String(format: \"%.2f\", scale)) lifecycle=persistent drawableOwner=moltenvk delegateOwner=unchanged covered=\(!presentationCoverView.isHidden)"
+        let geometry = "surface=\(ObjectIdentifier(self)) stage=\(stage) generation=\(generation) view=\(Int(bounds.width))x\(Int(bounds.height)) layer=\(Int(displayLayer.bounds.width))x\(Int(displayLayer.bounds.height)) drawable=\(Int(actualDrawable.width))x\(Int(actualDrawable.height)) expected=\(Int(expectedDrawable.width))x\(Int(expectedDrawable.height)) window=\(Int(windowSize.width))x\(Int(windowSize.height)) orientation=\(orientation) scale=\(String(format: "%.2f", scale)) lifecycle=persistent drawableOwner=moltenvk delegateOwner=unchanged covered=\(!presentationCoverView.isHidden)"
         if force || geometry != lastGeometryLog {
             lastGeometryLog = geometry
             DiagnosticsLogger.shared.log("MPVSurface", geometry)
