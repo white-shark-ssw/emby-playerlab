@@ -3,7 +3,7 @@ import QuartzCore
 import SwiftUI
 import UIKit
 
-final class MPVSurfaceUIView: UIView {
+final class MPVSurfaceUIView: UIView, PlayerPiPInlineRendererControlling {
     private var displayLayer: CAMetalLayer?
     private let presentationCoverView = UIView()
     private var lastGeometryLog = ""
@@ -11,6 +11,7 @@ final class MPVSurfaceUIView: UIView {
     private var layoutGeneration: UInt64 = 0
     private var presentationGateObserver: NSObjectProtocol?
     private var displayLayerHostedExternally = false
+    private var pictureInPictureDetachedLayer: CAMetalLayer?
     var onGeometrySettled: ((RendererSurfaceGeometry) -> Void)?
 
     override init(frame: CGRect) {
@@ -30,6 +31,7 @@ final class MPVSurfaceUIView: UIView {
             displayLayer?.removeFromSuperlayer()
             displayLayer = layer
             displayLayerHostedExternally = false
+            pictureInPictureDetachedLayer = nil
             layer.masksToBounds = true
             layer.isHidden = false
             self.layer.insertSublayer(layer, at: 0)
@@ -45,7 +47,7 @@ final class MPVSurfaceUIView: UIView {
         guard let displayLayer, !displayLayerHostedExternally else { return nil }
         displayLayerHostedExternally = true
         displayLayer.removeFromSuperlayer()
-        DiagnosticsLogger.shared.playback("PiP", "MPV renderer detached after PiP content became visible")
+        DiagnosticsLogger.shared.playback("PiPRenderer", "MPV inline layer detached surface=\(ObjectIdentifier(self))")
         return displayLayer
     }
 
@@ -60,7 +62,34 @@ final class MPVSurfaceUIView: UIView {
         lastReportedGeometry = nil
         setNeedsLayout()
         if window != nil { layoutIfNeeded() }
-        DiagnosticsLogger.shared.playback("PiP", "MPV renderer restored to inline surface")
+        DiagnosticsLogger.shared.playback("PiPRenderer", "MPV inline layer restored surface=\(ObjectIdentifier(self))")
+    }
+
+    func suspendInlineRendererForPictureInPicture(completion: @escaping (Bool) -> Void) {
+        if let pictureInPictureDetachedLayer, displayLayerHostedExternally {
+            DiagnosticsLogger.shared.playback("PiPRenderer", "MPV suspend already-detached layer=\(ObjectIdentifier(pictureInPictureDetachedLayer))")
+            completion(true)
+            return
+        }
+        guard let layer = takeDisplayLayerForPictureInPicture() else {
+            DiagnosticsLogger.shared.playback("PiPRenderer", "MPV suspend failed reason=no-inline-layer")
+            completion(false)
+            return
+        }
+        pictureInPictureDetachedLayer = layer
+        completion(true)
+    }
+
+    func resumeInlineRendererAfterPictureInPicture(completion: @escaping (Bool) -> Void) {
+        guard let layer = pictureInPictureDetachedLayer else {
+            completion(!displayLayerHostedExternally)
+            return
+        }
+        pictureInPictureDetachedLayer = nil
+        restoreDisplayLayerAfterPictureInPicture(layer)
+        let restored = !displayLayerHostedExternally && layer.superlayer === self.layer
+        DiagnosticsLogger.shared.playback("PiPRenderer", "MPV resume restored=\(restored) drawable=\(Int(layer.drawableSize.width))x\(Int(layer.drawableSize.height))")
+        completion(restored)
     }
 
     func detach() {
@@ -69,6 +98,7 @@ final class MPVSurfaceUIView: UIView {
         displayLayer.removeFromSuperlayer()
         self.displayLayer = nil
         displayLayerHostedExternally = false
+        pictureInPictureDetachedLayer = nil
         lastGeometryLog = ""
         lastReportedGeometry = nil
     }
