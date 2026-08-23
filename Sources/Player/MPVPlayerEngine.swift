@@ -63,6 +63,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
     private var streamPrepareTask: Task<Void, Never>?
     private var enhancementBaseline: EnhancementBaseline?
     private var lastPresentationTimingSignature: PresentationTimingSignature?
+    private var pictureInPictureVideoTrack: String?
 
     private struct Configuration {
         let url: URL
@@ -180,6 +181,28 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
 
     func play() { setPropertyAsync(name: "pause", value: "no") }
     func pause() { setPropertyAsync(name: "pause", value: "yes") }
+
+    func suspendVideoOutputForPictureInPicture(completion: @escaping (Bool) -> Void) {
+        queue.async { [weak self] in
+            guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }
+            let currentTrack = self.getStringProperty(handle: handle, name: "vid") ?? "auto"
+            if currentTrack != "no" { self.pictureInPictureVideoTrack = currentTrack }
+            let success = currentTrack == "no" || self.setPropertyChecked(handle: handle, name: "vid", value: "no")
+            DiagnosticsLogger.shared.log("MPVPiP", "video-output suspend success=\(success) previousVid=\(self.pictureInPictureVideoTrack ?? currentTrack)")
+            DispatchQueue.main.async { completion(success) }
+        }
+    }
+
+    func resumeVideoOutputFromPictureInPicture(completion: @escaping (Bool) -> Void) {
+        queue.async { [weak self] in
+            guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }
+            let restoreTrack = self.pictureInPictureVideoTrack ?? "auto"
+            let success = self.setPropertyChecked(handle: handle, name: "vid", value: restoreTrack)
+            self.pictureInPictureVideoTrack = nil
+            DiagnosticsLogger.shared.log("MPVPiP", "video-output restore success=\(success) vid=\(restoreTrack)")
+            DispatchQueue.main.async { completion(success) }
+        }
+    }
 
     func setPlaybackRate(_ rate: Double) {
         let clamped = min(8, max(0.15, rate))
@@ -1215,6 +1238,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter {
     func reloadForBadInterleavedMP4(url: URL, headers: [String: String], preferredForwardBuffer: Double, startPosition: Double, reason: String) { prepare(url: url, headers: headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: startPosition) }
     func play() {}
     func pause() {}
+    func suspendVideoOutputForPictureInPicture(completion: @escaping (Bool) -> Void) { completion(false) }
+    func resumeVideoOutputFromPictureInPicture(completion: @escaping (Bool) -> Void) { completion(false) }
     func setVideoGeometry(panscan: Double, aspectOverride: String?) {}
     func applyPresentationPlan(_ plan: PlaybackPresentationPlan, completion: @escaping (PlaybackPresentationAcknowledgement) -> Void) { completion(.unsupported) }
 
