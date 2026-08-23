@@ -1,0 +1,275 @@
+name: Build155 Apply Native PiP Bridge
+
+on:
+  pull_request:
+    branches: [perf/click-start-parallel-0.13.87]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'lab/pip-native-bridge-0.13.88'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: lab/pip-native-bridge-0.13.88
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply Build155 source patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          Path('Sources/UI/PlayerPictureInPictureController.swift').write_text(r'''import AVFoundation
+import AVKit
+import Combine
+import UIKit
+
+@MainActor
+final class PlayerPictureInPictureController: NSObject, ObservableObject, @preconcurrency AVPictureInPictureControllerDelegate {
+    @Published private(set) var isPossible = AVPictureInPictureController.isPictureInPictureSupported()
+    @Published private(set) var isActive = false
+
+    private weak var playerLayer: AVPlayerLayer?
+    private var controller: AVPictureInPictureController?
+    private var possibleObservation: NSKeyValueObservation?
+    private var pendingStart = false
+    private var startAttemptIssued = false
+    private var startTimeout: DispatchWorkItem?
+    private var pendingFailure: (() -> Void)?
+
+    func attach(playerLayer: AVPlayerLayer) {
+        if self.playerLayer === playerLayer {
+            tryStartPendingIfReady()
+            return
+        }
+        detachNativeController(keepPendingStart: true)
+        self.playerLayer = playerLayer
+        guard AVPictureInPictureController.isPictureInPictureSupported(), let pictureInPictureController = AVPictureInPictureController(playerLayer: playerLayer) else {
+            isPossible = false
+            failPendingStart(reason: "controller-create-failed")
+            return
+        }
+        pictureInPictureController.delegate = self
+        if #available(iOS 14.2, *) { pictureInPictureController.canStartPictureInPictureAutomaticallyFromInline = true }
+        controller = pictureInPictureController
+        observePossible(pictureInPictureController)
+        DiagnosticsLogger.shared.playback("PiP", "native playerLayer attached possible=\(pictureInPictureController.isPictureInPicturePossible)")
+        tryStartPendingIfReady()
+    }
+
+    func requestStartWhenPossible(timeout: TimeInterval = 5, onFailure: (() -> Void)? = nil) {
+        guard AVPictureInPictureController.isPictureInPictureSupported() else {
+            isPossible = false
+            onFailure?()
+            return
+        }
+        if controller?.isPictureInPictureActive == true { return }
+        cancelPendingStart(notifyFailure: false)
+        pendingStart = true
+        startAttemptIssued = false
+        pendingFailure = onFailure
+        isPossible = true
+        let workItem = DispatchWorkItem { [weak self] in self?.failPendingStart(reason: "start-timeout") }
+        startTimeout = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(1, timeout), execute: workItem)
+        DiagnosticsLogger.shared.playback("PiP", "native start requested hasLayer=\(playerLayer != nil) hasController=\(controller != nil)")
+        tryStartPendingIfReady()
+    }
+
+    func toggle() {
+        if controller?.isPictureInPictureActive == true { controller?.stopPictureInPicture() }
+        else { requestStartWhenPossible() }
+    }
+
+    func stopAndDetach() {
+        cancelPendingStart(notifyFailure: false)
+        if controller?.isPictureInPictureActive == true { controller?.stopPictureInPicture() }
+        detachNativeController(keepPendingStart: false)
+        isPossible = AVPictureInPictureController.isPictureInPictureSupported()
+        isActive = false
+    }
+
+    private func observePossible(_ pictureInPictureController: AVPictureInPictureController) {
+        possibleObservation = pictureInPictureController.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] controller, _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isPossible = controller.isPictureInPicturePossible || self.pendingStart
+                self.tryStartPendingIfReady()
+            }
+        }
+    }
+
+    private func tryStartPendingIfReady() {
+        guard pendingStart, !startAttemptIssued, let controller, controller.isPictureInPicturePossible else { return }
+        startAttemptIssued = true
+        DiagnosticsLogger.shared.playback("PiP", "native playerLayer ready; startPictureInPicture")
+        controller.startPictureInPicture()
+    }
+
+    private func cancelPendingStart(notifyFailure: Bool) {
+        startTimeout?.cancel()
+        startTimeout = nil
+        let failure = pendingFailure
+        pendingFailure = nil
+        pendingStart = false
+        startAttemptIssued = false
+        if notifyFailure { failure?() }
+    }
+
+    private func failPendingStart(reason: String) {
+        guard pendingStart else { return }
+        DiagnosticsLogger.shared.playback("PiP", "native start failed reason=\(reason) possible=\(controller?.isPictureInPicturePossible ?? false) hasLayer=\(playerLayer != nil)")
+        cancelPendingStart(notifyFailure: true)
+    }
+
+    private func detachNativeController(keepPendingStart: Bool) {
+        possibleObservation = nil
+        controller?.delegate = nil
+        controller = nil
+        playerLayer = nil
+        if !keepPendingStart { cancelPendingStart(notifyFailure: false) }
+    }
+
+    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        cancelPendingStart(notifyFailure: false)
+        isActive = true
+        isPossible = true
+        DiagnosticsLogger.shared.playback("PiP", "started native-playerLayer=true")
+    }
+
+    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        isActive = false
+        DiagnosticsLogger.shared.playback("PiP", "stopped native-playerLayer=true")
+    }
+
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        isActive = false
+        DiagnosticsLogger.shared.playback("PiP", "start failed error=\(error.localizedDescription) native-playerLayer=true")
+        failPendingStart(reason: "delegate-error")
+    }
+}
+''')
+
+          p = Path('Sources/Player/PlayerController.swift')
+          s = p.read_text()
+          old = '    func switchEngine(to kind: PlayerEngineKind, reason: String = "用户切换") {\n'
+          assert old in s
+          s = s.replace(old, '    func switchEngine(to kind: PlayerEngineKind, reason: String = "用户切换", showNotice: Bool = true) {\n', 1)
+          old = '''        if kind == .mpv, reason != "用户切换" {
+            stallMessage = nil
+            showAutomaticMPVSwitchNotice()
+        } else {
+            stallMessage = reason == "用户切换" ? nil : "正在自动切换到 \\(kind.title)：\\(reason)"
+        }
+'''
+          new = '''        if !showNotice {
+            stallMessage = nil
+        } else if kind == .mpv, reason != "用户切换" {
+            stallMessage = nil
+            showAutomaticMPVSwitchNotice()
+        } else {
+            stallMessage = reason == "用户切换" ? nil : "正在自动切换到 \\(kind.title)：\\(reason)"
+        }
+'''
+          assert old in s
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('Sources/UI/PlayerScreen.swift')
+          s = p.read_text()
+          anchor = '    @State private var bufferingDownloadSpeed: Double = 0\n'
+          assert anchor in s
+          s = s.replace(anchor, anchor + '    @State private var pictureInPictureBridgeOrigin: PlayerEngineKind?\n    @State private var pictureInPictureBridgeStarting = false\n', 1)
+          old = '        .onChange(of: pictureInPictureController.isActive) { _ in updateIndependentBrightnessForPlaybackContext() }\n'
+          assert old in s
+          s = s.replace(old, '        .onChange(of: pictureInPictureController.isActive) { active in handlePictureInPictureActivityChange(active) }\n', 1)
+          old = '''                Button {
+                    pictureInPictureController.toggle()
+                    showControls()
+                } label: {
+                    Image(systemName: "pip").font(.system(size: 19, weight: .semibold)).frame(width: 42, height: 42)
+                }
+                .disabled(!pictureInPictureController.isPossible && !pictureInPictureController.isActive)
+'''
+          new = '''                Button {
+                    togglePictureInPicture()
+                    showControls()
+                } label: {
+                    Image(systemName: "pip").font(.system(size: 19, weight: .semibold)).frame(width: 42, height: 42)
+                }
+                .disabled(pictureInPictureBridgeStarting || (!pictureInPictureController.isPossible && !pictureInPictureController.isActive))
+'''
+          assert old in s
+          s = s.replace(old, new, 1)
+          insert_before = '    private func closePlayer() {\n'
+          assert insert_before in s
+          helper = r'''    private func togglePictureInPicture() {
+        if pictureInPictureController.isActive {
+            pictureInPictureController.toggle()
+            return
+        }
+        if controller.avPlayer != nil, pictureInPictureBridgeOrigin == nil {
+            pictureInPictureController.requestStartWhenPossible()
+            return
+        }
+        guard pictureInPictureBridgeOrigin == nil, !pictureInPictureBridgeStarting else { return }
+        let origin = controller.engineKind
+        pictureInPictureBridgeOrigin = origin
+        pictureInPictureBridgeStarting = true
+        DiagnosticsLogger.shared.playback("PiP", "bridge requested from=\(origin.title) position=\(String(format: "%.3f", controller.snapshot.position))")
+        pictureInPictureController.requestStartWhenPossible(timeout: 5) {
+            pictureInPictureBridgeStarting = false
+            restorePictureInPictureBridge(reason: "native-start-failed")
+        }
+        controller.switchEngine(to: .transportAVPlayer, reason: "系统画中画桥接", showNotice: false)
+    }
+
+    private func handlePictureInPictureActivityChange(_ active: Bool) {
+        updateIndependentBrightnessForPlaybackContext()
+        if active {
+            pictureInPictureBridgeStarting = false
+            DiagnosticsLogger.shared.playback("PiP", "bridge active engine=\(controller.engineKind.title) position=\(String(format: "%.3f", controller.snapshot.position))")
+            return
+        }
+        guard pictureInPictureBridgeOrigin != nil, !isClosing else { return }
+        restorePictureInPictureBridge(reason: "pip-stopped")
+    }
+
+    private func restorePictureInPictureBridge(reason: String) {
+        guard let origin = pictureInPictureBridgeOrigin else { return }
+        pictureInPictureBridgeOrigin = nil
+        pictureInPictureBridgeStarting = false
+        pictureInPictureController.stopAndDetach()
+        guard !isClosing, playbackStarted else { return }
+        if controller.engineKind == .transportAVPlayer {
+            DiagnosticsLogger.shared.playback("PiP", "bridge restore to=\(origin.title) reason=\(reason) position=\(String(format: "%.3f", controller.snapshot.position))")
+            controller.switchEngine(to: origin, reason: "画中画返回", showNotice: false)
+        } else {
+            DiagnosticsLogger.shared.playback("PiP", "bridge restore skipped current=\(controller.engineKind.title) reason=\(reason)")
+        }
+    }
+
+'''
+          s = s.replace(insert_before, helper + insert_before, 1)
+          p.write_text(s)
+
+          p = Path('Sources/Core/AppIdentity.swift')
+          s = p.read_text().replace('sourceVersion = "0.13.87"', 'sourceVersion = "0.13.88"').replace('?? "0.13.87"', '?? "0.13.88"')
+          p.write_text(s)
+          PY
+
+          git diff --check
+
+      - name: Commit Build155 patch and remove runner
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/apply-build155-pip-native-bridge.yml
+          git add Sources/Core/AppIdentity.swift Sources/Player/PlayerController.swift Sources/UI/PlayerPictureInPictureController.swift Sources/UI/PlayerScreen.swift
+          git commit -m 'Build155: bridge MPV and MDK into native PiP'
+          git push origin HEAD:lab/pip-native-bridge-0.13.88
