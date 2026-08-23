@@ -12,7 +12,8 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
     private weak var playerLayer: AVPlayerLayer?
     private var controller: AVPictureInPictureController?
     private var possibleObservation: NSKeyValueObservation?
-    private var customContentController: UIViewController?
+    private var customContentController: PlayerCustomPiPContentViewController?
+    private var activateCustomRenderer: (() -> Void)?
     private var restoreCustomRenderer: (() -> Void)?
     private var customStartPending = false
     private var customStartTimeout: DispatchWorkItem?
@@ -53,7 +54,9 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
         controller?.delegate = nil
         controller = nil
         playerLayer = nil
+        activateCustomRenderer = nil
         restoreCustomRendererIfNeeded(reason: "detach")
+        customContentController = nil
         isPossible = AVPictureInPictureController.isPictureInPictureSupported()
         isActive = false
     }
@@ -63,12 +66,7 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isPossible = controller.isPictureInPicturePossible || (self.playerLayer == nil && AVPictureInPictureController.isPictureInPictureSupported())
-                guard self.customStartPending, controller.isPictureInPicturePossible else { return }
-                self.customStartPending = false
-                self.customStartTimeout?.cancel()
-                self.customStartTimeout = nil
-                DiagnosticsLogger.shared.playback("PiP", "custom renderer source ready; starting")
-                controller.startPictureInPicture()
+                self.startCustomControllerIfReady(controller)
             }
         }
     }
@@ -79,7 +77,7 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
             return
         }
         guard #available(iOS 15.0, *) else { return }
-        guard controller == nil, restoreCustomRenderer == nil else { return }
+        guard controller == nil, activateCustomRenderer == nil, restoreCustomRenderer == nil else { return }
         guard let window = activeKeyWindow() else {
             DiagnosticsLogger.shared.playback("PiP", "custom renderer start skipped reason=no-key-window")
             return
@@ -87,43 +85,73 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
 
         let contentController = PlayerCustomPiPContentViewController()
         let sourceView: UIView
-        if let surface: MPVSurfaceUIView = findVisibleSubview(of: MPVSurfaceUIView.self, in: window), let layer = surface.takeDisplayLayerForPictureInPicture() {
+        if let surface: MPVSurfaceUIView = findVisibleSubview(of: MPVSurfaceUIView.self, in: window) {
             sourceView = surface
-            contentController.host(layer: layer)
-            restoreCustomRenderer = { [weak surface] in surface?.restoreDisplayLayerAfterPictureInPicture(layer) }
-            DiagnosticsLogger.shared.playback("PiP", "custom renderer source=MPV")
-        } else if let surface: KSAVIOSurfaceUIView = findVisibleSubview(of: KSAVIOSurfaceUIView.self, in: window), let playerView = surface.takePlayerViewForPictureInPicture() {
+            activateCustomRenderer = { [weak self, weak surface, weak contentController] in
+                guard let self, self.restoreCustomRenderer == nil, let surface, let contentController, let layer = surface.takeDisplayLayerForPictureInPicture() else { return }
+                contentController.host(layer: layer)
+                self.restoreCustomRenderer = { [weak surface] in surface?.restoreDisplayLayerAfterPictureInPicture(layer) }
+                DiagnosticsLogger.shared.playback("PiP", "custom renderer transferred source=MPV phase=content-visible")
+            }
+            DiagnosticsLogger.shared.playback("PiP", "custom renderer prepared source=MPV inline-preserved=true")
+        } else if let surface: KSAVIOSurfaceUIView = findVisibleSubview(of: KSAVIOSurfaceUIView.self, in: window) {
             sourceView = surface
-            contentController.host(view: playerView)
-            restoreCustomRenderer = { [weak surface] in surface?.restorePlayerViewAfterPictureInPicture(playerView) }
-            DiagnosticsLogger.shared.playback("PiP", "custom renderer source=MDK")
+            activateCustomRenderer = { [weak self, weak surface, weak contentController] in
+                guard let self, self.restoreCustomRenderer == nil, let surface, let contentController, let playerView = surface.takePlayerViewForPictureInPicture() else { return }
+                contentController.host(view: playerView)
+                self.restoreCustomRenderer = { [weak surface] in surface?.restorePlayerViewAfterPictureInPicture(playerView) }
+                DiagnosticsLogger.shared.playback("PiP", "custom renderer transferred source=MDK phase=content-visible")
+            }
+            DiagnosticsLogger.shared.playback("PiP", "custom renderer prepared source=MDK inline-preserved=true")
         } else {
             DiagnosticsLogger.shared.playback("PiP", "custom renderer start skipped reason=no-supported-inline-surface")
             return
         }
 
+        contentController.preferredContentSize = sourceView.bounds.size
+        contentController.onContentVisible = { [weak self] in
+            DiagnosticsLogger.shared.playback("PiP", "custom content view appeared")
+            self?.activateCustomRendererIfNeeded()
+        }
+        contentController.onContentHidden = { DiagnosticsLogger.shared.playback("PiP", "custom content view disappeared") }
         customContentController = contentController
+
         let contentSource = AVPictureInPictureController.ContentSource(activeVideoCallSourceView: sourceView, contentViewController: contentController)
         let pictureInPictureController = AVPictureInPictureController(contentSource: contentSource)
         pictureInPictureController.delegate = self
         pictureInPictureController.requiresLinearPlayback = false
+        if #available(iOS 14.2, *) { pictureInPictureController.canStartPictureInPictureAutomaticallyFromInline = true }
         controller = pictureInPictureController
         customStartPending = true
         observePossible(pictureInPictureController)
+        DiagnosticsLogger.shared.playback("PiP", "custom controller created possible=\(pictureInPictureController.isPictureInPicturePossible) sourceView=\(Int(sourceView.bounds.width))x\(Int(sourceView.bounds.height))")
+        startCustomControllerIfReady(pictureInPictureController)
 
-        if pictureInPictureController.isPictureInPicturePossible {
-            customStartPending = false
-            pictureInPictureController.startPictureInPicture()
-        } else {
+        if customStartPending {
             let workItem = DispatchWorkItem { [weak self, weak pictureInPictureController] in
                 guard let self, self.customStartPending, self.controller === pictureInPictureController else { return }
                 self.customStartPending = false
-                DiagnosticsLogger.shared.playback("PiP", "custom renderer start timeout; restoring inline renderer")
+                DiagnosticsLogger.shared.playback("PiP", "custom renderer start timeout possible=\(pictureInPictureController?.isPictureInPicturePossible ?? false); inline renderer preserved")
                 self.resetCustomControllerAndRestore(reason: "start-timeout")
             }
             customStartTimeout = workItem
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
         }
+    }
+
+    private func startCustomControllerIfReady(_ pictureInPictureController: AVPictureInPictureController) {
+        guard customStartPending, controller === pictureInPictureController, pictureInPictureController.isPictureInPicturePossible else { return }
+        customStartPending = false
+        customStartTimeout?.cancel()
+        customStartTimeout = nil
+        DiagnosticsLogger.shared.playback("PiP", "custom renderer source ready; starting system PiP with inline renderer still attached")
+        pictureInPictureController.startPictureInPicture()
+    }
+
+    private func activateCustomRendererIfNeeded() {
+        guard restoreCustomRenderer == nil, let activateCustomRenderer else { return }
+        self.activateCustomRenderer = nil
+        activateCustomRenderer()
     }
 
     private func activeKeyWindow() -> UIWindow? {
@@ -147,7 +175,9 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
         possibleObservation = nil
         controller?.delegate = nil
         controller = nil
+        activateCustomRenderer = nil
         restoreCustomRendererIfNeeded(reason: reason)
+        customContentController = nil
         isPossible = AVPictureInPictureController.isPictureInPictureSupported()
     }
 
@@ -155,7 +185,6 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
         guard let restoreCustomRenderer else { return }
         self.restoreCustomRenderer = nil
         restoreCustomRenderer()
-        customContentController = nil
         DiagnosticsLogger.shared.playback("PiP", "custom renderer restored reason=\(reason)")
     }
 
@@ -164,24 +193,27 @@ final class PlayerPictureInPictureController: NSObject, ObservableObject, @preco
         customStartTimeout = nil
         customStartPending = false
         isActive = true
-        DiagnosticsLogger.shared.playback("PiP", "started customRenderer=\(restoreCustomRenderer != nil)")
+        activateCustomRendererIfNeeded()
+        DiagnosticsLogger.shared.playback("PiP", "started customRenderer=\(customContentController != nil) rendererTransferred=\(restoreCustomRenderer != nil)")
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         isActive = false
-        DiagnosticsLogger.shared.playback("PiP", "stopped customRenderer=\(restoreCustomRenderer != nil)")
-        if restoreCustomRenderer != nil { resetCustomControllerAndRestore(reason: "stopped") }
+        DiagnosticsLogger.shared.playback("PiP", "stopped customRenderer=\(customContentController != nil) rendererTransferred=\(restoreCustomRenderer != nil)")
+        if customContentController != nil { resetCustomControllerAndRestore(reason: "stopped") }
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         isActive = false
-        DiagnosticsLogger.shared.playback("PiP", "start failed error=\(error.localizedDescription) customRenderer=\(restoreCustomRenderer != nil)")
-        if restoreCustomRenderer != nil { resetCustomControllerAndRestore(reason: "start-failed") }
+        DiagnosticsLogger.shared.playback("PiP", "start failed error=\(error.localizedDescription) customRenderer=\(customContentController != nil) rendererTransferred=\(restoreCustomRenderer != nil)")
+        if customContentController != nil { resetCustomControllerAndRestore(reason: "start-failed") }
     }
 }
 
 @available(iOS 15.0, *)
 private final class PlayerCustomPiPContentViewController: AVPictureInPictureVideoCallViewController {
+    var onContentVisible: (() -> Void)?
+    var onContentHidden: (() -> Void)?
     private var hostedView: UIView?
     private var hostedLayer: CALayer?
 
@@ -190,6 +222,16 @@ private final class PlayerCustomPiPContentViewController: AVPictureInPictureVide
         view.backgroundColor = .black
         view.clipsToBounds = true
         self.view = view
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        onContentVisible?()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        onContentHidden?()
     }
 
     func host(view hostedView: UIView) {
@@ -212,7 +254,7 @@ private final class PlayerCustomPiPContentViewController: AVPictureInPictureVide
         self.hostedLayer = hostedLayer
         hostedLayer.removeFromSuperlayer()
         hostedLayer.frame = view.bounds
-        hostedLayer.contentsScale = UIScreen.main.nativeScale
+        hostedLayer.contentsScale = view.window?.screen.nativeScale ?? UIScreen.main.nativeScale
         view.layer.addSublayer(hostedLayer)
     }
 
