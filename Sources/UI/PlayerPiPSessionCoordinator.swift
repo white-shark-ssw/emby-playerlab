@@ -705,8 +705,10 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             DiagnosticsLogger.shared.playback("PiPSeek", "staging unavailable token=\(token) action=authoritative-fallback")
             return
         }
-        let context = SeekStagingContext(token: token, predictedTarget: predicted, pipeline: stagingPipeline)
-        context.optimisticCommitEnabled = info.previousKeyframe != nil || abs(info.dispatchTarget - info.requestedTarget) > 0.001
+        let context = SeekStagingContext(token: token, requestedTarget: info.requestedTarget, dispatchTarget: info.dispatchTarget, predictedTarget: predicted, pipeline: stagingPipeline)
+        let dispatchIsConcrete = abs(info.dispatchTarget - info.requestedTarget) > 0.001
+        let previousIsClose = info.previousKeyframe.map { abs($0 - info.requestedTarget) <= 0.45 } ?? false
+        context.optimisticCommitEnabled = dispatchIsConcrete || previousIsClose
         stagingContext = context
         stagingPipeline.onReady = { _ in }
         stagingPipeline.onFailure = { [weak self, weak context] reason in DispatchQueue.main.async {
@@ -724,7 +726,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
                 context.pausedAfterPreroll = true
                 context.pipeline.setPaused(true)
             }
-            if case .waitingForLanding(let waitingToken, _) = self.behavior.seek, waitingToken == context.token { self.attemptOptimisticSeekCommit(context: context) }
+            if case .waitingForLanding(let waitingToken, _) = self.behavior.seek, waitingToken == context.token { self.attemptOptimisticSeekCommit(context: context, longTailEscape: context.longTailDeadlineReached) }
             if case .waitingForVisualCommit(let waitingToken, let authoritative) = self.behavior.seek, waitingToken == context.token { self.attemptStagedSeekCommit(context: context, authoritative: authoritative) }
         } }
         context.generation = stagingPipeline.seek(to: predicted)
