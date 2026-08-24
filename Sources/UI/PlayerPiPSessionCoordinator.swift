@@ -38,6 +38,14 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var backgroundObserver: NSObjectProtocol?
     private var pendingForegroundRestore: (() -> Void)?
     private var homeRequested = false
+    private var restoreRequested = false
+    private var systemPiPStopped = false
+    private var rendererRestoreInProgress = false
+    private var rendererRestoreReady = false
+    private var rendererRestoreActualPosition: Double?
+    private var rendererRestoreAttempt = 0
+    private var pendingSeekAuthoritativePosition: Double?
+    private var pendingSeekLandingHostTime: CFTimeInterval?
     private let homeCoordinator = PlayerPiPHomeCoordinator()
 
     override init() {
@@ -161,9 +169,15 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             pendingSkipGeneration = nil
             pendingSeekStartedPosition = nil
             if let timebase = controlTimebase {
-                CMTimebaseSetTime(timebase, time: CMTime(seconds: envelope.pts, preferredTimescale: 60000))
+                let elapsed = pendingSeekLandingHostTime.map { pipWantsPlayback ? max(0, CACurrentMediaTime() - $0) : 0 } ?? 0
+                let alignedClock = pendingSeekAuthoritativePosition.map { $0 + elapsed } ?? envelope.pts
+                CMTimebaseSetTime(timebase, time: CMTime(seconds: alignedClock, preferredTimescale: 60000))
                 CMTimebaseSetRate(timebase, rate: pipWantsPlayback ? 1 : 0)
+                logicalPiPPosition = alignedClock
+                DiagnosticsLogger.shared.playback("PiPSession", "seek clock-rebase samplePts=\(String(format: "%.3f", envelope.pts)) authoritative=\(pendingSeekAuthoritativePosition.map { String(format: "%.3f", $0) } ?? "unknown") elapsed=\(String(format: "%.3f", elapsed)) clock=\(String(format: "%.3f", alignedClock))")
             }
+            pendingSeekAuthoritativePosition = nil
+            pendingSeekLandingHostTime = nil
             pipeline?.setPaused(!pipWantsPlayback)
             controller?.invalidatePlaybackState()
             DiagnosticsLogger.shared.playback("PiPSession", "seek-visible authoritativePts=\(String(format: "%.3f", envelope.pts)) generation=\(envelope.generation) requestedPlaying=\(pipWantsPlayback)")
@@ -277,10 +291,60 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         }
     }
 
+
+
+    private func beginRestoreHandoffIfPossible() {
+        guard restoreRequested, !rendererRestoreReady, !rendererRestoreInProgress else { finishRestoreHandoffIfReady(); return }
+        let target = currentPiPClockPosition()
+        logicalPiPPosition = target
+        rendererRestoreInProgress = true
+        rendererRestoreAttempt += 1
+        let attempt = rendererRestoreAttempt
+        DiagnosticsLogger.shared.playback("PiPSession", "restore-handoff begin attempt=\(attempt) target=\(String(format: "%.3f", target)) appState=\(UIApplication.shared.applicationState.rawValue)")
+        restoreInlineRendererWhenForeground(reason: "restore-ui", targetPosition: target) { [weak self] success, actualPosition in
+            guard let self else { return }
+            self.rendererRestoreInProgress = false
+            self.rendererRestoreActualPosition = actualPosition
+            if success {
+                self.rendererRestoreReady = true
+                self.finishRestoreHandoffIfReady()
+                return
+            }
+            guard self.restoreRequested, self.rendererRestoreAttempt < 2 else {
+                DiagnosticsLogger.shared.playback("PiPSession", "restore-handoff failed attempts=\(self.rendererRestoreAttempt) action=keep-samplebuffer-cover")
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) { [weak self] in self?.beginRestoreHandoffIfPossible() }
+        }
+    }
+
+    private func finishRestoreHandoffIfReady() {
+        guard restoreRequested, systemPiPStopped, rendererRestoreReady else { return }
+        restoreRequested = false
+        pipeline?.stop()
+        let actual = rendererRestoreActualPosition
+        DiagnosticsLogger.shared.playback("PiPSession", "restore-handoff visual-release actual=\(actual.map { String(format: "%.3f", $0) } ?? "unknown") action=fade-samplebuffer-cover")
+        guard let host = sourceHostView, host.alpha > 0.001 else { reset(reason: "restore-handoff-complete"); return }
+        UIView.animate(withDuration: 0.12, delay: 0, options: [.beginFromCurrentState, .curveEaseOut, .allowUserInteraction]) {
+            host.alpha = 0
+        } completion: { [weak self] _ in
+            Task { @MainActor in self?.reset(reason: "restore-handoff-complete") }
+        }
+    }
+
+    private func currentPiPClockPosition() -> Double {
+        if let timebase = controlTimebase {
+            let value = CMTimeGetSeconds(CMTimebaseGetTime(timebase))
+            if value.isFinite, value >= 0 { return value }
+        }
+        return max(0, logicalPiPPosition)
+    }
+
     private func handleForegroundActive() {
         let pending = pendingForegroundRestore
         pendingForegroundRestore = nil
         pending?()
+        if restoreRequested { beginRestoreHandoffIfPossible() }
     }
 
     private func reset(reason: String) {
@@ -289,7 +353,15 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
         pendingSkipCompletion?(); pendingSkipCompletion = nil; pendingSkipGeneration = nil
         pendingSeekStartedPosition = nil
+        pendingSeekAuthoritativePosition = nil
+        pendingSeekLandingHostTime = nil
         pendingForegroundRestore = nil
+        restoreRequested = false
+        systemPiPStopped = false
+        rendererRestoreInProgress = false
+        rendererRestoreReady = false
+        rendererRestoreActualPosition = nil
+        rendererRestoreAttempt = 0
         possibleObservation = nil
         if let seekLandingProvider { seekLandingProvider.pictureInPictureSeekLandingHandler = nil }
         seekLandingProvider = nil
@@ -324,20 +396,34 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        DiagnosticsLogger.shared.playback("PiPSession", "system-stopped position=\(String(format: "%.3f", logicalPiPPosition)) appState=\(UIApplication.shared.applicationState.rawValue) previousState=\(state.rawValue)")
+        let previousState = state
+        let position = currentPiPClockPosition()
+        logicalPiPPosition = position
+        systemPiPStopped = true
+        DiagnosticsLogger.shared.playback("PiPSession", "system-stopped position=\(String(format: "%.3f", position)) appState=\(UIApplication.shared.applicationState.rawValue) previousState=\(previousState.rawValue) restoreRequested=\(restoreRequested)")
+        if restoreRequested || previousState == .restoring {
+            state = .restoring
+            beginRestoreHandoffIfPossible()
+            finishRestoreHandoffIfReady()
+            return
+        }
         state = .stopping
         pipeline?.stop()
-        restoreInlineRendererWhenForeground(reason: "system-stopped", targetPosition: logicalPiPPosition) { [weak self] _, _ in self?.reset(reason: "system-stopped") }
+        restoreInlineRendererWhenForeground(reason: "system-stopped", targetPosition: position) { [weak self] _, _ in self?.reset(reason: "system-stopped") }
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
         state = .restoring
-        let target = logicalPiPPosition
-        DiagnosticsLogger.shared.playback("PiPSession", "restore-ui requested appState=\(UIApplication.shared.applicationState.rawValue) target=\(String(format: "%.3f", target)) policy=fresh-frame-before-system-completion")
-        restoreInlineRendererWhenForeground(reason: "restore-ui", targetPosition: target) { success, actualPosition in
-            DiagnosticsLogger.shared.playback("PiPSession", "restore-ui handoff-ready success=\(success) actual=\(actualPosition.map { String(format: "%.3f", $0) } ?? "unknown") action=complete-system-restore")
-            completionHandler(true)
-        }
+        restoreRequested = true
+        systemPiPStopped = false
+        rendererRestoreReady = false
+        rendererRestoreActualPosition = nil
+        rendererRestoreAttempt = 0
+        let target = currentPiPClockPosition()
+        logicalPiPPosition = target
+        DiagnosticsLogger.shared.playback("PiPSession", "restore-ui requested appState=\(UIApplication.shared.applicationState.rawValue) target=\(String(format: "%.3f", target)) policy=system-first-cover-until-fresh-frame")
+        completionHandler(true)
+        beginRestoreHandoffIfPossible()
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
@@ -375,6 +461,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         pendingSkipCompletion = completionHandler
         pendingSkipGeneration = nil
         pendingSeekStartedPosition = playbackController.snapshot.position
+        pendingSeekAuthoritativePosition = nil
+        pendingSeekLandingHostTime = nil
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
         if let timebase = controlTimebase { CMTimebaseSetRate(timebase, rate: 0) }
         pipeline.setPaused(true)
@@ -389,6 +477,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         guard pendingSkipCompletion != nil, let pipeline else { return }
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
         let authoritative = max(0, result.actualPosition ?? result.target)
+        pendingSeekAuthoritativePosition = authoritative
+        pendingSeekLandingHostTime = CACurrentMediaTime()
         displayLayer?.flush()
         activeGeneration = pipeline.seek(to: authoritative)
         pendingSkipGeneration = activeGeneration
@@ -403,6 +493,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         let moved = abs(current - start) > 0.25 && !playbackController.snapshot.isBuffering
         if moved || attempt >= 30 {
             let authoritative = max(0, current)
+            pendingSeekAuthoritativePosition = authoritative
+            pendingSeekLandingHostTime = CACurrentMediaTime()
             if let pipeline {
                 displayLayer?.flush()
                 activeGeneration = pipeline.seek(to: authoritative)
