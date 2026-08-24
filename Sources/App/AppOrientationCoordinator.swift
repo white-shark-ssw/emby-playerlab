@@ -83,13 +83,20 @@ final class AppOrientationCoordinator {
         invalidateSupportedOrientations()
         request(target, reason: "pip-restore-destination")
         let size = activeWindowScene()?.windows.first(where: { $0.isKeyWindow })?.bounds.size ?? .zero
-        DiagnosticsLogger.shared.playback("AppOrientation", "pip restore destination prepare target=\(target.rawValue) window=\(Int(size.width))x\(Int(size.height)) mask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding) releasePolicy=after-mpv-fresh-frame")
+        DiagnosticsLogger.shared.playback("AppOrientation", "pip restore destination prepare target=\(target.rawValue) window=\(Int(size.width))x\(Int(size.height)) mask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding) replayPolicy=after-final-geometry releasePolicy=after-mpv-fresh-frame")
+    }
+
+    func replayPictureInPictureSurface() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard playerModeActive, pictureInPictureRestoreHoldActive, let target = backgroundPlayerOrientation ?? activeWindowScene()?.interfaceOrientation else { return }
+        PlayerSurfacePresentationGate.shared.replay(targetOrientation: target, reason: "pip-restore-final-geometry")
+        DiagnosticsLogger.shared.playback("AppOrientation", "pip restore surface replay target=\(target.rawValue) epoch=\(PlayerSurfacePresentationGate.shared.epoch) releaseArmed=false")
     }
 
     func armPictureInPicturePresentationRelease() {
         dispatchPrecondition(condition: .onQueue(.main))
         guard playerModeActive, pictureInPictureRestoreHoldActive, let target = backgroundPlayerOrientation ?? activeWindowScene()?.interfaceOrientation else { return }
-        if PlayerSurfacePresentationGate.shared.isHolding { PlayerSurfacePresentationGate.shared.refresh(targetOrientation: target, reason: "pip-restore-renderer-ready") }
+        if PlayerSurfacePresentationGate.shared.isHolding { PlayerSurfacePresentationGate.shared.armRelease(targetOrientation: target, reason: "pip-restore-renderer-ready") }
         DiagnosticsLogger.shared.playback("AppOrientation", "pip restore presentation release armed target=\(target.rawValue) held=\(PlayerSurfacePresentationGate.shared.isHolding) rendererAck=\(PlayerSurfacePresentationGate.shared.requiresRendererAcknowledgement)")
     }
 
