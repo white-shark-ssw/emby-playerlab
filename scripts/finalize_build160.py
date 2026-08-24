@@ -2,16 +2,7 @@ from pathlib import Path
 
 coordinator_path = Path("Sources/UI/PlayerPiPSessionCoordinator.swift")
 coordinator = coordinator_path.read_text()
-
-old = '''        let layer = host.displayLayer
-        layer.videoGravity = .resizeAspect
-'''
-new = '''        let layer = host.displayLayer
-        layer.videoGravity = .resizeAspect
-        layer.preventsAutomaticBackgroundingDuringVideoPlayback = false
-'''
-if old in coordinator:
-    coordinator = coordinator.replace(old, new, 1)
+coordinator = coordinator.replace('        layer.preventsAutomaticBackgroundingDuringVideoPlayback = false\n', '')
 
 old = '''        if pendingSkipGeneration == envelope.generation {
             let completion = pendingSkipCompletion
@@ -90,7 +81,6 @@ if old in coordinator:
     coordinator = coordinator.replace(old, new, 1)
 
 required = [
-    'layer.preventsAutomaticBackgroundingDuringVideoPlayback = false',
     'pipeline.setPaused(true)',
     'pipeline?.setPaused(pendingSkipCompletion != nil ? true : !playing)',
     'displayLayer?.flush()\n        activeGeneration = pipeline.seek(to: authoritative)',
@@ -98,6 +88,8 @@ required = [
 for token in required:
     if token not in coordinator:
         raise SystemExit(f"Build160 coordinator finalization missing: {token}")
+if 'preventsAutomaticBackgroundingDuringVideoPlayback' in coordinator:
+    raise SystemExit("Build160 must not use iOS-unavailable preventsAutomaticBackgroundingDuringVideoPlayback")
 coordinator_path.write_text(coordinator)
 
 mpv_path = Path("Sources/Player/MPVPlayerEngine.swift")
