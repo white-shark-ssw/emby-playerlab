@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build175 / OnePlayer 0.14.8 real-device episode-selector feedback and Build176 / 0.14.9 UI follow-up code._
+_Last updated after Build176 / OnePlayer 0.14.9 episode-selector UI follow-up CI/IPA candidate._
 
 ## Current functional baseline
 
@@ -23,12 +23,18 @@ The repository `main` branch is not necessarily the latest functional player bas
 
 - branch: `feat/player-episode-picker-0.14.7`
 - draft PR: **#249**
-- current product source head before dedicated Build176 CI helper: `f701f0446d65e84fc686f69ec14d60402c94839c`
-- state: **Code written / CI pending / IPA pending / real-device pending**
+- product source head before temporary CI helper: `f701f0446d65e84fc686f69ec14d60402c94839c`
+- dedicated CI source commit: `221630297dc1080279bb8a3f05d69586461b328c`
+- dedicated CI run: **32782048086**
+- artifact: `OnePlayer-0.14.9-build176-episode-picker-ui`
+- workflow-restored branch head after CI: `4b26a7d3a9826c58bfdddd6aafaeb9eeb5c7c943`
+- state: **Code written / CI passed / IPA produced / real-device pending**
 
-Build175 / OnePlayer 0.14.8 has now been tested on the target device. The user confirmed the fixed OnePlayer bottom-button layout direction, but the screenshot exposed two remaining presentation problems: lower player function buttons visually bleed through the transparent episode-overview area, and the `正在播放` badge is left-aligned instead of centered. Build175 therefore provides real-device evidence but is not an accepted/stable selector UI baseline.
+Build175 / OnePlayer 0.14.8 has been tested on the target device. The user confirmed the fixed OnePlayer bottom-button layout direction, but the screenshot exposed two remaining presentation problems: lower player function buttons visually bleed through the transparent episode-overview area, and the `正在播放` badge is left-aligned instead of centered. Build175 therefore provides real-device evidence but is not an accepted/stable selector UI baseline.
 
 Build176 keeps every existing bottom-control coordinate unchanged. The episode panel remains an in-player overlay rather than the rejected gray/material sheet, but adds a localized black fade behind the selector content so lower function buttons no longer visually interfere with overview text. The current-episode `正在播放` badge is centered in the 174×98 thumbnail. No PlayerController, MPV, PiP, UnifiedTransport, cache, or Seek contract is changed.
+
+Build176 dedicated standard MPV Release CI passed its selector/frozen-file contract checks, Xcode 16.4 Release compile, 0.14.9 (176) app-identity validation, iOS 15.0 MinOS validation, IPA packaging and artifact upload. This is **CI/IPA evidence only**; the visual fix is not accepted until the user tests Build176 on the target device.
 
 Build174 / OnePlayer 0.14.7 was installed on device and confirmed that the selector opened and displayed episode data, but the first selector presentation was rejected visually: the large gray material sheet, explicit X close button, and `选集 / 剧名` header did not match the desired player interaction. That real-device feedback led to Build175; Build174 is not a stable/frozen UI baseline.
 
@@ -118,7 +124,7 @@ Do not start a new PiP optimisation build unless there is a materially new archi
 
 ## Current development direction
 
-Build176 episode selection is the active code candidate. Until accepted on device, Build173 remains the real-device accepted functional baseline.
+Build176 episode selection is the active real-device test candidate. Until accepted on device, Build173 remains the real-device accepted functional baseline.
 
 New work should proceed module-by-module without casually touching:
 
