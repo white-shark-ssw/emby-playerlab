@@ -16,16 +16,18 @@ Do not draw total cache percentage as a fake contiguous range. Sparse cached byt
 
 ## Buffering download indicator
 
-The center buffering/download-speed indicator represents real playback starvation, not every transient MDK demux/decoder refill.
+The center buffering/download-speed indicator represents real network starvation, not the playback engine's internal buffering state by itself.
 
-For MDK user Seek:
+The normal rule is:
 
-- Raw MDK buffering may be hidden only during the first 500ms after the current Seek starts.
-- If buffering still exists after 500ms, publish `snapshot.isBuffering = true` and show the normal buffering/download-speed indicator.
-- Do not extend this grace to multi-second windows. Long grace periods hide real network stalls and produce a tail-end popup flash.
-- A newer Seek replaces the old Seek grace generation; stale grace state must not suppress a newer real stall.
+- Engine `isBuffering` is necessary but not sufficient.
+- `PlaybackTransportStarvationState` must also report an active concrete blocked byte read.
+- Only `engine buffering && transport starvation` may show the buffering/download-speed popup.
+- MDK demux, keyframe positioning, decoder flush and A/V resynchronization must not show a network-download popup when required bytes are already locally available.
+- MDK user Seek may still hide raw internal buffering during the first 500ms as flicker suppression, but the 500ms window is not the truth classifier.
+- A blocked UnifiedTransport read starts starvation when zero requested bytes are locally available and ends starvation as soon as that read is satisfied or exits.
 
-Startup buffering is not a Seek refill and is not subject to the Seek grace.
+Startup buffering follows the same truth rule: the popup means a concrete transport read is actually waiting for bytes.
 
 ## Volume tick haptic
 

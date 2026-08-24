@@ -32,6 +32,12 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let offset: Int64
     }
 
+    private struct SeekTraceContext {
+        let serial: Int
+        let target: Double
+        let startedAt: Date
+    }
+
     private struct LaneHealthState {
         var averageBps: Double = 0
         var samples = 0
@@ -62,6 +68,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private let configuration: MediaTransportConfiguration
     private let resolver = RedirectResolver()
     private let client = RangeHTTPClient(maximumConnections: 2)
+    private let starvationState: PlaybackTransportStarvationState
     private let blockBytes: Int64
     private let urgentBlockBytes: Int64 = 16 * 1_048_576
     private let progressiveUrgentGapBytes: Int64 = 2 * 1_048_576
@@ -131,6 +138,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var pendingUserSeekUntil = Date.distantPast
     private var pendingUserSeekPosition: Double?
     private var pendingUserSeekDuration: Double?
+    private var seekTraceSerial = 0
+    private var seekTraceReadSerial = 0
+    private var activeSeekTrace: SeekTraceContext?
+    private let seekTraceRetentionSeconds: TimeInterval = 5
     private var pendingPlaybackUrgentRange: Range<Int64>?
     private var pendingMetadataRange: Range<Int64>?
     private var lastBlockingPlaybackDemand: Range<Int64>?
@@ -175,9 +186,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private var schedulerHintLastRange: Range<Int64>?
     private var schedulerHintLastReason = ""
 
-    init(source: ResolvedPlaybackSource, configuration: MediaTransportConfiguration) {
+    init(source: ResolvedPlaybackSource, configuration: MediaTransportConfiguration, starvationState: PlaybackTransportStarvationState = PlaybackTransportStarvationState()) {
         self.source = source
         self.configuration = configuration
+        self.starvationState = starvationState
         self.blockBytes = min(max(configuration.upstreamBlockSizeBytes, 4 * 1_048_576), 64 * 1_048_576)
     }
 
@@ -324,6 +336,19 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         let resolved = try await resolve()
         guard offset >= 0, offset < resolved.contentLength, let store else { return Data() }
 
+        let readStartedAt = Date()
+        let trace: SeekTraceContext? = {
+            guard let activeSeekTrace, readStartedAt.timeIntervalSince(activeSeekTrace.startedAt) <= seekTraceRetentionSeconds else { return nil }
+            return activeSeekTrace
+        }()
+        let traceReadID: Int?
+        if trace != nil {
+            seekTraceReadSerial += 1
+            traceReadID = seekTraceReadSerial
+        } else {
+            traceReadID = nil
+        }
+
         let requested = min(length, Int(resolved.contentLength - offset))
         let concreteRange = offset..<min(resolved.contentLength, offset + Int64(requested))
         let concreteTailMetadata = isConcreteTailMetadataRead(concreteRange, resource: resolved)
@@ -332,6 +357,16 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         }
         acceptRealDemand(concreteRange, resource: resolved, reason: concreteTailMetadata ? "concrete-tail-metadata" : "concrete-read")
         let available = store.availableLength(from: offset, maximumLength: Int64(requested))
+        let cacheClass = available >= Int64(requested) ? "full" : (available > 0 ? "partial" : "miss")
+        if let trace, let traceReadID {
+            let ageMs = readStartedAt.timeIntervalSince(trace.startedAt) * 1_000
+            DiagnosticsLogger.shared.playback("SeekTransportRead", "phase=begin trace=\(trace.serial) read=\(traceReadID) target=\(String(format: "%.3f", trace.target)) range=\(concreteRange.lowerBound)-\(concreteRange.upperBound) requested=\(requested) available=\(available) cache=\(cacheClass) metadata=\(concreteTailMetadata) ageMs=\(String(format: "%.1f", ageMs))")
+        }
+
+        let blockedRead = available == 0
+        if blockedRead { starvationState.beginBlockedRead() }
+        defer { if blockedRead { starvationState.endBlockedRead() } }
+
         metricsValue.bytesServed += Int64(requested)
         if available >= Int64(requested) { metricsValue.cacheHitBytes += Int64(requested) }
 
@@ -346,7 +381,9 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         do {
             let data = try await store.readWhenAvailable(offset: offset, maximumLength: requested, timeout: 20)
             refreshMetrics(resource: resolved)
-            let next = offset + Int64(data.count)
+            if let trace, let traceReadID {
+                DiagnosticsLogger.shared.playback("SeekTransportRead", "phase=end trace=\(trace.serial) read=\(traceReadID) target=\(String(format: "%.3f", trace.target)) cache=\(cacheClass) blocked=\(blockedRead) returned=\(data.count) waitMs=\(String(format: "%.1f", Date().timeIntervalSince(readStartedAt) * 1_000))")
+            }
             return data
         } catch let error as DownloadFirstSparseStore.StoreError {
             guard case .timeout = error else { throw error }
@@ -358,17 +395,24 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             installUrgent(range: offset..<demandEnd, metadata: metadata, reason: metadata ? "metadata-read-timeout" : "read-timeout")
             scheduleSlots(reason: "read-timeout")
             let retryData = try await store.readWhenAvailable(offset: offset, maximumLength: requested, timeout: 25)
-            let retryNext = offset + Int64(retryData.count)
+            if let trace, let traceReadID {
+                DiagnosticsLogger.shared.playback("SeekTransportRead", "phase=retry-end trace=\(trace.serial) read=\(traceReadID) target=\(String(format: "%.3f", trace.target)) cache=\(cacheClass) blocked=\(blockedRead) returned=\(retryData.count) waitMs=\(String(format: "%.1f", Date().timeIntervalSince(readStartedAt) * 1_000))")
+            }
             return retryData
         }
     }
 
     func prioritizeSeek(position: Double, duration: Double) async {
         guard !stopped else { return }
-        pendingUserSeekUntil = Date().addingTimeInterval(4)
+        let now = Date()
+        seekTraceSerial += 1
+        seekTraceReadSerial = 0
+        activeSeekTrace = SeekTraceContext(serial: seekTraceSerial, target: max(0, position), startedAt: now)
+        pendingUserSeekUntil = now.addingTimeInterval(4)
         pendingUserSeekPosition = max(0, position)
         pendingUserSeekDuration = max(0, duration)
         demandCoordinator.reset()
+        DiagnosticsLogger.shared.playback("SeekTransportTrace", "phase=actor-enter trace=\(seekTraceSerial) target=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) anchor=\(playbackAnchor)")
         DiagnosticsLogger.shared.playback(
             "UnifiedAnchor",
             "user-seek position=\(String(format: "%.3f", position)) duration=\(String(format: "%.3f", duration)) byteGuess=disabled awaitingRealDemand=true anchor=\(playbackAnchor)"
@@ -463,6 +507,8 @@ actor UnifiedMediaTransportSession: TransportDataSession {
         rangeMap.clearDownloading(lane: "slot1")
         store?.close(removeFiles: !configuration.keepLastCache)
         store = nil
+        starvationState.reset()
+        activeSeekTrace = nil
         client.invalidate()
         DiagnosticsLogger.shared.playback("UnifiedTransport", "stopped item=\(source.itemId)")
     }
