@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build174 / OnePlayer 0.14.7 episode-selection CI/IPA candidate._
+_Last updated after Build175 / OnePlayer 0.14.8 episode-selector UI refinement CI/IPA candidate._
 
 ## Current functional baseline
 
@@ -19,18 +19,20 @@ The repository `main` branch is not necessarily the latest functional player bas
 
 ## Current development candidate
 
-**OnePlayer 0.14.7 / Build174** is the episode-selection test candidate:
+**OnePlayer 0.14.8 / Build175** is the current episode-selection real-device test candidate:
 
 - branch: `feat/player-episode-picker-0.14.7`
 - draft PR: **#249**
-- standard MPV Release build source commit: `2d4c4cae7deac930e040ca7579b462d9952ce60d`
-- dedicated CI run: **32776020154**
-- artifact: `OnePlayer-0.14.7-build174-episode-picker`
+- standard MPV Release build source commit: `cbd700dbb6ae884dbd6b9cca8cb110d590e3d39d`
+- dedicated CI run: **32780288067**
+- artifact: `OnePlayer-0.14.8-build175-episode-picker-ui`
 - state: **Code written / CI passed / IPA produced / real-device pending**
 
-Build174 adds a player episode button, bottom-up horizontal episode strip, manual episode switching and an `自动加载下一集` playback setting. It does not replace Build173 as the accepted functional baseline until the user tests it on device.
+Build174 / OnePlayer 0.14.7 was installed on device and confirmed that the selector opened and displayed episode data, but the first selector presentation was rejected visually: the large gray material sheet, explicit X close button, and `选集 / 剧名` header did not match the desired player interaction. That real-device feedback is the reason for Build175; Build174 is not a stable/frozen UI baseline.
 
-The Build174 media/session rule is source-owned replacement rather than in-place source mutation. The fullscreen host remains presented, while each selected episode receives a fresh `PlayerController`, `PlaybackOrchestrator`, `PlaybackTransportContext` and Emby playback session. Episode metadata can be prepared, but 115/CDN temporary media URLs are resolved only when the user selects an episode or a trusted natural end requests the next one.
+Build175 keeps the existing OnePlayer player-bottom button layout fixed. The selector itself is now an overlay over the player control layer: no large sheet background, no explicit close button, no `选集 / 剧名` title block, normal landscape safe-area insets, compact `第N季` menu, in-place season filtering, and detail-page-style 174×98 episode cards with a title plus up to two lines of Emby overview text. Tapping the player area above the selector dismisses it. Selecting a season only browses; it does not resolve or start media.
+
+The episode media/session rule remains source-owned replacement rather than in-place source mutation. The fullscreen host remains presented, while each selected episode receives a fresh `PlayerController`, `PlaybackOrchestrator`, `PlaybackTransportContext` and Emby playback session. Episode metadata can be prepared, but 115/CDN temporary media URLs are resolved only when the user selects an episode or a trusted natural end requests the next one.
 
 Automatic next episode is gated by the same `PrematureEOFGuard` semantics used by the player: only a non-premature natural end may advance. Premature EOF, abnormal short-media recovery, network starvation and raw engine EOF are not enough.
 
@@ -116,7 +118,7 @@ Do not start a new PiP optimisation build unless there is a materially new archi
 
 ## Current development direction
 
-Build174 episode selection is the active real-device test candidate. Until accepted, Build173 remains the functional baseline.
+Build175 episode selection is the active real-device test candidate. Until accepted, Build173 remains the real-device accepted functional baseline.
 
 New work should proceed module-by-module without casually touching:
 
