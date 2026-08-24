@@ -339,6 +339,17 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private func beginReturnToPlayer(reason: String, systemCompletion: ((Bool) -> Void)?, manualForeground: Bool) {
         guard behavior.playback != .stopped else { systemCompletion?(false); return }
         if behavior.exitIntent == .closePlayback || behavior.exitIntent == .detach { systemCompletion?(false); return }
+        if behavior.exitIntent == .returnToPlayer, behavior.presentation == .returning {
+            manualForegroundReturn = manualForegroundReturn || manualForeground
+            if let systemCompletion {
+                pendingRestoreUICompletion?(false)
+                pendingRestoreUICompletion = systemCompletion
+            }
+            DiagnosticsLogger.shared.playback("PiPState", "return join existing reason=\(reason) manual=\(manualForegroundReturn) systemCompletion=\(systemCompletion != nil) rendererReady=\(returnRendererReady)")
+            if !returnRendererReady, !returnRendererRestoreInProgress { beginReturnRendererRestore(targetPosition: clock.position()) }
+            pollReturnBarrier(attempt: 0)
+            return
+        }
         behavior.exitIntent = .returnToPlayer
         behavior.presentation = .returning
         manualForegroundReturn = manualForeground
@@ -505,13 +516,13 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         activeSeekStartedPosition = playbackController.snapshot.position
         playbackController.seek(by: delta)
         activeSeekRequestedTarget = playbackController.displayedPosition
-        behavior.seek = .waitingForLanding(token: token)
+        behavior.seek = .waitingForLanding(token: token, suppressPauseUntil: CACurrentMediaTime() + 0.04)
         DiagnosticsLogger.shared.playback("PiPSeek", "begin token=\(token) delta=\(String(format: "%.3f", delta)) engineStart=\(String(format: "%.3f", activeSeekStartedPosition ?? 0)) requested=\(activeSeekRequestedTarget.map { String(format: "%.3f", $0) } ?? "unknown") policy=visual-continues")
         if seekLandingProvider == nil { scheduleFallbackSeekLanding(token: token, attempt: 0) }
     }
 
     private func handleEngineSeekDispatch(_ info: PlayerPiPSeekDispatchInfo) {
-        guard case .waitingForLanding(let token) = behavior.seek, token == activeSeekToken, let session = activeSession else { return }
+        guard case .waitingForLanding(let token, _) = behavior.seek, token == activeSeekToken, activeSession != nil else { return }
         if let requested = activeSeekRequestedTarget, abs(requested - info.requestedTarget) > 0.6 {
             DiagnosticsLogger.shared.playback("PiPSeek", "dispatch ignored token=\(token) requestedMismatch local=\(String(format: "%.3f", requested)) engine=\(String(format: "%.3f", info.requestedTarget))")
             return
@@ -548,7 +559,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     }
 
     private func handleEngineSeekLanding(_ result: SeekResult) {
-        guard case .waitingForLanding(let token) = behavior.seek, token == activeSeekToken else { return }
+        guard case .waitingForLanding(let token, _) = behavior.seek, token == activeSeekToken else { return }
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
         let authoritative = max(0, result.actualPosition ?? result.target)
         activeSeekLandingHostTime = CACurrentMediaTime()
