@@ -356,9 +356,12 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         let positionMatched = delta.map { abs($0) <= 0.85 } ?? true
         let videoEnabled = currentVID != "no" && currentVID != "unknown"
         let pausedFrameSignal = !pictureInPictureResumePlaybackAdvancing && (hasVideoPTS || (hasTimePosition && viewport != nil))
-        let freshSignal = pictureInPictureResumeSawPlaybackRestart || pausedFrameSignal
+        let baselineVideoPTS = pictureInPictureResumeBaselineVideoPTS
+        let videoPTSAdvanced = hasVideoPTS && (baselineVideoPTS == nil || abs(videoPTS - (baselineVideoPTS ?? videoPTS)) >= 0.020)
+        let playingFrameSignal = pictureInPictureResumePlaybackAdvancing && videoPTSAdvanced
+        let freshSignal = pictureInPictureResumeSawPlaybackRestart || pausedFrameSignal || playingFrameSignal
         let ready = freshSignal && videoEnabled && currentVO.contains("gpu-next") && viewport != nil && positionMatched
-        DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame probe reason=\(reason) restartSeen=\(pictureInPictureResumeSawPlaybackRestart) pausedFrameSignal=\(pausedFrameSignal) videoEnabled=\(videoEnabled) currentVID=\(currentVID) currentVO=\(currentVO) viewportReady=\(viewport != nil) source=\(hasVideoPTS ? "video-pts" : "time-pos") actual=\(String(format: "%.3f", actualPosition)) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") expected=\(expected.map { String(format: "%.3f", $0) } ?? "unknown") delta=\(delta.map { String(format: "%.3f", $0) } ?? "unknown") advancing=\(pictureInPictureResumePlaybackAdvancing) ready=\(ready)")
+        DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame probe reason=\(reason) restartSeen=\(pictureInPictureResumeSawPlaybackRestart) pausedFrameSignal=\(pausedFrameSignal) playingFrameSignal=\(playingFrameSignal) videoPTSAdvanced=\(videoPTSAdvanced) baselineVideoPTS=\(baselineVideoPTS.map { String(format: "%.3f", $0) } ?? "none") videoEnabled=\(videoEnabled) currentVID=\(currentVID) currentVO=\(currentVO) viewportReady=\(viewport != nil) source=\(hasVideoPTS ? "video-pts" : "time-pos") actual=\(String(format: "%.3f", actualPosition)) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") expected=\(expected.map { String(format: "%.3f", $0) } ?? "unknown") delta=\(delta.map { String(format: "%.3f", $0) } ?? "unknown") advancing=\(pictureInPictureResumePlaybackAdvancing) ready=\(ready)")
         if ready { finishPictureInPictureRendererResume(success: true, actualPosition: actualPosition, reason: "fresh-video-frame"); return true }
         return false
     }
