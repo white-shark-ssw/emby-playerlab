@@ -17,16 +17,16 @@
 
 - **Task**：设计并固化 OnePlayer 多功能会话并行开发机制。
 - **User intent / acceptance criteria**：允许同时打开多个功能开发会话；每个功能必须有独立 checkpoint、branch/PR，不得互相覆盖；无法判断具体功能任务时必须让用户选择，不能猜测。
-- **Baseline**：`main`，当前已有规则/开发双会话路由和单一 `CURRENT_WORK_DEV.md`。
-- **Evidence / reason**：单一 `CURRENT_WORK_DEV.md` 只能安全承载一个 Active 功能任务；多个并行开发会话会争用同一 checkpoint。
-- **Files in scope**：`AGENTS.md`、`docs/project/CURRENT_WORK.md`、`docs/project/CURRENT_WORK_DEV.md`、`docs/project/DOCUMENTATION_POLICY.md`、新增开发任务 checkpoint 目录说明、本规则 checkpoint。
-- **Do-not-touch**：App 源码、Player / PiP / Transport / Cache 等功能实现；不扩展规则并行机制到当前没有需求的其他类别。
-- **Completed**：已确定采用“开发路由器 + 每功能独立 checkpoint + 每功能独立 branch/PR”，不采用固定 DEV1/DEV2/DEV3 槽。
-- **Validation state**：Rule checkpoint documented
-- **Pending**：定义任务选择/创建规则、并行冲突规则、合并前同步规则；写入永久规则；检查 diff；合并 PR；恢复本槽 Idle。
-- **Next exact action**：创建规则分支，并把 `CURRENT_WORK_DEV.md` 改为多任务开发路由器，新增 `docs/project/current/dev/README.md` 作为独立任务 checkpoint 规范。
-- **Rejected / do-not-repeat**：多个开发会话共享同一个可写 `CURRENT_WORK_DEV.md`；固定数量 `CURRENT_WORK_DEV_1/2/3` 槽；根据 Active/最近更新自动猜具体功能任务。
-- **Open questions / risks**：并行任务若触碰同一文件、同一状态所有者或 Frozen 核心，需要序列化或先处理冲突，不能盲目并行。
+- **Baseline**：branch `docs/parallel-feature-work`，基于 `main` commit `21a86451e700ff265e153aedb95486bd6914c78d`。
+- **Evidence / reason**：实际发现 `CURRENT_WORK_DEV.md` 已被另一个“播放器选集/自动下一集”功能任务占用并处于 Active，Build174 candidate 已 CI/IPA、等待真机；这证明单一开发槽无法安全支持并行功能会话。
+- **Files in scope**：`AGENTS.md`、`docs/project/CURRENT_WORK.md`、`docs/project/CURRENT_WORK_DEV.md`、`docs/project/DOCUMENTATION_POLICY.md`、`docs/project/current/dev/README.md`、现有选集任务迁移 checkpoint、本规则 checkpoint。
+- **Do-not-touch**：App 源码、Player / PiP / Transport / Cache 等功能实现；不改变选集功能代码或其 Build174 证据。
+- **Completed**：已建立“开发路由器 + 每功能独立 checkpoint + 每功能独立 branch/PR”模型；已定义任务选择/新建规则；已定义同文件/同状态所有者/Frozen/依赖冲突 guard；已定义唯一 Build/version candidate 规则和合并前同步/重验规则；已将现有选集任务完整迁移为 `DEV-player-episode-picker`；已检查分支相对 main 仅修改 6 个规则/文档文件，无 App 源码。
+- **Validation state**：Rule documented on branch；existing active dev checkpoint preserved
+- **Pending**：创建并合并规则 PR；合并后确认 main 的选集 checkpoint 与开发路由器；将本规则槽恢复为 `Idle`。
+- **Next exact action**：创建 PR，确认可合并后 squash merge；随后只重置 `CURRENT_WORK_RULES.md`，不得删除 `DEV-player-episode-picker`。
+- **Rejected / do-not-repeat**：多个开发会话共享同一个可写 `CURRENT_WORK_DEV.md`；固定数量 DEV1/DEV2/DEV3 槽；根据 Active/最近更新自动猜具体功能任务；两个 Active 功能共用 branch；把 Git mergeability 当成状态所有权并行安全证明。
+- **Open questions / risks**：无规则层未解决问题；具体并行任务仍需每次做范围冲突检查。
 
 ## Permanent rule sources
 

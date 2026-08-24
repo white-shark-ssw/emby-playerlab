@@ -1,71 +1,91 @@
-# OnePlayer Current Work — Development
+# OnePlayer Current Work — Development Router
 
-这是**功能开发专用**的跨会话滚动 checkpoint。它与规则维护槽独立，不能被规则会话覆盖或重置。
+`CURRENT_WORK_DEV.md` 现在只负责**功能开发任务路由**，不再保存某一个具体功能的 Active 正文。
 
-适用范围：
+OnePlayer 允许同时存在多个独立功能任务。每个任务的 checkpoint 位于：
 
-- 功能开发；
-- Bug 修复；
-- 日志 / 真机问题排查；
-- Player / PiP / Transport / Cache / Emby / Navigation / Compatibility 等实现工作；
-- CI / IPA / Build 验证。
+`docs/project/current/dev/<Work-ID>.md`
 
-## Status
+规则与模板见：
 
-**Active**
+`docs/project/current/dev/README.md`
 
-- **Task**：新增播放器“选集”功能：播放器底部增加选集入口，点击后从底部向上弹出横向剧集面板；播放设置增加“自动加载下一集”，并用可信自然结束触发下一集。
-- **User intent / acceptance criteria**：当前 Build173 播放器没有选集按钮；新增入口。横向浏览并切换同一剧集，样式参考用户截图；当前集明确显示“正在播放”；自动下一集可开关；异常 EOF / 提前结束不得误触发下一集。
-- **Baseline**：用户 2026-08-25 真机确认当前安装为 OnePlayer 0.14.6 / Build173。功能基线 PR #238；branch `fix/pip-seek-completion-return-simplify-0.14.6`；head `4f7acf8da06ded00db735b07210983a0d2dd5be6`。本任务 branch `feat/player-episode-picker-0.14.7`；draft PR #249。
-- **Build174 candidate**：OnePlayer 0.14.7 / Build174。专用标准 MPV Release CI run `32776020154` 在 source commit `2d4c4cae7deac930e040ca7579b462d9952ce60d` 完整通过；artifact `OnePlayer-0.14.7-build174-episode-picker` 已上传。该 commit 与恢复 CI helper 后的产品代码相同，差异仅为临时 workflow 恢复。
-- **Evidence**：`PlayerControlPanel` 原有 `.episodes` 枚举被接入底部栏；新增 `PlayerEpisodeCoordinator` 复用 `libraryItem` / `seriesEpisodes` / `playbackInfo` / `resolvePlaybackSource`；`seriesEpisodes()` 使用 `ParentIndexNumber,IndexNumber` 升序；`PlayerScreen` 以外层全屏 host + keyed `PlayerSessionScreen` 替换整个 source-owned 播放会话；自动下一集在 UI 边界再次使用同一纯 `PrematureEOFGuard.evaluate`，只有 non-premature 的可信自然结束才允许切下一集。
-- **Files / modules changed**：`Sources/Core/AppIdentity.swift`、`Sources/UI/PlayerControlPanelViews.swift`、新增 `Sources/UI/PlayerEpisodeSelection.swift`、`Sources/UI/PlayerScreen.swift`、`Sources/UI/PlayerSettings.swift`、`Sources/UI/PlayerSettingsView.swift`、`docs/changelog/CHANGELOG_v0_14_7_build174.md`。
-- **Frozen / verified untouched**：`PlayerController.swift`、MPV fast Seek、PiP Build173、UnifiedTransport/Range/302/115 客户端直连、Session cache、Cache UI、MPV surface 均未进入最终产品 diff；没有时间→字节比例 Seek；没有为选集新增 timer/watchdog/retry。
-- **Completed**：Code written；版本标识更新到 0.14.7；选集按钮与横向底部面板；当前集状态与自动定位；手动换集；全屏 host 内完整旧会话 stop + 新会话创建；自动下一集设置（Build174 candidate 默认开启）；可信自然结束 gate；Build174 专用契约检查；Xcode 16.4 Release 编译；App 身份校验；MinOS 15.0 校验；IPA/source artifact 生成。临时占用的 `build-mdk-lab.yml` 已恢复到 Build173 基线内容，最终产品 diff 不包含 CI helper。
-- **Validation state**：**Code written = yes；CI passed = yes（专用 Build174 run 32776020154）；IPA produced = yes；Real-device tested = no；Stable/frozen = no。** 两条历史通用 PR workflow 仍因自身硬编码的旧版本 0.13.3 / MDK 0.13.6 合同失败，这些失败发生在标准 Build174 编译之外，不能解释为本次 Swift 编译失败。
-- **Pending**：用户安装 Build174 真机验证：1）剧集播放时出现选集按钮；2）面板上弹/横向滚动/当前集居中与“正在播放”；3）手动切集不退出播放器、不闪回竖屏；4）Resume/Emby 进度正确；5）自然播完自动下一集；6）关闭自动下一集后停在本集结束；7）异常短片/提前 EOF 不跳集；8）S1 最后一集可进入 S2 第一集；9）电影/普通 Video 不显示选集按钮。
-- **Next exact action**：获取并安装 Build174 artifact，在 iPhone 15 Pro Max / iOS 17.0 做上述真机矩阵；根据真机结果只修有证据的问题。
-- **Rejected / do-not-repeat**：此前“Build173 已有选集按钮”已由用户更正；不得在现有 `PlayerController` 内原地替换 source；不得预解析/长期缓存下一集 115/CDN 临时直链；不得用单一引擎 EOF 无条件切集；不得为本功能重构冻结 Transport/Seek/PiP；不得为让旧通用 CI 变绿而修改与本功能无关的历史校验器。
-- **Open questions / risks**：横向面板尺寸/材质/卡片间距需真机视觉确认；换集时旧 SwiftUI session 的消失与新 session 的建立是否完全无旋转闪屏需真机确认；自动下一集默认开启是否符合最终产品偏好由本轮真机体验决定。
+## Development task routing
 
-## Latest accepted functional baseline
+进入开发/功能会话后，必须先确定当前会话对应哪个具体功能任务。
 
-- OnePlayer 0.14.6 / Build173
-- PR #238
-- branch `fix/pip-seek-completion-return-simplify-0.14.6`
-- 用户真机确认：当前播放器没有选集按钮，只有字幕等现有功能按钮
-- PiP 暂时冻结
-- **Build174 目前只是 CI/IPA test candidate，不得替代 Build173 的 real-device accepted baseline**
+推荐明确表达：
 
-## Active task template
+- `当前为功能会话，新任务：<功能名>`
+- `当前为开发会话，新任务：<功能名>`
+- `当前为功能会话，继续 DEV-<slug>`
+- `当前为开发会话，继续 <明确任务名>`
 
-进入可能持续多个步骤的开发任务后，应尽早改为 `Active`，并滚动维护：
+如果用户只说“当前为功能会话”或“当前为开发会话”，但没有说明具体任务：
 
-- **Task**：当前功能任务的一句话目标
-- **User intent / acceptance criteria**：怎样算完成
-- **Baseline**：Build / version / branch / PR / commit
-- **Evidence**：日志、真机结果、源码事实或明确需求
-- **Files / modules in scope**：允许修改的真实范围
-- **Frozen / do-not-touch**：不得顺手修改的区域
-- **Completed**：已经完成且有证据的步骤
-- **Validation state**：Code written / CI passed / IPA produced / Real-device tested / Stable/frozen
-- **Pending**：尚未完成的步骤
-- **Next exact action**：新会话接手后的第一项具体动作
-- **Rejected / do-not-repeat**：本任务中已被证据否定的路线
-- **Open questions / risks**：仍未解决的问题
+1. 读取 `docs/project/current/dev/` 当前 Active checkpoint；
+2. 明确告诉用户现有 Active 功能任务；
+3. 让用户选择继续哪个任务，或明确说要新建任务；
+4. 即使当前只有一个 Active 功能，也不能仅凭它存在就自动认定用户要继续该任务。
 
-## Proactive checkpoint rule
+在具体任务明确前：
 
-无法可靠预知会话上限，因此不能等“快到上限”才保存。
+- 不得创建新的功能 checkpoint；
+- 不得修改任何已有功能 checkpoint；
+- 不得创建、切换或复用某个功能 branch；
+- 不得擅自开始代码修改。
 
-只要任务目标明确并已有可用基线/工作方向，就建立第一个 `Active` checkpoint；之后在真实基线确认、第一版有效代码、CI/IPA、真机结果、方案转向等重要节点刷新。
+## Parallel development model
 
-不需要为每个小编辑更新。
+每个 Active 功能任务必须拥有：
 
-## Completion rule
+- 独立 Work ID；
+- 独立 `docs/project/current/dev/<Work-ID>.md`；
+- 独立开发 branch；
+- 独立 PR（进入评审/测试阶段后）；
+- 独立 Build / version candidate 身份。
+
+多个功能任务可以同时 Active，但任何一个会话只能维护自己已明确选定的任务 checkpoint。
+
+两个 Active 功能任务绝不能共用同一个开发 branch，也不得把多个任务的 checkpoint 合并成一个文件。
+
+## Parallel conflict guard
+
+新建并行功能任务前，必须读取其他 Active 功能 checkpoint，比较 Files / modules in scope、State owner、Frozen 区域和依赖关系。
+
+如果可能同时修改同一源码文件、同一状态所有者、同一 Frozen/P0 核心路径，或者新任务依赖另一个尚未合并的功能，不得静默并行。必须明确告诉用户冲突风险；优先串行，或明确记录为 stacked/dependent work。
+
+不要因为“Git 可以之后解决冲突”就忽略架构状态所有权冲突。
+
+## Build / version candidate
+
+并行任务分配 Build / version candidate 前，必须检查：
+
+- `BUILD_TEST_INDEX.md`；
+- `docs/project/current/dev/` 其他 Active checkpoint；
+- 已存在的 CI / IPA candidate。
+
+不同 Active 功能任务不得复用同一 Build 编号或同名 IPA candidate。
+
+## Merge / validation
+
+并行期间另一个 PR 可能先合并。当前任务在最终 CI / IPA / merge 前必须重新检查目标 branch 是否已经前进，以及是否出现新的源码、状态所有者或依赖重叠。
+
+若同步最新目标后代码发生实质变化，必须重新执行受影响验证。旧 CI 不能直接当作同步后的当前代码证据。
+
+## Current known active tasks
+
+不要在本文件手工维护动态任务清单。以 `docs/project/current/dev/` 目录中的实际任务 checkpoint 为准，避免多个并行会话争用同一索引文件。
+
+当前从旧单槽迁移出的任务：
+
+- `DEV-player-episode-picker` — checkpoint 已迁移至 `docs/project/current/dev/DEV-player-episode-picker.md`。
+
+## Completion
 
 任务完成后：
 
-1. 将长期结论同步到 `PROJECT_STATE.md` / `MODULE_STATUS.md` / `TECHNICAL_DECISIONS.md` / `BUILD_TEST_INDEX.md`；
-2. 仅将本文件恢复为 `Idle`；
-3. 不得改动或重置 `CURRENT_WORK_RULES.md`。
+1. 将长期有效结论同步到 `PROJECT_STATE.md` / `MODULE_STATUS.md` / `TECHNICAL_DECISIONS.md` / `BUILD_TEST_INDEX.md`；
+2. 删除本任务自己的 `docs/project/current/dev/<Work-ID>.md`；
+3. 不修改其他 Active 功能任务 checkpoint；
+4. 历史由 Git / PR / Build index 承担，不把已完成任务无限留在 current 目录。

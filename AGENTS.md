@@ -2,21 +2,24 @@
 
 This file is the repository-wide standing instruction for AI coding agents. It applies to all source changes unless a nearer, more specific instruction file explicitly overrides it.
 
-## 1. Read before changing code
+## 1. Read and route before changing code
 
 Before editing:
 
 1. Read `docs/project/START_HERE.md`.
-2. Read `docs/project/CURRENT_WORK.md` and route the session to the correct work lane.
-3. Explicit routing aliases: `当前为规则会话` means `docs/project/CURRENT_WORK_RULES.md`; `当前为开发会话` or `当前为功能会话` means `docs/project/CURRENT_WORK_DEV.md`. Clear equivalent wording has the same effect.
-4. For feature development, bugs, logs, real-device investigation, architecture implementation, CI or IPA work, use `docs/project/CURRENT_WORK_DEV.md`. For project-rule, documentation-governance, AI-instruction or Skill work, use `docs/project/CURRENT_WORK_RULES.md`.
-5. If the user's current message does not clearly identify which lane this session belongs to, stop routing and ask the user to choose Rules or Development/Feature. Do not guess, do not activate either lane, and do not start either task until the user chooses.
-6. Lane `Active`/`Idle` status is not sufficient routing evidence. Even if only one lane is `Active`, do not select it from status alone. Do not infer the lane from prior-chat topic, recency, urgency, or model preference.
-7. If the selected lane is `Active`, resume from its recorded baseline and `Next exact action` instead of restarting the task from scratch. Do not modify or reset the other lane.
-8. Read the current task's relevant entries in `docs/project/PROJECT_STATE.md`, `MODULE_STATUS.md`, and `TECHNICAL_DECISIONS.md`.
-9. Resolve the actual functional test baseline: Build / PR / branch / commit. Do not assume `main` is the latest runtime baseline.
-10. Inspect the real source definitions, call sites, state owners, and existing tests/logging before proposing a change.
-11. If the source contradicts the initial hypothesis, change the hypothesis instead of forcing the planned patch.
+2. Read `docs/project/CURRENT_WORK.md` and route the session type first.
+3. Explicit routing aliases: `当前为规则会话` means Rules; `当前为开发会话` or `当前为功能会话` means Development/Feature. Clear equivalent wording has the same effect.
+4. If the user's current message does not clearly identify Rules vs Development/Feature, stop and ask the user to choose. Do not guess, activate a task, switch a branch, or start work until the user chooses.
+5. Session/task `Active` state is not sufficient routing evidence. Do not infer intent from prior-chat topic, recency, urgency, or model preference.
+6. Rules work uses `docs/project/CURRENT_WORK_RULES.md`.
+7. Development work first reads `docs/project/CURRENT_WORK_DEV.md`, then selects one concrete task under `docs/project/current/dev/<Work-ID>.md`.
+8. If a Development/Feature session does not clearly identify which existing task to continue or that a new task should be created, list the current Active development tasks and ask the user to choose. Even one Active task is not enough to assume continuation.
+9. Before a concrete development task is selected, do not create or modify a development checkpoint and do not create, switch to, or reuse a feature branch.
+10. If the selected task is Active, resume from its recorded baseline and `Next exact action` instead of restarting from scratch. Do not modify another task's checkpoint.
+11. Read the current task's relevant entries in `docs/project/PROJECT_STATE.md`, `MODULE_STATUS.md`, and `TECHNICAL_DECISIONS.md`.
+12. Resolve the actual functional test baseline: Build / PR / branch / commit. Do not assume `main` is the latest runtime baseline.
+13. Inspect the real source definitions, call sites, state owners, and existing tests/logging before proposing a change.
+14. If the source contradicts the initial hypothesis, change the hypothesis instead of forcing the planned patch.
 
 Do not invent API names, variables, functions, framework behavior, or source structure.
 
@@ -104,7 +107,31 @@ Unrelated development must not regress:
 - Do not silently change unrelated behavior while solving the requested task.
 - Comments should explain non-obvious reasons or contracts, not restate obvious code.
 
-## 8. Validation discipline
+## 8. Parallel development discipline
+
+Multiple feature-development sessions are allowed only with task isolation.
+
+Each Active feature task must have:
+
+- a unique Work ID;
+- its own `docs/project/current/dev/<Work-ID>.md` checkpoint;
+- its own development branch;
+- its own PR once it reaches review/test stage;
+- a unique Build/version candidate identity when a test build is allocated.
+
+Two Active feature tasks must never share the same development branch.
+
+Before creating a new parallel feature task, inspect every other Active development checkpoint for overlap in files/modules, state owners, Frozen contracts, or dependencies.
+
+If two tasks may modify the same source file, the same state owner, a shared Frozen/P0 core path, or one depends on another unmerged task, do not silently proceed in parallel. Tell the user there is a conflict risk. Prefer serial work; if dependency work is intentional, record it explicitly as stacked/dependent work.
+
+Git mergeability is not proof that parallel architectural state ownership is safe.
+
+Before assigning a test Build/version candidate, inspect `docs/project/BUILD_TEST_INDEX.md`, other Active development checkpoints, and existing CI/IPA candidates. Do not reuse a Build number or IPA candidate name already allocated to another Active task.
+
+Before final CI/IPA/merge, check whether the target branch advanced due to another parallel task. If synchronization materially changes the code or dependencies, rerun affected validation. Old CI does not prove the synchronized code passes.
+
+## 9. Validation discipline
 
 Before claiming success:
 
@@ -124,20 +151,20 @@ Always distinguish:
 
 Never describe CI success as proof that a runtime bug is solved.
 
-## 9. Documentation and handoff are part of the change
+## 10. Documentation and handoff are part of the change
 
 For every important implementation, CI/IPA baseline, real-device result, architectural decision, rejection, freeze, or compatibility change, update the relevant files in `docs/project/` in the same work cycle.
 
-For any multi-step task, activate the correct checkpoint lane early enough that the task can survive an unexpected conversation/context limit. Do not wait until the user predicts the limit or asks for a handoff.
+For any multi-step task, create the correct checkpoint early enough to survive an unexpected conversation/context limit. Do not wait until the user predicts the limit or asks for a handoff.
 
-- Development work uses only `docs/project/CURRENT_WORK_DEV.md`.
-- Rule/documentation-governance work uses only `docs/project/CURRENT_WORK_RULES.md`.
-- The two lanes may both be `Active` at the same time.
-- Never overwrite, reset, or merge the other lane just because the current task finishes.
-- Never activate a lane until the session has been unambiguously routed from the user's current message or explicit selection.
+- Rules work uses only `docs/project/CURRENT_WORK_RULES.md`.
+- Each development task uses only its own `docs/project/current/dev/<Work-ID>.md`.
+- Rules and multiple development tasks may all be Active at the same time.
+- Never overwrite, reset, merge, or repurpose another task's checkpoint because the current task finishes.
+- Never create/activate a checkpoint until session type and concrete task identity are unambiguous.
 
-Create the first checkpoint as soon as the task goal and a usable baseline/working direction are known. Refresh the selected lane again at meaningful milestones such as baseline/branch confirmation, first effective patch or rule decision, CI/IPA change, user real-device result, or a material change of direction. The newest checkpoint should always be sufficient for a new session to continue without needing the previous chat.
+Create the first checkpoint as soon as the task goal and a usable baseline/working direction are known. Refresh the selected checkpoint at meaningful milestones such as baseline/branch confirmation, first effective patch or rule decision, CI/IPA change, user real-device result, or a material change of direction.
 
-Do not update checkpoints for every tiny edit. When a task finishes, move durable conclusions into the appropriate long-term project documents or permanent rule files and reset only the selected lane to `Idle`.
+Do not update checkpoints for every tiny edit. When a development task finishes, move durable conclusions into the long-term project documents and remove only that task's current checkpoint. When a rules task finishes, move durable rules into permanent rule files and reset only `CURRENT_WORK_RULES.md` to Idle.
 
 Do not wait for the user to request documentation maintenance or session handoff.
