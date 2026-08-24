@@ -74,7 +74,7 @@ enum VideoCacheCapacity: Int, CaseIterable, Identifiable {
     var title: String { Self.title(for: rawValue) }
 
     static func title(for mb: Int) -> String {
-        if mb <= 0 { return "不缓存" }
+        if mb <= 0 { return "不预加载" }
         if mb < 1024 { return "\(mb) MB" }
         return "\(mb / 1024) GB"
     }
