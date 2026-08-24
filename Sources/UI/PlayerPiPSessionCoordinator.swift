@@ -750,19 +750,47 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         syncTimebase(timebase, to: clock.position(), playing: behavior.playback == .playing)
     }
 
-    private func beginSeek(delta: Double) {
-        guard let playbackController else { return }
-        cancelSeekTransaction(reason: "superseded")
+    private func completeSystemSeekCompletions(upTo token: UInt64, source: String) {
+        let keys = pendingSystemSeekCompletions.keys.filter { $0 <= token }.sorted()
+        guard !keys.isEmpty else { return }
+        let now = CACurrentMediaTime()
+        for key in keys {
+            guard let pending = pendingSystemSeekCompletions.removeValue(forKey: key) else { continue }
+            pending.completion()
+            DiagnosticsLogger.shared.playback("PiPSeek", "system completion delivered token=\(key) source=\(source) callbackToCompletionMs=\(String(format: "%.1f", max(0, now - pending.startedAt) * 1000)) contract=after-timebase-commit")
+        }
+    }
+
+    private func releasePendingSystemSeekCompletions(reason: String) {
+        let keys = pendingSystemSeekCompletions.keys.sorted()
+        guard !keys.isEmpty else { return }
+        let now = CACurrentMediaTime()
+        for key in keys {
+            guard let pending = pendingSystemSeekCompletions.removeValue(forKey: key) else { continue }
+            pending.completion()
+            DiagnosticsLogger.shared.playback("PiPSeek", "system completion released token=\(key) reason=\(reason) callbackToReleaseMs=\(String(format: "%.1f", max(0, now - pending.startedAt) * 1000)) lifecycle=cancelled")
+        }
+    }
+
+    @discardableResult
+    private func beginSeek(delta: Double, systemCompletion: (@Sendable () -> Void)? = nil, callbackStartedAt: CFTimeInterval? = nil) -> UInt64? {
+        guard let playbackController else { systemCompletion?(); return nil }
+        cancelSeekTransaction(reason: "superseded", releasePendingSystemCompletions: false)
         pendingSystemPauseWorkItem?.cancel(); pendingSystemPauseWorkItem = nil
         seekToken &+= 1
         let token = seekToken
         activeSeekToken = token
         activeSeekStartedPosition = playbackController.snapshot.position
+        if let systemCompletion {
+            pendingSystemSeekCompletions[token] = PendingSystemSeekCompletion(startedAt: callbackStartedAt ?? CACurrentMediaTime(), completion: systemCompletion)
+            DiagnosticsLogger.shared.playback("PiPSeek", "system completion registered token=\(token) policy=after-visual-timebase-commit")
+        }
         playbackController.seek(by: delta)
         activeSeekRequestedTarget = playbackController.displayedPosition
         behavior.seek = .waitingForLanding(token: token, suppressPauseUntil: CACurrentMediaTime() + 0.04)
-        DiagnosticsLogger.shared.playback("PiPSeek", "begin token=\(token) delta=\(String(format: "%.3f", delta)) engineStart=\(String(format: "%.3f", activeSeekStartedPosition ?? 0)) requested=\(activeSeekRequestedTarget.map { String(format: "%.3f", $0) } ?? "unknown") policy=visual-continues")
+        DiagnosticsLogger.shared.playback("PiPSeek", "begin token=\(token) delta=\(String(format: "%.3f", delta)) engineStart=\(String(format: "%.3f", activeSeekStartedPosition ?? 0)) requested=\(activeSeekRequestedTarget.map { String(format: "%.3f", $0) } ?? "unknown") policy=visual-continues completion=deferred")
         if seekLandingProvider == nil { scheduleFallbackSeekLanding(token: token, attempt: 0) }
+        return token
     }
 
     private func handleEngineSeekDispatch(_ info: PlayerPiPSeekDispatchInfo) {
