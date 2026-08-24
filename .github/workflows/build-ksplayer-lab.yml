@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/build-ksplayer-lab.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/ci/build161-trigger.md"
   workflow_dispatch:
 
 permissions:
