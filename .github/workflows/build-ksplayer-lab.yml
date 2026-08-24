@@ -1,113 +1,119 @@
-name: Build170 SampleBuffer Visual Bridge Release
+name: Build KSPlayer Lab IPA
 
 on:
-  push:
-    branches: [main]
-    paths: [".github/workflows/build-ksplayer-lab.yml"]
-  pull_request:
-    branches: [main]
-    paths: ["docs/ci/build170-trigger.md"]
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "Sources/**"
+      - "Config/**"
+      - "Resources/**"
+      - "project.kslab.yml"
+      - "Podfile"
+      - ".github/workflows/build-ksplayer-lab.yml"
+  push:
+    branches: [main, master]
+    paths:
+      - "Sources/**"
+      - "Config/**"
+      - "Resources/**"
+      - "project.kslab.yml"
+      - "Podfile"
+      - ".github/workflows/build-ksplayer-lab.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: build170-pip-visual-bridge-${{ github.event.pull_request.number || github.ref }}
+  group: build-ksplayer-lab-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: macos-15
     timeout-minutes: 150
+
     steps:
-      - name: Checkout Build170 source
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: fix/pip-visual-bridge-0.14.3
-          fetch-depth: 0
 
-      - name: Validate Build170 contracts
-        run: |
-          set -euo pipefail
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          python3 - <<'PY'
-          from pathlib import Path
-          import subprocess
-
-          base = "2f143d781606d343c504fbc0ee1ed7d5e96bb13f"
-          app = Path("Sources/Core/AppIdentity.swift").read_text()
-          project = Path("project.yml").read_text()
-          pip = Path("Sources/UI/PlayerPiPSessionCoordinator.swift").read_text()
-          mpv = Path("Sources/Player/MPVPlayerEngine.swift").read_text()
-
-          checks = {
-              "Build170 version": 'sourceVersion = "0.14.3"' in app,
-              "iOS 15 deployment": 'iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project,
-              "system restore accepted before MPV ready": 'system restore accepted before MPV ready policy=samplebuffer-fullscreen-bridge' in pip,
-              "manual return accepted before MPV ready": 'manual foreground return accepted before MPV ready policy=samplebuffer-fullscreen-bridge' in pip,
-              "live bridge survives didStop": 'system-stopped return visualBridge=live' in pip and 'continue-inline-bridge-until-mpv-ready' in pip,
-              "bridge crossfade": 'visual bridge crossfade begin' in pip and 'withDuration: 0.10' in pip,
-              "PiP X retains last frame": 'visualBridge=last-frame-retained backgroundWork=stopped' in pip,
-              "PiP X no stop": 'playbackController?.stop()' not in pip,
-              "MPV absolute keyframes": 'let mode = "absolute+keyframes"' in mpv and 'absolute+exact' not in mpv,
-          }
-          for name, ok in checks.items():
-              print(("PASS" if ok else "FAIL"), name)
-              if not ok: raise SystemExit(f"::error::{name}")
-
-          # PiP X finalizer must stop work without flushing/removing the retained frame.
-          a=pip.index("    private func finalizePauseAndSuspendAfterSystemStop() {")
-          b=pip.index("    private func beginPausedForegroundRestore()",a)
-          finalize=pip[a:b]
-          if "flushAndRemoveImage" in finalize or "removeFromSuperview" in finalize:
-              raise SystemExit("::error::PiP X finalizer destroys retained visual bridge")
-          print("PASS PiP X last-frame bridge retained")
-
-          frozen_files = [
-              "Sources/Player/MPVPlayerEngine.swift",
-              "Sources/UI/PlayerPiPSamplePipeline.swift",
-              "Sources/Transport/TransportSettings.swift",
-              "Sources/Transport/UnifiedMediaTransportSession.swift",
-              "Sources/UI/CacheSettingsView.swift",
-              "Sources/Player/PlayerSurfacePresentationGate.swift",
-              "Sources/UI/MPVPlayerSurface.swift",
-              "Sources/App/AppOrientationCoordinator.swift",
-          ]
-          diff = subprocess.run(["git","diff","--name-only",base,"HEAD","--",*frozen_files],capture_output=True,text=True,check=True).stdout.strip()
-          if diff: raise SystemExit(f"::error::frozen files changed: {diff}")
-          print("PASS MPV renderer/seek, SampleBuffer pipeline, shared cache, presentation gate and orientation frozen")
-
-          def show_base(path):
-              return subprocess.run(["git","show",f"{base}:{path}"],capture_output=True,text=True,check=True).stdout
-          def section(text,start,end):
-              a=text.index(start); b=text.index(end,a); return text[a:b]
-
-          base_pip=show_base("Sources/UI/PlayerPiPSessionCoordinator.swift")
-          if section(base_pip,"    private func beginSeek(delta: Double) {","    private func reset(reason: String") != section(pip,"    private func beginSeek(delta: Double) {","    private func reset(reason: String"):
-              raise SystemExit("::error::PiP seek transaction changed")
-          print("PASS PiP seek transaction frozen")
-          PY
-
-      - name: Select Xcode 16.4 and install tools
+      - name: Select Xcode 16.4
         run: |
           set -euo pipefail
           sudo xcode-select -switch /Applications/Xcode_16.4.app
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
           swift --version
-          brew install xcodegen
-          sudo gem install cocoapods -v 1.16.2 --no-document
 
-      - name: Generate project and install dependencies
+      - name: Install build tools
         run: |
           set -euo pipefail
-          python3 scripts/generate_oneplayer_icons.py
-          xcodegen generate
-          pod install --repo-update
-          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
 
-      - name: Build Release for generic iOS device
+      - name: Prepare OnePlayer assets
+        run: python3 scripts/generate_oneplayer_icons.py
+
+      - name: Validate KSPlayer lab source contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          spec = Path("project.kslab.yml").read_text()
+          engine = Path("Sources/Player/PlayerEngine.swift").read_text()
+          ks = Path("Sources/Player/KSAVIOPlayerEngine.swift").read_text()
+          screen = Path("Sources/UI/PlayerScreen.swift").read_text()
+          checks = {
+              "iOS 15 deployment": 'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,
+              "KSPlayer exact 2.3.4": "exactVersion: 2.3.4" in spec,
+              "MPVKit excluded from KS lab": "MPVKit" not in spec,
+              "experimental engine preference": "case ksAVIO" in engine and "KSPlayer KSME（实验）" in engine,
+              "shared AVIO engine": "KSPlayerSparseAVIOContext" in ks and "sharedTransportSession" in ks,
+              "hardware decode": "hardwareDecode=true" in ks and "player.playbackRate" in ks,
+              "KS surface restored": "KSAVIOPlayerSurface(playerView: view)" in screen,
+          }
+          for name, ok in checks.items():
+              print(("PASS" if ok else "FAIL"), name)
+              if not ok:
+                  raise SystemExit(f"::error::{name}")
+          PY
+
+      - name: Generate KSPlayer Lab project
+        run: xcodegen generate --spec project.kslab.yml
+
+      - name: Install KTVHTTPCache 3.1.0
+        run: pod install --repo-update
+
+      - name: Restore Swift package cache
+        uses: actions/cache@v4
+        with:
+          path: .spm-cache
+          key: ${{ runner.os }}-ksplayer-2.3.4-ktv-3.1.0-${{ hashFiles('project.kslab.yml', 'Podfile') }}
+
+      - name: Resolve KSPlayer 2.3.4
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild \
+            -resolvePackageDependencies \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee ks-package-resolution.log
+          grep -R '"version" : "2.3.4"' EmbyPlayerLab.xcworkspace/xcshareddata/swiftpm/Package.resolved .spm-cache 2>/dev/null | head -n 5 || true
+
+      - name: Verify KSPlayer license and package minimums
+        run: |
+          set -euo pipefail
+          test -f .spm-cache/checkouts/KSPlayer/LICENSE
+          grep -q "GNU GENERAL PUBLIC LICENSE" .spm-cache/checkouts/KSPlayer/LICENSE
+          grep -q '.iOS(.v13)' .spm-cache/checkouts/KSPlayer/Package.swift
+          grep -q '.iOS(.v13)' .spm-cache/checkouts/FFmpegKit/Package.swift
+          echo "KSPlayer 2.3.4 public build: GPL-3.0; experiment artifact only." | tee ks-license-report.log
+          echo "KSPlayer declared minimum iOS: 13" | tee -a ks-license-report.log
+          echo "FFmpegKit declared minimum iOS: 13" | tee -a ks-license-report.log
+
+      - name: Build KSPlayer Lab for generic iOS device
         run: |
           set -euo pipefail
           set -o pipefail
@@ -120,90 +126,113 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
             -clonedSourcePackagesDirPath .spm-cache \
-            MARKETING_VERSION=0.14.3 \
-            CURRENT_PROJECT_VERSION=170 \
             IPHONEOS_DEPLOYMENT_TARGET=15.0 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
             DEVELOPMENT_TEAM='' \
-            clean build 2>&1 | tee build170.log
+            clean build 2>&1 | tee ks-build.log
 
-      - name: Extract Build170 compiler errors
+      - name: Extract KSPlayer build errors
         if: failure()
         run: |
           set +e
-          grep -nE '(^|[[:space:]])(error:|fatal error:)' build170.log > build170-errors.log
-          if [ ! -s build170-errors.log ]; then tail -n 800 build170.log > build170-errors.log; fi
-          sed -n '1,280p' build170-errors.log
+          grep -nE '(^|[[:space:]])(error:|fatal error:)' ks-build.log > ks-build-errors.log
+          if [ ! -s ks-build-errors.log ]; then tail -n 500 ks-build.log > ks-build-errors.log; fi
+          echo "## KSPlayer build errors" >> "$GITHUB_STEP_SUMMARY"
+          sed -n '1,200p' ks-build-errors.log >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload failed Build170 diagnostics
+      - name: Upload failed KSPlayer build diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-Build170-build-errors-${{ github.sha }}
+          name: OnePlayer-KSPlayerLab-build-errors-${{ github.sha }}
           path: |
-            build170.log
-            build170-errors.log
-            package-resolution.log
+            ks-build.log
+            ks-build-errors.log
+            ks-package-resolution.log
+            ks-license-report.log
           if-no-files-found: warn
           retention-days: 7
 
       - name: Locate and validate app
-        if: success()
         id: app
         run: |
           set -euo pipefail
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP_PATH" && test -d "$APP_PATH"
           echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.14.3" --build "170" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
+          python3 scripts/validate_built_app.py \
+            "$APP_PATH" \
+            --bundle-id "com.embyplayerlab.app" \
+            --version "0.13.3" \
+            --build "69" \
+            --display-name "OnePlayer" \
+            --minimum-os "15.0" \
+            --primary-icon "OnePlayerIcon" \
+            --alternate-icon "OnePlayerAltIcon"
 
-      - name: Validate iOS 15.0 and iOS 17.0 compatibility
-        if: success()
+      - name: Validate runtime and embedded minimum OS
         run: |
           set -euo pipefail
           chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" build170-min-os.log build170.log
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" ks-min-os-report.log ks-build.log
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          bad = []
+          rows = []
+          for info in Path('.spm-cache').rglob('Info.plist'):
+              if '.xcframework' not in str(info) or 'ios-arm64' not in str(info):
+                  continue
+              try:
+                  data = plistlib.loads(info.read_bytes())
+              except Exception:
+                  continue
+              minimum = data.get('MinimumOSVersion')
+              if minimum:
+                  rows.append((str(info), str(minimum)))
+                  parts = tuple(int(x) for x in str(minimum).split('.')[:2])
+                  if parts > (15, 0):
+                      bad.append((str(info), str(minimum)))
+          Path('ks-framework-min-os-report.log').write_text('\n'.join(f'{v} {p}' for p, v in rows) + '\n')
+          if bad:
+              raise SystemExit('::error::KSPlayer/FFmpegKit binary target minimum OS exceeds 15.0: ' + repr(bad))
+          PY
 
-      - name: Package unsigned IPA
-        if: success()
+      - name: Package KSPlayer Lab unsigned IPA
         run: |
           set -euo pipefail
-          rm -rf Payload && mkdir Payload
+          rm -rf Payload
+          mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="OnePlayer-0.14.3-build170-pip-visual-bridge-unsigned.ipa"
+          IPA_NAME="OnePlayer-KSPlayerLab-0.13.3-${GITHUB_SHA::7}-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           /usr/bin/unzip -t "$IPA_NAME"
           shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
-          SOURCE_ZIP="OnePlayer-0.14.3-build170-source.zip"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Export experiment source snapshot
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OnePlayer-KSPlayerLab-${GITHUB_SHA::7}-source.zip"
           git archive --format=zip --output "$SOURCE_ZIP" HEAD
           shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
-          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
 
-      - name: Upload Build170 artifacts
-        if: success()
+      - name: Upload KSPlayer Lab artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.14.3-build170-pip-visual-bridge
+          name: OnePlayer-KSPlayerLab-${{ github.sha }}
           path: |
             ${{ env.IPA_NAME }}
             ${{ env.IPA_NAME }}.sha256
             ${{ env.SOURCE_ZIP }}
             ${{ env.SOURCE_ZIP }}.sha256
-            build170.log
-            build170-min-os.log
-            package-resolution.log
+            ks-package-resolution.log
+            ks-build.log
+            ks-license-report.log
+            ks-min-os-report.log
+            ks-framework-min-os-report.log
           if-no-files-found: error
           retention-days: 30
-
-      - name: Publish Build170 test prerelease
-        if: success()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          TAG="v0.14.3-build170-test"
-          gh release delete "$TAG" --cleanup-tag -y >/dev/null 2>&1 || true
-          gh release create "$TAG" "$IPA_NAME" "$IPA_NAME.sha256" "$SOURCE_ZIP" "$SOURCE_ZIP.sha256" --target "$SOURCE_SHA" --title "OnePlayer 0.14.3 Build170" --notes "Build170 persistent SampleBuffer visual bridge test IPA. PiP seek, vid=no and shared cache are frozen." --prerelease
