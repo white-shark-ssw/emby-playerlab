@@ -239,6 +239,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
             self.pictureInPictureResumeStartedAt = CACurrentMediaTime()
             self.pictureInPictureResumePlaybackAdvancing = (self.getStringProperty(handle: handle, name: "pause") ?? "no") != "yes"
             self.pictureInPictureResumeSawPlaybackRestart = false
+            var baselineVideoPTS = Double.nan
+            self.pictureInPictureResumeBaselineVideoPTS = self.getProperty(handle: handle, name: "video-pts", format: MPV_FORMAT_DOUBLE, value: &baselineVideoPTS) >= 0 && baselineVideoPTS.isFinite ? baselineVideoPTS : nil
 
             let currentVID = self.getStringProperty(handle: handle, name: "vid") ?? "unknown"
             let restoreVID = self.pictureInPictureSuspendedVideoID ?? "auto"
