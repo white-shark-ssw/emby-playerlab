@@ -92,13 +92,7 @@ final class PlayerEpisodeCoordinator: ObservableObject {
     }
 
     func imageURL(for episode: LibraryItem) -> URL? {
-        client.imageURL(itemId: episode.preferredPrimaryImageItemId, maxWidth: 640, tag: episode.preferredPrimaryImageTag)
-    }
-
-    func episodeCode(_ episode: LibraryItem) -> String {
-        let season = episode.parentIndexNumber.map { "S\($0)" } ?? "S?"
-        let number = episode.indexNumber.map { "E\($0)" } ?? "E?"
-        return "\(season) \(number)"
+        client.imageURL(itemId: episode.preferredPrimaryImageItemId, maxWidth: 620, tag: episode.preferredPrimaryImageTag)
     }
 
     private func startPrepareTask() async {
@@ -177,111 +171,190 @@ struct PlayerEpisodeSelectionOverlay: View {
     @ObservedObject var coordinator: PlayerEpisodeCoordinator
     let onDismiss: () -> Void
     let onSelect: (LibraryItem) -> Void
+    @State private var selectedSeasonNumber: Int?
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Color.black.opacity(0.20).ignoresSafeArea().contentShape(Rectangle()).onTapGesture(perform: onDismiss)
+        VStack(spacing: 0) {
+            Color.clear.contentShape(Rectangle()).onTapGesture(perform: onDismiss)
             panel
         }
-        .ignoresSafeArea()
+        .onAppear { synchronizeSelectedSeason(force: true) }
+        .onChange(of: coordinator.episodes.count) { _ in synchronizeSelectedSeason(force: selectedSeasonNumber == nil) }
+        .onChange(of: coordinator.currentItemID) { _ in synchronizeSelectedSeason(force: true) }
     }
 
     private var panel: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("选集").font(.system(size: 18, weight: .bold))
-                    if let seriesName = coordinator.seriesName, !seriesName.isEmpty { Text(seriesName).font(.caption).foregroundColor(.white.opacity(0.62)).lineLimit(1) }
-                }
-                Spacer()
-                if coordinator.isLoadingEpisodes { ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white)) }
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark").font(.system(size: 14, weight: .bold)).frame(width: 34, height: 34).background(Color.white.opacity(0.10)).clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("关闭选集")
+        VStack(alignment: .leading, spacing: 9) {
+            seasonSelector
+            if coordinator.episodes.isEmpty { emptyState }
+            else { episodeScroller }
+            if let errorMessage = coordinator.errorMessage, !coordinator.episodes.isEmpty {
+                Text(errorMessage).font(.caption2).foregroundColor(.red.opacity(0.92)).lineLimit(1)
             }
-            .padding(.horizontal, 18)
-
-            if coordinator.episodes.isEmpty {
-                HStack {
-                    Spacer()
-                    if coordinator.isLoadingContext || coordinator.isLoadingEpisodes { ProgressView("正在加载剧集…").progressViewStyle(CircularProgressViewStyle(tint: .white)).foregroundColor(.white.opacity(0.82)) }
-                    else { Text(coordinator.errorMessage ?? "没有可用剧集").font(.footnote).foregroundColor(.white.opacity(0.68)) }
-                    Spacer()
-                }
-                .frame(height: 142)
-            } else {
-                episodeScroller
-            }
-
-            if let errorMessage = coordinator.errorMessage, !coordinator.episodes.isEmpty { Text(errorMessage).font(.caption2).foregroundColor(.red.opacity(0.90)).padding(.horizontal, 18).lineLimit(2) }
         }
-        .padding(.top, 14)
-        .padding(.bottom, 16)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 5)
         .foregroundColor(.white)
-        .frame(maxWidth: .infinity)
-        .background(.ultraThinMaterial)
-        .background(Color.black.opacity(0.88))
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var seasonSelector: some View {
+        if seasonNumbers.count > 1 {
+            Menu {
+                ForEach(Array(seasonNumbers.reversed()), id: \.self) { season in
+                    Button {
+                        selectedSeasonNumber = season
+                    } label: {
+                        if season == effectiveSeasonNumber { Label(seasonTitle(season), systemImage: "checkmark") }
+                        else { Text(seasonTitle(season)) }
+                    }
+                }
+            } label: { seasonSelectorLabel }
+            .buttonStyle(.plain)
+            .accessibilityLabel("选择季")
+        } else {
+            seasonSelectorLabel
+        }
+    }
+
+    private var seasonSelectorLabel: some View {
+        HStack(spacing: 4) {
+            Text(effectiveSeasonNumber.map(seasonTitle) ?? "选季")
+                .font(.system(size: 13, weight: .semibold))
+            if seasonNumbers.count > 1 { Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)) }
+        }
+        .foregroundColor(.white)
+        .shadow(color: .black.opacity(0.82), radius: 2, x: 0, y: 1)
+        .frame(height: 26)
+    }
+
+    private var emptyState: some View {
+        HStack {
+            Spacer()
+            if coordinator.isLoadingContext || coordinator.isLoadingEpisodes {
+                ProgressView("正在加载剧集…").progressViewStyle(CircularProgressViewStyle(tint: .white)).foregroundColor(.white.opacity(0.86))
+            } else {
+                Text(coordinator.errorMessage ?? "没有可用剧集").font(.footnote).foregroundColor(.white.opacity(0.72))
+            }
+            Spacer()
+        }
+        .frame(height: 138)
     }
 
     private var episodeScroller: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 14) {
-                    ForEach(coordinator.episodes) { episode in episodeCard(episode).id(episode.id) }
+                HStack(alignment: .top, spacing: 13) {
+                    ForEach(displayedEpisodes) { episode in episodeCard(episode).id(episode.id) }
                 }
-                .padding(.horizontal, 18)
             }
-            .onAppear { scrollToCurrent(proxy) }
-            .onChange(of: coordinator.episodes.count) { _ in scrollToCurrent(proxy) }
-            .onChange(of: coordinator.currentItemID) { _ in scrollToCurrent(proxy) }
+            .onAppear { scrollToRelevantEpisode(proxy) }
+            .onChange(of: selectedSeasonNumber) { _ in scrollToRelevantEpisode(proxy) }
+            .onChange(of: coordinator.currentItemID) { _ in scrollToRelevantEpisode(proxy) }
+            .onChange(of: displayedEpisodes.count) { _ in scrollToRelevantEpisode(proxy) }
         }
     }
 
     private func episodeCard(_ episode: LibraryItem) -> some View {
         let isCurrent = episode.id == coordinator.currentItemID
         let isResolving = episode.id == coordinator.resolvingItemID
+        let overview = episodeOverview(episode)
         return Button {
             if isCurrent { onDismiss() }
             else { onSelect(episode) }
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 5) {
                 ZStack(alignment: .leading) {
                     EmbyCachedRemoteImage(url: coordinator.imageURL(for: episode), contentMode: .fill, placeholderSystemImage: "film", showsLoadingIndicator: false)
-                        .frame(width: 190, height: 107)
+                        .frame(width: 174, height: 98)
                         .clipped()
                         .background(Color.white.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                     if isCurrent {
-                        HStack(spacing: 6) {
-                            Image(systemName: "chevron.right.2").font(.system(size: 12, weight: .bold))
-                            Text("正在播放").font(.system(size: 13, weight: .semibold))
+                        HStack(spacing: 5) {
+                            Image(systemName: "chevron.right.2").font(.system(size: 10.5, weight: .bold))
+                            Text("正在播放").font(.system(size: 11.5, weight: .semibold))
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(Color.black.opacity(0.62))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.64))
                         .clipShape(Capsule())
-                        .padding(.leading, 10)
+                        .padding(.leading, 9)
                     } else if isResolving {
-                        ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white)).padding(10).background(Color.black.opacity(0.62)).clipShape(Circle()).padding(.leading, 10)
+                        ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white)).padding(9).background(Color.black.opacity(0.64)).clipShape(Circle()).padding(.leading, 9)
                     }
                 }
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(isCurrent ? Color.white : Color.white.opacity(0.12), lineWidth: isCurrent ? 2 : 0.8))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isCurrent ? Color.white : Color.white.opacity(0.14), lineWidth: isCurrent ? 2 : 0.7))
 
-                Text(coordinator.episodeCode(episode)).font(.system(size: 14, weight: .semibold)).foregroundColor(.white).lineLimit(1)
-                Text(episode.name).font(.system(size: 12.5, weight: .regular)).foregroundColor(.white.opacity(0.62)).lineLimit(1)
+                Text(episodeTitle(episode))
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .shadow(color: .black.opacity(0.82), radius: 2, x: 0, y: 1)
+
+                Text(overview.isEmpty ? " " : overview)
+                    .font(.system(size: 10.5, weight: .regular))
+                    .foregroundColor(.white.opacity(0.68))
+                    .lineLimit(2)
+                    .lineSpacing(1)
+                    .frame(width: 174, minHeight: 28, alignment: .topLeading)
+                    .opacity(overview.isEmpty ? 0 : 1)
+                    .shadow(color: .black.opacity(0.72), radius: 2, x: 0, y: 1)
             }
-            .frame(width: 190, alignment: .leading)
+            .frame(width: 174, alignment: .leading)
         }
         .buttonStyle(.plain)
         .disabled(coordinator.resolvingItemID != nil && !isCurrent)
-        .accessibilityLabel(isCurrent ? "\(coordinator.episodeCode(episode))，正在播放" : coordinator.episodeCode(episode))
+        .accessibilityLabel(isCurrent ? "\(episodeTitle(episode))，正在播放" : episodeTitle(episode))
     }
 
-    private func scrollToCurrent(_ proxy: ScrollViewProxy) {
-        let itemID = coordinator.currentItemID
-        DispatchQueue.main.async { withAnimation(.easeOut(duration: 0.20)) { proxy.scrollTo(itemID, anchor: .center) } }
+    private var seasonNumbers: [Int] {
+        Array(Set(coordinator.episodes.compactMap(\.parentIndexNumber))).sorted()
+    }
+
+    private var currentSeasonNumber: Int? {
+        coordinator.episodes.first(where: { $0.id == coordinator.currentItemID })?.parentIndexNumber
+    }
+
+    private var effectiveSeasonNumber: Int? {
+        if let selectedSeasonNumber, seasonNumbers.contains(selectedSeasonNumber) { return selectedSeasonNumber }
+        if let currentSeasonNumber, seasonNumbers.contains(currentSeasonNumber) { return currentSeasonNumber }
+        return seasonNumbers.first
+    }
+
+    private var displayedEpisodes: [LibraryItem] {
+        guard let season = effectiveSeasonNumber else { return coordinator.episodes }
+        return coordinator.episodes.filter { $0.parentIndexNumber == season }
+    }
+
+    private func seasonTitle(_ season: Int) -> String {
+        season == 0 ? "特别篇" : "第\(season)季"
+    }
+
+    private func episodeTitle(_ episode: LibraryItem) -> String {
+        let trimmed = episode.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        if let number = episode.indexNumber { return "第\(number)集" }
+        return "剧集"
+    }
+
+    private func episodeOverview(_ episode: LibraryItem) -> String {
+        episode.overview?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func synchronizeSelectedSeason(force: Bool) {
+        guard !seasonNumbers.isEmpty else { return }
+        if force, let currentSeasonNumber, seasonNumbers.contains(currentSeasonNumber) { selectedSeasonNumber = currentSeasonNumber; return }
+        if let selectedSeasonNumber, seasonNumbers.contains(selectedSeasonNumber) { return }
+        selectedSeasonNumber = currentSeasonNumber ?? seasonNumbers.first
+    }
+
+    private func scrollToRelevantEpisode(_ proxy: ScrollViewProxy) {
+        let items = displayedEpisodes
+        guard let target = items.first(where: { $0.id == coordinator.currentItemID })?.id ?? items.first?.id else { return }
+        DispatchQueue.main.async { withAnimation(.easeOut(duration: 0.20)) { proxy.scrollTo(target, anchor: .leading) } }
     }
 }
