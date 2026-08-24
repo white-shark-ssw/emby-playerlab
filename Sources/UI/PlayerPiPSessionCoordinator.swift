@@ -409,7 +409,13 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             self.returnRendererRestoreInProgress = false
             self.returnRendererReady = success
             self.returnActualPosition = actualPosition
-            if success { AppOrientationCoordinator.shared.armPictureInPicturePresentationRelease() }
+            if success {
+                if self.behavior.exitIntent == .returnToPlayer, let host = self.sourceHostView, host.alpha > 0.001 {
+                    UIView.performWithoutAnimation { host.alpha = 0 }
+                    DiagnosticsLogger.shared.playback("PiPState", "return bridge hidden before presentation release policy=no-one-frame-sourcehost-residue")
+                }
+                AppOrientationCoordinator.shared.armPictureInPicturePresentationRelease()
+            }
             DiagnosticsLogger.shared.playback("PiPState", "return renderer-ready=\(success) target=\(String(format: "%.3f", targetPosition)) actual=\(actualPosition.map { String(format: "%.3f", $0) } ?? "unknown") presentationRelease=\(success ? "armed-after-fresh-frame" : "held")")
             if !success { self.failReturnBarrier(reason: "renderer-not-ready") }
         }
