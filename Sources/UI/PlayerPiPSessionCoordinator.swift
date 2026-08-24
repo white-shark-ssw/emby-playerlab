@@ -652,7 +652,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         returnPostStopRetryCount = 0
         returnSystemRestoreAccepted = true
         returnBridgeFadeInProgress = false
-        lastReturnBridgeAuthoritySyncAt = 0
+        returnRendererReadyHostTime = nil
+        returnFinalBridgeAlignmentApplied = false
         if let host = sourceHostView { UIView.performWithoutAnimation { host.alpha = 1 } }
         AppOrientationCoordinator.shared.preparePictureInPictureRestoreDestination()
         DiagnosticsLogger.shared.playback("PiPState", "paused foreground restore begin target=\(String(format: "%.3f", playbackController?.snapshot.position ?? 0)) authority=mpv-snapshot playback=paused")
@@ -1015,10 +1016,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         inlineRendererSuspended = false; rendererSuspending = false
         homeRequested = false
         returnRendererReady = false; returnRendererRestoreInProgress = false; returnActualPosition = nil
-        returnRendererReadyHostTime = nil; returnBridgeCatchupHolding = false
+        returnRendererReadyHostTime = nil; returnFinalBridgeAlignmentApplied = false
         returnSystemStopped = false; returnSurfaceReplayRequested = false; returnPostStopRetryCount = 0
         returnSystemRestoreAccepted = false; returnBridgeFadeInProgress = false
-        lastReturnBridgeAuthoritySyncAt = 0
         manualForegroundReturn = false
         behavior.reset()
         clock = PiPClock()
