@@ -7,11 +7,15 @@ This file is the repository-wide standing instruction for AI coding agents. It a
 Before editing:
 
 1. Read `docs/project/START_HERE.md`.
-2. Read `docs/project/CURRENT_WORK.md`. If it is `Active`, resume from its recorded baseline and `Next exact action` instead of restarting the task from scratch.
-3. Read the current task's relevant entries in `docs/project/PROJECT_STATE.md`, `MODULE_STATUS.md`, and `TECHNICAL_DECISIONS.md`.
-4. Resolve the actual functional test baseline: Build / PR / branch / commit. Do not assume `main` is the latest runtime baseline.
-5. Inspect the real source definitions, call sites, state owners, and existing tests/logging before proposing a change.
-6. If the source contradicts the initial hypothesis, change the hypothesis instead of forcing the planned patch.
+2. Read `docs/project/CURRENT_WORK.md` and route the session to the correct work lane.
+3. For feature development, bugs, logs, real-device investigation, architecture implementation, CI or IPA work, read `docs/project/CURRENT_WORK_DEV.md`. For project-rule, documentation-governance, AI-instruction or Skill work, read `docs/project/CURRENT_WORK_RULES.md`.
+4. If the selected lane is `Active`, resume from its recorded baseline and `Next exact action` instead of restarting the task from scratch. Do not modify or reset the other lane.
+5. Read the current task's relevant entries in `docs/project/PROJECT_STATE.md`, `MODULE_STATUS.md`, and `TECHNICAL_DECISIONS.md`.
+6. Resolve the actual functional test baseline: Build / PR / branch / commit. Do not assume `main` is the latest runtime baseline.
+7. Inspect the real source definitions, call sites, state owners, and existing tests/logging before proposing a change.
+8. If the source contradicts the initial hypothesis, change the hypothesis instead of forcing the planned patch.
+
+If the user explicitly says the current session is for maintaining or modifying project rules, route to `CURRENT_WORK_RULES.md` even when `CURRENT_WORK_DEV.md` is also `Active`.
 
 Do not invent API names, variables, functions, framework behavior, or source structure.
 
@@ -123,10 +127,15 @@ Never describe CI success as proof that a runtime bug is solved.
 
 For every important implementation, CI/IPA baseline, real-device result, architectural decision, rejection, freeze, or compatibility change, update the relevant files in `docs/project/` in the same work cycle.
 
-For any multi-step development **or rule/documentation-governance task**, make `docs/project/CURRENT_WORK.md` `Active` early enough that the task can survive an unexpected conversation/context limit. Do not wait until the user predicts the limit or asks for a handoff.
+For any multi-step task, activate the correct checkpoint lane early enough that the task can survive an unexpected conversation/context limit. Do not wait until the user predicts the limit or asks for a handoff.
 
-Create the first checkpoint as soon as the task goal and a usable baseline/working direction are known. Refresh it again at meaningful milestones such as baseline/branch confirmation, first effective patch or rule decision, CI/IPA change, user real-device result, or a material change of direction. The newest checkpoint should always be sufficient for a new session to continue without needing the previous chat.
+- Development work uses only `docs/project/CURRENT_WORK_DEV.md`.
+- Rule/documentation-governance work uses only `docs/project/CURRENT_WORK_RULES.md`.
+- The two lanes may both be `Active` at the same time.
+- Never overwrite, reset, or merge the other lane just because the current task finishes.
 
-Do not update it for every tiny edit. When the task finishes, move durable conclusions into the long-term project documents and reset `CURRENT_WORK.md` to `Idle`.
+Create the first checkpoint as soon as the task goal and a usable baseline/working direction are known. Refresh the selected lane again at meaningful milestones such as baseline/branch confirmation, first effective patch or rule decision, CI/IPA change, user real-device result, or a material change of direction. The newest checkpoint should always be sufficient for a new session to continue without needing the previous chat.
+
+Do not update checkpoints for every tiny edit. When a task finishes, move durable conclusions into the appropriate long-term project documents or permanent rule files and reset only the selected lane to `Idle`.
 
 Do not wait for the user to request documentation maintenance or session handoff.
