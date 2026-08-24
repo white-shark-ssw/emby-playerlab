@@ -19,6 +19,7 @@ enum PlayerControlPanel: String, Identifiable {
 
 struct PlayerBottomFunctionBar: View {
     let tracksEnabled: Bool
+    let showsEpisodes: Bool
     let currentRate: Double
     let settingsPresented: Bool
     let onSelect: (PlayerControlPanel) -> Void
@@ -28,6 +29,7 @@ struct PlayerBottomFunctionBar: View {
         HStack(spacing: 4) {
             functionButton(accessibilityTitle: "播放信息", systemImage: "info.circle", enabled: true) { onSelect(.info) }
             functionButton(accessibilityTitle: "音轨字幕", systemImage: "captions.bubble", enabled: tracksEnabled) { onSelect(.tracks) }
+            if showsEpisodes { functionButton(accessibilityTitle: "选集", systemImage: "rectangle.stack", enabled: true) { onSelect(.episodes) } }
             functionButton(accessibilityTitle: currentRate == 1 ? "倍速" : String(format: "倍速 %.2gx", currentRate), systemImage: "speedometer", enabled: true) { onSelect(.speed) }
             settingsButton
         }
@@ -114,7 +116,7 @@ struct PlayerControlPanelSheet: View {
                 case .tracks:
                     PlayerTrackSelectionView(source: source, trackProvider: trackProvider, onSelect: onTrackSelected)
                 case .episodes:
-                    PlayerUnavailablePanelView(message: "当前播放入口还没有携带剧集列表，选集会在下一阶段接入 Emby 剧集上下文。")
+                    PlayerUnavailablePanelView(message: "选集使用播放器内底部横向面板。")
                 case .info, .speed:
                     EmptyView()
                 }
