@@ -14,28 +14,28 @@
 
 **Active**
 
-- **Task**：新增播放器“选集”功能：在 Build173 现有底部功能栏增加选集入口，点击后从底部向上弹出横向剧集选择面板；设置中增加“自动加载下一集”选项，并基于现有播放结束/Emby 剧集数据实现正确的下一集切换逻辑。
-- **User intent / acceptance criteria**：播放器当前只有字幕等按钮，没有选集按钮；新增一个选集入口。点击后可横向浏览并切换同一剧集集数，交互样式参考用户提供截图的底部上弹面板；当前集有明确“正在播放”状态；自动加载下一集可在设置中开关，不能误把异常 EOF/提前结束当作正常剧终触发。
-- **Baseline**：用户 2026-08-25 真机确认当前安装为 OnePlayer 0.14.6 / Build173，并更正此前“已有选集按钮”的说法——当前存在的是字幕按钮，确实没有选集按钮。对应功能基线：PR #238；branch `fix/pip-seek-completion-return-simplify-0.14.6`；known head `4f7acf8da06ded00db735b07210983a0d2dd5be6`。本任务开发 branch：`feat/player-episode-picker-0.14.7`，从该 Build173 分支创建。
-- **Evidence**：用户 2026-08-25 提供目标 UI 截图并明确要求选集横向上弹面板；随后真机确认版本为 `0.14.6 (173)`，并最终更正当前播放器并无选集按钮。源码审计：`PlayerControlPanel` 已存在 `.episodes` 枚举和占位页，但 `PlayerBottomFunctionBar` 当前只展示播放信息、音轨字幕、倍速和播放设置；`EmbyAPIClient.seriesEpisodes()` 已按 `ParentIndexNumber,IndexNumber` 升序提供整部剧集；详情页已有成熟的播放源解析逻辑；`PlayerController.handleEndEvent()` 先经过 `PrematureEOFGuard`，可作为可信自然结束边界。
-- **Files / modules in scope**：`Sources/UI/PlayerControlPanelViews.swift`、`PlayerScreen.swift`、`PlayerSettings.swift` / `PlayerSettingsView.swift`、新增播放器剧集上下文/面板文件；`Sources/Player/PlayerController.swift` 仅允许增加“可信自然结束”信号，不改变 EOF 恢复算法；必要时更新 `AppIdentity.swift` 版本标识。Emby API 复用现有 `libraryItem` / `seriesEpisodes` / `playbackInfo` / `resolvePlaybackSource`，不新增媒体代理链。
-- **Frozen / do-not-touch**：MPV fast Seek；PiP Build173；UnifiedTransport/Range/302/115 客户端直连；Session cache 核心语义；系统导航所有权；不得引入时间→字节比例 Seek。
-- **Completed**：需求与真实 Build 已对齐；已确认当前没有选集按钮；已创建 `feat/player-episode-picker-0.14.7`；已审计剧集数据来源、播放源解析、设置持久化、PlayerController/Transport 状态所有权和自然结束保护。架构决定：换集不允许在同一个 `PlayerController` 内原地替换 source，因为其 `PlaybackOrchestrator` / `PlaybackTransportContext` 都绑定当前媒体源；应由全屏播放器宿主持有当前 source，每次换集完整停止旧播放会话并创建新会话，同时保持全屏播放器容器不退出。自动下一集只在 `PrematureEOFGuard` 判定为非 premature 的可信自然结束后触发；不预取 115 媒体直链，不加 timer/watchdog，只预取/复用剧集元数据。
-- **Validation state**：真实基线已确认；开发分支已创建；尚未 Code written。
-- **Pending**：实现播放器全屏宿主的会话替换；新增选集按钮；实现横向底部面板、当前集定位和手动换集；增加自动下一集设置；接入可信自然结束信号；静态回归检查；CI/IPA；真机验证。
-- **Next exact action**：在 `feat/player-episode-picker-0.14.7` 落第一版最小实现；先新增播放器剧集 coordinator/overlay，再接 `PlayerScreen` 会话替换和 `PlayerController` trusted natural-end signal，最后跑 CI。
-- **Rejected / do-not-repeat**：此前“当前真机已经存在选集按钮”的判断已由用户更正，禁止继续沿用；不得通过 duration/fileSize 或固定计时器猜测下一集；不得因为播放引擎发出单一 EOF 就无条件切下一集；不得把下一集 115/CDN 临时直链提前长时间解析并缓存；不得为本功能重构冻结的 Transport/Seek/PiP。
-- **Open questions / risks**：横向面板视觉细节需等待真机确认；换集时需要避免旧 `PlayerScreen` onDisappear 触发主界面竖屏恢复造成闪屏；自动下一集默认值与真机交互可在首版验证后按用户反馈调整。
+- **Task**：新增播放器“选集”功能：播放器底部增加选集入口，点击后从底部向上弹出横向剧集面板；播放设置增加“自动加载下一集”，并用可信自然结束触发下一集。
+- **User intent / acceptance criteria**：当前 Build173 播放器没有选集按钮；新增入口。横向浏览并切换同一剧集，样式参考用户截图；当前集明确显示“正在播放”；自动下一集可开关；异常 EOF / 提前结束不得误触发下一集。
+- **Baseline**：用户 2026-08-25 真机确认当前安装为 OnePlayer 0.14.6 / Build173。功能基线 PR #238；branch `fix/pip-seek-completion-return-simplify-0.14.6`；head `4f7acf8da06ded00db735b07210983a0d2dd5be6`。本任务 branch `feat/player-episode-picker-0.14.7`；draft PR #249。
+- **Build174 candidate**：OnePlayer 0.14.7 / Build174。专用标准 MPV Release CI run `32776020154` 在 source commit `2d4c4cae7deac930e040ca7579b462d9952ce60d` 完整通过；artifact `OnePlayer-0.14.7-build174-episode-picker` 已上传。该 commit 与恢复 CI helper 后的产品代码相同，差异仅为临时 workflow 恢复。
+- **Evidence**：`PlayerControlPanel` 原有 `.episodes` 枚举被接入底部栏；新增 `PlayerEpisodeCoordinator` 复用 `libraryItem` / `seriesEpisodes` / `playbackInfo` / `resolvePlaybackSource`；`seriesEpisodes()` 使用 `ParentIndexNumber,IndexNumber` 升序；`PlayerScreen` 以外层全屏 host + keyed `PlayerSessionScreen` 替换整个 source-owned 播放会话；自动下一集在 UI 边界再次使用同一纯 `PrematureEOFGuard.evaluate`，只有 non-premature 的可信自然结束才允许切下一集。
+- **Files / modules changed**：`Sources/Core/AppIdentity.swift`、`Sources/UI/PlayerControlPanelViews.swift`、新增 `Sources/UI/PlayerEpisodeSelection.swift`、`Sources/UI/PlayerScreen.swift`、`Sources/UI/PlayerSettings.swift`、`Sources/UI/PlayerSettingsView.swift`、`docs/changelog/CHANGELOG_v0_14_7_build174.md`。
+- **Frozen / verified untouched**：`PlayerController.swift`、MPV fast Seek、PiP Build173、UnifiedTransport/Range/302/115 客户端直连、Session cache、Cache UI、MPV surface 均未进入最终产品 diff；没有时间→字节比例 Seek；没有为选集新增 timer/watchdog/retry。
+- **Completed**：Code written；版本标识更新到 0.14.7；选集按钮与横向底部面板；当前集状态与自动定位；手动换集；全屏 host 内完整旧会话 stop + 新会话创建；自动下一集设置（Build174 candidate 默认开启）；可信自然结束 gate；Build174 专用契约检查；Xcode 16.4 Release 编译；App 身份校验；MinOS 15.0 校验；IPA/source artifact 生成。临时占用的 `build-mdk-lab.yml` 已恢复到 Build173 基线内容，最终产品 diff 不包含 CI helper。
+- **Validation state**：**Code written = yes；CI passed = yes（专用 Build174 run 32776020154）；IPA produced = yes；Real-device tested = no；Stable/frozen = no。** 两条历史通用 PR workflow 仍因自身硬编码的旧版本 0.13.3 / MDK 0.13.6 合同失败，这些失败发生在标准 Build174 编译之外，不能解释为本次 Swift 编译失败。
+- **Pending**：用户安装 Build174 真机验证：1）剧集播放时出现选集按钮；2）面板上弹/横向滚动/当前集居中与“正在播放”；3）手动切集不退出播放器、不闪回竖屏；4）Resume/Emby 进度正确；5）自然播完自动下一集；6）关闭自动下一集后停在本集结束；7）异常短片/提前 EOF 不跳集；8）S1 最后一集可进入 S2 第一集；9）电影/普通 Video 不显示选集按钮。
+- **Next exact action**：获取并安装 Build174 artifact，在 iPhone 15 Pro Max / iOS 17.0 做上述真机矩阵；根据真机结果只修有证据的问题。
+- **Rejected / do-not-repeat**：此前“Build173 已有选集按钮”已由用户更正；不得在现有 `PlayerController` 内原地替换 source；不得预解析/长期缓存下一集 115/CDN 临时直链；不得用单一引擎 EOF 无条件切集；不得为本功能重构冻结 Transport/Seek/PiP；不得为让旧通用 CI 变绿而修改与本功能无关的历史校验器。
+- **Open questions / risks**：横向面板尺寸/材质/卡片间距需真机视觉确认；换集时旧 SwiftUI session 的消失与新 session 的建立是否完全无旋转闪屏需真机确认；自动下一集默认开启是否符合最终产品偏好由本轮真机体验决定。
 
 ## Latest accepted functional baseline
 
 - OnePlayer 0.14.6 / Build173
 - PR #238
 - branch `fix/pip-seek-completion-return-simplify-0.14.6`
-- task branch `feat/player-episode-picker-0.14.7`
 - 用户真机确认：当前播放器没有选集按钮，只有字幕等现有功能按钮
 - PiP 暂时冻结
-- 后续功能开发不默认以 `main` 作为最新功能测试基线
+- **Build174 目前只是 CI/IPA test candidate，不得替代 Build173 的 real-device accepted baseline**
 
 ## Active task template
 
