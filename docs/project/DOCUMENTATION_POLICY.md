@@ -24,6 +24,7 @@
 - `当前为开发会话` / `当前为功能会话` → `CURRENT_WORK_DEV.md`
 - 语义明确的规则维护表达 → 规则会话
 - 语义明确的功能开发、Bug、日志、真机、架构实现、CI / IPA 表达 → 开发/功能会话
+- 直接说一个明确功能名（例如“详情页优化”）也可以同时表达“开发/功能会话 + 具体功能任务”，但只有唯一强匹配已有 Active checkpoint 时才允许自动续接。
 
 如果用户当前消息不足以可靠判断属于规则会话还是开发/功能会话，必须明确告知用户并让用户选择。
 
@@ -31,7 +32,7 @@
 
 ## 开发会话支持多个并行功能
 
-`CURRENT_WORK_DEV.md` 是**开发任务路由器**，不再保存单个 Active 功能正文。
+`CURRENT_WORK_DEV.md` 是**开发任务路由器**，不保存单个 Active 功能正文。
 
 每个当前功能任务拥有独立 checkpoint：
 
@@ -41,23 +42,42 @@
 
 `docs/project/current/dev/README.md`
 
-路由为开发/功能会话后，还必须确认具体任务：继续哪个已有 Work ID，或新建哪个功能。
+### 直接使用功能名称续接
 
-如果用户只说明“当前为功能会话/开发会话”而没有说明具体任务：
+每个 Active 功能 checkpoint 应维护 `Routing aliases / keywords`，包括用户日常可能直接说出的短功能名。
 
-1. 读取 `docs/project/current/dev/` 当前任务；
-2. 向用户展示可继续的 Active 功能；
-3. 让用户选择已有任务或明确新建任务；
-4. 即使只有一个 Active 功能，也不能仅凭它存在自动认定要继续。
+用户直接输入“详情页优化”“选集功能”等名称时，按以下顺序选择已有任务：
+
+1. 精确 Work ID；
+2. 明确 Task 名称；
+3. 明确 `Routing aliases / keywords`；
+4. 唯一、可解释的强关键词匹配。
+
+只有恰好一个 Active checkpoint 强匹配时才能自动续接。
+
+如果多个任务都匹配、只有模糊语义相关、无法指出具体命中字段，或既可能表示继续旧任务又可能表示新任务，则必须展示候选并让用户选择。
+
+即使只有一个 Active 功能，也不能仅凭 Active 状态自动选择；没有唯一匹配时也不能自动创建新任务。
 
 具体任务未明确前，不得创建/修改功能 checkpoint，不得创建、切换或复用功能 branch，不得开始代码修改。
+
+### Resume identity guard
+
+已有任务被选中后，开始代码修改前必须核对：
+
+- checkpoint 记录的 working branch / PR / head commit；
+- GitHub 当前真实 branch / PR 身份；
+- 已分配的 Build / version / IPA candidate；
+- 其他 Active checkpoint 是否占用了同一 branch、Build 编号或同名 IPA candidate。
+
+出现不一致或重复占用时必须停止并告诉用户，不能自行猜测哪个记录应该被覆盖。
 
 ## Required documents
 
 - `START_HERE.md` — 新会话最短入口。
 - `CURRENT_WORK.md` — 规则/开发会话类型路由。
 - `CURRENT_WORK_DEV.md` — 多功能开发任务路由器。
-- `current/dev/README.md` — 独立功能 checkpoint 模板与并行规则。
+- `current/dev/README.md` — 独立功能 checkpoint 模板、名称路由与并行规则。
 - `current/dev/<Work-ID>.md` — 每个正在进行功能自己的短期 checkpoint；完成后删除。
 - `CURRENT_WORK_RULES.md` — 规则 / 文档治理的滚动 checkpoint。
 - `PROJECT_STATE.md` — 项目**现在是什么**。
@@ -91,7 +111,9 @@
 3. 每个功能有独立开发 branch；
 4. 进入评审/测试阶段后使用独立 PR；
 5. 每个功能会话只维护自己的 checkpoint；
-6. 两个 Active 功能不得共用同一个开发 branch。
+6. 两个 Active 功能不得共用同一个开发 branch；
+7. 每个任务维护稳定的 `Routing aliases / keywords`；
+8. 已分配的 Build/version/IPA candidate 在任务 Active 期间保持唯一占用。
 
 ### 并行前冲突检查
 
@@ -115,7 +137,7 @@ Git 最终能否自动合并，不代表架构状态所有权适合并行修改�
 - `current/dev/` 其他 Active checkpoint；
 - 已存在 CI / IPA candidate。
 
-并行任务不得复用同一 Build 编号或同名 IPA candidate。
+并行任务不得复用同一 Build 编号或同名 IPA candidate。Build candidate 写入 Active checkpoint 后视为该任务占用，除非任务明确完成/放弃并同步状态，否则其他任务不得复用。
 
 ### 合并前重新同步
 
