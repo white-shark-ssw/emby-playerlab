@@ -13,7 +13,6 @@ final class PlayerEpisodeCoordinator: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private let client: EmbyAPIClient
-    private var activeSource: ResolvedPlaybackSource
     private var seriesID: String?
     private var contextResolvedItemID: String?
     private var loadedSeriesID: String?
@@ -21,14 +20,12 @@ final class PlayerEpisodeCoordinator: ObservableObject {
     private var episodeListTask: Task<Void, Never>?
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient) {
-        self.activeSource = source
         self.currentItemID = source.itemId
         self.client = client
     }
 
     func activate(source: ResolvedPlaybackSource) {
-        guard source.itemId != currentItemID else { activeSource = source; return }
-        activeSource = source
+        guard source.itemId != currentItemID else { return }
         currentItemID = source.itemId
         errorMessage = nil
         resolvingItemID = nil
