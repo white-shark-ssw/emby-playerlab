@@ -13,6 +13,7 @@ struct PlayerSettingsView: View {
     @AppStorage(PlayerPreferenceKeys.resumeWhenForegrounded) private var resumeWhenForegrounded = false
     @AppStorage(PlayerPreferenceKeys.defaultScaleMode) private var defaultScaleMode = PlayerVideoScaleMode.fit.rawValue
     @AppStorage(PlayerPreferenceKeys.controlsAutoHideSeconds) private var controlsAutoHideSeconds = 3.0
+    @AppStorage(PlayerPreferenceKeys.autoLoadNextEpisode) private var autoLoadNextEpisode = true
 
     @Environment(\.presentationMode) private var presentationMode
     private let seekIntervals = [5, 10, 15, 20, 30, 60]
@@ -32,6 +33,7 @@ struct PlayerSettingsView: View {
                     Picker("播放方向", selection: $orientationPolicy) {
                         ForEach(PlaybackOrientationPolicy.allCases) { policy in Text(policy.title).tag(policy.rawValue) }
                     }
+                    Toggle("自动加载下一集", isOn: $autoLoadNextEpisode)
                     Toggle("挂起后自动暂停", isOn: $pauseWhenBackgrounded)
                     Toggle("回到前台自动播放", isOn: $resumeWhenForegrounded)
                 }
