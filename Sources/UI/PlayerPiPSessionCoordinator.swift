@@ -31,8 +31,11 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
 
     private final class SeekStagingContext {
         let token: UInt64
+        let requestedTarget: Double
+        let dispatchTarget: Double
         let predictedTarget: Double
         let pipeline: PlayerPiPSamplePipeline
+        let startedAt: CFTimeInterval
         var generation: UInt64 = 1
         var samples: [PlayerPiPSamplePipeline.SampleEnvelope] = []
         var firstDisplayablePTS: Double?
@@ -40,11 +43,15 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         var optimisticCommitEnabled = false
         var committedSpeculatively = false
         var speculativePTS: Double?
+        var longTailDeadlineReached = false
 
-        init(token: UInt64, predictedTarget: Double, pipeline: PlayerPiPSamplePipeline) {
+        init(token: UInt64, requestedTarget: Double, dispatchTarget: Double, predictedTarget: Double, pipeline: PlayerPiPSamplePipeline) {
             self.token = token
+            self.requestedTarget = requestedTarget
+            self.dispatchTarget = dispatchTarget
             self.predictedTarget = predictedTarget
             self.pipeline = pipeline
+            self.startedAt = CACurrentMediaTime()
         }
     }
 
