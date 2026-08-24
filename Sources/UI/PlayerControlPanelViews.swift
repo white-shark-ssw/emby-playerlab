@@ -19,6 +19,7 @@ enum PlayerControlPanel: String, Identifiable {
 
 struct PlayerBottomFunctionBar: View {
     let tracksEnabled: Bool
+    let episodesEnabled: Bool
     let currentRate: Double
     let settingsPresented: Bool
     let onSelect: (PlayerControlPanel) -> Void
@@ -28,6 +29,7 @@ struct PlayerBottomFunctionBar: View {
         HStack(spacing: 4) {
             functionButton(accessibilityTitle: "播放信息", systemImage: "info.circle", enabled: true) { onSelect(.info) }
             functionButton(accessibilityTitle: "音轨字幕", systemImage: "captions.bubble", enabled: tracksEnabled) { onSelect(.tracks) }
+            functionButton(accessibilityTitle: "选集", systemImage: "rectangle.stack", enabled: episodesEnabled) { onSelect(.episodes) }
             functionButton(accessibilityTitle: currentRate == 1 ? "倍速" : String(format: "倍速 %.2gx", currentRate), systemImage: "speedometer", enabled: true) { onSelect(.speed) }
             settingsButton
         }

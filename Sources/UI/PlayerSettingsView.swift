@@ -11,6 +11,7 @@ struct PlayerSettingsView: View {
     @AppStorage(PlayerPreferenceKeys.independentBrightnessEnabled) private var independentBrightnessEnabled = false
     @AppStorage(PlayerPreferenceKeys.pauseWhenBackgrounded) private var pauseWhenBackgrounded = true
     @AppStorage(PlayerPreferenceKeys.resumeWhenForegrounded) private var resumeWhenForegrounded = false
+    @AppStorage(PlayerPreferenceKeys.autoPlayNextEpisodeEnabled) private var autoPlayNextEpisodeEnabled = true
     @AppStorage(PlayerPreferenceKeys.defaultScaleMode) private var defaultScaleMode = PlayerVideoScaleMode.fit.rawValue
     @AppStorage(PlayerPreferenceKeys.controlsAutoHideSeconds) private var controlsAutoHideSeconds = 3.0
 
@@ -28,10 +29,11 @@ struct PlayerSettingsView: View {
                     }
                 }
 
-                Section(header: Text("播放")) {
+                Section(header: Text("播放"), footer: Text("自动加载下一集只会在播放器确认当前剧集正常自然结束后触发；异常提前 EOF 不会跳集。")) {
                     Picker("播放方向", selection: $orientationPolicy) {
                         ForEach(PlaybackOrientationPolicy.allCases) { policy in Text(policy.title).tag(policy.rawValue) }
                     }
+                    Toggle("自动加载下一集", isOn: $autoPlayNextEpisodeEnabled)
                     Toggle("挂起后自动暂停", isOn: $pauseWhenBackgrounded)
                     Toggle("回到前台自动播放", isOn: $resumeWhenForegrounded)
                 }

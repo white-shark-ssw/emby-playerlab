@@ -22,12 +22,14 @@ struct PlayerScreen: View {
     @AppStorage(PlayerPreferenceKeys.independentBrightnessValue) private var independentBrightnessValue = 0.5
     @AppStorage(PlayerPreferenceKeys.pauseWhenBackgrounded) private var pauseWhenBackgrounded = true
     @AppStorage(PlayerPreferenceKeys.resumeWhenForegrounded) private var resumeWhenForegrounded = false
+    @AppStorage(PlayerPreferenceKeys.autoPlayNextEpisodeEnabled) private var autoPlayNextEpisodeEnabled = true
     @AppStorage(PlayerPreferenceKeys.controlsAutoHideSeconds) private var controlsAutoHideSeconds = 3.0
     @AppStorage(PlayerPresentationPreferenceKeys.motionSmoothingMode) private var motionSmoothingRaw = MotionSmoothingMode.off.rawValue
     @AppStorage(PlayerPresentationPreferenceKeys.videoEnhancementEnabled) private var videoEnhancementEnabled = false
 
     @State private var activePanel: PlayerControlPanel?
     @State private var playbackSettingsPresented = false
+    @State private var episodePanelPresented = false
     @State private var isClosing = false
     @State private var orientationReady = false
     @State private var playbackStarted = false
@@ -86,7 +88,7 @@ struct PlayerScreen: View {
                     onAdjustmentEnded: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: true) }
                 )
                 .ignoresSafeArea()
-                .allowsHitTesting(!isClosing && !playbackSettingsPresented)
+                .allowsHitTesting(!isClosing && !playbackSettingsPresented && !episodePanelPresented)
 
                 if let feedback = controller.scrubFeedback {
                     VStack {
@@ -125,6 +127,19 @@ struct PlayerScreen: View {
                     .transition(.opacity)
                     .zIndex(20)
                 }
+
+                if episodePanelPresented {
+                    PlayerEpisodePanel(
+                        seriesName: controller.episodeSeriesName,
+                        episodes: controller.episodes,
+                        currentItemID: controller.source.itemId,
+                        switchingItemID: controller.episodeSwitchingItemID,
+                        imageURL: { controller.episodeImageURL(for: $0) },
+                        onSelect: selectEpisode,
+                        onDismiss: dismissEpisodePanel
+                    )
+                    .zIndex(30)
+                }
             }
 
             PlayerPresentationDidAppearProbe(onDidAppear: handlePresentationDidAppear)
@@ -150,6 +165,7 @@ struct PlayerScreen: View {
             closeDismissWorkItem?.cancel()
             displayRefreshMonitor.stop()
             playbackSettingsPresented = false
+            episodePanelPresented = false
             if !isClosing { AppOrientationCoordinator.shared.restoreMainInterfaceOrientation() }
             resetTransientInteractions(reason: "disappear")
             wasAutoPausedForBackground = false
@@ -165,6 +181,8 @@ struct PlayerScreen: View {
                 scheduleControlsHide()
             } else { showControls(autoHide: false) }
         }
+        .onChange(of: controller.source.itemId) { _ in presentationCoordinator.updateSource(controller.source) }
+        .onChange(of: controller.naturalPlaybackEndGeneration) { _ in handleTrustedNaturalEnd() }
         .onChange(of: controller.engineKind) { kind in
             if !PlayerCapabilities.resolve(for: kind).supportsPictureInPicture { pictureInPictureController.stopAndDetach() }
             if playbackStarted { applyPresentationPreferences() }
@@ -215,7 +233,7 @@ struct PlayerScreen: View {
                     .allowsHitTesting(false)
             )
             .onAppear { controller.applyVideoLayout(plan) }
-            .onChange(of: plan) { controller.applyVideoLayout($0) }
+            .onChange(of: plan) { controller.applyVideoLayout(plan) }
             .onChange(of: controller.engineKind) { _ in controller.applyVideoLayout(plan) }
         }
     }
@@ -228,7 +246,7 @@ struct PlayerScreen: View {
         }
         .foregroundColor(.white)
         .opacity(controlsVisible ? 1 : 0)
-        .allowsHitTesting(controlsVisible && !isClosing && !playbackSettingsPresented)
+        .allowsHitTesting(controlsVisible && !isClosing && !playbackSettingsPresented && !episodePanelPresented)
         .animation(.easeOut(duration: 0.18), value: controlsVisible)
     }
 
@@ -292,7 +310,7 @@ struct PlayerScreen: View {
                     showControls()
                 } label: { seekButtonLabel(systemName: "gobackward", seconds: backwardSeconds) }
                 .opacity(controlsVisible ? 1 : 0)
-                .allowsHitTesting(controlsVisible && !playbackSettingsPresented)
+                .allowsHitTesting(controlsVisible && !playbackSettingsPresented && !episodePanelPresented)
 
                 Button(action: togglePlayPauseFromControl) {
                     Image(systemName: controller.playbackControlIsPlaying ? "pause.fill" : "play.fill")
@@ -305,20 +323,20 @@ struct PlayerScreen: View {
                 .buttonStyle(.plain)
                 .opacity(controlsVisible || centerFeedbackVisible ? 1 : 0)
                 .scaleEffect(centerFeedbackScale)
-                .allowsHitTesting(controlsVisible && !playbackSettingsPresented)
+                .allowsHitTesting(controlsVisible && !playbackSettingsPresented && !episodePanelPresented)
 
                 Button {
                     controller.seek(by: Double(forwardSeconds))
                     showControls()
                 } label: { seekButtonLabel(systemName: "goforward", seconds: forwardSeconds) }
                 .opacity(controlsVisible ? 1 : 0)
-                .allowsHitTesting(controlsVisible && !playbackSettingsPresented)
+                .allowsHitTesting(controlsVisible && !playbackSettingsPresented && !episodePanelPresented)
             }
             .foregroundColor(.white)
             .position(x: geometry.size.width * 0.5, y: geometry.size.height * 0.46)
             .animation(.easeOut(duration: 0.18), value: controlsVisible)
         }
-        .allowsHitTesting(controlsVisible && !isClosing && !playbackSettingsPresented)
+        .allowsHitTesting(controlsVisible && !isClosing && !playbackSettingsPresented && !episodePanelPresented)
     }
 
     private var bottomControls: some View {
@@ -360,6 +378,7 @@ struct PlayerScreen: View {
 
             PlayerBottomFunctionBar(
                 tracksEnabled: hasTrackInfo && controller.supportsInteractiveTrackSelection,
+                episodesEnabled: controller.hasEpisodeSelection && !pictureInPictureController.isActive,
                 currentRate: sessionOverrides.basePlaybackRate,
                 settingsPresented: playbackSettingsPresented,
                 onSelect: openControlPanel,
@@ -669,6 +688,7 @@ struct PlayerScreen: View {
             setPlaybackIdleTimerDisabled(false, reason: "scene-background")
             resetTransientInteractions(reason: "background")
             playbackSettingsPresented = false
+            episodePanelPresented = false
             restoreOriginalBrightnessIfNeeded()
             guard pauseWhenBackgrounded, !audioInterruptionActive, controller.playbackControlIsPlaying, !pictureInPictureController.isActive, !isExternalPlaybackActive else {
                 wasAutoPausedForBackground = false
@@ -749,13 +769,13 @@ struct PlayerScreen: View {
         controlsVisible = true
         controlsHideWorkItem?.cancel()
         controlsHideWorkItem = nil
-        if autoHide && !playbackSettingsPresented { scheduleControlsHide() }
+        if autoHide && !playbackSettingsPresented && !episodePanelPresented { scheduleControlsHide() }
     }
 
     private func scheduleControlsHide() {
         controlsHideWorkItem?.cancel()
         controlsHideWorkItem = nil
-        guard controlsAutoHideSeconds > 0, controller.playbackControlIsPlaying, !playbackSettingsPresented else { return }
+        guard controlsAutoHideSeconds > 0, controller.playbackControlIsPlaying, !playbackSettingsPresented, !episodePanelPresented else { return }
         let workItem = DispatchWorkItem {
             playbackSettingsPresented = false
             centerFeedbackVisible = false
@@ -852,11 +872,48 @@ struct PlayerScreen: View {
     private func openControlPanel(_ panel: PlayerControlPanel) {
         playbackSettingsPresented = false
         controlsHideWorkItem?.cancel()
+        if panel == .episodes {
+            activePanel = nil
+            guard controller.hasEpisodeSelection else { return }
+            withAnimation(.easeOut(duration: 0.20)) { episodePanelPresented = true }
+            return
+        }
+        episodePanelPresented = false
         activePanel = panel
+    }
+
+    private func dismissEpisodePanel() {
+        withAnimation(.easeOut(duration: 0.18)) { episodePanelPresented = false }
+        scheduleControlsHide()
+    }
+
+    private func selectEpisode(_ episode: LibraryItem) {
+        controlsHideWorkItem?.cancel()
+        Task {
+            let switched = await controller.switchToEpisode(episode, reason: "manual")
+            guard switched else { return }
+            withAnimation(.easeOut(duration: 0.18)) { episodePanelPresented = false }
+        }
+    }
+
+    private func handleTrustedNaturalEnd() {
+        guard autoPlayNextEpisodeEnabled, controller.nextEpisode != nil else { return }
+        if pictureInPictureController.isActive {
+            DiagnosticsLogger.shared.playback("EpisodeQueue", "autoNext=suppressed reason=pip-active item=\(controller.source.itemId)")
+            return
+        }
+        playNextEpisodeIfAvailable()
+    }
+
+    private func playNextEpisodeIfAvailable() {
+        guard let next = controller.nextEpisode else { return }
+        episodePanelPresented = false
+        Task { _ = await controller.switchToEpisode(next, reason: "trusted-natural-end") }
     }
 
     private func togglePlaybackSettings() {
         activePanel = nil
+        episodePanelPresented = false
         controlsHideWorkItem?.cancel()
         withAnimation(.easeOut(duration: 0.18)) { playbackSettingsPresented.toggle() }
         if !playbackSettingsPresented { scheduleControlsHide() }
@@ -886,6 +943,7 @@ struct PlayerScreen: View {
         closeDismissWorkItem?.cancel()
         controlsVisible = false
         playbackSettingsPresented = false
+        episodePanelPresented = false
         centerFeedbackVisible = false
         centerFeedbackScale = 1
         temporaryRateHUD = nil

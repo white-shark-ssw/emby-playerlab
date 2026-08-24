@@ -75,15 +75,19 @@ final class PlaybackPresentationCoordinator: ObservableObject {
     @Published private(set) var currentPlan: PlaybackPresentationPlan?
     @Published private(set) var acknowledgement = PlaybackPresentationAcknowledgement.unsupported
 
-    private let sourceFPS: Double?
-    private let sourceWidth: Int?
-    private let sourceHeight: Int?
+    private var sourceFPS: Double?
+    private var sourceWidth: Int?
+    private var sourceHeight: Int?
 
-    init(source: ResolvedPlaybackSource) {
+    init(source: ResolvedPlaybackSource) { updateSource(source) }
+
+    func updateSource(_ source: ResolvedPlaybackSource) {
         let video = source.mediaSource.mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Video") == .orderedSame })
         sourceFPS = video?.averageFrameRate ?? video?.realFrameRate
         sourceWidth = video?.width
         sourceHeight = video?.height
+        currentPlan = nil
+        acknowledgement = .unsupported
     }
 
     func makePlan(rate: Double, motionSmoothingMode: MotionSmoothingMode, videoEnhancementEnabled: Bool, displayFPS: Double) -> PlaybackPresentationPlan {
