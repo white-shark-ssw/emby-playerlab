@@ -89,3 +89,21 @@ Always distinguish:
 - frozen/stable result.
 
 A successful GitHub Action does not equal a solved playback bug.
+
+## D010 — Episode changes replace the source-owned playback session
+
+A OnePlayer playback session is source-owned: `PlayerController`, `PlaybackOrchestrator`, `PlaybackTransportContext`, Emby PlaySession and the resolved 115/CDN path all correspond to the current media item.
+
+Therefore episode selection must **not** mutate `PlayerController.source` in place. Build174 uses a persistent fullscreen player host that replaces the entire child playback session for the selected episode:
+
+- stop the old source/session through the existing lifecycle;
+- keep the fullscreen host presented;
+- resolve the selected episode through the existing Emby direct-play path;
+- create a fresh `PlayerController` / orchestrator / transport context for that source;
+- do not intentionally restore the main-interface portrait orientation between child sessions.
+
+Episode metadata may be loaded ahead of selection, but the next episode's 115/CDN temporary media URL is not pre-resolved or retained. Resolve it only after explicit user selection or after a trusted natural end.
+
+Automatic next episode may only advance when the existing pure `PrematureEOFGuard` classifies the current end as non-premature. A raw engine EOF, buffering/starvation, abnormal short-media recovery or premature EOF is not sufficient. No new timer, retry loop or watchdog is part of auto-next.
+
+Build174 establishes this as an implementation/CI/IPA decision; real-device acceptance is still pending.
