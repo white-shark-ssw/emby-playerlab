@@ -436,6 +436,22 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         }
     }
 
+    private func synchronizeReturnBridgeToMPVAuthorityIfNeeded() -> Double? {
+        guard behavior.exitIntent == .returnToPlayer, behavior.playback == .playing, let playbackController, controlTimebase != nil else { return nil }
+        let now = CACurrentMediaTime()
+        let authority = playbackController.snapshot.position
+        let bridge = clock.position(at: now)
+        let drift = authority - bridge
+
+        if drift > 0.08, now - lastReturnBridgeAuthoritySyncAt >= 0.08 {
+            clock.reset(position: authority, playing: true, now: now)
+            syncTimebaseToClock()
+            lastReturnBridgeAuthoritySyncAt = now
+            DiagnosticsLogger.shared.playback("PiPState", "visual bridge authority rebase direction=forward authority=\(String(format: "%.3f", authority)) bridgeBefore=\(String(format: "%.3f", bridge)) driftMs=\(String(format: "%.1f", drift * 1000))")
+        }
+        return drift
+    }
+
     private func pollReturnBarrier(attempt: Int) {
         returnPollWorkItem?.cancel(); returnPollWorkItem = nil
         guard behavior.presentation == .returning, behavior.exitIntent == .returnToPlayer || behavior.exitIntent == .pauseAndSuspend else { return }
