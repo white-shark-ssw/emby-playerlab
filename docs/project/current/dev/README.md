@@ -20,20 +20,46 @@
 
 Work ID 一旦用于 branch / PR / checkpoint，不应在任务中途随意改名。
 
+每个任务还必须维护：
+
+- **Routing aliases / keywords**：2-6 个稳定、自然、能明确代表任务的功能名称；优先包含用户日常会直接说出的中文短语。
+
+例如详情页任务可以登记：
+
+`详情页优化 / 详情页 / 媒体详情 / detail page`
+
+别名用于**选择已有 Active 任务**，不是自动创建新任务的依据。
+
+## Selecting an existing task
+
+用户不必输入完整 Work ID。可以直接输入功能名，例如：
+
+- `详情页优化`
+- `选集功能`
+- `AirPlay 控制`
+
+自动选择已有 Active 任务时，匹配优先级为：
+
+1. 精确 Work ID；
+2. 明确 Task 名称；
+3. 明确 `Routing aliases / keywords`；
+4. 唯一且可解释的强关键词匹配。
+
+只有恰好一个 Active checkpoint 构成强匹配时，才允许自动续接。
+
+如果多个任务都匹配、只有模糊语义相关、无法指出具体命中的任务字段，或输入既可能表示旧任务也可能表示新任务，则必须列出候选让用户选择。
+
+**不得因为当前只有一个 Active 任务就自动选择它。** Active 状态不是用户意图。
+
+没有唯一强匹配时，也不得擅自新建任务；必须先让用户确认是继续已有任务还是新建功能。
+
 ## New task rule
 
-进入开发/功能会话后，必须先确定用户是在：
-
-- 继续一个已有功能任务；或
-- 新建一个功能任务。
-
-推荐明确表达：
+新建任务的明确表达包括：
 
 - `当前为功能会话，新任务：<功能名>`
-- `当前为功能会话，继续 DEV-<slug>`
-- `当前为开发会话，继续 <明确任务名>`
-
-如果用户只说“当前为功能会话”，但没有说明要继续哪个功能或是否新建任务，则读取本目录当前任务后让用户选择。即使当前只有一个 Active 功能，也不能仅凭这一点认定用户一定要继续它。
+- `当前为开发会话，新任务：<功能名>`
+- 其他明确表示“新建/新增一个独立功能任务”的等价说法。
 
 在具体功能任务没有被明确选定前，不得创建新 checkpoint、不得修改任何已有 checkpoint、不得创建或切换到某个功能 branch。
 
@@ -45,11 +71,26 @@ Work ID 一旦用于 branch / PR / checkpoint，不应在任务中途随意改�
 2. 一个独立开发 branch；
 3. 一个独立 PR（进入可评审/测试阶段后）；
 4. checkpoint 中记录真实 base / branch / PR / commit；
-5. 一个功能会话只维护自己的 checkpoint，不得覆盖其他功能任务。
+5. 一个独立 Build / version candidate 身份（分配测试基线后）；
+6. 一组稳定的 `Routing aliases / keywords`；
+7. 一个功能会话只维护自己的 checkpoint，不得覆盖其他功能任务。
 
 两个 Active 功能任务绝不能共用同一个开发 branch。
 
 checkpoint 是跨会话控制面状态，应保持在 GitHub 可被新会话发现的位置；产品代码仍只在对应功能 branch / PR 中开发。
+
+## Resume identity guard
+
+任务被选中后，**不能因为名称匹配成功就立刻写代码**。先执行身份核对：
+
+1. 读取 checkpoint 的 `Working branch / PR / head commit`；
+2. 确认真实 GitHub branch 与 checkpoint 一致；
+3. 已有 PR 时确认 PR head/branch 属于这个 Work ID；
+4. 已有 Build/version candidate 时确认编号、版本和 IPA candidate 名称仍属于该任务；
+5. 扫描其他 Active checkpoint，确认没有共用 branch、Build 编号或同名 IPA candidate；
+6. 发现 checkpoint 与 GitHub 当前事实冲突时，停止并向用户说明，不得自行猜测哪个记录应该被覆盖。
+
+identity guard 通过后，才按该任务的 `Next exact action` 继续。
 
 ## Parallel-safety preflight
 
@@ -96,6 +137,8 @@ checkpoint 是跨会话控制面状态，应保持在 GitHub 可被新会话发�
 
 不同并行任务不得使用同一个 Build 编号或同名 IPA candidate。发现编号已被占用时，使用下一个未占用编号，并在自己的 checkpoint 中记录。
 
+一个 Build candidate 写入 Active checkpoint 后视为该任务已占用。除非该任务明确放弃/完成并同步状态，否则其他任务不得复用该编号。
+
 Build 编号只表示测试基线身份，不改变“CI passed / IPA produced / Real-device tested / Stable”证据分级规则。
 
 ## Checkpoint template
@@ -104,10 +147,12 @@ Build 编号只表示测试基线身份，不改变“CI passed / IPA produced /
 
 - **Status**：Active
 - **Work ID**
+- **Routing aliases / keywords**
 - **Task**
 - **User intent / acceptance criteria**
 - **Baseline**：version / Build / base branch / base commit
 - **Working branch / PR / head commit**
+- **Build candidate**（如已分配）
 - **Evidence**
 - **Files / modules in scope**
 - **State owner / shared dependencies**
