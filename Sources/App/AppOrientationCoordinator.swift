@@ -82,8 +82,9 @@ final class AppOrientationCoordinator {
         supportedMask = orientationMask(for: target)
         invalidateSupportedOrientations()
         request(target, reason: "pip-restore-destination")
+        if PlayerSurfacePresentationGate.shared.isHolding { PlayerSurfacePresentationGate.shared.refresh(targetOrientation: target, reason: "pip-restore-destination") }
         let size = activeWindowScene()?.windows.first(where: { $0.isKeyWindow })?.bounds.size ?? .zero
-        DiagnosticsLogger.shared.playback("AppOrientation", "pip restore destination prepare target=\(target.rawValue) window=\(Int(size.width))x\(Int(size.height)) mask=\(supportedMask.rawValue)")
+        DiagnosticsLogger.shared.playback("AppOrientation", "pip restore destination prepare target=\(target.rawValue) window=\(Int(size.width))x\(Int(size.height)) mask=\(supportedMask.rawValue) presentationReleaseArmed=\(PlayerSurfacePresentationGate.shared.requiresRendererAcknowledgement)")
     }
 
     func endPictureInPictureRestoreOrientationHold() {
