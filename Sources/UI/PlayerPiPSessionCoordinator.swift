@@ -94,6 +94,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var returnRendererReady = false
     private var returnRendererRestoreInProgress = false
     private var returnActualPosition: Double?
+    private var returnRendererReadyHostTime: CFTimeInterval?
+    private var returnBridgeCatchupHolding = false
     private var returnPollWorkItem: DispatchWorkItem?
     private var pendingRestoreUICompletion: ((Bool) -> Void)?
     private var manualForegroundReturn = false
@@ -405,6 +407,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         returnRendererReady = false
         returnRendererRestoreInProgress = false
         returnActualPosition = nil
+        returnRendererReadyHostTime = nil
+        returnBridgeCatchupHolding = false
         returnSystemStopped = false
         returnSurfaceReplayRequested = false
         returnPostStopRetryCount = 0
@@ -415,7 +419,11 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         AppOrientationCoordinator.shared.beginPictureInPictureRestoreOrientationHold()
         AppOrientationCoordinator.shared.preparePictureInPictureRestoreDestination()
         let target = playbackController?.snapshot.position ?? clock.position()
-        DiagnosticsLogger.shared.playback("PiPState", "return begin reason=\(reason) target=\(String(format: "%.3f", target)) authority=mpv-snapshot manual=\(manualForeground) systemCompletion=\(systemCompletion != nil)")
+        let bridgeBefore = clock.position()
+        clock.reset(position: target, playing: behavior.playback == .playing)
+        syncTimebaseToClock()
+        lastReturnBridgeAuthoritySyncAt = CACurrentMediaTime()
+        DiagnosticsLogger.shared.playback("PiPState", "return begin reason=\(reason) target=\(String(format: "%.3f", target)) authority=mpv-snapshot manual=\(manualForeground) systemCompletion=\(systemCompletion != nil) bridgeBefore=\(String(format: "%.3f", bridgeBefore)) initialBridgeDriftMs=\(String(format: "%.1f", (target - bridgeBefore) * 1000)) bridgePolicy=align-under-avkit-transition")
         pollReturnBarrier(attempt: 0)
     }
 
@@ -427,6 +435,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             self.returnRendererRestoreInProgress = false
             self.returnRendererReady = success
             self.returnActualPosition = actualPosition
+            self.returnRendererReadyHostTime = success ? CACurrentMediaTime() : nil
             if success {
                 AppOrientationCoordinator.shared.armPictureInPicturePresentationRelease()
             }
@@ -437,9 +446,18 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     }
 
     private func synchronizeReturnBridgeToMPVAuthorityIfNeeded() -> Double? {
-        guard behavior.exitIntent == .returnToPlayer, behavior.playback == .playing, let playbackController, controlTimebase != nil else { return nil }
+        guard behavior.exitIntent == .returnToPlayer, behavior.playback == .playing, controlTimebase != nil else { return nil }
         let now = CACurrentMediaTime()
-        let authority = playbackController.snapshot.position
+
+        let authority: Double
+        if let actual = returnActualPosition, let readyHost = returnRendererReadyHostTime {
+            authority = actual + max(0, now - readyHost)
+        } else if let playbackController {
+            authority = playbackController.snapshot.position
+        } else {
+            return nil
+        }
+
         let bridge = clock.position(at: now)
         let drift = authority - bridge
 
@@ -447,8 +465,33 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             clock.reset(position: authority, playing: true, now: now)
             syncTimebaseToClock()
             lastReturnBridgeAuthoritySyncAt = now
-            DiagnosticsLogger.shared.playback("PiPState", "visual bridge authority rebase direction=forward authority=\(String(format: "%.3f", authority)) bridgeBefore=\(String(format: "%.3f", bridge)) driftMs=\(String(format: "%.1f", drift * 1000))")
+            returnBridgeCatchupHolding = false
+            DiagnosticsLogger.shared.playback("PiPState", "visual bridge authority rebase direction=forward authority=\(String(format: "%.3f", authority)) bridgeBefore=\(String(format: "%.3f", bridge)) driftMs=\(String(format: "%.1f", drift * 1000)) source=renderer-anchor")
+            return drift
         }
+
+        if drift < -0.12, !returnBridgeCatchupHolding {
+            clock.setPlaying(false, now: now)
+            syncTimebaseToClock()
+            returnBridgeCatchupHolding = true
+            lastReturnBridgeAuthoritySyncAt = now
+            DiagnosticsLogger.shared.playback("PiPState", "visual bridge catchup hold begin authority=\(String(format: "%.3f", authority)) bridge=\(String(format: "%.3f", bridge)) driftMs=\(String(format: "%.1f", drift * 1000)) policy=freeze-bridge-until-mpv-catches")
+            return drift
+        }
+
+        if returnBridgeCatchupHolding {
+            let heldBridge = clock.position(at: now)
+            let heldDrift = authority - heldBridge
+            if heldDrift >= -0.04 {
+                clock.reset(position: heldBridge, playing: true, now: now)
+                syncTimebaseToClock()
+                returnBridgeCatchupHolding = false
+                lastReturnBridgeAuthoritySyncAt = now
+                DiagnosticsLogger.shared.playback("PiPState", "visual bridge catchup hold end authority=\(String(format: "%.3f", authority)) bridge=\(String(format: "%.3f", heldBridge)) driftMs=\(String(format: "%.1f", heldDrift * 1000))")
+            }
+            return heldDrift
+        }
+
         return drift
     }
 
@@ -801,7 +844,6 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         context.pipeline.setPaused(behavior.playback != .playing)
         context.committedSpeculatively = true
         context.speculativePTS = first
-        controller?.invalidatePlaybackState()
         let source = longTailEscape && !strictSampleConfidence ? "long-tail-escape" : "sample-confident"
         DiagnosticsLogger.shared.playback("PiPSeek", "optimistic visual commit token=\(context.token) source=\(source) predicted=\(String(format: "%.3f", context.predictedTarget)) first=\(String(format: "%.3f", first)) requestedDelta=\(String(format: "%.3f", requestedDelta)) dispatchDelta=\(String(format: "%.3f", dispatchDelta)) bufferedSamples=\(samples.count) authority=pending-mpv-landing switch=early")
         return true
@@ -893,7 +935,6 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private func finishSeekSettlement(token: UInt64, authoritative: Double, source: String) {
         let settleUntil = CACurrentMediaTime() + 0.12
         behavior.seek = .settling(token: token, until: settleUntil)
-        controller?.invalidatePlaybackState()
         seekSettleWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, case .settling(let currentToken, _) = self.behavior.seek, currentToken == token else { return }
@@ -902,8 +943,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             self.activeSeekRequestedTarget = nil
             self.activeSeekStartedPosition = nil
             self.activeSeekLandingHostTime = nil
-            self.controller?.invalidatePlaybackState()
-            DiagnosticsLogger.shared.playback("PiPSeek", "settled token=\(token) authoritative=\(String(format: "%.3f", authoritative)) source=\(source)")
+            DiagnosticsLogger.shared.playback("PiPSeek", "settled token=\(token) authoritative=\(String(format: "%.3f", authoritative)) source=\(source) avkitInvalidation=none")
         }
         seekSettleWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
@@ -972,6 +1012,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         inlineRendererSuspended = false; rendererSuspending = false
         homeRequested = false
         returnRendererReady = false; returnRendererRestoreInProgress = false; returnActualPosition = nil
+        returnRendererReadyHostTime = nil; returnBridgeCatchupHolding = false
         returnSystemStopped = false; returnSurfaceReplayRequested = false; returnPostStopRetryCount = 0
         returnSystemRestoreAccepted = false; returnBridgeFadeInProgress = false
         lastReturnBridgeAuthoritySyncAt = 0
@@ -1076,10 +1117,10 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         let delta = CMTimeGetSeconds(skipInterval)
         guard delta.isFinite, behavior.presentation == .active, behavior.exitIntent == .none, behavior.playback != .stopped else { completionHandler(); return }
         pendingSystemPauseWorkItem?.cancel(); pendingSystemPauseWorkItem = nil
+        DiagnosticsLogger.shared.playback("PiPSeek", "system callback enter delta=\(String(format: "%.3f", delta)) state=\(String(describing: behavior.seek)) avkitInvalidation=deferred-to-playback-state-only")
         beginSeek(delta: delta)
         completionHandler()
-        pictureInPictureController.invalidatePlaybackState()
-        DiagnosticsLogger.shared.playback("PiPSeek", "system completion immediate delta=\(String(format: "%.3f", delta))")
+        DiagnosticsLogger.shared.playback("PiPSeek", "system completion immediate delta=\(String(format: "%.3f", delta)) avkitInvalidation=none")
     }
 
     func pictureInPictureControllerShouldProhibitBackgroundAudioPlayback(_ pictureInPictureController: AVPictureInPictureController) -> Bool { false }
