@@ -11,6 +11,7 @@ final class PlayerSurfacePresentationGate {
     static let shared = PlayerSurfacePresentationGate()
 
     private(set) var epoch: UInt64 = 0
+    private(set) var replayGeneration: UInt64 = 0
     private(set) var isHolding = false
     private(set) var targetOrientation: UIInterfaceOrientation?
     private var foregroundReleaseArmed = false
@@ -32,10 +33,11 @@ final class PlayerSurfacePresentationGate {
     func replay(targetOrientation: UIInterfaceOrientation?, reason: String) {
         dispatchPrecondition(condition: .onQueue(.main))
         epoch &+= 1
+        replayGeneration &+= 1
         isHolding = true
         foregroundReleaseArmed = false
         self.targetOrientation = targetOrientation
-        DiagnosticsLogger.shared.playback("PlayerPresentation", "replay epoch=\(epoch) target=\(targetOrientation?.rawValue ?? 0) reason=\(reason) releaseArmed=false")
+        DiagnosticsLogger.shared.playback("PlayerPresentation", "replay epoch=\(epoch) replayGeneration=\(replayGeneration) target=\(targetOrientation?.rawValue ?? 0) reason=\(reason) releaseArmed=false")
         NotificationCenter.default.post(name: .onePlayerSurfacePresentationGateChanged, object: self)
     }
 
