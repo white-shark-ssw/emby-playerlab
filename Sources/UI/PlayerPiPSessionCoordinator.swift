@@ -724,10 +724,23 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     }
 
     @discardableResult
-    private func attemptOptimisticSeekCommit(context: SeekStagingContext) -> Bool {
-        guard context.optimisticCommitEnabled, !context.committedSpeculatively, stagingContext === context, context.token == activeSeekToken, let displayLayer, let first = context.firstDisplayablePTS else { return false }
+    private func attemptOptimisticSeekCommit(context: SeekStagingContext, longTailEscape: Bool = false) -> Bool {
+        guard !context.committedSpeculatively, stagingContext === context, context.token == activeSeekToken, let displayLayer, let first = context.firstDisplayablePTS else { return false }
         let samples = context.samples.filter { $0.generation == context.generation }
         guard !samples.isEmpty, samples.contains(where: { $0.displayable }) else { return false }
+
+        let requestedDelta = abs(first - context.requestedTarget)
+        let dispatchDelta = abs(first - context.dispatchTarget)
+        let predictedDelta = abs(first - context.predictedTarget)
+        let strictSampleConfidence = min(requestedDelta, dispatchDelta) <= 0.35
+        let longTailSampleConfidence = min(requestedDelta, dispatchDelta) <= 0.65
+        let allowed = context.optimisticCommitEnabled ? min(dispatchDelta, predictedDelta) <= 0.45 || strictSampleConfidence : (strictSampleConfidence || (longTailEscape && longTailSampleConfidence))
+        guard allowed else {
+            if longTailEscape {
+                DiagnosticsLogger.shared.playback("PiPSeek", "long-tail candidate rejected token=\(context.token) first=\(String(format: "%.3f", first)) requestedDelta=\(String(format: "%.3f", requestedDelta)) dispatchDelta=\(String(format: "%.3f", dispatchDelta)) predictedDelta=\(String(format: "%.3f", predictedDelta)) threshold=0.650")
+            }
+            return false
+        }
 
         displayLayer.flush()
         samples.forEach { displayLayer.enqueue($0.buffer) }
@@ -744,7 +757,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         context.committedSpeculatively = true
         context.speculativePTS = first
         controller?.invalidatePlaybackState()
-        DiagnosticsLogger.shared.playback("PiPSeek", "optimistic visual commit token=\(context.token) predicted=\(String(format: "%.3f", context.predictedTarget)) first=\(String(format: "%.3f", first)) bufferedSamples=\(samples.count) authority=pending-mpv-landing switch=early")
+        let source = longTailEscape && !strictSampleConfidence ? "long-tail-escape" : "sample-confident"
+        DiagnosticsLogger.shared.playback("PiPSeek", "optimistic visual commit token=\(context.token) source=\(source) predicted=\(String(format: "%.3f", context.predictedTarget)) first=\(String(format: "%.3f", first)) requestedDelta=\(String(format: "%.3f", requestedDelta)) dispatchDelta=\(String(format: "%.3f", dispatchDelta)) bufferedSamples=\(samples.count) authority=pending-mpv-landing switch=early")
         return true
     }
 
