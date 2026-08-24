@@ -19,7 +19,7 @@ This is a milestone index, not a list of every experimental build.
 | **Build173 / 0.14.6** | PiP Seek completion + return simplification | **Current real-device accepted functional baseline. PiP frozen pending a materially better renderer-lifecycle idea.** |
 | Build174 / 0.14.7 | First player episode selector + auto-next | Dedicated standard MPV CI passed and IPA produced. User installed it and confirmed the selector/data path on device, but rejected the large gray sheet/X/title presentation; therefore it is partial real-device evidence, not a stable UI baseline. |
 | Build175 / 0.14.8 | Episode selector UI / season interaction refinement | Dedicated standard MPV Release CI run 32780288067 passed and IPA was produced. Real-device screenshot confirmed the fixed bottom-button layout direction, but exposed lower button visual bleed through transparent overview text and a left-aligned `正在播放` badge. Not accepted as stable UI. |
-| **Build176 / 0.14.9** | Episode overlay visual-layer follow-up | Code written from Build175 real-device evidence: localized black fade masks lower button bleed without restoring the rejected gray sheet, and `正在播放` is centered in the thumbnail. CI/IPA and real-device validation pending. |
+| **Build176 / 0.14.9** | Episode overlay visual-layer follow-up | Localized black fade masks lower button bleed without restoring the rejected gray sheet, and `正在播放` is centered in the thumbnail. Dedicated standard MPV Release CI run 32782048086 passed and IPA produced; real-device validation pending. |
 
 ## Build173 repository evidence
 
@@ -63,11 +63,15 @@ Build175 standard MPV Release source commit / run / artifact:
 
 Build175 passed its dedicated contract checks, Xcode 16.4 Release compile, app identity validation, iOS 15.0 MinOS validation, IPA packaging and artifact upload. The user then tested it on the target device and reported the transparent overview/button overlap and badge alignment issue. This is real-device evidence, but Build175 is not accepted/stable.
 
-Build176 current product source head before dedicated CI helper:
+Build176 product source / dedicated CI source / run / artifact:
 
-- `f701f0446d65e84fc686f69ec14d60402c94839c`
+- product source before temporary helper: `f701f0446d65e84fc686f69ec14d60402c94839c`
+- dedicated CI source: `221630297dc1080279bb8a3f05d69586461b328c`
+- run `32782048086`
+- `OnePlayer-0.14.9-build176-episode-picker-ui`
+- workflow-restored branch head: `4b26a7d3a9826c58bfdddd6aafaeb9eeb5c7c943`
 
-Build176 changes only the episode selector visual masking/alignment plus version/changelog; frozen player/transport modules are intentionally unchanged. CI/IPA evidence is pending.
+Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 Release compile, OnePlayer 0.14.9 (176) app identity validation, iOS 15.0 MinOS validation, IPA packaging and artifact upload. The temporary CI helper was restored afterward. This remains CI/IPA evidence until the user tests Build176 on the iPhone 15 Pro Max / iOS 17.0.
 
 ## Maintenance rule
 
