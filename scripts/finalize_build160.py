@@ -3,6 +3,12 @@ from pathlib import Path
 coordinator_path = Path("Sources/UI/PlayerPiPSessionCoordinator.swift")
 coordinator = coordinator_path.read_text()
 coordinator = coordinator.replace('        layer.preventsAutomaticBackgroundingDuringVideoPlayback = false\n', '')
+marker = '        layer.videoGravity = .resizeAspect\n'
+comment = '        // iOS: preventsAutomaticBackgroundingDuringVideoPlayback = false is unavailable; rely on AVKit lifecycle.\n'
+if comment not in coordinator:
+    if coordinator.count(marker) != 1:
+        raise SystemExit("Build160 sample-buffer source marker mismatch")
+    coordinator = coordinator.replace(marker, marker + comment, 1)
 
 old = '''        if pendingSkipGeneration == envelope.generation {
             let completion = pendingSkipCompletion
@@ -81,6 +87,7 @@ if old in coordinator:
     coordinator = coordinator.replace(old, new, 1)
 
 required = [
+    'preventsAutomaticBackgroundingDuringVideoPlayback = false is unavailable',
     'pipeline.setPaused(true)',
     'pipeline?.setPaused(pendingSkipCompletion != nil ? true : !playing)',
     'displayLayer?.flush()\n        activeGeneration = pipeline.seek(to: authoritative)',
@@ -88,8 +95,8 @@ required = [
 for token in required:
     if token not in coordinator:
         raise SystemExit(f"Build160 coordinator finalization missing: {token}")
-if 'preventsAutomaticBackgroundingDuringVideoPlayback' in coordinator:
-    raise SystemExit("Build160 must not use iOS-unavailable preventsAutomaticBackgroundingDuringVideoPlayback")
+if 'layer.preventsAutomaticBackgroundingDuringVideoPlayback' in coordinator:
+    raise SystemExit("Build160 must not call iOS-unavailable preventsAutomaticBackgroundingDuringVideoPlayback")
 coordinator_path.write_text(coordinator)
 
 mpv_path = Path("Sources/Player/MPVPlayerEngine.swift")
