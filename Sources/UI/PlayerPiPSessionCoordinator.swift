@@ -489,10 +489,16 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             }
         }
 
+        let bridgeDrift = synchronizeReturnBridgeToMPVAuthorityIfNeeded()
         let gateReleased = !PlayerSurfacePresentationGate.shared.isHolding
         if behavior.exitIntent == .returnToPlayer, returnSystemStopped, returnRendererReady, gateReleased {
-            beginVisualBridgeCrossfade(reason: "return-to-player") { [weak self] in self?.completeReturnAfterSystemStop() }
-            return
+            let aligned = bridgeDrift.map { abs($0) <= 0.12 } ?? true
+            if aligned {
+                DiagnosticsLogger.shared.playback("PiPState", "visual bridge handoff aligned driftMs=\(bridgeDrift.map { String(format: "%.1f", $0 * 1000) } ?? "unknown") action=crossfade")
+                beginVisualBridgeCrossfade(reason: "return-to-player") { [weak self] in self?.completeReturnAfterSystemStop() }
+                return
+            }
+            DiagnosticsLogger.shared.playback("PiPState", "visual bridge handoff waiting driftMs=\(bridgeDrift.map { String(format: "%.1f", $0 * 1000) } ?? "unknown") thresholdMs=120")
         }
 
         if behavior.exitIntent == .pauseAndSuspend, returnRendererReady, gateReleased {
