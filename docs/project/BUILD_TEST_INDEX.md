@@ -16,7 +16,9 @@ This is a milestone index, not a list of every experimental build.
 | Build170 / 0.14.3 | Persistent PiP visual bridge | SampleBuffer host remains visual bridge while MPV renderer recovers. |
 | Build171 / 0.14.4 | PiP authority/seek-tail guard | Added return authority alignment and a rare long-tail visual escape. |
 | Build172 / 0.14.5 | PiP handoff authority controls | Real-device analysis showed periodic bridge catch-up introduced visible churn. |
-| **Build173 / 0.14.6** | PiP Seek completion + return simplification | **Current functional baseline. PiP now frozen pending a materially better renderer-lifecycle idea.** |
+| **Build173 / 0.14.6** | PiP Seek completion + return simplification | **Current real-device accepted functional baseline. PiP frozen pending a materially better renderer-lifecycle idea.** |
+| Build174 / 0.14.7 | First player episode selector + auto-next | Dedicated standard MPV CI passed and IPA produced. User installed it and confirmed the selector/data path on device, but rejected the large gray sheet/X/title presentation; therefore it is partial real-device evidence, not a stable UI baseline. |
+| **Build175 / 0.14.8** | Episode selector UI / season interaction refinement | Dedicated standard MPV Release CI run 32780288067 passed and IPA was produced. Keeps OnePlayer bottom buttons fixed; selector becomes an in-player overlay with safe-area season menu and detail-style title + two-line overview cards. **Real-device validation pending.** |
 
 ## Build173 repository evidence
 
@@ -33,6 +35,32 @@ Known head during handoff:
 `4f7acf8da06ded00db735b07210983a0d2dd5be6`
 
 A dedicated release workflow subsequently produced the Build173 test artifact. This confirms build/IPA availability only; runtime acceptance is based on the later real-device logs and user decision to freeze PiP for now.
+
+## Build174 / Build175 episode-selection evidence
+
+Development branch:
+
+`feat/player-episode-picker-0.14.7`
+
+Draft PR:
+
+`#249`
+
+Build174 standard MPV Release source commit / run / artifact:
+
+- `2d4c4cae7deac930e040ca7579b462d9952ce60d`
+- run `32776020154`
+- `OnePlayer-0.14.7-build174-episode-picker`
+
+Build174 was installed on the target device and produced actionable selector-UI feedback. It must not be described as stable or fully accepted.
+
+Build175 standard MPV Release source commit / run / artifact:
+
+- `cbd700dbb6ae884dbd6b9cca8cb110d590e3d39d`
+- run `32780288067`
+- `OnePlayer-0.14.8-build175-episode-picker-ui`
+
+Build175 passed its dedicated contract checks, Xcode 16.4 Release compile, app identity validation, iOS 15.0 MinOS validation, IPA packaging and artifact upload. This is CI/IPA evidence only until the user tests it on the iPhone 15 Pro Max / iOS 17.0.
 
 ## Maintenance rule
 
