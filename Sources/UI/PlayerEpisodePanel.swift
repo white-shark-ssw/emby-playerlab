@@ -70,7 +70,11 @@ struct PlayerEpisodePanel: View {
 
                     if current {
                         HStack(spacing: 5) {
-                            Image(systemName: "chevron.right.2").font(.system(size: 13, weight: .bold))
+                            HStack(spacing: -3) {
+                                Image(systemName: "chevron.right")
+                                Image(systemName: "chevron.right")
+                            }
+                            .font(.system(size: 12, weight: .bold))
                             Text("正在播放").font(.system(size: 13, weight: .semibold))
                         }
                         .padding(.horizontal, 10)
