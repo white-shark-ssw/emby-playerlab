@@ -63,7 +63,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
     private var streamPrepareTask: Task<Void, Never>?
     private var enhancementBaseline: EnhancementBaseline?
     private var lastPresentationTimingSignature: PresentationTimingSignature?
-    private var pictureInPictureRendererSuspended = false
+    private var pictureInPictureVideoTrackSuspended = false
+    private var pictureInPictureSuspendedVideoID: String?
     var pictureInPictureSeekDispatchHandler: ((PlayerPiPSeekDispatchInfo) -> Void)?
     var pictureInPictureSeekLandingHandler: ((SeekResult) -> Void)?
     private var pictureInPictureResumeCompletion: ((Bool, Double?) -> Void)?
@@ -194,43 +195,34 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
     func suspendInlineRendererForPictureInPicture(completion: @escaping (Bool) -> Void) {
         queue.async { [weak self] in
             guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }
-            self.pictureInPictureResumeTimeout?.cancel()
-            self.pictureInPictureResumeTimeout = nil
-            self.pictureInPictureResumePoll?.cancel()
-            self.pictureInPictureResumePoll = nil
-            self.pictureInPictureResumeSawPlaybackRestart = false
-            self.pictureInPictureResumeCompletion = nil
-            self.pictureInPictureResumeTargetPosition = nil
-            if self.pictureInPictureRendererSuspended { DispatchQueue.main.async { completion(true) }; return }
-            let previousVO = self.getStringProperty(handle: handle, name: "current-vo") ?? "unknown"
-            let wasPaused = (self.getStringProperty(handle: handle, name: "pause") ?? "no") == "yes"
-            var suspendAnchor = Double.nan
-            _ = self.getProperty(handle: handle, name: "time-pos", format: MPV_FORMAT_DOUBLE, value: &suspendAnchor)
-            guard self.setPropertyChecked(handle: handle, name: "vo", value: "null") else {
-                DiagnosticsLogger.shared.log("MPVPiP", "vo suspend request failed previousVO=\(previousVO)")
+            self.cancelPictureInPictureRendererResumeState()
+            let currentVID = self.getStringProperty(handle: handle, name: "vid") ?? "unknown"
+            let currentVO = self.getStringProperty(handle: handle, name: "current-vo") ?? "unknown"
+
+            if currentVID == "no" {
+                self.pictureInPictureVideoTrackSuspended = true
+                if self.pictureInPictureSuspendedVideoID == nil { self.pictureInPictureSuspendedVideoID = "auto" }
+                DiagnosticsLogger.shared.log("MPVPiP", "video suspend already-active vid=no currentVO=\(currentVO) policy=disable-video-track-preserve-audio")
+                DispatchQueue.main.async { completion(true) }
+                return
+            }
+
+            self.pictureInPictureSuspendedVideoID = currentVID == "unknown" ? "auto" : currentVID
+            guard self.setPropertyChecked(handle: handle, name: "vid", value: "no") else {
+                self.reconcilePictureInPictureVideoState(handle: handle, reason: "suspend-property-failed")
+                DiagnosticsLogger.shared.log("MPVPiP", "video suspend request failed previousVID=\(currentVID) currentVO=\(currentVO)")
                 DispatchQueue.main.async { completion(false) }
                 return
             }
-            self.waitForPictureInPictureVO(handle: handle, target: "null", attempt: 0) { [weak self] ready, currentVO in
+
+            self.waitForPictureInPictureVideoDisabled(handle: handle, attempt: 0) { [weak self] ready, observedVID in
                 guard let self else { DispatchQueue.main.async { completion(false) }; return }
-                self.pictureInPictureRendererSuspended = ready
-                DiagnosticsLogger.shared.log("MPVPiP", "vo suspend ready=\(ready) previousVO=\(previousVO) currentVO=\(currentVO) decoderPreserved=true continuityPolicy=pre-home-clock-advance")
-                guard ready, !wasPaused, suspendAnchor.isFinite else { DispatchQueue.main.async { completion(ready) }; return }
-                self.waitForPictureInPictureSuspendPlaybackContinuity(handle: handle, anchor: suspendAnchor, attempt: 0) { continuityReady, actual in
-                    DiagnosticsLogger.shared.log("MPVPiP", "vo suspend continuity ready=\(continuityReady) anchor=\(String(format: "%.3f", suspendAnchor)) actual=\(actual.map { String(format: "%.3f", $0) } ?? "unknown")")
-                    DispatchQueue.main.async { completion(ready) }
-                }
+                self.pictureInPictureVideoTrackSuspended = observedVID == "no"
+                let audioPTS = self.getStringProperty(handle: handle, name: "audio-pts") ?? "unknown"
+                DiagnosticsLogger.shared.log("MPVPiP", "video suspend ready=\(ready) previousVID=\(currentVID) observedVID=\(observedVID) currentVO=\(self.getStringProperty(handle: handle, name: "current-vo") ?? "unknown") audioPTS=\(audioPTS) policy=vid-no-preserve-audio")
+                DispatchQueue.main.async { completion(ready && self.pictureInPictureVideoTrackSuspended) }
             }
         }
-    }
-
-    private func waitForPictureInPictureSuspendPlaybackContinuity(handle: OpaquePointer, anchor: Double, attempt: Int, completion: @escaping (Bool, Double?) -> Void) {
-        guard let currentHandle = mpv, currentHandle == handle, !isStopping else { completion(false, nil); return }
-        var position = Double.nan
-        let hasPosition = getProperty(handle: handle, name: "time-pos", format: MPV_FORMAT_DOUBLE, value: &position) >= 0 && position.isFinite
-        if hasPosition, position >= anchor + 0.06 { completion(true, position); return }
-        guard attempt < 75 else { completion(false, hasPosition ? position : nil); return }
-        queue.asyncAfter(deadline: .now() + 0.02) { [weak self] in self?.waitForPictureInPictureSuspendPlaybackContinuity(handle: handle, anchor: anchor, attempt: attempt + 1, completion: completion) }
     }
 
     func resumeInlineRendererAfterPictureInPicture(completion: @escaping (Bool) -> Void) {
@@ -240,53 +232,93 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
     func resumeInlineRendererAfterPictureInPicture(targetPosition: Double, completion: @escaping (Bool, Double?) -> Void) {
         queue.async { [weak self] in
             guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false, nil) }; return }
-            guard self.pictureInPictureRendererSuspended else { DispatchQueue.main.async { completion(true, self.snapshot.position) }; return }
-            self.pictureInPictureResumeTimeout?.cancel()
-            self.pictureInPictureResumePoll?.cancel()
-            self.pictureInPictureResumePoll = nil
-            self.pictureInPictureResumeSawPlaybackRestart = false
+            self.cancelPictureInPictureRendererResumeState()
             self.pictureInPictureResumeCompletion = completion
             self.pictureInPictureResumeTargetPosition = max(0, targetPosition)
             self.pictureInPictureResumeStartedAt = CACurrentMediaTime()
             self.pictureInPictureResumePlaybackAdvancing = (self.getStringProperty(handle: handle, name: "pause") ?? "no") != "yes"
-            guard self.setPropertyChecked(handle: handle, name: "vo", value: "gpu-next") else {
-                DiagnosticsLogger.shared.log("MPVPiP", "vo restore request failed target=\(String(format: "%.3f", targetPosition))")
-                self.finishPictureInPictureRendererResume(success: false, actualPosition: nil, reason: "vo-property-failed")
+            self.pictureInPictureResumeSawPlaybackRestart = false
+
+            let currentVID = self.getStringProperty(handle: handle, name: "vid") ?? "unknown"
+            let restoreVID = self.pictureInPictureSuspendedVideoID ?? "auto"
+            if currentVID != "no" && currentVID != "unknown" {
+                self.pictureInPictureVideoTrackSuspended = false
+                self.pictureInPictureResumeSawPlaybackRestart = true
+                DiagnosticsLogger.shared.log("MPVPiP", "video restore reconciled already-enabled currentVID=\(currentVID) restoreVID=\(restoreVID) currentVO=\(self.getStringProperty(handle: handle, name: "current-vo") ?? "unknown") freshSignal=existing-video-track")
+                self.beginPictureInPictureRendererResumePolling(handle: handle)
                 return
             }
-            self.waitForPictureInPictureVO(handle: handle, target: "gpu-next", attempt: 0) { [weak self] ready, currentVO in
+
+            guard self.setPropertyChecked(handle: handle, name: "vid", value: restoreVID) else {
+                self.reconcilePictureInPictureVideoState(handle: handle, reason: "restore-property-failed")
+                self.finishPictureInPictureRendererResume(success: false, actualPosition: nil, reason: "video-track-property-failed")
+                return
+            }
+
+            self.waitForPictureInPictureVideoEnabled(handle: handle, attempt: 0) { [weak self] ready, observedVID in
                 guard let self else { return }
-                let drawable = self.displayLayer.drawableSize
+                self.pictureInPictureVideoTrackSuspended = observedVID == "no"
                 guard ready else {
-                    DiagnosticsLogger.shared.log("MPVPiP", "vo restore unavailable currentVO=\(currentVO) drawable=\(Int(drawable.width))x\(Int(drawable.height))")
-                    self.finishPictureInPictureRendererResume(success: false, actualPosition: nil, reason: "vo-not-ready")
+                    DiagnosticsLogger.shared.log("MPVPiP", "video restore unavailable restoreVID=\(restoreVID) observedVID=\(observedVID) currentVO=\(self.getStringProperty(handle: handle, name: "current-vo") ?? "unknown")")
+                    self.finishPictureInPictureRendererResume(success: false, actualPosition: nil, reason: "video-track-not-ready")
                     return
                 }
-                DiagnosticsLogger.shared.log("MPVPiP", "vo restore configured currentVO=\(currentVO) drawable=\(Int(drawable.width))x\(Int(drawable.height)) target=\(String(format: "%.3f", targetPosition)) handoff=await-playback-restart")
-                let timeout = DispatchWorkItem { [weak self] in
-                    guard let self, self.pictureInPictureResumeCompletion != nil else { return }
-                    self.finishPictureInPictureRendererResume(success: false, actualPosition: self.snapshot.position, reason: "fresh-frame-timeout")
-                }
-                self.pictureInPictureResumeTimeout = timeout
-                self.queue.asyncAfter(deadline: .now() + 2.0, execute: timeout)
-                self.schedulePictureInPictureRendererResumePoll(handle: handle)
+                DiagnosticsLogger.shared.log("MPVPiP", "video restore configured restoreVID=\(restoreVID) observedVID=\(observedVID) currentVO=\(self.getStringProperty(handle: handle, name: "current-vo") ?? "unknown") target=\(String(format: "%.3f", targetPosition)) handoff=await-fresh-video-frame")
+                self.beginPictureInPictureRendererResumePolling(handle: handle)
             }
         }
     }
 
-    private func waitForPictureInPictureVO(handle: OpaquePointer, target: String, attempt: Int, completion: @escaping (Bool, String) -> Void) {
+    private func waitForPictureInPictureVideoDisabled(handle: OpaquePointer, attempt: Int, completion: @escaping (Bool, String) -> Void) {
         guard let currentHandle = mpv, currentHandle == handle, !isStopping else { completion(false, "detached"); return }
-        let currentVO = getStringProperty(handle: handle, name: "current-vo") ?? "unknown"
-        let voMatched = target == "null" ? currentVO.contains("null") : currentVO.contains("gpu-next")
-        let drawable = displayLayer.drawableSize
-        let drawableReady = target == "null" || (drawable.width > 1 && drawable.height > 1)
-        if voMatched && drawableReady { completion(true, currentVO); return }
-        guard attempt < 40 else { completion(false, currentVO); return }
-        queue.asyncAfter(deadline: .now() + 0.01) { [weak self] in self?.waitForPictureInPictureVO(handle: handle, target: target, attempt: attempt + 1, completion: completion) }
+        let currentVID = getStringProperty(handle: handle, name: "vid") ?? "unknown"
+        if currentVID == "no" { completion(true, currentVID); return }
+        guard attempt < 60 else { completion(false, currentVID); return }
+        queue.asyncAfter(deadline: .now() + 0.01) { [weak self] in self?.waitForPictureInPictureVideoDisabled(handle: handle, attempt: attempt + 1, completion: completion) }
+    }
+
+    private func waitForPictureInPictureVideoEnabled(handle: OpaquePointer, attempt: Int, completion: @escaping (Bool, String) -> Void) {
+        guard let currentHandle = mpv, currentHandle == handle, !isStopping else { completion(false, "detached"); return }
+        let currentVID = getStringProperty(handle: handle, name: "vid") ?? "unknown"
+        if currentVID != "no" && currentVID != "unknown" { completion(true, currentVID); return }
+        guard attempt < 100 else { completion(false, currentVID); return }
+        queue.asyncAfter(deadline: .now() + 0.01) { [weak self] in self?.waitForPictureInPictureVideoEnabled(handle: handle, attempt: attempt + 1, completion: completion) }
+    }
+
+    private func beginPictureInPictureRendererResumePolling(handle: OpaquePointer) {
+        guard pictureInPictureResumeCompletion != nil else { return }
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self, self.pictureInPictureResumeCompletion != nil else { return }
+            self.reconcilePictureInPictureVideoState(handle: handle, reason: "fresh-frame-timeout")
+            self.finishPictureInPictureRendererResume(success: false, actualPosition: self.snapshot.position, reason: "fresh-frame-timeout")
+        }
+        pictureInPictureResumeTimeout = timeout
+        queue.asyncAfter(deadline: .now() + 2.5, execute: timeout)
+        schedulePictureInPictureRendererResumePoll(handle: handle)
+    }
+
+    private func cancelPictureInPictureRendererResumeState() {
+        pictureInPictureResumeTimeout?.cancel()
+        pictureInPictureResumeTimeout = nil
+        pictureInPictureResumePoll?.cancel()
+        pictureInPictureResumePoll = nil
+        pictureInPictureResumeSawPlaybackRestart = false
+        pictureInPictureResumeCompletion = nil
+        pictureInPictureResumeTargetPosition = nil
+        pictureInPictureResumeStartedAt = nil
+        pictureInPictureResumePlaybackAdvancing = false
+    }
+
+    private func reconcilePictureInPictureVideoState(handle: OpaquePointer, reason: String) {
+        let currentVID = getStringProperty(handle: handle, name: "vid") ?? "unknown"
+        pictureInPictureVideoTrackSuspended = currentVID == "no"
+        if !pictureInPictureVideoTrackSuspended, currentVID != "unknown" { pictureInPictureSuspendedVideoID = nil }
+        DiagnosticsLogger.shared.log("MPVPiP", "video state reconciled reason=\(reason) currentVID=\(currentVID) suspended=\(pictureInPictureVideoTrackSuspended) currentVO=\(getStringProperty(handle: handle, name: "current-vo") ?? "unknown")")
     }
 
     private func finishPictureInPictureRendererResume(success: Bool, actualPosition: Double?, reason: String) {
         guard let completion = pictureInPictureResumeCompletion else { return }
+        let handle = mpv
         pictureInPictureResumeTimeout?.cancel()
         pictureInPictureResumeTimeout = nil
         pictureInPictureResumePoll?.cancel()
@@ -297,15 +329,15 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         pictureInPictureResumeTargetPosition = nil
         pictureInPictureResumeStartedAt = nil
         pictureInPictureResumePlaybackAdvancing = false
-        if success { pictureInPictureRendererSuspended = false }
+        if let handle { reconcilePictureInPictureVideoState(handle: handle, reason: "resume-finish-\(reason)") }
         DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame handoff success=\(success) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") actual=\(actualPosition.map { String(format: "%.3f", $0) } ?? "unknown") reason=\(reason)")
         DispatchQueue.main.async { completion(success, actualPosition) }
     }
 
-
     private func evaluatePictureInPictureRendererResume(handle: OpaquePointer, fallbackPosition: Double?, reason: String) -> Bool {
         guard pictureInPictureResumeCompletion != nil else { return true }
         let currentVO = getStringProperty(handle: handle, name: "current-vo") ?? "unknown"
+        let currentVID = getStringProperty(handle: handle, name: "vid") ?? "unknown"
         let viewport = rendererViewportSize(handle: handle)
         var videoPTS = Double.nan
         let hasVideoPTS = getProperty(handle: handle, name: "video-pts", format: MPV_FORMAT_DOUBLE, value: &videoPTS) >= 0 && videoPTS.isFinite
@@ -316,9 +348,11 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         let elapsed = pictureInPictureResumeStartedAt.map { max(0, CACurrentMediaTime() - $0) } ?? 0
         let expected = target.map { $0 + (pictureInPictureResumePlaybackAdvancing ? elapsed : 0) }
         let delta = expected.map { actualPosition - $0 }
-        let positionMatched = delta.map { abs($0) <= 0.75 } ?? true
-        let ready = pictureInPictureResumeSawPlaybackRestart && currentVO.contains("gpu-next") && viewport != nil && positionMatched
-        DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame probe reason=\(reason) restartSeen=\(pictureInPictureResumeSawPlaybackRestart) currentVO=\(currentVO) viewportReady=\(viewport != nil) source=\(hasVideoPTS ? "video-pts" : "time-pos") actual=\(String(format: "%.3f", actualPosition)) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") expected=\(expected.map { String(format: "%.3f", $0) } ?? "unknown") delta=\(delta.map { String(format: "%.3f", $0) } ?? "unknown") advancing=\(pictureInPictureResumePlaybackAdvancing) ready=\(ready)")
+        let positionMatched = delta.map { abs($0) <= 0.85 } ?? true
+        let videoEnabled = currentVID != "no" && currentVID != "unknown"
+        let freshSignal = pictureInPictureResumeSawPlaybackRestart || (!pictureInPictureResumePlaybackAdvancing && hasVideoPTS)
+        let ready = freshSignal && videoEnabled && currentVO.contains("gpu-next") && viewport != nil && positionMatched
+        DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame probe reason=\(reason) restartSeen=\(pictureInPictureResumeSawPlaybackRestart) videoEnabled=\(videoEnabled) currentVID=\(currentVID) currentVO=\(currentVO) viewportReady=\(viewport != nil) source=\(hasVideoPTS ? "video-pts" : "time-pos") actual=\(String(format: "%.3f", actualPosition)) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") expected=\(expected.map { String(format: "%.3f", $0) } ?? "unknown") delta=\(delta.map { String(format: "%.3f", $0) } ?? "unknown") advancing=\(pictureInPictureResumePlaybackAdvancing) ready=\(ready)")
         if ready { finishPictureInPictureRendererResume(success: true, actualPosition: actualPosition, reason: "fresh-video-frame"); return true }
         return false
     }
@@ -739,7 +773,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         snapshot = PlayerSnapshot()
         enhancementBaseline = nil
         lastPresentationTimingSignature = nil
-        pictureInPictureRendererSuspended = false
+        pictureInPictureVideoTrackSuspended = false
         pictureInPictureSeekLandingHandler = nil
         pictureInPictureResumeTimeout?.cancel()
         pictureInPictureResumeTimeout = nil
@@ -748,6 +782,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         pictureInPictureResumeSawPlaybackRestart = false
         pictureInPictureResumeCompletion = nil
         pictureInPictureResumeTargetPosition = nil
+        pictureInPictureSuspendedVideoID = nil
 
         let flushLayer = { [displayLayer] in
             displayLayer.contents = nil
@@ -770,7 +805,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         isStopping = false
         enhancementBaseline = nil
         lastPresentationTimingSignature = nil
-        pictureInPictureRendererSuspended = false
+        pictureInPictureVideoTrackSuspended = false
+        pictureInPictureSuspendedVideoID = nil
 
         check(mpv_request_log_messages(handle, "warn"), operation: "request logs")
         try require(mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &displayLayer), operation: "set CAMetalLayer")
