@@ -7,10 +7,11 @@ This file is the repository-wide standing instruction for AI coding agents. It a
 Before editing:
 
 1. Read `docs/project/START_HERE.md`.
-2. Read the current task's relevant entries in `docs/project/PROJECT_STATE.md`, `MODULE_STATUS.md`, and `TECHNICAL_DECISIONS.md`.
-3. Resolve the actual functional test baseline: Build / PR / branch / commit. Do not assume `main` is the latest runtime baseline.
-4. Inspect the real source definitions, call sites, state owners, and existing tests/logging before proposing a change.
-5. If the source contradicts the initial hypothesis, change the hypothesis instead of forcing the planned patch.
+2. Read `docs/project/CURRENT_WORK.md`. If it is `Active`, resume from its recorded baseline and `Next exact action` instead of restarting the task from scratch.
+3. Read the current task's relevant entries in `docs/project/PROJECT_STATE.md`, `MODULE_STATUS.md`, and `TECHNICAL_DECISIONS.md`.
+4. Resolve the actual functional test baseline: Build / PR / branch / commit. Do not assume `main` is the latest runtime baseline.
+5. Inspect the real source definitions, call sites, state owners, and existing tests/logging before proposing a change.
+6. If the source contradicts the initial hypothesis, change the hypothesis instead of forcing the planned patch.
 
 Do not invent API names, variables, functions, framework behavior, or source structure.
 
@@ -118,8 +119,12 @@ Always distinguish:
 
 Never describe CI success as proof that a runtime bug is solved.
 
-## 9. Documentation is part of the change
+## 9. Documentation and handoff are part of the change
 
 For every important implementation, CI/IPA baseline, real-device result, architectural decision, rejection, freeze, or compatibility change, update the relevant files in `docs/project/` in the same work cycle.
 
-Do not wait for the user to request documentation maintenance.
+For multi-step work, keep `docs/project/CURRENT_WORK.md` as a short rolling checkpoint. Refresh it at meaningful milestones such as baseline/branch confirmation, first effective patch, CI/IPA change, user real-device result, or a material change of direction. Do not update it for every tiny edit.
+
+When the task finishes, move durable conclusions into the long-term project documents and reset `CURRENT_WORK.md` to `Idle`.
+
+Do not wait for the user to request documentation maintenance or session handoff.
