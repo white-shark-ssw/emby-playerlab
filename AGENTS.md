@@ -123,8 +123,10 @@ Never describe CI success as proof that a runtime bug is solved.
 
 For every important implementation, CI/IPA baseline, real-device result, architectural decision, rejection, freeze, or compatibility change, update the relevant files in `docs/project/` in the same work cycle.
 
-For multi-step work, keep `docs/project/CURRENT_WORK.md` as a short rolling checkpoint. Refresh it at meaningful milestones such as baseline/branch confirmation, first effective patch, CI/IPA change, user real-device result, or a material change of direction. Do not update it for every tiny edit.
+For any multi-step development **or rule/documentation-governance task**, make `docs/project/CURRENT_WORK.md` `Active` early enough that the task can survive an unexpected conversation/context limit. Do not wait until the user predicts the limit or asks for a handoff.
 
-When the task finishes, move durable conclusions into the long-term project documents and reset `CURRENT_WORK.md` to `Idle`.
+Create the first checkpoint as soon as the task goal and a usable baseline/working direction are known. Refresh it again at meaningful milestones such as baseline/branch confirmation, first effective patch or rule decision, CI/IPA change, user real-device result, or a material change of direction. The newest checkpoint should always be sufficient for a new session to continue without needing the previous chat.
+
+Do not update it for every tiny edit. When the task finishes, move durable conclusions into the long-term project documents and reset `CURRENT_WORK.md` to `Idle`.
 
 Do not wait for the user to request documentation maintenance or session handoff.
