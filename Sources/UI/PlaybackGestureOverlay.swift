@@ -133,6 +133,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
         private var gestureOwner: GestureOwner?
         private var activeAdjustment: PlaybackVerticalAdjustment?
         private var adjustmentStartValue: Double = 0
+        private var lastAppliedAdjustmentTick = -1
         private var lastVolumeTick = -1
         private let adjustmentStep = 0.01
         private let volumeTickHaptics = PlaybackVolumeTickHaptics()
@@ -231,6 +232,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
                     activeAdjustment = nil
                     return
                 }
+                lastAppliedAdjustmentTick = Int((adjustmentStartValue / adjustmentStep).rounded())
                 gestureOwner = .verticalAdjustment
                 if let activeAdjustment { onAdjustmentBegan(activeAdjustment, adjustmentStartValue) }
 
@@ -244,6 +246,9 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
                     let span = max(view.bounds.height * 0.65, 220)
                     let rawValue = adjustmentStartValue - Double(translation.y / span)
                     let value = quantized(rawValue)
+                    let tick = Int((value / adjustmentStep).rounded())
+                    guard tick != lastAppliedAdjustmentTick else { return }
+                    lastAppliedAdjustmentTick = tick
                     apply(activeAdjustment, value: value)
                     onAdjustmentChanged(activeAdjustment, value)
                 default:
@@ -280,6 +285,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             }
             gestureOwner = nil
             activeAdjustment = nil
+            lastAppliedAdjustmentTick = -1
         }
 
         private func quantized(_ value: Double) -> Double {
@@ -312,6 +318,7 @@ struct PlaybackGestureOverlay: UIViewRepresentable {
             }
             onAdjustmentEnded(activeAdjustment, value)
             self.activeAdjustment = nil
+            lastAppliedAdjustmentTick = -1
         }
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
