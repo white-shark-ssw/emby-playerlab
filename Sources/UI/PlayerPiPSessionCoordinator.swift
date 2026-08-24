@@ -731,7 +731,16 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         } }
         context.generation = stagingPipeline.seek(to: predicted)
         stagingPipeline.setPaused(true)
-        DiagnosticsLogger.shared.playback("PiPSeek", "staging begin token=\(token) seekID=\(info.seekID) requested=\(String(format: "%.3f", info.requestedTarget)) dispatch=\(String(format: "%.3f", info.dispatchTarget)) previous=\(info.previousKeyframe.map { String(format: "%.3f", $0) } ?? "none") predicted=\(String(format: "%.3f", predicted)) persistentStandby=true generation=\(context.generation) optimistic=\(context.optimisticCommitEnabled)")
+        seekOptimisticDeadlineWorkItem?.cancel()
+        let longTailWork = DispatchWorkItem { [weak self, weak context] in
+            guard let self, let context, self.stagingContext === context, context.token == self.activeSeekToken else { return }
+            context.longTailDeadlineReached = true
+            let committed = self.attemptOptimisticSeekCommit(context: context, longTailEscape: true)
+            DiagnosticsLogger.shared.playback("PiPSeek", "long-tail deadline token=\(context.token) elapsedMs=\(String(format: "%.1f", (CACurrentMediaTime() - context.startedAt) * 1000)) first=\(context.firstDisplayablePTS.map { String(format: "%.3f", $0) } ?? "none") committed=\(committed)")
+        }
+        seekOptimisticDeadlineWorkItem = longTailWork
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: longTailWork)
+        DiagnosticsLogger.shared.playback("PiPSeek", "staging begin token=\(token) seekID=\(info.seekID) requested=\(String(format: "%.3f", info.requestedTarget)) dispatch=\(String(format: "%.3f", info.dispatchTarget)) previous=\(info.previousKeyframe.map { String(format: "%.3f", $0) } ?? "none") predicted=\(String(format: "%.3f", predicted)) persistentStandby=true generation=\(context.generation) optimistic=\(context.optimisticCommitEnabled) longTailDeadlineMs=180")
     }
 
     @discardableResult
