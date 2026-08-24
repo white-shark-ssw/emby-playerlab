@@ -74,9 +74,15 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var startTimeout: DispatchWorkItem?
     private var startPoll: DispatchWorkItem?
     private var pendingSystemPauseWorkItem: DispatchWorkItem?
+    private struct PendingSystemSeekCompletion {
+        let startedAt: CFTimeInterval
+        let completion: @Sendable () -> Void
+    }
+
     private var seekFallbackWorkItem: DispatchWorkItem?
     private var seekSettleWorkItem: DispatchWorkItem?
     private var seekOptimisticDeadlineWorkItem: DispatchWorkItem?
+    private var pendingSystemSeekCompletions: [UInt64: PendingSystemSeekCompletion] = [:]
     private var seekToken: UInt64 = 0
     private var activeSeekToken: UInt64?
     private var activeSeekRequestedTarget: Double?
@@ -95,7 +101,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var returnRendererRestoreInProgress = false
     private var returnActualPosition: Double?
     private var returnRendererReadyHostTime: CFTimeInterval?
-    private var returnBridgeCatchupHolding = false
+    private var returnFinalBridgeAlignmentApplied = false
     private var returnPollWorkItem: DispatchWorkItem?
     private var pendingRestoreUICompletion: ((Bool) -> Void)?
     private var manualForegroundReturn = false
@@ -104,7 +110,6 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var returnPostStopRetryCount = 0
     private var returnSystemRestoreAccepted = false
     private var returnBridgeFadeInProgress = false
-    private var lastReturnBridgeAuthoritySyncAt: CFTimeInterval = 0
     private let homeCoordinator = PlayerPiPHomeCoordinator()
 
     override init() {
