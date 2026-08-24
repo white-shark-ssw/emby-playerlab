@@ -310,6 +310,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         pictureInPictureResumeTargetPosition = nil
         pictureInPictureResumeStartedAt = nil
         pictureInPictureResumePlaybackAdvancing = false
+        pictureInPictureResumeBaselineVideoPTS = nil
     }
 
     private func reconcilePictureInPictureVideoState(handle: OpaquePointer, reason: String) {
@@ -332,6 +333,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         pictureInPictureResumeTargetPosition = nil
         pictureInPictureResumeStartedAt = nil
         pictureInPictureResumePlaybackAdvancing = false
+        pictureInPictureResumeBaselineVideoPTS = nil
         if let handle { reconcilePictureInPictureVideoState(handle: handle, reason: "resume-finish-\(reason)") }
         DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame handoff success=\(success) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") actual=\(actualPosition.map { String(format: "%.3f", $0) } ?? "unknown") reason=\(reason)")
         DispatchQueue.main.async { completion(success, actualPosition) }
