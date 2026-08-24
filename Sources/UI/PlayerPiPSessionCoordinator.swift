@@ -58,6 +58,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var displayLayer: AVSampleBufferDisplayLayer?
     private var sourceHostView: PlayerPiPSourceHostView?
     private var pipeline: PlayerPiPSamplePipeline?
+    private var standbyPipeline: PlayerPiPSamplePipeline?
     private var activeGeneration: UInt64 = 0
     private var controlTimebase: CMTimebase?
     private var clock = PiPClock()
@@ -182,6 +183,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         bindActivePipeline(activePipeline)
         activePipeline.setPaused(behavior.playback != .playing)
         activeGeneration = activePipeline.start()
+        prepareStandbyPipelineIfNeeded(startPosition: clock.position())
         scheduleStartTimeout()
         DiagnosticsLogger.shared.playback("PiPState", "session prepared playback=\(behavior.playback.rawValue) presentation=\(behavior.presentation.rawValue) position=\(String(format: "%.3f", clock.position())) generation=\(activeGeneration) renderer=\(inlineRenderer == nil ? "none" : "engine-or-surface")")
     }
@@ -196,6 +198,22 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             guard let self, let activePipeline, self.pipeline === activePipeline else { return }
             self.handleActivePipelineSample(envelope)
         } }
+    }
+
+    private func prepareStandbyPipelineIfNeeded(startPosition: Double) {
+        guard standbyPipeline == nil, let session = activeSession else { return }
+        let standby = PlayerPiPSamplePipeline(session: session, startPosition: max(0, startPosition))
+        standbyPipeline = standby
+        standby.setPaused(true)
+        standby.onReady = { info in DispatchQueue.main.async { DiagnosticsLogger.shared.playback("PiPPipeline", "standby ready \(info)") } }
+        standby.onFailure = { [weak self, weak standby] reason in DispatchQueue.main.async {
+            guard let self, let standby, self.standbyPipeline === standby else { return }
+            DiagnosticsLogger.shared.playback("PiPPipeline", "standby failed reason=\(reason) action=drop-standby")
+            self.standbyPipeline = nil
+        } }
+        standby.onSample = { _ in }
+        _ = standby.start()
+        DiagnosticsLogger.shared.playback("PiPPipeline", "standby warm start position=\(String(format: "%.3f", startPosition)) persistentDemux=true")
     }
 
     private func handleActivePipelineSample(_ envelope: PlayerPiPSamplePipeline.SampleEnvelope) {
@@ -407,7 +425,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         returnPollWorkItem?.cancel(); returnPollWorkItem = nil
         pendingRestoreUICompletion = nil
         pipeline?.stop()
-        stagingContext?.pipeline.stop()
+        standbyPipeline?.stop()
         sourceHostView?.removeFromSuperview()
         sourceHostView = nil
         AppOrientationCoordinator.shared.endPictureInPictureRestoreOrientationHold()
@@ -498,16 +516,20 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             DiagnosticsLogger.shared.playback("PiPSeek", "dispatch ignored token=\(token) requestedMismatch local=\(String(format: "%.3f", requested)) engine=\(String(format: "%.3f", info.requestedTarget))")
             return
         }
-        stagingContext?.pipeline.stop()
         let predicted = max(0, info.stagingTarget)
-        let stagingPipeline = PlayerPiPSamplePipeline(session: session, startPosition: predicted)
+        prepareStandbyPipelineIfNeeded(startPosition: predicted)
+        guard let stagingPipeline = standbyPipeline else {
+            DiagnosticsLogger.shared.playback("PiPSeek", "staging unavailable token=\(token) action=authoritative-fallback")
+            return
+        }
         let context = SeekStagingContext(token: token, predictedTarget: predicted, pipeline: stagingPipeline)
         stagingContext = context
         stagingPipeline.onReady = { _ in }
         stagingPipeline.onFailure = { [weak self, weak context] reason in DispatchQueue.main.async {
             guard let self, let context, self.stagingContext === context else { return }
             DiagnosticsLogger.shared.playback("PiPSeek", "staging failed token=\(context.token) reason=\(reason)")
-            context.pipeline.stop(); self.stagingContext = nil
+            if self.standbyPipeline === context.pipeline { self.standbyPipeline = nil }
+            self.stagingContext = nil
         } }
         stagingPipeline.onSample = { [weak self, weak context] envelope in DispatchQueue.main.async {
             guard let self, let context, self.stagingContext === context, context.token == self.activeSeekToken else { return }
@@ -520,8 +542,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             }
             if case .waitingForVisualCommit(let waitingToken, let authoritative) = self.behavior.seek, waitingToken == context.token { self.attemptStagedSeekCommit(context: context, authoritative: authoritative) }
         } }
-        context.generation = stagingPipeline.start()
-        DiagnosticsLogger.shared.playback("PiPSeek", "staging begin token=\(token) seekID=\(info.seekID) requested=\(String(format: "%.3f", info.requestedTarget)) dispatch=\(String(format: "%.3f", info.dispatchTarget)) previous=\(info.previousKeyframe.map { String(format: "%.3f", $0) } ?? "none") predicted=\(String(format: "%.3f", predicted))")
+        context.generation = stagingPipeline.seek(to: predicted)
+        stagingPipeline.setPaused(true)
+        DiagnosticsLogger.shared.playback("PiPSeek", "staging begin token=\(token) seekID=\(info.seekID) requested=\(String(format: "%.3f", info.requestedTarget)) dispatch=\(String(format: "%.3f", info.dispatchTarget)) previous=\(info.previousKeyframe.map { String(format: "%.3f", $0) } ?? "none") predicted=\(String(format: "%.3f", predicted)) persistentStandby=true generation=\(context.generation)")
     }
 
     private func handleEngineSeekLanding(_ result: SeekResult) {
@@ -540,7 +563,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         guard stagingContext === context, context.token == activeSeekToken, let first = context.firstDisplayablePTS else { return false }
         guard abs(first - authoritative) <= 0.45 else {
             DiagnosticsLogger.shared.playback("PiPSeek", "staging reject token=\(context.token) predictedFirst=\(String(format: "%.3f", first)) authoritative=\(String(format: "%.3f", authoritative)) delta=\(String(format: "%.3f", first - authoritative))")
-            context.pipeline.stop(); stagingContext = nil
+            context.pipeline.setPaused(true); stagingContext = nil
             return false
         }
         let samples = context.samples
@@ -570,12 +593,15 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         syncTimebaseToClock()
 
         if let promotedPipeline {
-            pipeline?.stop()
+            let previousActive = pipeline
+            previousActive?.setPaused(true)
             pipeline = promotedPipeline
+            standbyPipeline = previousActive
             activeGeneration = stagingContext?.generation ?? 1
             bindActivePipeline(promotedPipeline)
             promotedPipeline.setPaused(behavior.playback != .playing)
             stagingContext = nil
+            DiagnosticsLogger.shared.playback("PiPPipeline", "roles swapped activeGeneration=\(activeGeneration) standbyPersistent=\(standbyPipeline != nil)")
         } else {
             if let fallbackSeekGeneration { activeGeneration = fallbackSeekGeneration }
             fallbackSeekGeneration = nil
@@ -625,7 +651,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private func cancelSeekTransaction(reason: String) {
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
         seekSettleWorkItem?.cancel(); seekSettleWorkItem = nil
-        stagingContext?.pipeline.stop(); stagingContext = nil
+        stagingContext?.pipeline.setPaused(true); stagingContext = nil
         fallbackSeekGeneration = nil
         fallbackSeekSamples.removeAll(keepingCapacity: false)
         activeSeekToken = nil
@@ -652,6 +678,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         }
         seekLandingProvider = nil
         pipeline?.stop(); pipeline = nil
+        standbyPipeline?.stop(); standbyPipeline = nil
         displayLayer?.flushAndRemoveImage(); displayLayer?.controlTimebase = nil
         displayLayer = nil; controlTimebase = nil
         sourceHostView?.removeFromSuperview(); sourceHostView = nil
@@ -698,7 +725,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             completeReturnAfterSystemStop()
         case .closePlayback:
             pipeline?.stop()
-            stagingContext?.pipeline.stop()
+            standbyPipeline?.stop()
             AppOrientationCoordinator.shared.endPictureInPictureRestoreOrientationHold()
             onPlaybackClosureRequested?()
             reset(reason: "close-playback", preserveOrientationHold: true)
