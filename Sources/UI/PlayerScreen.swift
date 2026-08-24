@@ -5,6 +5,30 @@ import SwiftUI
 import UIKit
 
 struct PlayerScreen: View {
+    private let client: EmbyAPIClient
+    private let preference: PlayerEnginePreference
+    @State private var activeSource: ResolvedPlaybackSource
+    @StateObject private var episodeCoordinator: PlayerEpisodeCoordinator
+
+    init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
+        self.client = client
+        self.preference = preference
+        _activeSource = State(initialValue: source)
+        _episodeCoordinator = StateObject(wrappedValue: PlayerEpisodeCoordinator(source: source, client: client))
+    }
+
+    var body: some View {
+        PlayerSessionScreen(source: activeSource, client: client, preference: preference, episodeCoordinator: episodeCoordinator, onSwitchSource: switchSource)
+            .id("\(activeSource.itemId)|\(activeSource.mediaSource.id)")
+    }
+
+    private func switchSource(_ source: ResolvedPlaybackSource) {
+        episodeCoordinator.activate(source: source)
+        activeSource = source
+    }
+}
+
+private struct PlayerSessionScreen: View {
     @Environment(\.presentationMode) private var presentationMode
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var controller: PlayerController
@@ -12,6 +36,8 @@ struct PlayerScreen: View {
     @StateObject private var pictureInPictureController: PlayerPictureInPictureController
     @StateObject private var presentationCoordinator: PlaybackPresentationCoordinator
     @StateObject private var displayRefreshMonitor: DisplayRefreshRateMonitor
+    @ObservedObject private var episodeCoordinator: PlayerEpisodeCoordinator
+    private let onSwitchSource: (ResolvedPlaybackSource) -> Void
     @AppStorage(PlayerPreferenceKeys.backwardSeconds) private var backwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.forwardSeconds) private var forwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.bufferPreset) private var bufferPresetRaw = BufferPreset.balanced.rawValue
@@ -23,12 +49,15 @@ struct PlayerScreen: View {
     @AppStorage(PlayerPreferenceKeys.pauseWhenBackgrounded) private var pauseWhenBackgrounded = true
     @AppStorage(PlayerPreferenceKeys.resumeWhenForegrounded) private var resumeWhenForegrounded = false
     @AppStorage(PlayerPreferenceKeys.controlsAutoHideSeconds) private var controlsAutoHideSeconds = 3.0
+    @AppStorage(PlayerPreferenceKeys.autoLoadNextEpisode) private var autoLoadNextEpisode = true
     @AppStorage(PlayerPresentationPreferenceKeys.motionSmoothingMode) private var motionSmoothingRaw = MotionSmoothingMode.off.rawValue
     @AppStorage(PlayerPresentationPreferenceKeys.videoEnhancementEnabled) private var videoEnhancementEnabled = false
 
     @State private var activePanel: PlayerControlPanel?
     @State private var playbackSettingsPresented = false
+    @State private var episodePanelPresented = false
     @State private var isClosing = false
+    @State private var isSwitchingEpisode = false
     @State private var orientationReady = false
     @State private var playbackStarted = false
     @State private var initialOrientationStarted = false
@@ -47,8 +76,9 @@ struct PlayerScreen: View {
     @State private var audioInterruptionActive = false
     @State private var gestureResetGeneration = 0
     @State private var bufferingDownloadSpeed: Double = 0
+    @State private var episodeSwitchTask: Task<Void, Never>?
 
-    init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
+    init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference, episodeCoordinator: PlayerEpisodeCoordinator, onSwitchSource: @escaping (ResolvedPlaybackSource) -> Void) {
         let storedEngineRaw = UserDefaults.standard.string(forKey: PlayerPreferenceKeys.enginePreference)
         let effectivePreference = preference.isAutomatic ? PlayerEnginePreference.persisted(rawValue: storedEngineRaw) : preference
         _controller = StateObject(wrappedValue: PlayerController(source: source, client: client, preference: effectivePreference))
@@ -58,6 +88,8 @@ struct PlayerScreen: View {
         _pictureInPictureController = StateObject(wrappedValue: PlayerPictureInPictureController())
         _presentationCoordinator = StateObject(wrappedValue: PlaybackPresentationCoordinator(source: source))
         _displayRefreshMonitor = StateObject(wrappedValue: DisplayRefreshRateMonitor())
+        _episodeCoordinator = ObservedObject(wrappedValue: episodeCoordinator)
+        self.onSwitchSource = onSwitchSource
     }
 
     var body: some View {
@@ -86,7 +118,7 @@ struct PlayerScreen: View {
                     onAdjustmentEnded: { adjustment, value in showAdjustmentHUD(adjustment, value: value, autoHide: true) }
                 )
                 .ignoresSafeArea()
-                .allowsHitTesting(!isClosing && !playbackSettingsPresented)
+                .allowsHitTesting(!isClosing && !playbackSettingsPresented && !episodePanelPresented)
 
                 if let feedback = controller.scrubFeedback {
                     VStack {
@@ -125,6 +157,12 @@ struct PlayerScreen: View {
                     .transition(.opacity)
                     .zIndex(20)
                 }
+
+                if episodePanelPresented {
+                    PlayerEpisodeSelectionOverlay(coordinator: episodeCoordinator, onDismiss: dismissEpisodePanel, onSelect: selectEpisode)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(30)
+                }
             }
 
             PlayerPresentationDidAppearProbe(onDidAppear: handlePresentationDidAppear)
@@ -139,6 +177,7 @@ struct PlayerScreen: View {
             displayRefreshMonitor.start()
             controller.prewarmStartup()
             AppOrientationCoordinator.shared.beginPlayerPresentation(source: controller.source)
+            Task { await episodeCoordinator.prepareForPlayback() }
             DispatchQueue.main.async { beginInitialOrientationIfNeeded(reason: "onAppear") }
         }
         .onDisappear {
@@ -148,14 +187,17 @@ struct PlayerScreen: View {
             adjustmentHideWorkItem?.cancel()
             initialOrientationWorkItem?.cancel()
             closeDismissWorkItem?.cancel()
+            episodeSwitchTask?.cancel()
+            episodeSwitchTask = nil
             displayRefreshMonitor.stop()
             playbackSettingsPresented = false
-            if !isClosing { AppOrientationCoordinator.shared.restoreMainInterfaceOrientation() }
-            resetTransientInteractions(reason: "disappear")
+            episodePanelPresented = false
+            if !isClosing && !isSwitchingEpisode { AppOrientationCoordinator.shared.restoreMainInterfaceOrientation() }
+            resetTransientInteractions(reason: isSwitchingEpisode ? "episode-switch" : "disappear")
             wasAutoPausedForBackground = false
             pictureInPictureController.stopAndDetach()
             restoreOriginalBrightnessIfNeeded()
-            DiagnosticsLogger.shared.app("PlayerLifecycle", "onDisappear immediate stop closing=\(isClosing)")
+            DiagnosticsLogger.shared.app("PlayerLifecycle", "onDisappear immediate stop closing=\(isClosing) episodeSwitch=\(isSwitchingEpisode)")
             controller.stop()
         }
         .onChange(of: controller.snapshot.isPlaying) { isPlaying in
@@ -165,6 +207,7 @@ struct PlayerScreen: View {
                 scheduleControlsHide()
             } else { showControls(autoHide: false) }
         }
+        .onChange(of: controller.snapshot.didReachEnd) { didReachEnd in handleNaturalEndChange(didReachEnd) }
         .onChange(of: controller.engineKind) { kind in
             if !PlayerCapabilities.resolve(for: kind).supportsPictureInPicture { pictureInPictureController.stopAndDetach() }
             if playbackStarted { applyPresentationPreferences() }
@@ -228,7 +271,7 @@ struct PlayerScreen: View {
         }
         .foregroundColor(.white)
         .opacity(controlsVisible ? 1 : 0)
-        .allowsHitTesting(controlsVisible && !isClosing && !playbackSettingsPresented)
+        .allowsHitTesting(controlsVisible && !isClosing && !playbackSettingsPresented && !episodePanelPresented)
         .animation(.easeOut(duration: 0.18), value: controlsVisible)
     }
 
@@ -292,7 +335,7 @@ struct PlayerScreen: View {
                     showControls()
                 } label: { seekButtonLabel(systemName: "gobackward", seconds: backwardSeconds) }
                 .opacity(controlsVisible ? 1 : 0)
-                .allowsHitTesting(controlsVisible && !playbackSettingsPresented)
+                .allowsHitTesting(controlsVisible && !playbackSettingsPresented && !episodePanelPresented)
 
                 Button(action: togglePlayPauseFromControl) {
                     Image(systemName: controller.playbackControlIsPlaying ? "pause.fill" : "play.fill")
@@ -305,20 +348,20 @@ struct PlayerScreen: View {
                 .buttonStyle(.plain)
                 .opacity(controlsVisible || centerFeedbackVisible ? 1 : 0)
                 .scaleEffect(centerFeedbackScale)
-                .allowsHitTesting(controlsVisible && !playbackSettingsPresented)
+                .allowsHitTesting(controlsVisible && !playbackSettingsPresented && !episodePanelPresented)
 
                 Button {
                     controller.seek(by: Double(forwardSeconds))
                     showControls()
                 } label: { seekButtonLabel(systemName: "goforward", seconds: forwardSeconds) }
                 .opacity(controlsVisible ? 1 : 0)
-                .allowsHitTesting(controlsVisible && !playbackSettingsPresented)
+                .allowsHitTesting(controlsVisible && !playbackSettingsPresented && !episodePanelPresented)
             }
             .foregroundColor(.white)
             .position(x: geometry.size.width * 0.5, y: geometry.size.height * 0.46)
             .animation(.easeOut(duration: 0.18), value: controlsVisible)
         }
-        .allowsHitTesting(controlsVisible && !isClosing && !playbackSettingsPresented)
+        .allowsHitTesting(controlsVisible && !isClosing && !playbackSettingsPresented && !episodePanelPresented)
     }
 
     private var bottomControls: some View {
@@ -360,6 +403,7 @@ struct PlayerScreen: View {
 
             PlayerBottomFunctionBar(
                 tracksEnabled: hasTrackInfo && controller.supportsInteractiveTrackSelection,
+                showsEpisodes: episodeCoordinator.contextAvailable,
                 currentRate: sessionOverrides.basePlaybackRate,
                 settingsPresented: playbackSettingsPresented,
                 onSelect: openControlPanel,
@@ -669,6 +713,7 @@ struct PlayerScreen: View {
             setPlaybackIdleTimerDisabled(false, reason: "scene-background")
             resetTransientInteractions(reason: "background")
             playbackSettingsPresented = false
+            episodePanelPresented = false
             restoreOriginalBrightnessIfNeeded()
             guard pauseWhenBackgrounded, !audioInterruptionActive, controller.playbackControlIsPlaying, !pictureInPictureController.isActive, !isExternalPlaybackActive else {
                 wasAutoPausedForBackground = false
@@ -741,6 +786,7 @@ struct PlayerScreen: View {
         if controlsVisible {
             controlsHideWorkItem?.cancel()
             playbackSettingsPresented = false
+            episodePanelPresented = false
             controlsVisible = false
         } else { showControls() }
     }
@@ -749,13 +795,13 @@ struct PlayerScreen: View {
         controlsVisible = true
         controlsHideWorkItem?.cancel()
         controlsHideWorkItem = nil
-        if autoHide && !playbackSettingsPresented { scheduleControlsHide() }
+        if autoHide && !playbackSettingsPresented && !episodePanelPresented { scheduleControlsHide() }
     }
 
     private func scheduleControlsHide() {
         controlsHideWorkItem?.cancel()
         controlsHideWorkItem = nil
-        guard controlsAutoHideSeconds > 0, controller.playbackControlIsPlaying, !playbackSettingsPresented else { return }
+        guard controlsAutoHideSeconds > 0, controller.playbackControlIsPlaying, !playbackSettingsPresented, !episodePanelPresented else { return }
         let workItem = DispatchWorkItem {
             playbackSettingsPresented = false
             centerFeedbackVisible = false
@@ -852,11 +898,63 @@ struct PlayerScreen: View {
     private func openControlPanel(_ panel: PlayerControlPanel) {
         playbackSettingsPresented = false
         controlsHideWorkItem?.cancel()
-        activePanel = panel
+        switch panel {
+        case .episodes:
+            activePanel = nil
+            withAnimation(.easeOut(duration: 0.20)) { episodePanelPresented = true }
+            Task { await episodeCoordinator.prepareForPlayback() }
+        case .info, .tracks, .speed:
+            episodePanelPresented = false
+            activePanel = panel
+        }
+    }
+
+    private func dismissEpisodePanel() {
+        withAnimation(.easeOut(duration: 0.18)) { episodePanelPresented = false }
+        showControls()
+    }
+
+    private func selectEpisode(_ episode: LibraryItem) {
+        guard episode.id != controller.source.itemId, !isSwitchingEpisode, !isClosing else { dismissEpisodePanel(); return }
+        episodeSwitchTask?.cancel()
+        episodeSwitchTask = Task {
+            guard let resolved = await episodeCoordinator.playbackSource(for: episode, reason: "manual-selection"), !Task.isCancelled else { return }
+            switchPlaybackSession(to: resolved, reason: "manual-selection")
+        }
+    }
+
+    private func handleNaturalEndChange(_ didReachEnd: Bool) {
+        guard didReachEnd, autoLoadNextEpisode, !isClosing, !isSwitchingEpisode else { return }
+        let decision = PrematureEOFGuard.evaluate(current: controller.snapshot.position, avDuration: controller.snapshot.duration, embyDuration: controller.source.mediaSource.durationSeconds)
+        guard !decision.isPremature else {
+            DiagnosticsLogger.shared.playback("EpisodeSwitch", "automatic next blocked item=\(controller.source.itemId) reason=premature-eof detail=\(decision.reason)")
+            return
+        }
+        DiagnosticsLogger.shared.playback("EpisodeSwitch", "automatic next armed item=\(controller.source.itemId) reason=trusted-natural-end")
+        episodeSwitchTask?.cancel()
+        episodeSwitchTask = Task {
+            guard let resolved = await episodeCoordinator.nextPlaybackSource(), !Task.isCancelled else { return }
+            switchPlaybackSession(to: resolved, reason: "trusted-natural-end")
+        }
+    }
+
+    private func switchPlaybackSession(to source: ResolvedPlaybackSource, reason: String) {
+        guard source.itemId != controller.source.itemId, !isClosing, !isSwitchingEpisode else { return }
+        isSwitchingEpisode = true
+        controlsHideWorkItem?.cancel()
+        controlsHideWorkItem = nil
+        playbackSettingsPresented = false
+        episodePanelPresented = false
+        controlsVisible = false
+        centerFeedbackVisible = false
+        controller.stop()
+        DiagnosticsLogger.shared.playback("EpisodeSwitch", "session replace reason=\(reason) from=\(controller.source.itemId) to=\(source.itemId) fullScreenHost=preserved")
+        onSwitchSource(source)
     }
 
     private func togglePlaybackSettings() {
         activePanel = nil
+        episodePanelPresented = false
         controlsHideWorkItem?.cancel()
         withAnimation(.easeOut(duration: 0.18)) { playbackSettingsPresented.toggle() }
         if !playbackSettingsPresented { scheduleControlsHide() }
@@ -884,8 +982,11 @@ struct PlayerScreen: View {
         adjustmentHideWorkItem?.cancel()
         initialOrientationWorkItem?.cancel()
         closeDismissWorkItem?.cancel()
+        episodeSwitchTask?.cancel()
+        episodeSwitchTask = nil
         controlsVisible = false
         playbackSettingsPresented = false
+        episodePanelPresented = false
         centerFeedbackVisible = false
         centerFeedbackScale = 1
         temporaryRateHUD = nil
