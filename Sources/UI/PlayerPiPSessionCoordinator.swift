@@ -380,7 +380,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             self.returnRendererRestoreInProgress = false
             self.returnRendererReady = success
             self.returnActualPosition = actualPosition
-            DiagnosticsLogger.shared.playback("PiPState", "return renderer-ready=\(success) target=\(String(format: "%.3f", targetPosition)) actual=\(actualPosition.map { String(format: "%.3f", $0) } ?? "unknown")")
+            if success { AppOrientationCoordinator.shared.armPictureInPicturePresentationRelease() }
+            DiagnosticsLogger.shared.playback("PiPState", "return renderer-ready=\(success) target=\(String(format: "%.3f", targetPosition)) actual=\(actualPosition.map { String(format: "%.3f", $0) } ?? "unknown") presentationRelease=\(success ? "armed-after-fresh-frame" : "held")")
             if !success { self.failReturnBarrier(reason: "renderer-not-ready") }
         }
     }
@@ -712,7 +713,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private func cancelSeekTransaction(reason: String) {
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
         seekSettleWorkItem?.cancel(); seekSettleWorkItem = nil
-        stagingContext?.pipeline.setPaused(true); stagingContext = nil
+        if let stagingContext, !stagingContext.committedSpeculatively { stagingContext.pipeline.setPaused(true) }
+        stagingContext = nil
         fallbackSeekGeneration = nil
         fallbackSeekSamples.removeAll(keepingCapacity: false)
         activeSeekToken = nil
