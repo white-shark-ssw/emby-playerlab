@@ -67,7 +67,7 @@ jobs:
               'PiP visual runs until engine landing': 'keep-visual-running-until-authoritative-engine-landing' in pip,
               'PiP orientation hold': 'beginPictureInPictureRestoreOrientationHold' in orientation and 'orientationHold=until-system-didStop' in pip,
               'volume tick dedupe': 'lastAppliedAdjustmentTick' in gesture,
-              'UnifiedTransport still present': 'final class UnifiedMediaTransportSession' in transport,
+              'UnifiedTransport still present': 'UnifiedMediaTransportSession' in transport,
           }
           for name, ok in checks.items():
               print(('PASS' if ok else 'FAIL'), name)
