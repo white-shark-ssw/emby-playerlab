@@ -18,7 +18,8 @@ This is a milestone index, not a list of every experimental build.
 | Build172 / 0.14.5 | PiP handoff authority controls | Real-device analysis showed periodic bridge catch-up introduced visible churn. |
 | **Build173 / 0.14.6** | PiP Seek completion + return simplification | **Current real-device accepted functional baseline. PiP frozen pending a materially better renderer-lifecycle idea.** |
 | Build174 / 0.14.7 | First player episode selector + auto-next | Dedicated standard MPV CI passed and IPA produced. User installed it and confirmed the selector/data path on device, but rejected the large gray sheet/X/title presentation; therefore it is partial real-device evidence, not a stable UI baseline. |
-| **Build175 / 0.14.8** | Episode selector UI / season interaction refinement | Dedicated standard MPV Release CI run 32780288067 passed and IPA was produced. Keeps OnePlayer bottom buttons fixed; selector becomes an in-player overlay with safe-area season menu and detail-style title + two-line overview cards. **Real-device validation pending.** |
+| Build175 / 0.14.8 | Episode selector UI / season interaction refinement | Dedicated standard MPV Release CI run 32780288067 passed and IPA was produced. Real-device screenshot confirmed the fixed bottom-button layout direction, but exposed lower button visual bleed through transparent overview text and a left-aligned `正在播放` badge. Not accepted as stable UI. |
+| **Build176 / 0.14.9** | Episode overlay visual-layer follow-up | Code written from Build175 real-device evidence: localized black fade masks lower button bleed without restoring the rejected gray sheet, and `正在播放` is centered in the thumbnail. CI/IPA and real-device validation pending. |
 
 ## Build173 repository evidence
 
@@ -36,7 +37,7 @@ Known head during handoff:
 
 A dedicated release workflow subsequently produced the Build173 test artifact. This confirms build/IPA availability only; runtime acceptance is based on the later real-device logs and user decision to freeze PiP for now.
 
-## Build174 / Build175 episode-selection evidence
+## Build174 / Build175 / Build176 episode-selection evidence
 
 Development branch:
 
@@ -60,7 +61,13 @@ Build175 standard MPV Release source commit / run / artifact:
 - run `32780288067`
 - `OnePlayer-0.14.8-build175-episode-picker-ui`
 
-Build175 passed its dedicated contract checks, Xcode 16.4 Release compile, app identity validation, iOS 15.0 MinOS validation, IPA packaging and artifact upload. This is CI/IPA evidence only until the user tests it on the iPhone 15 Pro Max / iOS 17.0.
+Build175 passed its dedicated contract checks, Xcode 16.4 Release compile, app identity validation, iOS 15.0 MinOS validation, IPA packaging and artifact upload. The user then tested it on the target device and reported the transparent overview/button overlap and badge alignment issue. This is real-device evidence, but Build175 is not accepted/stable.
+
+Build176 current product source head before dedicated CI helper:
+
+- `f701f0446d65e84fc686f69ec14d60402c94839c`
+
+Build176 changes only the episode selector visual masking/alignment plus version/changelog; frozen player/transport modules are intentionally unchanged. CI/IPA evidence is pending.
 
 ## Maintenance rule
 
