@@ -374,8 +374,13 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         if behavior.exitIntent == .returnToPlayer, behavior.presentation == .returning {
             manualForegroundReturn = manualForegroundReturn || manualForeground
             if let systemCompletion {
-                pendingRestoreUICompletion?(false)
-                pendingRestoreUICompletion = systemCompletion
+                if returnSystemRestoreAccepted {
+                    DiagnosticsLogger.shared.playback("PiPState", "return join system completion arrived after acceptance action=complete-true")
+                    systemCompletion(true)
+                } else {
+                    pendingRestoreUICompletion?(false)
+                    pendingRestoreUICompletion = systemCompletion
+                }
             }
             DiagnosticsLogger.shared.playback("PiPState", "return join existing reason=\(reason) manual=\(manualForegroundReturn) systemCompletion=\(systemCompletion != nil) rendererReady=\(returnRendererReady) systemAccepted=\(returnSystemRestoreAccepted)")
             pollReturnBarrier(attempt: 0)
