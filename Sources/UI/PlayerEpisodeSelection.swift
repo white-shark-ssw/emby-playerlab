@@ -300,7 +300,8 @@ struct PlayerEpisodeSelectionOverlay: View {
                     .foregroundColor(.white.opacity(0.68))
                     .lineLimit(2)
                     .lineSpacing(1)
-                    .frame(width: 174, minHeight: 28, alignment: .topLeading)
+                    .frame(width: 174, alignment: .leading)
+                    .frame(minHeight: 28, alignment: .topLeading)
                     .opacity(overview.isEmpty ? 0 : 1)
                     .shadow(color: .black.opacity(0.72), radius: 2, x: 0, y: 1)
             }
