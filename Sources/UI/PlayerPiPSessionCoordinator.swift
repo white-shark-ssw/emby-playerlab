@@ -786,6 +786,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private func handleEngineSeekLanding(_ result: SeekResult) {
         guard case .waitingForLanding(let token, _) = behavior.seek, token == activeSeekToken else { return }
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
+        seekOptimisticDeadlineWorkItem?.cancel(); seekOptimisticDeadlineWorkItem = nil
         let authoritative = max(0, result.actualPosition ?? result.target)
         activeSeekLandingHostTime = CACurrentMediaTime()
         if let context = stagingContext, context.token == token, context.committedSpeculatively, let speculative = context.speculativePTS {
@@ -907,6 +908,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private func cancelSeekTransaction(reason: String) {
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
         seekSettleWorkItem?.cancel(); seekSettleWorkItem = nil
+        seekOptimisticDeadlineWorkItem?.cancel(); seekOptimisticDeadlineWorkItem = nil
         if let stagingContext, !stagingContext.committedSpeculatively { stagingContext.pipeline.setPaused(true) }
         stagingContext = nil
         fallbackSeekGeneration = nil
