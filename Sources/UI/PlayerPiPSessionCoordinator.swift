@@ -97,6 +97,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
 
         let layer = host.displayLayer
         layer.videoGravity = .resizeAspect
+        layer.preventsAutomaticBackgroundingDuringVideoPlayback = false
         var timebase: CMTimebase?
         let status = CMTimebaseCreateWithSourceClock(allocator: kCFAllocatorDefault, sourceClock: CMClockGetHostTimeClock(), timebaseOut: &timebase)
         guard status == noErr, let timebase else {
@@ -163,6 +164,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
                 CMTimebaseSetTime(timebase, time: CMTime(seconds: envelope.pts, preferredTimescale: 60000))
                 CMTimebaseSetRate(timebase, rate: pipWantsPlayback ? 1 : 0)
             }
+            pipeline?.setPaused(!pipWantsPlayback)
             controller?.invalidatePlaybackState()
             DiagnosticsLogger.shared.playback("PiPSession", "seek-visible authoritativePts=\(String(format: "%.3f", envelope.pts)) generation=\(envelope.generation) requestedPlaying=\(pipWantsPlayback)")
             completion?()
@@ -354,7 +356,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         guard let playbackController else { return }
         pipWantsPlayback = playing
         if playbackController.playbackControlIsPlaying != playing { playbackController.togglePlayPause() }
-        pipeline?.setPaused(!playing)
+        pipeline?.setPaused(pendingSkipCompletion != nil ? true : !playing)
         if pendingSkipGeneration == nil, pendingSkipCompletion == nil, let timebase = controlTimebase { CMTimebaseSetRate(timebase, rate: playing ? 1 : 0) }
         pictureInPictureController.invalidatePlaybackState()
         DiagnosticsLogger.shared.playback("PiPSession", "set-playing=\(playing) logicalPosition=\(String(format: "%.3f", logicalPiPPosition)) pendingSeek=\(pendingSkipCompletion != nil)")
@@ -365,7 +367,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, skipByInterval skipInterval: CMTime, completion completionHandler: @escaping @Sendable () -> Void) {
-        guard let playbackController, controlTimebase != nil else { completionHandler(); return }
+        guard let playbackController, let pipeline, controlTimebase != nil else { completionHandler(); return }
         let delta = CMTimeGetSeconds(skipInterval)
         guard delta.isFinite else { completionHandler(); return }
 
@@ -375,6 +377,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         pendingSeekStartedPosition = playbackController.snapshot.position
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
         if let timebase = controlTimebase { CMTimebaseSetRate(timebase, rate: 0) }
+        pipeline.setPaused(true)
         displayLayer?.flush()
         playbackController.seek(by: delta)
         pictureInPictureController.invalidatePlaybackState()
@@ -386,6 +389,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         guard pendingSkipCompletion != nil, let pipeline else { return }
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
         let authoritative = max(0, result.actualPosition ?? result.target)
+        displayLayer?.flush()
         activeGeneration = pipeline.seek(to: authoritative)
         pendingSkipGeneration = activeGeneration
         logicalPiPPosition = authoritative
@@ -400,6 +404,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         if moved || attempt >= 30 {
             let authoritative = max(0, current)
             if let pipeline {
+                displayLayer?.flush()
                 activeGeneration = pipeline.seek(to: authoritative)
                 pendingSkipGeneration = activeGeneration
                 logicalPiPPosition = authoritative

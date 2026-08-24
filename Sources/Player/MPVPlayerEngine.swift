@@ -907,11 +907,12 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
                 let viewport = rendererViewportSize(handle: handle)
                 let target = pictureInPictureResumeTargetPosition
                 let delta = target.map { actualPosition - $0 }
-                if currentVO.contains("gpu-next"), viewport != nil {
-                    DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame event=playback-restart actual=\(String(format: "%.3f", actualPosition)) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") delta=\(delta.map { String(format: "%.3f", $0) } ?? "unknown") viewport=ready")
+                let positionMatched = delta.map { abs($0) <= 1.5 } ?? true
+                if currentVO.contains("gpu-next"), viewport != nil, positionMatched {
+                    DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame event=playback-restart actual=\(String(format: "%.3f", actualPosition)) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") delta=\(delta.map { String(format: "%.3f", $0) } ?? "unknown") viewport=ready positionMatched=true")
                     finishPictureInPictureRendererResume(success: true, actualPosition: actualPosition, reason: "playback-restart")
                 } else {
-                    DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame deferred event=playback-restart currentVO=\(currentVO) viewportReady=\(viewport != nil)")
+                    DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame deferred event=playback-restart currentVO=\(currentVO) viewportReady=\(viewport != nil) positionMatched=\(positionMatched) delta=\(delta.map { String(format: "%.3f", $0) } ?? "unknown")")
                 }
             }
             emitOnMain()
