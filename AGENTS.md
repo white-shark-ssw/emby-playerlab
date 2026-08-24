@@ -9,17 +9,20 @@ Before editing:
 1. Read `docs/project/START_HERE.md`.
 2. Read `docs/project/CURRENT_WORK.md` and route the session type first.
 3. Explicit routing aliases: `当前为规则会话` means Rules; `当前为开发会话` or `当前为功能会话` means Development/Feature. Clear equivalent wording has the same effect.
-4. If the user's current message does not clearly identify Rules vs Development/Feature, stop and ask the user to choose. Do not guess, activate a task, switch a branch, or start work until the user chooses.
-5. Session/task `Active` state is not sufficient routing evidence. Do not infer intent from prior-chat topic, recency, urgency, or model preference.
-6. Rules work uses `docs/project/CURRENT_WORK_RULES.md`.
-7. Development work first reads `docs/project/CURRENT_WORK_DEV.md`, then selects one concrete task under `docs/project/current/dev/<Work-ID>.md`.
-8. If a Development/Feature session does not clearly identify which existing task to continue or that a new task should be created, list the current Active development tasks and ask the user to choose. Even one Active task is not enough to assume continuation.
-9. Before a concrete development task is selected, do not create or modify a development checkpoint and do not create, switch to, or reuse a feature branch.
-10. If the selected task is Active, resume from its recorded baseline and `Next exact action` instead of restarting from scratch. Do not modify another task's checkpoint.
-11. Read the current task's relevant entries in `docs/project/PROJECT_STATE.md`, `MODULE_STATUS.md`, and `TECHNICAL_DECISIONS.md`.
-12. Resolve the actual functional test baseline: Build / PR / branch / commit. Do not assume `main` is the latest runtime baseline.
-13. Inspect the real source definitions, call sites, state owners, and existing tests/logging before proposing a change.
-14. If the source contradicts the initial hypothesis, change the hypothesis instead of forcing the planned patch.
+4. A bare, concrete feature name such as `详情页优化` may identify both a Development/Feature session and an existing feature task, but only when it uniquely and strongly matches one Active development checkpoint through its Work ID, Task name, or explicit `Routing aliases / keywords`.
+5. If the user's current message does not clearly identify Rules vs Development/Feature, stop and ask the user to choose. Do not guess, activate a task, switch a branch, or start work until the user chooses.
+6. Session/task `Active` state is not sufficient routing evidence. Do not infer intent from prior-chat topic, recency, urgency, or model preference.
+7. Rules work uses `docs/project/CURRENT_WORK_RULES.md`.
+8. Development work first reads `docs/project/CURRENT_WORK_DEV.md`, then selects one concrete task under `docs/project/current/dev/<Work-ID>.md`.
+9. For an existing development task, selection priority is: exact Work ID → clear Task name → explicit `Routing aliases / keywords` → one uniquely explainable strong keyword match. If zero or multiple Active tasks match, or the match is only fuzzy semantic similarity, list candidates and ask the user to choose. Never create a new task merely because no existing task matched.
+10. Even one Active task is not enough to assume continuation when the user's message does not uniquely identify it.
+11. Before a concrete development task is selected, do not create or modify a development checkpoint and do not create, switch to, or reuse a feature branch.
+12. After a development task is selected, perform a resume identity guard before editing code: verify the checkpoint's branch / PR / head identity and any allocated Build/version/IPA candidate against current GitHub facts and other Active checkpoints. If there is a mismatch or duplicate branch/Build identity, stop and report it instead of guessing which record is correct.
+13. If the selected task is Active and the identity guard passes, resume from its recorded baseline and `Next exact action` instead of restarting from scratch. Do not modify another task's checkpoint.
+14. Read the current task's relevant entries in `docs/project/PROJECT_STATE.md`, `MODULE_STATUS.md`, and `TECHNICAL_DECISIONS.md`.
+15. Resolve the actual functional test baseline: Build / PR / branch / commit. Do not assume `main` is the latest runtime baseline.
+16. Inspect the real source definitions, call sites, state owners, and existing tests/logging before proposing a change.
+17. If the source contradicts the initial hypothesis, change the hypothesis instead of forcing the planned patch.
 
 Do not invent API names, variables, functions, framework behavior, or source structure.
 
@@ -115,6 +118,7 @@ Each Active feature task must have:
 
 - a unique Work ID;
 - its own `docs/project/current/dev/<Work-ID>.md` checkpoint;
+- stable `Routing aliases / keywords` for safe human-friendly task selection;
 - its own development branch;
 - its own PR once it reaches review/test stage;
 - a unique Build/version candidate identity when a test build is allocated.
@@ -127,7 +131,7 @@ If two tasks may modify the same source file, the same state owner, a shared Fro
 
 Git mergeability is not proof that parallel architectural state ownership is safe.
 
-Before assigning a test Build/version candidate, inspect `docs/project/BUILD_TEST_INDEX.md`, other Active development checkpoints, and existing CI/IPA candidates. Do not reuse a Build number or IPA candidate name already allocated to another Active task.
+Before assigning a test Build/version candidate, inspect `docs/project/BUILD_TEST_INDEX.md`, other Active development checkpoints, and existing CI/IPA candidates. Do not reuse a Build number or IPA candidate name already allocated to another Active task. Once an Active task records a candidate, treat that identity as reserved until the task explicitly releases/completes it and project state is updated.
 
 Before final CI/IPA/merge, check whether the target branch advanced due to another parallel task. If synchronization materially changes the code or dependencies, rerun affected validation. Old CI does not prove the synchronized code passes.
 
