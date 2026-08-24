@@ -92,6 +92,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var returnSystemStopped = false
     private var returnSurfaceReplayRequested = false
     private var returnPostStopRetryCount = 0
+    private var returnHandoffDisplayLink: CADisplayLink?
     private let homeCoordinator = PlayerPiPHomeCoordinator()
 
     override init() {
@@ -410,13 +411,15 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             self.returnRendererReady = success
             self.returnActualPosition = actualPosition
             if success {
-                if self.behavior.exitIntent == .returnToPlayer, let host = self.sourceHostView, host.alpha > 0.001 {
-                    UIView.performWithoutAnimation { host.alpha = 0 }
-                    DiagnosticsLogger.shared.playback("PiPState", "return bridge hidden before presentation release policy=no-one-frame-sourcehost-residue")
+                if self.behavior.exitIntent == .pauseAndSuspend {
+                    AppOrientationCoordinator.shared.armPictureInPicturePresentationRelease()
+                } else if self.behavior.exitIntent == .returnToPlayer {
+                    if self.returnSystemStopped { self.scheduleReturnVisualHandoffAfterSystemStop() }
+                    else { DiagnosticsLogger.shared.playback("PiPState", "return renderer ready before system stop action=hold-bridge-until-didStop") }
                 }
-                AppOrientationCoordinator.shared.armPictureInPicturePresentationRelease()
             }
-            DiagnosticsLogger.shared.playback("PiPState", "return renderer-ready=\(success) target=\(String(format: "%.3f", targetPosition)) actual=\(actualPosition.map { String(format: "%.3f", $0) } ?? "unknown") presentationRelease=\(success ? "armed-after-fresh-frame" : "held")")
+            let releaseState = success ? (self.behavior.exitIntent == .pauseAndSuspend ? "armed-paused-restore" : (self.returnSystemStopped ? "awaiting-next-vsync" : "awaiting-system-stop")) : "held"
+            DiagnosticsLogger.shared.playback("PiPState", "return renderer-ready=\(success) target=\(String(format: "%.3f", targetPosition)) actual=\(actualPosition.map { String(format: "%.3f", $0) } ?? "unknown") presentationRelease=\(releaseState)")
             if !success { self.failReturnBarrier(reason: "renderer-not-ready") }
         }
     }
@@ -510,6 +513,24 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             behavior.exitIntent = .none
             DiagnosticsLogger.shared.playback("PiPState", "return cancelled reason=\(reason) action=keep-pip")
         }
+    }
+
+    private func scheduleReturnVisualHandoffAfterSystemStop() {
+        guard behavior.exitIntent == .returnToPlayer, returnSystemStopped, returnRendererReady, returnHandoffDisplayLink == nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(handleReturnHandoffDisplayLink(_:)))
+        returnHandoffDisplayLink = link
+        link.add(to: .main, forMode: .common)
+        DiagnosticsLogger.shared.playback("PiPState", "return final handoff scheduled trigger=next-display-link sourceHost=kept presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding)")
+    }
+
+    @objc private func handleReturnHandoffDisplayLink(_ link: CADisplayLink) {
+        link.invalidate()
+        if returnHandoffDisplayLink === link { returnHandoffDisplayLink = nil }
+        guard behavior.exitIntent == .returnToPlayer, returnSystemStopped, returnRendererReady else { return }
+        if let host = sourceHostView, host.alpha > 0.001 { UIView.performWithoutAnimation { host.alpha = 0 } }
+        DiagnosticsLogger.shared.playback("PiPState", "return final handoff display-link fired sourceHost=hidden action=arm-presentation-release")
+        AppOrientationCoordinator.shared.armPictureInPicturePresentationRelease()
+        pollReturnBarrier(attempt: 0)
     }
 
     private func completeReturnAfterSystemStop() {
@@ -852,6 +873,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         startPoll?.cancel(); startPoll = nil
         pendingSystemPauseWorkItem?.cancel(); pendingSystemPauseWorkItem = nil
         returnPollWorkItem?.cancel(); returnPollWorkItem = nil
+        returnHandoffDisplayLink?.invalidate(); returnHandoffDisplayLink = nil
         pendingRestoreUICompletion?(false); pendingRestoreUICompletion = nil
         pendingForegroundRendererRestore = nil
         cancelSeekTransaction(reason: "reset")
@@ -908,9 +930,11 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         switch behavior.exitIntent {
         case .returnToPlayer:
             returnSystemStopped = true
-            if returnRendererReady, !PlayerSurfacePresentationGate.shared.isHolding { completeReturnAfterSystemStop() }
-            else {
-                DiagnosticsLogger.shared.playback("PiPState", "system-stopped before renderer handoff sourceHost=kept rendererReady=\(returnRendererReady) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding)")
+            if returnRendererReady {
+                DiagnosticsLogger.shared.playback("PiPState", "system-stopped rendererReady=true action=next-vsync-final-handoff sourceHost=kept")
+                scheduleReturnVisualHandoffAfterSystemStop()
+            } else {
+                DiagnosticsLogger.shared.playback("PiPState", "system-stopped before renderer handoff sourceHost=kept rendererReady=false presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding)")
                 pollReturnBarrier(attempt: 0)
             }
         case .pauseAndSuspend:
