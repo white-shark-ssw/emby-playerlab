@@ -544,6 +544,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             returnSurfaceReplayRequested = false
             returnRendererReady = false
             returnRendererRestoreInProgress = false
+            returnActualPosition = nil
+            returnRendererReadyHostTime = nil
+            returnFinalBridgeAlignmentApplied = false
             DiagnosticsLogger.shared.playback("PiPState", "paused foreground restore retry=\(returnPostStopRetryCount) reason=\(reason) visualBridge=last-frame-kept")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in self?.pollReturnBarrier(attempt: 0) }
             return
@@ -558,6 +561,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             returnSurfaceReplayRequested = false
             returnRendererReady = false
             returnRendererRestoreInProgress = false
+            returnActualPosition = nil
+            returnRendererReadyHostTime = nil
+            returnFinalBridgeAlignmentApplied = false
             DiagnosticsLogger.shared.playback("PiPState", "return renderer retry=\(returnPostStopRetryCount) reason=\(reason) systemAccepted=\(returnSystemRestoreAccepted) systemStopped=\(returnSystemStopped) visualBridge=live")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in self?.pollReturnBarrier(attempt: 0) }
             return
@@ -568,6 +574,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         returnRendererReady = false
         returnRendererRestoreInProgress = false
         returnActualPosition = nil
+        returnRendererReadyHostTime = nil
+        returnFinalBridgeAlignmentApplied = false
         if controller?.isPictureInPictureActive == true {
             behavior.presentation = .active
             behavior.exitIntent = .none
