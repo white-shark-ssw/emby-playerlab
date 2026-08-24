@@ -11,10 +11,10 @@
 | Player gesture UI | Stable baseline | Immediate left/right double-tap Seek, scrub, volume/brightness HUD, etc. |
 | Native navigation | Frozen principle | System owns push/pop and interactive pop. |
 | PiP | **Frozen at Build173** | Functional enough to leave for now; known renderer cold-return tail remains. |
-| Player episode selection / auto-next | **Build176 candidate** | Build175 was real-device tested and exposed transparent overview/button visual bleed plus left-aligned `正在播放`; Build176 adds only a localized selector fade mask and centers the badge while keeping bottom-button coordinates fixed. CI/IPA pending. Source-owned session replacement and trusted non-premature natural-end gate remain unchanged; frozen playback/transport modules are untouched. |
+| Player episode selection / auto-next | **Build176 candidate** | Build175 was real-device tested and exposed transparent overview/button visual bleed plus left-aligned `正在播放`; Build176 adds only a localized selector fade mask and centers the badge while keeping bottom-button coordinates fixed. Dedicated standard MPV CI passed and IPA produced; real-device validation pending. Source-owned session replacement and trusted non-premature natural-end gate remain unchanged; frozen playback/transport modules are untouched. |
 | Diagnostics | Required | Playback/App logs remain a first-class debugging surface. |
 | App appearance/theme | Partial | App identity/appearance work exists; broader theme work can be developed separately without touching player core. |
-| Other product modules | Active next area | Continue non-PiP development from the Build173 real-device functional baseline; Build176 is the current episode-selector code candidate until accepted on device. |
+| Other product modules | Active next area | Continue non-PiP development from the Build173 real-device functional baseline; Build176 is the current episode-selector test candidate until accepted on device. |
 
 ## Change discipline
 
