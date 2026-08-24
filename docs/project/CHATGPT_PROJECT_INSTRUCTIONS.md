@@ -1,30 +1,117 @@
 # OnePlayer ChatGPT Project Instructions v3
 
-GitHub repository: `white-shark-ssw/emby-playerlab`.
+GitHub 仓库：
 
-For every new OnePlayer development session:
+`white-shark-ssw/emby-playerlab`
 
-1. Read repository root `AGENTS.md`.
-2. Read `docs/project/START_HERE.md`.
-3. Follow the current state in `docs/project/`; do not ask the user to re-upload or re-explain v1-v19.
-4. Read historical `docs/history/chat-exports/v01.md ... v19.md` only when current authoritative docs cannot resolve a historical issue.
+每次开始新的 OnePlayer 开发会话时，必须先执行以下步骤：
 
-Authority order when sources conflict:
+1. 读取仓库根目录的 `AGENTS.md`。
+2. 读取 `docs/project/START_HERE.md`。
+3. 以 `docs/project/` 中的当前资料作为项目动态权威状态；不要要求用户重新上传或重新解释 v1-v19。
+4. 只有当当前权威资料无法解释某个历史问题时，才读取 `docs/history/chat-exports/v01.md ... v19.md`。
 
-1. user's latest real-device result;
-2. current real source / exact test branch;
-3. CI / IPA evidence;
-4. current `docs/project/`;
-5. old chat exports/plans.
+资料冲突时，按以下优先级判断：
 
-Before editing code, inspect the real definitions/call sites/state ownership. Never guess API, variable, function, or framework behavior. Make the smallest evidence-backed change. Do not add speculative retries, fallbacks, timers, watchdogs, duplicate state, compatibility shims, abstractions, or unrelated refactors "just in case". If evidence does not justify a code change, say so instead of manufacturing one.
+1. 用户最新真机测试结果；
+2. 当前真实源码 / 对应测试分支；
+3. CI / IPA 证据；
+4. 当前 `docs/project/` 项目资料；
+5. 历史聊天导出中的旧结论、旧计划或旧推测。
 
-Read `MODULE_STATUS.md` before touching Frozen areas. Preserve P0 playback and transport contracts, including immediate double-tap Seek, STRM/302, 115/CDN direct client playback, Range/206, session cache, Emby progress/Resume, abnormal-media tolerance, diagnostics, and MPV main playback. NAS must never relay media bytes. Never restore time→byte proportional seek guessing.
+修改代码前，必须先检查真实定义、调用点、状态所有权以及相关日志/测试。禁止猜测 API、变量名、函数名、框架行为或源码结构。
 
-Target device is iPhone 15 Pro Max / iOS 17.0. Deployment Target should remain iOS 15.0 unless a verified dependency/core-API limitation requires raising it; explain why and attempted alternatives first. Never raise it above iOS 17.0. Prefer lower-version APIs, UIKit/AVFoundation equivalents, `if #available`, and non-core conditional degradation. Player core lifecycle must not depend on SwiftUI.
+只做有证据支持的最小修改。不要为了“保险”或“以后可能需要”而擅自加入：
 
-Do not assume `main` is the latest functional baseline. When logs are provided, analyze the exact Build/branch source. Keep naturally short code on one line.
+- speculative retry；
+- fallback；
+- timer；
+- watchdog；
+- 重复状态；
+- compatibility shim；
+- 无当前需求的抽象层；
+- 与当前问题无关的重构。
 
-Always distinguish: Code written / CI passed / IPA produced / Real-device tested / Stable or frozen. Never call CI success a solved runtime bug.
+如果现有证据并不足以证明需要修改代码，应明确说明“不应该改”或“暂时没有足够依据修改”，而不是为了完成任务强行制造补丁。
 
-After every material implementation, CI/IPA baseline, real-device result, architectural decision, rejection, freeze, dependency change, or compatibility change, proactively update the relevant GitHub `docs/project/` files in the same work cycle. Do not wait for the user to request documentation maintenance.
+开发前必须读取 `MODULE_STATUS.md`。标记为 Frozen 的模块，除非当前任务确实需要，不得顺手修改。
+
+必须保护当前 P0 播放与传输合同，包括：
+
+- 左侧双击立即快退；
+- 右侧双击立即快进；
+- 连续快速双击立即响应，不等待防抖累计；
+- STRM / HTTP 302；
+- 115/CDN 客户端直连；
+- HTTP Range / 206；
+- 会话级缓存；
+- Emby 播放进度 / Resume 同步；
+- 异常短片 / 提前 EOF 容错；
+- 播放诊断日志；
+- MPV 主力播放路径。
+
+绝对禁止 NAS 成为媒体字节中转站。
+
+禁止重新采用：
+
+`targetTime / duration × fileSize`
+
+这种时间→字节比例猜测作为 Seek / Transport 锚点。
+
+目标测试设备：
+
+- iPhone 15 Pro Max
+- iOS 17.0
+
+Deployment Target 应优先保持 iOS 15.0。
+
+只有当必要依赖或核心 API 已确认无法兼容 iOS 15.0 时，才允许考虑提高最低系统版本；提高前必须说明：
+
+- 具体不兼容原因；
+- 已尝试的低版本兼容方案；
+- 为什么这些方案不可行。
+
+任何情况下 Deployment Target 不得高于 iOS 17.0。
+
+优先使用：
+
+- 低版本等价 API；
+- UIKit / AVFoundation 兼容实现；
+- `if #available`；
+- 非核心功能条件降级。
+
+播放器、Transport、Cache、Emby Session 等核心生命周期不得依赖 SwiftUI View 生命周期。
+
+不要假设 GitHub `main` 一定是最新功能测试基线。分析日志或继续开发前，必须确认日志对应的 Build / PR / branch / commit，并读取对应真实源码。
+
+代码格式方面：能自然写在一行的短语句、函数调用和表达式不要人为拆成多行。
+
+必须始终严格区分以下证据级别：
+
+1. Code written
+2. CI passed
+3. IPA produced
+4. Real-device tested
+5. Stable / frozen
+
+不得把“CI 成功”或“IPA 已生成”描述成“真机问题已经解决”。
+
+每次发生以下重要事件后，必须在同一轮工作中主动更新 GitHub 中相关的 `docs/project/` 文件，不需要等用户提醒：
+
+- 重要代码实现完成；
+- 形成新的 CI / IPA 有效测试基线；
+- 用户给出新的真机测试结果；
+- 架构决策被确认、否定、冻结或替换；
+- Player / PiP / Transport / Cache / Emby / Navigation / Compatibility 架构变化；
+- 新增或替换依赖；
+- Deployment Target 或兼容规则变化；
+- 当前功能测试基线发生变化。
+
+按需更新：
+
+- `PROJECT_STATE.md`
+- `MODULE_STATUS.md`
+- `TECHNICAL_DECISIONS.md`
+- `BUILD_TEST_INDEX.md`
+
+不得只在聊天里说明新的项目结论，而不同步维护 GitHub 项目资料。
