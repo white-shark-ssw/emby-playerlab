@@ -413,13 +413,12 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         returnRendererRestoreInProgress = false
         returnActualPosition = nil
         returnRendererReadyHostTime = nil
-        returnBridgeCatchupHolding = false
+        returnFinalBridgeAlignmentApplied = false
         returnSystemStopped = false
         returnSurfaceReplayRequested = false
         returnPostStopRetryCount = 0
         returnSystemRestoreAccepted = false
         returnBridgeFadeInProgress = false
-        lastReturnBridgeAuthoritySyncAt = 0
         pendingSystemPauseWorkItem?.cancel(); pendingSystemPauseWorkItem = nil
         AppOrientationCoordinator.shared.beginPictureInPictureRestoreOrientationHold()
         AppOrientationCoordinator.shared.preparePictureInPictureRestoreDestination()
@@ -427,8 +426,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         let bridgeBefore = clock.position()
         clock.reset(position: target, playing: behavior.playback == .playing)
         syncTimebaseToClock()
-        lastReturnBridgeAuthoritySyncAt = CACurrentMediaTime()
-        DiagnosticsLogger.shared.playback("PiPState", "return begin reason=\(reason) target=\(String(format: "%.3f", target)) authority=mpv-snapshot manual=\(manualForeground) systemCompletion=\(systemCompletion != nil) bridgeBefore=\(String(format: "%.3f", bridgeBefore)) initialBridgeDriftMs=\(String(format: "%.1f", (target - bridgeBefore) * 1000)) bridgePolicy=align-under-avkit-transition")
+        DiagnosticsLogger.shared.playback("PiPState", "return begin reason=\(reason) target=\(String(format: "%.3f", target)) authority=mpv-snapshot manual=\(manualForeground) systemCompletion=\(systemCompletion != nil) bridgeBefore=\(String(format: "%.3f", bridgeBefore)) initialBridgeDriftMs=\(String(format: "%.1f", (target - bridgeBefore) * 1000)) bridgePolicy=single-initial-align")
         pollReturnBarrier(attempt: 0)
     }
 
@@ -439,8 +437,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             guard let self else { return }
             self.returnRendererRestoreInProgress = false
             self.returnRendererReady = success
-            self.returnActualPosition = actualPosition
+            self.returnActualPosition = success ? (actualPosition ?? self.playbackController?.snapshot.position) : nil
             self.returnRendererReadyHostTime = success ? CACurrentMediaTime() : nil
+            self.returnFinalBridgeAlignmentApplied = false
             if success {
                 AppOrientationCoordinator.shared.armPictureInPicturePresentationRelease()
             }
@@ -450,54 +449,12 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         }
     }
 
-    private func synchronizeReturnBridgeToMPVAuthorityIfNeeded() -> Double? {
-        guard behavior.exitIntent == .returnToPlayer, behavior.playback == .playing, controlTimebase != nil else { return nil }
+    private func returnBridgeHandoffMeasurement() -> (authority: Double, bridge: Double, drift: Double)? {
+        guard behavior.exitIntent == .returnToPlayer, behavior.playback == .playing, let actual = returnActualPosition, let readyHost = returnRendererReadyHostTime else { return nil }
         let now = CACurrentMediaTime()
-
-        let authority: Double
-        if let actual = returnActualPosition, let readyHost = returnRendererReadyHostTime {
-            authority = actual + max(0, now - readyHost)
-        } else if let playbackController {
-            authority = playbackController.snapshot.position
-        } else {
-            return nil
-        }
-
+        let authority = actual + max(0, now - readyHost)
         let bridge = clock.position(at: now)
-        let drift = authority - bridge
-
-        if drift > 0.08, now - lastReturnBridgeAuthoritySyncAt >= 0.08 {
-            clock.reset(position: authority, playing: true, now: now)
-            syncTimebaseToClock()
-            lastReturnBridgeAuthoritySyncAt = now
-            returnBridgeCatchupHolding = false
-            DiagnosticsLogger.shared.playback("PiPState", "visual bridge authority rebase direction=forward authority=\(String(format: "%.3f", authority)) bridgeBefore=\(String(format: "%.3f", bridge)) driftMs=\(String(format: "%.1f", drift * 1000)) source=renderer-anchor")
-            return drift
-        }
-
-        if drift < -0.12, !returnBridgeCatchupHolding {
-            clock.setPlaying(false, now: now)
-            syncTimebaseToClock()
-            returnBridgeCatchupHolding = true
-            lastReturnBridgeAuthoritySyncAt = now
-            DiagnosticsLogger.shared.playback("PiPState", "visual bridge catchup hold begin authority=\(String(format: "%.3f", authority)) bridge=\(String(format: "%.3f", bridge)) driftMs=\(String(format: "%.1f", drift * 1000)) policy=freeze-bridge-until-mpv-catches")
-            return drift
-        }
-
-        if returnBridgeCatchupHolding {
-            let heldBridge = clock.position(at: now)
-            let heldDrift = authority - heldBridge
-            if heldDrift >= -0.04 {
-                clock.reset(position: heldBridge, playing: true, now: now)
-                syncTimebaseToClock()
-                returnBridgeCatchupHolding = false
-                lastReturnBridgeAuthoritySyncAt = now
-                DiagnosticsLogger.shared.playback("PiPState", "visual bridge catchup hold end authority=\(String(format: "%.3f", authority)) bridge=\(String(format: "%.3f", heldBridge)) driftMs=\(String(format: "%.1f", heldDrift * 1000))")
-            }
-            return heldDrift
-        }
-
-        return drift
+        return (authority, bridge, authority - bridge)
     }
 
     private func pollReturnBarrier(attempt: Int) {
@@ -537,16 +494,26 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             }
         }
 
-        let bridgeDrift = synchronizeReturnBridgeToMPVAuthorityIfNeeded()
         let gateReleased = !PlayerSurfacePresentationGate.shared.isHolding
         if behavior.exitIntent == .returnToPlayer, returnSystemStopped, returnRendererReady, gateReleased {
-            let aligned = bridgeDrift.map { abs($0) <= 0.12 } ?? true
-            if aligned {
-                DiagnosticsLogger.shared.playback("PiPState", "visual bridge handoff aligned driftMs=\(bridgeDrift.map { String(format: "%.1f", $0 * 1000) } ?? "unknown") action=crossfade")
-                beginVisualBridgeCrossfade(reason: "return-to-player") { [weak self] in self?.completeReturnAfterSystemStop() }
-                return
+            if let measurement = returnBridgeHandoffMeasurement() {
+                if abs(measurement.drift) <= 0.12 {
+                    DiagnosticsLogger.shared.playback("PiPState", "visual bridge handoff aligned driftMs=\(String(format: "%.1f", measurement.drift * 1000)) authority=\(String(format: "%.3f", measurement.authority)) bridge=\(String(format: "%.3f", measurement.bridge)) policy=no-periodic-sync action=crossfade")
+                    beginVisualBridgeCrossfade(reason: "return-to-player") { [weak self] in self?.completeReturnAfterSystemStop() }
+                    return
+                }
+                if !returnFinalBridgeAlignmentApplied {
+                    let now = CACurrentMediaTime()
+                    clock.reset(position: measurement.authority, playing: true, now: now)
+                    syncTimebaseToClock()
+                    returnFinalBridgeAlignmentApplied = true
+                    DiagnosticsLogger.shared.playback("PiPState", "visual bridge final one-shot align driftMs=\(String(format: "%.1f", measurement.drift * 1000)) authority=\(String(format: "%.3f", measurement.authority)) bridgeBefore=\(String(format: "%.3f", measurement.bridge)) policy=single-correction")
+                } else {
+                    DiagnosticsLogger.shared.playback("PiPState", "visual bridge handoff awaiting post-align display cycle driftMs=\(String(format: "%.1f", measurement.drift * 1000))")
+                }
+            } else {
+                DiagnosticsLogger.shared.playback("PiPState", "visual bridge handoff measurement unavailable action=wait")
             }
-            DiagnosticsLogger.shared.playback("PiPState", "visual bridge handoff waiting driftMs=\(bridgeDrift.map { String(format: "%.1f", $0 * 1000) } ?? "unknown") thresholdMs=120")
         }
 
         if behavior.exitIntent == .pauseAndSuspend, returnRendererReady, gateReleased {
