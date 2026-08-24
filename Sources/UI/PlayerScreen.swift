@@ -243,7 +243,9 @@ struct PlayerScreen: View {
             if capabilities.supportsPictureInPicture {
                 Button {
                     pictureInPictureController.toggle(using: controller)
-                    showControls()
+                    controlsHideWorkItem?.cancel()
+                    controlsHideWorkItem = nil
+                    controlsVisible = false
                 } label: {
                     Image(systemName: "pip").font(.system(size: 19, weight: .semibold)).frame(width: 42, height: 42)
                 }

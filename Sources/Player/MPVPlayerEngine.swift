@@ -25,7 +25,7 @@ final class MPVMetalLayer: CAMetalLayer {
 }
 
 #if canImport(Libmpv)
-final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, PlayerPiPInlineRendererControlling {
+final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, PlayerPiPInlineRendererControlling, PlayerPiPSeekLandingProviding {
     let kind: PlayerEngineKind = .mpv
     var onSnapshot: ((PlayerSnapshot) -> Void)?
     var onSeekCompleted: ((SeekResult) -> Void)?
@@ -64,6 +64,12 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
     private var enhancementBaseline: EnhancementBaseline?
     private var lastPresentationTimingSignature: PresentationTimingSignature?
     private var pictureInPictureRendererSuspended = false
+    var pictureInPictureSeekLandingHandler: ((SeekResult) -> Void)?
+    private var pictureInPictureResumeCompletion: ((Bool, Double?) -> Void)?
+    private var pictureInPictureResumeTargetPosition: Double?
+    private var pictureInPictureResumeTimeout: DispatchWorkItem?
+    private var pictureInPictureResumePoll: DispatchWorkItem?
+    private var pictureInPictureResumeSawPlaybackRestart = false
 
     private struct Configuration {
         let url: URL
@@ -185,6 +191,13 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
     func suspendInlineRendererForPictureInPicture(completion: @escaping (Bool) -> Void) {
         queue.async { [weak self] in
             guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }
+            self.pictureInPictureResumeTimeout?.cancel()
+            self.pictureInPictureResumeTimeout = nil
+            self.pictureInPictureResumePoll?.cancel()
+            self.pictureInPictureResumePoll = nil
+            self.pictureInPictureResumeSawPlaybackRestart = false
+            self.pictureInPictureResumeCompletion = nil
+            self.pictureInPictureResumeTargetPosition = nil
             if self.pictureInPictureRendererSuspended { DispatchQueue.main.async { completion(true) }; return }
             let previousVO = self.getStringProperty(handle: handle, name: "current-vo") ?? "unknown"
             guard self.setPropertyChecked(handle: handle, name: "vo", value: "null") else {
@@ -202,20 +215,40 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
     }
 
     func resumeInlineRendererAfterPictureInPicture(completion: @escaping (Bool) -> Void) {
+        resumeInlineRendererAfterPictureInPicture(targetPosition: snapshot.position) { success, _ in completion(success) }
+    }
+
+    func resumeInlineRendererAfterPictureInPicture(targetPosition: Double, completion: @escaping (Bool, Double?) -> Void) {
         queue.async { [weak self] in
-            guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false) }; return }
-            guard self.pictureInPictureRendererSuspended else { DispatchQueue.main.async { completion(true) }; return }
+            guard let self, let handle = self.mpv, !self.isStopping else { DispatchQueue.main.async { completion(false, nil) }; return }
+            guard self.pictureInPictureRendererSuspended else { DispatchQueue.main.async { completion(true, self.snapshot.position) }; return }
+            self.pictureInPictureResumeTimeout?.cancel()
+            self.pictureInPictureResumePoll?.cancel()
+            self.pictureInPictureResumePoll = nil
+            self.pictureInPictureResumeSawPlaybackRestart = false
+            self.pictureInPictureResumeCompletion = completion
+            self.pictureInPictureResumeTargetPosition = max(0, targetPosition)
             guard self.setPropertyChecked(handle: handle, name: "vo", value: "gpu-next") else {
-                DiagnosticsLogger.shared.log("MPVPiP", "vo restore request failed")
-                DispatchQueue.main.async { completion(false) }
+                DiagnosticsLogger.shared.log("MPVPiP", "vo restore request failed target=\(String(format: "%.3f", targetPosition))")
+                self.finishPictureInPictureRendererResume(success: false, actualPosition: nil, reason: "vo-property-failed")
                 return
             }
             self.waitForPictureInPictureVO(handle: handle, target: "gpu-next", attempt: 0) { [weak self] ready, currentVO in
-                guard let self else { DispatchQueue.main.async { completion(false) }; return }
-                if ready { self.pictureInPictureRendererSuspended = false }
+                guard let self else { return }
                 let drawable = self.displayLayer.drawableSize
-                DiagnosticsLogger.shared.log("MPVPiP", "vo restore ready=\(ready) currentVO=\(currentVO) drawable=\(Int(drawable.width))x\(Int(drawable.height)) decoderPreserved=true")
-                DispatchQueue.main.async { completion(ready) }
+                guard ready else {
+                    DiagnosticsLogger.shared.log("MPVPiP", "vo restore unavailable currentVO=\(currentVO) drawable=\(Int(drawable.width))x\(Int(drawable.height))")
+                    self.finishPictureInPictureRendererResume(success: false, actualPosition: nil, reason: "vo-not-ready")
+                    return
+                }
+                DiagnosticsLogger.shared.log("MPVPiP", "vo restore configured currentVO=\(currentVO) drawable=\(Int(drawable.width))x\(Int(drawable.height)) target=\(String(format: "%.3f", targetPosition)) handoff=await-playback-restart")
+                let timeout = DispatchWorkItem { [weak self] in
+                    guard let self, self.pictureInPictureResumeCompletion != nil else { return }
+                    self.finishPictureInPictureRendererResume(success: false, actualPosition: self.snapshot.position, reason: "fresh-frame-timeout")
+                }
+                self.pictureInPictureResumeTimeout = timeout
+                self.queue.asyncAfter(deadline: .now() + 2.0, execute: timeout)
+                self.schedulePictureInPictureRendererResumePoll(handle: handle)
             }
         }
     }
@@ -229,6 +262,51 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         if voMatched && drawableReady { completion(true, currentVO); return }
         guard attempt < 40 else { completion(false, currentVO); return }
         queue.asyncAfter(deadline: .now() + 0.01) { [weak self] in self?.waitForPictureInPictureVO(handle: handle, target: target, attempt: attempt + 1, completion: completion) }
+    }
+
+    private func finishPictureInPictureRendererResume(success: Bool, actualPosition: Double?, reason: String) {
+        guard let completion = pictureInPictureResumeCompletion else { return }
+        pictureInPictureResumeTimeout?.cancel()
+        pictureInPictureResumeTimeout = nil
+        pictureInPictureResumePoll?.cancel()
+        pictureInPictureResumePoll = nil
+        pictureInPictureResumeSawPlaybackRestart = false
+        pictureInPictureResumeCompletion = nil
+        let target = pictureInPictureResumeTargetPosition
+        pictureInPictureResumeTargetPosition = nil
+        if success { pictureInPictureRendererSuspended = false }
+        DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame handoff success=\(success) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") actual=\(actualPosition.map { String(format: "%.3f", $0) } ?? "unknown") reason=\(reason)")
+        DispatchQueue.main.async { completion(success, actualPosition) }
+    }
+
+
+    private func evaluatePictureInPictureRendererResume(handle: OpaquePointer, fallbackPosition: Double?, reason: String) -> Bool {
+        guard pictureInPictureResumeCompletion != nil else { return true }
+        let currentVO = getStringProperty(handle: handle, name: "current-vo") ?? "unknown"
+        let viewport = rendererViewportSize(handle: handle)
+        var videoPTS = Double.nan
+        let hasVideoPTS = getProperty(handle: handle, name: "video-pts", format: MPV_FORMAT_DOUBLE, value: &videoPTS) >= 0 && videoPTS.isFinite
+        var timePosition = Double.nan
+        let hasTimePosition = getProperty(handle: handle, name: "time-pos", format: MPV_FORMAT_DOUBLE, value: &timePosition) >= 0 && timePosition.isFinite
+        let actualPosition = hasVideoPTS ? videoPTS : (hasTimePosition ? timePosition : (fallbackPosition ?? snapshot.position))
+        let target = pictureInPictureResumeTargetPosition
+        let delta = target.map { actualPosition - $0 }
+        let positionMatched = delta.map { abs($0) <= 0.75 } ?? true
+        let ready = pictureInPictureResumeSawPlaybackRestart && currentVO.contains("gpu-next") && viewport != nil && positionMatched
+        DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame probe reason=\(reason) restartSeen=\(pictureInPictureResumeSawPlaybackRestart) currentVO=\(currentVO) viewportReady=\(viewport != nil) source=\(hasVideoPTS ? "video-pts" : "time-pos") actual=\(String(format: "%.3f", actualPosition)) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") delta=\(delta.map { String(format: "%.3f", $0) } ?? "unknown") ready=\(ready)")
+        if ready { finishPictureInPictureRendererResume(success: true, actualPosition: actualPosition, reason: "fresh-video-frame"); return true }
+        return false
+    }
+
+    private func schedulePictureInPictureRendererResumePoll(handle: OpaquePointer) {
+        pictureInPictureResumePoll?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let currentHandle = self.mpv, currentHandle == handle, !self.isStopping, self.pictureInPictureResumeCompletion != nil else { return }
+            if self.evaluatePictureInPictureRendererResume(handle: handle, fallbackPosition: nil, reason: "poll") { return }
+            self.schedulePictureInPictureRendererResumePoll(handle: handle)
+        }
+        pictureInPictureResumePoll = work
+        queue.asyncAfter(deadline: .now() + 0.02, execute: work)
     }
 
     func setPlaybackRate(_ rate: Double) {
@@ -635,6 +713,14 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         enhancementBaseline = nil
         lastPresentationTimingSignature = nil
         pictureInPictureRendererSuspended = false
+        pictureInPictureSeekLandingHandler = nil
+        pictureInPictureResumeTimeout?.cancel()
+        pictureInPictureResumeTimeout = nil
+        pictureInPictureResumePoll?.cancel()
+        pictureInPictureResumePoll = nil
+        pictureInPictureResumeSawPlaybackRestart = false
+        pictureInPictureResumeCompletion = nil
+        pictureInPictureResumeTargetPosition = nil
 
         let flushLayer = { [displayLayer] in
             displayLayer.contents = nil
@@ -855,10 +941,16 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
                 let nearestText = pending.nearestKeyframe.map { String(format: "%.3f", $0) } ?? "none"
                 DiagnosticsLogger.shared.log("MPVFastSeek", "id=\(pending.id) phase=landing requestedTarget=\(String(format: "%.3f", pending.target)) dispatchTarget=\(String(format: "%.6f", pending.dispatchTarget)) actual=\(String(format: "%.3f", actualPosition)) requestedDelta=\(String(format: "%.3f", actualPosition - pending.target)) dispatchDelta=\(String(format: "%.3f", actualPosition - pending.dispatchTarget)) previous=\(previousText) next=\(nextText) nearest=\(nearestText) keyframeLookupMs=\(String(format: "%.1f", pending.keyframeLookupMs)) action=\(pending.keyframeAction)")
                 if pending.previousKeyframe == nil || pending.nextKeyframe == nil { self.backfillKeyframeGapAfterLanding(seekID: pending.id, target: pending.target) }
+                let result = SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: latency, measurement: "MPV playback-restart after latest MPV_EVENT_SEEK")
                 DispatchQueue.main.async { [weak self] in
-                    self?.onSeekCompleted?(SeekResult(requestedAt: pending.requestedAt, target: pending.target, actualPosition: actualPosition, bufferHit: pending.bufferHit, completionLatencyMs: latency, measurement: "MPV playback-restart after latest MPV_EVENT_SEEK"))
+                    self?.onSeekCompleted?(result)
+                    self?.pictureInPictureSeekLandingHandler?(result)
                 }
             } else { DiagnosticsLogger.shared.log("MPVSeekLanding", "id=none actual=\(String(format: "%.3f", actualPosition)) event=playback-restart-without-pending") }
+            if pictureInPictureResumeCompletion != nil {
+                pictureInPictureResumeSawPlaybackRestart = true
+                _ = evaluatePictureInPictureRendererResume(handle: handle, fallbackPosition: actualPosition, reason: "playback-restart")
+            }
             emitOnMain()
         case MPV_EVENT_END_FILE:
             if !isStopping {
@@ -1244,10 +1336,11 @@ enum MPVEngineError: LocalizedError {
 }
 
 #else
-final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, PlayerPiPInlineRendererControlling {
+final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, PlayerPiPInlineRendererControlling, PlayerPiPSeekLandingProviding {
     let kind: PlayerEngineKind = .mpv
     var onSnapshot: ((PlayerSnapshot) -> Void)?
     var onSeekCompleted: ((SeekResult) -> Void)?
+    var pictureInPictureSeekLandingHandler: ((SeekResult) -> Void)?
     var displayLayer = MPVMetalLayer()
 
     private var snapshot = PlayerSnapshot(errorMessage: "当前构建未链接 MPVKit；v0.9 自动模式需要 MPVKit。")
@@ -1279,7 +1372,9 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
     func seek(to seconds: Double, direction: SeekDirection) {
         let requestedAt = CACurrentMediaTime()
         snapshot.position = max(0, seconds)
-        onSeekCompleted?(SeekResult(requestedAt: requestedAt, target: seconds, actualPosition: nil, bufferHit: false, completionLatencyMs: 0, measurement: "MPV unavailable in this build"))
+        let result = SeekResult(requestedAt: requestedAt, target: seconds, actualPosition: nil, bufferHit: false, completionLatencyMs: 0, measurement: "MPV unavailable in this build")
+        onSeekCompleted?(result)
+        pictureInPictureSeekLandingHandler?(result)
         emit()
     }
 
