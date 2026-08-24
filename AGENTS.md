@@ -8,14 +8,15 @@ Before editing:
 
 1. Read `docs/project/START_HERE.md`.
 2. Read `docs/project/CURRENT_WORK.md` and route the session to the correct work lane.
-3. For feature development, bugs, logs, real-device investigation, architecture implementation, CI or IPA work, read `docs/project/CURRENT_WORK_DEV.md`. For project-rule, documentation-governance, AI-instruction or Skill work, read `docs/project/CURRENT_WORK_RULES.md`.
-4. If the selected lane is `Active`, resume from its recorded baseline and `Next exact action` instead of restarting the task from scratch. Do not modify or reset the other lane.
-5. Read the current task's relevant entries in `docs/project/PROJECT_STATE.md`, `MODULE_STATUS.md`, and `TECHNICAL_DECISIONS.md`.
-6. Resolve the actual functional test baseline: Build / PR / branch / commit. Do not assume `main` is the latest runtime baseline.
-7. Inspect the real source definitions, call sites, state owners, and existing tests/logging before proposing a change.
-8. If the source contradicts the initial hypothesis, change the hypothesis instead of forcing the planned patch.
-
-If the user explicitly says the current session is for maintaining or modifying project rules, route to `CURRENT_WORK_RULES.md` even when `CURRENT_WORK_DEV.md` is also `Active`.
+3. Explicit routing aliases: `当前为规则会话` means `docs/project/CURRENT_WORK_RULES.md`; `当前为开发会话` or `当前为功能会话` means `docs/project/CURRENT_WORK_DEV.md`. Clear equivalent wording has the same effect.
+4. For feature development, bugs, logs, real-device investigation, architecture implementation, CI or IPA work, use `docs/project/CURRENT_WORK_DEV.md`. For project-rule, documentation-governance, AI-instruction or Skill work, use `docs/project/CURRENT_WORK_RULES.md`.
+5. If the user's current message does not clearly identify which lane this session belongs to, stop routing and ask the user to choose Rules or Development/Feature. Do not guess, do not activate either lane, and do not start either task until the user chooses.
+6. Lane `Active`/`Idle` status is not sufficient routing evidence. Even if only one lane is `Active`, do not select it from status alone. Do not infer the lane from prior-chat topic, recency, urgency, or model preference.
+7. If the selected lane is `Active`, resume from its recorded baseline and `Next exact action` instead of restarting the task from scratch. Do not modify or reset the other lane.
+8. Read the current task's relevant entries in `docs/project/PROJECT_STATE.md`, `MODULE_STATUS.md`, and `TECHNICAL_DECISIONS.md`.
+9. Resolve the actual functional test baseline: Build / PR / branch / commit. Do not assume `main` is the latest runtime baseline.
+10. Inspect the real source definitions, call sites, state owners, and existing tests/logging before proposing a change.
+11. If the source contradicts the initial hypothesis, change the hypothesis instead of forcing the planned patch.
 
 Do not invent API names, variables, functions, framework behavior, or source structure.
 
@@ -133,6 +134,7 @@ For any multi-step task, activate the correct checkpoint lane early enough that 
 - Rule/documentation-governance work uses only `docs/project/CURRENT_WORK_RULES.md`.
 - The two lanes may both be `Active` at the same time.
 - Never overwrite, reset, or merge the other lane just because the current task finishes.
+- Never activate a lane until the session has been unambiguously routed from the user's current message or explicit selection.
 
 Create the first checkpoint as soon as the task goal and a usable baseline/working direction are known. Refresh the selected lane again at meaningful milestones such as baseline/branch confirmation, first effective patch or rule decision, CI/IPA change, user real-device result, or a material change of direction. The newest checkpoint should always be sufficient for a new session to continue without needing the previous chat.
 
