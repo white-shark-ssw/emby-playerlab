@@ -1,0 +1,198 @@
+name: Build174 Episode Picker Release
+
+on:
+  pull_request:
+    branches: [fix/pip-seek-completion-return-simplify-0.14.6]
+    paths:
+      - "Sources/**"
+      - "Config/**"
+      - "Resources/**"
+      - "project.yml"
+      - "Podfile"
+      - "docs/changelog/CHANGELOG_v0_14_7_build174.md"
+      - ".github/workflows/build174-episode-picker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout Build174 source
+        uses: actions/checkout@v4
+        with:
+          ref: feat/player-episode-picker-0.14.7
+          fetch-depth: 0
+
+      - name: Validate Build174 contracts
+        run: |
+          set -euo pipefail
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          base="4f7acf8da06ded00db735b07210983a0d2dd5be6"
+          app=Path("Sources/Core/AppIdentity.swift").read_text()
+          project=Path("project.yml").read_text()
+          picker=Path("Sources/UI/PlayerEpisodeSelection.swift").read_text()
+          screen=Path("Sources/UI/PlayerScreen.swift").read_text()
+          settings=Path("Sources/UI/PlayerSettingsView.swift").read_text()
+
+          checks={
+            "Build174 version": 'sourceVersion = "0.14.7"' in app,
+            "iOS15 deployment": 'iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project,
+            "episode metadata uses Emby series list": "seriesEpisodes(seriesId:" in picker,
+            "episode media source resolved on demand": "playbackInfo(itemId:" in picker and "resolvePlaybackSource(itemId:" in picker,
+            "no episode timer/watchdog": "Task.sleep" not in picker and "Timer" not in picker and "watchdog" not in picker.lower(),
+            "session replacement host": "PlayerSessionScreen" in screen and "onSwitchSource" in screen and ".id(" in screen,
+            "trusted natural end gate": "PrematureEOFGuard.evaluate" in screen and "trusted-natural-end" in screen,
+            "automatic next setting": 'Toggle("自动加载下一集"' in settings,
+          }
+          for name,ok in checks.items():
+            print(("PASS" if ok else "FAIL"),name)
+            if not ok: raise SystemExit(f"::error::{name}")
+
+          frozen=[
+            "Sources/Player/PlayerController.swift",
+            "Sources/Player/MPVPlayerEngine.swift",
+            "Sources/Transport/PlaybackTransportContext.swift",
+            "Sources/Transport/UnifiedMediaTransportSession.swift",
+            "Sources/Transport/RangeHTTPClient.swift",
+            "Sources/UI/PlayerPiPSessionCoordinator.swift",
+            "Sources/UI/PlayerPiPSamplePipeline.swift",
+            "Sources/UI/PlayerPiPInlineRendererAdapter.swift",
+            "Sources/UI/MPVPlayerSurface.swift",
+            "Sources/UI/CacheSettingsView.swift",
+          ]
+          frozen_diff=subprocess.run(["git","diff","--name-only",base,"HEAD","--",*frozen],capture_output=True,text=True,check=True).stdout.strip()
+          if frozen_diff: raise SystemExit(f"::error::frozen files changed: {frozen_diff}")
+          print("PASS PlayerController, MPV, PiP, transport and cache frozen")
+
+          changed=subprocess.run(["git","diff","--name-only",base,"HEAD"],capture_output=True,text=True,check=True).stdout.splitlines()
+          allowed={
+            ".github/workflows/build174-episode-picker.yml",
+            "Sources/Core/AppIdentity.swift",
+            "Sources/UI/PlayerControlPanelViews.swift",
+            "Sources/UI/PlayerEpisodeSelection.swift",
+            "Sources/UI/PlayerScreen.swift",
+            "Sources/UI/PlayerSettings.swift",
+            "Sources/UI/PlayerSettingsView.swift",
+            "docs/changelog/CHANGELOG_v0_14_7_build174.md",
+          }
+          unexpected=[p for p in changed if p not in allowed]
+          if unexpected: raise SystemExit(f"::error::unexpected changed files: {unexpected}")
+          print("PASS Build174 diff boundary")
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Generate project and resolve dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            MARKETING_VERSION=0.14.7 \
+            CURRENT_PROJECT_VERSION=174 \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build174.log
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-Build174-errors-${{ github.sha }}
+          path: |
+            build174.log
+            package-resolution.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Locate and validate app
+        if: success()
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -d "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.14.7" --build "174" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
+
+      - name: Validate MinOS
+        if: success()
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" build174-min-os.log build174.log
+
+      - name: Package unsigned IPA
+        if: success()
+        run: |
+          set -euo pipefail
+          rm -rf Payload && mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA_NAME="OnePlayer-0.14.7-build174-episode-picker-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME"
+          shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
+          SOURCE_ZIP="OnePlayer-0.14.7-build174-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Upload Build174 artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.7-build174-episode-picker
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            build174.log
+            build174-min-os.log
+            package-resolution.log
+          retention-days: 30
+
+      - name: Publish Build174 test prerelease
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v0.14.7-build174-test"
+          gh release delete "$TAG" --cleanup-tag -y >/dev/null 2>&1 || true
+          gh release create "$TAG" "$IPA_NAME" "$IPA_NAME.sha256" "$SOURCE_ZIP" "$SOURCE_ZIP.sha256" --target "$SOURCE_SHA" --title "OnePlayer 0.14.7 Build174" --notes "Build174 player episode picker and trusted automatic next episode test candidate." --prerelease
