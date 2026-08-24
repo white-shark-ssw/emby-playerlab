@@ -1,4 +1,4 @@
-name: Build163 PiP Regression Fix Release
+name: Build164 PiP Regression Fix Release
 
 on:
   push:
@@ -6,14 +6,14 @@ on:
     paths: [".github/workflows/build-ksplayer-lab.yml"]
   pull_request:
     branches: [main]
-    paths: ["docs/ci/build163-trigger.md"]
+    paths: ["docs/ci/build164-trigger.md"]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: build163-pip-regression-${{ github.event.pull_request.number || github.ref }}
+  group: build164-pip-regression-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,12 +21,12 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 150
     steps:
-      - name: Checkout Build163 source
+      - name: Checkout Build164 source
         uses: actions/checkout@v4
         with:
-          ref: fix/pip-transaction-and-closed-return-0.13.96
+          ref: fix/pip-stop-handoff-and-skip-completion-0.13.97
 
-      - name: Validate Build163 source
+      - name: Validate Build164 source
         run: |
           set -euo pipefail
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
@@ -36,15 +36,18 @@ jobs:
           project = Path('project.yml').read_text()
           mpv = Path('Sources/Player/MPVPlayerEngine.swift').read_text()
           pip = Path('Sources/UI/PlayerPiPSessionCoordinator.swift').read_text()
+          host = Path('Sources/UI/PlayerPiPSourceHostView.swift').read_text()
           gesture = Path('Sources/UI/PlaybackGestureOverlay.swift').read_text()
           transport = Path('Sources/Transport/UnifiedMediaTransportSession.swift').read_text()
           checks = {
-              'Build163 source version': 'sourceVersion = "0.13.96"' in app,
+              'Build164 source version': 'sourceVersion = "0.13.97"' in app,
               'iOS 15 deployment': 'iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project,
               'MPV fast seek frozen': 'absolute+keyframes' in mpv and 'absolute+exact' not in mpv,
               'seek transaction suppression': 'seekPauseSuppressionActive' in pip and 'pauseEchoSuppressionMs=' in pip,
-              'genuine pause next-turn commit': 'deferred=next-main-turn' in pip and 'system-pause-committed' in pip,
-              'closed PiP live cover': 'keepSampleBufferCover=true orientationHold=released' in pip and 'fade-live-samplebuffer-cover' in pip,
+              'immediate AVKit skip completion': 'systemCompletion=immediate-after-command' in pip,
+              'system stop transaction': 'pictureInPictureControllerWillStopPictureInPicture' in pip and 'system-stop-in-progress' in pip,
+              'frozen handoff frame': 'showFallbackFrame' in pip and 'fallbackImageView' in host,
+              'bounded closed PiP cover': 'forced-release-frozen-cover' in pip,
               'Build161 volume dedupe retained': 'lastAppliedAdjustmentTick' in gesture,
               'UnifiedTransport frozen': 'UnifiedMediaTransportSession' in transport,
           }
@@ -83,31 +86,31 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
             -clonedSourcePackagesDirPath .spm-cache \
-            MARKETING_VERSION=0.13.96 \
-            CURRENT_PROJECT_VERSION=163 \
+            MARKETING_VERSION=0.13.97 \
+            CURRENT_PROJECT_VERSION=164 \
             IPHONEOS_DEPLOYMENT_TARGET=15.0 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
             DEVELOPMENT_TEAM='' \
-            clean build 2>&1 | tee build163.log
+            clean build 2>&1 | tee build164.log
 
-      - name: Extract Build163 compiler errors
+      - name: Extract Build164 compiler errors
         if: failure()
         run: |
           set +e
-          grep -nE '(^|[[:space:]])(error:|fatal error:)' build163.log > build163-errors.log
-          if [ ! -s build163-errors.log ]; then tail -n 600 build163.log > build163-errors.log; fi
-          sed -n '1,240p' build163-errors.log
+          grep -nE '(^|[[:space:]])(error:|fatal error:)' build164.log > build164-errors.log
+          if [ ! -s build164-errors.log ]; then tail -n 600 build164.log > build164-errors.log; fi
+          sed -n '1,240p' build164-errors.log
 
-      - name: Upload failed Build163 diagnostics
+      - name: Upload failed Build164 diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-Build163-build-errors-${{ github.sha }}
+          name: OnePlayer-Build164-build-errors-${{ github.sha }}
           path: |
-            build163.log
-            build163-errors.log
+            build164.log
+            build164-errors.log
             package-resolution.log
           if-no-files-found: warn
           retention-days: 7
@@ -120,14 +123,14 @@ jobs:
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP_PATH" && test -d "$APP_PATH"
           echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.13.96" --build "163" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.13.97" --build "164" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
 
       - name: Validate iOS 15.0 and iOS 17.0 compatibility
         if: success()
         run: |
           set -euo pipefail
           chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" build163-min-os.log build163.log
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" build164-min-os.log build164.log
 
       - name: Package unsigned IPA
         if: success()
@@ -135,38 +138,38 @@ jobs:
           set -euo pipefail
           rm -rf Payload && mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="OnePlayer-0.13.96-build163-pip-regression-fix-unsigned.ipa"
+          IPA_NAME="OnePlayer-0.13.97-build164-pip-regression-fix-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           /usr/bin/unzip -t "$IPA_NAME"
           shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
-          SOURCE_ZIP="OnePlayer-0.13.96-build163-source.zip"
+          SOURCE_ZIP="OnePlayer-0.13.97-build164-source.zip"
           git archive --format=zip --output "$SOURCE_ZIP" HEAD
           shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
 
-      - name: Upload Build163 artifacts
+      - name: Upload Build164 artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.13.96-build163-pip-regression-fix
+          name: OnePlayer-0.13.97-build164-pip-regression-fix
           path: |
             ${{ env.IPA_NAME }}
             ${{ env.IPA_NAME }}.sha256
             ${{ env.SOURCE_ZIP }}
             ${{ env.SOURCE_ZIP }}.sha256
-            build163.log
-            build163-min-os.log
+            build164.log
+            build164-min-os.log
             package-resolution.log
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish Build163 test prerelease
+      - name: Publish Build164 test prerelease
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="v0.13.96-build163-test"
+          TAG="v0.13.97-build164-test"
           gh release delete "$TAG" --cleanup-tag -y >/dev/null 2>&1 || true
-          gh release create "$TAG" "$IPA_NAME" "$IPA_NAME.sha256" "$SOURCE_ZIP" "$SOURCE_ZIP.sha256" --target "$SOURCE_SHA" --title "OnePlayer 0.13.96 Build163" --notes "Build163 real-device test IPA: PiP seek transaction suppression and black foreground-return fix. MPV absolute+keyframes, UnifiedTransport and iOS 15.0 Deployment Target remain frozen." --prerelease
+          gh release create "$TAG" "$IPA_NAME" "$IPA_NAME.sha256" "$SOURCE_ZIP" "$SOURCE_ZIP.sha256" --target "$SOURCE_SHA" --title "OnePlayer 0.13.97 Build164" --notes "Build164 real-device test IPA: PiP system-stop handoff, frozen-frame return cover, and immediate skip completion. MPV absolute+keyframes, UnifiedTransport and iOS 15.0 Deployment Target remain frozen." --prerelease
