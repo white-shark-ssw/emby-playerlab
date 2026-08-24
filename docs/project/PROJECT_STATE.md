@@ -1,10 +1,10 @@
 # OnePlayer Project State
 
-_Last updated after Build173 / OnePlayer 0.14.6 PiP evaluation._
+_Last updated after Build174 / OnePlayer 0.14.7 episode-selection CI/IPA candidate._
 
 ## Current functional baseline
 
-The latest functional test baseline is:
+The latest **real-device accepted** functional test baseline remains:
 
 - Product: **OnePlayer**
 - Version: **0.14.6**
@@ -16,6 +16,23 @@ The latest functional test baseline is:
 - Required target device: **iPhone 15 Pro Max / iOS 17.0**
 
 The repository `main` branch is not necessarily the latest functional player baseline. Always resolve the current test branch/build before analysing logs or changing player code.
+
+## Current development candidate
+
+**OnePlayer 0.14.7 / Build174** is the episode-selection test candidate:
+
+- branch: `feat/player-episode-picker-0.14.7`
+- draft PR: **#249**
+- standard MPV Release build source commit: `2d4c4cae7deac930e040ca7579b462d9952ce60d`
+- dedicated CI run: **32776020154**
+- artifact: `OnePlayer-0.14.7-build174-episode-picker`
+- state: **Code written / CI passed / IPA produced / real-device pending**
+
+Build174 adds a player episode button, bottom-up horizontal episode strip, manual episode switching and an `自动加载下一集` playback setting. It does not replace Build173 as the accepted functional baseline until the user tests it on device.
+
+The Build174 media/session rule is source-owned replacement rather than in-place source mutation. The fullscreen host remains presented, while each selected episode receives a fresh `PlayerController`, `PlaybackOrchestrator`, `PlaybackTransportContext` and Emby playback session. Episode metadata can be prepared, but 115/CDN temporary media URLs are resolved only when the user selects an episode or a trusted natural end requests the next one.
+
+Automatic next episode is gated by the same `PrematureEOFGuard` semantics used by the player: only a non-premature natural end may advance. Premature EOF, abnormal short-media recovery, network starvation and raw engine EOF are not enough.
 
 ## Core playback architecture
 
@@ -99,7 +116,9 @@ Do not start a new PiP optimisation build unless there is a materially new archi
 
 ## Current development direction
 
-PiP is no longer the active priority. New work should proceed module-by-module without casually touching:
+Build174 episode selection is the active real-device test candidate. Until accepted, Build173 remains the functional baseline.
+
+New work should proceed module-by-module without casually touching:
 
 - MPV Seek;
 - PiP;
