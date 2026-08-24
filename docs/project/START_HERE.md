@@ -4,7 +4,9 @@
 
 ## 新会话接手顺序
 
-先读取并以以下文件为当前权威状态：
+先读取仓库根目录 `AGENTS.md`，遵守 AI 编码纪律。
+
+然后读取并以以下文件为当前权威状态：
 
 1. `docs/project/PROJECT_STATE.md`
 2. `docs/project/MODULE_STATUS.md`
