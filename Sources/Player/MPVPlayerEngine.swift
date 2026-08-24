@@ -71,6 +71,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
     private var pictureInPictureResumeTargetPosition: Double?
     private var pictureInPictureResumeStartedAt: CFTimeInterval?
     private var pictureInPictureResumePlaybackAdvancing = false
+    private var pictureInPictureResumeBaselineVideoPTS: Double?
     private var pictureInPictureResumeTimeout: DispatchWorkItem?
     private var pictureInPictureResumePoll: DispatchWorkItem?
     private var pictureInPictureResumeSawPlaybackRestart = false
