@@ -47,7 +47,6 @@ struct PlayerScreen: View {
     @State private var audioInterruptionActive = false
     @State private var gestureResetGeneration = 0
     @State private var bufferingDownloadSpeed: Double = 0
-    @State private var pipCloseDismissPending = false
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
         let storedEngineRaw = UserDefaults.standard.string(forKey: PlayerPreferenceKeys.enginePreference)
@@ -180,11 +179,7 @@ struct PlayerScreen: View {
             if playbackStarted { applyPresentationPreferences() }
         }
         .onChange(of: pictureInPictureController.isActive) { _ in updateIndependentBrightnessForPlaybackContext() }
-        .onChange(of: pictureInPictureController.closePlaybackGeneration) { _ in handlePiPPlaybackClosureRequest() }
         .onChange(of: scenePhase) { phase in handleScenePhase(phase) }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            if pipCloseDismissPending { finalizePiPClosedPlaybackDismissal() }
-        }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { notification in handleAudioInterruption(notification) }
         .sheet(item: $activePanel, onDismiss: { scheduleControlsHide() }) { panel in
             PlayerControlPanelSheet(
@@ -685,7 +680,6 @@ struct PlayerScreen: View {
         case .active:
             setPlaybackIdleTimerDisabled(true, reason: "scene-active")
             updateIndependentBrightnessForPlaybackContext()
-            if pipCloseDismissPending { finalizePiPClosedPlaybackDismissal(); return }
             let shouldResume = wasAutoPausedForBackground && resumeWhenForegrounded && !audioInterruptionActive
             wasAutoPausedForBackground = false
             if shouldResume, controller.resumePlayback() {
@@ -878,31 +872,6 @@ struct PlayerScreen: View {
         let workItem = DispatchWorkItem { adjustmentHUD = nil }
         adjustmentHideWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: workItem)
-    }
-
-    private func handlePiPPlaybackClosureRequest() {
-        pipCloseDismissPending = true
-        controlsHideWorkItem?.cancel()
-        feedbackHideWorkItem?.cancel()
-        adjustmentHideWorkItem?.cancel()
-        controlsVisible = false
-        playbackSettingsPresented = false
-        centerFeedbackVisible = false
-        temporaryRateHUD = nil
-        adjustmentHUD = nil
-        DiagnosticsLogger.shared.app("PlayerLifecycle", "pip close requested playback already stopped scene=\(String(describing: scenePhase))")
-        if scenePhase == .active { finalizePiPClosedPlaybackDismissal() }
-    }
-
-    private func finalizePiPClosedPlaybackDismissal() {
-        guard pipCloseDismissPending, !isClosing else { return }
-        pipCloseDismissPending = false
-        isClosing = true
-        orientationReady = false
-        pictureInPictureController.stopAndDetach()
-        AppOrientationCoordinator.shared.restoreMainInterfaceOrientation()
-        DiagnosticsLogger.shared.app("PlayerLifecycle", "pip close foreground dismissal begin playbackStopped=true")
-        waitForPortraitBeforeDismiss(attempt: 0)
     }
 
     private func closePlayer() {
