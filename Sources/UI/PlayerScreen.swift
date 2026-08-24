@@ -182,6 +182,9 @@ struct PlayerScreen: View {
         .onChange(of: pictureInPictureController.isActive) { _ in updateIndependentBrightnessForPlaybackContext() }
         .onChange(of: pictureInPictureController.closePlaybackGeneration) { _ in handlePiPPlaybackClosureRequest() }
         .onChange(of: scenePhase) { phase in handleScenePhase(phase) }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            if pipCloseDismissPending { finalizePiPClosedPlaybackDismissal() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { notification in handleAudioInterruption(notification) }
         .sheet(item: $activePanel, onDismiss: { scheduleControlsHide() }) { panel in
             PlayerControlPanelSheet(

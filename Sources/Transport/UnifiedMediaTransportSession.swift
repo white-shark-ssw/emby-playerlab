@@ -314,7 +314,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             }
             DiagnosticsLogger.shared.playback(
                 "UnifiedTransport",
-                "ready item=\(source.itemId) bytes=\(resolved.contentLength) slots=2 block=\(blockBytes) preloadWindow=\(preloadWindowBytes()) anchor=\(playbackAnchor) center=\(cacheWindowCenter) softMax=\(rollingSoftLimitBytes(window: preloadWindowBytes())) resumeGate=\(awaitingInitialResumeDemand) \(NetworkPathMonitor.shared.diagnosticSummary)"
+                "ready item=\(source.itemId) bytes=\(resolved.contentLength) slots=2 block=\(blockBytes) preloadWindow=\(preloadWindowBytes()) retentionWindow=\(retentionWindowBytes()) anchor=\(playbackAnchor) center=\(cacheWindowCenter) softMax=\(rollingSoftLimitBytes(window: retentionWindowBytes())) resumeGate=\(awaitingInitialResumeDemand) cachePool=shared-across-network \(NetworkPathMonitor.shared.diagnosticSummary)"
             )
             scheduleSlots(reason: "resolved")
             return resolved
@@ -1028,7 +1028,7 @@ actor UnifiedMediaTransportSession: TransportDataSession {
                 cacheRefillActive = false
                 cacheEmergencyActive = false
                 resetSequentialWave()
-                prepareBidirectionalCacheCapacityIfNeeded(resource: resource, window: window, refillGap: 0)
+                prepareBidirectionalCacheCapacityIfNeeded(resource: resource, window: retentionWindowBytes(), refillGap: 0)
                 DiagnosticsLogger.shared.playback("RollingCache", "forward full center=\(center) cached=\(forwardCached) target=\(forwardTarget) action=stop-preload")
                 return nil
             }
@@ -1037,12 +1037,13 @@ actor UnifiedMediaTransportSession: TransportDataSession {
             resetSequentialWave()
             DiagnosticsLogger.shared.playback("RollingCache", "refill begin center=\(center) cached=\(forwardCached) lowWater=\(lowWater) target=\(forwardTarget) contiguous=\(forwardContiguous) emergency=\(emergencyNow) starving=\(playbackStarving)")
         } else {
-            prepareBidirectionalCacheCapacityIfNeeded(resource: resource, window: window, refillGap: 0)
+            prepareBidirectionalCacheCapacityIfNeeded(resource: resource, window: retentionWindowBytes(), refillGap: 0)
             return nil
         }
 
-        prepareBidirectionalCacheCapacityIfNeeded(resource: resource, window: window, refillGap: refillGap)
-        let softLimit = rollingSoftLimitBytes(window: window)
+        let retentionWindow = retentionWindowBytes()
+        prepareBidirectionalCacheCapacityIfNeeded(resource: resource, window: retentionWindow, refillGap: refillGap)
+        let softLimit = rollingSoftLimitBytes(window: retentionWindow)
         let hardLimit = safeAdd(softLimit, max(rollingCacheTransientAllowanceBytes, blockBytes * 2))
         if configuration.usesDiskCache, store.uniqueBytes >= hardLimit {
             DiagnosticsLogger.shared.playback("RollingCache", "preload paused hardLimit center=\(center) cached=\(store.uniqueBytes) soft=\(softLimit) hard=\(hardLimit)")
@@ -1768,6 +1769,10 @@ actor UnifiedMediaTransportSession: TransportDataSession {
     private func preloadWindowBytes() -> Int64 {
         if NetworkPathMonitor.shared.isCellular { return max(0, configuration.cellularPreloadBytes) }
         return max(0, configuration.wifiPreloadBytes)
+    }
+
+    private func retentionWindowBytes() -> Int64 {
+        max(0, max(configuration.wifiPreloadBytes, configuration.cellularPreloadBytes))
     }
 
     private func isStartupTailMetadata(_ range: Range<Int64>, resource: TransportResolvedResource) -> Bool {

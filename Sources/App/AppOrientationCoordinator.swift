@@ -82,9 +82,15 @@ final class AppOrientationCoordinator {
         supportedMask = orientationMask(for: target)
         invalidateSupportedOrientations()
         request(target, reason: "pip-restore-destination")
-        if PlayerSurfacePresentationGate.shared.isHolding { PlayerSurfacePresentationGate.shared.refresh(targetOrientation: target, reason: "pip-restore-destination") }
         let size = activeWindowScene()?.windows.first(where: { $0.isKeyWindow })?.bounds.size ?? .zero
-        DiagnosticsLogger.shared.playback("AppOrientation", "pip restore destination prepare target=\(target.rawValue) window=\(Int(size.width))x\(Int(size.height)) mask=\(supportedMask.rawValue) presentationReleaseArmed=\(PlayerSurfacePresentationGate.shared.requiresRendererAcknowledgement)")
+        DiagnosticsLogger.shared.playback("AppOrientation", "pip restore destination prepare target=\(target.rawValue) window=\(Int(size.width))x\(Int(size.height)) mask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding) releasePolicy=after-mpv-fresh-frame")
+    }
+
+    func armPictureInPicturePresentationRelease() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard playerModeActive, pictureInPictureRestoreHoldActive, let target = backgroundPlayerOrientation ?? activeWindowScene()?.interfaceOrientation else { return }
+        if PlayerSurfacePresentationGate.shared.isHolding { PlayerSurfacePresentationGate.shared.refresh(targetOrientation: target, reason: "pip-restore-renderer-ready") }
+        DiagnosticsLogger.shared.playback("AppOrientation", "pip restore presentation release armed target=\(target.rawValue) held=\(PlayerSurfacePresentationGate.shared.isHolding) rendererAck=\(PlayerSurfacePresentationGate.shared.requiresRendererAcknowledgement)")
     }
 
     func endPictureInPictureRestoreOrientationHold() {

@@ -74,7 +74,7 @@ enum VideoCacheCapacity: Int, CaseIterable, Identifiable {
     var title: String { Self.title(for: rawValue) }
 
     static func title(for mb: Int) -> String {
-        if mb <= 0 { return "不缓存" }
+        if mb <= 0 { return "不预加载" }
         if mb < 1024 { return "\(mb) MB" }
         return "\(mb / 1024) GB"
     }
@@ -138,23 +138,24 @@ struct MediaTransportConfiguration: Equatable {
         let wifiMB = VideoCacheCapacity.normalizedMB(defaults.integer(forKey: TransportSettingsKey.wifiPreloadMB), defaultValue: VideoCacheCapacity.defaultWiFiMB)
         let cellularMB = VideoCacheCapacity.normalizedMB(defaults.integer(forKey: TransportSettingsKey.cellularPreloadMB), defaultValue: VideoCacheCapacity.defaultCellularMB)
         let activeMB = NetworkPathMonitor.shared.isCellular ? cellularMB : wifiMB
+        let sharedRetentionMB = max(wifiMB, cellularMB)
         let segmentMB = [1, 2, 4].contains(defaults.integer(forKey: TransportSettingsKey.segmentSizeMB)) ? defaults.integer(forKey: TransportSettingsKey.segmentSizeMB) : 1
         let upstreamBlockMB = [4, 8, 16, 32, 64].contains(defaults.integer(forKey: TransportSettingsKey.upstreamBlockSizeMB)) ? defaults.integer(forKey: TransportSettingsKey.upstreamBlockSizeMB) : 32
-        let activeBytes = Int64(activeMB) * 1_048_576
-        let keepLast = defaults.bool(forKey: TransportSettingsKey.keepLastCache) && activeMB > 0
+        let sharedRetentionBytes = Int64(sharedRetentionMB) * 1_048_576
+        let keepLast = defaults.bool(forKey: TransportSettingsKey.keepLastCache) && sharedRetentionMB > 0
 
         return MediaTransportConfiguration(
             strategy: strategy,
-            cacheMode: activeMB > 0 ? .disk : .disabled,
+            cacheMode: sharedRetentionMB > 0 ? .disk : .disabled,
             memoryLimitBytes: 0,
-            diskLimitBytes: activeBytes,
+            diskLimitBytes: sharedRetentionBytes,
             wifiPreloadBytes: Int64(wifiMB) * 1_048_576,
             cellularPreloadBytes: Int64(cellularMB) * 1_048_576,
             segmentSizeBytes: Int64(segmentMB) * 1_048_576,
             upstreamBlockSizeBytes: Int64(upstreamBlockMB) * 1_048_576,
             maximumConcurrentRequests: 2,
             keepLastCache: keepLast,
-            ktvContinuousPreloadEnabled: activeMB > 0,
+            ktvContinuousPreloadEnabled: sharedRetentionMB > 0,
             ktvPreloadOnCellular: cellularMB > 0
         )
     }

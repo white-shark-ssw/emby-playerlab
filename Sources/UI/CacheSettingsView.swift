@@ -18,12 +18,12 @@ struct CacheSettingsView: View {
                 if let statusMessage { Text(statusMessage).font(.footnote).foregroundColor(.secondary) }
             }
 
-            Section(header: Text("视频缓存"), footer: Text("缓存大小表示当前播放位置单方向的缓存窗口：播放器最多向前缓存该容量，并保留相近容量的已播放数据，正常总占用最高约为设置值的 2 倍。中途切换 Wi‑Fi / 蜂窝网络后，需要重新播放视频才能完整按新容量生效。")) {
-                capacityMenu(title: "Wi-Fi 视频缓存", systemImage: "wifi", value: $wifiCacheMB, defaultValue: VideoCacheCapacity.defaultWiFiMB)
-                capacityMenu(title: "蜂窝网络视频缓存", systemImage: "antenna.radiowaves.left.and.right", value: $cellularCacheMB, defaultValue: VideoCacheCapacity.defaultCellularMB)
+            Section(header: Text("视频预加载"), footer: Text("Wi‑Fi 与蜂窝设置只控制当前网络允许向前预取的上限；两种网络共用同一份磁盘 Range 缓存。切换网络不会清空、缩减或重新建立已缓存位置。磁盘保留窗口按两种网络设置中的较大值管理。")) {
+                capacityMenu(title: "Wi-Fi 预加载上限", systemImage: "wifi", value: $wifiCacheMB, defaultValue: VideoCacheCapacity.defaultWiFiMB)
+                capacityMenu(title: "蜂窝网络预加载上限", systemImage: "antenna.radiowaves.left.and.right", value: $cellularCacheMB, defaultValue: VideoCacheCapacity.defaultCellularMB)
             }
 
-            Section(header: Text("缓存策略"), footer: Text("开启后保留最后一次播放的视频缓存；再次播放同一视频时会继续复用已有磁盘 Range。播放其他视频时，旧的长期缓存会自动清理。若当前网络设置为“不缓存”，则不会保留视频缓存。")) {
+            Section(header: Text("缓存策略"), footer: Text("开启后保留最后一次播放的视频缓存；再次播放同一视频或切换 Wi‑Fi / 蜂窝网络时继续复用同一份磁盘 Range。只有两种网络都设置为“不缓存”时，视频持久缓存才会关闭。")) {
                 Toggle("保留上次视频缓存", isOn: $keepLastCache)
             }
 

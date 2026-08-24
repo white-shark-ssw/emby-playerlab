@@ -203,6 +203,9 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
             self.pictureInPictureResumeTargetPosition = nil
             if self.pictureInPictureRendererSuspended { DispatchQueue.main.async { completion(true) }; return }
             let previousVO = self.getStringProperty(handle: handle, name: "current-vo") ?? "unknown"
+            let wasPaused = (self.getStringProperty(handle: handle, name: "pause") ?? "no") == "yes"
+            var suspendAnchor = Double.nan
+            _ = self.getProperty(handle: handle, name: "time-pos", format: MPV_FORMAT_DOUBLE, value: &suspendAnchor)
             guard self.setPropertyChecked(handle: handle, name: "vo", value: "null") else {
                 DiagnosticsLogger.shared.log("MPVPiP", "vo suspend request failed previousVO=\(previousVO)")
                 DispatchQueue.main.async { completion(false) }
@@ -211,10 +214,23 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
             self.waitForPictureInPictureVO(handle: handle, target: "null", attempt: 0) { [weak self] ready, currentVO in
                 guard let self else { DispatchQueue.main.async { completion(false) }; return }
                 self.pictureInPictureRendererSuspended = ready
-                DiagnosticsLogger.shared.log("MPVPiP", "vo suspend ready=\(ready) previousVO=\(previousVO) currentVO=\(currentVO) decoderPreserved=true")
-                DispatchQueue.main.async { completion(ready) }
+                DiagnosticsLogger.shared.log("MPVPiP", "vo suspend ready=\(ready) previousVO=\(previousVO) currentVO=\(currentVO) decoderPreserved=true continuityPolicy=pre-home-clock-advance")
+                guard ready, !wasPaused, suspendAnchor.isFinite else { DispatchQueue.main.async { completion(ready) }; return }
+                self.waitForPictureInPictureSuspendPlaybackContinuity(handle: handle, anchor: suspendAnchor, attempt: 0) { continuityReady, actual in
+                    DiagnosticsLogger.shared.log("MPVPiP", "vo suspend continuity ready=\(continuityReady) anchor=\(String(format: "%.3f", suspendAnchor)) actual=\(actual.map { String(format: "%.3f", $0) } ?? "unknown")")
+                    DispatchQueue.main.async { completion(ready) }
+                }
             }
         }
+    }
+
+    private func waitForPictureInPictureSuspendPlaybackContinuity(handle: OpaquePointer, anchor: Double, attempt: Int, completion: @escaping (Bool, Double?) -> Void) {
+        guard let currentHandle = mpv, currentHandle == handle, !isStopping else { completion(false, nil); return }
+        var position = Double.nan
+        let hasPosition = getProperty(handle: handle, name: "time-pos", format: MPV_FORMAT_DOUBLE, value: &position) >= 0 && position.isFinite
+        if hasPosition, position >= anchor + 0.06 { completion(true, position); return }
+        guard attempt < 75 else { completion(false, hasPosition ? position : nil); return }
+        queue.asyncAfter(deadline: .now() + 0.02) { [weak self] in self?.waitForPictureInPictureSuspendPlaybackContinuity(handle: handle, anchor: anchor, attempt: attempt + 1, completion: completion) }
     }
 
     func resumeInlineRendererAfterPictureInPicture(completion: @escaping (Bool) -> Void) {
