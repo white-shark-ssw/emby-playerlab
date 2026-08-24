@@ -295,7 +295,26 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         guard !homeRequested else { return }
         homeRequested = true
         let requested = homeCoordinator.requestHome()
-        DiagnosticsLogger.shared.playback("PiPState", "home-request issued=\(requested) policy=didStart rendererStillInline=true")
+        DiagnosticsLogger.shared.playback("PiPState", "home-request issued=\(requested) policy=after-renderer-suspend-continuity rendererSuspended=\(inlineRendererSuspended)")
+    }
+
+    private func prepareRendererForHomeAfterSystemStart() {
+        guard !homeRequested else { return }
+        guard !inlineRendererSuspended, !rendererSuspending, let inlineRenderer else { requestHomeAfterSystemStart(); return }
+        rendererSuspending = true
+        DiagnosticsLogger.shared.playback("PiPState", "renderer suspend begin phase=pre-home playback=\(behavior.playback.rawValue)")
+        inlineRenderer.suspendInlineRendererForPictureInPicture { [weak self] success in
+            guard let self else { return }
+            self.rendererSuspending = false
+            self.inlineRendererSuspended = success
+            DiagnosticsLogger.shared.playback("PiPState", "renderer suspend success=\(success) phase=pre-home action=\(success ? "request-home" : "cancel-pip")")
+            if success { self.requestHomeAfterSystemStart() }
+            else {
+                self.behavior.exitIntent = .failureFallback
+                self.behavior.presentation = .recovering
+                self.controller?.stopPictureInPicture()
+            }
+        }
     }
 
     private func handleBackgroundEntered() {
@@ -771,7 +790,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         onActiveChanged?(true)
         AppOrientationCoordinator.shared.beginPictureInPictureRestoreOrientationHold()
         DiagnosticsLogger.shared.playback("PiPState", "system-started playback=\(behavior.playback.rawValue) orientationHold=true")
-        requestHomeAfterSystemStart()
+        prepareRendererForHomeAfterSystemStart()
     }
 
     func pictureInPictureControllerWillStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
