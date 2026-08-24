@@ -6,7 +6,7 @@ struct PlayerPiPBehaviorState: Equatable {
     enum ExitIntent: String { case none, returnToPlayer, closePlayback, failureFallback, detach }
     enum SeekState: Equatable {
         case idle
-        case waitingForLanding(token: UInt64)
+        case waitingForLanding(token: UInt64, suppressPauseUntil: CFTimeInterval)
         case waitingForVisualCommit(token: UInt64, authoritative: Double)
         case settling(token: UInt64, until: CFTimeInterval)
 
@@ -20,7 +20,8 @@ struct PlayerPiPBehaviorState: Equatable {
         func suppressesSystemPause(at now: CFTimeInterval) -> Bool {
             switch self {
             case .idle: return false
-            case .waitingForLanding, .waitingForVisualCommit: return true
+            case .waitingForLanding(_, let until): return now < until
+            case .waitingForVisualCommit: return true
             case .settling(_, let until): return now < until
             }
         }
