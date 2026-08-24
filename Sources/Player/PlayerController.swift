@@ -21,13 +21,18 @@ final class PlayerController: ObservableObject {
     @Published private(set) var verifiedBufferedRanges: [ClosedRange<Double>] = []
     @Published private(set) var bufferState = PlaybackBufferState()
     @Published private(set) var networkBufferingVisible = false
+    @Published private(set) var episodes: [LibraryItem] = []
+    @Published private(set) var episodeSeriesName: String?
+    @Published private(set) var episodeSwitchingItemID: String?
+    @Published private(set) var naturalPlaybackEndGeneration: UInt64 = 0
 
     @Published private(set) var source: ResolvedPlaybackSource
 
     private(set) var engine: PlayerEngine
     private let client: EmbyAPIClient
-    private let orchestrator: PlaybackOrchestrator
-    private let transportContext: PlaybackTransportContext?
+    private let preference: PlayerEnginePreference
+    private var orchestrator: PlaybackOrchestrator
+    private var transportContext: PlaybackTransportContext?
     private var preferredForwardBuffer: Double = 90
     private var startupResumeTask: Task<Double, Never>?
     private var startupTransportPrewarmTask: Task<Void, Never>?
@@ -41,6 +46,7 @@ final class PlayerController: ObservableObject {
     private var engineSwitchTask: Task<Void, Never>?
     private var engineSwitchNoticeTask: Task<Void, Never>?
     private var startupFallbackTask: Task<Void, Never>?
+    private var episodeContextTask: Task<Void, Never>?
     private var engineSwitchInProgress = false
     private var engineTransitionAwaitingFirstSnapshot = false
     private var engineSwitchSerial: UInt64 = 0
@@ -92,11 +98,18 @@ final class PlayerController: ObservableObject {
         return nil
     }
 
+    var hasEpisodeSelection: Bool { episodes.count > 1 && episodes.contains(where: { $0.id == source.itemId }) }
+    var nextEpisode: LibraryItem? {
+        guard let index = episodes.firstIndex(where: { $0.id == source.itemId }), episodes.indices.contains(index + 1) else { return nil }
+        return episodes[index + 1]
+    }
+
     private var mdkDirectHTTPABActive: Bool { false }
 
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
         self.source = source
         self.client = client
+        self.preference = preference
         let orchestrator = PlaybackOrchestrator(source: source, preference: preference)
         self.orchestrator = orchestrator
         let initialKind = orchestrator.currentKind
@@ -141,6 +154,7 @@ final class PlayerController: ObservableObject {
         self.preferredForwardBuffer = preferredForwardBuffer > 0 ? preferredForwardBuffer : 90
         configureAudioSession()
         userWantsPlayback = true
+        if episodes.isEmpty { loadEpisodeContext(for: source.itemId) }
         initialPlaybackTask?.cancel()
         initialPlaybackTask = Task { [weak self] in
             guard let self else { return }
@@ -269,6 +283,8 @@ final class PlayerController: ObservableObject {
         engineSwitchNotice = nil
         startupFallbackTask?.cancel()
         startupFallbackTask = nil
+        episodeContextTask?.cancel()
+        episodeContextTask = nil
         engineSwitchInProgress = false
         engineTransitionAwaitingFirstSnapshot = false
         EngineTransitionBreadcrumb.clear()
@@ -402,6 +418,47 @@ final class PlayerController: ObservableObject {
         userIsScrubbing = false
         scrubFeedback = nil
         displayedPosition = snapshot.position
+    }
+
+    func episodeImageURL(for episode: LibraryItem) -> URL? { client.imageURL(itemId: episode.id, maxWidth: 640, tag: episode.primaryImageTag) }
+
+    func switchToEpisode(_ episode: LibraryItem, reason: String = "manual") async -> Bool {
+        guard started, episode.id != source.itemId, episodeSwitchingItemID == nil else { return episode.id == source.itemId }
+        let previousItemID = source.itemId
+        episodeSwitchingItemID = episode.id
+        DiagnosticsLogger.shared.playback("EpisodeSwitch", "phase=resolve reason=\(reason) from=\(previousItemID) to=\(episode.id)")
+        do {
+            let info = try await client.playbackInfo(itemId: episode.id)
+            guard started, source.itemId == previousItemID else { episodeSwitchingItemID = nil; return false }
+            guard let mediaSource = info.mediaSources.first(where: { $0.supportsDirectPlay == true }) ?? info.mediaSources.first else { throw EmbyAPIError.noMediaSource }
+            let initialTicks = episode.isPlayed ? Int64(0) : max(0, episode.userData?.playbackPositionTicks ?? 0)
+            let nextSource = try client.resolvePlaybackSource(itemId: episode.id, itemName: episode.name, mediaSource: mediaSource, playSessionId: info.playSessionId, initialPlaybackPositionTicks: initialTicks)
+            guard started, source.itemId == previousItemID else { episodeSwitchingItemID = nil; return false }
+
+            let buffer = preferredForwardBuffer
+            DiagnosticsLogger.shared.playback("EpisodeSwitch", "phase=handoff reason=\(reason) from=\(previousItemID) to=\(episode.id) resumeTicks=\(initialTicks)")
+            stop()
+            source = nextSource
+            resetMediaStateForReplacement()
+            let nextOrchestrator = PlaybackOrchestrator(source: nextSource, preference: preference)
+            orchestrator = nextOrchestrator
+            let nextTransportContext = PlaybackTransportContext(source: nextSource, client: client, configuration: MediaTransportConfiguration.current())
+            transportContext = nextTransportContext
+            engineKind = nextOrchestrator.currentKind
+            if engineKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "engine create begin item=\(nextSource.itemId) episodeSwitch=true") }
+            engine = Self.makeEngine(kind: engineKind, source: nextSource, client: client, transportContext: nextTransportContext)
+            if engineKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "engine create finished item=\(nextSource.itemId) episodeSwitch=true") }
+            bindEngine()
+            episodeSwitchingItemID = nil
+            start(preferredForwardBuffer: buffer)
+            DiagnosticsLogger.shared.playback("EpisodeSwitch", "phase=started reason=\(reason) item=\(nextSource.itemId) engine=\(engineKind.title)")
+            return true
+        } catch {
+            episodeSwitchingItemID = nil
+            stallMessage = "无法切换剧集：\(error.localizedDescription)"
+            DiagnosticsLogger.shared.playback("EpisodeSwitch", "phase=failed reason=\(reason) from=\(previousItemID) to=\(episode.id) error=\(error.localizedDescription)")
+            return false
+        }
     }
 
     func switchEngine(to kind: PlayerEngineKind, reason: String = "用户切换") {
@@ -652,6 +709,67 @@ final class PlayerController: ObservableObject {
         }
     }
 
+    private func loadEpisodeContext(for itemID: String) {
+        episodeContextTask?.cancel()
+        episodeContextTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let currentItem = try await self.client.libraryItem(itemId: itemID)
+                guard !Task.isCancelled, self.started, self.source.itemId == itemID else { return }
+                guard currentItem.type?.caseInsensitiveCompare("Episode") == .orderedSame, let seriesID = currentItem.seriesId, !seriesID.isEmpty else {
+                    self.episodes = []
+                    self.episodeSeriesName = nil
+                    self.episodeContextTask = nil
+                    return
+                }
+                let items = try await self.client.seriesEpisodes(seriesId: seriesID)
+                guard !Task.isCancelled, self.started, self.source.itemId == itemID else { return }
+                self.episodes = items
+                self.episodeSeriesName = currentItem.seriesName
+                self.episodeContextTask = nil
+                DiagnosticsLogger.shared.playback("EpisodeQueue", "item=\(itemID) series=\(seriesID) episodes=\(items.count) currentIndex=\(items.firstIndex(where: { $0.id == itemID }).map { String($0) } ?? "nil")")
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.episodeContextTask = nil
+                DiagnosticsLogger.shared.playback("EpisodeQueue", "item=\(itemID) loadFailed=\(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func resetMediaStateForReplacement() {
+        snapshot = PlayerSnapshot()
+        displayedPosition = 0
+        seekFeedback = nil
+        scrubFeedback = nil
+        lastSeekSummary = "尚未 Seek"
+        prematureEOFMessage = nil
+        stallMessage = nil
+        transportSummary = nil
+        transportCacheFraction = 0
+        transportCacheRanges = []
+        verifiedBufferedRanges = []
+        bufferState = PlaybackBufferState()
+        networkBufferingVisible = false
+        lastTransportMetrics = nil
+        lastHandledEngineError = nil
+        lastBufferTimelineLogAt = .distantPast
+        lastVerifiedMPVPosition = nil
+        stallWatchdogSuppressedUntil = .distantPast
+        hasPlaybackAdvanced = false
+        initialResumeConfirmationPending = false
+        initialResumePlaybackBaseline = nil
+        lastTransportPlaybackReportPosition = -1
+        lastTransportPlaybackReportAt = .distantPast
+        eofRetryCount = 0
+        userIsScrubbing = false
+        pendingSeekTarget = nil
+        pendingSeekDirection = nil
+        fastSeekLogicalTarget = nil
+        lastFastSeekRequestAt = nil
+        screenScrubStartPosition = nil
+        resetWatchdog()
+    }
+
     private func reportPlaybackClockToTransportIfNeeded(_ value: PlayerSnapshot) {
         guard !mdkDirectHTTPABActive, let session = transportContext?.session, value.position.isFinite else { return }
         let now = Date()
@@ -748,15 +866,20 @@ final class PlayerController: ObservableObject {
 
         guard decision.isPremature else {
             userWantsPlayback = false
+            playbackSessionStarted = false
             if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(false) } }
             let stoppedSource = source
             let stoppedClient = client
             let stoppedPosition = snapshot.position
-            Task {
+            Task { [weak self] in
                 let succeeded = await stoppedClient.reportStopped(source: stoppedSource, position: stoppedPosition)
-                guard succeeded else { return }
                 await MainActor.run {
-                    NotificationCenter.default.post(name: EmbyUserDataChange.notification, object: stoppedClient, userInfo: [EmbyUserDataChange.itemIDKey: stoppedSource.itemId, EmbyUserDataChange.reasonKey: EmbyUserDataChange.playbackStoppedReason])
+                    if succeeded {
+                        NotificationCenter.default.post(name: EmbyUserDataChange.notification, object: stoppedClient, userInfo: [EmbyUserDataChange.itemIDKey: stoppedSource.itemId, EmbyUserDataChange.reasonKey: EmbyUserDataChange.playbackStoppedReason])
+                    }
+                    guard let self, self.started, self.source.itemId == stoppedSource.itemId else { return }
+                    self.naturalPlaybackEndGeneration &+= 1
+                    DiagnosticsLogger.shared.playback("EpisodeQueue", "trustedEnd item=\(stoppedSource.itemId) next=\(self.nextEpisode?.id ?? "none") stopReported=\(succeeded)")
                 }
             }
             return
