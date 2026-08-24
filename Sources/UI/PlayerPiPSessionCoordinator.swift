@@ -297,19 +297,19 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         guard !homeRequested else { return }
         homeRequested = true
         let requested = homeCoordinator.requestHome()
-        DiagnosticsLogger.shared.playback("PiPState", "home-request issued=\(requested) policy=after-renderer-suspend-continuity rendererSuspended=\(inlineRendererSuspended)")
+        DiagnosticsLogger.shared.playback("PiPState", "home-request issued=\(requested) policy=after-video-track-suspend rendererSuspended=\(inlineRendererSuspended)")
     }
 
     private func prepareRendererForHomeAfterSystemStart() {
         guard !homeRequested else { return }
         guard !inlineRendererSuspended, !rendererSuspending, let inlineRenderer else { requestHomeAfterSystemStart(); return }
         rendererSuspending = true
-        DiagnosticsLogger.shared.playback("PiPState", "renderer suspend begin phase=pre-home playback=\(behavior.playback.rawValue)")
+        DiagnosticsLogger.shared.playback("PiPState", "video-track suspend begin phase=pre-home playback=\(behavior.playback.rawValue)")
         inlineRenderer.suspendInlineRendererForPictureInPicture { [weak self] success in
             guard let self else { return }
             self.rendererSuspending = false
             self.inlineRendererSuspended = success
-            DiagnosticsLogger.shared.playback("PiPState", "renderer suspend success=\(success) phase=pre-home action=\(success ? "request-home" : "cancel-pip")")
+            DiagnosticsLogger.shared.playback("PiPState", "video-track suspend success=\(success) phase=pre-home action=\(success ? "request-home" : "cancel-pip")")
             if success { self.requestHomeAfterSystemStart() }
             else {
                 self.behavior.exitIntent = .failureFallback
