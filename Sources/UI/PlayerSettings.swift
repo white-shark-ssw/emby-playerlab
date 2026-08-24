@@ -12,6 +12,7 @@ enum PlayerPreferenceKeys {
     static let independentBrightnessValue = "player.independentBrightnessValue"
     static let pauseWhenBackgrounded = "player.pauseWhenBackgrounded"
     static let resumeWhenForegrounded = "player.resumeWhenForegrounded"
+    static let autoPlayNextEpisodeEnabled = "player.autoPlayNextEpisodeEnabled"
     static let defaultScaleMode = "player.defaultScaleMode"
     static let controlsAutoHideSeconds = "player.controlsAutoHideSeconds"
 }
