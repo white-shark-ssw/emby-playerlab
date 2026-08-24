@@ -71,6 +71,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
     private var pictureInPictureResumeTargetPosition: Double?
     private var pictureInPictureResumeStartedAt: CFTimeInterval?
     private var pictureInPictureResumePlaybackAdvancing = false
+    private var pictureInPictureResumeBaselineVideoPTS: Double?
     private var pictureInPictureResumeTimeout: DispatchWorkItem?
     private var pictureInPictureResumePoll: DispatchWorkItem?
     private var pictureInPictureResumeSawPlaybackRestart = false
@@ -238,6 +239,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
             self.pictureInPictureResumeStartedAt = CACurrentMediaTime()
             self.pictureInPictureResumePlaybackAdvancing = (self.getStringProperty(handle: handle, name: "pause") ?? "no") != "yes"
             self.pictureInPictureResumeSawPlaybackRestart = false
+            var baselineVideoPTS = Double.nan
+            self.pictureInPictureResumeBaselineVideoPTS = self.getProperty(handle: handle, name: "video-pts", format: MPV_FORMAT_DOUBLE, value: &baselineVideoPTS) >= 0 && baselineVideoPTS.isFinite ? baselineVideoPTS : nil
 
             let currentVID = self.getStringProperty(handle: handle, name: "vid") ?? "unknown"
             let restoreVID = self.pictureInPictureSuspendedVideoID ?? "auto"
@@ -307,6 +310,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         pictureInPictureResumeTargetPosition = nil
         pictureInPictureResumeStartedAt = nil
         pictureInPictureResumePlaybackAdvancing = false
+        pictureInPictureResumeBaselineVideoPTS = nil
     }
 
     private func reconcilePictureInPictureVideoState(handle: OpaquePointer, reason: String) {
@@ -329,6 +333,7 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         pictureInPictureResumeTargetPosition = nil
         pictureInPictureResumeStartedAt = nil
         pictureInPictureResumePlaybackAdvancing = false
+        pictureInPictureResumeBaselineVideoPTS = nil
         if let handle { reconcilePictureInPictureVideoState(handle: handle, reason: "resume-finish-\(reason)") }
         DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame handoff success=\(success) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") actual=\(actualPosition.map { String(format: "%.3f", $0) } ?? "unknown") reason=\(reason)")
         DispatchQueue.main.async { completion(success, actualPosition) }
@@ -351,9 +356,12 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
         let positionMatched = delta.map { abs($0) <= 0.85 } ?? true
         let videoEnabled = currentVID != "no" && currentVID != "unknown"
         let pausedFrameSignal = !pictureInPictureResumePlaybackAdvancing && (hasVideoPTS || (hasTimePosition && viewport != nil))
-        let freshSignal = pictureInPictureResumeSawPlaybackRestart || pausedFrameSignal
+        let baselineVideoPTS = pictureInPictureResumeBaselineVideoPTS
+        let videoPTSAdvanced = hasVideoPTS && (baselineVideoPTS == nil || abs(videoPTS - (baselineVideoPTS ?? videoPTS)) >= 0.020)
+        let playingFrameSignal = pictureInPictureResumePlaybackAdvancing && videoPTSAdvanced
+        let freshSignal = pictureInPictureResumeSawPlaybackRestart || pausedFrameSignal || playingFrameSignal
         let ready = freshSignal && videoEnabled && currentVO.contains("gpu-next") && viewport != nil && positionMatched
-        DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame probe reason=\(reason) restartSeen=\(pictureInPictureResumeSawPlaybackRestart) pausedFrameSignal=\(pausedFrameSignal) videoEnabled=\(videoEnabled) currentVID=\(currentVID) currentVO=\(currentVO) viewportReady=\(viewport != nil) source=\(hasVideoPTS ? "video-pts" : "time-pos") actual=\(String(format: "%.3f", actualPosition)) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") expected=\(expected.map { String(format: "%.3f", $0) } ?? "unknown") delta=\(delta.map { String(format: "%.3f", $0) } ?? "unknown") advancing=\(pictureInPictureResumePlaybackAdvancing) ready=\(ready)")
+        DiagnosticsLogger.shared.log("MPVPiP", "fresh-frame probe reason=\(reason) restartSeen=\(pictureInPictureResumeSawPlaybackRestart) pausedFrameSignal=\(pausedFrameSignal) playingFrameSignal=\(playingFrameSignal) videoPTSAdvanced=\(videoPTSAdvanced) baselineVideoPTS=\(baselineVideoPTS.map { String(format: "%.3f", $0) } ?? "none") videoEnabled=\(videoEnabled) currentVID=\(currentVID) currentVO=\(currentVO) viewportReady=\(viewport != nil) source=\(hasVideoPTS ? "video-pts" : "time-pos") actual=\(String(format: "%.3f", actualPosition)) target=\(target.map { String(format: "%.3f", $0) } ?? "unknown") expected=\(expected.map { String(format: "%.3f", $0) } ?? "unknown") delta=\(delta.map { String(format: "%.3f", $0) } ?? "unknown") advancing=\(pictureInPictureResumePlaybackAdvancing) ready=\(ready)")
         if ready { finishPictureInPictureRendererResume(success: true, actualPosition: actualPosition, reason: "fresh-video-frame"); return true }
         return false
     }
