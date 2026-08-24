@@ -11,9 +11,10 @@
 | Player gesture UI | Stable baseline | Immediate left/right double-tap Seek, scrub, volume/brightness HUD, etc. |
 | Native navigation | Frozen principle | System owns push/pop and interactive pop. |
 | PiP | **Frozen at Build173** | Functional enough to leave for now; known renderer cold-return tail remains. |
+| Player episode selection / auto-next | **Build174 candidate** | Code written + dedicated standard MPV CI passed + IPA produced. Real-device validation pending. Uses full source-owned session replacement and trusted non-premature natural-end gate; frozen playback/transport modules unchanged. |
 | Diagnostics | Required | Playback/App logs remain a first-class debugging surface. |
 | App appearance/theme | Partial | App identity/appearance work exists; broader theme work can be developed separately without touching player core. |
-| Other product modules | Active next area | Continue non-PiP development from the Build173 functional baseline. |
+| Other product modules | Active next area | Continue non-PiP development from the Build173 real-device functional baseline; Build174 is a test candidate until accepted on device. |
 
 ## Change discipline
 
