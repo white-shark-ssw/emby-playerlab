@@ -46,6 +46,11 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var rendererRestoreAttempt = 0
     private var pendingSeekAuthoritativePosition: Double?
     private var pendingSeekLandingHostTime: CFTimeInterval?
+    private var deferredSystemPauseWorkItem: DispatchWorkItem?
+    private var pendingRestoreUICompletion: ((Bool) -> Void)?
+    private var restoreDestinationPoll: DispatchWorkItem?
+    private var restoreDestinationStableSamples = 0
+    private var lastRestoreDestinationWindowSize: CGSize?
     private let homeCoordinator = PlayerPiPHomeCoordinator()
 
     override init() {
@@ -350,6 +355,11 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         startTimeout?.cancel(); startTimeout = nil
         startPoll?.cancel(); startPoll = nil
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
+        deferredSystemPauseWorkItem?.cancel(); deferredSystemPauseWorkItem = nil
+        restoreDestinationPoll?.cancel(); restoreDestinationPoll = nil
+        pendingRestoreUICompletion?(false); pendingRestoreUICompletion = nil
+        restoreDestinationStableSamples = 0
+        lastRestoreDestinationWindowSize = nil
         pendingSkipCompletion?(); pendingSkipCompletion = nil; pendingSkipGeneration = nil
         pendingSeekStartedPosition = nil
         pendingSeekAuthoritativePosition = nil
@@ -390,7 +400,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         startTimeout?.cancel(); startTimeout = nil
         state = .active
         onActiveChanged?(true)
-        DiagnosticsLogger.shared.playback("PiPSession", "system-started engine=\(playbackController?.engineKind.title ?? "unknown") appState=\(UIApplication.shared.applicationState.rawValue) sourceLayerOwnedByHost=\(displayLayer?.superlayer === sourceHostView?.layer)")
+        AppOrientationCoordinator.shared.beginPictureInPictureRestoreOrientationHold()
+        DiagnosticsLogger.shared.playback("PiPSession", "system-started engine=\(playbackController?.engineKind.title ?? "unknown") appState=\(UIApplication.shared.applicationState.rawValue) sourceLayerOwnedByHost=\(displayLayer?.superlayer === sourceHostView?.layer) orientationHold=armed-before-home")
         requestHomeAfterSystemStart()
     }
 
@@ -422,8 +433,12 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         let target = currentPiPClockPosition()
         logicalPiPPosition = target
         AppOrientationCoordinator.shared.beginPictureInPictureRestoreOrientationHold()
-        DiagnosticsLogger.shared.playback("PiPSession", "restore-ui requested appState=\(UIApplication.shared.applicationState.rawValue) target=\(String(format: "%.3f", target)) policy=system-first-cover-until-fresh-frame orientationHold=until-system-didStop")
-        completionHandler(true)
+        AppOrientationCoordinator.shared.preparePictureInPictureRestoreDestination()
+        pendingRestoreUICompletion = completionHandler
+        restoreDestinationStableSamples = 0
+        lastRestoreDestinationWindowSize = nil
+        DiagnosticsLogger.shared.playback("PiPSession", "restore-ui requested appState=\(UIApplication.shared.applicationState.rawValue) target=\(String(format: "%.3f", target)) policy=wait-final-destination-geometry-before-system-expand orientationHold=armed-before-foreground")
+        pollRestoreDestinationGeometry(attempt: 0)
         beginRestoreHandoffIfPossible()
     }
 
@@ -440,6 +455,27 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     func pictureInPictureControllerIsPlaybackPaused(_ pictureInPictureController: AVPictureInPictureController) -> Bool { !pipWantsPlayback }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, setPlaying playing: Bool) {
+        if playing {
+            deferredSystemPauseWorkItem?.cancel(); deferredSystemPauseWorkItem = nil
+            applyPiPPlayingState(true, controller: pictureInPictureController, reason: "system-play")
+            return
+        }
+        guard pipWantsPlayback else {
+            applyPiPPlayingState(false, controller: pictureInPictureController, reason: "system-pause-already-paused")
+            return
+        }
+        deferredSystemPauseWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self, weak pictureInPictureController] in
+            guard let self, let pictureInPictureController else { return }
+            self.deferredSystemPauseWorkItem = nil
+            self.applyPiPPlayingState(false, controller: pictureInPictureController, reason: "system-pause-committed")
+        }
+        deferredSystemPauseWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: work)
+        DiagnosticsLogger.shared.playback("PiPSession", "set-playing=false deferredMs=30 logicalPosition=\(String(format: "%.3f", logicalPiPPosition)) classification=allow-immediate-skip-to-cancel")
+    }
+
+    private func applyPiPPlayingState(_ playing: Bool, controller pictureInPictureController: AVPictureInPictureController, reason: String) {
         guard let playbackController else { return }
         pipWantsPlayback = playing
         if playbackController.playbackControlIsPlaying != playing { playbackController.togglePlayPause() }
@@ -447,7 +483,59 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         pipeline?.setPaused(aligningPipeline ? true : !playing)
         if !aligningPipeline, let timebase = controlTimebase { CMTimebaseSetRate(timebase, rate: playing ? 1 : 0) }
         pictureInPictureController.invalidatePlaybackState()
-        DiagnosticsLogger.shared.playback("PiPSession", "set-playing=\(playing) logicalPosition=\(String(format: "%.3f", logicalPiPPosition)) pendingSeek=\(pendingSkipCompletion != nil) aligningPipeline=\(aligningPipeline)")
+        DiagnosticsLogger.shared.playback("PiPSession", "set-playing=\(playing) reason=\(reason) logicalPosition=\(String(format: "%.3f", logicalPiPPosition)) pendingSeek=\(pendingSkipCompletion != nil) aligningPipeline=\(aligningPipeline)")
+    }
+
+    private func pollRestoreDestinationGeometry(attempt: Int) {
+        restoreDestinationPoll?.cancel(); restoreDestinationPoll = nil
+        guard pendingRestoreUICompletion != nil, restoreRequested else { return }
+        let window = sourceHostView?.window ?? activeKeyWindow()
+        let windowSize = window?.bounds.size ?? .zero
+        let hostSize = sourceHostView?.bounds.size ?? .zero
+        let targetOrientation = AppOrientationCoordinator.shared.pictureInPictureRestoreTargetOrientation
+        let windowHasArea = windowSize.width > 1 && windowSize.height > 1
+        let hostHasArea = hostSize.width > 1 && hostSize.height > 1
+        let orientationReady: Bool
+        if let targetOrientation {
+            orientationReady = targetOrientation.isLandscape ? windowSize.width > windowSize.height : windowSize.height > windowSize.width
+        } else {
+            orientationReady = windowHasArea
+        }
+        let hostOrientationReady: Bool
+        if let targetOrientation {
+            hostOrientationReady = targetOrientation.isLandscape ? hostSize.width > hostSize.height : hostSize.height > hostSize.width
+        } else {
+            hostOrientationReady = hostHasArea
+        }
+        let windowStable = lastRestoreDestinationWindowSize.map { abs($0.width - windowSize.width) < 0.5 && abs($0.height - windowSize.height) < 0.5 } ?? false
+        if UIApplication.shared.applicationState == .active, windowHasArea, hostHasArea, orientationReady, hostOrientationReady, windowStable {
+            restoreDestinationStableSamples += 1
+        } else {
+            restoreDestinationStableSamples = 0
+        }
+        lastRestoreDestinationWindowSize = windowSize
+
+        if restoreDestinationStableSamples >= 2 {
+            finishRestoreUICompletion(reason: "final-geometry-stable", windowSize: windowSize, hostSize: hostSize)
+            return
+        }
+        if attempt >= 75 {
+            finishRestoreUICompletion(reason: "geometry-timeout-fallback", windowSize: windowSize, hostSize: hostSize)
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in self?.pollRestoreDestinationGeometry(attempt: attempt + 1) }
+        restoreDestinationPoll = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.016, execute: work)
+    }
+
+    private func finishRestoreUICompletion(reason: String, windowSize: CGSize, hostSize: CGSize) {
+        restoreDestinationPoll?.cancel(); restoreDestinationPoll = nil
+        restoreDestinationStableSamples = 0
+        lastRestoreDestinationWindowSize = nil
+        let completion = pendingRestoreUICompletion
+        pendingRestoreUICompletion = nil
+        DiagnosticsLogger.shared.playback("PiPSession", "restore-ui destination-ready reason=\(reason) window=\(Int(windowSize.width))x\(Int(windowSize.height)) host=\(Int(hostSize.width))x\(Int(hostSize.height)) action=system-expand-once")
+        completion?(true)
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, didTransitionToRenderSize newRenderSize: CMVideoDimensions) {
@@ -460,6 +548,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         guard delta.isFinite else { completionHandler(); return }
 
         let previousWasAligning = pendingSkipGeneration != nil
+        let suppressedTransientPause = deferredSystemPauseWorkItem != nil
+        deferredSystemPauseWorkItem?.cancel(); deferredSystemPauseWorkItem = nil
+        if suppressedTransientPause { DiagnosticsLogger.shared.playback("PiPSession", "system-pause suppressed reason=skip-callback-arrived playing=\(pipWantsPlayback)") }
         pendingSkipCompletion?()
         pendingSkipCompletion = completionHandler
         pendingSkipGeneration = nil

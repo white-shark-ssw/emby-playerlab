@@ -18,6 +18,8 @@ final class AppOrientationCoordinator {
     private var pictureInPictureRestoreHoldActive = false
     private var lifecycleObservers: [NSObjectProtocol] = []
 
+    var pictureInPictureRestoreTargetOrientation: UIInterfaceOrientation? { backgroundPlayerOrientation }
+
     private init() {
         lifecycleObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.captureAndLockPlayerOrientation() })
         lifecycleObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in self?.holdBackgroundPlayerPresentation() })
@@ -69,6 +71,19 @@ final class AppOrientationCoordinator {
         supportedMask = orientationMask(for: target)
         invalidateSupportedOrientations()
         DiagnosticsLogger.shared.playback("AppOrientation", "pip restore hold begin target=\(target.rawValue) actual=\(actual?.rawValue ?? 0) lockedMask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding)")
+    }
+
+    func preparePictureInPictureRestoreDestination() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard playerModeActive, let target = backgroundPlayerOrientation ?? activeWindowScene()?.interfaceOrientation, target.isPortrait || target.isLandscape else { return }
+        backgroundPlayerOrientation = target
+        foregroundRestorePending = true
+        pictureInPictureRestoreHoldActive = true
+        supportedMask = orientationMask(for: target)
+        invalidateSupportedOrientations()
+        request(target, reason: "pip-restore-destination")
+        let size = activeWindowScene()?.windows.first(where: { $0.isKeyWindow })?.bounds.size ?? .zero
+        DiagnosticsLogger.shared.playback("AppOrientation", "pip restore destination prepare target=\(target.rawValue) window=\(Int(size.width))x\(Int(size.height)) mask=\(supportedMask.rawValue)")
     }
 
     func endPictureInPictureRestoreOrientationHold() {
@@ -130,7 +145,11 @@ final class AppOrientationCoordinator {
         supportedMask = orientationMask(for: target)
         invalidateSupportedOrientations()
         let actual = activeWindowScene()?.interfaceOrientation
-        DiagnosticsLogger.shared.playback("AppOrientation", "foreground prepare target=\(target.rawValue) actual=\(actual?.rawValue ?? 0) lockedMask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding) pipRestoreHold=\(pictureInPictureRestoreHoldActive)")
+        if pictureInPictureRestoreHoldActive {
+            DiagnosticsLogger.shared.playback("AppOrientation", "foreground prepare target=\(target.rawValue) actual=\(actual?.rawValue ?? 0) lockedMask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding) pipRestoreHold=true geometryRequest=deferred-to-restore-callback")
+            return
+        }
+        DiagnosticsLogger.shared.playback("AppOrientation", "foreground prepare target=\(target.rawValue) actual=\(actual?.rawValue ?? 0) lockedMask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding) pipRestoreHold=false")
         request(target, reason: "foreground-prepare")
     }
 
@@ -140,8 +159,7 @@ final class AppOrientationCoordinator {
             supportedMask = orientationMask(for: target)
             invalidateSupportedOrientations()
             let actual = activeWindowScene()?.interfaceOrientation
-            DiagnosticsLogger.shared.playback("AppOrientation", "foreground active held for pip restore target=\(target.rawValue) actual=\(actual?.rawValue ?? 0) lockedMask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding)")
-            if actual != target { request(target, reason: "foreground-active-pip-restore") }
+            DiagnosticsLogger.shared.playback("AppOrientation", "foreground active held for pip restore target=\(target.rawValue) actual=\(actual?.rawValue ?? 0) lockedMask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding) geometryRequest=deferred-to-restore-callback")
             return
         }
         if !foregroundRestorePending || !PlayerSurfacePresentationGate.shared.isHolding {
