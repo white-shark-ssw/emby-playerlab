@@ -74,9 +74,15 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var startTimeout: DispatchWorkItem?
     private var startPoll: DispatchWorkItem?
     private var pendingSystemPauseWorkItem: DispatchWorkItem?
+    private struct PendingSystemSeekCompletion {
+        let startedAt: CFTimeInterval
+        let completion: @Sendable () -> Void
+    }
+
     private var seekFallbackWorkItem: DispatchWorkItem?
     private var seekSettleWorkItem: DispatchWorkItem?
     private var seekOptimisticDeadlineWorkItem: DispatchWorkItem?
+    private var pendingSystemSeekCompletions: [UInt64: PendingSystemSeekCompletion] = [:]
     private var seekToken: UInt64 = 0
     private var activeSeekToken: UInt64?
     private var activeSeekRequestedTarget: Double?
@@ -95,7 +101,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var returnRendererRestoreInProgress = false
     private var returnActualPosition: Double?
     private var returnRendererReadyHostTime: CFTimeInterval?
-    private var returnBridgeCatchupHolding = false
+    private var returnFinalBridgeAlignmentApplied = false
     private var returnPollWorkItem: DispatchWorkItem?
     private var pendingRestoreUICompletion: ((Bool) -> Void)?
     private var manualForegroundReturn = false
@@ -104,7 +110,6 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var returnPostStopRetryCount = 0
     private var returnSystemRestoreAccepted = false
     private var returnBridgeFadeInProgress = false
-    private var lastReturnBridgeAuthoritySyncAt: CFTimeInterval = 0
     private let homeCoordinator = PlayerPiPHomeCoordinator()
 
     override init() {
@@ -408,13 +413,12 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         returnRendererRestoreInProgress = false
         returnActualPosition = nil
         returnRendererReadyHostTime = nil
-        returnBridgeCatchupHolding = false
+        returnFinalBridgeAlignmentApplied = false
         returnSystemStopped = false
         returnSurfaceReplayRequested = false
         returnPostStopRetryCount = 0
         returnSystemRestoreAccepted = false
         returnBridgeFadeInProgress = false
-        lastReturnBridgeAuthoritySyncAt = 0
         pendingSystemPauseWorkItem?.cancel(); pendingSystemPauseWorkItem = nil
         AppOrientationCoordinator.shared.beginPictureInPictureRestoreOrientationHold()
         AppOrientationCoordinator.shared.preparePictureInPictureRestoreDestination()
@@ -422,8 +426,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         let bridgeBefore = clock.position()
         clock.reset(position: target, playing: behavior.playback == .playing)
         syncTimebaseToClock()
-        lastReturnBridgeAuthoritySyncAt = CACurrentMediaTime()
-        DiagnosticsLogger.shared.playback("PiPState", "return begin reason=\(reason) target=\(String(format: "%.3f", target)) authority=mpv-snapshot manual=\(manualForeground) systemCompletion=\(systemCompletion != nil) bridgeBefore=\(String(format: "%.3f", bridgeBefore)) initialBridgeDriftMs=\(String(format: "%.1f", (target - bridgeBefore) * 1000)) bridgePolicy=align-under-avkit-transition")
+        DiagnosticsLogger.shared.playback("PiPState", "return begin reason=\(reason) target=\(String(format: "%.3f", target)) authority=mpv-snapshot manual=\(manualForeground) systemCompletion=\(systemCompletion != nil) bridgeBefore=\(String(format: "%.3f", bridgeBefore)) initialBridgeDriftMs=\(String(format: "%.1f", (target - bridgeBefore) * 1000)) bridgePolicy=single-initial-align")
         pollReturnBarrier(attempt: 0)
     }
 
@@ -434,8 +437,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             guard let self else { return }
             self.returnRendererRestoreInProgress = false
             self.returnRendererReady = success
-            self.returnActualPosition = actualPosition
+            self.returnActualPosition = success ? (actualPosition ?? self.playbackController?.snapshot.position) : nil
             self.returnRendererReadyHostTime = success ? CACurrentMediaTime() : nil
+            self.returnFinalBridgeAlignmentApplied = false
             if success {
                 AppOrientationCoordinator.shared.armPictureInPicturePresentationRelease()
             }
@@ -445,54 +449,12 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         }
     }
 
-    private func synchronizeReturnBridgeToMPVAuthorityIfNeeded() -> Double? {
-        guard behavior.exitIntent == .returnToPlayer, behavior.playback == .playing, controlTimebase != nil else { return nil }
+    private func returnBridgeHandoffMeasurement() -> (authority: Double, bridge: Double, drift: Double)? {
+        guard behavior.exitIntent == .returnToPlayer, behavior.playback == .playing, let actual = returnActualPosition, let readyHost = returnRendererReadyHostTime else { return nil }
         let now = CACurrentMediaTime()
-
-        let authority: Double
-        if let actual = returnActualPosition, let readyHost = returnRendererReadyHostTime {
-            authority = actual + max(0, now - readyHost)
-        } else if let playbackController {
-            authority = playbackController.snapshot.position
-        } else {
-            return nil
-        }
-
+        let authority = actual + max(0, now - readyHost)
         let bridge = clock.position(at: now)
-        let drift = authority - bridge
-
-        if drift > 0.08, now - lastReturnBridgeAuthoritySyncAt >= 0.08 {
-            clock.reset(position: authority, playing: true, now: now)
-            syncTimebaseToClock()
-            lastReturnBridgeAuthoritySyncAt = now
-            returnBridgeCatchupHolding = false
-            DiagnosticsLogger.shared.playback("PiPState", "visual bridge authority rebase direction=forward authority=\(String(format: "%.3f", authority)) bridgeBefore=\(String(format: "%.3f", bridge)) driftMs=\(String(format: "%.1f", drift * 1000)) source=renderer-anchor")
-            return drift
-        }
-
-        if drift < -0.12, !returnBridgeCatchupHolding {
-            clock.setPlaying(false, now: now)
-            syncTimebaseToClock()
-            returnBridgeCatchupHolding = true
-            lastReturnBridgeAuthoritySyncAt = now
-            DiagnosticsLogger.shared.playback("PiPState", "visual bridge catchup hold begin authority=\(String(format: "%.3f", authority)) bridge=\(String(format: "%.3f", bridge)) driftMs=\(String(format: "%.1f", drift * 1000)) policy=freeze-bridge-until-mpv-catches")
-            return drift
-        }
-
-        if returnBridgeCatchupHolding {
-            let heldBridge = clock.position(at: now)
-            let heldDrift = authority - heldBridge
-            if heldDrift >= -0.04 {
-                clock.reset(position: heldBridge, playing: true, now: now)
-                syncTimebaseToClock()
-                returnBridgeCatchupHolding = false
-                lastReturnBridgeAuthoritySyncAt = now
-                DiagnosticsLogger.shared.playback("PiPState", "visual bridge catchup hold end authority=\(String(format: "%.3f", authority)) bridge=\(String(format: "%.3f", heldBridge)) driftMs=\(String(format: "%.1f", heldDrift * 1000))")
-            }
-            return heldDrift
-        }
-
-        return drift
+        return (authority, bridge, authority - bridge)
     }
 
     private func pollReturnBarrier(attempt: Int) {
@@ -532,16 +494,26 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             }
         }
 
-        let bridgeDrift = synchronizeReturnBridgeToMPVAuthorityIfNeeded()
         let gateReleased = !PlayerSurfacePresentationGate.shared.isHolding
         if behavior.exitIntent == .returnToPlayer, returnSystemStopped, returnRendererReady, gateReleased {
-            let aligned = bridgeDrift.map { abs($0) <= 0.12 } ?? true
-            if aligned {
-                DiagnosticsLogger.shared.playback("PiPState", "visual bridge handoff aligned driftMs=\(bridgeDrift.map { String(format: "%.1f", $0 * 1000) } ?? "unknown") action=crossfade")
-                beginVisualBridgeCrossfade(reason: "return-to-player") { [weak self] in self?.completeReturnAfterSystemStop() }
-                return
+            if let measurement = returnBridgeHandoffMeasurement() {
+                if abs(measurement.drift) <= 0.12 {
+                    DiagnosticsLogger.shared.playback("PiPState", "visual bridge handoff aligned driftMs=\(String(format: "%.1f", measurement.drift * 1000)) authority=\(String(format: "%.3f", measurement.authority)) bridge=\(String(format: "%.3f", measurement.bridge)) policy=no-periodic-sync action=crossfade")
+                    beginVisualBridgeCrossfade(reason: "return-to-player") { [weak self] in self?.completeReturnAfterSystemStop() }
+                    return
+                }
+                if !returnFinalBridgeAlignmentApplied {
+                    let now = CACurrentMediaTime()
+                    clock.reset(position: measurement.authority, playing: true, now: now)
+                    syncTimebaseToClock()
+                    returnFinalBridgeAlignmentApplied = true
+                    DiagnosticsLogger.shared.playback("PiPState", "visual bridge final one-shot align driftMs=\(String(format: "%.1f", measurement.drift * 1000)) authority=\(String(format: "%.3f", measurement.authority)) bridgeBefore=\(String(format: "%.3f", measurement.bridge)) policy=single-correction")
+                } else {
+                    DiagnosticsLogger.shared.playback("PiPState", "visual bridge handoff awaiting post-align display cycle driftMs=\(String(format: "%.1f", measurement.drift * 1000))")
+                }
+            } else {
+                DiagnosticsLogger.shared.playback("PiPState", "visual bridge handoff measurement unavailable action=wait")
             }
-            DiagnosticsLogger.shared.playback("PiPState", "visual bridge handoff waiting driftMs=\(bridgeDrift.map { String(format: "%.1f", $0 * 1000) } ?? "unknown") thresholdMs=120")
         }
 
         if behavior.exitIntent == .pauseAndSuspend, returnRendererReady, gateReleased {
@@ -572,6 +544,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             returnSurfaceReplayRequested = false
             returnRendererReady = false
             returnRendererRestoreInProgress = false
+            returnActualPosition = nil
+            returnRendererReadyHostTime = nil
+            returnFinalBridgeAlignmentApplied = false
             DiagnosticsLogger.shared.playback("PiPState", "paused foreground restore retry=\(returnPostStopRetryCount) reason=\(reason) visualBridge=last-frame-kept")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in self?.pollReturnBarrier(attempt: 0) }
             return
@@ -586,6 +561,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             returnSurfaceReplayRequested = false
             returnRendererReady = false
             returnRendererRestoreInProgress = false
+            returnActualPosition = nil
+            returnRendererReadyHostTime = nil
+            returnFinalBridgeAlignmentApplied = false
             DiagnosticsLogger.shared.playback("PiPState", "return renderer retry=\(returnPostStopRetryCount) reason=\(reason) systemAccepted=\(returnSystemRestoreAccepted) systemStopped=\(returnSystemStopped) visualBridge=live")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in self?.pollReturnBarrier(attempt: 0) }
             return
@@ -596,6 +574,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         returnRendererReady = false
         returnRendererRestoreInProgress = false
         returnActualPosition = nil
+        returnRendererReadyHostTime = nil
+        returnFinalBridgeAlignmentApplied = false
         if controller?.isPictureInPictureActive == true {
             behavior.presentation = .active
             behavior.exitIntent = .none
@@ -680,7 +660,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         returnPostStopRetryCount = 0
         returnSystemRestoreAccepted = true
         returnBridgeFadeInProgress = false
-        lastReturnBridgeAuthoritySyncAt = 0
+        returnRendererReadyHostTime = nil
+        returnFinalBridgeAlignmentApplied = false
         if let host = sourceHostView { UIView.performWithoutAnimation { host.alpha = 1 } }
         AppOrientationCoordinator.shared.preparePictureInPictureRestoreDestination()
         DiagnosticsLogger.shared.playback("PiPState", "paused foreground restore begin target=\(String(format: "%.3f", playbackController?.snapshot.position ?? 0)) authority=mpv-snapshot playback=paused")
@@ -745,19 +726,47 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         syncTimebase(timebase, to: clock.position(), playing: behavior.playback == .playing)
     }
 
-    private func beginSeek(delta: Double) {
-        guard let playbackController else { return }
-        cancelSeekTransaction(reason: "superseded")
+    private func completeSystemSeekCompletions(upTo token: UInt64, source: String) {
+        let keys = pendingSystemSeekCompletions.keys.filter { $0 <= token }.sorted()
+        guard !keys.isEmpty else { return }
+        let now = CACurrentMediaTime()
+        for key in keys {
+            guard let pending = pendingSystemSeekCompletions.removeValue(forKey: key) else { continue }
+            pending.completion()
+            DiagnosticsLogger.shared.playback("PiPSeek", "system completion delivered token=\(key) source=\(source) callbackToCompletionMs=\(String(format: "%.1f", max(0, now - pending.startedAt) * 1000)) contract=after-timebase-commit")
+        }
+    }
+
+    private func releasePendingSystemSeekCompletions(reason: String) {
+        let keys = pendingSystemSeekCompletions.keys.sorted()
+        guard !keys.isEmpty else { return }
+        let now = CACurrentMediaTime()
+        for key in keys {
+            guard let pending = pendingSystemSeekCompletions.removeValue(forKey: key) else { continue }
+            pending.completion()
+            DiagnosticsLogger.shared.playback("PiPSeek", "system completion released token=\(key) reason=\(reason) callbackToReleaseMs=\(String(format: "%.1f", max(0, now - pending.startedAt) * 1000)) lifecycle=cancelled")
+        }
+    }
+
+    @discardableResult
+    private func beginSeek(delta: Double, systemCompletion: (@Sendable () -> Void)? = nil, callbackStartedAt: CFTimeInterval? = nil) -> UInt64? {
+        guard let playbackController else { systemCompletion?(); return nil }
+        cancelSeekTransaction(reason: "superseded", releasePendingSystemCompletions: false)
         pendingSystemPauseWorkItem?.cancel(); pendingSystemPauseWorkItem = nil
         seekToken &+= 1
         let token = seekToken
         activeSeekToken = token
         activeSeekStartedPosition = playbackController.snapshot.position
+        if let systemCompletion {
+            pendingSystemSeekCompletions[token] = PendingSystemSeekCompletion(startedAt: callbackStartedAt ?? CACurrentMediaTime(), completion: systemCompletion)
+            DiagnosticsLogger.shared.playback("PiPSeek", "system completion registered token=\(token) policy=after-visual-timebase-commit")
+        }
         playbackController.seek(by: delta)
         activeSeekRequestedTarget = playbackController.displayedPosition
         behavior.seek = .waitingForLanding(token: token, suppressPauseUntil: CACurrentMediaTime() + 0.04)
-        DiagnosticsLogger.shared.playback("PiPSeek", "begin token=\(token) delta=\(String(format: "%.3f", delta)) engineStart=\(String(format: "%.3f", activeSeekStartedPosition ?? 0)) requested=\(activeSeekRequestedTarget.map { String(format: "%.3f", $0) } ?? "unknown") policy=visual-continues")
+        DiagnosticsLogger.shared.playback("PiPSeek", "begin token=\(token) delta=\(String(format: "%.3f", delta)) engineStart=\(String(format: "%.3f", activeSeekStartedPosition ?? 0)) requested=\(activeSeekRequestedTarget.map { String(format: "%.3f", $0) } ?? "unknown") policy=visual-continues completion=deferred")
         if seekLandingProvider == nil { scheduleFallbackSeekLanding(token: token, attempt: 0) }
+        return token
     }
 
     private func handleEngineSeekDispatch(_ info: PlayerPiPSeekDispatchInfo) {
@@ -846,6 +855,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         context.speculativePTS = first
         let source = longTailEscape && !strictSampleConfidence ? "long-tail-escape" : "sample-confident"
         DiagnosticsLogger.shared.playback("PiPSeek", "optimistic visual commit token=\(context.token) source=\(source) predicted=\(String(format: "%.3f", context.predictedTarget)) first=\(String(format: "%.3f", first)) requestedDelta=\(String(format: "%.3f", requestedDelta)) dispatchDelta=\(String(format: "%.3f", dispatchDelta)) bufferedSamples=\(samples.count) authority=pending-mpv-landing switch=early")
+        completeSystemSeekCompletions(upTo: context.token, source: "optimistic-\(source)")
         return true
     }
 
@@ -929,6 +939,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         }
 
         DiagnosticsLogger.shared.playback("PiPSeek", "visual commit token=\(token) source=\(source) authoritative=\(String(format: "%.3f", authoritative)) clock=\(String(format: "%.3f", newClockPosition)) bufferedSamples=\(validSamples.count) switch=atomic")
+        completeSystemSeekCompletions(upTo: token, source: "visual-\(source)")
         finishSeekSettlement(token: token, authoritative: authoritative, source: source)
     }
 
@@ -969,7 +980,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.02, execute: work)
     }
 
-    private func cancelSeekTransaction(reason: String) {
+    private func cancelSeekTransaction(reason: String, releasePendingSystemCompletions: Bool = true) {
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
         seekSettleWorkItem?.cancel(); seekSettleWorkItem = nil
         seekOptimisticDeadlineWorkItem?.cancel(); seekOptimisticDeadlineWorkItem = nil
@@ -981,7 +992,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         activeSeekRequestedTarget = nil
         activeSeekStartedPosition = nil
         activeSeekLandingHostTime = nil
-        if behavior.seek.isActive { DiagnosticsLogger.shared.playback("PiPSeek", "cancel reason=\(reason)") }
+        if releasePendingSystemCompletions { releasePendingSystemSeekCompletions(reason: reason) }
+        if behavior.seek.isActive { DiagnosticsLogger.shared.playback("PiPSeek", "cancel reason=\(reason) pendingSystemCompletion=\(pendingSystemSeekCompletions.count)") }
         behavior.seek = .idle
     }
 
@@ -1012,10 +1024,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         inlineRendererSuspended = false; rendererSuspending = false
         homeRequested = false
         returnRendererReady = false; returnRendererRestoreInProgress = false; returnActualPosition = nil
-        returnRendererReadyHostTime = nil; returnBridgeCatchupHolding = false
+        returnRendererReadyHostTime = nil; returnFinalBridgeAlignmentApplied = false
         returnSystemStopped = false; returnSurfaceReplayRequested = false; returnPostStopRetryCount = 0
         returnSystemRestoreAccepted = false; returnBridgeFadeInProgress = false
-        lastReturnBridgeAuthoritySyncAt = 0
         manualForegroundReturn = false
         behavior.reset()
         clock = PiPClock()
@@ -1114,13 +1125,14 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, skipByInterval skipInterval: CMTime, completion completionHandler: @escaping @Sendable () -> Void) {
+        let callbackStartedAt = CACurrentMediaTime()
         let delta = CMTimeGetSeconds(skipInterval)
         guard delta.isFinite, behavior.presentation == .active, behavior.exitIntent == .none, behavior.playback != .stopped else { completionHandler(); return }
         pendingSystemPauseWorkItem?.cancel(); pendingSystemPauseWorkItem = nil
-        DiagnosticsLogger.shared.playback("PiPSeek", "system callback enter delta=\(String(format: "%.3f", delta)) state=\(String(describing: behavior.seek)) avkitInvalidation=deferred-to-playback-state-only")
-        beginSeek(delta: delta)
-        completionHandler()
-        DiagnosticsLogger.shared.playback("PiPSeek", "system completion immediate delta=\(String(format: "%.3f", delta)) avkitInvalidation=none")
+        DiagnosticsLogger.shared.playback("PiPSeek", "system callback enter delta=\(String(format: "%.3f", delta)) state=\(String(describing: behavior.seek)) completionPolicy=after-visual-timebase-commit")
+        if beginSeek(delta: delta, systemCompletion: completionHandler, callbackStartedAt: callbackStartedAt) == nil {
+            DiagnosticsLogger.shared.playback("PiPSeek", "system completion fallback immediate delta=\(String(format: "%.3f", delta)) reason=seek-not-started")
+        }
     }
 
     func pictureInPictureControllerShouldProhibitBackgroundAudioPlayback(_ pictureInPictureController: AVPictureInPictureController) -> Bool { false }
