@@ -754,7 +754,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         let predictedDelta = abs(first - context.predictedTarget)
         let strictSampleConfidence = min(requestedDelta, dispatchDelta) <= 0.35
         let longTailSampleConfidence = min(requestedDelta, dispatchDelta) <= 0.65
-        let allowed = context.optimisticCommitEnabled ? min(dispatchDelta, predictedDelta) <= 0.45 || strictSampleConfidence : (strictSampleConfidence || (longTailEscape && longTailSampleConfidence))
+        let strictPredictedConfidence = min(dispatchDelta, predictedDelta) <= 0.45
+        let allowed = context.optimisticCommitEnabled ? (strictPredictedConfidence || strictSampleConfidence || (longTailEscape && longTailSampleConfidence)) : (strictSampleConfidence || (longTailEscape && longTailSampleConfidence))
         guard allowed else {
             if longTailEscape {
                 DiagnosticsLogger.shared.playback("PiPSeek", "long-tail candidate rejected token=\(context.token) first=\(String(format: "%.3f", first)) requestedDelta=\(String(format: "%.3f", requestedDelta)) dispatchDelta=\(String(format: "%.3f", dispatchDelta)) predictedDelta=\(String(format: "%.3f", predictedDelta)) threshold=0.650")
