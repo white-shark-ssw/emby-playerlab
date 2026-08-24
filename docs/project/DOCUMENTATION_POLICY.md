@@ -10,21 +10,31 @@
 
 1. `START_HERE.md`
 2. `CURRENT_WORK.md`
-3. `PROJECT_STATE.md`
-4. `MODULE_STATUS.md`
-5. `TECHNICAL_DECISIONS.md`
-6. `BUILD_TEST_INDEX.md`
+3. 根据当前会话用途读取 `CURRENT_WORK_DEV.md` 或 `CURRENT_WORK_RULES.md`
+4. `PROJECT_STATE.md`
+5. `MODULE_STATUS.md`
+6. `TECHNICAL_DECISIONS.md`
+7. `BUILD_TEST_INDEX.md`
 
 然后再读取当前任务相关源码、PR、branch 和日志。
 
-如果 `CURRENT_WORK.md` 为 `Active`，新会话应优先按其中记录的真实基线、已完成步骤和 `Next exact action` 续接，不要无理由从头重复已经完成的分析。
+工作槽路由：
+
+- 功能开发、Bug、日志、真机、架构实现、CI / IPA → `CURRENT_WORK_DEV.md`
+- 项目规则、Project Instructions、`AGENTS.md`、`START_HERE.md`、Skill、AI 协作和文档治理 → `CURRENT_WORK_RULES.md`
+
+如果用户明确说“当前会话用于维护修改项目规则”，必须进入规则槽，即使开发槽同时为 `Active`。
+
+如果所选工作槽为 `Active`，新会话应优先按其中记录的真实基线、已完成步骤和 `Next exact action` 续接，不要无理由从头重复已经完成的分析。
 
 只有当前资料不足以解释历史争议时，才查询 `docs/history/chat-exports/`。
 
 ## Required documents
 
 - `START_HERE.md` — 新会话最短入口。
-- `CURRENT_WORK.md` — 当前正在进行任务的跨会话滚动交接；任务完成后恢复为 `Idle`。
+- `CURRENT_WORK.md` — 工作槽路由，不保存具体任务正文。
+- `CURRENT_WORK_DEV.md` — 功能开发的跨会话滚动 checkpoint。
+- `CURRENT_WORK_RULES.md` — 规则 / 文档治理的跨会话滚动 checkpoint。
 - `PROJECT_STATE.md` — 项目**现在是什么**。
 - `TECHNICAL_DECISIONS.md` — 已验证的重要技术决策和否决路线。
 - `BUILD_TEST_INDEX.md` — 重要 Build / CI / IPA / 真机节点。
@@ -43,26 +53,33 @@
 - 一个方向被冻结、放弃或替换；
 - 当前功能测试基线发生变化。
 
+规则 / 文档治理会话形成新的长期规则后，同样应在同一轮写入对应永久规则文件。
+
 如果一次工作只做资料阅读、纯讨论或没有产生新项目结论，可以不制造无意义更新。
 
-## 会话中断与 CURRENT_WORK
+## 会话中断与双工作槽
 
-`CURRENT_WORK.md` 专门解决长开发会话、日志排查、架构讨论以及规则维护会话被上下文/会话上限突然打断的问题。它是短期状态，不是新的历史档案。
+会话上限不可预测，所以不得把交接建立在“用户提前提醒”或“快到上限再保存”之上。
 
-**会话上限不可预测，所以不得把交接建立在“用户提前提醒”或“快到上限再保存”之上。**
+OnePlayer 使用两个相互隔离的滚动工作槽：
 
-进入多步骤任务后，只要任务目标已经明确，并且已经形成可用的真实基线或工作方向，就应尽早把 `CURRENT_WORK.md` 设为 `Active` 并建立第一个 checkpoint。
+- `CURRENT_WORK_DEV.md`
+- `CURRENT_WORK_RULES.md`
 
-随后在以下节点主动刷新：
+两个槽可以同时为 `Active`。任何会话只维护与自身用途匹配的槽，不得覆盖、清空或合并另一个槽。
 
-1. 已确认真实 Build / PR / branch / commit 和实现方向；
-2. 已形成第一版有效代码修改、规则决定或文档修改；
+进入多步骤任务后，只要任务目标已经明确，并且已经形成可用的真实基线或工作方向，就应尽早把**对应槽**设为 `Active` 并建立第一个 checkpoint。
+
+随后在有独立续接价值的节点主动刷新，例如：
+
+1. 已确认真实 Build / PR / branch / commit 或规则基线；
+2. 已形成第一版有效代码、规则决定或文档修改；
 3. CI / IPA 状态发生变化；
 4. 用户提供新的真机结果；
-5. 原假设被证伪或开发方向发生重要变化；
-6. 其他足以影响新会话续接方式的重要里程碑。
+5. 原假设被证伪或方向发生重要变化；
+6. 其他足以影响新会话 `Next exact action` 的重要里程碑。
 
-不要求每个小编辑都提交一次，避免噪音和无意义 Git 历史。目标不是记录完整过程，而是让最近一次 checkpoint 始终足以回答：
+不要求每个小编辑都提交一次。目标不是记录完整过程，而是让最近一次 checkpoint 始终足以回答：
 
 - 现在在做什么；
 - 对应哪个真实基线；
@@ -72,9 +89,9 @@
 - 新会话第一步具体做什么；
 - 哪些已验证路线不要重复尝试。
 
-因此，即使会话在没有预警的情况下突然达到上限，新会话也应能从 GitHub 最近一次 checkpoint 继续，而不依赖旧聊天导出。
+因此，即使开发会话和规则维护会话同时存在，并且其中任一个在没有预警的情况下突然达到上限，新会话都可以通过声明自己的用途进入对应工作槽继续。
 
-任务完成后，把长期有效结论转入 `PROJECT_STATE.md` / `MODULE_STATUS.md` / `TECHNICAL_DECISIONS.md` / `BUILD_TEST_INDEX.md` 或对应永久规则文件，然后将 `CURRENT_WORK.md` 恢复为 `Idle`。不要把所有旧任务无限追加进去。
+任务完成后，把长期有效结论转入对应的项目状态文件或永久规则文件，然后**只将当前槽恢复为 `Idle`**。不得影响另一个槽。
 
 ## Evidence levels
 
