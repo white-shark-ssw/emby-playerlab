@@ -411,13 +411,15 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             self.returnRendererReady = success
             self.returnActualPosition = actualPosition
             if success {
-                if self.behavior.exitIntent == .returnToPlayer, let host = self.sourceHostView, host.alpha > 0.001 {
-                    UIView.performWithoutAnimation { host.alpha = 0 }
-                    DiagnosticsLogger.shared.playback("PiPState", "return bridge hidden before presentation release policy=no-one-frame-sourcehost-residue")
+                if self.behavior.exitIntent == .pauseAndSuspend {
+                    AppOrientationCoordinator.shared.armPictureInPicturePresentationRelease()
+                } else if self.behavior.exitIntent == .returnToPlayer {
+                    if self.returnSystemStopped { self.scheduleReturnVisualHandoffAfterSystemStop() }
+                    else { DiagnosticsLogger.shared.playback("PiPState", "return renderer ready before system stop action=hold-bridge-until-didStop") }
                 }
-                AppOrientationCoordinator.shared.armPictureInPicturePresentationRelease()
             }
-            DiagnosticsLogger.shared.playback("PiPState", "return renderer-ready=\(success) target=\(String(format: "%.3f", targetPosition)) actual=\(actualPosition.map { String(format: "%.3f", $0) } ?? "unknown") presentationRelease=\(success ? "armed-after-fresh-frame" : "held")")
+            let releaseState = success ? (self.behavior.exitIntent == .pauseAndSuspend ? "armed-paused-restore" : (self.returnSystemStopped ? "awaiting-next-vsync" : "awaiting-system-stop")) : "held"
+            DiagnosticsLogger.shared.playback("PiPState", "return renderer-ready=\(success) target=\(String(format: "%.3f", targetPosition)) actual=\(actualPosition.map { String(format: "%.3f", $0) } ?? "unknown") presentationRelease=\(releaseState)")
             if !success { self.failReturnBarrier(reason: "renderer-not-ready") }
         }
     }
