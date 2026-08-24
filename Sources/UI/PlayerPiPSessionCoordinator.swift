@@ -97,7 +97,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
 
         let layer = host.displayLayer
         layer.videoGravity = .resizeAspect
-        layer.preventsAutomaticBackgroundingDuringVideoPlayback = false
+        // iOS: preventsAutomaticBackgroundingDuringVideoPlayback = false is unavailable; rely on AVKit lifecycle.
         var timebase: CMTimebase?
         let status = CMTimebaseCreateWithSourceClock(allocator: kCFAllocatorDefault, sourceClock: CMClockGetHostTimeClock(), timebaseOut: &timebase)
         guard status == noErr, let timebase else {
