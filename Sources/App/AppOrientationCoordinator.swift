@@ -15,6 +15,7 @@ final class AppOrientationCoordinator {
     private var pendingPlayerOrientation: UIInterfaceOrientation?
     private var backgroundPlayerOrientation: UIInterfaceOrientation?
     private var foregroundRestorePending = false
+    private var pictureInPictureRestoreHoldActive = false
     private var lifecycleObservers: [NSObjectProtocol] = []
 
     private init() {
@@ -31,6 +32,7 @@ final class AppOrientationCoordinator {
         playerModeActive = true
         backgroundPlayerOrientation = nil
         foregroundRestorePending = false
+        pictureInPictureRestoreHoldActive = false
         let target = preferredPlayerOrientation(for: source)
         pendingPlayerOrientation = target
         supportedMask = [.portrait, .landscapeLeft, .landscapeRight]
@@ -52,6 +54,31 @@ final class AppOrientationCoordinator {
         DiagnosticsLogger.shared.playback("AppOrientation", "player orientation unlocked mask=\(supportedMask.rawValue) remembered=\(backgroundPlayerOrientation?.rawValue ?? 0)")
     }
 
+    func beginPictureInPictureRestoreOrientationHold() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard playerModeActive else { return }
+        let actual = activeWindowScene()?.interfaceOrientation
+        let target = backgroundPlayerOrientation ?? actual
+        guard let target, target.isPortrait || target.isLandscape else {
+            DiagnosticsLogger.shared.playback("AppOrientation", "pip restore hold skipped target=unavailable")
+            return
+        }
+        backgroundPlayerOrientation = target
+        foregroundRestorePending = true
+        pictureInPictureRestoreHoldActive = true
+        supportedMask = orientationMask(for: target)
+        invalidateSupportedOrientations()
+        DiagnosticsLogger.shared.playback("AppOrientation", "pip restore hold begin target=\(target.rawValue) actual=\(actual?.rawValue ?? 0) lockedMask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding)")
+    }
+
+    func endPictureInPictureRestoreOrientationHold() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard pictureInPictureRestoreHoldActive else { return }
+        pictureInPictureRestoreHoldActive = false
+        DiagnosticsLogger.shared.playback("AppOrientation", "pip restore hold end foregroundPending=\(foregroundRestorePending) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding)")
+        if foregroundRestorePending, !PlayerSurfacePresentationGate.shared.isHolding { completeForegroundRestoreIfNeeded() }
+    }
+
     func restoreMainInterfaceOrientation() {
         dispatchPrecondition(condition: .onQueue(.main))
         guard playerModeActive || supportedMask != .portrait else { return }
@@ -59,6 +86,7 @@ final class AppOrientationCoordinator {
         pendingPlayerOrientation = nil
         backgroundPlayerOrientation = nil
         foregroundRestorePending = false
+        pictureInPictureRestoreHoldActive = false
         PlayerSurfacePresentationGate.shared.reset(reason: "player-dismiss")
         supportedMask = .portrait
         invalidateSupportedOrientations()
@@ -102,12 +130,20 @@ final class AppOrientationCoordinator {
         supportedMask = orientationMask(for: target)
         invalidateSupportedOrientations()
         let actual = activeWindowScene()?.interfaceOrientation
-        DiagnosticsLogger.shared.playback("AppOrientation", "foreground prepare target=\(target.rawValue) actual=\(actual?.rawValue ?? 0) lockedMask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding)")
+        DiagnosticsLogger.shared.playback("AppOrientation", "foreground prepare target=\(target.rawValue) actual=\(actual?.rawValue ?? 0) lockedMask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding) pipRestoreHold=\(pictureInPictureRestoreHoldActive)")
         request(target, reason: "foreground-prepare")
     }
 
     private func armForegroundPresentationRelease() {
         guard playerModeActive, let target = backgroundPlayerOrientation else { return }
+        if pictureInPictureRestoreHoldActive {
+            supportedMask = orientationMask(for: target)
+            invalidateSupportedOrientations()
+            let actual = activeWindowScene()?.interfaceOrientation
+            DiagnosticsLogger.shared.playback("AppOrientation", "foreground active held for pip restore target=\(target.rawValue) actual=\(actual?.rawValue ?? 0) lockedMask=\(supportedMask.rawValue) presentationHeld=\(PlayerSurfacePresentationGate.shared.isHolding)")
+            if actual != target { request(target, reason: "foreground-active-pip-restore") }
+            return
+        }
         if !foregroundRestorePending || !PlayerSurfacePresentationGate.shared.isHolding {
             foregroundRestorePending = false
             supportedMask = [.portrait, .landscapeLeft, .landscapeRight]
@@ -125,6 +161,10 @@ final class AppOrientationCoordinator {
 
     private func completeForegroundRestoreIfNeeded() {
         guard playerModeActive, foregroundRestorePending else { return }
+        if pictureInPictureRestoreHoldActive {
+            DiagnosticsLogger.shared.playback("AppOrientation", "foreground presentation release deferred reason=pip-restore-system-animation mask=\(supportedMask.rawValue)")
+            return
+        }
         foregroundRestorePending = false
         if let actual = activeWindowScene()?.interfaceOrientation, actual.isPortrait || actual.isLandscape { backgroundPlayerOrientation = actual }
         supportedMask = [.portrait, .landscapeLeft, .landscapeRight]
