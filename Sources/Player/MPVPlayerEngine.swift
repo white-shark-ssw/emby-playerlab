@@ -243,7 +243,8 @@ final class MPVPlayerEngine: PlayerEngine, PlaybackPresentationEngineAdapter, Pl
             let restoreVID = self.pictureInPictureSuspendedVideoID ?? "auto"
             if currentVID != "no" && currentVID != "unknown" {
                 self.pictureInPictureVideoTrackSuspended = false
-                DiagnosticsLogger.shared.log("MPVPiP", "video restore reconciled already-enabled currentVID=\(currentVID) restoreVID=\(restoreVID) currentVO=\(self.getStringProperty(handle: handle, name: "current-vo") ?? "unknown")")
+                self.pictureInPictureResumeSawPlaybackRestart = true
+                DiagnosticsLogger.shared.log("MPVPiP", "video restore reconciled already-enabled currentVID=\(currentVID) restoreVID=\(restoreVID) currentVO=\(self.getStringProperty(handle: handle, name: "current-vo") ?? "unknown") freshSignal=existing-video-track")
                 self.beginPictureInPictureRendererResumePolling(handle: handle)
                 return
             }
