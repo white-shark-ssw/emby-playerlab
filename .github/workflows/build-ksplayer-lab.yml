@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: build161-pip-interaction-smoothness
@@ -24,6 +24,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: fix/pip-interaction-smoothness-0.13.94
+
+      - name: Record Build161 source SHA
+        run: echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Select Xcode 16.4
         run: |
@@ -162,6 +165,23 @@ jobs:
             package-resolution.log
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish Build161 test prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v0.13.94-build161-test"
+          gh release delete "$TAG" --cleanup-tag -y >/dev/null 2>&1 || true
+          gh release create "$TAG" \
+            "$IPA_NAME" \
+            "$IPA_NAME.sha256" \
+            "$SOURCE_ZIP" \
+            "$SOURCE_ZIP.sha256" \
+            --target "$SOURCE_SHA" \
+            --title "OnePlayer 0.13.94 Build161" \
+            --notes "Build161 real-device test IPA. PiP seek smoothness, PiP restore orientation hold, and 1% vertical adjustment dedupe. MPV absolute+keyframes and UnifiedTransport remain frozen. Deployment Target iOS 15.0; iOS 17.0 target device supported." \
+            --prerelease
 
       - name: Summarize Build161 errors
         if: failure()
