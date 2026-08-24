@@ -14,22 +14,23 @@
 
 **Active**
 
-- **Task**：新增播放器内“选集”功能：点击后从底部向上弹出横向剧集选择面板；设置中增加“自动加载下一集”选项，并基于现有播放结束/Emby 剧集数据设计正确的下一集切换逻辑。
-- **User intent / acceptance criteria**：播放器内可快速横向浏览并切换同一剧集的集数；交互样式参考用户提供截图的底部上弹面板；当前集有明确状态；自动加载下一集可在设置中开关，不能误把异常 EOF/提前结束当作正常剧终触发。
-- **Baseline**：OnePlayer 0.14.6 / Build173；PR #238；branch `fix/pip-seek-completion-return-simplify-0.14.6`；known head `4f7acf8da06ded00db735b07210983a0d2dd5be6`。
-- **Evidence**：用户 2026-08-25 明确提出新功能需求并提供目标 UI 截图；当前开发槽此前为 Idle。
-- **Files / modules in scope**：待源码审计确认，优先检查现有 PlayerScreen/PlayerController、Emby episode/series 数据模型与 API、播放结束事件、PlayerSettings 持久化和现有详情页选集实现。
+- **Task**：接通播放器现有“选集”按钮：点击后从底部向上弹出横向剧集选择面板；设置中增加“自动加载下一集”选项，并基于现有播放结束/Emby 剧集数据设计正确的下一集切换逻辑。
+- **User intent / acceptance criteria**：不新增或重复播放器“选集”按钮；复用当前真机已经存在但未生效的入口。点击后可横向浏览并切换同一剧集集数，交互样式参考用户提供截图的底部上弹面板；当前集有明确状态；自动加载下一集可在设置中开关，不能误把异常 EOF/提前结束当作正常剧终触发。
+- **Baseline**：项目资料记录的最新功能基线为 OnePlayer 0.14.6 / Build173；PR #238；branch `fix/pip-seek-completion-return-simplify-0.14.6`；known head `4f7acf8da06ded00db735b07210983a0d2dd5be6`。但用户 2026-08-25 真机明确确认当前播放器已经存在“选集”按钮，而该 Build173 源码的当前 `PlayerBottomFunctionBar` 没有暴露 `.episodes`，因此当前真机安装包与已核对源码存在 UI 对应关系冲突，必须先确认当前安装版本/Build 后再落代码。
+- **Evidence**：用户 2026-08-25 明确提出新功能需求并提供目标 UI 截图；随后明确纠正“目前已经有选集按钮，只是没有生效”。源码审计：`PlayerControlPanel` 已存在 `.episodes` 和占位页；较早 `fix/player-ui-v1-real-device` 源码也有真实“选集”按钮；Build173/main 当前 `PlayerBottomFunctionBar` 则只展示播放信息、音轨字幕、倍速和播放设置省略号。
+- **Files / modules in scope**：待真实安装 Build 对齐后确认。已知相关定义包括 `Sources/UI/PlayerControlPanelViews.swift`、`PlayerScreen.swift`、`PlayerSettings.swift` / `PlayerSettingsView.swift`、`EmbyMediaDetailView.swift` / `EmbyEpisodePickerView.swift`、`EmbyAPIClient.seriesEpisodes()`、`PlayerController.handleEndEvent()`。
 - **Frozen / do-not-touch**：MPV fast Seek；PiP Build173；UnifiedTransport/Range/302/115 客户端直连；Session cache 核心语义；系统导航所有权；不得引入时间→字节比例 Seek。
-- **Completed**：已确认开发会话路由和 Build173 功能基线；已建立本任务 checkpoint。
-- **Validation state**：需求/基线已确认；尚未 Code written。
-- **Pending**：审计真实剧集数据来源、播放器状态所有权与播放结束语义；确定自动下一集触发条件；实现 UI/设置/切换；静态回归检查；CI/IPA；真机验证。
-- **Next exact action**：读取 Build173 分支中的播放器 UI、PlayerController、剧集详情/选集、Emby API/模型、播放结束处理与 PlayerSettings 真实定义和调用点，形成最小实现范围后再改代码。
-- **Rejected / do-not-repeat**：不得通过 duration/fileSize 或固定计时器猜测下一集；不得因为播放引擎发出单一 EOF 就无条件切下一集；不得为本功能重构冻结的 Transport/Seek/PiP。
-- **Open questions / risks**：需要确认现有播放入口是否已携带 SeriesId/SeasonId/episode context；异常短片/提前 EOF 与正常自然播完必须区分；手动选集切换时 Emby progress/session 的停止与新播放启动必须沿用现有正式生命周期。
+- **Completed**：已确认需求；已审计剧集数据来源、播放结束保护与设置持久化入口；已确认自然结束经过 `PrematureEOFGuard`，因此自动下一集可以只挂在非 premature 的正常结束结果上，不需要计时器；已确认现有 `.episodes` 面板目前只是未接数据的占位实现；已记录用户真机“按钮已存在”的最高优先级证据。
+- **Validation state**：需求/源码审计完成；尚未 Code written。
+- **Pending**：确认用户当前安装包版本号 + Build，定位完全对应源码；接通现有选集入口；实现横向底部面板、当前集定位和手动换集；增加自动下一集设置；实现自然结束后的下一集切换；静态回归检查；CI/IPA；真机验证。
+- **Next exact action**：获得当前真机“关于 OnePlayer”中的版本号 + Build 后，读取对应 branch/commit 的 `PlayerControlPanelViews.swift` 与 `PlayerScreen.swift`，只在真实现有按钮调用链上接入 episode context，不新增第二个入口。
+- **Rejected / do-not-repeat**：不得重复新增“选集”按钮；不得通过 duration/fileSize 或固定计时器猜测下一集；不得因为播放引擎发出单一 EOF 就无条件切下一集；不得为本功能重构冻结的 Transport/Seek/PiP。
+- **Open questions / risks**：当前真机 UI 与 Build173 已核对源码不一致，必须先锁定真实安装 Build；需要确认现有播放入口如何携带 SeriesId/SeasonId/episode context；手动选集切换时 Emby progress/session 的停止与新播放启动必须沿用现有正式生命周期。
 
 ## Latest accepted functional baseline
 
-- OnePlayer 0.14.6 / Build173
+- 项目资料：OnePlayer 0.14.6 / Build173
+- 当前任务新增真机证据：播放器已经存在“选集”按钮，但未生效；真实安装 Build 待确认
 - PiP 暂时冻结
 - 后续功能开发应先确认实际 Build / PR / branch / commit，不默认以 `main` 作为最新功能测试基线
 
