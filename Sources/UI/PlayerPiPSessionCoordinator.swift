@@ -38,6 +38,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         var samples: [PlayerPiPSamplePipeline.SampleEnvelope] = []
         var firstDisplayablePTS: Double?
         var pausedAfterPreroll = false
+        var optimisticCommitEnabled = false
+        var committedSpeculatively = false
+        var speculativePTS: Double?
 
         init(token: UInt64, predictedTarget: Double, pipeline: PlayerPiPSamplePipeline) {
             self.token = token
@@ -534,6 +537,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             return
         }
         let context = SeekStagingContext(token: token, predictedTarget: predicted, pipeline: stagingPipeline)
+        context.optimisticCommitEnabled = info.previousKeyframe != nil || abs(info.dispatchTarget - info.requestedTarget) > 0.001
         stagingContext = context
         stagingPipeline.onReady = { _ in }
         stagingPipeline.onFailure = { [weak self, weak context] reason in DispatchQueue.main.async {
@@ -551,11 +555,37 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
                 context.pausedAfterPreroll = true
                 context.pipeline.setPaused(true)
             }
+            if case .waitingForLanding(let waitingToken, _) = self.behavior.seek, waitingToken == context.token { self.attemptOptimisticSeekCommit(context: context) }
             if case .waitingForVisualCommit(let waitingToken, let authoritative) = self.behavior.seek, waitingToken == context.token { self.attemptStagedSeekCommit(context: context, authoritative: authoritative) }
         } }
         context.generation = stagingPipeline.seek(to: predicted)
         stagingPipeline.setPaused(true)
-        DiagnosticsLogger.shared.playback("PiPSeek", "staging begin token=\(token) seekID=\(info.seekID) requested=\(String(format: "%.3f", info.requestedTarget)) dispatch=\(String(format: "%.3f", info.dispatchTarget)) previous=\(info.previousKeyframe.map { String(format: "%.3f", $0) } ?? "none") predicted=\(String(format: "%.3f", predicted)) persistentStandby=true generation=\(context.generation)")
+        DiagnosticsLogger.shared.playback("PiPSeek", "staging begin token=\(token) seekID=\(info.seekID) requested=\(String(format: "%.3f", info.requestedTarget)) dispatch=\(String(format: "%.3f", info.dispatchTarget)) previous=\(info.previousKeyframe.map { String(format: "%.3f", $0) } ?? "none") predicted=\(String(format: "%.3f", predicted)) persistentStandby=true generation=\(context.generation) optimistic=\(context.optimisticCommitEnabled)")
+    }
+
+    @discardableResult
+    private func attemptOptimisticSeekCommit(context: SeekStagingContext) -> Bool {
+        guard context.optimisticCommitEnabled, !context.committedSpeculatively, stagingContext === context, context.token == activeSeekToken, let displayLayer, let first = context.firstDisplayablePTS else { return false }
+        let samples = context.samples.filter { $0.generation == context.generation }
+        guard !samples.isEmpty, samples.contains(where: { $0.displayable }) else { return false }
+
+        displayLayer.flush()
+        samples.forEach { displayLayer.enqueue($0.buffer) }
+        clock.reset(position: first, playing: behavior.playback == .playing)
+        syncTimebaseToClock()
+
+        let previousActive = pipeline
+        previousActive?.setPaused(true)
+        pipeline = context.pipeline
+        standbyPipeline = previousActive
+        activeGeneration = context.generation
+        bindActivePipeline(context.pipeline)
+        context.pipeline.setPaused(behavior.playback != .playing)
+        context.committedSpeculatively = true
+        context.speculativePTS = first
+        controller?.invalidatePlaybackState()
+        DiagnosticsLogger.shared.playback("PiPSeek", "optimistic visual commit token=\(context.token) predicted=\(String(format: "%.3f", context.predictedTarget)) first=\(String(format: "%.3f", first)) bufferedSamples=\(samples.count) authority=pending-mpv-landing switch=early")
+        return true
     }
 
     private func handleEngineSeekLanding(_ result: SeekResult) {
@@ -563,6 +593,22 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
         let authoritative = max(0, result.actualPosition ?? result.target)
         activeSeekLandingHostTime = CACurrentMediaTime()
+        if let context = stagingContext, context.token == token, context.committedSpeculatively, let speculative = context.speculativePTS {
+            let delta = speculative - authoritative
+            DiagnosticsLogger.shared.playback("PiPSeek", "landing validate token=\(token) requested=\(String(format: "%.3f", result.target)) actual=\(String(format: "%.3f", authoritative)) speculative=\(String(format: "%.3f", speculative)) delta=\(String(format: "%.3f", delta)) completionMs=\(String(format: "%.1f", result.completionLatencyMs))")
+            if abs(delta) <= 0.45 {
+                clock.reset(position: authoritative, playing: behavior.playback == .playing)
+                syncTimebaseToClock()
+                stagingContext = nil
+                finishSeekSettlement(token: token, authoritative: authoritative, source: "optimistic-validated")
+                return
+            }
+            stagingContext = nil
+            behavior.seek = .waitingForVisualCommit(token: token, authoritative: authoritative)
+            beginActivePipelineFallbackSeek(token: token, authoritative: authoritative)
+            return
+        }
+
         behavior.seek = .waitingForVisualCommit(token: token, authoritative: authoritative)
         DiagnosticsLogger.shared.playback("PiPSeek", "landing token=\(token) requested=\(String(format: "%.3f", result.target)) actual=\(String(format: "%.3f", authoritative)) completionMs=\(String(format: "%.1f", result.completionLatencyMs)) action=await-ready-visual")
         if let context = stagingContext, context.token == token, attemptStagedSeekCommit(context: context, authoritative: authoritative) { return }
@@ -620,10 +666,14 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             pipeline?.setPaused(behavior.playback != .playing)
         }
 
+        DiagnosticsLogger.shared.playback("PiPSeek", "visual commit token=\(token) source=\(source) authoritative=\(String(format: "%.3f", authoritative)) clock=\(String(format: "%.3f", newClockPosition)) bufferedSamples=\(validSamples.count) switch=atomic")
+        finishSeekSettlement(token: token, authoritative: authoritative, source: source)
+    }
+
+    private func finishSeekSettlement(token: UInt64, authoritative: Double, source: String) {
         let settleUntil = CACurrentMediaTime() + 0.12
         behavior.seek = .settling(token: token, until: settleUntil)
         controller?.invalidatePlaybackState()
-        DiagnosticsLogger.shared.playback("PiPSeek", "visual commit token=\(token) source=\(source) authoritative=\(String(format: "%.3f", authoritative)) clock=\(String(format: "%.3f", newClockPosition)) bufferedSamples=\(validSamples.count) switch=atomic")
         seekSettleWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, case .settling(let currentToken, _) = self.behavior.seek, currentToken == token else { return }
@@ -633,7 +683,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             self.activeSeekStartedPosition = nil
             self.activeSeekLandingHostTime = nil
             self.controller?.invalidatePlaybackState()
-            DiagnosticsLogger.shared.playback("PiPSeek", "settled token=\(token)")
+            DiagnosticsLogger.shared.playback("PiPSeek", "settled token=\(token) authoritative=\(String(format: "%.3f", authoritative)) source=\(source)")
         }
         seekSettleWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
