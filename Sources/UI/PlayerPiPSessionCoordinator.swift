@@ -49,6 +49,10 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private var deferredSystemPauseWorkItem: DispatchWorkItem?
     private var seekPauseSuppressionActive = false
     private var seekPauseEchoSuppressionUntil: CFTimeInterval = 0
+    private var systemStopInProgress = false
+    private var lastSystemPauseCommittedAt: CFTimeInterval?
+    private var lastSystemPauseWasPlaying = false
+    private var lastDisplayableSampleBuffer: CMSampleBuffer?
     private var systemStoppedRestoreAttempt = 0
     private var pendingRestoreUICompletion: ((Bool) -> Void)?
     private var restoreDestinationPoll: DispatchWorkItem?
@@ -160,6 +164,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
 
         displayLayer.enqueue(envelope.buffer)
         guard envelope.displayable else { return }
+        lastDisplayableSampleBuffer = envelope.buffer
+        sourceHostView?.markVideoAvailable()
         logicalPiPPosition = envelope.pts
 
         if !firstVisibleSampleEnqueued {
@@ -357,7 +363,12 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
                 return
             }
             guard self.systemStoppedRestoreAttempt < 3 else {
-                DiagnosticsLogger.shared.playback("PiPSession", "closed-pip handoff renderer-ready=false attempts=\(self.systemStoppedRestoreAttempt) action=keep-live-samplebuffer-cover")
+                DiagnosticsLogger.shared.playback("PiPSession", "closed-pip handoff renderer-ready=false attempts=\(self.systemStoppedRestoreAttempt) action=forced-release-frozen-cover")
+                self.pipeline?.stop()
+                guard let host = self.sourceHostView, host.alpha > 0.001 else { self.reset(reason: "system-stopped-timeout"); return }
+                UIView.animate(withDuration: 0.12, delay: 0, options: [.beginFromCurrentState, .curveEaseOut, .allowUserInteraction]) { host.alpha = 0 } completion: { [weak self] _ in
+                    Task { @MainActor in self?.reset(reason: "system-stopped-timeout") }
+                }
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in self?.beginSystemStoppedHandoff(targetPosition: targetPosition) }
@@ -387,6 +398,10 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         deferredSystemPauseWorkItem?.cancel(); deferredSystemPauseWorkItem = nil
         seekPauseSuppressionActive = false
         seekPauseEchoSuppressionUntil = 0
+        systemStopInProgress = false
+        lastSystemPauseCommittedAt = nil
+        lastSystemPauseWasPlaying = false
+        lastDisplayableSampleBuffer = nil
         systemStoppedRestoreAttempt = 0
         restoreDestinationPoll?.cancel(); restoreDestinationPoll = nil
         pendingRestoreUICompletion?(false); pendingRestoreUICompletion = nil
@@ -437,6 +452,16 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         requestHomeAfterSystemStart()
     }
 
+    func pictureInPictureControllerWillStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        systemStopInProgress = true
+        deferredSystemPauseWorkItem?.cancel(); deferredSystemPauseWorkItem = nil
+        sourceHostView?.showFallbackFrame(from: lastDisplayableSampleBuffer)
+        let now = CACurrentMediaTime()
+        let rollbackPause = lastSystemPauseWasPlaying && lastSystemPauseCommittedAt.map { now - $0 <= 0.35 } == true
+        if rollbackPause, !pipWantsPlayback { applyPiPPlayingState(true, controller: pictureInPictureController, reason: "system-stop-rollback-transient-pause") }
+        DiagnosticsLogger.shared.playback("PiPSession", "system-will-stop appState=\(UIApplication.shared.applicationState.rawValue) restoreRequested=\(restoreRequested) rollbackTransientPause=\(rollbackPause) fallbackFrame=\(sourceHostView?.hasFallbackFrame == true)")
+    }
+
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         let previousState = state
         let position = currentPiPClockPosition()
@@ -453,10 +478,13 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         state = .stopping
         AppOrientationCoordinator.shared.endPictureInPictureRestoreOrientationHold()
         systemStoppedRestoreAttempt = 0
+        sourceHostView?.showFallbackFrame(from: lastDisplayableSampleBuffer)
         pipeline?.setPaused(!pipWantsPlayback)
         if let timebase = controlTimebase { CMTimebaseSetRate(timebase, rate: pipWantsPlayback ? 1 : 0) }
-        DiagnosticsLogger.shared.playback("PiPSession", "system-stopped direct-return path=closed-pip keepSampleBufferCover=true orientationHold=released")
-        beginSystemStoppedHandoff(targetPosition: position)
+        let enginePosition = playbackController?.snapshot.position ?? position
+        let authoritativeTarget = enginePosition.isFinite && enginePosition >= 0 ? enginePosition : position
+        DiagnosticsLogger.shared.playback("PiPSession", "system-stopped direct-return path=closed-pip cover=frozen-last-frame orientationHold=released pipClock=\(String(format: "%.3f", position)) engineAuthority=\(String(format: "%.3f", authoritativeTarget)) playing=\(pipWantsPlayback)")
+        beginSystemStoppedHandoff(targetPosition: authoritativeTarget)
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
@@ -493,11 +521,17 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, setPlaying playing: Bool) {
         if playing {
             deferredSystemPauseWorkItem?.cancel(); deferredSystemPauseWorkItem = nil
+            lastSystemPauseCommittedAt = nil
+            lastSystemPauseWasPlaying = false
             applyPiPPlayingState(true, controller: pictureInPictureController, reason: "system-play")
             return
         }
         guard pipWantsPlayback else {
             applyPiPPlayingState(false, controller: pictureInPictureController, reason: "system-pause-already-paused")
+            return
+        }
+        if systemStopInProgress {
+            DiagnosticsLogger.shared.playback("PiPSession", "set-playing=false suppressed reason=system-stop-in-progress")
             return
         }
         let now = CACurrentMediaTime()
@@ -514,6 +548,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
                 DiagnosticsLogger.shared.playback("PiPSession", "set-playing=false suppressed reason=seek-transaction-became-active")
                 return
             }
+            self.lastSystemPauseWasPlaying = self.pipWantsPlayback
+            self.lastSystemPauseCommittedAt = CACurrentMediaTime()
             self.applyPiPPlayingState(false, controller: pictureInPictureController, reason: "system-pause-committed")
         }
         deferredSystemPauseWorkItem = work
@@ -585,7 +621,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         seekPauseEchoSuppressionUntil = 0
         if suppressedTransientPause { DiagnosticsLogger.shared.playback("PiPSession", "system-pause suppressed reason=skip-callback-arrived playing=\(pipWantsPlayback) policy=seek-transaction") }
         pendingSkipCompletion?()
-        pendingSkipCompletion = completionHandler
+        pendingSkipCompletion = {}
         pendingSkipGeneration = nil
         pendingSeekStartedPosition = playbackController.snapshot.position
         pendingSeekAuthoritativePosition = nil
@@ -596,8 +632,9 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             if let timebase = controlTimebase { CMTimebaseSetRate(timebase, rate: pipWantsPlayback ? 1 : 0) }
         }
         playbackController.seek(by: delta)
+        completionHandler()
         pictureInPictureController.invalidatePlaybackState()
-        DiagnosticsLogger.shared.playback("PiPSession", "seek requested delta=\(String(format: "%.3f", delta)) engineStart=\(String(format: "%.3f", playbackController.snapshot.position)) policy=seek-transaction-visual-continues previousAligning=\(previousWasAligning)")
+        DiagnosticsLogger.shared.playback("PiPSession", "seek requested delta=\(String(format: "%.3f", delta)) engineStart=\(String(format: "%.3f", playbackController.snapshot.position)) policy=seek-transaction-visual-continues systemCompletion=immediate-after-command previousAligning=\(previousWasAligning)")
         if seekLandingProvider == nil { scheduleFallbackSeekLanding(attempt: 0) }
     }
 
