@@ -879,6 +879,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         context.speculativePTS = first
         let source = longTailEscape && !strictSampleConfidence ? "long-tail-escape" : "sample-confident"
         DiagnosticsLogger.shared.playback("PiPSeek", "optimistic visual commit token=\(context.token) source=\(source) predicted=\(String(format: "%.3f", context.predictedTarget)) first=\(String(format: "%.3f", first)) requestedDelta=\(String(format: "%.3f", requestedDelta)) dispatchDelta=\(String(format: "%.3f", dispatchDelta)) bufferedSamples=\(samples.count) authority=pending-mpv-landing switch=early")
+        completeSystemSeekCompletions(upTo: context.token, source: "optimistic-\(source)")
         return true
     }
 
@@ -962,6 +963,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         }
 
         DiagnosticsLogger.shared.playback("PiPSeek", "visual commit token=\(token) source=\(source) authoritative=\(String(format: "%.3f", authoritative)) clock=\(String(format: "%.3f", newClockPosition)) bufferedSamples=\(validSamples.count) switch=atomic")
+        completeSystemSeekCompletions(upTo: token, source: "visual-\(source)")
         finishSeekSettlement(token: token, authoritative: authoritative, source: source)
     }
 
@@ -1002,7 +1004,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.02, execute: work)
     }
 
-    private func cancelSeekTransaction(reason: String) {
+    private func cancelSeekTransaction(reason: String, releasePendingSystemCompletions: Bool = true) {
         seekFallbackWorkItem?.cancel(); seekFallbackWorkItem = nil
         seekSettleWorkItem?.cancel(); seekSettleWorkItem = nil
         seekOptimisticDeadlineWorkItem?.cancel(); seekOptimisticDeadlineWorkItem = nil
@@ -1014,7 +1016,8 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         activeSeekRequestedTarget = nil
         activeSeekStartedPosition = nil
         activeSeekLandingHostTime = nil
-        if behavior.seek.isActive { DiagnosticsLogger.shared.playback("PiPSeek", "cancel reason=\(reason)") }
+        if releasePendingSystemCompletions { releasePendingSystemSeekCompletions(reason: reason) }
+        if behavior.seek.isActive { DiagnosticsLogger.shared.playback("PiPSeek", "cancel reason=\(reason) pendingSystemCompletion=\(pendingSystemSeekCompletions.count)") }
         behavior.seek = .idle
     }
 
@@ -1147,13 +1150,14 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, skipByInterval skipInterval: CMTime, completion completionHandler: @escaping @Sendable () -> Void) {
+        let callbackStartedAt = CACurrentMediaTime()
         let delta = CMTimeGetSeconds(skipInterval)
         guard delta.isFinite, behavior.presentation == .active, behavior.exitIntent == .none, behavior.playback != .stopped else { completionHandler(); return }
         pendingSystemPauseWorkItem?.cancel(); pendingSystemPauseWorkItem = nil
-        DiagnosticsLogger.shared.playback("PiPSeek", "system callback enter delta=\(String(format: "%.3f", delta)) state=\(String(describing: behavior.seek)) avkitInvalidation=deferred-to-playback-state-only")
-        beginSeek(delta: delta)
-        completionHandler()
-        DiagnosticsLogger.shared.playback("PiPSeek", "system completion immediate delta=\(String(format: "%.3f", delta)) avkitInvalidation=none")
+        DiagnosticsLogger.shared.playback("PiPSeek", "system callback enter delta=\(String(format: "%.3f", delta)) state=\(String(describing: behavior.seek)) completionPolicy=after-visual-timebase-commit")
+        if beginSeek(delta: delta, systemCompletion: completionHandler, callbackStartedAt: callbackStartedAt) == nil {
+            DiagnosticsLogger.shared.playback("PiPSeek", "system completion fallback immediate delta=\(String(format: "%.3f", delta)) reason=seek-not-started")
+        }
     }
 
     func pictureInPictureControllerShouldProhibitBackgroundAudioPlayback(_ pictureInPictureController: AVPictureInPictureController) -> Bool { false }
