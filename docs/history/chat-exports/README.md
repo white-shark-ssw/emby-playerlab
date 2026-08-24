@@ -1,10 +1,10 @@
 # OnePlayer Chat Export Archive
 
-This directory is reserved for the original exported project conversations.
+此目录保存 OnePlayer 项目 v1-v19 的原始 ChatGPT 会话导出，作为**历史证据档案**。
 
-## Scope
+## 已归档并验证
 
-Historical source set:
+当前完整源集：
 
 - v01.md
 - v02.md
@@ -26,23 +26,29 @@ Historical source set:
 - v18.md
 - v19.md
 
-These files preserve planning discussion, failed experiments, CI/build history, real-device feedback and superseded hypotheses.
+2026-08-25 已检查：
 
-## Normal handoff
+- 19/19 文件全部存在；
+- GitHub blob SHA 与整理前保存的原始文件逐个一致；
+- `SHA256SUMS.txt` 保留原始文件 SHA-256，可用于后续完整性复核。
 
-Do **not** require a new development conversation to read all historical exports before doing routine work.
+## 正常接手不要通读历史
 
-Start with:
+新会话从这里开始：
 
-1. `docs/project/PROJECT_STATE.md`
-2. `docs/project/TECHNICAL_DECISIONS.md`
-3. `docs/project/BUILD_TEST_INDEX.md`
-4. `docs/project/MODULE_STATUS.md`
+`docs/project/START_HERE.md`
 
-Only consult the raw export that covers the disputed historical detail.
+然后读取 `docs/project/` 的当前权威资料。
 
-## Important warning
+只有需要追溯某个旧 Build、失败实验、旧日志或历史推理时，才读取相应 vXX 原文。
 
-Old exports contain statements that were later disproved or superseded. Treat them as historical evidence, not current specification.
+## 重要警告
 
-The SHA-256 manifest in this directory is used to verify that any imported originals match the preserved source set.
+历史导出包含：
+
+- 后来被推翻的推测；
+- 只计划但未实现的方案；
+- CI 成功但真机失败的版本；
+- 已经退出正式架构的实验代码。
+
+因此历史原文是**证据**，不是当前规格。当前状态以 `docs/project/` + 实际源码 + 最新真机结果为准。
