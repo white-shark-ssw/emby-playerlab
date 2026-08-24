@@ -10,7 +10,7 @@
 
 1. `START_HERE.md`
 2. `CURRENT_WORK.md`
-3. 根据用户当前消息中明确的会话用途读取 `CURRENT_WORK_DEV.md` 或 `CURRENT_WORK_RULES.md`
+3. 根据用户当前消息中明确的会话用途进入规则会话或开发/功能会话
 4. `PROJECT_STATE.md`
 5. `MODULE_STATUS.md`
 6. `TECHNICAL_DECISIONS.md`
@@ -18,35 +18,48 @@
 
 然后再读取当前任务相关源码、PR、branch、日志或规则文件。
 
-工作槽路由：
+### 会话类型路由
 
 - `当前为规则会话` → `CURRENT_WORK_RULES.md`
 - `当前为开发会话` / `当前为功能会话` → `CURRENT_WORK_DEV.md`
-- 语义明确的规则维护表达 → `CURRENT_WORK_RULES.md`
-- 语义明确的功能开发、Bug、日志、真机、架构实现、CI / IPA 表达 → `CURRENT_WORK_DEV.md`
+- 语义明确的规则维护表达 → 规则会话
+- 语义明确的功能开发、Bug、日志、真机、架构实现、CI / IPA 表达 → 开发/功能会话
 
-### 路由不确定时的硬规则
+如果用户当前消息不足以可靠判断属于规则会话还是开发/功能会话，必须明确告知用户并让用户选择。
 
-如果用户当前消息不足以可靠判断属于规则会话还是开发/功能会话，必须明确告知用户当前会话类型无法确定，并让用户选择。
+在用户选择前：不得根据 Active 状态、最近更新时间、旧聊天主题、任务紧急程度或模型猜测自动选择；不得激活、修改、覆盖或清空任何工作 checkpoint；不得擅自开始某个任务。
 
-在用户选择前：
+## 开发会话支持多个并行功能
 
-- 不得根据哪个槽为 `Active`、哪个槽最近更新、旧聊天主题、任务紧急程度或模型猜测自动选择；
-- 即使只有一个槽为 `Active`，也不得仅凭该状态自动路由；
-- 不得把任何槽设为 `Active`；
-- 不得修改、覆盖、清空或合并任一槽；
-- 不得擅自开始某个槽中的任务。
+`CURRENT_WORK_DEV.md` 是**开发任务路由器**，不再保存单个 Active 功能正文。
 
-只有会话类型明确后，才读取并操作对应工作槽。如果所选工作槽为 `Active`，新会话应优先按其中记录的真实基线、已完成步骤和 `Next exact action` 续接，不要无理由从头重复已经完成的分析。
+每个当前功能任务拥有独立 checkpoint：
 
-只有当前资料不足以解释历史争议时，才查询 `docs/history/chat-exports/`。
+`docs/project/current/dev/<Work-ID>.md`
+
+任务模板和并行约束见：
+
+`docs/project/current/dev/README.md`
+
+路由为开发/功能会话后，还必须确认具体任务：继续哪个已有 Work ID，或新建哪个功能。
+
+如果用户只说明“当前为功能会话/开发会话”而没有说明具体任务：
+
+1. 读取 `docs/project/current/dev/` 当前任务；
+2. 向用户展示可继续的 Active 功能；
+3. 让用户选择已有任务或明确新建任务；
+4. 即使只有一个 Active 功能，也不能仅凭它存在自动认定要继续。
+
+具体任务未明确前，不得创建/修改功能 checkpoint，不得创建、切换或复用功能 branch，不得开始代码修改。
 
 ## Required documents
 
 - `START_HERE.md` — 新会话最短入口。
-- `CURRENT_WORK.md` — 工作槽路由，不保存具体任务正文。
-- `CURRENT_WORK_DEV.md` — 功能开发的跨会话滚动 checkpoint。
-- `CURRENT_WORK_RULES.md` — 规则 / 文档治理的跨会话滚动 checkpoint。
+- `CURRENT_WORK.md` — 规则/开发会话类型路由。
+- `CURRENT_WORK_DEV.md` — 多功能开发任务路由器。
+- `current/dev/README.md` — 独立功能 checkpoint 模板与并行规则。
+- `current/dev/<Work-ID>.md` — 每个正在进行功能自己的短期 checkpoint；完成后删除。
+- `CURRENT_WORK_RULES.md` — 规则 / 文档治理的滚动 checkpoint。
 - `PROJECT_STATE.md` — 项目**现在是什么**。
 - `TECHNICAL_DECISIONS.md` — 已验证的重要技术决策和否决路线。
 - `BUILD_TEST_INDEX.md` — 重要 Build / CI / IPA / 真机节点。
@@ -69,20 +82,58 @@
 
 如果一次工作只做资料阅读、纯讨论或没有产生新项目结论，可以不制造无意义更新。
 
-## 会话中断与双工作槽
+## 多功能并行开发隔离
+
+允许多个功能开发会话同时 Active，但必须满足：
+
+1. 每个功能有唯一 Work ID；
+2. 每个功能有独立 `current/dev/<Work-ID>.md`；
+3. 每个功能有独立开发 branch；
+4. 进入评审/测试阶段后使用独立 PR；
+5. 每个功能会话只维护自己的 checkpoint；
+6. 两个 Active 功能不得共用同一个开发 branch。
+
+### 并行前冲突检查
+
+创建新的并行功能任务前，必须读取其他 Active 功能 checkpoint，比较：
+
+- Files / modules in scope；
+- State owner；
+- Frozen / do-not-touch；
+- 共享基础设施；
+- 未合并依赖。
+
+如果两个任务可能修改同一源码文件、同一核心状态所有者、同一 Frozen/P0 路径，或一个任务依赖另一个尚未合并的代码，不得静默并行。必须明确告诉用户存在冲突风险；优先串行。如果确实需要依赖开发，则明确记录 stacked/dependent work。
+
+Git 最终能否自动合并，不代表架构状态所有权适合并行修改。
+
+### Build / version candidate
+
+分配测试 Build / version candidate 前必须检查：
+
+- `BUILD_TEST_INDEX.md`；
+- `current/dev/` 其他 Active checkpoint；
+- 已存在 CI / IPA candidate。
+
+并行任务不得复用同一 Build 编号或同名 IPA candidate。
+
+### 合并前重新同步
+
+另一个并行 PR 可能先合并，因此当前任务在最终 CI / IPA / merge 前必须重新检查目标 branch 是否前进，以及是否新增文件、状态所有者或依赖重叠。
+
+如果同步最新目标后代码发生实质变化，必须重新执行受影响验证；旧 CI 不代表同步后代码已经通过。
+
+## 会话中断与 checkpoint
 
 会话上限不可预测，所以不得把交接建立在“用户提前提醒”或“快到上限再保存”之上。
 
-OnePlayer 使用两个相互隔离的滚动工作槽：
+- 规则任务使用 `CURRENT_WORK_RULES.md`。
+- 每个功能任务使用自己的 `current/dev/<Work-ID>.md`。
+- 规则任务与多个功能任务可以同时 Active。
 
-- `CURRENT_WORK_DEV.md`
-- `CURRENT_WORK_RULES.md`
+只有会话类型和具体功能任务（若为开发会话）已经明确后，才允许建立对应 checkpoint。
 
-两个槽可以同时为 `Active`。任何会话只维护与自身用途匹配的槽，不得覆盖、清空或合并另一个槽。
-
-**只有在会话类型已经明确后**，进入多步骤任务时才允许把对应槽设为 `Active`。只要任务目标已经明确，并且已经形成可用的真实基线或工作方向，就应尽早建立第一个 checkpoint。
-
-随后在有独立续接价值的节点主动刷新，例如：
+只要任务目标和可用真实基线/工作方向明确，就应尽早建立第一个 checkpoint；随后在有独立续接价值的节点刷新，例如：
 
 1. 已确认真实 Build / PR / branch / commit 或规则基线；
 2. 已形成第一版有效代码、规则决定或文档修改；
@@ -91,19 +142,9 @@ OnePlayer 使用两个相互隔离的滚动工作槽：
 5. 原假设被证伪或方向发生重要变化；
 6. 其他足以影响新会话 `Next exact action` 的重要里程碑。
 
-不要求每个小编辑都提交一次。目标不是记录完整过程，而是让最近一次 checkpoint 始终足以回答：
+不要求每个小编辑都提交一次。最近一次 checkpoint 必须足以回答：现在做什么、真实基线、已完成什么、证据等级、还缺什么、下一步是什么、哪些路线不要重复。
 
-- 现在在做什么；
-- 对应哪个真实基线；
-- 已经完成什么；
-- 当前证据等级是什么；
-- 还缺什么；
-- 新会话第一步具体做什么；
-- 哪些已验证路线不要重复尝试。
-
-因此，即使开发会话和规则维护会话同时存在，并且其中任一个在没有预警的情况下突然达到上限，新会话也可以通过**明确声明自己的用途**进入对应工作槽继续。若没有明确声明且语义不足以判断，必须先让用户选择，不能猜。
-
-任务完成后，把长期有效结论转入对应的项目状态文件或永久规则文件，然后**只将当前槽恢复为 `Idle`**。不得影响另一个槽。
+功能任务完成后，将长期有效结论转入项目状态文件，并只删除自己的 `current/dev/<Work-ID>.md`；不得影响其他 Active 功能。规则任务完成后写入永久规则文件，并只将 `CURRENT_WORK_RULES.md` 恢复为 Idle。
 
 ## Evidence levels
 
