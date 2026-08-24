@@ -196,6 +196,7 @@ struct PlayerEpisodeSelectionOverlay: View {
         .padding(.bottom, 5)
         .foregroundColor(.white)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LinearGradient(colors: [Color.black.opacity(0), Color.black.opacity(0.86)], startPoint: .top, endPoint: .bottom).ignoresSafeArea(edges: .bottom))
     }
 
     @ViewBuilder
@@ -265,7 +266,7 @@ struct PlayerEpisodeSelectionOverlay: View {
             else { onSelect(episode) }
         } label: {
             VStack(alignment: .leading, spacing: 5) {
-                ZStack(alignment: .leading) {
+                ZStack(alignment: .center) {
                     EmbyCachedRemoteImage(url: coordinator.imageURL(for: episode), contentMode: .fill, placeholderSystemImage: "film", showsLoadingIndicator: false)
                         .frame(width: 174, height: 98)
                         .clipped()
@@ -281,9 +282,8 @@ struct PlayerEpisodeSelectionOverlay: View {
                         .padding(.vertical, 6)
                         .background(Color.black.opacity(0.64))
                         .clipShape(Capsule())
-                        .padding(.leading, 9)
                     } else if isResolving {
-                        ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white)).padding(9).background(Color.black.opacity(0.64)).clipShape(Circle()).padding(.leading, 9)
+                        ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white)).padding(9).background(Color.black.opacity(0.64)).clipShape(Circle())
                     }
                 }
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isCurrent ? Color.white : Color.white.opacity(0.14), lineWidth: isCurrent ? 2 : 0.7))
