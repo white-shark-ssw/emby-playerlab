@@ -376,7 +376,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
                 pendingRestoreUICompletion = systemCompletion
             }
             DiagnosticsLogger.shared.playback("PiPState", "return join existing reason=\(reason) manual=\(manualForegroundReturn) systemCompletion=\(systemCompletion != nil) rendererReady=\(returnRendererReady)")
-            if !returnRendererReady, !returnRendererRestoreInProgress { beginReturnRendererRestore(targetPosition: clock.position()) }
+            if !returnRendererReady, !returnRendererRestoreInProgress { beginReturnRendererRestore(targetPosition: playbackController?.snapshot.position ?? clock.position()) }
             pollReturnBarrier(attempt: 0)
             return
         }
@@ -425,7 +425,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
         let orientationReady: Bool
         if let targetOrientation { orientationReady = targetOrientation.isLandscape ? windowSize.width > windowSize.height : windowSize.height > windowSize.width }
         else { orientationReady = windowSize.width > 1 && windowSize.height > 1 }
-        let hostReady = hostSize.width > 1 && hostSize.height > 1
+        let hostReady = behavior.exitIntent == .pauseAndSuspend || (hostSize.width > 1 && hostSize.height > 1)
         let gateReleased = !PlayerSurfacePresentationGate.shared.isHolding
         let appReady = UIApplication.shared.applicationState == .active
 
@@ -466,7 +466,15 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
     private func failReturnBarrier(reason: String) {
         returnPollWorkItem?.cancel(); returnPollWorkItem = nil
         if behavior.exitIntent == .pauseAndSuspend {
-            DiagnosticsLogger.shared.playback("PiPState", "paused foreground restore retry reason=\(reason) action=replay-surface")
+            guard returnPostStopRetryCount < 3 else {
+                DiagnosticsLogger.shared.playback("PiPState", "paused foreground restore exhausted reason=\(reason) retries=\(returnPostStopRetryCount) action=release-cover-keep-paused")
+                PlayerSurfacePresentationGate.shared.reset(reason: "pip-paused-restore-exhausted")
+                AppOrientationCoordinator.shared.endPictureInPictureRestoreOrientationHold()
+                reset(reason: "pause-and-suspend-restore-exhausted", preserveOrientationHold: true)
+                return
+            }
+            returnPostStopRetryCount += 1
+            DiagnosticsLogger.shared.playback("PiPState", "paused foreground restore retry=\(returnPostStopRetryCount) reason=\(reason) action=replay-surface")
             returnSurfaceReplayRequested = false
             returnRendererReady = false
             returnRendererRestoreInProgress = false
@@ -505,6 +513,7 @@ final class PlayerPiPSessionCoordinator: NSObject, @preconcurrency AVPictureInPi
             return
         }
         returnPollWorkItem?.cancel(); returnPollWorkItem = nil
+        pendingRestoreUICompletion?(true)
         pendingRestoreUICompletion = nil
         pipeline?.stop()
         standbyPipeline?.stop()
