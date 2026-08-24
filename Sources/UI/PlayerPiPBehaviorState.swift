@@ -2,8 +2,8 @@ import Foundation
 
 struct PlayerPiPBehaviorState: Equatable {
     enum PlaybackState: String { case playing, paused, stopped }
-    enum PresentationState: String { case idle, preparing, starting, active, returning, closing, recovering }
-    enum ExitIntent: String { case none, returnToPlayer, closePlayback, failureFallback, detach }
+    enum PresentationState: String { case idle, preparing, starting, active, returning, closing, backgroundPaused, recovering }
+    enum ExitIntent: String { case none, returnToPlayer, pauseAndSuspend, failureFallback, detach }
     enum SeekState: Equatable {
         case idle
         case waitingForLanding(token: UInt64, suppressPauseUntil: CFTimeInterval)
