@@ -1,34 +1,32 @@
 # OnePlayer Project State
 
-_Last updated after Build178 / OnePlayer 0.14.11 non-standard episode-ordering CI + IPA handoff. Build176 remains the latest real-device accepted baseline._
+_Last updated after user real-device acceptance of Build178 / OnePlayer 0.14.11 and merge of PR #254._
 
 ## Current functional baseline
 
 The latest **real-device accepted** functional baseline is:
 
 - Product: **OnePlayer**
-- Version: **0.14.9**
-- Build: **176**
+- Version: **0.14.11**
+- Build: **178**
 - Canonical branch: `main`
-- Final merge PR: **#253**
-- Final merge commit: `d10e0d63b429f72a664193a1a5bacf728cac50b6`
-- Development branch: `feat/player-episode-picker-0.14.7`
-- Development PR: **#249** (historical / superseded by final main merge PR #253)
-- Product source before the temporary Build176 CI helper: `f701f0446d65e84fc686f69ec14d60402c94839c`
-- Dedicated CI source: `221630297dc1080279bb8a3f05d69586461b328c`
-- Workflow-restored branch head after Build176 CI: `4b26a7d3a9826c58bfdddd6aafaeb9eeb5c7c943`
-- Main-synchronization merge on the feature branch: `1ff5598c18e8c46856efecbd1d2f15df422098c6`
-- Dedicated CI run: **32782048086**
-- Artifact: `OnePlayer-0.14.9-build176-episode-picker-ui`
+- Final merge PR: **#254**
+- Final merge commit: `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`
+- Development branch: `fix/nonstandard-episode-sorting`
+- Clean product head before merge: `8718f60a1b0a3d0034473f1cc1769c0b5bc3665f`
+- Dedicated CI source: `db9aa2498fba5c6b092bfec2427042859e32b26a`
+- Dedicated CI run: **32836693548**
+- Artifact: `OnePlayer-0.14.11-build178-episode-ordering`
+- IPA SHA-256: `2e4ed5be2c32535249ea2049a9686f6ac24a217e04535806ee6ee4721e78ba5b`
 - Deployment Target: **iOS 15.0**
 - Required target device: **iPhone 15 Pro Max / iOS 17.0**
 - Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements / merged to main**
 
-`main` contains the accepted Build176 product tree. Build177 and Build178 are parallel feature candidates and do **not** replace this accepted baseline until their respective real-device tests pass.
+Build178 inherits the accepted Build176 player episode-selection/session contract and adds the accepted canonical Emby TV episode-ordering contract. The user completed target-device validation on 2026-08-25 and explicitly approved this task for acceptance, completion and merge.
 
-Before PR #253, `main` had advanced independently with project governance/history/CI files only. The synchronization step preserved those current `main` files while reusing the exact accepted Build176 product trees/blobs for `Sources`, `Resources`, `Config`, `scripts`, project specs and Podfile. No runtime source was changed by synchronization, so no Build177 was created merely for the merge.
+## Accepted episode-selection and ordering contracts
 
-Build176 completes the player episode-selection task for the current requirements. The accepted behaviour includes:
+Build176 established the stable in-player episode-selection/session behaviour:
 
 - existing OnePlayer player-bottom control coordinates remain unchanged;
 - player episode entry opens an in-player horizontal episode overlay rather than a large sheet;
@@ -41,32 +39,24 @@ Build176 completes the player episode-selection task for the current requirement
 - manually selecting another episode replaces the complete source-owned playback session while the fullscreen host stays presented;
 - `自动加载下一集` uses the existing trusted natural-end / `PrematureEOFGuard` gate and does not advance on premature EOF, abnormal short-media recovery, network starvation, or raw engine EOF.
 
-The episode media/session rule is source-owned replacement rather than in-place source mutation. Each selected episode receives a fresh `PlayerController`, `PlaybackOrchestrator`, `PlaybackTransportContext` and Emby playback session. Episode metadata may be loaded ahead of selection, but 115/CDN temporary media URLs are resolved only when the user selects an episode or a trusted natural end requests the next one.
+The episode media/session rule remains source-owned replacement rather than in-place source mutation. Each selected episode receives a fresh `PlayerController`, `PlaybackOrchestrator`, `PlaybackTransportContext` and Emby playback session. Episode metadata may be loaded ahead of selection, but 115/CDN temporary media URLs are resolved only when the user selects an episode or a trusted natural end requests the next one.
 
-## Current feature candidates
+Build178 adds the canonical episode-order contract:
+
+- `seriesEpisodes(seriesId:)` uses Emby's TV-specific `GET /Shows/{SeriesId}/Episodes` endpoint;
+- OnePlayer preserves Emby's returned episode order instead of forcing generic Items `ParentIndexNumber,IndexNumber` sorting;
+- `SeasonId` remains the season-membership authority but is not a second in-season ordering owner;
+- pagination and ID-preserving deduplication remain;
+- no title, filename, DateCreated, item-ID or artificial-number fallback sorting is introduced;
+- detail page, all-episodes view, player picker and trusted auto-next consume the same canonical episode array.
+
+The original failing non-standard series had 165 episodes with `nilIndex=164`; Build178 was accepted on real device after switching the shared data path to Emby's TV ordering authority.
+
+## Current parallel feature candidate
 
 ### Build177 / OnePlayer 0.14.10 — home carousel smoothness
 
-`DEV-home-carousel-drag-smoothness` owns Build177. Its source/CI/real-device state is tracked independently in its checkpoint. Build177 must not be reused by another task.
-
-### Build178 / OnePlayer 0.14.11 — canonical episode ordering
-
-`DEV-nonstandard-episode-sorting` owns Build178. User real-device comparison established that OnePlayer's current order is wrong for a 165-item non-standard series while EplayerX matches Emby; app diagnostics show `nilIndex=164`. The minimal fix changes shared `seriesEpisodes(seriesId:)` from generic Items + forced `ParentIndexNumber,IndexNumber` ordering to Emby's TV-specific `/Shows/{SeriesId}/Episodes` endpoint and preserves the server-returned order.
-
-Current Build178 evidence:
-
-- branch `fix/nonstandard-episode-sorting`
-- draft PR #254 against `main`
-- clean product head `8718f60a1b0a3d0034473f1cc1769c0b5bc3665f`
-- dedicated standard MPV Release CI source `db9aa2498fba5c6b092bfec2427042859e32b26a`
-- CI run `32836693548` = **success**
-- artifact `OnePlayer-0.14.11-build178-episode-ordering`
-- IPA SHA-256 `2e4ed5be2c32535249ea2049a9686f6ac24a217e04535806ee6ee4721e78ba5b`
-- Xcode 16.4 Release build passed; app identity = 0.14.11 (178); App/runtime Mach-O MinOS = 15.0
-- evidence level: **Code written / CI passed / IPA produced**
-- fixed ordering real-device validation: **pending**
-
-Build178 does not modify PlayerController, Player episode-selection/session ownership, MPV Seek, PiP, UnifiedTransport, cache, STRM/302/115 direct transport, or Emby progress/resume. Do not merge/promote Build178 until the known abnormal series and at least one normal indexed series pass target-device validation.
+`DEV-home-carousel-drag-smoothness` still owns Build177 as its independent test identity. Its evidence remains tracked only in that Active checkpoint. Because `main` has now advanced through accepted Build178, Build177 must re-check/synchronize the target branch before any final merge; older CI must not be treated as proof for a materially changed integration baseline.
 
 ## Core playback architecture
 
@@ -112,7 +102,7 @@ Exact Seek was tested and rejected as the normal runtime path because its latenc
 
 ## PiP status
 
-PiP development remains **temporarily frozen at Build173** even though the overall accepted functional baseline is now Build176.
+PiP development remains **temporarily frozen at Build173** even though the overall accepted functional baseline is now Build178.
 
 Accepted PiP behaviour:
 
@@ -150,7 +140,7 @@ Do not start a new PiP optimisation build unless there is a materially new archi
 
 ## Current development direction
 
-Build176 / OnePlayer 0.14.9 remains the real-device accepted `main` baseline. Parallel feature work is currently isolated by task/build identity: Build177 is reserved for home-carousel drag smoothness and Build178 for Emby canonical episode ordering. Each candidate must retain its own branch, CI/IPA evidence and real-device acceptance; neither may be described as stable merely because CI passed.
+Build178 / OnePlayer 0.14.11 is the current real-device accepted `main` baseline. New work should start from the actual current `main` unless an existing parallel checkpoint explicitly owns an older isolated test baseline; such a task must re-check target-branch advancement before final CI/merge.
 
 New work should proceed module-by-module without casually touching:
 
