@@ -120,30 +120,6 @@ extension V3EmbyHomeView {
 
     func carouselDragGesture(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
-            .onChanged { value in
-                carouselTransitionState.recordDragSample(value.translation)
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                if carouselTransitionState.dragAxis == nil {
-                    guard max(abs(horizontal), abs(vertical)) >= 0.5 else { return }
-                    carouselTransitionState.dragAxis = abs(horizontal) >= abs(vertical) ? .horizontal : .vertical
-                    carouselTransitionState.recordDragAxisLock(value.translation)
-                }
-                guard carouselTransitionState.dragAxis == .horizontal else { return }
-                suppressCarouselTap()
-                guard transitionToID == nil || isCarouselDragging else { return }
-                let direction = horizontal < 0 ? 1 : -1
-                guard let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: direction) else { return }
-                if !isCarouselDragging || transitionFromID != currentID || transitionToID != targetID {
-                    carouselTransitionState.recordDragTransitionStart(value.translation)
-                    transitionFromID = currentID
-                    transitionToID = targetID
-                    transitionProgress = 0
-                    transitionDirection = direction
-                    isCarouselDragging = true
-                }
-                transitionProgress = min(1, max(0, abs(horizontal) / max(1, width)))
-            }
             .onEnded { value in
                 let dragAxis = carouselTransitionState.dragAxis
                 carouselTransitionState.finishDragDiagnostics(axis: dragAxis, endTranslation: value.translation)

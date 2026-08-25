@@ -19,24 +19,17 @@ private final class V3HomeCarouselImmediateDragRecognizer: UIGestureRecognizer {
             let location = sample.location(in: view)
             let translation = CGSize(width: location.x - origin.x, height: location.y - origin.y)
             let axis = onSample?(translation)
-            if state == .possible {
-                if axis == .vertical { state = .failed; return }
-                if axis == .horizontal { state = .began }
-            } else if state == .began || state == .changed, axis == .horizontal {
-                state = .changed
-            }
+            if axis == .vertical { state = .failed; return }
         }
     }
 
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
-        if state == .began || state == .changed { state = .ended }
-        else { state = .failed }
-    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) { state = .failed }
 
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
-        if state == .began || state == .changed { state = .cancelled }
-        else { state = .failed }
-    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) { state = .failed }
+
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool { false }
 
     override func reset() {
         super.reset()
