@@ -218,3 +218,16 @@ Build191 establishes the accepted detail/episode-page interaction contract. Deta
 - no second playback-source owner, selected-episode owner, timer, retry, watchdog or manual scroll-position reconciliation is part of this architecture.
 
 This contract inherits Build176 source-owned episode-session replacement, Build178 canonical Emby episode ordering, and Build182 detail scroll/presentation-cache ownership unchanged. It applies to detail-page and full-detail-picker browsing; it does **not** claim to fix the separately confirmed in-player episode-overlay nonstandard season-grouping regression. **Build191 / OnePlayer 0.14.24 passed dedicated Xcode 16.4 Release CI, produced the validated IPA, was accepted by the user on the target device, and merged to `main` through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`.** Treat this detail selection/navigation behavior as stable unless new target-device regression evidence requires reopening it.
+
+## D015 — Auto-start is cached-first; Edit password is optional reauthentication
+
+Build192 target-device feedback and the user's startup requirement refine D014 without reopening playback transport.
+
+- Auto-start must not gate Home construction on network route selection. After local session/token restore, `RootView` creates the normal authenticated client synchronously and constructs the target Emby root immediately.
+- Existing `V3EmbyHomeViewModel` UserDefaults snapshots (libraries / resume / latest / carousel) and `EmbyImageDiskCache` are the only cached-home authorities. Do not add a second offline-home model or duplicate state owner.
+- Best-route selection still runs concurrently. If the winner differs, Home is rebuilt with that client so the existing refresh path fetches current data. If route selection fails while an initial local client exists, retain stale cached Home; do not close back to the first-level server page.
+- `EmbyImageDiskCache.stableKey(for:)` removes token query items but retains scheme/host/path. Therefore the runtime same-server winner is persisted as the current session `serverURL`, allowing the next cached-first launch to generate image URLs on the previous winner and maximize disk-cache hits.
+- Edit Server always exposes the password row, initially empty because password is never stored. Empty means keep the current AccessToken. Non-empty means authenticate the stored username on the validated same-server best route, require the same Server ID (when returned) and exact same User ID, then replace only the AccessToken.
+- Password remains absent from UserDefaults, local server configuration and synchronizable Keychain registry. Existing local token and opt-in synchronizable token contracts remain unchanged.
+- Manual entry from the first-level server list keeps its pre-Home route-selection behavior; cached-first is specifically required for auto-start in this decision.
+- Build196 / OnePlayer 0.14.29 passed dedicated Xcode 16.4 standard MPV Release CI, app/runtime MinOS 15.0 validation and IPA packaging. This is build evidence only; cached-first presentation, offline/stale behavior, edit-password runtime semantics and iCloud cross-device behavior remain target-device pending.

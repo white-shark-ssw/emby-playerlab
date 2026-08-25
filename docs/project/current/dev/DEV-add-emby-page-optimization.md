@@ -31,7 +31,7 @@
 - Working branch：`feat/add-emby-page-optimization`。
 - First implementation product head：`2d9aca2002e9788d217410d4a8b16772ef79d814`。
 - Current follow-up product commit：`571f54647ebc2d8ac811c63bf8c548f234172152`。
-- Current clean feature head after applicator cleanup：`85a16c5bbbf02556c5c8ed4c2fe532b0b3d8d269`。
+- Current clean feature head after Build196 workflow cleanup：`113b9bdc79e499750bb9ef98150bb2f7bc805e17`。
 - Draft PR：**#256** — `Add modern Emby server editor and multi-route startup`。
 - Latest Build196 reservation check：`main@908263723a3f8dbc880d6976f051a698b074b49e`，Build195 已归播放器 lazy-row 任务；仓库未发现 Build196 owner。
 - Previous candidate：OnePlayer **0.14.25 / Build192** — 已产生真机反馈，未接受。
@@ -103,17 +103,21 @@
 - Edit password：always visible; empty retains token; non-empty reauthenticates stored username and rejects different User ID/Server ID before token replacement。
 - Cached-first auto-start：RootView supplies local client immediately; existing Home snapshot/disk-image paths can render before route selection; background route failure does not close the auto-started server root。
 - Runtime winner persistence：winner becomes stored `serverURL` so next cached-first launch can reuse the same host-based image cache keys。
-- CI：**pending**。
-- IPA：**pending**。
-- Real-device：**pending**。
+- Exact dedicated CI source：`a28430b6087db67cd4fac2c71a56240992b8f46d`。
+- Dedicated standard MPV Release run：**`32885369998` — success**。
+- Artifact：`OnePlayer-0.14.29-build196-add-emby-cached-startup`, ID **`9577471047`**, digest `sha256:f420f2e9f6767ff1739aa0de601e89a6641213b297a3597bfd8ec6831ea6c23c`。
+- IPA SHA-256：**`b2c0e0a7af6aa29ad0f7117b88fadf3eb9a2c45c73bb961c7a63f50a2c763c66`**。
+- Exact source ZIP SHA-256：**`10044e843155e2460cc023b7457acfb5c8cadc0c82def04cf3b4a0fb380d36ef`**。
+- App identity / compatibility：OnePlayer **0.14.29 (196)**; App + main runtime Mach-O MinOS **15.0**。
+- CI：**PASS**。
+- IPA：**PRODUCED**。
+- Real-device Build196：**pending**。
 - Stable：**NO**。
 
 ## Next exact action
 
-1. Build **OnePlayer 0.14.29 / Build196** using dedicated Xcode 16.4 standard MPV Release CI, preserving MinOS 15.0 and the five-file product scope.
-2. Verify source contract: Edit password row unconditional; edit password does not persist; cached-first auto-start uses existing Home snapshot/image cache; route failure with initial client does not close; no Home/Player/Transport/Cache implementation file changed.
-3. Produce and checksum unsigned IPA/source ZIP, then remove the temporary Build196 workflow from PR #256.
-4. Target-device test Build196: Edit page password row visible; leave blank saves without relogin; supplied correct password refreshes token; wrong/different-user credentials fail without destroying current session.
+1. Install the produced **OnePlayer 0.14.29 / Build196** IPA on iPhone 15 Pro Max / iOS 17.0.
+2. Target-device test Build196: Edit page password row visible; leave blank saves without relogin; supplied correct password refreshes token; wrong/different-user credentials fail without destroying current session.
 5. Force-quit with `自动启动` ON after Home has cached data, then test with normal network and with Emby temporarily unreachable: old Home should appear directly without first-level server page/connection gate; when network is available it should refresh through the selected winner route.
 6. Verify cached posters are available on relaunch where the previous winner URL is unchanged, and normal STRM/302 → 115/CDN playback remains client-direct.
 7. iCloud cross-device behavior remains separately pending until actual second-device evidence exists.

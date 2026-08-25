@@ -4,7 +4,7 @@
 |---|---|---|
 | Deployment compatibility | Frozen | Prefer iOS 15.0; must work on iPhone 15 Pro Max / iOS 17.0; never raise above iOS 17.0. |
 | Emby / STRM / 302 | Frozen core | Client-direct final media path. NAS must not relay bytes. |
-| Emby server management / multi-route | **Active Build192 candidate** | SessionStore-owned same-Server-ID route configuration/selection, root-level auto-start and opt-in synchronizable Keychain server registry. Dedicated Release CI/IPA passed; real-device route/iCloud/startup validation pending. This does not reopen the Frozen STRM/302/115 client-direct media path. |
+| Emby server management / multi-route | **Active Build196 candidate; Build192 device feedback superseded** | Build192 target-device Edit UI exposed the missing password row. Build196 keeps SessionStore ownership, makes Edit password actionable without persisting it, and changes auto-start to cached-first Home: existing Home snapshots/image disk cache render before network, route selection/refresh runs concurrently, stale Home survives route failure, and runtime winner serverURL is remembered for future image-cache hits. Dedicated Release CI/IPA passed; Build196 real-device + cross-device iCloud validation pending. Frozen STRM/302/115 client-direct media path remains untouched. |
 | Emby TV episode ordering | **Stable at Build178 / merged to main** | Canonical series order comes from Emby's `/Shows/{SeriesId}/Episodes`; no title/file/date/ID/artificial-number fallback sorting. |
 | UnifiedTransport | Frozen core | Range/206 + real byte demand. Avoid unrelated edits. |
 | Session cache | Frozen core | Shared playback-path cache contract. |
@@ -20,7 +20,7 @@
 | Detail episode selection navigation | **Stable at Build191 / merged to main** | Build191 / 0.14.24 was accepted on the target device and merged through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`. Detail horizontal cards select only; normal Series entry selects explicit initial episode → resumable episode → canonical first episode; quick range buttons select the target-range first episode; the compact summary reuses the exact card title formatter; full-picker playback closes back to the same picker/scroll position. Build182 scroll/cache, Build176 source-owned episode-session replacement and Build178 canonical order remain unchanged. |
 | Diagnostics | Required | Playback/App logs remain a first-class debugging surface. |
 | App appearance/theme | Partial | Broader theme work can proceed separately without touching player core. |
-| Other product modules | Active parallel work | Build191 / 0.14.24 is the accepted overall runtime baseline on `main`. Build192 / 0.14.25 remains the independent Add/Edit Emby candidate, Build193 / 0.14.26 remains the rejected/investigation home-carousel line, Build194 / 0.14.27 proved player SeasonId grouping correctness but exposed large-list picker open latency, and Build195 / 0.14.28 is the CI/IPA-complete lazy-row performance candidate pending real-device validation. |
+| Other product modules | Active parallel work | Build191 / 0.14.24 is the accepted overall runtime baseline on `main`. Build192 / 0.14.25 Add/Edit Emby has real-device feedback and is superseded by Build196 / 0.14.29, whose cached-first/password follow-up has CI/IPA complete but awaits target-device validation. Build193 remains the rejected/investigation carousel line; Build194 proved player SeasonId grouping correctness; Build195 is the CI/IPA-complete lazy-row performance candidate pending real-device validation. |
 
 ## Change discipline
 

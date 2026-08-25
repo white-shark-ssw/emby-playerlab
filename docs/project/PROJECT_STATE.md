@@ -357,3 +357,11 @@ New work should proceed module-by-module without casually touching:
 - system navigation.
 
 If a new module requires changes in one of those frozen areas, state the reason explicitly before modifying it.
+
+## Build196 / OnePlayer 0.14.29 — Add/Edit Emby cached-first follow-up
+
+`DEV-add-emby-page-optimization` remains Active. Build192 has now been tested on the target device: the redesigned Edit Server UI rendered, the tested route reported 73 ms / fastest, and auto-start/iCloud controls were visible and enabled; the missing Edit password row was rejected. The user also required auto-start to enter cached Home before network, with stale Home retained if Emby is temporarily unreachable.
+
+Build196 implements that follow-up without modifying Home-model/cache ownership or playback transport. Edit always shows an empty password field; blank retains the token, while non-empty reauthenticates the stored username and requires the same Server ID/User ID before token replacement. Auto-start supplies a local-token client immediately so existing Home snapshots and disk-cached images can render; best-route selection and live refresh then proceed, route failure does not close the cached auto-start root, and a successful runtime winner is remembered as `serverURL` because image cache keys retain host.
+
+Dedicated run `32885369998` passed the Build196 source/Frozen contract, Xcode 16.4 standard MPV Release build, OnePlayer 0.14.29 (196) app validation and iOS 15.0 MinOS audit. Artifact `OnePlayer-0.14.29-build196-add-emby-cached-startup` ID `9577471047`; IPA SHA-256 `b2c0e0a7af6aa29ad0f7117b88fadf3eb9a2c45c73bb961c7a63f50a2c763c66`; exact source ZIP SHA-256 `10044e843155e2460cc023b7457acfb5c8cadc0c82def04cf3b4a0fb380d36ef`. Build191 / 0.14.24 remains the accepted overall baseline. **Build196 is Code written / CI passed / IPA produced / real-device pending / not stable.**

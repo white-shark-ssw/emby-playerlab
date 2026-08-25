@@ -35,10 +35,11 @@ This is a milestone index, not a list of every experimental build.
 | **Build189 / 0.14.22** | Carousel native raw/coalesced-touch input | Native movement sampling worked, but **real-device rejected:** releasing a drag could leave the carousel frozen at the intermediate progress instead of completing/cancelling. Source inspection showed native recognition was competing with the SwiftUI-only release owner. |
 | **Build190 / 0.14.23** | Carousel release-owner implementation under collided identity | The passive-native / SwiftUI-release implementation passed dedicated Release CI and produced an IPA, but the same Build190 identity was already used by the parallel detail-selection line. **Carousel Build190 identity retired; do not distribute or use for attribution.** |
 | **Build191 / 0.14.24** | Detail episode-selection/navigation completion | Inherits the Build188/190 detail-selection follow-ups and unifies the compact summary with the exact horizontal-card `displayEpisodeTitle(episode)` formatter. User accepted the complete detail/episode-page behavior on the target device and PR #257 merged to `main` at `f153a36e9da8a208150fe638e0b9df5835df1dc0`. **Current accepted overall baseline / stable for this detail-selection task.** |
-| **Build192 / 0.14.25** | Add/Edit Emby modernization + same-server multi-route startup | Modern card editor, one-tap clipboard import, editor-only route latency, root-level auto-start, synchronizable Keychain opt-in server registry, and first-valid same-Server-ID route selection before Home client creation. Dedicated Xcode 16.4 standard MPV Release CI passed, app identity/MinOS 15.0 validated and unsigned IPA produced. **Real-device pending; does not replace Build191.** |
+| **Build192 / 0.14.25** | Add/Edit Emby modernization + same-server multi-route startup | Dedicated Release CI/IPA passed. **Real-device follow-up:** Edit Server rendered correctly, the tested route showed 73 ms / fastest and auto-start+iCloud toggles were visible/on, but Edit hid the password row. User also superseded the pre-Home network gate with a cached-first auto-start requirement. **Tested with actionable feedback / not accepted; superseded by Build196.** |
 | **Build193 / 0.14.26** | Carousel passive native movement + single SwiftUI release owner | Dedicated Release CI passed and IPA/checksums verified, but **real-device rejected:** the new recording again shows drag progress moving while finger release leaves the carousel frozen between pages. Making the native recognizer passive did not restore the underlying SwiftUI settle path; this hybrid ownership is not a valid baseline. |
 | **Build194 / 0.14.27** | Player non-standard SeasonId grouping | Dedicated standard MPV Release CI passed and IPA produced. The original CI ZIP hit TrollStore parse error 302, while a packaging-only rewrap with identical app content installed successfully. **Real-device grouping result positive:** the supplied 980-episode Series now displays the complete episode set in the player picker. Follow-up required because opening that 980-card eager `HStack` blocks for several seconds. |
 | **Build195 / 0.14.28** | Lazy player episode row for very large seasons | Replaces only the player picker's eager episode `HStack` with `LazyHStack`; full canonical data, SeasonId grouping, UI and auto-next remain unchanged. Dedicated Xcode 16.4 Release CI passed, MinOS 15.0 validated and TrollStore-friendly IPA produced. **Real-device performance validation pending; does not replace Build191.** |
+| **Build196 / 0.14.29** | Add/Edit password + cached-first auto-start | Edit always shows an empty password field; blank keeps the current token while a supplied password reauthenticates only the same Server ID/User ID. Auto-start creates Home immediately from the existing persisted Home snapshots and image disk cache, selects/routes/refreshes in parallel, retains stale Home if route selection fails, and remembers the runtime winner for future host-based image-cache hits. Dedicated Xcode 16.4 standard MPV Release CI passed, app identity/MinOS 15.0 validated, and unsigned IPA produced. **Real-device Build196 validation pending; does not replace Build191.** |
 
 ## Current accepted baseline
 
@@ -60,7 +61,7 @@ This is a milestone index, not a list of every experimental build.
 - Deployment Target / MinOS: **iOS 15.0**
 - evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for completed detail-selection requirements / merged to main**
 
-Build182 remains accepted/frozen for detail scrolling and force-quit/relaunch presentation restoration; Build184 remains the accepted detail visual-hierarchy foundation. Build191 is now the accepted overall runtime baseline and adds the accepted detail episode-selection/navigation contract. Build192 / 0.14.25 Add/Edit Emby and Build193 / 0.14.26 home-carousel remain independent candidates; each must resync with Build191 and rerun affected validation before final integration. Build194 / 0.14.27 positively confirms the separate in-player SeasonId grouping correction on real device but exposes large-list opening latency; Build195 / 0.14.28 is the active lazy-row performance candidate and remains real-device pending.
+Build182 remains accepted/frozen for detail scrolling and force-quit/relaunch presentation restoration; Build184 remains the accepted detail visual-hierarchy foundation. Build191 is now the accepted overall runtime baseline and adds the accepted detail episode-selection/navigation contract. Build192 / 0.14.25 Add/Edit Emby now has real-device feedback and is superseded by Build196 / 0.14.29; Build196 is the current Add/Edit Emby cached-first candidate with CI/IPA complete and real-device validation pending. Build193 / 0.14.26 home-carousel remains a rejected/investigation line. Build194 / 0.14.27 positively confirms the separate in-player SeasonId grouping correction on real device but exposes large-list opening latency; Build195 / 0.14.28 is the active lazy-row performance candidate and remains real-device pending.
 
 ## Episode-selection evidence trail
 
@@ -270,6 +271,27 @@ Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 R
 - workflow cleanup: temporary Build192 CI removed after artifact production at `67d2041d0e4cf06e3c9105a4910eaefc28c14f23`
 - Build191 note: this task's earlier Build191 artifact is retired because the parallel detail task owns Build191; do not distribute or use that collided identity for attribution
 - evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+
+## Build196 Add/Edit Emby cached-first evidence
+
+- task: `DEV-add-emby-page-optimization` — Active
+- branch / Draft PR: `feat/add-emby-page-optimization` / `#256`
+- accepted overall baseline remains Build191 / 0.14.24
+- Build192 real-device feedback: Edit Server UI rendered; tested route 73 ms / fastest; auto-start and iCloud toggles visible/on; password row missing, so Build192 not accepted
+- Build196 product commit: `571f54647ebc2d8ac811c63bf8c548f234172152`
+- exact dedicated CI source: `a28430b6087db67cd4fac2c71a56240992b8f46d`
+- clean feature head after temporary workflow removal: `113b9bdc79e499750bb9ef98150bb2f7bc805e17`
+- CI run: **`32885369998` — success**
+- artifact: `OnePlayer-0.14.29-build196-add-emby-cached-startup`; ID **`9577471047`**
+- artifact digest: `sha256:f420f2e9f6767ff1739aa0de601e89a6641213b297a3597bfd8ec6831ea6c23c`
+- IPA: `OnePlayer-0.14.29-build196-add-emby-cached-startup-unsigned.ipa`
+- IPA SHA-256: **`b2c0e0a7af6aa29ad0f7117b88fadf3eb9a2c45c73bb961c7a63f50a2c763c66`**
+- source ZIP: `OnePlayer-0.14.29-build196-add-emby-cached-startup-a28430b-source.zip`
+- source ZIP SHA-256: **`10044e843155e2460cc023b7457acfb5c8cadc0c82def04cf3b4a0fb380d36ef`**
+- app identity: `com.embyplayerlab.app`, OnePlayer 0.14.29 (196), display name OnePlayer
+- MinOS: app and main runtime Mach-O 15.0; compatibility audit OK
+- source/frozen contract: passed; PR product diff remains only RootView / KeychainStore / SessionStore / EmbyServerRootViewV3 / ServerListView; no Home model, Player, Transport or Cache implementation change
+- evidence level: **Code written / CI passed / IPA produced / Build196 real-device pending / not stable**
 
 ## Main integration evidence
 
