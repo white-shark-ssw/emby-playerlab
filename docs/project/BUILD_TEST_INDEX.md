@@ -25,7 +25,8 @@ This is a milestone index, not a list of every experimental build.
 | **Build179 / 0.14.12** | First accepted-baseline home carousel smoothness candidate | Dedicated standard MPV Release CI passed and IPA produced. High-frequency carousel transition state was scoped away from the full home root and drag start reduced to 4 pt. **Real-device test failed:** small movements still had a dead zone and left↔right reversal could pause then jump a large distance. Rejected, not stable. |
 | **Build180 / 0.14.13** | Continuous home carousel drag through zero/reversal | Dedicated standard MPV Release CI passed and IPA produced. Keeps Build179 local state ownership, receives drag movement from 0 pt, applies axis dominance only on initial acquisition, removes the old 4 pt absolute gate and first 8% delayed blend, while Build176/178 accepted contracts remain zero-diff. **Pending real-device EX comparison; not stable yet.** |
 | **Build181 / 0.14.14** | Detail-page warm presentation + Hero scroll isolation | Dedicated Release CI/IPA succeeded. Target-device recording shows the previous stop→catch-up scroll stutter is clearly improved, but a force-quit/relaunch still loses the session-only warm metadata and briefly shows text title/loading before Logo/episodes. **Real-device tested; partial success, cold-start requirement failed; not stable.** |
-| **Build182 / 0.14.15** | Persistent detail presentation cache | Extends Build181's safe presentation snapshot from process-only `NSCache` to `Library/Caches` while retaining live Emby refresh and playback/session boundaries. Dedicated standard MPV Release CI passed and IPA produced. **Real-device cold-relaunch validation pending; not stable yet.** |
+| **Build182 / 0.14.15** | Persistent detail presentation cache | Extends Build181's safe presentation snapshot to `Library/Caches` while retaining live Emby refresh and playback/session boundaries. Dedicated Release CI/IPA succeeded; user accepted detail scrolling plus force-quit/relaunch restoration on target device. **Frozen for these two requirements.** |
+| **Build184 / 0.14.17** | Detail visual hierarchy refinement | Moves “视频信息” below “更多类似” and above the bottom glass media-source card and reduces main detail section headers to 19 pt bold. Dedicated Release CI passed and IPA produced; Build182 scroll/cache and P0 contracts remain unchanged. **Real-device visual validation pending.** |
 
 ## Current accepted baseline
 
@@ -167,6 +168,23 @@ Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 R
 - MinOS: app/runtime Mach-O validated at iOS 15.0
 - CI evidence: persistent-cache contract, Build181 Hero state isolation, existing Hero/detail range/media/resume checks, Build178 episode-ordering contract and P0/Frozen zero-diff all passed; Xcode 16.4 Release build passed; app identity validated as 0.14.15 (182); IPA packaged and uploaded. Downloaded artifact IPA/source SHA-256 checks both passed again.
 - evidence level: **Code written / CI passed / IPA produced / real-device not yet tested / not stable**
+
+### Build184 / OnePlayer 0.14.17 — detail visual hierarchy refinement
+
+- task: `DEV-detail-episode-page-optimization` — Active, pending visual acceptance
+- branch: `feat/detail-episode-page-optimization`
+- frozen base: Build182 workflow-restored head `6352671ba843e692c671c66c663c01a43b7848fb`
+- UI product commit: `583d156d51e46ca4f913cbd268d18f8cbdb05b2f`
+- dedicated CI source: `0238f2c8fd202df6e7ba52d582b1614c9230eef9`
+- workflow-restored branch head: `8ea6fc2347f899bd65bda315305a8091e38b1c3d`
+- CI run: `32851745960` — success
+- artifact: `OnePlayer-0.14.17-build184-detail-visual-refinement`
+- artifact ID: `9564647845`
+- IPA SHA-256: `d89953c76b678fe1bc0b9f3fcc8b5b5b3ea430ec74bdd420834b427c91d47eb4`
+- MinOS: app/runtime Mach-O validated at iOS 15.0
+- product delta: “视频信息” follows “更多类似” and precedes the bottom glass media-source summary; main section headers are 19 pt bold; card body text/Hero/spacing are unchanged.
+- frozen evidence: Build182 detail performance/persistent cache and Build176/178/P0 Frozen contracts passed unchanged.
+- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
 ## Main integration evidence
 

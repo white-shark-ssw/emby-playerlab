@@ -30,7 +30,9 @@ Build180 / OnePlayer 0.14.13 is the current **home-carousel test candidate**. De
 
 Build181 / OnePlayer 0.14.14 is now a **detail-page diagnostic reference rather than the current candidate**. Target-device recording shows the previous obvious detail scroll pause→catch-up pattern is clearly improved, but a force-quit/relaunch still resets its session-only warm metadata and briefly returns the text-title/episode-loading state. It is real-device tested but not stable.
 
-Build182 / OnePlayer 0.14.15 is the current **detail-page cold-relaunch test candidate**. It preserves Build181 scroll isolation and extends only the safe presentation snapshot to `Library/Caches`; dedicated Release CI passed and IPA was produced. Target-device cold-relaunch validation is pending, so it does not replace Build178.
+Build182 / OnePlayer 0.14.15 is **real-device accepted and frozen for detail scrolling plus force-quit/relaunch presentation restoration** on iPhone 15 Pro Max / iOS 17.0. It remains a feature-line reference while Build178 stays the overall merged baseline.
+
+Build184 / OnePlayer 0.14.17 is the current **detail visual-hierarchy test candidate**. It only reorders/renames the media-information section and slightly reduces main section-header typography; dedicated Release CI passed and IPA was produced. Real-device visual acceptance is pending.
 
 ## Accepted episode-selection and ordering contracts
 
@@ -115,11 +117,27 @@ Build182 follows the direct real-device failure in Build181 and changes only the
 - artifact digest: `sha256:16e9e6b728b9e0bbfc295896f791e96f253d0e1516771eaac140534c0c405d67`
 - IPA SHA-256: `b9638df6f70f11be5f030ec7136a42125f2bc3a16af220c1d8b6de1b0cb3ce4c`
 - MinOS: app/runtime Mach-O validated at iOS 15.0
-- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+- real-device evidence: user accepted and froze the detail scrolling and force-quit/relaunch restoration on iPhone 15 Pro Max / iOS 17.0.
+- evidence level: **Code written / CI passed / IPA produced / real-device accepted / frozen for these two requirements**
 
 Build182 CI passed the persistent-cache contract, Build181 Hero isolation, existing Hero/detail range/media/resume contracts, Build178 episode ordering and P0/Frozen zero-diff, then Xcode 16.4 Release compile, 0.14.15 (182) app identity, iOS 15.0 MinOS and IPA packaging/upload. Downloaded artifact IPA/source checksums were verified again after CI.
 
 An earlier detail 0.14.13 / Build180 package also passed Release CI but was retired before user testing after discovering the parallel home-carousel task had already made Build180 its active identity. It is not a valid test baseline.
+
+### Build184 / OnePlayer 0.14.17 — detail visual hierarchy refinement
+
+`DEV-detail-episode-page-optimization` remains Active for UI refinement while Build182 performance/cache behavior stays frozen.
+
+- branch: `feat/detail-episode-page-optimization`
+- dedicated CI source: `0238f2c8fd202df6e7ba52d582b1614c9230eef9`
+- workflow-restored branch head: `8ea6fc2347f899bd65bda315305a8091e38b1c3d`
+- CI run: `32851745960` — success
+- artifact ID: `9564647845`
+- IPA SHA-256: `d89953c76b678fe1bc0b9f3fcc8b5b5b3ea430ec74bdd420834b427c91d47eb4`
+- MinOS: 15.0
+- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+
+Build184 changes only the detail visual hierarchy: “视频信息” is below “更多类似” and directly above the bottom glass media-source summary, and main section headers use 19 pt bold. Build182 Hero scroll/persistent presentation cache and playback/order/transport contracts remain unchanged.
 
 ### Build179 / OnePlayer 0.14.12 — rejected carousel candidate
 
