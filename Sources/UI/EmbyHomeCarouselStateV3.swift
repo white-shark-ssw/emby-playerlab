@@ -55,11 +55,11 @@ extension V3EmbyHomeView {
     }
 
     func carouselDragGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .local)
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
-                guard abs(horizontal) > abs(vertical) * 1.08, abs(horizontal) > 4 else { return }
+                if !isCarouselDragging { guard abs(horizontal) > abs(vertical) * 1.08 else { return } }
                 suppressCarouselTap()
                 guard transitionToID == nil || isCarouselDragging else { return }
                 let direction = horizontal < 0 ? 1 : -1
@@ -229,11 +229,7 @@ extension V3EmbyHomeView {
         return itemID == currentCarouselItemID ? 1 : 0
     }
 
-    func carouselBackdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat {
-        let raw = min(1, max(0, rawProgress))
-        let delayed = min(1, max(0, (raw - 0.08) / 0.92))
-        return delayed * delayed * (3 - 2 * delayed)
-    }
+    func carouselBackdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat { min(1, max(0, rawProgress)) }
 
     func carouselForegroundOffset(for itemID: String, width: CGFloat) -> CGFloat {
         guard let fromID = transitionFromID, let toID = transitionToID else { return 0 }
