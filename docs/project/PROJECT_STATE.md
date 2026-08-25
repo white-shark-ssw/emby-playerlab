@@ -1,23 +1,24 @@
 # OnePlayer Project State
 
-_Last updated after Build189 real-device testing exposed a carousel release-settle regression and the corrected passive-native / SwiftUI-release implementation was reassigned around parallel build reservations to OnePlayer 0.14.26 / Build193. Build193 completed dedicated Release CI/IPA and is the current independent carousel candidate. Build191 / 0.14.24 remains the detail summary-title candidate and Build192 / 0.14.25 belongs to Add/Edit Emby. Build184 / 0.14.17 remains the accepted overall functional baseline on `main`; none of these candidates replaces it until target-device evidence is accepted._
+_Last updated after Build194 / OnePlayer 0.14.27 confirmed the in-player SeasonId grouping fix on the target device but exposed several-second opening latency for a 980-episode eager card row. Build195 / OnePlayer 0.14.28 replaces only that player episode row with `LazyHStack`; dedicated standard MPV Release CI passed and a TrollStore-friendly IPA was produced, with real-device performance validation pending. Build191 / OnePlayer 0.14.24 remains the accepted overall functional baseline on `main`. Build192 / OnePlayer 0.14.25 remains the independent Add/Edit Emby candidate. The home-carousel task remains in investigation after Build193 rejection._
 
 ## Current functional baseline
 
 The latest **real-device accepted** functional baseline is:
 
 - Product: **OnePlayer**
-- Version: **0.14.17**
-- Build: **184**
+- Version: **0.14.24**
+- Build: **191**
 - Canonical branch: `main`
-- Final merge PR: **#255**
-- Final merge commit: `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`
-- Development branch: `feat/detail-episode-page-optimization`
-- Clean product head before merge: `63d4114ca6ef97b419ec31163e6431af5cf2d002`
-- Dedicated CI source: `0238f2c8fd202df6e7ba52d582b1614c9230eef9`
-- Dedicated CI run: **32851745960**
-- Artifact: `OnePlayer-0.14.17-build184-detail-visual-refinement`
-- IPA SHA-256: `d89953c76b678fe1bc0b9f3fcc8b5b5b3ea430ec74bdd420834b427c91d47eb4`
+- Final merge PR: **#257**
+- Final merge commit: `f153a36e9da8a208150fe638e0b9df5835df1dc0`
+- Development branch: `feat/detail-episode-selection-navigation`
+- Final feature head before merge: `8279df9f8ceb7605bad1fade9bcba2582cddbbd6`
+- Functional Build191 commit: `6dc3f69d90049cd9228bdf006e50fc3402c1c6b9`
+- Dedicated CI source: `63fb252936360b284d75c4477d41587193e4fbd8`
+- Dedicated CI run: **32875670990**
+- Artifact: `OnePlayer-0.14.24-build191-detail-summary-title`
+- IPA SHA-256: `03c7dd61c2f151d537e78ec6727f888381d86839ea1ff75f0bbb388c3c56a354`
 - Deployment Target: **iOS 15.0**
 - Required target device: **iPhone 15 Pro Max / iOS 17.0**
 - Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements / merged to main**
@@ -26,21 +27,23 @@ Build184 inherits the accepted Build176 player episode-selection/session contrac
 
 Build179 / OnePlayer 0.14.12 is **not** an accepted carousel baseline. Its dedicated Release CI passed and IPA was produced, but the user installed it on the target device and reported that small drags still had a dead zone and direction reversal still produced a visible pause followed by a large catch-up jump. Build179 is therefore real-device tested / rejected.
 
-Build180 / OnePlayer 0.14.13 is a **historical partial-improvement carousel build**: real-device testing confirmed reversal continuity improved, but initial motion still felt coarse, so it was not accepted. Build185 / OnePlayer 0.14.18 restored the required page-slide interaction but was also **real-device rejected**. Build187 / OnePlayer 0.14.20 completed the diagnostic gate on real device: first useful SwiftUI horizontal samples were already about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off. Build189 / OnePlayer 0.14.22 proved native raw/coalesced sampling could drive intermediate progress, but was **real-device rejected** because releasing the finger could leave that partial transition frozen instead of completing/cancelling. The corrected passive-native / SwiftUI-release implementation first passed CI under carousel Build190/191 identities, but those identities conflict with parallel detail work; Build192 belongs to Add/Edit Emby. **Build193 / OnePlayer 0.14.26 is the unique current carousel candidate with CI/IPA evidence.**
+Build180 / OnePlayer 0.14.13 is a **historical partial-improvement carousel build**: real-device testing confirmed reversal continuity improved, but initial motion still felt coarse, so it was not accepted. Build185 / OnePlayer 0.14.18 restored the required page-slide interaction but was also **real-device rejected**. Build187 / OnePlayer 0.14.20 completed the diagnostic gate on real device: first useful SwiftUI horizontal samples were already about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off. Build189 / OnePlayer 0.14.22 proved native raw/coalesced sampling could drive intermediate progress, but was **real-device rejected** because releasing the finger could leave that partial transition frozen instead of completing/cancelling. Build193 / OnePlayer 0.14.26 attempted to keep native capture passive while leaving release solely to the underlying SwiftUI `DragGesture.onEnded`; the target-device recording still freezes repeatedly at intermediate progress after release. **Build193 is therefore real-device rejected. The hybrid native-overlay movement + separate SwiftUI release-owner architecture is not an accepted direction; no next carousel Build is allocated until the release event path is proven.**
 
 Build181 / OnePlayer 0.14.14 is now a **detail-page diagnostic reference rather than the current candidate**. Target-device recording shows the previous obvious detail scroll pause→catch-up pattern is clearly improved, but a force-quit/relaunch still resets its session-only warm metadata and briefly returns the text-title/episode-loading state. It is real-device tested but not stable.
 
 Build182 / OnePlayer 0.14.15 is **real-device accepted and frozen for detail scrolling plus force-quit/relaunch presentation restoration** on iPhone 15 Pro Max / iOS 17.0. Its architecture is now inherited by the accepted Build184 overall baseline on `main`.
 
-Build184 / OnePlayer 0.14.17 is **real-device accepted, stable for the completed detail-page requirements, and merged to `main` through PR #255**. It preserves Build182 detail performance/cache behavior and only adds the accepted visual hierarchy changes: `视频信息` below `更多类似`, above the bottom glass media-source summary, with the main section headers at 19 pt bold.
+Build184 / OnePlayer 0.14.17 remains **real-device accepted and stable as the detail performance/cache + visual-hierarchy foundation**, merged through PR #255. Its behavior is inherited unchanged by Build191.
 
 Build188 / OnePlayer 0.14.21 established the independent **detail/episode-selection navigation candidate**: select-only horizontal cards, compact selected-episode summary and non-dismissing full picker playback. Dedicated Release CI/IPA succeeded. Target-device follow-up then showed missing default visible selection and quick range buttons clearing selection/title, so Build188 was not accepted.
 
 The detail branch later produced its own **0.14.23 / Build190** package (`OnePlayer-0.14.23-build190-detail-selection-defaults`, IPA SHA-256 `2f05197cebe43b6a50c2eb84225b7d134f364f82baf58772f86d10653f2f298c`). User screenshots from that exact distributed artifact positively confirm quick `10-19 / 20-24` range jumps now retain the target first episode blue selection and summary state. Those screenshots also exposed a pure display inconsistency between the compact summary and horizontal-card title. The same 0.14.23 / Build190 identity was later occupied independently by the home-carousel candidate, so detail no longer reuses that identity; attribution of the screenshots remains tied to the detail artifact SHA above.
 
-Build191 / OnePlayer 0.14.24 is now the independent **detail summary-title follow-up candidate**. `selectedEpisodeSelectionSummary` directly reuses `displayEpisodeTitle(episode)`, the exact formatter used by the selected horizontal card, so the two strings are intentionally identical. Dedicated Release run `32875670990` passed; artifact `OnePlayer-0.14.24-build191-detail-summary-title` ID `9573898096`; downloaded IPA SHA-256 `03c7dd61c2f151d537e78ec6727f888381d86839ea1ff75f0bbb388c3c56a354`; source ZIP SHA-256 `25c28eb7529cb371aa4b2d991691811c041bdecc4e9904538c663fb976267a98`; MinOS 15.0. **Real-device evidence is pending; accepted baseline remains Build184.**
+Build191 / OnePlayer 0.14.24 is **real-device accepted and merged to `main` through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`**. It completes the detail episode-selection/navigation line: select-only horizontal cards with blue selection, explicit-initial → Resume → canonical-first default selection, range-first quick jumps, main Play/Resume targeting the selected episode, non-dismissing full-picker playback that returns at the same scroll position, and a compact summary that exactly reuses the card title formatter. Build176 session replacement, Build178 canonical order and Build182 detail performance/cache remain unchanged. This acceptance does not cover the separately developed in-player nonstandard SeasonId grouping follow-up.
 
-Build192 / OnePlayer 0.14.25 is the independent **Add/Edit Emby modernization and multi-route candidate**. It replaces the old Add Server Form with a card editor, keeps route latency visible only while adding/editing, selects the first valid same-Server-ID route before Home client creation, handles auto-start at RootView before AppShell/server-list rendering, and stores opt-in synced server configuration plus AccessToken in a separate synchronizable Keychain registry while never syncing the password. Dedicated Release run `32875941745` passed; artifact `OnePlayer-0.14.25-build192-add-emby-server` ID `9574058602`; IPA SHA-256 `b13b76d322c0b301b751ad3723ff0368cb9bc9d0182ec701cf5fcc7a16e4c81d`; source ZIP SHA-256 `87bf231fb49a167a749174fe0e78d79c42ed05172b08df67f31cfb1b8a24ac33`; MinOS 15.0. **Real-device and cross-device iCloud behavior are pending; accepted baseline remains Build184.**
+Build192 / OnePlayer 0.14.25 is the independent **Add/Edit Emby modernization and multi-route candidate**. It replaces the old Add Server Form with a card editor, keeps route latency visible only while adding/editing, selects the first valid same-Server-ID route before Home client creation, handles auto-start at RootView before AppShell/server-list rendering, and stores opt-in synced server configuration plus AccessToken in a separate synchronizable Keychain registry while never syncing the password. Dedicated Release run `32875941745` passed; artifact `OnePlayer-0.14.25-build192-add-emby-server` ID `9574058602`; IPA SHA-256 `b13b76d322c0b301b751ad3723ff0368cb9bc9d0182ec701cf5fcc7a16e4c81d`; source ZIP SHA-256 `87bf231fb49a167a749174fe0e78d79c42ed05172b08df67f31cfb1b8a24ac33`; MinOS 15.0. **Real-device and cross-device iCloud behavior are pending; accepted baseline is Build191; Build192 must resync with Build191 before final integration.**
+
+Build194 / OnePlayer 0.14.27 is the independent **in-player nonstandard SeasonId grouping follow-up**. The TrollStore-friendly rewrap installed successfully on the target device and the supplied 980-episode Series now displays the full episode set in the player picker, confirming the SeasonId-first grouping correction. That same test exposed a new performance issue: opening the picker blocks for several seconds because the player episode row eagerly constructs all 980 thumbnail/title/overview cards. Build195 / OnePlayer 0.14.28 changes only that row from `HStack` to `LazyHStack`; dedicated Release run `32884343196` passed, artifact `OnePlayer-0.14.28-build195-player-episode-lazy-row` ID `9577124023`, IPA SHA-256 `fab4e7f6552933096f49b86c4b9d3604025e1dd916b186015a00097802543af2`, MinOS 15.0. **Build195 real-device performance validation is pending and it does not replace Build191.**
 
 ## Accepted episode-selection and ordering contracts
 
@@ -70,6 +73,18 @@ Build178 adds the canonical episode-order contract:
 
 The original failing non-standard series had 165 episodes with `nilIndex=164`; Build178 was accepted on real device after switching the shared data path to Emby's TV ordering authority.
 
+Build191 adds the accepted detail-browsing contract on top of those player/order owners:
+
+- tapping a horizontal detail episode card changes `selectedEpisodeID` only; it does not autoplay;
+- the blue outline represents the current selected episode, not a separate “currently playing” owner;
+- normal Series entry selects explicit `initialEpisodeID`, otherwise a resumable episode, otherwise canonical `episodes.first`;
+- quick range buttons select the first episode in that canonical range instead of clearing selection;
+- the existing main Play/Resume button plays the selected episode through the existing source-owned playback path;
+- the full episode picker stays mounted while its selected episode plays, so closing player returns to the same picker/ScrollView position without a second manual offset cache;
+- the compact selected-episode summary directly reuses `displayEpisodeTitle(episode)`, the same formatter as the horizontal card.
+
+Build194 adds positive real-device evidence for the player-overlay grouping boundary: the player now consumes `seriesEpisodes + seriesSeasons`, maps Episode `SeasonId` to the real Season item/index first and uses `ParentIndexNumber` only as fallback, so the supplied 980-episode single-SeasonId library is complete in the player picker. Build195 does not change this grouping/data/session contract; it only lazily instantiates the horizontal episode cards to address the confirmed opening latency.
+
 ## Current parallel feature candidates
 
 ### Build192 / OnePlayer 0.14.25 — Add/Edit Emby modernization + same-server route selection
@@ -91,20 +106,20 @@ The original failing non-standard series had 165 episodes with `nilIndex=164`; B
 - media/P0 boundary: no Player/Transport/Cache change; route aggregation changes Emby API entry only and does not proxy STRM/302/115 media bytes through NAS
 - evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
-### Build191 / OnePlayer 0.14.24 — detail selected-episode title unification
+### Build195 / OnePlayer 0.14.28 — player large-season lazy episode row
 
-`DEV-detail-episode-selection-navigation` remains Active. Build191 preserves Build190-detail selection/navigation behavior and changes only the compact selected-episode summary formatter.
+`DEV-player-nonstandard-episode-season-grouping` remains Active on Draft PR #258.
 
-- branch: `feat/detail-episode-selection-navigation`
-- functional commit: `6dc3f69d90049cd9228bdf006e50fc3402c1c6b9`
-- dedicated CI source: `63fb252936360b284d75c4477d41587193e4fbd8`
-- workflow-restored head: `516f5cf6e8832af083d3c2605e365cb1dcb7119a`
-- CI run: **`32875670990` — success**
-- artifact: `OnePlayer-0.14.24-build191-detail-summary-title`; ID `9573898096`; digest `sha256:f5403fad91f65ac3cd1810452f7aed9a4537f7a6d46b822f87e83261738dae61`
-- IPA SHA-256: `03c7dd61c2f151d537e78ec6727f888381d86839ea1ff75f0bbb388c3c56a354`; source ZIP SHA-256: `25c28eb7529cb371aa4b2d991691811c041bdecc4e9904538c663fb976267a98`
+- branch: `fix/player-nonstandard-episode-season-grouping`
+- Build194 target-device evidence: TrollStore-friendly package installs; supplied 980-episode Series displays complete player-picker data; opening the eager row blocks for several seconds
+- Build195 product delta: one `HStack` → `LazyHStack` change in `PlayerEpisodeSelection.swift`; no episode cap, pagination, reorder or session change
+- dedicated CI source: `edd7d42bdee2b20bc327ed7d4341c7433c58bb15`
+- workflow-restored head: `8c2f767652ce449deaa28f8cc9d8c21b95058af1`
+- CI run: **`32884343196` — success**
+- artifact: `OnePlayer-0.14.28-build195-player-episode-lazy-row`; ID `9577124023`; digest `sha256:262007d104d62252a837e075baf69fcdf36e8761b6fac9424b99f1aadc8de421`
+- IPA SHA-256: `fab4e7f6552933096f49b86c4b9d3604025e1dd916b186015a00097802543af2`; source ZIP SHA-256: `0c5f9e3b2a9621cc712b8ab94d7976199579489f1fc94e887ab7c4984311e394`
 - MinOS: 15.0
-- implementation: compact selected-episode summary returns the existing `displayEpisodeTitle(episode)` result used by the horizontal card; no second title-format owner remains
-- unchanged: default selection, quick-range selection, full-picker playback return path, canonical ordering, detail cache/scroll, Player/PiP/Transport/Cache
+- packaging: TrollStore-friendly archive order is produced directly by CI, following the same structure that made the Build194 rewrap installable
 - evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
 ### Build193 / OnePlayer 0.14.26 — home-carousel native movement + SwiftUI release ownership
@@ -123,7 +138,7 @@ The original failing non-standard series had 165 episodes with `nilIndex=164`; B
 - IPA SHA-256: `9ad6bc7bb267a6cc61fb2312a7276d41f8989aa11a7883cbc3f3ce97941081a4`; source ZIP SHA-256: `68e11e59daeaf4b245bba1949bb5d8c0825552baf7c97d280546880f5c19b860`
 - MinOS: 15.0
 - unchanged: 0.28 progress / 0.48×width predicted commit, full-page foreground travel, reversal continuity, backdrop/auto-advance/detail click, Player/PiP/Transport/Cache/Emby session contracts
-- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+- evidence level: **Code written / CI passed / IPA produced / real-device rejected / not stable**
 
 ### Build189 / OnePlayer 0.14.22 — home-carousel native-touch input
 
@@ -139,7 +154,7 @@ The original failing non-standard series had 165 episodes with `nilIndex=164`; B
 - IPA SHA-256: `50c74bd43935a31ca3dda781c04a1113c2ce616c7da9e24e438cba78988c3a6d`; source ZIP SHA-256: `ae7b226aa20063700f3a0964714b2a89fe5e7c0eee4bf8b5cae371e432c791e4`
 - MinOS: 15.0
 - implementation boundary: UIKit raw/coalesced touch samples drive manual progress; existing full-page foreground travel and SwiftUI predicted release commit/cancel remain unchanged; P0/Frozen files zero-diff
-- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+- evidence level: **Code written / CI passed / IPA produced / real-device rejected / not stable**
 
 ### Build187 / OnePlayer 0.14.20 — home-carousel drag cadence diagnostic
 
@@ -293,7 +308,7 @@ Exact Seek was tested and rejected as the normal runtime path because its latenc
 
 ## PiP status
 
-PiP development remains **temporarily frozen at Build173** even though the overall accepted functional baseline is now Build178.
+PiP development remains **temporarily frozen at Build173** even though the overall accepted functional baseline is now Build191.
 
 Accepted PiP behaviour:
 
@@ -331,7 +346,7 @@ Do not start a new PiP optimisation build unless there is a materially new archi
 
 ## Current development direction
 
-Build184 / OnePlayer 0.14.17 remains the real-device accepted overall `main` runtime baseline. Build179, Build180 and Build185 carousel candidates are rejected by real-device evidence; Build183 is rejected as the default direction because it changed the established foreground page-slide interaction. Build187 / OnePlayer 0.14.20 is the current carousel drag-cadence diagnostic candidate with CI/IPA evidence and requires iPhone 15 Pro Max / iOS 17.0 recording plus exported playback log before any further rendering change. `DEV-detail-episode-selection-navigation` is a separate active task and currently does not overlap Home carousel files/state owners.
+Build191 / OnePlayer 0.14.24 is the real-device accepted overall `main` runtime baseline. Build192 remains the independent Add/Edit Emby candidate. Build194 positively confirmed the in-player nonstandard SeasonId grouping correction but exposed 980-card eager-row opening latency; Build195 is the current CI/IPA-complete lazy-row performance candidate pending target-device validation. The home-carousel line remains in investigation after Build193 rejection. These tasks remain independent and must each resync/check `main` before final integration.
 
 New work should proceed module-by-module without casually touching:
 
@@ -342,3 +357,11 @@ New work should proceed module-by-module without casually touching:
 - system navigation.
 
 If a new module requires changes in one of those frozen areas, state the reason explicitly before modifying it.
+
+## Build196 / OnePlayer 0.14.29 — Add/Edit Emby cached-first follow-up
+
+`DEV-add-emby-page-optimization` remains Active. Build192 has now been tested on the target device: the redesigned Edit Server UI rendered, the tested route reported 73 ms / fastest, and auto-start/iCloud controls were visible and enabled; the missing Edit password row was rejected. The user also required auto-start to enter cached Home before network, with stale Home retained if Emby is temporarily unreachable.
+
+Build196 implements that follow-up without modifying Home-model/cache ownership or playback transport. Edit always shows an empty password field; blank retains the token, while non-empty reauthenticates the stored username and requires the same Server ID/User ID before token replacement. Auto-start supplies a local-token client immediately so existing Home snapshots and disk-cached images can render; best-route selection and live refresh then proceed, route failure does not close the cached auto-start root, and a successful runtime winner is remembered as `serverURL` because image cache keys retain host.
+
+Dedicated run `32885369998` passed the Build196 source/Frozen contract, Xcode 16.4 standard MPV Release build, OnePlayer 0.14.29 (196) app validation and iOS 15.0 MinOS audit. Artifact `OnePlayer-0.14.29-build196-add-emby-cached-startup` ID `9577471047`; IPA SHA-256 `b2c0e0a7af6aa29ad0f7117b88fadf3eb9a2c45c73bb961c7a63f50a2c763c66`; exact source ZIP SHA-256 `10044e843155e2460cc023b7457acfb5c8cadc0c82def04cf3b4a0fb380d36ef`. Build191 / 0.14.24 remains the accepted overall baseline. **Build196 is Code written / CI passed / IPA produced / real-device pending / not stable.**
