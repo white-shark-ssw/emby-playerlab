@@ -60,7 +60,7 @@ final class V3HomeCarouselTransitionState: ObservableObject {
             guard let value else { return "nil" }
             return String(format: "%.2f,%.2f", value.width, value.height)
         }
-        DiagnosticsLogger.shared.log("HomeCarouselDragTiming", "axis=\(axisName) samples=\(dragSampleCount) durationMs=\(String(format: "%.2f", duration * 1000)) avgHz=\(String(format: "%.2f", averageHz)) maxGapMs=\(String(format: "%.2f", dragMaxSampleGap * 1000)) first=\(point(dragFirstTranslation)) lock=\(point(dragAxisLockTranslation)) transition=\(point(dragTransitionStartTranslation)) end=\(point(endTranslation)) maxFPS=\(UIScreen.main.maximumFramesPerSecond) lowPower=\(ProcessInfo.processInfo.isLowPowerModeEnabled)")
+        DiagnosticsLogger.shared.playback("HomeCarouselDragTiming", "axis=\(axisName) samples=\(dragSampleCount) durationMs=\(String(format: "%.2f", duration * 1000)) avgHz=\(String(format: "%.2f", averageHz)) maxGapMs=\(String(format: "%.2f", dragMaxSampleGap * 1000)) first=\(point(dragFirstTranslation)) lock=\(point(dragAxisLockTranslation)) transition=\(point(dragTransitionStartTranslation)) end=\(point(endTranslation)) maxFPS=\(UIScreen.main.maximumFramesPerSecond) lowPower=\(ProcessInfo.processInfo.isLowPowerModeEnabled)")
         resetDragDiagnostics()
     }
 
