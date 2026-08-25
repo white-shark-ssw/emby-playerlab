@@ -11,14 +11,14 @@
 - **Working branch**：`feat/detail-episode-selection-navigation`
 - **Branch base**：`dcd6cc6d01319e13ccb991967a190ae1f915053b`
 - **PR**：none
-- **Current candidate**：**OnePlayer 0.14.23 / Build190**。
-- **Artifact**：`OnePlayer-0.14.23-build190-detail-selection-defaults`。
+- **Current candidate**：**OnePlayer 0.14.24 / Build191**。
+- **Target artifact**：`OnePlayer-0.14.24-build191-detail-summary-title`。
 
 ## Agreed interaction contract
 
 1. 详情页横向剧集卡单击只选择、不立即播放；蓝框表示当前选中集。
 2. 详情页现有主 Play / Resume 按钮播放 `selectedEpisodeID` 对应集，不新增第二播放 owner。
-3. “即将播放”区间行下方、横向卡片上方显示固定高度的 12 pt 当前选中集摘要：有真实标题时 `第 N 集 · 标题`，只有通用“第几集”名称时显示 `第 N 集`。
+3. “即将播放”区间行下方、横向卡片上方显示固定高度的 12 pt 当前选中集摘要；摘要必须直接复用下面横向卡片的 `displayEpisodeTitle(episode)`，与选中卡片标题逐字一致，不维护第二套格式。
 4. 收藏 Episode → Series detail 的既有 `initialEpisodeID` 自动季/区间/蓝框定位保持。
 5. 完整选集页点击某集仍直接播放，但不得先 dismiss picker，也不得使用旧固定 100 ms 延迟；关闭 player 后应回到同一个 picker 实例并自然保持 ScrollView 位置。没有真机重建证据前不增加手工 offset 缓存。
 6. 不修改 canonical episode order、Player/Transport/Cache/PiP、Build182 detail performance/cache owner 或 iOS 15.0 Deployment Target。
@@ -107,13 +107,21 @@ Build188 CI / IPA：
 - `displayEpisodeTitle(...)` 又会在原始名称为空或被判为 generic 时使用 `fallbackEpisodeName` 生成 `第十集 / 第二十集`，因此卡片视觉上可能都是中文数字，而摘要是否追加名称却取决于 Emby 原始 `episode.name` 的具体格式。
 - 从截图本身不能唯一判断第 20 集原始 name 是空、`第20集` 还是 `Episode20`；但不需要猜该值，源码已经足以证明不一致来自 generic-name classification，而不是 `selectedEpisodeID`、canonical order 或 playback 状态。
 
-最小后续修正应只扩展 `isGenericEpisodeName` 的 exact-match candidate，把 `第\(chineseNumber(number))集` 也认作 generic。这样 `第十集 / 第二十集` 都只显示摘要 `第 10 集 / 第 20 集`；真正有剧情标题的 Episode（例如 `营救`）仍显示 `第 N 集 · 营救`。不需要修改排序、选择、播放或缓存 owner。
+用户随后明确调整显示要求：**上方选中集摘要直接按照下面横向卡片的集名称显示，一模一样即可。** 因此此前“继续扩展 generic-name candidate”的方案被替代，不再增加另一层名称分类规则。
+
+## Build191 implemented follow-up
+
+- `selectedEpisodeSelectionSummary` 不再自行读取/拼接 `episode.name`，而是直接 `return displayEpisodeTitle(episode)`。
+- 因此上方摘要与下面选中卡片共用同一个 formatter/owner；例如卡片显示 `10.第十集`，摘要也显示 `10.第十集`；真实标题亦完全按卡片现有结果展示。
+- `check_detail_episode_selection_navigation.py` 增加合同：摘要必须调用 `displayEpisodeTitle(episode)`，且不得再包含旧 `第 N 集 · title` 的独立拼接路径。
+- Build191 仅改变显示格式 owner；`selectedEpisodeID`、默认 Resume→first 选择、快速区间第一集选择、主 Play/Resume、完整 picker 返回、canonical episode order、Build182 detail cache/scroll、Player/Transport/Cache/PiP 均不变。
+- 功能 commit：`6dc3f69d90049cd9228bdf006e50fc3402c1c6b9`；窄 selection/navigation、range jump、Resume 静态合同已通过。Release CI / IPA / Build191 真机仍 pending。
 
 ## Build identity collision history
 
 - 首页轮播 `BUILD_TEST_INDEX.md` 已明确占用 **Build189 / OnePlayer 0.14.22** 作为 `Carousel native raw/coalesced-touch input` 候选，并已有 CI/IPA 证据。
 - 本详情 follow-up 曾短暂以 0.14.22 / Build189 启动 Release CI；发现权威索引冲突后立即退休该详情身份，不分发、不用于真机/日志归因。
-- 详情 follow-up 唯一有效身份是 **OnePlayer 0.14.23 / Build190**。
+- 详情 Build190 已实际分发并产生本次真机反馈，但并行首页任务随后也占用了 **0.14.23 / Build190**；为避免后续日志/包身份继续冲突，详情后续唯一候选顺延为 **OnePlayer 0.14.24 / Build191**。
 
 ## Frozen / parallel boundaries
 
@@ -125,14 +133,15 @@ Build188 CI / IPA：
 ## Evidence level
 
 - Build188：**Code written / CI passed / IPA produced / real-device tested / follow-up required / not stable**。
-- Build190：**Code written / CI passed / IPA produced / real-device partially validated / naming follow-up required / not stable**。
+- Detail Build190：**Code written / CI passed / IPA produced / real-device partially validated / summary-format follow-up required / not stable**；该 artifact SHA 仍用于归因用户本次截图，但 0.14.23 / Build190 identity 后续与首页并行候选发生冲突，不再继续复用。
 - Build190 quick-range retain-selection fix：**real-device positive evidence YES**。
 - Build190 default-entry selection：**acceptance evidence not yet complete**。
 - Build190 full-picker return：**acceptance evidence not yet complete**。
+- Build191：**Code written / narrow static checks passed / Release CI pending / IPA pending / real-device pending / not stable**。
 - Accepted overall baseline：仍为 **Build184 / 0.14.17**。
 
 ## Next exact action
 
-1. 若继续修复当前摘要不一致，只改 `isGenericEpisodeName` 的中文数字 generic exact-match，并补静态合同；不碰 selection/playback/order/cache。
-2. 新候选出包前重新检查并行 Build 编号占用，不能直接假定 Build191 可用。
-3. 后续真机继续验证：有 Resume / 无 Resume 的默认蓝框选择、完整 picker 播放后原位返回，以及真实标题 Episode 是否仍按 `第 N 集 · 标题` 展示。
+1. 跑 Build191 / 0.14.24 dedicated Xcode 16.4 Release CI/IPA；保持 iOS 15.0 和现有 frozen/P0 合同。
+2. Build191 真机确认上方摘要与下方选中卡片标题逐字一致，同时继续验证有 Resume / 无 Resume 的默认蓝框选择与完整 picker 播放后原位返回。
+3. 真机验收前不提升 accepted baseline。
