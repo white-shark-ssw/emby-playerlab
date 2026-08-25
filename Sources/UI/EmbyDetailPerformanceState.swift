@@ -40,7 +40,7 @@ final class EmbyMediaDetailWarmCache {
 
     private let cache = NSCache<NSString, Box>()
 
-    private init() { cache.countLimit = 12 }
+    private init() {}
 
     func snapshot(client: EmbyAPIClient, itemID: String) -> EmbyMediaDetailWarmSnapshot? {
         cache.object(forKey: key(client: client, itemID: itemID))?.snapshot
