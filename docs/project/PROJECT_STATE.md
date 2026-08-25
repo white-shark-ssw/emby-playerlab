@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build181 / OnePlayer 0.14.14 received target-device evidence: detail scrolling is clearly improved, while force-quit/relaunch still loses its process-only warm metadata. Build182 / OnePlayer 0.14.15 now persists the safe detail presentation snapshot to Library/Caches, passed dedicated CI and produced an IPA. Build178 remains the accepted functional baseline pending target-device validation of the active candidates._
+_Last updated after Build182 / OnePlayer 0.14.15 was accepted and frozen for detail scrolling plus force-quit/relaunch presentation restoration, and Build184 / OnePlayer 0.14.17 passed dedicated Release CI and produced an IPA for the next detail visual-hierarchy refinement. Build178 remains the accepted overall functional baseline._
 
 ## Current functional baseline
 
