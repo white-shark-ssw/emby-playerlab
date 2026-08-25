@@ -26,28 +26,35 @@
 - **Unchanged**：artwork/backdrop raw blend、commit threshold `0.28`、predicted threshold `0.48 × width`、0.22/0.18s complete/cancel settle、6s auto-advance、0.62s auto transition、详情点击、persistent `.blur(radius: 30)`、首页纵向滚动、Build179 local state owner/scope 均未改变。
 - **Working branch**：`perf/home-carousel-drag-smoothness-build185`；PR = none。
 - **Build identity**：OnePlayer **0.14.18 / Build185**。
-- **Product head before temporary CI helper**：`1297d740795dec868368e80119c562e4932abc9e`。
 - **Dedicated CI source / run**：`79f74d438ed8eade5061d6f9b76df4ebdd66a344`；run **`32853247583` success**。
-- **Workflow-restored branch head**：`7e7918c83fce16ada9863956179dc971f79ebe28`。
 - **Artifact**：`OnePlayer-0.14.18-build185-home-carousel-axis-acquisition`；artifact ID `9565234614`；IPA SHA-256 `1f7ec2f6d09540b344ad10c36c438c4626bf40be3985d01b0d1b3404818e9b24`；MinOS 15.0。
-- **Build185 real-device result — FAILED acceptance**：用户 2026-08-25 在 iPhone 15 Pro Max / iOS 17.0 再次提供两段对照录屏，第一段 `RPReplay_Final1787665181.mp4` 为 OnePlayer，第二段 `RPReplay_Final1787665268.mp4` 为 EX。用户明确报告：1）从手指按住到轮播第一次开始移动，OnePlayer 仍总有一段明显偏长的首段位移；2）持续拖动整体仍不及 EX 丝滑、细腻，体感近似“OnePlayer 像 60Hz、EX 像 120Hz”。因此 Build185 不接受、不稳定。
-- **New recording format**：两段均为 510×1108 / 30 fps；OP 186 帧 / 6.20s，EX 193 帧 / 6.43s；视频时间轴本身是稳定 30fps，不能仅凭录屏宣称真实 UI 就是 60Hz 或 120Hz。
-- **Quantified first-motion evidence**：跟踪前景文字/元信息的横向位置，OP 三次起滑第一帧可见位移约 **10px / 12px / 16px**；EX 三次约 **1px / 1px / 2px**。OP 第一段手势里，系统录屏触摸圆点已先横移约 **8px**，前景连续两帧仍保持原位，随后直接跳约 10px；这支持“输入先动、视觉接管后追累计 translation”的现象。
-- **Quantified drag granularity**：在三段可比拖动区间内，OP 非零逐帧前景位移中位数约 **3px**、P75 约 **4px**；EX 中位数约 **1px**、P75 约 **2px**。该数据与用户“EX 更细腻”的体感一致，但由于录屏只有 30fps，不能单独用于推断真实 display refresh rate。
-- **ProMotion configuration evidence**：Build185 `Config/Info.plist` 已存在 `CADisableMinimumFrameDurationOnPhone = true`；仓库已有 `DisplayRefreshRateMonitor`，其 `CADisplayLink` 目标使用 `UIScreen.main.maximumFramesPerSecond`。因此目前没有证据表明 OnePlayer 只是漏开了 >60Hz ProMotion 配置。
-- **Source evidence after Build185**：当前 `DragGesture.onChanged` 第一次真正进入 horizontal transition 时，会依次修改 `fromID / toID / progress / direction` 四个独立 `@Published` 字段，并先写一次 `progress = 0`，随后同一回调再写真实 `progress`；该结构会在首次接管制造多次 transition invalidation，但目前尚不能仅凭源码证明“两帧视觉延迟”究竟来自 SwiftUI/ScrollView gesture delivery，还是 transition/view rendering。
+- **Build185 real-device result — FAILED acceptance**：用户 2026-08-25 在 iPhone 15 Pro Max / iOS 17.0 提供两段对照录屏，第一段 `RPReplay_Final1787665181.mp4` 为 OnePlayer，第二段 `RPReplay_Final1787665268.mp4` 为 EX。用户明确报告：1）从手指按住到轮播第一次开始移动，OnePlayer 仍总有一段明显偏长的首段位移；2）持续拖动整体仍不及 EX 丝滑、细腻，体感近似“OnePlayer 像 60Hz、EX 像 120Hz”。因此 Build185 不接受、不稳定。
+- **New recording format**：两段均为 510×1108 / 30 fps；OP 186 帧 / 6.20s，EX 193 帧 / 6.43s；视频时间轴本身稳定 30fps，不能仅凭录屏宣称真实 UI 就是 60Hz 或 120Hz。
+- **Quantified first-motion evidence**：跟踪前景文字/元信息横向位置，OP 三次起滑第一帧可见位移约 **10px / 12px / 16px**；EX 三次约 **1px / 1px / 2px**。OP 第一段手势里，录屏触摸圆点已先横移约 **8px**，前景连续两帧仍保持原位，随后直接跳约 10px；支持“输入先动、视觉接管后追累计 translation”的现象。
+- **Quantified drag granularity**：OP 非零逐帧前景位移中位数约 **3px**、P75 约 **4px**；EX 中位数约 **1px**、P75 约 **2px**。该数据与用户“EX 更细腻”的体感一致，但 30fps 录屏不能单独用于推断真实 display refresh rate。
+- **ProMotion configuration evidence**：Build185 `Config/Info.plist` 已存在 `CADisableMinimumFrameDurationOnPhone = true`；仓库已有 `DisplayRefreshRateMonitor`，其 `CADisplayLink` 目标使用 `UIScreen.main.maximumFramesPerSecond`。目前没有证据表明 OnePlayer 只是漏开 >60Hz ProMotion 配置。
+- **Source evidence after Build185**：第一次真正进入 horizontal transition 时会依次修改 `fromID / toID / progress / direction` 多个独立 `@Published` 字段，并先写一次 `progress = 0`，同一回调末尾再写真实 `progress`；该结构可能制造首次 transition invalidation，但不能仅凭源码区分 gesture delivery 延迟与 render/compositing 延迟。
 
-## Next exact action
+## Build186 diagnostic candidate
 
-- **Do not continue threshold tuning**：Build185 已证明把 1.08 gate 改成 0.5pt 一次性锁轴仍不足以达到 EX；不再尝试 0.2pt/0.1pt 等无证据数字微调。
-- **Build186 direction**：先做行为保持的诊断候选，基于当前 accepted `main@Build184` 集成 Build185 carousel contract，而不是继续沿旧 carousel 整体 branch。只增加轻量 drag cadence 采样：记录首次 `onChanged` translation、axis lock 时 translation、样本数/持续时间、平均 callback Hz、最大样本间隔；每次手势只在结束时写一条日志，避免逐帧 logging 干扰性能。
-- **Decision gate**：如果 Build186 日志显示第一个 `onChanged` 本身就已经是约 8–15pt，优先处理 SwiftUI DragGesture / vertical ScrollView 的首次 gesture delivery/arbitration；如果首样本已接近 0–1pt 且 callback cadence 足够高，但视觉仍晚/粗，则优先处理 transition state 原子提交与 Hero/persistent backdrop 的 SwiftUI invalidation/compositing 成本。
-- **Only after cadence evidence**：若持续拖动 callback cadence 足够而画面仍表现出明显低刷新粒度，才进入 persistent full-screen 两张 `.blur(radius: 30)` layer / Hero render scope 的 GPU/compositing 检查；不提前同时改 blur。
+- **Direction**：不再做 0.2pt/0.1pt 等阈值微调，也不改变既定 full-page foreground slide。Build186 从当前 accepted Build184 `main` 集成 Build185 carousel owner/0pt/axis/reversal/raw-progress 合同，并仅新增被动 drag cadence 诊断。
+- **Branch**：`perf/home-carousel-drag-cadence-build186`；PR = none。
+- **Build identity**：**OnePlayer 0.14.19 / Build186**。
+- **Accepted base**：`main@dcd6cc6d01319e13ccb991967a190ae1f915053b`，继承 Build184 已接受的 detail performance/cache/visual hierarchy。
+- **Product head before temporary CI helper**：`22434e79ca8476af326a3427d16fc0390c98e94d`。
+- **Dedicated CI source / run**：`80d7b8b503d10bd8d10d62714afa9557a5988ab4`；run **`32858062142` success**。
+- **Workflow-restored branch head**：`2ba1ad1f1d9e05b0fe8075226de3695a7b2a2b71`。
+- **CI coverage**：Build185 carousel contracts、accepted Build184 integration、detail performance/visual hierarchy、series ordering、ProMotion opt-in、Xcode 16.4 Release device build、0.14.19 (186) identity、MinOS 15.0、IPA packaging/upload 全部通过。
+- **Diagnostic behavior**：每次拖动记录首个 `onChanged` translation、axis lock translation、transition start translation、样本数、持续时间、平均 callback Hz、最大 callback gap、`UIScreen.main.maximumFramesPerSecond` 与 Low Power Mode 状态；拖动过程中不逐帧写日志，只在结束时写一条 `HomeCarouselDragTiming`，避免 logging 本身干扰手感。
+- **Artifact**：`OnePlayer-0.14.19-build186-home-carousel-drag-timing`；artifact ID **`9567101523`**；artifact digest `sha256:9df143abb6935702e55516ce9ba042220080142c7dfb304b9e53d36548c4f3c7`。
+- **IPA**：`OnePlayer-0.14.19-build186-home-carousel-drag-timing-unsigned.ipa`；下载后二次 SHA-256 = **`08cdf0398e024f8cc64dd75b2e6dfecab2b26833807feb810e280034b345f780`**，与 artifact 内校验文件一致。
+- **Source ZIP SHA-256**：`47c9b3c1c0870e3c0be7615efc850f8ec32093ff8d653070339cb541c71b1ae2`，下载后二次校验一致。
+- **Decision gate**：如果首个 `onChanged` 本身约 8–15pt，优先处理 SwiftUI DragGesture / vertical ScrollView 首次 delivery/arbitration；如果首样本约 0–1pt 且 callback cadence 足够高，但视觉仍晚/粗，则优先处理 transition state 原子提交和 Hero/persistent backdrop SwiftUI invalidation/compositing；只有 cadence 足够而画面仍低粒度，才进入两张 full-screen `.blur(radius: 30)` layer 的 GPU/compositing 检查。
 
 ## Frozen / inherited boundaries
 
 - Build176 player episode-selection/session replacement、Build178 canonical episode ordering、Build173 PiP、MPV fast Seek、UnifiedTransport、Range/302/115 客户端直连、Session cache、Cache UI、Emby progress/Resume、native navigation 均不得因本任务变化。
-- Build184 已接受的详情页性能/视觉改动属于当前 overall accepted runtime；下一 carousel 候选必须继承，不能从旧 Build180/185 branch 整体状态出包。
+- Build184 已接受的详情页性能/视觉改动属于当前 overall accepted runtime；Build186 已从当前 accepted `main` 集成，不再从旧 Build180/185 branch 整体状态出包。
 - **Fallback policy explicitly allowed by user**：只有在保留既定容器平移交互继续验证后，若证据证明实在无法达到可接受丝滑度，才允许回到 Build183 类“foreground 固定、轮播主体 crossfade”的交互作为最终兜底。
 - **Rejected / do-not-repeat**：不要恢复 4/12pt 起拖门槛；不要恢复 `1.08` 初始优势门槛；不要在已建立 horizontal drag 后重新进入中心方向 gate；不要用 debounce/throttle/补间动画掩盖跟手问题；不要擅自取消 foreground page travel；不要复用其他 Active task 的 Build 编号；不要为首页轮播修改 Player/Transport/Cache。
 
@@ -57,4 +64,4 @@
 - Build180 = real-device partial improvement but rejected.
 - Build183 = real-device feel somewhat finer but interaction regression, rejected.
 - Build185 = **Code written / CI passed / IPA produced / real-device tested and rejected / not stable**.
-- Build186 = not yet created; diagnostic direction defined by current real-device evidence.
+- Build186 = **Code written / CI passed / IPA produced / real-device pending / not stable**.
