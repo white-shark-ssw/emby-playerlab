@@ -30,8 +30,9 @@ This is a milestone index, not a list of every experimental build.
 | **Build184 / 0.14.17** | Detail performance/cache + visual hierarchy completion | Inherits accepted Build181/182 detail scroll and persistent presentation cache, moves “视频信息” below “更多类似” and above the bottom glass media-source card, and uses 19 pt bold main detail section headers. Dedicated Release CI/IPA succeeded; user accepted the final result on target device and PR #255 merged to `main`. **Current accepted overall baseline.** |
 | **Build185 / 0.14.18** | Restore carousel page-slide semantics + refine initial axis acquisition | Dedicated Release CI passed and IPA produced. **Real-device rejected:** page-slide interaction/reversal were correct, but first visible movement remained about 10/12/16 px versus EX about 1/1/2 px and ongoing drag remained visibly coarser. |
 | **Build186 / 0.14.19** | Carousel drag-cadence instrumentation | Dedicated Release CI/IPA succeeded from accepted Build184 integration; passive timing was implemented, but its generic category routed to App logs and the package was not distributed for diagnosis. |
-| **Build187 / 0.14.20** | Exportable carousel drag-cadence diagnostic | Same drag behavior as Build186; routes `HomeCarouselDragTiming` through the existing playback-log export. Dedicated Release CI passed, IPA produced and downloaded checksums verified. **Current carousel diagnostic candidate; real-device evidence pending.** |
+| **Build187 / 0.14.20** | Exportable carousel drag-cadence diagnostic | Dedicated Release CI/IPA succeeded. **Real-device diagnostic confirmed:** first useful SwiftUI horizontal samples were already about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off, proving threshold tuning cannot recover fine initial sampling in this ScrollView/DragGesture path. |
 | **Build188 / 0.14.21** | Detail episode selection semantics + full picker return | Detail horizontal cards select-only with blue outline and compact selected-episode summary; main Play/Resume plays the selected episode. Full picker no longer dismisses before playback, so closing player should reveal the same picker/scroll position. Dedicated Release CI/IPA succeeded; **real-device evidence pending.** |
+| **Build189 / 0.14.22** | Carousel native raw/coalesced-touch input | Replaces only manual drag sampling with UIKit raw/coalesced touches while preserving full-page slide semantics and the existing SwiftUI predicted release commit. Dedicated Release CI passed, IPA produced and downloaded checksums verified. **Real-device pending.** |
 
 ## Current accepted baseline
 
@@ -50,7 +51,7 @@ This is a milestone index, not a list of every experimental build.
 - target device: iPhone 15 Pro Max / iOS 17.0
 - evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for completed detail requirements / merged to main**
 
-Build182 remains real-device accepted/frozen for the two detail performance/cache requirements and is inherited by Build184. Build184 / 0.14.17 is the accepted overall runtime baseline merged to `main`; Build185 is real-device rejected, Build187 / 0.14.20 is the independent home-carousel diagnostic candidate, and Build188 / 0.14.21 is the independent detail/episode-selection candidate. Both newer candidates remain real-device pending and do not replace Build184.
+Build182 remains real-device accepted/frozen for the two detail performance/cache requirements and is inherited by Build184. Build184 / 0.14.17 is the accepted overall runtime baseline merged to `main`; Build187 has now completed the carousel diagnostic gate on real device, Build189 / 0.14.22 is the current independent home-carousel native-touch candidate, and Build188 / 0.14.21 remains the independent detail/episode-selection candidate. Build188 and Build189 remain real-device pending and neither replaces Build184.
 
 ## Episode-selection evidence trail
 
@@ -172,6 +173,25 @@ Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 R
 - Build187 CI source `6d562b2f5cf76be41cb0e763c8f3c50c4f0d724f`; restored head `468986492f639959f7f31129dadf5b49e781d37f`; run **`32860057516` success**.
 - Artifact `OnePlayer-0.14.20-build187-home-carousel-drag-timing`; ID **`9567940931`**; digest `sha256:0eb2a44b736a84e8237415465f064f6a23a163b5ef802875b483cda672b19766`; IPA SHA-256 **`5fa04513919b5e2928ee2ca09cf45dddc79c91d64858971f571b423dbb2d50f8`**; source ZIP SHA-256 `70ef0df0ef48c9be558674cfd892a39e9836780602992e482f2f0d806d24d40a`; MinOS 15.0.
 - Evidence: Build186 = **Code written / CI passed / IPA produced / not distributed for diagnosis**; Build187 = **Code written / CI passed / IPA produced / real-device pending / not stable**.
+
+
+## Build189 home-carousel native-touch evidence
+
+- task: `DEV-home-carousel-drag-smoothness` — Active
+- Build187 real-device gate: first useful SwiftUI samples about 4.33/8.00/15.67/11.00pt; maxFPS=120; Low Power Mode=false; threshold tuning retired.
+- conflicted carousel Build188 / 0.14.21: CI/IPA existed but identity is owned by `DEV-detail-episode-selection-navigation`; **invalid for distribution/attribution**.
+- branch: `perf/home-carousel-native-touch-build189-from187`
+- product head before temporary CI helper: `36bfd4c1600add86dccc0f9917eea28dc39173f4`
+- dedicated Release CI source: `7ddb4453abdf671c936a7f42d72fb837d943cc73`
+- workflow-restored branch head: `c3b122f6f2934dc5c32c67e0fcae392a5c13cd14`
+- CI run: **`32868634314` — success**
+- artifact: `OnePlayer-0.14.22-build189-home-carousel-native-touch`; ID **`9571260479`**
+- artifact digest: `sha256:e33fdc0b4b185b3062e43ee3e506ff40399a8dbee8872c5344a1b7a4a9b65726`
+- IPA SHA-256: **`50c74bd43935a31ca3dda781c04a1113c2ce616c7da9e24e438cba78988c3a6d`**
+- source ZIP SHA-256: **`ae7b226aa20063700f3a0964714b2a89fe5e7c0eee4bf8b5cae371e432c791e4`**
+- MinOS: 15.0
+- implementation: UIKit raw/coalesced touch samples drive manual transition progress; original SwiftUI predicted release commit, foreground page-slide, auto-advance and P0/Frozen contracts remain unchanged.
+- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**.
 
 ## Build181 detail-page evidence
 

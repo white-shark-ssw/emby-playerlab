@@ -65,7 +65,8 @@
 - Build183 = real-device feel somewhat finer but interaction regression, rejected.
 - Build185 = **Code written / CI passed / IPA produced / real-device tested and rejected / not stable**.
 - Build186 = **Code written / CI passed / IPA produced / not distributed for diagnosis / not stable**.
-- Build187 = **Code written / CI passed / IPA produced / real-device pending / not stable**.
+- Build187 = **Code written / CI passed / IPA produced / real-device tested / diagnostic gate confirmed / not stable**.
+- Build189 = **Code written / CI passed / IPA produced / real-device pending / not stable**.
 
 
 ## Build187 final diagnostic package
@@ -75,4 +76,22 @@
 - branch `perf/home-carousel-drag-cadence-build187`; CI source `6d562b2f5cf76be41cb0e763c8f3c50c4f0d724f`; restored head `468986492f639959f7f31129dadf5b49e781d37f`; run `32860057516` success.
 - artifact `9567940931`; IPA SHA-256 `5fa04513919b5e2928ee2ca09cf45dddc79c91d64858971f571b423dbb2d50f8`; source ZIP SHA-256 `70ef0df0ef48c9be558674cfd892a39e9836780602992e482f2f0d806d24d40a`; MinOS 15.0.
 - validation: **Code written / CI passed / IPA produced / real-device pending / not stable**.
-- next exact action: reproduce tiny starts/slow drags/reversals on iPhone 15 Pro Max / iOS 17.0, record screen, then use Settings → 导出播放日志 and provide the log containing `HomeCarouselDragTiming`.
+- **Build187 real-device result — DIAGNOSIS CONFIRMED**：iPhone 15 Pro Max / iOS 17.0 真机导出日志显示每次触摸先出现 `first=0.00,0.00`，但第一次真正可用的 horizontal / axis-lock / transition 位移已经分别约为 **4.33pt / 8.00pt / 15.67pt / 11.00pt**；`lock` 与 `transition` 位移相同，说明 carousel 第一次能够建立横向 transition 时，手指位移已经累计了数点到十余点。日志同时确认 `maximumFramesPerSecond=120`、Low Power Mode = false。
+- **Build187 conclusion**：0.5pt 阈值没有机会成为实际首段响应粒度；当前纵向 `ScrollView` 场景下 SwiftUI `DragGesture` 没有向 carousel 提供 0.5/1/2pt 级别的有效首段横向样本。停止继续做 0.2pt/0.1pt 等阈值微调，后续只针对输入采样层做最小替换。
+
+## Build188 identity collision / Build189 native-touch candidate
+
+- **Identity guard**：并行 Active `DEV-detail-episode-selection-navigation` 已正式占用 **OnePlayer 0.14.21 / Build188**，并已有独立成功 CI/IPA。因此此前 carousel native-touch 的 0.14.21 / Build188 包发生 Build 身份冲突，**不得分发、不得用于真机或日志归因**；其产品逻辑虽通过 CI，但该身份作废。
+- **Valid carousel identity**：carousel native-touch 候选顺延为唯一的 **OnePlayer 0.14.22 / Build189**；GitHub 搜索及并行 checkpoint 核对时 Build189 未被其他 Active task 占用。
+- **Architecture**：只替换手动拖动的输入采样层。新增 UIKit `UIGestureRecognizer` 从 `touchesMoved` 读取 `event.coalescedTouches(for:)`，第一次约 0.5pt 有效向量锁定横向/纵向；横向仍按 `abs(translation) / width` 一对一驱动既有 transition progress。recognizer 不 cancel/delay touches，并允许与纵向 ScrollView simultaneous recognition。
+- **Release semantics unchanged**：原 SwiftUI `DragGesture(minimumDistance: 0)` 保留，继续使用原 `predictedEndTranslation.width`、0.28 progress / 0.48×width predicted commit 门槛以及原 complete/cancel settle；Logo、评分、年份、类型、剧情简介继续与所属轮播页整页横向平移。没有 debounce、throttle、插值、累计补偿、timer、watchdog、retry 或 fallback。
+- **Branch**：`perf/home-carousel-native-touch-build189-from187`；PR = none。
+- **Build identity**：**OnePlayer 0.14.22 / Build189**。
+- **Product head before temporary CI helper**：`36bfd4c1600add86dccc0f9917eea28dc39173f4`。
+- **Dedicated CI source / run**：`7ddb4453abdf671c936a7f42d72fb837d943cc73`；run **`32868634314` success**。
+- **Workflow-restored branch head**：`c3b122f6f2934dc5c32c67e0fcae392a5c13cd14`。
+- **Artifact**：`OnePlayer-0.14.22-build189-home-carousel-native-touch`；artifact ID **`9571260479`**；artifact digest `sha256:e33fdc0b4b185b3062e43ee3e506ff40399a8dbee8872c5344a1b7a4a9b65726`。
+- **IPA**：`OnePlayer-0.14.22-build189-home-carousel-native-touch-unsigned.ipa`；下载后二次 SHA-256 = **`50c74bd43935a31ca3dda781c04a1113c2ce616c7da9e24e438cba78988c3a6d`**，与 artifact 内 `.sha256` 一致。Source ZIP SHA-256 = **`ae7b226aa20063700f3a0964714b2a89fe5e7c0eee4bf8b5cae371e432c791e4`**。
+- **CI coverage**：native/coalesced touch、simultaneous ScrollView、原 page-slide/predicted release commit、Build183 fixed-foreground 拒绝合同、ProMotion opt-in、Build184 detail 与 P0/Frozen zero-diff、Xcode 16.4 Release、0.14.22 (189) identity、MinOS 15.0、IPA packaging/upload 均通过。
+- **Evidence**：**Code written / CI passed / IPA produced / real-device pending / not stable**。
+- **Next exact action**：安装 Build189，在 iPhone 15 Pro Max / iOS 17.0 重点验证极小起滑、慢短拖、正常/快速拖、按住左右反向穿越中心、Hero 区纵向滚动和详情点击。核心判据是第一段可见位移是否从“累计 4–16pt 后才动”变为立即、细粒度跟手。
