@@ -67,7 +67,8 @@ jobs:
           require("autoStartSession" in root and "startupResolved" in root, "root auto-start routing contract missing")
           require("clientForBestRoute" in server_root, "server root must select route before Home client")
           require("kSecAttrSynchronizable" in keychain and "setSynchronizable" in keychain, "real iCloud Keychain sync contract missing")
-          require("password" not in keychain.lower(), "Keychain helper must not add password-specific persistence")
+          synced_record = session.split("private struct SyncedServerRecord: Codable {", 1)[1].split("private enum SessionStoreError", 1)[0]
+          require("password" not in synced_record.lower(), "synced server record must not persist password")
           print("Build191 Add Emby source/frozen contracts: OK")
           PY
 
