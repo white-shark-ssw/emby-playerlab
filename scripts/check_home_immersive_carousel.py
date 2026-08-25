@@ -36,7 +36,7 @@ assert 'DragGesture(minimumDistance: 4, coordinateSpace: .local)' in carousel
 
 # Vertical Hero physics reuse the detail page's proven metric functions, but Home owns its observer.
 assert 'AdaptiveHeroRevealMetrics.detailCropResponseFactor' in home
-assert 'AdaptiveHeroRevealMetrics.backdropPinOffset' in home
+assert 'let backdropPinOffset = min(upwardScroll, cropPhaseDistance)' in home
 assert 'AdaptiveHeroRevealMetrics.clearImageBottom' in home
 assert 'AdaptiveHeroNativeScrollObserver' not in home
 assert 'V3HomeNativeScrollObserver' in home
