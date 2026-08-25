@@ -19,20 +19,24 @@ This is a milestone index, not a list of every experimental build.
 | Build173 / 0.14.6 | PiP Seek completion + return simplification | PiP freeze baseline. This was the previous overall accepted functional baseline; PiP remains frozen at this architecture unless a materially better renderer-lifecycle idea appears. |
 | Build174 / 0.14.7 | First player episode selector + auto-next | Dedicated standard MPV CI passed and IPA produced. User installed it and confirmed the selector/data path on device, but rejected the large gray sheet/X/title presentation; partial real-device evidence only. |
 | Build175 / 0.14.8 | Episode selector UI / season interaction refinement | Dedicated standard MPV Release CI passed and IPA produced. Real-device screenshot confirmed the fixed bottom-button layout direction, but exposed lower button visual bleed through transparent overview text and a left-aligned `正在播放` badge. Not accepted as stable UI. |
-| **Build176 / 0.14.9** | Episode overlay visual-layer follow-up and task completion | **Current real-device accepted functional baseline.** Localized black fade prevents lower button bleed without restoring the rejected gray sheet; `正在播放` is centered; existing player-button coordinates stay fixed. Dedicated standard MPV Release CI passed, IPA produced, and the user accepted the result and closed the episode-selection task. |
+| **Build176 / 0.14.9** | Episode overlay visual-layer follow-up and task completion | **Current real-device accepted functional baseline and now merged to `main`.** Localized black fade prevents lower button bleed without restoring the rejected gray sheet; `正在播放` is centered; existing player-button coordinates stay fixed. Dedicated standard MPV Release CI passed, IPA produced, user accepted the result, and final merge PR #253 landed at `d10e0d63b429f72a664193a1a5bacf728cac50b6`. |
 
 ## Current accepted baseline
 
 - OnePlayer **0.14.9 / Build176**
-- branch `feat/player-episode-picker-0.14.7`
-- PR `#249`
+- canonical branch: `main`
+- final merge PR: `#253`
+- final merge commit: `d10e0d63b429f72a664193a1a5bacf728cac50b6`
+- development branch: `feat/player-episode-picker-0.14.7`
+- development PR: `#249` (historical / superseded by #253)
 - product source before temporary Build176 helper: `f701f0446d65e84fc686f69ec14d60402c94839c`
 - dedicated CI source: `221630297dc1080279bb8a3f05d69586461b328c`
-- workflow-restored branch head: `4b26a7d3a9826c58bfdddd6aafaeb9eeb5c7c943`
+- workflow-restored feature head: `4b26a7d3a9826c58bfdddd6aafaeb9eeb5c7c943`
+- main-synchronization merge on feature branch: `1ff5598c18e8c46856efecbd1d2f15df422098c6`
 - CI run `32782048086`
 - artifact `OnePlayer-0.14.9-build176-episode-picker-ui`
 - target device: iPhone 15 Pro Max / iOS 17.0
-- evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements**
+- evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements / merged to main**
 
 ## Episode-selection evidence trail
 
@@ -60,7 +64,18 @@ Build176 product source / dedicated CI source / run / artifact:
 - `OnePlayer-0.14.9-build176-episode-picker-ui`
 - workflow-restored branch head: `4b26a7d3a9826c58bfdddd6aafaeb9eeb5c7c943`
 
-Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 Release compile, OnePlayer 0.14.9 (176) app identity validation, iOS 15.0 MinOS validation, IPA packaging and artifact upload. The temporary CI helper was restored afterward. The user's subsequent real-device acceptance promotes Build176 from CI/IPA candidate to the current stable functional baseline.
+Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 Release compile, OnePlayer 0.14.9 (176) app identity validation, iOS 15.0 MinOS validation, IPA packaging and artifact upload. The user's subsequent real-device acceptance promoted Build176 to the stable functional baseline.
+
+## Main integration evidence
+
+Before the final merge, current `main` was synchronized into the Build176 feature branch. The main-only delta consisted of governance/history/CI files and did not contain `Sources/**` runtime changes. The synchronized feature tree reused the exact accepted Build176 product trees/blobs, so no Build177 was created solely for synchronization.
+
+Final merge PR #253 triggered existing generic workflows. Two red checks were reviewed and are not Build176 MPV product regressions:
+
+- `Validate Source` exits before compilation because it still hard-codes source version `0.13.3 / Build69`.
+- `Build MDK Lab IPA` exits in its experimental local-file contract because it requires `Sources/UI/LocalMDKFileLabView.swift`, which is not part of the accepted Build176 product tree.
+
+The authoritative Build176 release evidence remains dedicated standard MPV Release run `32782048086`, its produced IPA, and the user's real-device acceptance.
 
 ## Maintenance rule
 
