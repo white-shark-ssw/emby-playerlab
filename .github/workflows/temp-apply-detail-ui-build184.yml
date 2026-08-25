@@ -1,0 +1,54 @@
+name: Temp Apply Build184 Detail UI
+
+on:
+  push:
+    branches: [feat/detail-episode-page-optimization]
+    paths:
+      - ".github/workflows/temp-apply-detail-ui-build184.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/detail-episode-page-optimization
+          fetch-depth: 0
+      - name: Apply minimal detail UI changes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Sources/UI/EmbyMediaDetailView.swift')
+          text = path.read_text()
+          replacements = {
+              '''                                castSection\n                                mediaStreamInfoSection\n                                tagSection\n                                stillsSection\n                                similarSection\n                                mediaSourceSummarySection''': '''                                castSection\n                                tagSection\n                                stillsSection\n                                similarSection\n                                mediaStreamInfoSection\n                                mediaSourceSummarySection''',
+              'Text("即将播放").font(.title2.weight(.bold)).fixedSize()': 'Text("即将播放").font(.system(size: 19, weight: .bold)).fixedSize()',
+              'Text("季").font(.title2.weight(.bold)).padding(.horizontal, 20)': 'Text("季").font(.system(size: 19, weight: .bold)).padding(.horizontal, 20)',
+              'Text("演职人员").font(.title2.weight(.bold)).padding(.horizontal, 20)': 'Text("演职人员").font(.system(size: 19, weight: .bold)).padding(.horizontal, 20)',
+              'Text("音视频字幕信息").font(.title2.weight(.bold)).foregroundColor(.primary)': 'Text("视频信息").font(.system(size: 19, weight: .bold)).foregroundColor(.primary)',
+              'Text("标签").font(.title2.weight(.bold))': 'Text("标签").font(.system(size: 19, weight: .bold))',
+              'Text("剧照").font(.title2.weight(.bold)).padding(.horizontal, 20)': 'Text("剧照").font(.system(size: 19, weight: .bold)).padding(.horizontal, 20)',
+              'Text(model.isSeries ? "更多类似" : "相似作品").font(.title2.weight(.bold)).padding(.horizontal, 20)': 'Text(model.isSeries ? "更多类似" : "相似作品").font(.system(size: 19, weight: .bold)).padding(.horizontal, 20)',
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one match, got {count}: {old[:80]}')
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+          git diff --check
+          git diff -- Sources/UI/EmbyMediaDetailView.swift
+      - name: Commit product UI change
+        run: |
+          set -euo pipefail
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add Sources/UI/EmbyMediaDetailView.swift
+          git diff --cached --quiet && exit 1
+          git commit -m "Refine detail section hierarchy"
+          git push origin HEAD:feat/detail-episode-page-optimization
