@@ -19,9 +19,10 @@ This is a milestone index, not a list of every experimental build.
 | Build173 / 0.14.6 | PiP Seek completion + return simplification | PiP freeze baseline. This was a previous overall accepted functional baseline; PiP remains frozen at this architecture unless a materially better renderer-lifecycle idea appears. |
 | Build174 / 0.14.7 | First player episode selector + auto-next | Dedicated standard MPV CI passed and IPA produced. User installed it and confirmed the selector/data path on device, but rejected the large gray sheet/X/title presentation; partial real-device evidence only. |
 | Build175 / 0.14.8 | Episode selector UI / season interaction refinement | Dedicated standard MPV Release CI passed and IPA produced. Real-device screenshot confirmed the fixed bottom-button layout direction, but exposed lower button visual bleed through transparent overview text and a left-aligned `正在播放` badge. Not accepted as stable UI. |
-| **Build176 / 0.14.9** | Episode overlay visual-layer follow-up and task completion | Previous accepted functional baseline. Dedicated standard MPV Release CI passed, IPA produced, user accepted the result, and final merge PR #253 landed at `d10e0d63b429f72a664193a1a5bacf728cac50b6`. Its player episode-selection/session contract remains stable and is inherited by Build178. |
-| Build177 / 0.14.10 | Home carousel drag smoothness | Reserved by independent `DEV-home-carousel-drag-smoothness`; evidence remains tracked in that Active checkpoint. Since `main` later advanced through accepted Build178, Build177 must re-check/synchronize before any final merge. |
+| **Build176 / 0.14.9** | Episode overlay visual-layer follow-up and task completion | Previous accepted functional baseline. Dedicated standard MPV Release CI passed, IPA produced, user accepted the result, and final merge PR #253 landed at `d10e0d63b429f72a664193a1a5bacf728cac50b6`. Its player episode-selection/session contract remains stable and is inherited by Build178 and Build179. |
+| Build177 / 0.14.10 | Preliminary home carousel drag smoothness | Dedicated Release CI passed and IPA was produced on the older Build173 isolated baseline, but it was superseded before user distribution after `main` advanced through accepted Build178. It remains preliminary implementation/CI evidence only and is not the current integration test package. |
 | **Build178 / 0.14.11** | Canonical Emby episode ordering for non-standard series | **Current real-device accepted functional baseline and merged to `main`.** Uses `/Shows/{SeriesId}/Episodes` server order instead of forcing generic Items `ParentIndexNumber,IndexNumber`; dedicated standard MPV Release CI passed, IPA produced, user accepted the result on device, and PR #254 merged at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. |
+| **Build179 / 0.14.12** | Home carousel manual-drag smoothness on accepted Build178 baseline | Dedicated standard MPV Release CI passed and IPA produced. High-frequency carousel transition state is scoped away from the full home root and drag start is reduced to 4 pt while Build176/178 accepted contracts remain unchanged. **Pending iPhone 15 Pro Max / iOS 17.0 real-device comparison against EX; not stable/frozen yet.** |
 
 ## Current accepted baseline
 
@@ -39,6 +40,8 @@ This is a milestone index, not a list of every experimental build.
 - IPA SHA-256: `2e4ed5be2c32535249ea2049a9686f6ac24a217e04535806ee6ee4721e78ba5b`
 - target device: iPhone 15 Pro Max / iOS 17.0
 - evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements / merged to main**
+
+Build179 is the current carousel test candidate but does not replace Build178 as the accepted baseline until the user completes target-device validation.
 
 ## Episode-selection evidence trail
 
@@ -66,7 +69,7 @@ Build176 product source / dedicated CI source / run / artifact:
 - `OnePlayer-0.14.9-build176-episode-picker-ui`
 - workflow-restored branch head: `4b26a7d3a9826c58bfdddd6aafaeb9eeb5c7c943`
 
-Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 Release compile, OnePlayer 0.14.9 (176) app identity validation, iOS 15.0 MinOS validation, IPA packaging and artifact upload. User real-device acceptance made its player episode-selection/session contract stable; Build178 inherits that contract unchanged.
+Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 Release compile, OnePlayer 0.14.9 (176) app identity validation, iOS 15.0 MinOS validation, IPA packaging and artifact upload. User real-device acceptance made its player episode-selection/session contract stable; Build178 and Build179 inherit that contract unchanged.
 
 ## Build178 episode-ordering evidence
 
@@ -87,6 +90,24 @@ Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 R
 - real-device evidence: user accepted Build178 on 2026-08-25 and explicitly approved task completion and code merge.
 - stable contract: canonical series order comes from `GET /Shows/{SeriesId}/Episodes`; OnePlayer preserves server order and does not add client-side title/file/date/ID/artificial-number fallback sorting.
 
+## Build179 home-carousel evidence
+
+- task: `DEV-home-carousel-drag-smoothness` — Active, pending real-device acceptance
+- integration base: accepted Build178 runtime at `main@967b743c88d68b05205eb39f1de75cab41362e8b`
+- branch: `perf/home-carousel-drag-smoothness-build179`
+- workflow-restored branch head: `839cc0c3506c68e1c04887e438a77575a10fd8a0`
+- dedicated standard MPV Release CI source: `22515402f4d17e1a9b4073c535265b65ba55f52d`
+- CI run: `32841344067`
+- artifact: `OnePlayer-0.14.12-build179-home-carousel-smoothness`
+- artifact ID: `9560700233`
+- artifact archive digest: `sha256:5d4b06c3fbcc0515a3ce8293c60701ec8ddd31b6632a7bd4d0fac5717d242a24`
+- IPA: `OnePlayer-0.14.12-build179-home-carousel-smoothness-unsigned.ipa`
+- IPA SHA-256: `80f2c70215fe3f1c9323894eedbd22c5f61b29bcfb61e3a6e14115a4b932ddd8`
+- MinOS: app and main runtime Mach-O validated at iOS 15.0; compatibility audit OK
+- CI evidence: carousel state-isolation/4 pt drag contract passed; home-carousel and scroll-performance checks passed; Build178 series-ordering check passed; Build176/178 accepted player/order files and P0 frozen modules were zero-diff from the Build178 integration base; Xcode 16.4 Release build passed; app identity validated as 0.14.12 (179); IPA packaged and uploaded.
+- post-CI target movement: `main` advanced from `967b743` to `2f3209ad` only by adding `DEV-detail-episode-page-optimization.md`; no runtime source changed, so Build179 CI evidence remains applicable to the current runtime baseline.
+- evidence level: **Code written / CI passed / IPA produced / real-device not yet tested / not stable**
+
 ## Main integration evidence
 
 Build176 was merged through PR #253 and established the accepted player episode-selection/session contract.
@@ -98,7 +119,7 @@ Build178 was developed from the accepted Build176 `main` runtime baseline. Befor
 - `docs/changelog/CHANGELOG_v0_14_11_build178.md`
 - `scripts/check_series_episode_ordering.py`
 
-After user real-device acceptance, PR #254 was merged to `main` at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. Build178 is therefore the current accepted functional baseline.
+After user real-device acceptance, PR #254 was merged to `main` at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. Build178 is therefore the current accepted functional baseline. Build179 remains a separate test candidate until the user reports real-device results.
 
 ## Maintenance rule
 
