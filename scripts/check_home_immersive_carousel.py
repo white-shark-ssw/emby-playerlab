@@ -32,7 +32,13 @@ assert '@State var carouselTransitionState = V3HomeCarouselTransitionState()' in
 assert 'V3HomeCarouselTransitionScope(state: carouselTransitionState)' in core
 assert 'final class V3HomeCarouselTransitionState: ObservableObject' in carousel
 assert 'var tapSuppressedUntil = Date.distantPast' in carousel
-assert 'DragGesture(minimumDistance: 4, coordinateSpace: .local)' in carousel
+
+# Manual drag is direct from first horizontal movement and remains continuous through direction reversal.
+assert 'DragGesture(minimumDistance: 0, coordinateSpace: .local)' in carousel
+assert 'if !isCarouselDragging { guard abs(horizontal) > abs(vertical) * 1.08 else { return } }' in carousel
+assert 'abs(horizontal) > 4' not in carousel
+assert 'func carouselBackdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat { min(1, max(0, rawProgress)) }' in carousel
+assert '(raw - 0.08)' not in carousel
 
 # Vertical Hero physics reuse the detail page's proven metric functions, but Home owns its observer.
 assert 'AdaptiveHeroRevealMetrics.detailCropResponseFactor' in home
