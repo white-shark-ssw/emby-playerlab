@@ -515,7 +515,8 @@ private struct ClipboardServerCredentials {
         var routeCandidates: [String] = []
 
         for line in lines {
-            if line.contains("://") && labeledValue(line, labels: usernameLabels + passwordLabels) == nil { routeCandidates.append(line) }
+            let lower = line.lowercased()
+            if (lower.hasPrefix("http://") || lower.hasPrefix("https://")) && labeledValue(line, labels: usernameLabels + passwordLabels) == nil { routeCandidates.append(line) }
             if let route = labeledValue(line, labels: serverLabels + routeLabels), !route.isEmpty { routeCandidates.append(route) }
         }
         routeCandidates = unique(routeCandidates)
