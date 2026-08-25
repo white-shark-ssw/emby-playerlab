@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build189 / OnePlayer 0.14.22 was real-device rejected because releasing a native-sampled drag could leave the carousel frozen at an intermediate progress, and Build190 / OnePlayer 0.14.23 completed dedicated Release CI/IPA with single-owner movement/release semantics. Build188 / OnePlayer 0.14.21 remains the independent detail/episode-selection navigation candidate. Build184 / OnePlayer 0.14.17 remains the accepted overall functional baseline on `main`; neither Build188 nor Build190 replaces it until target-device evidence is accepted._
+_Last updated after Build190 / OnePlayer 0.14.23 completed dedicated carousel Release CI/IPA, while the independent detail line produced Build191 / OnePlayer 0.14.24 after Build190 detail screenshots confirmed quick-range selection retention but exposed summary/card title mismatch. Build191 now reuses the card title formatter and has dedicated Release CI/IPA evidence. Build184 / OnePlayer 0.14.17 remains the accepted overall functional baseline on `main`; neither Build190 nor Build191 replaces it until target-device evidence is accepted._
 
 ## Current functional baseline
 
@@ -34,7 +34,11 @@ Build182 / OnePlayer 0.14.15 is **real-device accepted and frozen for detail scr
 
 Build184 / OnePlayer 0.14.17 is **real-device accepted, stable for the completed detail-page requirements, and merged to `main` through PR #255**. It preserves Build182 detail performance/cache behavior and only adds the accepted visual hierarchy changes: `视频信息` below `更多类似`, above the bottom glass media-source summary, with the main section headers at 19 pt bold.
 
-Build188 / OnePlayer 0.14.21 is the current independent **detail/episode-selection navigation candidate**. Detail horizontal episode cards now select only and retain the blue selected outline; a compact 12 pt selected-episode summary appears above the horizontal cards, while the existing main Play/Resume button remains the playback action. Full picker episode playback no longer dismisses the picker or waits 100 ms before resolving playback; the visible picker presents the shared `model.selectedSource`, so closing player should return to the same picker instance/scroll position. Dedicated Release run `32864835934` passed, artifact `9569812832` was produced, and downloaded IPA SHA-256 `c82fcca99162f4840d8b0fccdb7c2f6203426d12901ef5d6ac4f4879db78b9ff` matched the artifact checksum. **Real-device evidence is pending; accepted baseline remains Build184.**
+Build188 / OnePlayer 0.14.21 established the independent **detail/episode-selection navigation candidate**: select-only horizontal cards, compact selected-episode summary and non-dismissing full picker playback. Dedicated Release CI/IPA succeeded. Target-device follow-up then showed missing default visible selection and quick range buttons clearing selection/title, so Build188 was not accepted.
+
+The detail branch later produced its own **0.14.23 / Build190** package (`OnePlayer-0.14.23-build190-detail-selection-defaults`, IPA SHA-256 `2f05197cebe43b6a50c2eb84225b7d134f364f82baf58772f86d10653f2f298c`). User screenshots from that exact distributed artifact positively confirm quick `10-19 / 20-24` range jumps now retain the target first episode blue selection and summary state. Those screenshots also exposed a pure display inconsistency between the compact summary and horizontal-card title. The same 0.14.23 / Build190 identity was later occupied independently by the home-carousel candidate, so detail no longer reuses that identity; attribution of the screenshots remains tied to the detail artifact SHA above.
+
+Build191 / OnePlayer 0.14.24 is now the independent **detail summary-title follow-up candidate**. `selectedEpisodeSelectionSummary` directly reuses `displayEpisodeTitle(episode)`, the exact formatter used by the selected horizontal card, so the two strings are intentionally identical. Dedicated Release run `32875670990` passed; artifact `OnePlayer-0.14.24-build191-detail-summary-title` ID `9573898096`; downloaded IPA SHA-256 `03c7dd61c2f151d537e78ec6727f888381d86839ea1ff75f0bbb388c3c56a354`; source ZIP SHA-256 `25c28eb7529cb371aa4b2d991691811c041bdecc4e9904538c663fb976267a98`; MinOS 15.0. **Real-device evidence is pending; accepted baseline remains Build184.**
 
 ## Accepted episode-selection and ordering contracts
 
@@ -65,6 +69,22 @@ Build178 adds the canonical episode-order contract:
 The original failing non-standard series had 165 episodes with `nilIndex=164`; Build178 was accepted on real device after switching the shared data path to Emby's TV ordering authority.
 
 ## Current parallel feature candidates
+
+### Build191 / OnePlayer 0.14.24 — detail selected-episode title unification
+
+`DEV-detail-episode-selection-navigation` remains Active. Build191 preserves Build190-detail selection/navigation behavior and changes only the compact selected-episode summary formatter.
+
+- branch: `feat/detail-episode-selection-navigation`
+- functional commit: `6dc3f69d90049cd9228bdf006e50fc3402c1c6b9`
+- dedicated CI source: `63fb252936360b284d75c4477d41587193e4fbd8`
+- workflow-restored head: `516f5cf6e8832af083d3c2605e365cb1dcb7119a`
+- CI run: **`32875670990` — success**
+- artifact: `OnePlayer-0.14.24-build191-detail-summary-title`; ID `9573898096`; digest `sha256:f5403fad91f65ac3cd1810452f7aed9a4537f7a6d46b822f87e83261738dae61`
+- IPA SHA-256: `03c7dd61c2f151d537e78ec6727f888381d86839ea1ff75f0bbb388c3c56a354`; source ZIP SHA-256: `25c28eb7529cb371aa4b2d991691811c041bdecc4e9904538c663fb976267a98`
+- MinOS: 15.0
+- implementation: compact selected-episode summary returns the existing `displayEpisodeTitle(episode)` result used by the horizontal card; no second title-format owner remains
+- unchanged: default selection, quick-range selection, full-picker playback return path, canonical ordering, detail cache/scroll, Player/PiP/Transport/Cache
+- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
 ### Build190 / OnePlayer 0.14.23 — home-carousel native movement + SwiftUI release ownership
 

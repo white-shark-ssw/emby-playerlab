@@ -115,7 +115,12 @@ Build188 CI / IPA：
 - 因此上方摘要与下面选中卡片共用同一个 formatter/owner；例如卡片显示 `10.第十集`，摘要也显示 `10.第十集`；真实标题亦完全按卡片现有结果展示。
 - `check_detail_episode_selection_navigation.py` 增加合同：摘要必须调用 `displayEpisodeTitle(episode)`，且不得再包含旧 `第 N 集 · title` 的独立拼接路径。
 - Build191 仅改变显示格式 owner；`selectedEpisodeID`、默认 Resume→first 选择、快速区间第一集选择、主 Play/Resume、完整 picker 返回、canonical episode order、Build182 detail cache/scroll、Player/Transport/Cache/PiP 均不变。
-- 功能 commit：`6dc3f69d90049cd9228bdf006e50fc3402c1c6b9`；窄 selection/navigation、range jump、Resume 静态合同已通过。Release CI / IPA / Build191 真机仍 pending。
+- 功能 commit：`6dc3f69d90049cd9228bdf006e50fc3402c1c6b9`；selection/navigation、range jump、Resume 静态合同已通过。
+- Dedicated Build191 Release run：**`32875670990` — success**；CI source `63fb252936360b284d75c4477d41587193e4fbd8`；workflow-restored feature head `516f5cf6e8832af083d3c2605e365cb1dcb7119a`。
+- Artifact：`OnePlayer-0.14.24-build191-detail-summary-title`；ID **`9573898096`**；digest `sha256:f5403fad91f65ac3cd1810452f7aed9a4537f7a6d46b822f87e83261738dae61`。
+- IPA：`OnePlayer-0.14.24-build191-detail-summary-title-unsigned.ipa`；SHA-256 **`03c7dd61c2f151d537e78ec6727f888381d86839ea1ff75f0bbb388c3c56a354`**；下载后二次校验与 artifact 内 `.sha256` 一致。
+- Source ZIP SHA-256：`25c28eb7529cb371aa4b2d991691811c041bdecc4e9904538c663fb976267a98`；iOS MinOS 15.0 audit passed。
+- Build191 real-device 仍 pending；不能把 CI/IPA 描述成真机已验收。
 
 ## Build identity collision history
 
@@ -137,11 +142,11 @@ Build188 CI / IPA：
 - Build190 quick-range retain-selection fix：**real-device positive evidence YES**。
 - Build190 default-entry selection：**acceptance evidence not yet complete**。
 - Build190 full-picker return：**acceptance evidence not yet complete**。
-- Build191：**Code written / narrow static checks passed / Release CI pending / IPA pending / real-device pending / not stable**。
+- Build191：**Code written / source-static checks passed / Release CI passed / IPA produced / real-device pending / not stable**。
 - Accepted overall baseline：仍为 **Build184 / 0.14.17**。
 
 ## Next exact action
 
-1. 跑 Build191 / 0.14.24 dedicated Xcode 16.4 Release CI/IPA；保持 iOS 15.0 和现有 frozen/P0 合同。
-2. Build191 真机确认上方摘要与下方选中卡片标题逐字一致，同时继续验证有 Resume / 无 Resume 的默认蓝框选择与完整 picker 播放后原位返回。
+1. 用户安装 Build191 真机确认上方摘要与下方选中卡片标题逐字一致。
+2. 同一轮继续验证有 Resume / 无 Resume 的默认蓝框选择与完整 picker 播放后原位返回。
 3. 真机验收前不提升 accepted baseline。
