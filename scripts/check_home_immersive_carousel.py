@@ -31,14 +31,24 @@ assert '@State var carouselTapSuppressedUntil' not in core
 assert '@State var carouselTransitionState = V3HomeCarouselTransitionState()' in core
 assert 'V3HomeCarouselTransitionScope(state: carouselTransitionState)' in core
 assert 'final class V3HomeCarouselTransitionState: ObservableObject' in carousel
+assert 'var dragAxis: V3HomeCarouselDragAxis?' in carousel
 assert 'var tapSuppressedUntil = Date.distantPast' in carousel
 
-# Manual drag is direct from first horizontal movement and remains continuous through direction reversal.
+# Manual drag starts from the first meaningful movement, locks one axis for the gesture, and remains continuous through reversal.
 assert 'DragGesture(minimumDistance: 0, coordinateSpace: .local)' in carousel
-assert 'if !isCarouselDragging { guard abs(horizontal) > abs(vertical) * 1.08 else { return } }' in carousel
+assert 'guard max(abs(horizontal), abs(vertical)) >= 0.5 else { return }' in carousel
+assert 'carouselTransitionState.dragAxis = abs(horizontal) >= abs(vertical) ? .horizontal : .vertical' in carousel
+assert 'guard carouselTransitionState.dragAxis == .horizontal else { return }' in carousel
+assert 'abs(vertical) * 1.08' not in carousel
 assert 'abs(horizontal) > 4' not in carousel
 assert 'func carouselBackdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat { min(1, max(0, rawProgress)) }' in carousel
 assert '(raw - 0.08)' not in carousel
+
+# Preserve the established foreground slide interaction: Logo/rating/year/type/overview travel with their carousel page.
+assert 'if let fromID = transitionFromID, let toID = transitionToID { return itemID == fromID || itemID == toID ? 1 : 0 }' in carousel
+assert 'if itemID == fromID { return -direction * progress * width }' in carousel
+assert 'if itemID == toID { return direction * (1 - progress) * width }' in carousel
+assert 'func carouselForegroundOffset(for itemID: String, width: CGFloat) -> CGFloat { 0 }' not in carousel
 
 # Vertical Hero physics reuse the detail page's proven metric functions, but Home owns its observer.
 assert 'AdaptiveHeroRevealMetrics.detailCropResponseFactor' in home
