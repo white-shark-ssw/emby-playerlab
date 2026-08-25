@@ -2,12 +2,18 @@ import SwiftUI
 import Combine
 import UIKit
 
+enum V3HomeCarouselDragAxis {
+    case horizontal
+    case vertical
+}
+
 final class V3HomeCarouselTransitionState: ObservableObject {
     @Published var fromID: String?
     @Published var toID: String?
     @Published var progress: CGFloat = 0
     @Published var direction = 1
     var isDragging = false
+    var dragAxis: V3HomeCarouselDragAxis?
     var tapSuppressedUntil = Date.distantPast
 }
 
@@ -59,7 +65,11 @@ extension V3EmbyHomeView {
             .onChanged { value in
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
-                if !isCarouselDragging { guard abs(horizontal) > abs(vertical) * 1.08 else { return } }
+                if carouselTransitionState.dragAxis == nil {
+                    guard max(abs(horizontal), abs(vertical)) >= 0.5 else { return }
+                    carouselTransitionState.dragAxis = abs(horizontal) >= abs(vertical) ? .horizontal : .vertical
+                }
+                guard carouselTransitionState.dragAxis == .horizontal else { return }
                 suppressCarouselTap()
                 guard transitionToID == nil || isCarouselDragging else { return }
                 let direction = horizontal < 0 ? 1 : -1
@@ -74,7 +84,9 @@ extension V3EmbyHomeView {
                 transitionProgress = min(1, max(0, abs(horizontal) / max(1, width)))
             }
             .onEnded { value in
-                guard isCarouselDragging, let targetID = transitionToID else { return }
+                let dragAxis = carouselTransitionState.dragAxis
+                carouselTransitionState.dragAxis = nil
+                guard dragAxis == .horizontal, isCarouselDragging, let targetID = transitionToID else { return }
                 suppressCarouselTap()
                 let predicted = abs(value.predictedEndTranslation.width)
                 let shouldCommit = transitionProgress >= 0.28 || predicted >= width * 0.48
@@ -138,6 +150,7 @@ extension V3EmbyHomeView {
         transitionProgress = 0
         transitionDirection = 1
         isCarouselDragging = false
+        carouselTransitionState.dragAxis = nil
         carouselLastSettledAt = Date()
         DiagnosticsLogger.shared.log("HomeCarousel", "settled item=\(itemID)")
     }
@@ -152,6 +165,7 @@ extension V3EmbyHomeView {
             transitionProgress = 0
             transitionDirection = 1
             isCarouselDragging = false
+            carouselTransitionState.dragAxis = nil
             onCarouselActiveChanged(false)
             return
         }
@@ -172,6 +186,7 @@ extension V3EmbyHomeView {
             transitionProgress = 0
             transitionDirection = 1
             isCarouselDragging = false
+            carouselTransitionState.dragAxis = nil
             carouselLastSettledAt = Date()
         }
         carouselLogoByID = carouselLogoByID.filter { ids.contains($0.key) }
@@ -257,9 +272,9 @@ extension V3EmbyHomeView {
     }
 
     func updateCarouselImageMetrics(_ image: UIImage, itemID: String) {
-        if carouselSourceSizeByID[itemID] != image.size { carouselSourceSizeByID[itemID] = image.size }
+        if carouselSourceSizeByID[item.id] != image.size { carouselSourceSizeByID[item.id] = image.size }
         let prefersLight = EmbyImageContrastAnalyzer.prefersLightForeground(for: image)
-        guard carouselLightForegroundByID[itemID] != prefersLight else { return }
-        withAnimation(.easeOut(duration: 0.18)) { carouselLightForegroundByID[itemID] = prefersLight }
+        guard carouselLightForegroundByID[item.id] != prefersLight else { return }
+        withAnimation(.easeOut(duration: 0.18)) { carouselLightForegroundByID[item.id] = prefersLight }
     }
 }
