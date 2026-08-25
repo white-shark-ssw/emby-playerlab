@@ -40,6 +40,13 @@ assert 'abs(horizontal) > 4' not in carousel
 assert 'func carouselBackdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat { min(1, max(0, rawProgress)) }' in carousel
 assert '(raw - 0.08)' not in carousel
 
+# EX-like manual feel keeps Hero foreground spatially stable and blends it with the same linear progress.
+assert 'func carouselForegroundOffset(for itemID: String, width: CGFloat) -> CGFloat { 0 }' in carousel
+assert 'if itemID == fromID { return Double(1 - blend) }' in carousel
+assert 'if itemID == toID { return Double(blend) }' in carousel
+assert 'progress * width' not in carousel
+assert '(1 - progress) * width' not in carousel
+
 # Vertical Hero physics reuse the detail page's proven metric functions, but Home owns its observer.
 assert 'AdaptiveHeroRevealMetrics.detailCropResponseFactor' in home
 assert 'let backdropPinOffset = min(upwardScroll, cropPhaseDistance)' in home
