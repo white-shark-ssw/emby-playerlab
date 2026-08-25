@@ -2,9 +2,60 @@ import SwiftUI
 import Combine
 import UIKit
 
+final class V3HomeCarouselTransitionState: ObservableObject {
+    @Published var fromID: String?
+    @Published var toID: String?
+    @Published var progress: CGFloat = 0
+    @Published var direction = 1
+    var isDragging = false
+    var tapSuppressedUntil = Date.distantPast
+}
+
+struct V3HomeCarouselTransitionScope<Content: View>: View {
+    @ObservedObject var state: V3HomeCarouselTransitionState
+    let content: () -> Content
+
+    init(state: V3HomeCarouselTransitionState, @ViewBuilder content: @escaping () -> Content) {
+        self.state = state
+        self.content = content
+    }
+
+    var body: some View { content() }
+}
+
 extension V3EmbyHomeView {
+    var transitionFromID: String? {
+        get { carouselTransitionState.fromID }
+        nonmutating set { carouselTransitionState.fromID = newValue }
+    }
+
+    var transitionToID: String? {
+        get { carouselTransitionState.toID }
+        nonmutating set { carouselTransitionState.toID = newValue }
+    }
+
+    var transitionProgress: CGFloat {
+        get { carouselTransitionState.progress }
+        nonmutating set { carouselTransitionState.progress = newValue }
+    }
+
+    var transitionDirection: Int {
+        get { carouselTransitionState.direction }
+        nonmutating set { carouselTransitionState.direction = newValue }
+    }
+
+    var isCarouselDragging: Bool {
+        get { carouselTransitionState.isDragging }
+        nonmutating set { carouselTransitionState.isDragging = newValue }
+    }
+
+    var carouselTapSuppressedUntil: Date {
+        get { carouselTransitionState.tapSuppressedUntil }
+        nonmutating set { carouselTransitionState.tapSuppressedUntil = newValue }
+    }
+
     func carouselDragGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 12, coordinateSpace: .local)
+        DragGesture(minimumDistance: 4, coordinateSpace: .local)
             .onChanged { value in
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
