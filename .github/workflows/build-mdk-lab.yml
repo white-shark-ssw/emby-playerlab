@@ -1,77 +1,220 @@
-name: Build MDK Lab IPA
+name: Build195 Player Episode Lazy Row IPA
 
 on:
   workflow_dispatch:
-  push:
-    branches: [feat/mdk-engine-lab]
-    paths:
-      - "Sources/**"
-      - "MDKLab/**"
-      - "Config/**"
-      - "Resources/**"
-      - "project.mdklab.yml"
-      - "Podfile"
-      - ".github/workflows/build-mdk-lab.yml"
   pull_request:
     branches: [main]
     paths:
       - "Sources/**"
-      - "MDKLab/**"
       - "Config/**"
       - "Resources/**"
-      - "project.mdklab.yml"
+      - "scripts/**"
+      - "project.yml"
       - "Podfile"
       - ".github/workflows/build-mdk-lab.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: build195-player-episode-lazy-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: macos-15
     timeout-minutes: 150
     steps:
-      - uses: actions/checkout@v4
-      - name: Select Xcode 16.4
-        run: sudo xcode-select -switch /Applications/Xcode_16.4.app
-      - name: Install tools
-        run: |
-          brew install xcodegen
-          sudo gem install cocoapods -v 1.16.2 --no-document
-      - name: Prepare assets
-        run: python3 scripts/generate_oneplayer_icons.py
-      - name: Validate MDK local-file contract
+      - name: Checkout PR merge
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate Build195 contracts
         run: |
           set -euo pipefail
+          python3 scripts/check_player_episode_season_grouping.py
+          python3 scripts/check_season_id_episode_grouping.py
           python3 - <<'PY'
           from pathlib import Path
-          spec=Path('project.mdklab.yml').read_text(); local=Path('Sources/UI/LocalMDKFileLabView.swift').read_text(); shell=Path('Sources/UI/AppShellView.swift').read_text(); engine=Path('MDKLab/App/MDKKSAVIOPlayerEngine.swift').read_text()
-          checks={'iOS15':'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,'MDK condition':'SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MDK_LAB"' in spec,'swift-mdk linked':'product: swift-mdk' in spec,'MDK source':'- path: MDKLab/App' in spec,'direct local MDK':'#if MDK_LAB && canImport(swift_mdk)' in local and 'LocalMDKDirectFilePlayer' in local and 'swift_mdk.Player()' in local,'settings entry':'LocalMDKFileLabView()' in shell,'bypass transport':'source=local-file' in local and 'unifiedTransport=false' in local,'no fallback':'fallback=false' in local,'diagnostics':'DiagnosticsLogger.shared.playback("LocalMDKLab"' in local,'direct file URL':'player.media = url.absoluteString' in local,'formal MDK engine':'#if MDK_LAB && canImport(swift_mdk)' in engine and 'final class KSAVIOPlayerEngine' in engine}
-          for n,v in checks.items():
-            print(('PASS' if v else 'FAIL'),n)
-            if not v: raise SystemExit(n)
+          import subprocess
+
+          app = Path("Sources/Core/AppIdentity.swift").read_text()
+          project = Path("project.yml").read_text()
+          picker = Path("Sources/UI/PlayerEpisodeSelection.swift").read_text()
+          checks = {
+              "Build195 source version": 'sourceVersion = "0.14.28"' in app,
+              "iOS 15 deployment": 'iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project,
+              "lazy player episode row": 'LazyHStack(alignment: .top, spacing: 13)' in picker,
+              "player seasons loaded": 'seriesSeasons(seriesId: requestedSeriesID)' in picker,
+              "auto next full canonical list": 'playbackSource(for: episodes[nextIndex], reason: "trusted-natural-end")' in picker,
+          }
+          for name, ok in checks.items():
+              print(("PASS" if ok else "FAIL"), name)
+              if not ok:
+                  raise SystemExit(f"::error::{name}")
+
+          base = "40290d6d11f31876566fa8a0ee05e7a29b81fdfe"
+          frozen = [
+              "Sources/Player/PlayerController.swift",
+              "Sources/Player/MPVPlayerEngine.swift",
+              "Sources/App/AppOrientationCoordinator.swift",
+              "Sources/Player/PlayerSurfacePresentationGate.swift",
+              "Sources/UI/MPVPlayerSurface.swift",
+              "Sources/UI/PlayerPiPSessionCoordinator.swift",
+              "Sources/UI/PlayerPiPSamplePipeline.swift",
+              "Sources/UI/PlayerPiPInlineRendererAdapter.swift",
+              "Sources/Transport/TransportSettings.swift",
+              "Sources/Transport/UnifiedMediaTransportSession.swift",
+              "Sources/UI/CacheSettingsView.swift",
+              "Sources/Networking/EmbyAPIClient.swift",
+              "Sources/UI/EmbyMediaDetailView.swift",
+              "Sources/UI/EmbyEpisodePickerView.swift",
+          ]
+          changed = subprocess.run(["git", "diff", "--name-only", base, "HEAD", "--", *frozen], capture_output=True, text=True, check=True).stdout.strip()
+          if changed:
+              raise SystemExit(f"::error::frozen/shared files changed: {changed}")
+          print("PASS frozen/shared product files unchanged")
           PY
-      - run: xcodegen generate --spec project.mdklab.yml
-      - run: pod install --repo-update
-      - name: Resolve packages
-        run: xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -resolvePackageDependencies
-      - name: Build
-        run: xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee mdk-build.log
-      - name: Validate binary and package
+
+      - name: Select Xcode 16.4
+        run: |
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
         run: |
           set -euo pipefail
-          APP_PATH=$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -type d | head -1)
-          test -n "$APP_PATH"; test -f "$APP_PATH/OnePlayer"
-          MIN_OS=$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP_PATH/Info.plist"); test "$MIN_OS" = "15.0"
-          strings "$APP_PATH/OnePlayer" | grep -F 'MDK 本地文件实验'
-          strings "$APP_PATH/OnePlayer" | grep -F 'LocalMDKLab'
-          strings "$APP_PATH/OnePlayer" | grep -F 'source=local-file'
-          if strings "$APP_PATH/OnePlayer" | grep -F '当前构建未包含 MDK 实验引擎。'; then exit 1; fi
-          mkdir Payload; cp -R "$APP_PATH" Payload/; zip -qry OnePlayer-local-mdk.ipa Payload
-      - uses: actions/upload-artifact@v4
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Prepare OnePlayer assets
+        run: python3 scripts/generate_oneplayer_icons.py
+
+      - name: Generate project and install pods
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+
+      - name: Resolve MPVKit
+        run: |
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Build standard MPV Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            MARKETING_VERSION=0.14.28 \
+            CURRENT_PROJECT_VERSION=195 \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build195.log
+
+      - name: Extract Build195 errors
+        if: failure()
+        run: |
+          set +e
+          grep -nE '(^|[[:space:]])(error:|fatal error:)' build195.log > build195-errors.log
+          if [ ! -s build195-errors.log ]; then tail -n 600 build195.log > build195-errors.log; fi
+          sed -n '1,220p' build195-errors.log >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Validate app identity and MinOS
+        if: success()
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -type d -print -quit)"
+          test -n "$APP_PATH"
+          NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP_PATH/Info.plist")
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")
+          BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")
+          test "$NAME" = "OnePlayer"
+          test "$VERSION" = "0.14.28"
+          test "$BUILD" = "195"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_OUTPUT"
+          bash scripts/check_min_os.sh "$APP_PATH" 15.0 17.0 min-os-report.log build195.log
+
+      - name: Package TrollStore-friendly Build195 IPA
+        if: success()
+        run: |
+          set -euo pipefail
+          APP_PATH="${{ steps.app.outputs.APP_PATH }}"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+
+          payload = Path("Payload")
+          app = next(payload.glob("*.app"))
+          out = Path("OnePlayer-0.14.28-build195-player-episode-lazy-row-unsigned.ipa")
+          priority = [payload, app, app / "Info.plist", app / "OnePlayer", app / "PkgInfo"]
+          all_paths = [payload, app] + sorted(path for path in app.rglob("*") if path not in {app})
+          ordered = []
+          seen = set()
+          for path in priority + all_paths:
+              if path.exists() and path not in seen:
+                  ordered.append(path)
+                  seen.add(path)
+          with zipfile.ZipFile(out, "w", allowZip64=True) as z:
+              for path in ordered:
+                  name = path.as_posix() + ("/" if path.is_dir() else "")
+                  if path.is_dir():
+                      info = zipfile.ZipInfo(name)
+                      info.external_attr = 0o40755 << 16
+                      z.writestr(info, b"")
+                  else:
+                      compress = zipfile.ZIP_STORED if path == app / "Info.plist" else zipfile.ZIP_DEFLATED
+                      z.write(path, name, compress_type=compress)
+          with zipfile.ZipFile(out, "r") as z:
+              assert z.namelist()[2] == f"Payload/{app.name}/Info.plist"
+              assert z.testzip() is None
+          PY
+          shasum -a 256 OnePlayer-0.14.28-build195-player-episode-lazy-row-unsigned.ipa > OnePlayer-0.14.28-build195-player-episode-lazy-row-unsigned.ipa.sha256
+          git archive --format=zip --output OnePlayer-0.14.28-build195-player-episode-lazy-row-source.zip HEAD
+          shasum -a 256 OnePlayer-0.14.28-build195-player-episode-lazy-row-source.zip > OnePlayer-0.14.28-build195-player-episode-lazy-row-source.zip.sha256
+
+      - name: Upload Build195 artifact
+        if: success()
+        uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-local-mdk-${{ github.sha }}
+          name: OnePlayer-0.14.28-build195-player-episode-lazy-row
           path: |
-            OnePlayer-local-mdk.ipa
-            mdk-build.log
+            OnePlayer-0.14.28-build195-player-episode-lazy-row-unsigned.ipa
+            OnePlayer-0.14.28-build195-player-episode-lazy-row-unsigned.ipa.sha256
+            OnePlayer-0.14.28-build195-player-episode-lazy-row-source.zip
+            OnePlayer-0.14.28-build195-player-episode-lazy-row-source.zip.sha256
+            build195.log
+            package-resolution.log
+            min-os-report.log
           retention-days: 14
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-Build195-errors-${{ github.sha }}
+          path: |
+            build195.log
+            build195-errors.log
+            package-resolution.log
+          if-no-files-found: warn
+          retention-days: 7
