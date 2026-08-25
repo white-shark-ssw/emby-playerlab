@@ -1,0 +1,50 @@
+name: Temp sync carousel EX analysis
+
+on:
+  push:
+    branches: [fix/home-carousel-native-release-build193]
+    paths:
+      - ".github/workflows/temp-sync-carousel-ex-analysis.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Sync EX analysis and framework decision
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+          text = p.read_text()
+          old = '''- **Next exact action:** inspect/export Build193 `HomeCarouselDragTiming` evidence if available. Because that line is emitted only inside SwiftUI `DragGesture.onEnded`, its presence/absence directly distinguishes whether the SwiftUI release callback ran. Then choose the smallest single-lifecycle input architecture; no runtime code change before that evidence/ownership review is complete.'''
+          new = '''- **Build193 playback-log follow-up:** user exported `OnePlayer-App-1787680075.log`; it contains only App lifecycle entries. A second attempt found the Playback log empty. `DiagnosticsLogger.playback(...)` drops events when the Playback channel is disabled, so absence of `HomeCarouselDragTiming` is **not evidence** for or against SwiftUI `onEnded`. Do not ask the user to repeat Build193 solely for this log.\n- **EX forensic review (three transition windows):** repeated frame/template comparison shows the outgoing and incoming Hero remain spatially fixed while blending. In the first two transitions, matched outgoing and incoming title regions stay at **0 px horizontal shift** throughout all high-correlation frames; the background remains within about **0–1 px**. The first slow transition changes estimated blend progress by roughly **1% per 33 ms frame median** before settle. Mapping that same 1% progress to OnePlayer's 510 pt full-width slide would create about **5 pt of visible movement per recorded frame**, explaining why identical input granularity is perceptually much harsher for page translation than for opacity blend. This strengthens the existing Build183 fallback rationale but does not authorize changing the established page-slide contract yet.\n- **Framework decision before next Build:** reject the Build189/193 hybrid input architecture. The next implementation must use **one UIKit interaction surface and one complete horizontal drag lifecycle owner (begin/move/end/cancel)**. SwiftUI must not separately own drag/end. The same surface must explicitly coordinate horizontal drag, vertical ScrollView release, and detail tap. Coalesced touches may inform cadence/velocity diagnostics but must not publish multiple historical progress values in one UIEvent; rendering receives only the latest actual position once per event. Preserve the existing full-page foreground slide and existing settle durations in this first stage.\n- **Staged attribution rule:** Stage 1 changes only gesture lifecycle ownership. Do **not** simultaneously rewrite the four transition fields into an atomic snapshot, change blur/compositing, add predicted-touch rendering, timers, watchdogs, interpolation or crossfade. Only after Stage 1 is real-device stable may Stage 2 address transition publication/atomicity if the user still reports coarse motion. If a stable single-owner page-slide still cannot approach EX feel, the already user-authorized Build183-style fixed spatial crossfade becomes the evidence-supported fallback.\n- **Next exact action:** design and source-review that single UIKit lifecycle owner against current accepted `main`, including the exact tap/vertical-scroll arbitration and a non-speculative native release-commit rule. Do not allocate the next Build until this ownership design is complete and parallel Build identities have been rechecked.'''
+          if old not in text:
+              raise SystemExit('checkpoint marker missing')
+          p.write_text(text.replace(old, new, 1))
+
+          p = Path('docs/project/TECHNICAL_DECISIONS.md')
+          text = p.read_text()
+          marker = '\n## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only\n'
+          addition = '''\n\nRepeated forensic review of the EX reference recording further clarifies why its interaction feels finer. Across three visible transitions, outgoing/incoming Hero title templates remain at effectively fixed horizontal coordinates (0 px shift through the first two high-confidence windows; background approximately 0–1 px), while opacity/content blend changes continuously. In the first slow transition the estimated blend increment is about 1% per 30 fps recorded frame median; the same normalized increment mapped to OnePlayer's 510 pt page slide would be roughly 5 pt of spatial travel. Therefore EX-like perceived smoothness is not evidence of a higher refresh rate alone: its fixed-spatial blend mapping inherently hides coarse input quantization better than full-width translation. This does not revoke the user's established page-slide requirement, but it defines the stop condition for further slide work and keeps Build183-style crossfade as the explicit fallback if a correct single-owner page-slide remains perceptually inferior.\n\nThe post-Build193 implementation order is now fixed for attribution: first establish one UIKit interaction surface with one complete begin/move/end/cancel drag owner, while preserving full-page slide rendering; coalesced touches must not emit multiple historical SwiftUI progress writes per UIEvent. Do not combine that lifecycle correction with transition-state atomization, blur changes, predicted-touch rendering or smoothing. Only after the lifecycle layer is real-device stable may transition publication be optimized separately.\n'''
+          if addition.strip() not in text:
+              if marker not in text:
+                  raise SystemExit('D013 marker missing')
+              text = text.replace(marker, addition + marker, 1)
+              p.write_text(text)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/TECHNICAL_DECISIONS.md
+          git commit -m "Record EX carousel forensic analysis"
+          git push origin main
