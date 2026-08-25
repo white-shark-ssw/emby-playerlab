@@ -6,6 +6,7 @@ final class PlayerEpisodeCoordinator: ObservableObject {
     @Published private(set) var currentItemID: String
     @Published private(set) var seriesName: String?
     @Published private(set) var episodes: [LibraryItem] = []
+    @Published private(set) var seasons: [LibraryItem] = []
     @Published private(set) var contextAvailable = false
     @Published private(set) var isLoadingContext = false
     @Published private(set) var isLoadingEpisodes = false
@@ -149,10 +150,17 @@ final class PlayerEpisodeCoordinator: ObservableObject {
             do {
                 let items = try await self.client.seriesEpisodes(seriesId: requestedSeriesID)
                 guard !Task.isCancelled, self.seriesID == requestedSeriesID else { return }
+                var seasonItems: [LibraryItem] = []
+                do { seasonItems = try await self.client.seriesSeasons(seriesId: requestedSeriesID) }
+                catch {
+                    if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.playback("EpisodeContext", "seasons failed series=\(requestedSeriesID) error=\(error.localizedDescription)") }
+                }
+                guard !Task.isCancelled, self.seriesID == requestedSeriesID else { return }
                 self.episodes = items
+                self.seasons = seasonItems
                 self.loadedSeriesID = requestedSeriesID
                 if let current = items.first(where: { $0.id == self.currentItemID }), self.seriesName == nil { self.seriesName = current.seriesName }
-                DiagnosticsLogger.shared.playback("EpisodeContext", "episodes loaded series=\(requestedSeriesID) count=\(items.count) current=\(self.currentItemID)")
+                DiagnosticsLogger.shared.playback("EpisodeContext", "episodes loaded series=\(requestedSeriesID) count=\(items.count) seasons=\(seasonItems.count) current=\(self.currentItemID)")
             } catch {
                 guard !Task.isCancelled, self.seriesID == requestedSeriesID else { return }
                 if !isEmbyRequestCancellation(error) {
@@ -180,6 +188,7 @@ struct PlayerEpisodeSelectionOverlay: View {
         }
         .onAppear { synchronizeSelectedSeason(force: true) }
         .onChange(of: coordinator.episodes.count) { _ in synchronizeSelectedSeason(force: selectedSeasonNumber == nil) }
+        .onChange(of: coordinator.seasons.count) { _ in synchronizeSelectedSeason(force: selectedSeasonNumber == nil) }
         .onChange(of: coordinator.currentItemID) { _ in synchronizeSelectedSeason(force: true) }
     }
 
@@ -246,7 +255,7 @@ struct PlayerEpisodeSelectionOverlay: View {
     private var episodeScroller: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 13) {
+                LazyHStack(alignment: .top, spacing: 13) {
                     ForEach(displayedEpisodes) { episode in episodeCard(episode).id(episode.id) }
                 }
             }
@@ -313,11 +322,14 @@ struct PlayerEpisodeSelectionOverlay: View {
     }
 
     private var seasonNumbers: [Int] {
-        Array(Set(coordinator.episodes.compactMap(\.parentIndexNumber))).sorted()
+        let explicitSeasons = Set(coordinator.seasons.compactMap(\.indexNumber))
+        if !explicitSeasons.isEmpty { return explicitSeasons.sorted() }
+        return Set(coordinator.episodes.compactMap(\.parentIndexNumber)).sorted()
     }
 
     private var currentSeasonNumber: Int? {
-        coordinator.episodes.first(where: { $0.id == coordinator.currentItemID })?.parentIndexNumber
+        guard let episode = coordinator.episodes.first(where: { $0.id == coordinator.currentItemID }) else { return nil }
+        return seasonNumber(for: episode)
     }
 
     private var effectiveSeasonNumber: Int? {
@@ -328,7 +340,21 @@ struct PlayerEpisodeSelectionOverlay: View {
 
     private var displayedEpisodes: [LibraryItem] {
         guard let season = effectiveSeasonNumber else { return coordinator.episodes }
-        return coordinator.episodes.filter { $0.parentIndexNumber == season }
+        return coordinator.episodes.filter { episodeBelongsToSeason($0, season: season) }
+    }
+
+    private func seasonItem(number: Int) -> LibraryItem? {
+        coordinator.seasons.first { $0.indexNumber == number }
+    }
+
+    private func seasonNumber(for episode: LibraryItem) -> Int? {
+        if let seasonID = episode.seasonId, let season = coordinator.seasons.first(where: { $0.id == seasonID }), let number = season.indexNumber { return number }
+        return episode.parentIndexNumber
+    }
+
+    private func episodeBelongsToSeason(_ episode: LibraryItem, season number: Int) -> Bool {
+        if let episodeSeasonID = episode.seasonId, let season = seasonItem(number: number) { return episodeSeasonID == season.id }
+        return episode.parentIndexNumber == number
     }
 
     private func seasonTitle(_ season: Int) -> String {
