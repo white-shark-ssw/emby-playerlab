@@ -1,0 +1,201 @@
+name: Build192 Add Emby Server
+
+on:
+  push:
+    branches: [feat/add-emby-page-optimization]
+
+concurrency:
+  group: build192-add-emby-server
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize logs
+        run: |
+          : > build.log
+          : > package-resolution.log
+          : > pods-install.log
+          : > app-validation.log
+          : > min-os-report.log
+          : > contract.log
+          : > package.log
+
+      - name: Validate Add Emby contracts and frozen scope
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin b1837067aa7f167f28d26f966428fb46502d9373
+          python3 - <<'PY' 2>&1 | tee contract.log
+          import subprocess
+          from pathlib import Path
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(f"::error::{message}")
+
+          base = "b1837067aa7f167f28d26f966428fb46502d9373"
+          changed = set(subprocess.check_output(["git", "diff", "--name-only", base, "HEAD"], text=True).splitlines())
+          allowed = {
+              "Sources/App/RootView.swift",
+              "Sources/Core/KeychainStore.swift",
+              "Sources/Session/SessionStore.swift",
+              "Sources/UI/EmbyServerRootViewV3.swift",
+              "Sources/UI/ServerListView.swift",
+              ".github/workflows/temp-add-emby-build192.yml",
+          }
+          require(changed <= allowed, f"unexpected product scope: {sorted(changed - allowed)}")
+          require(not any(path.startswith(("Sources/Player/", "Sources/Transport/", "Sources/Cache/")) for path in changed), "frozen playback/transport/cache file changed")
+
+          server_ui = Path("Sources/UI/ServerListView.swift").read_text()
+          session = Path("Sources/Session/SessionStore.swift").read_text()
+          root = Path("Sources/App/RootView.swift").read_text()
+          server_root = Path("Sources/UI/EmbyServerRootViewV3.swift").read_text()
+          keychain = Path("Sources/Core/KeychainStore.swift").read_text()
+          project = Path("project.yml").read_text()
+
+          require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Deployment Target must remain iOS 15.0")
+          for token in ["ServerEditorView", "一键粘贴", "多线路聚合", "自动启动", "iCloud 同步", "测速"]:
+              require(token in server_ui, f"missing Add/Edit UI contract: {token}")
+          require("EmbyRouteProbe" in session and "clientForBestRoute" in session, "multi-route Session owner contract missing")
+          require("System/Info/Public" not in session, "SessionStore must use existing EmbyAPIClient.publicInfo instead of duplicating endpoint strings")
+          require("autoStartSession" in root and "startupResolved" in root, "root auto-start routing contract missing")
+          require("clientForBestRoute" in server_root, "server root must select route before Home client")
+          require("kSecAttrSynchronizable" in keychain and "setSynchronizable" in keychain, "real iCloud Keychain sync contract missing")
+          synced_record = session.split("private struct SyncedServerRecord: Codable {", 1)[1].split("private enum SessionStoreError", 1)[0]
+          require("password" not in synced_record.lower(), "synced server record must not persist password")
+          print("Build192 Add Emby source/frozen contracts: OK")
+          PY
+
+      - name: Export exact CI source
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OnePlayer-0.14.25-build192-add-emby-server-${GITHUB_SHA::7}-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Prepare OnePlayer icons
+        run: python3 scripts/generate_oneplayer_icons.py
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Install KTVHTTPCache 3.1.0
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          pod install --repo-update 2>&1 | tee pods-install.log
+
+      - name: Resolve MPVKit
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild -resolvePackageDependencies \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Build standard MPV Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            MARKETING_VERSION=0.14.25 \
+            CURRENT_PROJECT_VERSION=192 \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
+            echo "::error::Release .app not produced"
+            exit 1
+          fi
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py \
+            "$APP_PATH" \
+            --bundle-id "com.embyplayerlab.app" \
+            --version "0.14.25" \
+            --build "192" \
+            --display-name "OnePlayer" \
+            --minimum-os "15.0" \
+            --primary-icon "OnePlayerIcon" \
+            --alternate-icon "OnePlayerAltIcon" 2>&1 | tee app-validation.log
+
+      - name: Validate runtime MinOS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" min-os-report.log build.log
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA_NAME="OnePlayer-0.14.25-build192-add-emby-server-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" 2>&1 | tee package.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload Build192 candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.25-build192-add-emby-server
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            contract.log
+            app-validation.log
+            min-os-report.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summarize failure
+        if: failure()
+        run: |
+          {
+            echo "## Build192 diagnostics"
+            echo '```text'
+            grep -nEi '(^|[[:space:]])(error:|fatal error:)|::error::| failed:|ERROR ' contract.log build.log package-resolution.log pods-install.log app-validation.log min-os-report.log package.log | head -220 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
