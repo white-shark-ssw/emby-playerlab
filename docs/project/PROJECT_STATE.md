@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build190 / OnePlayer 0.14.23 completed dedicated carousel Release CI/IPA, while the independent detail line produced Build191 / OnePlayer 0.14.24 after Build190 detail screenshots confirmed quick-range selection retention but exposed summary/card title mismatch. Build191 now reuses the card title formatter and has dedicated Release CI/IPA evidence. Build184 / OnePlayer 0.14.17 remains the accepted overall functional baseline on `main`; neither Build190 nor Build191 replaces it until target-device evidence is accepted._
+_Last updated after Build189 real-device testing exposed a carousel release-settle regression and the corrected passive-native / SwiftUI-release implementation was reassigned around parallel build reservations to OnePlayer 0.14.26 / Build193. Build193 completed dedicated Release CI/IPA and is the current independent carousel candidate. Build191 / 0.14.24 remains the detail summary-title candidate and Build192 / 0.14.25 belongs to Add/Edit Emby. Build184 / 0.14.17 remains the accepted overall functional baseline on `main`; none of these candidates replaces it until target-device evidence is accepted._
 
 ## Current functional baseline
 
@@ -26,7 +26,7 @@ Build184 inherits the accepted Build176 player episode-selection/session contrac
 
 Build179 / OnePlayer 0.14.12 is **not** an accepted carousel baseline. Its dedicated Release CI passed and IPA was produced, but the user installed it on the target device and reported that small drags still had a dead zone and direction reversal still produced a visible pause followed by a large catch-up jump. Build179 is therefore real-device tested / rejected.
 
-Build180 / OnePlayer 0.14.13 is a **historical partial-improvement carousel build**: real-device testing confirmed reversal continuity improved, but initial motion still felt coarse, so it was not accepted. Build185 / OnePlayer 0.14.18 restored the required page-slide interaction but was also **real-device rejected**. Build187 / OnePlayer 0.14.20 completed the diagnostic gate on real device: first useful SwiftUI horizontal samples were already about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off. Build189 / OnePlayer 0.14.22 proved native raw/coalesced sampling could drive intermediate progress, but was **real-device rejected** because releasing the finger could leave that partial transition frozen instead of completing/cancelling. Build190 / OnePlayer 0.14.23 is now the valid independent carousel candidate with CI/IPA evidence.
+Build180 / OnePlayer 0.14.13 is a **historical partial-improvement carousel build**: real-device testing confirmed reversal continuity improved, but initial motion still felt coarse, so it was not accepted. Build185 / OnePlayer 0.14.18 restored the required page-slide interaction but was also **real-device rejected**. Build187 / OnePlayer 0.14.20 completed the diagnostic gate on real device: first useful SwiftUI horizontal samples were already about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off. Build189 / OnePlayer 0.14.22 proved native raw/coalesced sampling could drive intermediate progress, but was **real-device rejected** because releasing the finger could leave that partial transition frozen instead of completing/cancelling. The corrected passive-native / SwiftUI-release implementation first passed CI under carousel Build190/191 identities, but those identities conflict with parallel detail work; Build192 belongs to Add/Edit Emby. **Build193 / OnePlayer 0.14.26 is the unique current carousel candidate with CI/IPA evidence.**
 
 Build181 / OnePlayer 0.14.14 is now a **detail-page diagnostic reference rather than the current candidate**. Target-device recording shows the previous obvious detail scroll pause→catch-up pattern is clearly improved, but a force-quit/relaunch still resets its session-only warm metadata and briefly returns the text-title/episode-loading state. It is real-device tested but not stable.
 
@@ -86,20 +86,21 @@ The original failing non-standard series had 165 episodes with `nilIndex=164`; B
 - unchanged: default selection, quick-range selection, full-picker playback return path, canonical ordering, detail cache/scroll, Player/PiP/Transport/Cache
 - evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
-### Build190 / OnePlayer 0.14.23 — home-carousel native movement + SwiftUI release ownership
+### Build193 / OnePlayer 0.14.26 — home-carousel native movement + SwiftUI release ownership
 
-`DEV-home-carousel-drag-smoothness` remains Active. Build190 directly fixes the Build189 target-device release-settle regression without reverting native fine-grained movement sampling.
+`DEV-home-carousel-drag-smoothness` remains Active. Build193 is the unique valid identity for the Build189 release-settle fix after Build190/191 collided with parallel detail work and Build192 was reserved for Add/Edit Emby.
 
 - Build189 real-device result: **rejected** — drag progress followed the finger, but releasing could leave the page frozen at the exact intermediate progress; supplied recording was 9.07 s / 30 fps and showed repeated partial-transition freezes
 - source cause: Build189 native recognizer entered `.began/.changed` for horizontal motion while complete/cancel remained exclusively in SwiftUI `DragGesture.onEnded`
-- branch: `fix/home-carousel-native-release-build190`
-- dedicated CI source: `8effb767af988c9bb4e6230ffc8b1a7f664c2619`
-- Release-workflow-restored head: `817897ef6bd95d710657c3d12acc4d48ec8f2d39`
-- CI run: **`32873473886` — success**
-- artifact: `OnePlayer-0.14.23-build190-home-carousel-native-release`; ID `9573068806`; digest `sha256:355afc63f6b87251fce6c200af4796733bff8b947a27e71293e596745467437e`
-- IPA SHA-256: `873abefa8c585ba577222a00d6feb99639bf3aa60861334d178eb8b4a26a24ba`; source ZIP SHA-256: `e9491fbf27610421d46e1fd1325be1d8d86c6e6d7010adfd721ae542a34fd0cb`
-- MinOS: 15.0
 - implementation: native raw/coalesced sampler remains the sole movement-progress owner but no longer claims horizontal recognition; SwiftUI removes per-frame `onChanged` writes and remains the sole `onEnded` / `predictedEndTranslation` / commit-cancel owner
+- branch: `fix/home-carousel-native-release-build193`
+- product head before dedicated CI helper: `2e162dcfaea98bc8c8d916c843498671bba0396e`
+- dedicated CI source: `441d147628d2ad8ea9eee9224ed2baa2a76a7668`
+- Release-workflow-restored head: `42eeb10439ecc1d02576082875c055e830f059c5`
+- CI run: **`32876508226` — success**
+- artifact: `OnePlayer-0.14.26-build193-home-carousel-native-release`; ID `9574238654`; digest `sha256:b7d0d27f39de3e932ae05a8abdf9bd13f0b5e1efa6f983f3f7cbd974e467b8a6`
+- IPA SHA-256: `9ad6bc7bb267a6cc61fb2312a7276d41f8989aa11a7883cbc3f3ce97941081a4`; source ZIP SHA-256: `68e11e59daeaf4b245bba1949bb5d8c0825552baf7c97d280546880f5c19b860`
+- MinOS: 15.0
 - unchanged: 0.28 progress / 0.48×width predicted commit, full-page foreground travel, reversal continuity, backdrop/auto-advance/detail click, Player/PiP/Transport/Cache/Emby session contracts
 - evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
