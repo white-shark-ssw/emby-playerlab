@@ -114,7 +114,7 @@ OnePlayer must not invent a second client-side ordering rule for a TV series whe
 
 Real-device evidence from the non-standard series `137597` showed 165 Episodes with `nilIndex=164`. The previous generic `/Users/{UserId}/Items` query forced `SortBy=ParentIndexNumber,IndexNumber`; `ParentIndexNumber` still grouped seasons, but the missing `IndexNumber` values left the in-season order different from Emby/EplayerX. The detail and picker UIs were only consuming that returned array and were not independently sorting it.
 
-The Build178 direction is therefore:
+The accepted Build178 contract is:
 
 - load a series episode list from `GET /Shows/{SeriesId}/Episodes`;
 - preserve Emby's returned order;
@@ -123,4 +123,4 @@ The Build178 direction is therefore:
 - do not add title, file-name, DateCreated, item-ID, or artificial episode-number fallback sorting;
 - downstream detail/picker/player auto-next paths consume the same canonical array.
 
-Build178 / OnePlayer 0.14.11 has passed dedicated standard MPV Release CI and produced an IPA, but this decision's **runtime acceptance remains pending real-device validation** on both the known abnormal series and a normal indexed series. CI success does not promote Build178 above the accepted Build176 baseline by itself.
+**Build178 / OnePlayer 0.14.11 passed dedicated standard MPV Release CI, produced an IPA, was accepted by the user on real device on 2026-08-25, and merged to `main` through PR #254 at commit `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`.** Treat Emby's TV episode response order as the stable canonical-order authority unless new real-device evidence requires reopening this decision.
