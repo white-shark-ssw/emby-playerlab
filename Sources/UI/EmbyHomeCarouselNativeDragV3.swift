@@ -62,7 +62,6 @@ struct V3HomeCarouselNativeDragCapture: UIViewRepresentable {
         recognizer.onBegan = { context.coordinator.onBegan() }
         recognizer.onSample = { context.coordinator.onSample($0) }
         view.addGestureRecognizer(recognizer)
-        context.coordinator.recognizer = recognizer
         return view
     }
 
@@ -74,7 +73,6 @@ struct V3HomeCarouselNativeDragCapture: UIViewRepresentable {
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var onBegan: () -> Void
         var onSample: (CGSize) -> V3HomeCarouselDragAxis?
-        weak var recognizer: V3HomeCarouselImmediateDragRecognizer?
 
         init(onBegan: @escaping () -> Void, onSample: @escaping (CGSize) -> V3HomeCarouselDragAxis?) {
             self.onBegan = onBegan
