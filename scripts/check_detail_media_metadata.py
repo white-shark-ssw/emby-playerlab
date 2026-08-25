@@ -20,7 +20,7 @@ require('init(from decoder: Decoder) throws' in models and 'realFrameRate = try?
 require('let serverName: String?' in client and 'serverName: String? = nil' in client, "EmbyAPIClient must carry an optional server display name")
 require('serverName: stored.serverName' in session, "SessionStore must propagate server name into EmbyAPIClient")
 require('@State private var mediaInfoExpanded = false' in detail and '@State private var showRawMediaPath = false' in detail, "detail media UI state missing")
-require('Text("音视频字幕信息")' in detail and 'Image(systemName: "chevron.up")' in detail, "foldable media stream header missing")
+require('Text("视频信息")' in detail and 'Image(systemName: "chevron.up")' in detail, "foldable media stream header missing")
 require('withAnimation(.easeInOut(duration: 0.34)) { mediaInfoExpanded.toggle() }' in detail, "media stream fold must retain competitor-style animation timing")
 require('ScrollView(.horizontal, showsIndicators: false)' in detail and 'mediaStreamCard(stream, ordinal: index)' in detail, "media stream cards must use a horizontal container")
 require('mediaSourceSummarySection' in detail and 'showRawMediaPath.toggle()' in detail and 'source.path' in detail, "media source card must toggle between summary and raw STRM/media path")
