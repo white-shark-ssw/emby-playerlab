@@ -1,0 +1,76 @@
+name: Temp sync Build193 carousel rejection
+
+on:
+  push:
+    branches: [fix/home-carousel-native-release-build193]
+    paths:
+      - ".github/workflows/temp-sync-build193-rejection.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Sync Build193 real-device rejection
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"missing expected text in {path}: {old[:120]}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace(
+              'docs/project/MODULE_STATUS.md',
+              '| Home carousel interaction | **Active Build193 release-owner candidate; Build189 real-device rejected** | Build187 proved SwiftUI initial horizontal samples arrive already at 4–16pt. Build189 native raw/coalesced movement exposed a release regression: lifting the finger could freeze the carousel at intermediate progress because native recognition competed with the SwiftUI-only settle owner. Build193 keeps native movement sampling passive and leaves only SwiftUI `onEnded` as commit/cancel owner; dedicated Release CI passed and IPA was produced. Carousel Build190/191 identities were retired because parallel detail work owns those builds, and Build192 belongs to Add/Edit Emby. Real-device validation is pending. |',
+              '| Home carousel interaction | **Active investigation; Build193 real-device rejected** | Build187 proved SwiftUI initial horizontal samples arrive already at 4–16pt. Build189 native raw/coalesced movement exposed a release freeze. Build193 then made native capture passive and left SwiftUI `onEnded` as the only settle owner, but target-device recording still shows the carousel repeatedly freezing at intermediate progress after finger release. The hybrid native-overlay movement + underlying SwiftUI release-owner design is therefore not accepted; do not allocate another Build until the release event path is proven. |'
+          )
+
+          replace(
+              'docs/project/BUILD_TEST_INDEX.md',
+              '| **Build193 / 0.14.26** | Carousel passive native movement + single SwiftUI release owner | Same release-owner product fix previously compiled under collided carousel 190/191 identities, now assigned a unique build after Build191 was reserved for detail and Build192 for Add/Edit Emby. Dedicated Release CI passed, IPA/checksums verified. **Real-device pending.** |',
+              '| **Build193 / 0.14.26** | Carousel passive native movement + single SwiftUI release owner | Dedicated Release CI passed and IPA/checksums verified, but **real-device rejected:** the new recording again shows drag progress moving while finger release leaves the carousel frozen between pages. Making the native recognizer passive did not restore the underlying SwiftUI settle path; this hybrid ownership is not a valid baseline. |'
+          )
+
+          replace(
+              'docs/project/PROJECT_STATE.md',
+              '_Last updated after Build191 / OnePlayer 0.14.24 was accepted on the target device and merged to `main` through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`. Build191 is now the accepted overall functional baseline. Build192 / OnePlayer 0.14.25 Add/Edit Emby and Build193 / OnePlayer 0.14.26 home-carousel remain independent Active candidates and must resync with Build191 before final integration. The separately confirmed in-player nonstandard season-grouping regression remains unresolved._',
+              '_Last updated after Build193 / OnePlayer 0.14.26 was rejected on the target device because manual drag still freezes at intermediate progress after finger release. Build191 / OnePlayer 0.14.24 remains the accepted overall functional baseline on `main`. Build192 / OnePlayer 0.14.25 remains the independent Add/Edit Emby candidate. The home-carousel task is back in investigation with no accepted post-Build187 interaction candidate and no next Build allocated. The separately confirmed in-player nonstandard season-grouping regression remains unresolved._'
+          )
+
+          replace(
+              'docs/project/PROJECT_STATE.md',
+              'Build180 / OnePlayer 0.14.13 is a **historical partial-improvement carousel build**: real-device testing confirmed reversal continuity improved, but initial motion still felt coarse, so it was not accepted. Build185 / OnePlayer 0.14.18 restored the required page-slide interaction but was also **real-device rejected**. Build187 / OnePlayer 0.14.20 completed the diagnostic gate on real device: first useful SwiftUI horizontal samples were already about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off. Build189 / OnePlayer 0.14.22 proved native raw/coalesced sampling could drive intermediate progress, but was **real-device rejected** because releasing the finger could leave that partial transition frozen instead of completing/cancelling. The corrected passive-native / SwiftUI-release implementation first passed CI under carousel Build190/191 identities, but those identities conflict with parallel detail work; Build192 belongs to Add/Edit Emby. **Build193 / OnePlayer 0.14.26 is the unique current carousel candidate with CI/IPA evidence.**',
+              'Build180 / OnePlayer 0.14.13 is a **historical partial-improvement carousel build**: real-device testing confirmed reversal continuity improved, but initial motion still felt coarse, so it was not accepted. Build185 / OnePlayer 0.14.18 restored the required page-slide interaction but was also **real-device rejected**. Build187 / OnePlayer 0.14.20 completed the diagnostic gate on real device: first useful SwiftUI horizontal samples were already about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off. Build189 / OnePlayer 0.14.22 proved native raw/coalesced sampling could drive intermediate progress, but was **real-device rejected** because releasing the finger could leave that partial transition frozen instead of completing/cancelling. Build193 / OnePlayer 0.14.26 attempted to keep native capture passive while leaving release solely to the underlying SwiftUI `DragGesture.onEnded`; the target-device recording still freezes repeatedly at intermediate progress after release. **Build193 is therefore real-device rejected. The hybrid native-overlay movement + separate SwiftUI release-owner architecture is not an accepted direction; no next carousel Build is allocated until the release event path is proven.**'
+          )
+
+          replace(
+              'docs/project/TECHNICAL_DECISIONS.md',
+              'The corrected single-owner split is now tracked under **Build193 / OnePlayer 0.14.26**: native raw/coalesced touch capture is a **passive movement sampler only** and does not enter `.began/.changed`; it explicitly cannot prevent or be prevented by other recognizers and fails at touch end. SwiftUI `DragGesture` no longer writes per-frame progress and remains the sole release owner using the existing `predictedEndTranslation`, 0.28 progress / 0.48×width predicted commit thresholds, and existing complete/cancel settle. This avoids both duplicate movement writers and a missing release owner without introducing fallback, timer, watchdog, debounce, throttle or interpolation. The same product fix passed CI under carousel Build190/191 identities, but those identities collided with parallel detail work and Build192 belongs to Add/Edit Emby; only Build193 is valid for carousel attribution. Build193 passed dedicated Release CI and produced IPA; real-device acceptance is still pending.',
+              'Build193 / OnePlayer 0.14.26 tested the attempted split where native raw/coalesced touch capture stayed passive while the underlying SwiftUI `DragGesture.onEnded` remained the sole release owner. **Target-device testing rejected this architecture:** the supplied recording again shows progress moving during the drag and then remaining frozen between pages after finger release. Source layout places `V3HomeCarouselNativeDragCapture` as an interactive overlay outside the Hero view that owns `.simultaneousGesture(carouselDragGesture)`, so treating the underlying SwiftUI gesture as a reliable independent release authority is not evidence-supported. Do not patch this with a timer/watchdog or another reconciliation owner. Before the next Build, prove one complete gesture lifecycle owner for begin/move/end/cancel (and preserve the established full-page slide interaction); Build193 remains Code written / CI passed / IPA produced / real-device rejected / not stable.'
+          )
+
+          p = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+          text = p.read_text()
+          marker = '## Build193 real-device result — FAILED release lifecycle'
+          if marker not in text:
+              text += '''\n\n## Build193 real-device result — FAILED release lifecycle\n\n- User supplied `RPReplay_Final1787679194.mp4` from the target device and reported Build193 is still completely broken in the same way as the previous native-touch package: drag progress follows the finger, but lifting the finger can leave the carousel permanently frozen at the partial transition.\n- Recording metadata checked locally: **510×1108 / 30 fps / 231 frames / 7.70 s**. The recording shows repeated intermediate-page holds after the touch indicator disappears rather than a complete/cancel settle.\n- Build193 source confirms movement and release still live in two different input surfaces: `V3HomeCarouselNativeDragCapture` is an interactive `.overlay` around the Hero scope and writes progress from raw/coalesced UIKit touches, while `carouselDragGesture(width:)` is attached inside `immersiveCarouselHero` and contains only SwiftUI `.onEnded`.\n- Apple UIKit gesture documentation states a gesture recognizer observes touches hit-tested to its attached view and that view's subviews. The Build193 native capture is layered above the Hero gesture surface, so assuming the underlying SwiftUI gesture will reliably receive the same release sequence is not evidence-supported.\n- **Decision:** Build193 = Code written / CI passed / IPA produced / **real-device rejected** / not stable. Do not allocate Build194 or patch with fallback/timer/watchdog. First prove a single complete begin/move/end/cancel owner and preserve the established full-page foreground slide semantics.\n- **Next exact action:** inspect/export Build193 `HomeCarouselDragTiming` evidence if available. Because that line is emitted only inside SwiftUI `DragGesture.onEnded`, its presence/absence directly distinguishes whether the SwiftUI release callback ran. Then choose the smallest single-lifecycle input architecture; no runtime code change before that evidence/ownership review is complete.\n'''
+              p.write_text(text)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          git commit -m "Record Build193 carousel real-device rejection"
+          git push origin main
