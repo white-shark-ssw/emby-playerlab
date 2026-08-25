@@ -3,6 +3,7 @@ from pathlib import Path
 root = Path('Sources/UI/EmbyServerRootViewV3.swift').read_text()
 core = Path('Sources/UI/EmbyHomeCoreV3.swift').read_text()
 carousel = Path('Sources/UI/EmbyHomeCarouselStateV3.swift').read_text()
+native = Path('Sources/UI/EmbyHomeCarouselNativeDragV3.swift').read_text()
 home_files = [
     'Sources/UI/EmbyHomeCoreV3.swift',
     'Sources/UI/EmbyHomeHeroV3.swift',
@@ -34,13 +35,23 @@ assert 'final class V3HomeCarouselTransitionState: ObservableObject' in carousel
 assert 'var dragAxis: V3HomeCarouselDragAxis?' in carousel
 assert 'var tapSuppressedUntil = Date.distantPast' in carousel
 
-# Preserve Build185 interaction semantics: zero-distance delivery, one-time axis lock, reversal continuity, raw progress.
+# Build190 movement ownership: native raw/coalesced samples alone drive progress; SwiftUI only owns release prediction/settle.
+assert 'event.coalescedTouches(for: touch) ?? [touch]' in native
+assert 'guard max(abs(horizontal), abs(vertical)) >= 0.5 else { return nil }' in native
+assert 'carouselTransitionState.dragAxis = abs(horizontal) >= abs(vertical) ? .horizontal : .vertical' in native
+assert 'guard carouselTransitionState.dragAxis == .horizontal else { return carouselTransitionState.dragAxis }' in native
+assert 'transitionProgress = min(1, max(0, abs(horizontal) / max(1, width)))' in native
+assert 'if axis == .horizontal { state = .began }' not in native
+assert 'state = .changed' not in native
+assert 'override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }' in native
+assert 'override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool { false }' in native
+assert 'override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) { state = .failed }' in native
 assert 'DragGesture(minimumDistance: 0, coordinateSpace: .local)' in carousel
-assert 'guard max(abs(horizontal), abs(vertical)) >= 0.5 else { return }' in carousel
-assert 'carouselTransitionState.dragAxis = abs(horizontal) >= abs(vertical) ? .horizontal : .vertical' in carousel
-assert 'guard carouselTransitionState.dragAxis == .horizontal else { return }' in carousel
-assert 'abs(vertical) * 1.08' not in carousel
-assert 'abs(horizontal) > 4' not in carousel
+assert '.onChanged {' not in carousel[carousel.index('func carouselDragGesture'):carousel.index('func suppressCarouselTap')]
+assert 'value.predictedEndTranslation.width' in carousel
+assert 'transitionProgress >= 0.28 || predicted >= width * 0.48' in carousel
+assert 'abs(vertical) * 1.08' not in native
+assert 'abs(horizontal) > 4' not in native
 assert 'func carouselBackdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat { min(1, max(0, rawProgress)) }' in carousel
 assert '(raw - 0.08)' not in carousel
 
@@ -50,10 +61,10 @@ assert 'if itemID == fromID { return -direction * progress * width }' in carouse
 assert 'if itemID == toID { return direction * (1 - progress) * width }' in carousel
 assert 'func carouselForegroundOffset(for itemID: String, width: CGFloat) -> CGFloat { 0 }' not in carousel
 
-# Build187 diagnostics are passive and exported through the existing playback-log flow.
-assert 'carouselTransitionState.recordDragSample(value.translation)' in carousel
-assert 'carouselTransitionState.recordDragAxisLock(value.translation)' in carousel
-assert 'carouselTransitionState.recordDragTransitionStart(value.translation)' in carousel
+# Drag diagnostics remain passive and exported through the existing playback-log flow.
+assert 'carouselTransitionState.recordDragSample(translation)' in native
+assert 'carouselTransitionState.recordDragAxisLock(translation)' in native
+assert 'carouselTransitionState.recordDragTransitionStart(translation)' in native
 assert 'carouselTransitionState.finishDragDiagnostics(axis: dragAxis, endTranslation: value.translation)' in carousel
 assert 'HomeCarouselDragTiming' in carousel
 assert 'avgHz=' in carousel and 'maxGapMs=' in carousel and 'first=' in carousel and 'lock=' in carousel and 'transition=' in carousel
