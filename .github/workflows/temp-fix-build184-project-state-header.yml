@@ -1,0 +1,34 @@
+name: Temp Fix Build184 Project State Header
+
+on:
+  push:
+    branches: [feat/detail-episode-page-optimization]
+    paths:
+      - ".github/workflows/temp-fix-build184-project-state-header.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('docs/project/PROJECT_STATE.md'); t=p.read_text()
+          old='_Last updated after Build181 / OnePlayer 0.14.14 received target-device evidence: detail scrolling is clearly improved, while force-quit/relaunch still loses its process-only warm metadata. Build182 / OnePlayer 0.14.15 now persists the safe detail presentation snapshot to Library/Caches, passed dedicated CI and produced an IPA. Build178 remains the accepted functional baseline pending target-device validation of the active candidates._'
+          new='_Last updated after Build182 / OnePlayer 0.14.15 was accepted and frozen for detail scrolling plus force-quit/relaunch presentation restoration, and Build184 / OnePlayer 0.14.17 passed dedicated Release CI and produced an IPA for the next detail visual-hierarchy refinement. Build178 remains the accepted overall functional baseline._'
+          if old not in t: raise SystemExit('stale project-state header marker missing')
+          p.write_text(t.replace(old,new,1))
+          PY
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add docs/project/PROJECT_STATE.md
+          git commit -m "Refresh Build184 project state header"
+          git push origin HEAD:main
