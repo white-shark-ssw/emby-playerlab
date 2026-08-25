@@ -40,9 +40,15 @@ extension V3EmbyHomeView {
                 .allowsHitTesting(false)
         }
         .frame(width: width, height: baseHeight)
-        .contentShape(Rectangle())
-        .onTapGesture { openCurrentCarouselDetailIfAllowed() }
-        .simultaneousGesture(carouselDragGesture(width: width))
+        .overlay {
+            V3HomeCarouselInteractionSurface(
+                shouldBeginHorizontal: { translation in shouldBeginNativeCarouselDrag(translation) },
+                onHorizontalChanged: { translation in handleNativeCarouselDrag(translation, width: width) },
+                onHorizontalEnded: { translation, predictedTranslation in finishNativeCarouselDrag(translation, predictedTranslation: predictedTranslation, width: width) },
+                onHorizontalCancelled: { cancelNativeCarouselDrag() },
+                onTap: { openCurrentCarouselDetailIfAllowed() }
+            )
+        }
     }
 
     func carouselHeroArtwork(item: LibraryItem, width: CGFloat, viewportHeight: CGFloat) -> some View {
