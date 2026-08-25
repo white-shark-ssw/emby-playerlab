@@ -14,7 +14,6 @@ struct RootView: View {
                 }
             } else if let autoStartedSession {
                 EmbyServerRootViewV3(session: autoStartedSession, onClose: {
-                    sessionStore.leaveServer()
                     self.autoStartedSession = nil
                 })
                 .environmentObject(sessionStore)
