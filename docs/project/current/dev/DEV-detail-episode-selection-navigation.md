@@ -14,7 +14,8 @@
 - **PR**：none
 - **Build / version candidate**：**OnePlayer 0.14.20 / Build187**。
 - **Target artifact**：`OnePlayer-0.14.20-build187-detail-episode-selection-navigation`
-- **Current branch head at candidate reservation**：`1858ef01d2566f01812428e4462b591a7d1c7f82`。
+- **Build187 CI source**：`a9893fa2ad5652d6c41affbc6b099b098feb26ee`
+- **Workflow-restored branch head**：`972493d8dd1ada0550d9f760940a55cbc62747f8`
 
 ## Source evidence before implementation
 
@@ -43,6 +44,20 @@
 - `model.selectedSource` 仍是唯一 playback-source presentation state owner。
 - 可见的 `EmbyEpisodePickerView` 直接挂载现有 `fullScreenCover(item: $model.selectedSource)`；底层 detail 的 player cover 通过 `detailPlaybackSourceBinding` 在 `showAllEpisodes == true` 时对 getter 返回 nil，避免两个 route 同时竞争展示同一 source。
 - 没有新增手工 scroll offset、timer、retry、watchdog 或 fallback。picker 导航 entry/ScrollView 不再主动销毁，因此关闭 player 后应自然露出同一 picker 及原位置；是否真机完全保持位置仍需 Build187 验证。
+
+## Build187 CI / IPA evidence
+
+- Dedicated Release run：**`32861023477` — success**。
+- CI source：`a9893fa2ad5652d6c41affbc6b099b098feb26ee`。
+- Workflow-restored branch head：`972493d8dd1ada0550d9f760940a55cbc62747f8`。
+- Artifact：`OnePlayer-0.14.20-build187-detail-episode-selection-navigation`。
+- Artifact ID：`9568302131`。
+- Artifact digest：`sha256:0ec537ee3c11ec06a91159d733e208c418b97bd6951222d55839abd8413b9943`。
+- IPA：`OnePlayer-0.14.20-build187-detail-episode-selection-navigation-unsigned.ipa`。
+- IPA SHA-256：`c99513ec6a57a2a2cde0854520ff1259d46dff0313e536379e0e89dbc1609d01`；下载 artifact 后二次校验与 artifact 内 `.sha256` 一致。
+- Source ZIP SHA-256：`2ed81900fc55ccaf8d714c6ca9041cea572eab7a521e8263eb912bdc78d8718a`。
+- CI passed：selection/navigation contract、detail range jump、Resume button、Build184 visual hierarchy、Hero、Build182 detail performance、Build178 canonical episode ordering、SeasonId grouping、Xcode 16.4 Release device build、0.14.20 (187) app identity、iOS 15.0 MinOS、IPA packaging/upload。
+- 临时 Build187 workflow 已在 CI 成功后从 feature branch 删除；没有将 helper 留在产品分支。
 
 ## Validation so far
 
@@ -75,16 +90,16 @@
 
 - **Code written：YES**
 - **Source/static validation：YES**
-- **Build187 Release CI：pending**
-- **IPA：pending**
+- **Build187 Release CI：PASSED**
+- **IPA：PRODUCED**
 - **Real-device：pending**
 - **Stable / frozen：NO**
 
 ## Next exact action
 
-1. 为 Build187 增加独立、临时 Release CI helper，只针对本 branch；跑 selection/navigation contract + inherited detail/order/P0 zero-diff checks + Xcode 16.4 Release + 0.14.20 (187) identity + MinOS 15.0 + IPA packaging。
-2. CI/IPA 成功后立即删除临时 helper，同轮更新本 checkpoint 与 `BUILD_TEST_INDEX.md`；accepted overall baseline仍保持 Build184，不能提前升级。
-3. 用户真机重点验证：
+1. 用户真机安装 Build187，重点验证：
    - 详情横向卡单击只蓝框选择，主播放按钮才进入播放；小号标题位置/字号是否合适；
    - 完整选集滑到较深位置 → 点某集播放 → 关闭 player，是否仍回完整选集且原位置完全不变；
    - 收藏 Episode → Series detail 的自动蓝框定位是否仍正常；Resume/已看刷新是否正常。
+2. 若真机确认通过，再升级 evidence 为 real-device accepted，并进入 PR/merge 收尾；若完整选集位置仍丢失，只针对真实重建证据考虑显式 scroll-position state，不能预先增加 offset 缓存。
+3. Accepted overall baseline 在真机验收前仍保持 Build184。
