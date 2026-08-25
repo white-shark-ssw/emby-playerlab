@@ -102,6 +102,16 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         }
     }
 
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool {
+        if let scrollView = preventedGestureRecognizer.view as? UIScrollView, preventedGestureRecognizer === scrollView.panGestureRecognizer { return true }
+        return super.canPrevent(preventedGestureRecognizer)
+    }
+
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool {
+        if let scrollView = preventingGestureRecognizer.view as? UIScrollView, preventingGestureRecognizer === scrollView.panGestureRecognizer { return false }
+        return super.canBePrevented(by: preventingGestureRecognizer)
+    }
+
     override func reset() {
         super.reset()
         trackedTouch = nil
