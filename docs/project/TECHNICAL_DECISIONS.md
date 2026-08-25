@@ -131,7 +131,7 @@ The OP vs EX recordings established a P0 interaction requirement for the V3 home
 
 Build179 first localized high-frequency carousel transition state into one `V3HomeCarouselTransitionState`, observed only by the Hero/persistent-backdrop scopes. That architecture remains valid and should not be reverted: root `V3EmbyHomeView` must not regain per-finger `transitionProgress/from/to`, drag flags, or tap-suppression `@State`.
 
-However, Build179 / OnePlayer 0.14.12 was **rejected on real device**. The user reported that a small drag still did not move immediately and that dragging slightly to one side then reversing toward the other side could visibly pause before jumping a large distance. Source inspection showed two remaining policy dead zones that directly matched that feedback:
+However, Build179 / OnePlayer 0.14.12 was **rejected on real device**. The user reported that a small drag still did not move immediately and that dragging slightly to one side then reversing toward the other side could visibly pause before jumping a large distance. Source inspection showed three remaining policy dead zones that directly matched that feedback:
 
 - `DragGesture(minimumDistance: 4)` plus `abs(horizontal) > 4` withheld progress until an accumulated translation threshold was crossed;
 - the horizontal-dominance guard was re-applied on every `onChanged`, so an already-established horizontal drag could stop updating while reversing through the center where horizontal translation approaches zero;
@@ -150,4 +150,4 @@ Build180 therefore adopts the following current direction:
 
 The persistent two-image full-screen `.blur(radius: 30)` backdrop remains a **next evidence point, not a proven root cause**. If Build180 still shows reversal stalls after the gesture/progress dead zones are removed, then inspect target replacement and full-screen blur/compositing cost with the new real-device evidence. Do not preemptively rewrite the image pipeline in the same patch because that would destroy attribution.
 
-Evidence levels: Build179 = Code written / CI passed / IPA produced / **real-device tested and rejected**. Build180 = **Code written only** at this decision update; CI/IPA/real-device validation still required. Do not mark D012 stable/frozen until the user accepts a target-device result against EX.
+Evidence levels: Build179 = Code written / CI passed / IPA produced / **real-device tested and rejected**. Build180 = **Code written / CI passed / IPA produced / real-device not yet tested / not stable**. Build180 dedicated standard MPV Release run `32845376285` passed the zero-point drag/initial-axis-lock/no-old-gate contracts, Build179 local-owner contract, home/scroll/series-order checks, Build176/178/P0 zero-diff checks, Xcode 16.4 Release build, 0.14.13 (180) identity, MinOS 15.0 validation and IPA packaging. Do not mark D012 stable/frozen until the user accepts a target-device result against EX.
