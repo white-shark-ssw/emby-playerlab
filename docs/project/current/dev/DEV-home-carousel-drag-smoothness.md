@@ -75,7 +75,7 @@
 - Build187 / OnePlayer 0.14.20 keeps Build186/Build185 drag behavior unchanged and routes only that summary through `DiagnosticsLogger.shared.playback(...)`.
 - branch `perf/home-carousel-drag-cadence-build187`; CI source `6d562b2f5cf76be41cb0e763c8f3c50c4f0d724f`; restored head `468986492f639959f7f31129dadf5b49e781d37f`; run `32860057516` success.
 - artifact `9567940931`; IPA SHA-256 `5fa04513919b5e2928ee2ca09cf45dddc79c91d64858971f571b423dbb2d50f8`; source ZIP SHA-256 `70ef0df0ef48c9be558674cfd892a39e9836780602992e482f2f0d806d24d40a`; MinOS 15.0.
-- validation: **Code written / CI passed / IPA produced / real-device pending / not stable**.
+- validation: **Code written / CI passed / IPA produced / real-device tested / diagnostic gate confirmed / not stable**.
 - **Build187 real-device result — DIAGNOSIS CONFIRMED**：iPhone 15 Pro Max / iOS 17.0 真机导出日志显示每次触摸先出现 `first=0.00,0.00`，但第一次真正可用的 horizontal / axis-lock / transition 位移已经分别约为 **4.33pt / 8.00pt / 15.67pt / 11.00pt**；`lock` 与 `transition` 位移相同，说明 carousel 第一次能够建立横向 transition 时，手指位移已经累计了数点到十余点。日志同时确认 `maximumFramesPerSecond=120`、Low Power Mode = false。
 - **Build187 conclusion**：0.5pt 阈值没有机会成为实际首段响应粒度；当前纵向 `ScrollView` 场景下 SwiftUI `DragGesture` 没有向 carousel 提供 0.5/1/2pt 级别的有效首段横向样本。停止继续做 0.2pt/0.1pt 等阈值微调，后续只针对输入采样层做最小替换。
 
