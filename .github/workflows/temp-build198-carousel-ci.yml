@@ -1,0 +1,139 @@
+name: Build198 Carousel Single Owner IPA
+
+on:
+  push:
+    branches: [perf/home-carousel-single-owner-build198]
+    paths:
+      - ".github/workflows/temp-build198-carousel-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout Build198 source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate Build198 carousel ownership and scope
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          python3 scripts/check_home_immersive_carousel.py
+          python3 scripts/check_home_carousel_single_owner.py
+          python3 scripts/check_home_horizontal_tap_routing.py
+          python3 scripts/check_scroll_performance.py
+          python3 scripts/check_series_ordering.py
+          python3 -m py_compile scripts/check_home_immersive_carousel.py scripts/check_home_carousel_single_owner.py
+          python3 - <<'PY'
+          import subprocess
+          allowed = {
+              '.github/workflows/temp-build198-carousel-ci.yml',
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyHomeCarouselInteractionV3.swift',
+              'Sources/UI/EmbyHomeCarouselStateV3.swift',
+              'Sources/UI/EmbyHomeCoreV3.swift',
+              'Sources/UI/EmbyHomeHeroV3.swift',
+              'docs/changelog/CHANGELOG_v0_14_31_build198.md',
+              'scripts/check_home_carousel_single_owner.py',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', 'origin/main...HEAD'], text=True).splitlines())
+          extra = sorted(changed - allowed)
+          missing = sorted((allowed - {'.github/workflows/temp-build198-carousel-ci.yml'}) - changed)
+          if extra:
+              raise SystemExit(f'Unexpected Build198 files: {extra}')
+          if missing:
+              raise SystemExit(f'Missing Build198 durable files: {missing}')
+          frozen_prefixes = ('Sources/Player/', 'Sources/Transport/', 'Sources/Cache/', 'Sources/Session/', 'Sources/AVIO/')
+          touched_frozen = sorted(path for path in changed if path.startswith(frozen_prefixes))
+          if touched_frozen:
+              raise SystemExit(f'Build198 touched frozen/P0 paths: {touched_frozen}')
+          print('Build198 diff scope: PASS')
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache | tee package-resolution.log
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION=0.14.31 \
+            CURRENT_PROJECT_VERSION=198 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build198.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version 0.14.31 --build 198 --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+
+      - name: Validate MinOS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" 15.0 17.0 build198-min-os.log build198.log
+
+      - name: Package unsigned IPA and source snapshot
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA="OnePlayer-0.14.31-build198-home-carousel-single-owner-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA"
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          SOURCE="OnePlayer-0.14.31-build198-source.zip"
+          git archive --format=zip --output "$SOURCE" HEAD
+          shasum -a 256 "$SOURCE" | tee "$SOURCE.sha256"
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          echo "SOURCE=$SOURCE" >> "$GITHUB_ENV"
+
+      - name: Upload Build198 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.31-build198-home-carousel-single-owner
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+            ${{ env.SOURCE }}
+            ${{ env.SOURCE }}.sha256
+            build198.log
+            build198-min-os.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 30
