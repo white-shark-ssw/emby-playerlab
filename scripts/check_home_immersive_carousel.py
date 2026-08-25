@@ -12,7 +12,7 @@ home_files = [
     'Sources/UI/EmbyServerSharedV3.swift',
 ]
 home = '\n'.join(Path(path).read_text() for path in home_files)
-hero = Path('Sources/UI/EmbyHomeModelV3.swift').read_text()
+hero = Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()
 project = Path('project.yml').read_text()
 
 # v7 round 3 architecture: one carousel state drives clear Hero + persistent blurred backdrop.
@@ -58,10 +58,10 @@ assert '46 + bottomInset' not in root
 assert '.frame(height: 46)' not in root
 assert 'ImmersiveUIMetrics.serverDockHeight' in root
 assert 'Color.clear.frame(height: bottomInset)' not in root
-assert '.offset(y: 7)' in root
+assert '.offset(y: 8)' in root
 
 # Existing poster routing and deployment target remain intact.
 assert 'EmbyPosterDetailLink(item: item, client: client)' in home
-assert 'Text(heroTitle)' in hero
+assert 'Text(carouselHeroTitle(item))' in hero
 assert 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' in project
 print('Home carousel architecture v3 checks passed')
