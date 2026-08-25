@@ -1,77 +1,173 @@
-name: Build MDK Lab IPA
+name: Build191 Carousel Native Release IPA
 
 on:
   workflow_dispatch:
   push:
-    branches: [feat/mdk-engine-lab]
+    branches: [fix/home-carousel-native-release-build191]
     paths:
       - "Sources/**"
-      - "MDKLab/**"
       - "Config/**"
       - "Resources/**"
-      - "project.mdklab.yml"
+      - "scripts/**"
+      - "project.yml"
       - "Podfile"
-      - ".github/workflows/build-mdk-lab.yml"
-  pull_request:
-    branches: [main]
-    paths:
-      - "Sources/**"
-      - "MDKLab/**"
-      - "Config/**"
-      - "Resources/**"
-      - "project.mdklab.yml"
-      - "Podfile"
+      - "docs/changelog/CHANGELOG_v0_14_24_build191.md"
       - ".github/workflows/build-mdk-lab.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: build191-carousel-native-release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: macos-15
     timeout-minutes: 150
     steps:
-      - uses: actions/checkout@v4
-      - name: Select Xcode 16.4
-        run: sudo xcode-select -switch /Applications/Xcode_16.4.app
-      - name: Install tools
-        run: |
-          brew install xcodegen
-          sudo gem install cocoapods -v 1.16.2 --no-document
-      - name: Prepare assets
-        run: python3 scripts/generate_oneplayer_icons.py
-      - name: Validate MDK local-file contract
+      - name: Checkout Build191 source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate Build191 carousel identity, ownership and inherited contracts
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          spec=Path('project.mdklab.yml').read_text(); local=Path('Sources/UI/LocalMDKFileLabView.swift').read_text(); shell=Path('Sources/UI/AppShellView.swift').read_text(); engine=Path('MDKLab/App/MDKKSAVIOPlayerEngine.swift').read_text()
-          checks={'iOS15':'iOS: "15.0"' in spec and 'deploymentTarget: "15.0"' in spec,'MDK condition':'SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MDK_LAB"' in spec,'swift-mdk linked':'product: swift-mdk' in spec,'MDK source':'- path: MDKLab/App' in spec,'direct local MDK':'#if MDK_LAB && canImport(swift_mdk)' in local and 'LocalMDKDirectFilePlayer' in local and 'swift_mdk.Player()' in local,'settings entry':'LocalMDKFileLabView()' in shell,'bypass transport':'source=local-file' in local and 'unifiedTransport=false' in local,'no fallback':'fallback=false' in local,'diagnostics':'DiagnosticsLogger.shared.playback("LocalMDKLab"' in local,'direct file URL':'player.media = url.absoluteString' in local,'formal MDK engine':'#if MDK_LAB && canImport(swift_mdk)' in engine and 'final class KSAVIOPlayerEngine' in engine}
-          for n,v in checks.items():
-            print(('PASS' if v else 'FAIL'),n)
-            if not v: raise SystemExit(n)
+          import subprocess
+
+          build189 = "44c5958190a48ea45a75a6f89176410700359744"
+          app = Path("Sources/Core/AppIdentity.swift").read_text()
+          native = Path("Sources/UI/EmbyHomeCarouselNativeDragV3.swift").read_text()
+          carousel = Path("Sources/UI/EmbyHomeCarouselStateV3.swift").read_text()
+          hero = Path("Sources/UI/EmbyHomeHeroV3.swift").read_text()
+          info = Path("Config/Info.plist").read_text()
+          project = Path("project.yml").read_text()
+          gesture = carousel[carousel.index("func carouselDragGesture"):carousel.index("func suppressCarouselTap")]
+
+          checks = {
+              "Build191 source version": 'sourceVersion = "0.14.24"' in app,
+              "collided carousel Build190 changelog removed": not Path("docs/changelog/CHANGELOG_v0_14_23_build190.md").exists(),
+              "Build191 changelog present": Path("docs/changelog/CHANGELOG_v0_14_24_build191.md").exists(),
+              "iOS15 deployment": 'iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project,
+              "ProMotion opt-in preserved": '<key>CADisableMinimumFrameDurationOnPhone</key>' in info,
+              "native raw touch recognizer preserved": 'final class V3HomeCarouselImmediateDragRecognizer: UIGestureRecognizer' in native,
+              "native coalesced samples preserved": 'event.coalescedTouches(for: touch) ?? [touch]' in native,
+              "native progress one-to-one": 'abs(horizontal) / max(1, width)' in native,
+              "native horizontal stays passive": 'if axis == .horizontal { state = .began }' not in native and 'state = .changed' not in native,
+              "native cannot prevent SwiftUI release": 'override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }' in native,
+              "native cannot be prevented": 'override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool { false }' in native,
+              "native end never claims gesture": 'override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) { state = .failed }' in native,
+              "SwiftUI has no movement owner": '.onChanged {' not in gesture,
+              "SwiftUI release prediction preserved": 'value.predictedEndTranslation.width' in gesture,
+              "release thresholds preserved": 'transitionProgress >= 0.28 || predicted >= width * 0.48' in gesture,
+              "foreground page slide preserved": 'if itemID == fromID { return -direction * progress * width }' in carousel and 'if itemID == toID { return direction * (1 - progress) * width }' in carousel,
+              "persistent blur preserved": '.blur(radius: 30)' in hero,
+          }
+          for name, ok in checks.items():
+              print(("PASS" if ok else "FAIL"), name)
+              if not ok: raise SystemExit(f"::error::{name}")
+
+          subprocess.run(["python3", "scripts/check_home_immersive_carousel.py"], check=True)
+          subprocess.run(["python3", "scripts/check_scroll_performance.py"], check=True)
+          subprocess.run(["python3", "scripts/check_series_episode_ordering.py"], check=True)
+          subprocess.run(["python3", "scripts/check_detail_page_performance.py"], check=True)
+          subprocess.run(["python3", "scripts/check_detail_visual_hierarchy.py"], check=True)
+
+          allowed = {
+              "Sources/Core/AppIdentity.swift",
+              "Sources/UI/EmbyHomeCarouselNativeDragV3.swift",
+              "Sources/UI/EmbyHomeCarouselStateV3.swift",
+              "scripts/check_home_immersive_carousel.py",
+              "docs/changelog/CHANGELOG_v0_14_24_build191.md",
+              ".github/workflows/build-mdk-lab.yml",
+          }
+          changed = subprocess.run(["git", "diff", "--name-only", build189, "HEAD"], capture_output=True, text=True, check=True).stdout.splitlines()
+          unexpected = [path for path in changed if path and path not in allowed]
+          if unexpected: raise SystemExit(f"::error::unexpected Build191 delta vs Build189: {unexpected}")
+          print("PASS Build191 delta limited to release ownership + identity/check/changelog")
           PY
-      - run: xcodegen generate --spec project.mdklab.yml
-      - run: pod install --repo-update
-      - name: Resolve packages
-        run: xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -resolvePackageDependencies
-      - name: Build
-        run: xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tee mdk-build.log
-      - name: Validate binary and package
+
+      - name: Select Xcode 16.4 and install tools
         run: |
           set -euo pipefail
-          APP_PATH=$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -type d | head -1)
-          test -n "$APP_PATH"; test -f "$APP_PATH/OnePlayer"
-          MIN_OS=$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP_PATH/Info.plist"); test "$MIN_OS" = "15.0"
-          strings "$APP_PATH/OnePlayer" | grep -F 'MDK 本地文件实验'
-          strings "$APP_PATH/OnePlayer" | grep -F 'LocalMDKLab'
-          strings "$APP_PATH/OnePlayer" | grep -F 'source=local-file'
-          if strings "$APP_PATH/OnePlayer" | grep -F '当前构建未包含 MDK 实验引擎。'; then exit 1; fi
-          mkdir Payload; cp -R "$APP_PATH" Payload/; zip -qry OnePlayer-local-mdk.ipa Payload
-      - uses: actions/upload-artifact@v4
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Generate project and resolve dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache MARKETING_VERSION=0.14.24 CURRENT_PROJECT_VERSION=191 IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build191.log
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-local-mdk-${{ github.sha }}
+          name: OnePlayer-Build191-errors-${{ github.sha }}
           path: |
-            OnePlayer-local-mdk.ipa
-            mdk-build.log
-          retention-days: 14
+            build191.log
+            package-resolution.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Locate and validate app
+        if: success()
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.14.24" --build "191" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
+
+      - name: Validate MinOS
+        if: success()
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" build191-min-os.log build191.log
+
+      - name: Package unsigned IPA
+        if: success()
+        run: |
+          set -euo pipefail
+          rm -rf Payload && mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA_NAME="OnePlayer-0.14.24-build191-home-carousel-native-release-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME"
+          shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
+          SOURCE_ZIP="OnePlayer-0.14.24-build191-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Upload Build191 artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.24-build191-home-carousel-native-release
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            build191.log
+            build191-min-os.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 30
