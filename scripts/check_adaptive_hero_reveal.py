@@ -28,7 +28,7 @@ require("eased(" not in metrics and "revealDistance(" not in metrics and "progre
 require("UIScreen.main.bounds" not in metrics and "iPhone 15" not in metrics, "Hero geometry must not depend on a device model or physical resolution")
 require("initialScale: CGFloat = 1.10" in metrics, "tested 0% Hero crop must remain unchanged")
 
-require("heroRawScrollMinY" in detail, "detail must read raw ScrollView displacement from the native ScrollView")
+require("EmbyDetailHeroScrollScope(state: heroScrollState)" in detail and "rawScrollMinY" in detail, "detail must route native raw ScrollView displacement through the Hero-only scroll scope")
 require("detailBackdropViewportHeight" in detail and "detailCropResponseFactor" in detail, "detail must use its decoupled backdrop viewport and response rate")
 require("heroViewport = CGSize(width: width, height: baseHeight)" not in detail, "detail clear backdrop geometry must not be coupled to foreground Hero baseHeight")
 require("AdaptiveHeroNativeScrollObserver" in detail, "detail must observe native ScrollView content offset")
@@ -61,7 +61,7 @@ require('iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project, "Dep
 require("detailPlaybackCenterReserve: CGFloat = 72" in metrics, "detail playback center reserve missing")
 require("detailForegroundBaseHeight(width: CGFloat, viewportHeight: CGFloat)" in metrics, "detail foreground height helper missing")
 require("viewportHeight) * 0.5 + detailPlaybackCenterReserve" in metrics, "detail foreground no longer targets the viewport midpoint")
-require("hero(width: geometry.size.width, viewportHeight: viewportHeight)" in detail, "detail Hero is not receiving viewport height")
+require("hero(width: geometry.size.width, viewportHeight: viewportHeight, rawScrollMinY: rawScrollMinY)" in detail, "detail Hero is not receiving viewport height and scoped raw scroll displacement")
 require("let backdropBaseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width)" in detail, "detail backdrop base height is no longer independent")
 require("let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight)" in detail, "detail foreground height is not independent")
 require("viewportHeight: backdropVisualHeight" in detail, "detail clear-backdrop mask was coupled back to foreground height")
