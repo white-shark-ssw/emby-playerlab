@@ -1275,7 +1275,12 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         episodeScrollTargetID = nil
     }
 
-    func selectEpisodeRange(_ offset: Int) { selectedEpisodeRangeOffset = max(0, offset); selectedEpisodeID = nil; episodeScrollTargetID = nil }
+    func selectEpisodeRange(_ offset: Int) {
+        let normalized = max(0, offset)
+        selectedEpisodeRangeOffset = normalized
+        selectedEpisodeID = episode(at: normalized)?.id
+        episodeScrollTargetID = nil
+    }
     func selectEpisode(_ episode: LibraryItem) {
         selectedEpisodeID = episode.id
         if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == episode.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
@@ -1313,20 +1318,14 @@ final class EmbyMediaDetailViewModel: ObservableObject {
 
     private func applyInitialEpisodeSelection() {
         guard isSeries, !episodes.isEmpty else { return }
-        if let initialEpisodeID, let requestedEpisode = episodes.first(where: { $0.id == initialEpisodeID }), let season = seasonNumber(for: requestedEpisode) {
-            selectedSeason = season
-            selectedEpisodeID = requestedEpisode.id
-            if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == requestedEpisode.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
-            episodeScrollTargetID = requestedEpisode.id
-        } else if let playable = primaryPlayableItem, let season = seasonNumber(for: playable) {
-            selectedEpisodeID = nil
-            selectedSeason = season
-            if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == playable.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
-        } else {
-            selectedEpisodeID = nil
-            selectedSeason = seasonNumbers.first
-            selectedEpisodeRangeOffset = 0
-        }
+        let resumeEpisode = episodes.first(where: { $0.playbackProgress > 0.001 && !$0.isPlayed })
+        let requestedEpisode = initialEpisodeID.flatMap { requestedID in episodes.first(where: { $0.id == requestedID }) }
+        guard let target = requestedEpisode ?? resumeEpisode ?? episodes.first else { return }
+        selectedSeason = seasonNumber(for: target)
+        selectedEpisodeID = target.id
+        if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == target.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
+        else { selectedEpisodeRangeOffset = 0 }
+        episodeScrollTargetID = target.id
     }
 
     private func storeWarmPresentation() {
