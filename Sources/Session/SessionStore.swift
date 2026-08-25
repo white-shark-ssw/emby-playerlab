@@ -90,6 +90,7 @@ final class SessionStore: ObservableObject {
 
             let tokenAccount = "\(serverId):\(auth.user.id)"
             try KeychainStore.set(auth.accessToken, account: tokenAccount)
+            try persistPassword(password, tokenAccount: tokenAccount, iCloudSync: iCloudSync)
 
             let stored = EmbySession(
                 serverURL: baseURL,
@@ -118,7 +119,7 @@ final class SessionStore: ObservableObject {
     }
 
     @discardableResult
-    func updateServer(_ stored: EmbySession, serverTexts: [String], password: String = "", autoStart: Bool, iCloudSync: Bool) async -> EmbySession? {
+    func updateServer(_ stored: EmbySession, serverTexts: [String], password: String? = nil, autoStart: Bool, iCloudSync: Bool) async -> EmbySession? {
         errorMessage = nil
         isWorking = true
         defer { isWorking = false }
@@ -130,11 +131,14 @@ final class SessionStore: ObservableObject {
             let best = try validatedBestProbe(probes, expectedServerId: stored.serverId, requiresSharedIdentity: true)
             guard let baseURL = best.url else { throw SessionStoreError.noAvailableRoute }
 
-            if !password.isEmpty {
+            if let password {
                 let auth = try await EmbyAPIClient(baseURL: baseURL).authenticate(username: stored.user.name, password: password)
                 if let authServerId = auth.serverId, authServerId != stored.serverId { throw SessionStoreError.routeIdentityMismatch }
                 guard auth.user.id == stored.user.id else { throw SessionStoreError.userIdentityMismatch }
                 try KeychainStore.set(auth.accessToken, account: stored.tokenAccount)
+                try persistPassword(password, tokenAccount: stored.tokenAccount, iCloudSync: iCloudSync)
+            } else if let existingPassword = password(for: stored) {
+                try persistPassword(existingPassword, tokenAccount: stored.tokenAccount, iCloudSync: iCloudSync)
             }
 
             let updated = EmbySession(
@@ -170,6 +174,10 @@ final class SessionStore: ObservableObject {
     func isAutoStart(_ stored: EmbySession) -> Bool { autoStartSessionID == stored.id }
 
     func iCloudSyncEnabled(for stored: EmbySession) -> Bool { configurations[stored.id]?.iCloudSyncEnabled ?? false }
+
+    func password(for stored: EmbySession) -> String? {
+        KeychainStore.get(account: passwordAccount(stored.tokenAccount)) ?? KeychainStore.getSynchronizable(account: syncedPasswordAccount(stored.tokenAccount))
+    }
 
     func probeServerRoutes(serverTexts: [String], expectedServerId: String? = nil) async -> [EmbyRouteProbe] {
         var invalid: [EmbyRouteProbe] = []
@@ -264,6 +272,7 @@ final class SessionStore: ObservableObject {
             await client.logout()
         }
         KeychainStore.remove(account: stored.tokenAccount)
+        removePassword(tokenAccount: stored.tokenAccount)
         sessions.removeAll { $0.id == stored.id }
         configurations.removeValue(forKey: stored.id)
         if autoStartSessionID == stored.id { autoStartSessionID = nil }
@@ -308,6 +317,21 @@ final class SessionStore: ObservableObject {
         sessions[index] = updated
         if session?.id == stored.id { session = updated }
         persistSessions()
+    }
+
+    private func passwordAccount(_ tokenAccount: String) -> String { "OnePlayer.ServerPassword.\(tokenAccount)" }
+
+    private func syncedPasswordAccount(_ tokenAccount: String) -> String { "OnePlayer.SyncedServerPassword.\(tokenAccount)" }
+
+    private func persistPassword(_ password: String, tokenAccount: String, iCloudSync: Bool) throws {
+        try KeychainStore.set(password, account: passwordAccount(tokenAccount))
+        if iCloudSync { try KeychainStore.setSynchronizable(password, account: syncedPasswordAccount(tokenAccount)) }
+        else { KeychainStore.removeSynchronizable(account: syncedPasswordAccount(tokenAccount)) }
+    }
+
+    private func removePassword(tokenAccount: String) {
+        KeychainStore.remove(account: passwordAccount(tokenAccount))
+        KeychainStore.removeSynchronizable(account: syncedPasswordAccount(tokenAccount))
     }
 
     private func persistSessions() {

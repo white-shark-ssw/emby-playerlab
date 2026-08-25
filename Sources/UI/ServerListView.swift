@@ -84,7 +84,8 @@ struct ServerListView: View {
                 editingSession: stored,
                 initialRoutes: sessionStore.routes(for: stored),
                 initialAutoStart: sessionStore.isAutoStart(stored),
-                initialICloudSync: sessionStore.iCloudSyncEnabled(for: stored)
+                initialICloudSync: sessionStore.iCloudSyncEnabled(for: stored),
+                initialPassword: sessionStore.password(for: stored)
             )
             .environmentObject(sessionStore)
         }
@@ -156,9 +157,10 @@ private struct ServerEditorView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @Environment(\.presentationMode) private var presentationMode
     let editingSession: EmbySession?
+    let initialPassword: String?
     @State private var server: String
     @State private var username: String
-    @State private var password = ""
+    @State private var password: String
     @State private var showsPassword = false
     @State private var additionalRoutes: [String]
     @State private var autoStart: Bool
@@ -166,11 +168,13 @@ private struct ServerEditorView: View {
     @State private var routeProbes: [EmbyRouteProbe] = []
     @State private var isProbing = false
 
-    init(editingSession: EmbySession? = nil, initialRoutes: [URL] = [], initialAutoStart: Bool = false, initialICloudSync: Bool = true) {
+    init(editingSession: EmbySession? = nil, initialRoutes: [URL] = [], initialAutoStart: Bool = false, initialICloudSync: Bool = true, initialPassword: String? = nil) {
         self.editingSession = editingSession
+        self.initialPassword = initialPassword
         let routes = initialRoutes.isEmpty ? editingSession.map { [$0.serverURL] } ?? [] : initialRoutes
         _server = State(initialValue: routes.first?.absoluteString ?? "")
         _username = State(initialValue: editingSession?.user.name ?? "")
+        _password = State(initialValue: initialPassword ?? "")
         _additionalRoutes = State(initialValue: routes.dropFirst().map(\.absoluteString))
         _autoStart = State(initialValue: initialAutoStart)
         _iCloudSync = State(initialValue: editingSession == nil ? true : initialICloudSync)
@@ -476,7 +480,10 @@ private struct ServerEditorView: View {
 
     private func submit() async {
         if let editingSession {
-            if await sessionStore.updateServer(editingSession, serverTexts: allRouteTexts, password: password, autoStart: autoStart, iCloudSync: iCloudSync) != nil {
+            let passwordUpdate: String?
+            if let initialPassword { passwordUpdate = password == initialPassword ? nil : password }
+            else { passwordUpdate = password.isEmpty ? nil : password }
+            if await sessionStore.updateServer(editingSession, serverTexts: allRouteTexts, password: passwordUpdate, autoStart: autoStart, iCloudSync: iCloudSync) != nil {
                 presentationMode.wrappedValue.dismiss()
             }
         } else if await sessionStore.addServer(serverText: server, username: username, password: password, additionalServerTexts: additionalRoutes, autoStart: autoStart, iCloudSync: iCloudSync) != nil {
