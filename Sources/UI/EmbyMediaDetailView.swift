@@ -1193,11 +1193,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
 
     var selectedEpisodeSelectionSummary: String? {
         guard let selectedEpisodeID, let episode = episodes.first(where: { $0.id == selectedEpisodeID }) else { return nil }
-        let trimmed = episode.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let number = episode.indexNumber ?? selectedSeasonEpisodes.firstIndex(where: { $0.id == episode.id }).map { $0 + 1 }
-        guard let number, number > 0 else { return trimmed.isEmpty ? nil : trimmed }
-        if trimmed.isEmpty || isGenericEpisodeName(trimmed, number: number) { return "第 \(number) 集" }
-        return "第 \(number) 集 · \(trimmed)"
+        return displayEpisodeTitle(episode)
     }
 
     var visiblePeople: [EmbyPerson] { Array(item.people.prefix(24)) }
