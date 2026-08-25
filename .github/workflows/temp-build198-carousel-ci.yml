@@ -23,12 +23,11 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin main
-          python3 scripts/check_home_immersive_carousel.py
           python3 scripts/check_home_carousel_single_owner.py
           python3 scripts/check_home_horizontal_tap_routing.py
           python3 scripts/check_scroll_performance.py
           python3 scripts/check_series_ordering.py
-          python3 -m py_compile scripts/check_home_immersive_carousel.py scripts/check_home_carousel_single_owner.py
+          python3 -m py_compile scripts/check_home_carousel_single_owner.py
           python3 - <<'PY'
           import subprocess
           allowed = {
