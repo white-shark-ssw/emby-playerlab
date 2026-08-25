@@ -50,14 +50,15 @@ assert 'if itemID == fromID { return -direction * progress * width }' in carouse
 assert 'if itemID == toID { return direction * (1 - progress) * width }' in carousel
 assert 'func carouselForegroundOffset(for itemID: String, width: CGFloat) -> CGFloat { 0 }' not in carousel
 
-# Build186 diagnostics are passive: count onChanged timing and emit only one summary at gesture end.
+# Build187 diagnostics are passive and exported through the existing playback-log flow.
 assert 'carouselTransitionState.recordDragSample(value.translation)' in carousel
 assert 'carouselTransitionState.recordDragAxisLock(value.translation)' in carousel
 assert 'carouselTransitionState.recordDragTransitionStart(value.translation)' in carousel
 assert 'carouselTransitionState.finishDragDiagnostics(axis: dragAxis, endTranslation: value.translation)' in carousel
 assert 'HomeCarouselDragTiming' in carousel
 assert 'avgHz=' in carousel and 'maxGapMs=' in carousel and 'first=' in carousel and 'lock=' in carousel and 'transition=' in carousel
-assert carousel.count('DiagnosticsLogger.shared.log("HomeCarouselDragTiming"') == 1
+assert carousel.count('DiagnosticsLogger.shared.playback("HomeCarouselDragTiming"') == 1
+assert 'DiagnosticsLogger.shared.log("HomeCarouselDragTiming"' not in carousel
 
 # Vertical Hero physics reuse the detail page's proven metric functions, but Home owns its observer.
 assert 'AdaptiveHeroRevealMetrics.detailCropResponseFactor' in home
