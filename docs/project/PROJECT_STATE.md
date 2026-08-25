@@ -1,46 +1,41 @@
 # OnePlayer Project State
 
-_Last updated after Build176 / OnePlayer 0.14.9 episode-selector UI follow-up CI/IPA candidate._
+_Last updated after user real-device acceptance of Build176 / OnePlayer 0.14.9 episode selection and auto-next._
 
 ## Current functional baseline
 
-The latest **real-device accepted** functional test baseline remains:
+The latest **real-device accepted** functional baseline is:
 
 - Product: **OnePlayer**
-- Version: **0.14.6**
-- Build: **173**
-- Development branch: `fix/pip-seek-completion-return-simplify-0.14.6`
-- PR: **#238**
-- Known head during Build173 handoff: `4f7acf8da06ded00db735b07210983a0d2dd5be6`
+- Version: **0.14.9**
+- Build: **176**
+- Development branch: `feat/player-episode-picker-0.14.7`
+- PR: **#249**
+- Product source before the temporary CI helper: `f701f0446d65e84fc686f69ec14d60402c94839c`
+- Dedicated CI source: `221630297dc1080279bb8a3f05d69586461b328c`
+- Workflow-restored branch head after Build176 CI: `4b26a7d3a9826c58bfdddd6aafaeb9eeb5c7c943`
+- Dedicated CI run: **32782048086**
+- Artifact: `OnePlayer-0.14.9-build176-episode-picker-ui`
 - Deployment Target: **iOS 15.0**
 - Required target device: **iPhone 15 Pro Max / iOS 17.0**
+- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements**
 
-The repository `main` branch is not necessarily the latest functional player baseline. Always resolve the current test branch/build before analysing logs or changing player code.
+The repository `main` branch is not necessarily the latest functional player baseline. Always resolve the current accepted branch/build before analysing logs or changing player code.
 
-## Current development candidate
+Build176 completes the player episode-selection task for the current requirements. The accepted behaviour includes:
 
-**OnePlayer 0.14.9 / Build176** is the current episode-selection UI follow-up candidate:
+- existing OnePlayer player-bottom control coordinates remain unchanged;
+- player episode entry opens an in-player horizontal episode overlay rather than a large sheet;
+- no explicit X close button and no `选集 / 剧名` header; tapping the player area above the selector dismisses it;
+- landscape safe-area placement avoids the notch / Dynamic Island side inset;
+- compact `第N季` menu filters the existing episode list in place without starting playback;
+- detail-style 174×98 episode cards show a one-line episode title and up to two lines of Emby overview text;
+- the current episode keeps a white outline and centered `正在播放` badge;
+- a localized bottom fade prevents the unchanged lower player buttons from visually bleeding through the episode overview text;
+- manually selecting another episode replaces the complete source-owned playback session while the fullscreen host stays presented;
+- `自动加载下一集` uses the existing trusted natural-end / `PrematureEOFGuard` gate and does not advance on premature EOF, abnormal short-media recovery, network starvation, or raw engine EOF.
 
-- branch: `feat/player-episode-picker-0.14.7`
-- draft PR: **#249**
-- product source head before temporary CI helper: `f701f0446d65e84fc686f69ec14d60402c94839c`
-- dedicated CI source commit: `221630297dc1080279bb8a3f05d69586461b328c`
-- dedicated CI run: **32782048086**
-- artifact: `OnePlayer-0.14.9-build176-episode-picker-ui`
-- workflow-restored branch head after CI: `4b26a7d3a9826c58bfdddd6aafaeb9eeb5c7c943`
-- state: **Code written / CI passed / IPA produced / real-device pending**
-
-Build175 / OnePlayer 0.14.8 has been tested on the target device. The user confirmed the fixed OnePlayer bottom-button layout direction, but the screenshot exposed two remaining presentation problems: lower player function buttons visually bleed through the transparent episode-overview area, and the `正在播放` badge is left-aligned instead of centered. Build175 therefore provides real-device evidence but is not an accepted/stable selector UI baseline.
-
-Build176 keeps every existing bottom-control coordinate unchanged. The episode panel remains an in-player overlay rather than the rejected gray/material sheet, but adds a localized black fade behind the selector content so lower function buttons no longer visually interfere with overview text. The current-episode `正在播放` badge is centered in the 174×98 thumbnail. No PlayerController, MPV, PiP, UnifiedTransport, cache, or Seek contract is changed.
-
-Build176 dedicated standard MPV Release CI passed its selector/frozen-file contract checks, Xcode 16.4 Release compile, 0.14.9 (176) app-identity validation, iOS 15.0 MinOS validation, IPA packaging and artifact upload. This is **CI/IPA evidence only**; the visual fix is not accepted until the user tests Build176 on the target device.
-
-Build174 / OnePlayer 0.14.7 was installed on device and confirmed that the selector opened and displayed episode data, but the first selector presentation was rejected visually: the large gray material sheet, explicit X close button, and `选集 / 剧名` header did not match the desired player interaction. That real-device feedback led to Build175; Build174 is not a stable/frozen UI baseline.
-
-The episode media/session rule remains source-owned replacement rather than in-place source mutation. The fullscreen host remains presented, while each selected episode receives a fresh `PlayerController`, `PlaybackOrchestrator`, `PlaybackTransportContext` and Emby playback session. Episode metadata can be prepared, but 115/CDN temporary media URLs are resolved only when the user selects an episode or a trusted natural end requests the next one.
-
-Automatic next episode is gated by the same `PrematureEOFGuard` semantics used by the player: only a non-premature natural end may advance. Premature EOF, abnormal short-media recovery, network starvation and raw engine EOF are not enough.
+The episode media/session rule is source-owned replacement rather than in-place source mutation. Each selected episode receives a fresh `PlayerController`, `PlaybackOrchestrator`, `PlaybackTransportContext` and Emby playback session. Episode metadata may be loaded ahead of selection, but 115/CDN temporary media URLs are resolved only when the user selects an episode or a trusted natural end requests the next one.
 
 ## Core playback architecture
 
@@ -86,13 +81,13 @@ Exact Seek was tested and rejected as the normal runtime path because its latenc
 
 ## PiP status
 
-PiP development is **temporarily frozen at Build173**.
+PiP development remains **temporarily frozen at Build173** even though the overall accepted functional baseline is now Build176.
 
-Accepted current behaviour:
+Accepted PiP behaviour:
 
 - native system PiP;
 - SampleBuffer-based PiP visual path;
-- MPV remains playback/audio/timeline authority;
+- MPV remains playback/audio/time authority;
 - PiP Seek completion is owned by the visual commit, not callback entry;
 - Build173 removed repeated periodic bridge rebase/catch-up behaviour;
 - MPV native Seek remains `absolute+keyframes`;
@@ -124,9 +119,9 @@ Do not start a new PiP optimisation build unless there is a materially new archi
 
 ## Current development direction
 
-Build176 episode selection is the active real-device test candidate. Until accepted on device, Build173 remains the real-device accepted functional baseline.
+The episode-selection task is complete. There is no current episode-selection development checkpoint.
 
-New work should proceed module-by-module without casually touching:
+Future feature work should start from the **Build176 / OnePlayer 0.14.9 real-device accepted baseline** unless a later user test establishes a newer baseline. New work should proceed module-by-module without casually touching:
 
 - MPV Seek;
 - PiP;
