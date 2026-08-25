@@ -81,11 +81,17 @@ final class EmbyAPIClient {
     }
 
     func seriesEpisodes(seriesId: String, pageSize: Int = 500) async throws -> [LibraryItem] {
+        guard let userId else { throw EmbyAPIError.missingSession }
         var all: [LibraryItem] = []
         var startIndex = 0
         let safePageSize = max(50, min(500, pageSize))
         while true {
-            let page = try await libraryItems(parentId: seriesId, limit: safePageSize, startIndex: startIndex, sortBy: "ParentIndexNumber,IndexNumber", sortOrder: "Ascending", includeItemTypes: ["Episode"])
+            let query = commonBrowseFields + [
+                URLQueryItem(name: "UserId", value: userId),
+                URLQueryItem(name: "StartIndex", value: String(startIndex)),
+                URLQueryItem(name: "Limit", value: String(safePageSize)),
+            ]
+            let page: EmbyItemPage = try await send(path: "Shows/\(seriesId)/Episodes", method: "GET", query: query)
             guard !page.items.isEmpty else { break }
             all.append(contentsOf: page.items)
             startIndex += page.items.count
