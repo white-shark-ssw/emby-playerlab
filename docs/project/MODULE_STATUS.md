@@ -12,11 +12,11 @@
 | Player gesture UI | Stable baseline | Immediate left/right double-tap Seek, scrub, volume/brightness HUD, etc. |
 | Native navigation | Frozen principle | System owns push/pop and interactive pop. |
 | PiP | **Frozen at Build173** | Functional enough to leave for now; known renderer cold-return tail remains. |
-| Player episode selection / auto-next | **Stable at Build176, inherited by Build178/179** | Build176 established the accepted in-player episode overlay, source-owned session replacement and trusted-natural-end auto-next gate. Build178 leaves those owners unchanged and only replaces the shared upstream episode ordering; Build179 carousel work is CI-verified zero-diff for these player files. |
-| Home carousel interaction | **Active Build179 candidate** | OnePlayer 0.14.12 / Build179 is based on the accepted Build178 runtime baseline. Dedicated standard MPV Release CI passed and IPA was produced; high-frequency carousel transition state is scoped away from the home root and drag start is 4 pt. Real-device comparison against EX is still required before this module can be called stable. |
+| Player episode selection / auto-next | **Stable at Build176, inherited by Build178/179/180** | Build176 established the accepted in-player episode overlay, source-owned session replacement and trusted-natural-end auto-next gate. Build178 leaves those owners unchanged and only replaces the shared upstream episode ordering; carousel candidates remain zero-diff for these player files. |
+| Home carousel interaction | **Active Build180 candidate; Build179 rejected** | Build179 / 0.14.12 passed CI/IPA but failed real-device EX comparison: small drags still had a dead zone and direction reversal could pause then jump. Build180 / 0.14.13 keeps local transition ownership but removes the remaining 4 pt gesture gate, applies axis dominance only on initial acquisition, and removes the first 8% delayed blend. CI/IPA/real-device pending; not stable. |
 | Diagnostics | Required | Playback/App logs remain a first-class debugging surface. |
 | App appearance/theme | Partial | App identity/appearance work exists; broader theme work can be developed separately without touching player core. |
-| Other product modules | Active parallel work | Build178 remains the accepted `main` runtime baseline. `DEV-detail-episode-page-optimization` is a separate Active task with no Build assigned yet; its current checkpoint records no file/state-owner overlap with the Build179 home-carousel task. |
+| Other product modules | Active parallel work | Build178 remains the accepted `main` runtime baseline. `DEV-detail-episode-page-optimization` is a separate Active task; its current checkpoint records no file/state-owner overlap with the home-carousel task, but both tasks must re-check if scopes expand. |
 
 ## Change discipline
 
