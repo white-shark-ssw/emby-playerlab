@@ -21,7 +21,7 @@ struct EmbyMediaDetailView: View {
     @State private var selectedStillIndex: Int?
     @State private var heroUsesLightForeground = true
     @State private var heroSourceSize: CGSize?
-    @State private var heroRawScrollMinY: CGFloat = 0
+    @State private var heroScrollState = EmbyDetailHeroScrollState()
     @State private var mediaInfoExpanded = false
     @State private var showRawMediaPath = false
 
@@ -39,7 +39,9 @@ struct EmbyMediaDetailView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                            hero(width: geometry.size.width, viewportHeight: viewportHeight)
+                            EmbyDetailHeroScrollScope(state: heroScrollState) { rawScrollMinY in
+                                hero(width: geometry.size.width, viewportHeight: viewportHeight, rawScrollMinY: rawScrollMinY)
+                            }
                             VStack(alignment: .leading, spacing: 24) {
                                 overview
                                 if model.isSeries { seriesContent }
@@ -57,7 +59,7 @@ struct EmbyMediaDetailView: View {
                     .frame(width: geometry.size.width)
                     .background(
                         AdaptiveHeroNativeScrollObserver { value in
-                            if abs(heroRawScrollMinY - value) > 0.10 { heroRawScrollMinY = value }
+                            heroScrollState.update(value)
                         }
                     )
                 }
@@ -96,15 +98,15 @@ struct EmbyMediaDetailView: View {
         .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
     }
 
-    private func hero(width: CGFloat, viewportHeight: CGFloat) -> some View {
+    private func hero(width: CGFloat, viewportHeight: CGFloat, rawScrollMinY: CGFloat) -> some View {
         let backdropBaseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width)
         let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight)
         let contentWidth = max(0, width - 40)
         let backdropViewportHeight = AdaptiveHeroRevealMetrics.detailBackdropViewportHeight(width: width)
         let backdropViewport = CGSize(width: width, height: backdropViewportHeight)
         let cropTravel = AdaptiveHeroRevealMetrics.cropTravel(imageSize: heroSourceSize, viewportSize: backdropViewport)
-        let stretch = max(0, heroRawScrollMinY)
-        let upwardScroll = max(0, -heroRawScrollMinY)
+        let stretch = max(0, rawScrollMinY)
+        let upwardScroll = max(0, -rawScrollMinY)
         let consumedCropScroll = AdaptiveHeroRevealMetrics.consumedCropScroll(upwardScroll: upwardScroll, cropTravel: cropTravel, responseFactor: AdaptiveHeroRevealMetrics.detailCropResponseFactor)
         let backdropPinOffset = AdaptiveHeroRevealMetrics.backdropPinOffset(upwardScroll: upwardScroll, cropTravel: cropTravel, responseFactor: AdaptiveHeroRevealMetrics.detailCropResponseFactor)
         let backdropVisualHeight = backdropBaseHeight + stretch
@@ -997,7 +999,6 @@ private final class EmbyDetailFilterResultsViewModel: ObservableObject {
         guard hasLoaded, hasMore, !isFetching else { return }
         await fetchNextPage()
     }
-
     private func fetchNextPage() async {
         guard !isFetching, hasMore else { return }
         isFetching = true
@@ -1083,6 +1084,15 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         self.desiredPlayed = item.isPlayed
         self.syncedFavorite = item.isFavorite
         self.syncedPlayed = item.isPlayed
+
+        if let warm = EmbyMediaDetailWarmCache.shared.snapshot(client: client, itemID: item.id) {
+            episodes = warm.episodes
+            seasons = warm.seasons
+            imageInfos = warm.imageInfos
+            similarItems = warm.similarItems
+            applyInitialEpisodeSelection()
+            DiagnosticsLogger.shared.log("EmbyDetailWarmCache", "hit item=\(item.id) episodes=\(episodes.count) seasons=\(seasons.count) images=\(imageInfos.count) similar=\(similarItems.count)")
+        }
     }
 
     var isSeries: Bool { item.type?.caseInsensitiveCompare("Series") == .orderedSame }
@@ -1276,6 +1286,29 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         return String(number)
     }
 
+    private func applyInitialEpisodeSelection() {
+        guard isSeries, !episodes.isEmpty else { return }
+        if let initialEpisodeID, let requestedEpisode = episodes.first(where: { $0.id == initialEpisodeID }), let season = seasonNumber(for: requestedEpisode) {
+            selectedSeason = season
+            selectedEpisodeID = requestedEpisode.id
+            if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == requestedEpisode.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
+            episodeScrollTargetID = requestedEpisode.id
+        } else if let playable = primaryPlayableItem, let season = seasonNumber(for: playable) {
+            selectedEpisodeID = nil
+            selectedSeason = season
+            if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == playable.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
+        } else {
+            selectedEpisodeID = nil
+            selectedSeason = seasonNumbers.first
+            selectedEpisodeRangeOffset = 0
+        }
+    }
+
+    private func storeWarmPresentation() {
+        let snapshot = EmbyMediaDetailWarmSnapshot(episodes: episodes, seasons: seasons, imageInfos: imageInfos, similarItems: similarItems)
+        EmbyMediaDetailWarmCache.shared.store(snapshot, client: client, itemID: item.id)
+    }
+
     func load() async {
         guard !hasLoaded else { return }
         errorMessage = nil
@@ -1292,18 +1325,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                 do { seasons = try await client.seriesSeasons(seriesId: refreshed.id) }
                 catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "seasons failed: \(error.localizedDescription)") } }
                 isLoadingEpisodes = false
-
-                if let initialEpisodeID, let requestedEpisode = episodes.first(where: { $0.id == initialEpisodeID }), let season = seasonNumber(for: requestedEpisode) {
-                    selectedSeason = season
-                    selectedEpisodeID = requestedEpisode.id
-                    if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == requestedEpisode.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
-                    episodeScrollTargetID = requestedEpisode.id
-                } else if let playable = primaryPlayableItem, let season = seasonNumber(for: playable) {
-                    selectedSeason = season
-                    if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == playable.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
-                } else if selectedSeason == nil {
-                    selectedSeason = seasonNumbers.first
-                }
+                applyInitialEpisodeSelection()
                 logEpisodeDiagnostics(seriesID: refreshed.id)
             }
 
@@ -1315,6 +1337,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
             let similarTypes = refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame ? ["Series"] : ["Movie", "Video"]
             do { similarItems = try await client.similarItems(itemId: refreshed.id, includeItemTypes: similarTypes) }
             catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "similar items failed: \(error.localizedDescription)") } }
+            storeWarmPresentation()
             hasLoaded = true
         } catch {
             if isEmbyRequestCancellation(error) { return }
@@ -1484,6 +1507,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                 hasPlaybackPositionOverride = false
                 playbackPositionOverrideTicks = nil
             }
+            storeWarmPresentation()
             DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refreshed item=\(itemID) positionTicks=\(refreshed.userData?.playbackPositionTicks ?? 0) selectedResumeTarget=\(selectedEpisodeID ?? item.id) override=\(hasPlaybackPositionOverride)")
         } catch {
             if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refresh failed item=\(itemID): \(error.localizedDescription)") }
