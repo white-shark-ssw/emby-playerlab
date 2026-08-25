@@ -14,6 +14,8 @@
 - **PR**：none
 - **Current Build / version candidate**：**OnePlayer 0.14.21 / Build188**。
 - **Target artifact**：`OnePlayer-0.14.21-build188-detail-episode-selection-navigation`
+- **Build188 CI source**：`f5ec3668bb43461015ea7838daf9f61af3143568`
+- **Workflow-restored branch head**：`991b62c9de4e5e75a825416aa5699162a3994ec1`
 
 ## Source evidence before implementation
 
@@ -41,7 +43,7 @@
 - picker row 现在先 `model.selectEpisode(episode)`，再直接走现有 `model.play(episode)`。
 - `model.selectedSource` 仍是唯一 playback-source presentation state owner。
 - 可见的 `EmbyEpisodePickerView` 直接挂载现有 `fullScreenCover(item: $model.selectedSource)`；底层 detail 的 player cover 通过 `detailPlaybackSourceBinding` 在 `showAllEpisodes == true` 时对 getter 返回 nil，避免两个 route 同时竞争展示同一 source。
-- 没有新增手工 scroll offset、timer、retry、watchdog 或 fallback。picker 导航 entry/ScrollView 不再主动销毁，因此关闭 player 后应自然露出同一 picker 及原位置；是否真机完全保持位置仍需候选验证。
+- 没有新增手工 scroll offset、timer、retry、watchdog 或 fallback。picker 导航 entry/ScrollView 不再主动销毁，因此关闭 player 后应自然露出同一 picker 及原位置；是否真机完全保持位置仍需 Build188 验证。
 
 ## Retired detail Build187 identity
 
@@ -49,6 +51,20 @@
 - 在同步 `BUILD_TEST_INDEX.md` 时确认并行 `DEV-home-carousel-drag-smoothness` 已先正式占用 **0.14.20 / Build187** 作为其可导出日志的 carousel diagnostic identity。
 - 因此详情 Build187 **仅保留“代码可编译 / IPA 可生产”的历史证据，身份作废、未分发、不得用于真机或日志归因**。其临时 workflow 已删除。
 - 详情任务顺延到唯一的 **0.14.21 / Build188**；相对上述成功详情 Build187，功能源码不变，只调整 `AppIdentity.swift` 与 changelog/candidate identity。
+
+## Build188 CI / IPA evidence
+
+- Dedicated Release run：**`32864835934` — success**。
+- CI source：`f5ec3668bb43461015ea7838daf9f61af3143568`。
+- Workflow-restored branch head：`991b62c9de4e5e75a825416aa5699162a3994ec1`。
+- Artifact：`OnePlayer-0.14.21-build188-detail-episode-selection-navigation`。
+- Artifact ID：`9569812832`。
+- Artifact digest：`sha256:dd6baba9ee01fe5e0abe79bf5abeaf5306931042a392a341119a409faf84a53d`。
+- IPA：`OnePlayer-0.14.21-build188-detail-episode-selection-navigation-unsigned.ipa`。
+- IPA SHA-256：`c82fcca99162f4840d8b0fccdb7c2f6203426d12901ef5d6ac4f4879db78b9ff`；下载 artifact 后二次校验与 artifact 内 `.sha256` 一致。
+- Source ZIP SHA-256：`bed6e5da780398a0d823b89ed0805229a22d6b73afc529ea4cdb01604348bf25`。
+- CI passed：selection/navigation contract、detail range jump、Resume button、Build184 visual hierarchy、Hero、Build182 detail performance、Build178 canonical episode ordering、SeasonId grouping、Xcode 16.4 Release device build、0.14.21 (188) app identity、iOS 15.0 MinOS、IPA packaging/upload。
+- 临时 Build188 workflow 已在 CI 成功后从 feature branch 删除。
 
 ## Validation so far
 
@@ -64,7 +80,7 @@
 
 ## Parallel / frozen boundaries
 
-- `DEV-home-carousel-drag-smoothness` 已占用 **0.14.20 / Build187**；本任务当前占用 **0.14.21 / Build188**。
+- `DEV-home-carousel-drag-smoothness` 已占用 **0.14.20 / Build187**；本任务占用 **0.14.21 / Build188**。
 - `DEV-add-emby-page-optimization` 当前未分配 Build，且仅计划 AddServer UI，与本任务文件/state owner 无重叠。
 - Build182 detail Hero scroll isolation / persistent presentation cache 已 Frozen，本任务不修改 `EmbyDetailPerformanceState.swift`。
 - Build176 player episode-session replacement、Build178 Emby canonical episode ordering、Build173 PiP、MPV fast Seek、UnifiedTransport、Range/302/115 client-direct、Session cache、Emby Resume/progress 均保持不变。
@@ -74,13 +90,13 @@
 - **Code written：YES**
 - **Source/static validation：YES**
 - **Retired detail Build187 Release CI / IPA：PASSED / PRODUCED, identity collided, NOT DISTRIBUTED**
-- **Build188 Release CI：pending**
-- **Build188 IPA：pending**
+- **Build188 Release CI：PASSED**
+- **Build188 IPA：PRODUCED**
 - **Real-device：pending**
 - **Stable / frozen：NO**
 
 ## Next exact action
 
-1. 以功能源码不变的 **0.14.21 / Build188** 重新跑同一套 dedicated Xcode 16.4 Release CI、identity、MinOS 15.0 与 IPA packaging。
-2. CI/IPA 成功后删除临时 helper，同轮更新本 checkpoint 与 `BUILD_TEST_INDEX.md`/必要的 `PROJECT_STATE.md`；accepted overall baseline 仍保持 Build184。
-3. 用户真机重点验证：详情横向卡只蓝框选择；主按钮才播放；小号标题位置/字号；完整选集深位置播放后关闭 player 是否原位返回；收藏 Episode → Series detail 自动蓝框定位；Resume/已看刷新。
+1. 用户真机安装 Build188，重点验证：详情横向卡只蓝框选择；主按钮才播放；小号标题位置/字号；完整选集深位置播放后关闭 player 是否原位返回；收藏 Episode → Series detail 自动蓝框定位；Resume/已看刷新。
+2. 若真机确认通过，再升级 evidence 为 real-device accepted，并进入 PR/merge 收尾；若完整选集位置仍丢失，只针对真实重建证据考虑显式 scroll-position state，不能预先增加 offset 缓存。
+3. Accepted overall baseline 在真机验收前仍保持 Build184。
