@@ -23,7 +23,8 @@ This is a milestone index, not a list of every experimental build.
 | Build177 / 0.14.10 | Preliminary home carousel drag smoothness | Dedicated Release CI passed and IPA was produced on the older Build173 isolated baseline, but it was superseded before user distribution after `main` advanced through accepted Build178. It remains preliminary implementation/CI evidence only. |
 | **Build178 / 0.14.11** | Canonical Emby episode ordering for non-standard series | **Current real-device accepted functional baseline and merged to `main`.** Uses `/Shows/{SeriesId}/Episodes` server order instead of forcing generic Items `ParentIndexNumber,IndexNumber`; dedicated standard MPV Release CI passed, IPA produced, user accepted the result on device, and PR #254 merged at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. |
 | **Build179 / 0.14.12** | First accepted-baseline home carousel smoothness candidate | Dedicated standard MPV Release CI passed and IPA produced. High-frequency carousel transition state was scoped away from the full home root and drag start reduced to 4 pt. **Real-device test failed:** small movements still had a dead zone and left↔right reversal could pause then jump a large distance. Rejected, not stable. |
-| **Build180 / 0.14.13** | Continuous home carousel drag through zero/reversal | **Current code candidate.** Keeps Build179 local state ownership but removes the remaining 4 pt/8% progress dead zones: drag receives movement from 0 pt, axis dominance only acquires the initial horizontal drag, established drag continues through center reversal, and artwork blend uses raw progress. CI/IPA/real-device pending. |
+| **Build180 / 0.14.13** | Continuous home carousel drag through zero/reversal | Dedicated standard MPV Release CI passed and IPA produced. Keeps Build179 local state ownership, receives drag movement from 0 pt, applies axis dominance only on initial acquisition, removes the old 4 pt absolute gate and first 8% delayed blend, while Build176/178 accepted contracts remain zero-diff. **Pending real-device EX comparison; not stable yet.** |
+| **Build181** | Detail / episode page optimization candidate | Reserved by separate `DEV-detail-episode-page-optimization`. Independent from home-carousel state owner at reservation time. |
 
 ## Current accepted baseline
 
@@ -42,7 +43,7 @@ This is a milestone index, not a list of every experimental build.
 - target device: iPhone 15 Pro Max / iOS 17.0
 - evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements / merged to main**
 
-Build179 has been rejected by real-device carousel evidence. Build180 is the current carousel code candidate but does not replace Build178 as the accepted baseline unless a later target-device test is accepted.
+Build179 has been rejected by real-device carousel evidence. Build180 is the current carousel test candidate but does not replace Build178 as the accepted baseline until the user completes target-device validation.
 
 ## Episode-selection evidence trail
 
@@ -109,16 +110,25 @@ Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 R
 - real-device evidence: user installed Build179 on iPhone 15 Pro Max / iOS 17.0 and reported a persistent start dead zone plus a visible freeze/large catch-up jump when reversing direction through the center. New `轮播图卡顿.mp4` supports that rejection.
 - evidence level: **Code written / CI passed / IPA produced / real-device tested and rejected / not stable**
 
-## Build180 home-carousel candidate
+## Build180 home-carousel evidence
 
-- task: `DEV-home-carousel-drag-smoothness` — Active
+- task: `DEV-home-carousel-drag-smoothness` — Active, pending real-device acceptance
 - branch: `perf/home-carousel-drag-smoothness-build180`
 - base: Build179 clean product head `839cc0c3506c68e1c04887e438a77575a10fd8a0`
-- current product head: `cdc86d7fd75b30194b5363bf9abb497da2cc5a7b`
-- version/build: OnePlayer 0.14.13 / Build180
-- product delta vs Build179: `EmbyHomeCarouselStateV3.swift` removes 4 pt gesture/progress gates and applies initial-only axis acquisition; AppIdentity/changelog/static carousel check updated. `EmbyHomeCoreV3.swift` is unchanged from Build179's local-owner implementation.
-- CI/IPA/real-device: pending
-- evidence level: **Code written / CI pending / IPA pending / real-device pending / not stable**
+- product head before temporary helper: `cdc86d7fd75b30194b5363bf9abb497da2cc5a7b`
+- dedicated standard MPV Release CI source: `8d630a200cd1e0d9b06da90bc7d71e0fb4a7b6c5`
+- workflow-restored branch head: `452ba27a661b4427471a975de99bb30e5e59a469`
+- CI run: `32845376285` — success
+- artifact: `OnePlayer-0.14.13-build180-home-carousel-continuous-drag`
+- artifact ID: `9562183159`
+- artifact archive digest: `sha256:416615755d1c171860b92529489e4137f5f7a43321698bd151e213a3cd7d0e0c`
+- IPA: `OnePlayer-0.14.13-build180-home-carousel-continuous-drag-unsigned.ipa`
+- IPA SHA-256: `9da61f301e610fd2dd8a20aafba22dd55fb415e609ac8b2fe8923407d73d40cc`
+- source zip SHA-256: `0742f8d9aac518929bdf1e22e11c65e6338ed6ebbdf069a26600a3b72815a7e8`
+- MinOS: app and main runtime Mach-O validated at iOS 15.0; compatibility audit OK
+- CI evidence: zero-point drag, initial-only axis acquisition, old 4 pt gate removal, raw manual artwork progress, Build179 local-owner isolation, home/scroll/series-ordering checks, Build180 delta restriction and Build176/178/P0 zero-diff all passed; Xcode 16.4 Release build passed; app identity validated as 0.14.13 (180); IPA packaged and uploaded.
+- post-CI main movement: `main` only updated `DEV-detail-episode-page-optimization.md` to reserve Build181; no runtime source changed, so Build180 test evidence remains applicable.
+- evidence level: **Code written / CI passed / IPA produced / real-device not yet tested / not stable**
 
 ## Main integration evidence
 
@@ -131,7 +141,7 @@ Build178 was developed from the accepted Build176 `main` runtime baseline. Befor
 - `docs/changelog/CHANGELOG_v0_14_11_build178.md`
 - `scripts/check_series_episode_ordering.py`
 
-After user real-device acceptance, PR #254 was merged to `main` at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. Build178 is therefore the current accepted functional baseline. Build179 is explicitly rejected for carousel interaction, and Build180 remains an unvalidated feature candidate.
+After user real-device acceptance, PR #254 was merged to `main` at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. Build178 is therefore the current accepted functional baseline. Build179 is explicitly rejected for carousel interaction, and Build180 remains an unvalidated test candidate despite successful CI/IPA.
 
 ## Maintenance rule
 
