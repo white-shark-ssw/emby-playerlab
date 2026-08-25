@@ -6,97 +6,118 @@
 
 - **Work ID**：`DEV-detail-episode-selection-navigation`
 - **Routing aliases / keywords**：详情页选集交互 / 完整选集返回位置 / 详情页剧集蓝框 / episode selection navigation / episode picker return
-- **Task**：统一剧集详情页与完整选集页的选集语义：详情页横向剧集卡单击只选择、不立即播放；当前选中集用既有蓝框表达，并在“即将播放”标题/区间行下方、横向剧集卡上方用小号字体显示当前选中集摘要。完整选集页点击某集仍直接播放，但关闭播放器后应返回完整选集页并保持用户原先停留的滚动位置。
-- **Acceptance**：1）详情页横向剧集卡单击只更新选中集，不直接进入播放器；2）详情页主播放/继续播放按钮播放当前选中集；3）收藏页 Episode → Series detail 的 `initialEpisodeID` 蓝框定位行为保持；4）完整选集页点击 Episode 后不主动 pop/dismiss，不使用旧固定 100ms 延迟；播放器关闭后回到同一完整选集页，原 ScrollView 实例/位置不被人为销毁；5）完整选集页播放时详情 model 的选中集同步到刚播放的 Episode；6）不修改 canonical episode order、Player/Transport/Cache/PiP、Build182 detail scroll/presentation-cache owner 或 iOS 15.0 deployment target。
-- **Accepted runtime base**：OnePlayer **0.14.17 / Build184**。任务产品分支创建自 `main@dcd6cc6d01319e13ccb991967a190ae1f915053b`；该 commit 的产品 runtime 仍是已接受/合并 Build184。
+- **Task**：统一剧集详情页与完整选集页的选集语义，并修正真机发现的默认选择/快速跳集状态问题。
+- **Accepted runtime base**：OnePlayer **0.14.17 / Build184**，已合并 `main`；Build182 详情滚动/冷启动展示缓存保持 Frozen。
 - **Working branch**：`feat/detail-episode-selection-navigation`
 - **Branch base**：`dcd6cc6d01319e13ccb991967a190ae1f915053b`
 - **PR**：none
-- **Current Build / version candidate**：**OnePlayer 0.14.21 / Build188**。
-- **Target artifact**：`OnePlayer-0.14.21-build188-detail-episode-selection-navigation`
-- **Build188 CI source**：`f5ec3668bb43461015ea7838daf9f61af3143568`
-- **Workflow-restored branch head**：`991b62c9de4e5e75a825416aa5699162a3994ec1`
+- **Current candidate reservation**：**OnePlayer 0.14.23 / Build190**。
+- **Target artifact**：`OnePlayer-0.14.23-build190-detail-selection-defaults`。
 
-## Source evidence before implementation
+## Agreed interaction contract
 
-- `Sources/UI/EmbyMediaDetailView.swift`
-  - `episodePreviewCard(_:)` 原真实 action 为 `model.selectEpisode(episode); Task { await model.play(episode) }`，因此蓝框选择与播放被绑定在一次点击中。
-  - `primaryPlayableItem` 已优先返回 `selectedEpisodeID` 对应 Episode，因此卡片改为“只选择”后，现有主播放按钮天然播放该选中集，无需新增第二套播放选择状态。
-  - 收藏页 Episode 进入 Series detail 的现有路径通过 `initialEpisodeID` 进入同一个 `EmbyMediaDetailViewModel`，`applyInitialEpisodeSelection()` 已负责季/区间/蓝框/横向 scroll target。
-- `Sources/UI/EmbyEpisodePickerView.swift`
-  - `episodeRow(_:)` 原先先 `presentationMode.wrappedValue.dismiss()`，随后固定 sleep 100ms 再 `model.play(episode)`；该主动 dismiss 直接解释了播放器关闭后只能回详情页。
-  - 完整选集页由同一个 detail model 驱动，没必要创建第二个 source/playback owner。
+1. 详情页横向剧集卡单击只选择、不立即播放；蓝框表示当前选中集。
+2. 详情页现有主 Play / Resume 按钮播放 `selectedEpisodeID` 对应集，不新增第二播放 owner。
+3. “即将播放”区间行下方、横向卡片上方显示固定高度的 12 pt 当前选中集摘要：有真实标题时 `第 N 集 · 标题`，否则 `第 N 集`。
+4. 收藏 Episode → Series detail 的既有 `initialEpisodeID` 自动季/区间/蓝框定位保持。
+5. 完整选集页点击某集仍直接播放，但不得先 dismiss picker，也不得使用旧固定 100 ms 延迟；关闭 player 后应回到同一个 picker 实例并自然保持 ScrollView 位置。没有真机重建证据前不增加手工 offset 缓存。
+6. 不修改 canonical episode order、Player/Transport/Cache/PiP、Build182 detail performance/cache owner 或 iOS 15.0 Deployment Target。
 
-## Implemented candidate
+## Build188 implementation / CI evidence
 
-### Detail horizontal cards
+Build188 / OnePlayer 0.14.21 已实现基础交互：
 
-- `episodePreviewCard(_:)` 现在只调用 `model.selectEpisode(episode)`；不直接 `play`。
-- 既有蓝色 outline 继续由 `model.selectedEpisodeID` 驱动，语义固定为“当前选中集”。
-- `selectEpisode(_:)` 同时把 `selectedEpisodeRangeOffset` 对齐到该集所在的 10 集区间；使用现有 canonical selected-season array，不增加排序 owner。
-- “即将播放”header/range 行下方、横向卡片上方增加固定 16pt 高度的选中集摘要；正文 12pt medium。真实标题存在时显示 `第 N 集 · 标题`，无标题/通用集名时显示 `第 N 集`。未显式选择时保留透明固定高度，避免容器上下跳动。
-- 详情页现有主 Play / Resume 按钮及 `primaryPlayableItem` owner 不变，因此选中后由主按钮播放该集。
+- `episodePreviewCard(_:)` 只调用 `model.selectEpisode(episode)`，不直接 `play`。
+- 既有蓝色 outline 由 `selectedEpisodeID` 驱动。
+- 选中集摘要位于“即将播放”header/range 行下方、横向卡片上方，12 pt medium，固定 16 pt 高度。
+- `selectEpisode(_:)` 同步对应 10 集 range offset。
+- picker row 删除 `presentationMode.dismiss()` 和固定 100 ms sleep，先 `selectEpisode` 再直接走现有 `model.play(episode)`。
+- picker 可见时由 picker 自己通过共享 `model.selectedSource` 展示 fullscreen player；底层 detail 的 `detailPlaybackSourceBinding` 在 `showAllEpisodes == true` 时不竞争同一 source。
+- 没有新增第二个 playback source owner、scroll offset owner、timer、retry、watchdog 或 fallback。
 
-### Full episode picker return path
+Build188 CI / IPA：
 
-- 删除 `@Environment(\.presentationMode)`、主动 `dismiss()` 和固定 100ms `Task.sleep`。
-- picker row 现在先 `model.selectEpisode(episode)`，再直接走现有 `model.play(episode)`。
-- `model.selectedSource` 仍是唯一 playback-source presentation state owner。
-- 可见的 `EmbyEpisodePickerView` 直接挂载现有 `fullScreenCover(item: $model.selectedSource)`；底层 detail 的 player cover 通过 `detailPlaybackSourceBinding` 在 `showAllEpisodes == true` 时对 getter 返回 nil，避免两个 route 同时竞争展示同一 source。
-- 没有新增手工 scroll offset、timer、retry、watchdog 或 fallback。picker 导航 entry/ScrollView 不再主动销毁，因此关闭 player 后应自然露出同一 picker 及原位置；是否真机完全保持位置仍需 Build188 验证。
-
-## Retired detail Build187 identity
-
-- 同一功能源码曾以 **0.14.20 / Build187** 跑过 dedicated Release CI，run `32861023477` 成功，artifact ID `9568302131`，详情 IPA SHA-256 `c99513ec6a57a2a2cde0854520ff1259d46dff0313e536379e0e89dbc1609d01`。
-- 在同步 `BUILD_TEST_INDEX.md` 时确认并行 `DEV-home-carousel-drag-smoothness` 已先正式占用 **0.14.20 / Build187** 作为其可导出日志的 carousel diagnostic identity。
-- 因此详情 Build187 **仅保留“代码可编译 / IPA 可生产”的历史证据，身份作废、未分发、不得用于真机或日志归因**。其临时 workflow 已删除。
-- 详情任务顺延到唯一的 **0.14.21 / Build188**；相对上述成功详情 Build187，功能源码不变，只调整 `AppIdentity.swift` 与 changelog/candidate identity。
-
-## Build188 CI / IPA evidence
-
-- Dedicated Release run：**`32864835934` — success**。
+- Dedicated run：`32864835934` — success。
 - CI source：`f5ec3668bb43461015ea7838daf9f61af3143568`。
-- Workflow-restored branch head：`991b62c9de4e5e75a825416aa5699162a3994ec1`。
-- Artifact：`OnePlayer-0.14.21-build188-detail-episode-selection-navigation`。
-- Artifact ID：`9569812832`。
-- Artifact digest：`sha256:dd6baba9ee01fe5e0abe79bf5abeaf5306931042a392a341119a409faf84a53d`。
-- IPA：`OnePlayer-0.14.21-build188-detail-episode-selection-navigation-unsigned.ipa`。
-- IPA SHA-256：`c82fcca99162f4840d8b0fccdb7c2f6203426d12901ef5d6ac4f4879db78b9ff`；下载 artifact 后二次校验与 artifact 内 `.sha256` 一致。
-- Source ZIP SHA-256：`bed6e5da780398a0d823b89ed0805229a22d6b73afc529ea4cdb01604348bf25`。
-- CI passed：selection/navigation contract、detail range jump、Resume button、Build184 visual hierarchy、Hero、Build182 detail performance、Build178 canonical episode ordering、SeasonId grouping、Xcode 16.4 Release device build、0.14.21 (188) app identity、iOS 15.0 MinOS、IPA packaging/upload。
-- 临时 Build188 workflow 已在 CI 成功后从 feature branch 删除。
+- Restored branch head：`991b62c9de4e5e75a825416aa5699162a3994ec1`。
+- Artifact：`OnePlayer-0.14.21-build188-detail-episode-selection-navigation`，ID `9569812832`。
+- IPA SHA-256：`c82fcca99162f4840d8b0fccdb7c2f6203426d12901ef5d6ac4f4879db78b9ff`。
+- Xcode 16.4 Release、0.14.21 (188) identity、iOS 15.0 MinOS、selection/navigation、range jump、Resume、Build184 visual、Hero、Build182 detail performance、Build178 episode ordering、SeasonId grouping 均通过。
 
-## Validation so far
+## Build188 real-device result — FOLLOW-UP REQUIRED
 
-- Product diff vs branch base仅涉及：
-  - `Sources/UI/EmbyMediaDetailView.swift`
-  - `Sources/UI/EmbyEpisodePickerView.swift`
-  - `Sources/Core/AppIdentity.swift`（仅候选 version identity）
-  - 新静态 contract / changelog。
-- Detail source blob：`e1f0f1e65a7fbe23e73d3a415c66aad5fbe41555`；Picker source blob：`c450c7581f87206edcc3e49b1aa4caede789c21c`。
-- Narrow checks passed：`check_detail_episode_selection_navigation.py`、`check_detail_episode_range_jump.py`、`check_detail_resume_button.py`、`check_detail_visual_hierarchy.py`、`check_adaptive_hero_reveal.py`、`check_detail_page_performance.py`、`check_series_episode_ordering.py`、`check_season_id_episode_grouping.py`。
-- 一个旧 `check_user_data_refresh.py` 在 untouched Build184 source 上也会因其 Home 字符串断言失败，属于既有 stale/unrelated check，不作为本任务回归结论。
-- 为克服 GitHub connector 对超大整文件写入的限制，曾在 feature branch 临时加入一次精确 `replace` workflow；run `32860336514` 仅执行 source patch，成功后 helper 已删除。该 run 不是 Release CI。
+用户在目标真机测试后明确给出两条新问题，证据优先级高于 CI：
 
-## Parallel / frozen boundaries
+1. **进入剧集详情页后应默认选中上次播放的集，或者第一集。** Build188 当前进入普通 Series 时虽然 `primaryPlayableItem` 能算出 Resume/默认可播集，但 `applyInitialEpisodeSelection()` 的 fallback 分支主动把 `selectedEpisodeID = nil`，因此页面没有默认蓝框/摘要。
+2. **点击“即将播放”右侧快速跳集按钮会清空选中集，导致下面集名称消失。** Build188 的 `selectEpisodeRange(_:)` 明确执行 `selectedEpisodeID = nil`，直接解释该真机现象。
 
-- `DEV-home-carousel-drag-smoothness` 已占用 **0.14.20 / Build187**；本任务占用 **0.14.21 / Build188**。
-- `DEV-add-emby-page-optimization` 当前未分配 Build，且仅计划 AddServer UI，与本任务文件/state owner 无重叠。
-- Build182 detail Hero scroll isolation / persistent presentation cache 已 Frozen，本任务不修改 `EmbyDetailPerformanceState.swift`。
-- Build176 player episode-session replacement、Build178 Emby canonical episode ordering、Build173 PiP、MPV fast Seek、UnifiedTransport、Range/302/115 client-direct、Session cache、Emby Resume/progress 均保持不变。
+因此 Build188 = **Code written / CI passed / IPA produced / real-device tested / follow-up required / NOT accepted / NOT stable**。用户本次反馈没有证明完整 picker 返回位置等其他 acceptance 已全部通过，不能擅自宣称其余项已验收。
+
+## Source evidence for follow-up
+
+- `LibraryItem` / `EmbyUserItemData` 当前有 `playbackPositionTicks` / `playbackProgress` / played 状态，但没有可用于可靠排序“最近一次已完成播放”的 `LastPlayedDate` 字段。
+- 因此“上次播放的集”当前只能安全落在现有 Emby Resume 语义：`playbackProgress > 0.001 && !isPlayed` 的可续播 Episode；没有 Resume Episode 时按用户要求选择 canonical `episodes.first`，不能猜测最近完整播放集。
+- `applyInitialEpisodeSelection()` 同时用于 warm snapshot 初始化和 live episodes/seasons 刷新后，因此修正后仍由同一个 owner 决定 visible selection；live refresh 会继续覆盖 warm presentation 数据。
+
+## Build190 implemented follow-up
+
+功能源码已在 feature branch 完成以下最小修正：
+
+### Default detail selection
+
+`applyInitialEpisodeSelection()` 当前优先级固定为：
+
+1. 有效显式 `initialEpisodeID`；
+2. `episodes.first(where: { $0.playbackProgress > 0.001 && !$0.isPlayed })`；
+3. canonical `episodes.first`。
+
+选中 target 后统一设置：
+
+- `selectedSeason = seasonNumber(for: target)`；
+- `selectedEpisodeID = target.id`；
+- `selectedEpisodeRangeOffset` 对齐 target 所在 10 集区间；
+- `episodeScrollTargetID = target.id`，使默认蓝框集进入横向可视区域。
+
+没有新增 last-played 推测、排序 fallback 或第二套状态。
+
+### Quick range selection
+
+`selectEpisodeRange(_:)` 不再清空 selection；现在把 range offset 规范化后，直接 `selectedEpisodeID = episode(at: normalized)?.id`。因此快速跳到 `11-20` 等区间时会直接选中该区间第一集，蓝框、12 pt 摘要和主 Play/Resume target 保持一致。
+
+### Contracts
+
+- `check_detail_episode_selection_navigation.py` 已增加 default resume→first 与 range-first selection 断言。
+- 旧 `check_season_id_episode_grouping.py` 曾硬编码原实现字符串 `if let playable = primaryPlayableItem, let season = seasonNumber(for: playable)`；Build190 改成统一 target 后，该脚本已更新为验证真实 `seasonNumber(for:)` / SeasonId grouping 以及 `selectedSeason = seasonNumber(for: target)`，没有放松 SeasonId 语义。
+- 窄检查已通过：selection/navigation、range jump、Resume；正式 Build190 CI 仍需跑完整继承合同。
+
+## Build identity collision history
+
+- 首页轮播当前 `BUILD_TEST_INDEX.md` 已明确占用 **Build189 / OnePlayer 0.14.22** 作为 `Carousel native raw/coalesced-touch input` 候选，并已有 CI/IPA 证据。
+- 本详情 follow-up 曾短暂以 0.14.22 / Build189 启动 Release CI；发现权威索引冲突后立即退休该详情身份，不分发、不用于真机/日志归因。
+- **详情 follow-up 当前唯一身份改为 OnePlayer 0.14.23 / Build190。** `DEV-add-emby-page-optimization` 截至本 reservation 尚未分配 Build，repository/main 未发现 Build190 占用。
+
+## Frozen / parallel boundaries
+
+- Build182 detail Hero scroll isolation / persistent presentation cache保持 Frozen；不修改 `EmbyDetailPerformanceState.swift`。
+- Build176 player episode-session replacement、Build178 canonical Emby episode ordering、Build173 PiP、MPV fast Seek、UnifiedTransport、Range/302/115 client-direct、Session cache、Emby Resume/progress 不变。
+- 首页轮播 Active task owns Home carousel state/files；本任务不触碰 Home owner。
+- Add Emby Active task当前范围为 AddServer / Session / startup routing，多数与本任务详情/选集文件不重叠；最终 merge 前再次检查 main 前进和共享 `AppIdentity`。
 
 ## Evidence level
 
-- **Code written：YES**
-- **Source/static validation：YES**
-- **Retired detail Build187 Release CI / IPA：PASSED / PRODUCED, identity collided, NOT DISTRIBUTED**
-- **Build188 Release CI：PASSED**
-- **Build188 IPA：PRODUCED**
-- **Real-device：pending**
-- **Stable / frozen：NO**
+- Build188：**Code written / CI passed / IPA produced / real-device tested / follow-up required / not stable**。
+- Build190 product follow-up：**Code written / narrow static checks passed**。
+- Build190 Release CI：pending。
+- Build190 IPA：pending。
+- Build190 real-device：pending。
+- Accepted overall baseline：仍为 **Build184 / 0.14.17**。
 
 ## Next exact action
 
-1. 用户真机安装 Build188，重点验证：详情横向卡只蓝框选择；主按钮才播放；小号标题位置/字号；完整选集深位置播放后关闭 player 是否原位返回；收藏 Episode → Series detail 自动蓝框定位；Resume/已看刷新。
-2. 若真机确认通过，再升级 evidence 为 real-device accepted，并进入 PR/merge 收尾；若完整选集位置仍丢失，只针对真实重建证据考虑显式 scroll-position state，不能预先增加 offset 缓存。
-3. Accepted overall baseline 在真机验收前仍保持 Build184。
+1. 跑 Build190 dedicated Xcode 16.4 Release CI：selection/navigation + range + Resume + visual + Hero + detail performance + canonical ordering + SeasonId + Sources scope + 0.14.23 (190) identity + iOS 15.0 MinOS + IPA。
+2. CI/IPA 成功后删除临时 workflow，同轮更新 `BUILD_TEST_INDEX.md` / `PROJECT_STATE.md`，但不提升 accepted baseline。
+3. 真机重点验证：
+   - 有 Resume 的 Series 进入后默认蓝框/摘要指向 Resume Episode；
+   - 无 Resume 的 Series 默认选中 canonical 第一集；
+   - `11-20 / 21-30 ...` 快速跳集后选中该区间第一集，摘要不再消失；
+   - Build188 的“横向卡只选择、主按钮播放”和完整 picker 返回路径没有回退。
