@@ -1,4 +1,4 @@
-name: Build180 Detail Page Performance IPA
+name: Build181 Detail Page Performance IPA
 
 on:
   workflow_dispatch:
@@ -11,14 +11,14 @@ on:
       - "scripts/**"
       - "project.yml"
       - "Podfile"
-      - "docs/changelog/CHANGELOG_v0_14_13_build180.md"
+      - "docs/changelog/CHANGELOG_v0_14_14_build181.md"
       - ".github/workflows/build-mdk-lab.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: build180-detail-page-performance-${{ github.ref }}
+  group: build181-detail-page-performance-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,12 +26,12 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 150
     steps:
-      - name: Checkout Build180 source
+      - name: Checkout Build181 source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Validate Build180 detail performance and inherited contracts
+      - name: Validate Build181 detail performance and inherited contracts
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -43,7 +43,7 @@ jobs:
           state = Path("Sources/UI/EmbyDetailPerformanceState.swift").read_text()
           project = Path("project.yml").read_text()
           checks = {
-              "Build180 source version": 'sourceVersion = "0.14.13"' in app,
+              "Build181 source version": 'sourceVersion = "0.14.14"' in app,
               "iOS 15 deployment": 'iOS: "15.0"' in project and 'deploymentTarget: "15.0"' in project,
               "detail root offset state removed": '@State private var heroRawScrollMinY' not in detail,
               "detail Hero scope installed": '@State private var heroScrollState = EmbyDetailHeroScrollState()' in detail and 'EmbyDetailHeroScrollScope(state: heroScrollState)' in detail,
@@ -110,15 +110,15 @@ jobs:
           set -euo pipefail
           set -o pipefail
           rm -rf build
-          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache MARKETING_VERSION=0.14.13 CURRENT_PROJECT_VERSION=180 IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build180.log
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache MARKETING_VERSION=0.14.14 CURRENT_PROJECT_VERSION=181 IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build181.log
 
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-Build180-errors-${{ github.sha }}
+          name: OnePlayer-Build181-errors-${{ github.sha }}
           path: |
-            build180.log
+            build181.log
             package-resolution.log
           if-no-files-found: warn
           retention-days: 7
@@ -131,14 +131,14 @@ jobs:
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$APP_PATH" && test -d "$APP_PATH"
           echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.14.13" --build "180" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.14.14" --build "181" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
 
       - name: Validate MinOS
         if: success()
         run: |
           set -euo pipefail
           chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" build180-min-os.log build180.log
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" build181-min-os.log build181.log
 
       - name: Package unsigned IPA
         if: success()
@@ -146,28 +146,28 @@ jobs:
           set -euo pipefail
           rm -rf Payload && mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="OnePlayer-0.14.13-build180-detail-page-performance-unsigned.ipa"
+          IPA_NAME="OnePlayer-0.14.14-build181-detail-page-performance-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           /usr/bin/unzip -t "$IPA_NAME"
           shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
-          SOURCE_ZIP="OnePlayer-0.14.13-build180-source.zip"
+          SOURCE_ZIP="OnePlayer-0.14.14-build181-source.zip"
           git archive --format=zip --output "$SOURCE_ZIP" HEAD
           shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
 
-      - name: Upload Build180 artifact
+      - name: Upload Build181 artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.14.13-build180-detail-page-performance
+          name: OnePlayer-0.14.14-build181-detail-page-performance
           path: |
             ${{ env.IPA_NAME }}
             ${{ env.IPA_NAME }}.sha256
             ${{ env.SOURCE_ZIP }}
             ${{ env.SOURCE_ZIP }}.sha256
-            build180.log
-            build180-min-os.log
+            build181.log
+            build181-min-os.log
             package-resolution.log
           if-no-files-found: error
           retention-days: 30
