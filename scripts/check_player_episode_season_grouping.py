@@ -11,6 +11,7 @@ checks = {
     "parent index remains fallback": "return episode.parentIndexNumber == number" in source,
     "picker uses membership helper": "return coordinator.episodes.filter { episodeBelongsToSeason($0, season: season) }" in source,
     "old parent-only picker filter removed": "return coordinator.episodes.filter { $0.parentIndexNumber == season }" not in source,
+    "episode row is lazy": "LazyHStack(alignment: .top, spacing: 13)" in source,
     "auto next still uses canonical episodes": "return await playbackSource(for: episodes[nextIndex], reason: \"trusted-natural-end\")" in source,
 }
 
