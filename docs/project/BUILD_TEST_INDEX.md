@@ -22,11 +22,13 @@ This is a milestone index, not a list of every experimental build.
 | **Build176 / 0.14.9** | Episode overlay visual-layer follow-up and task completion | Previous accepted functional baseline. Dedicated standard MPV Release CI passed, IPA produced, user accepted the result, and final merge PR #253 landed at `d10e0d63b429f72a664193a1a5bacf728cac50b6`. Its player episode-selection/session contract remains stable and is inherited by Build178 and later candidates. |
 | Build177 / 0.14.10 | Preliminary home carousel drag smoothness | Dedicated Release CI passed and IPA was produced on the older Build173 isolated baseline, but it was superseded before user distribution after `main` advanced through accepted Build178. It remains preliminary implementation/CI evidence only. |
 | **Build178 / 0.14.11** | Canonical Emby episode ordering for non-standard series | **Current real-device accepted functional baseline and merged to `main`.** Uses `/Shows/{SeriesId}/Episodes` server order instead of forcing generic Items `ParentIndexNumber,IndexNumber`; dedicated standard MPV Release CI passed, IPA produced, user accepted the result on device, and PR #254 merged at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. |
-| **Build179 / 0.14.12** | First accepted-baseline home carousel smoothness candidate | Dedicated standard MPV Release CI passed and IPA produced. High-frequency carousel transition state was scoped away from the full home root and drag start reduced to 4 pt. **Real-device test failed:** small movements still had a dead zone and left↔right reversal could pause then jump a large distance. Rejected, not stable. |
-| **Build180 / 0.14.13** | Continuous home carousel drag through zero/reversal | Dedicated standard MPV Release CI passed and IPA produced. Keeps Build179 local state ownership, receives drag movement from 0 pt, applies axis dominance only on initial acquisition, removes the old 4 pt absolute gate and first 8% delayed blend, while Build176/178 accepted contracts remain zero-diff. **Pending real-device EX comparison; not stable yet.** |
-| **Build181 / 0.14.14** | Detail-page warm presentation + Hero scroll isolation | Dedicated Release CI/IPA succeeded. Target-device recording shows the previous stop→catch-up scroll stutter is clearly improved, but a force-quit/relaunch still loses the session-only warm metadata and briefly shows text title/loading before Logo/episodes. **Real-device tested; partial success, cold-start requirement failed; not stable.** |
+| **Build179 / 0.14.12** | First accepted-baseline home carousel smoothness candidate | Dedicated standard MPV Release CI passed and IPA produced. **Real-device rejected:** small movements still had a dead zone and left↔right reversal could pause then jump a large distance. |
+| **Build180 / 0.14.13** | Continuous home carousel drag through zero/reversal | Dedicated Release CI/IPA succeeded. Real-device test confirmed reversal continuity was fixed, but initial motion still felt coarse and overall smoothness remained below EX. **Partial improvement / rejected for acceptance.** |
+| **Build181 / 0.14.14** | Detail-page warm presentation + Hero scroll isolation | Dedicated Release CI/IPA succeeded. Target-device recording showed detail scroll clearly improved, but force-quit/relaunch lost the session-only warm metadata. **Partial success, cold-start requirement failed.** |
 | **Build182 / 0.14.15** | Persistent detail presentation cache | Extends Build181's safe presentation snapshot to `Library/Caches` while retaining live Emby refresh and playback/session boundaries. Dedicated Release CI/IPA succeeded; user accepted detail scrolling plus force-quit/relaunch restoration on target device. **Frozen for these two requirements.** |
+| **Build183 / 0.14.16** | Carousel fixed-foreground crossfade experiment | Dedicated Release CI/IPA succeeded. User said the feel seemed somewhat finer, but Logo/rating/year/type/overview were pinned instead of moving with their carousel page. **Interaction regression; rejected as default direction.** |
 | **Build184 / 0.14.17** | Detail visual hierarchy refinement | Moves “视频信息” below “更多类似” and above the bottom glass media-source card and reduces main detail section headers to 19 pt bold. Dedicated Release CI passed and IPA produced; Build182 scroll/cache and P0 contracts remain unchanged. **Real-device visual validation pending.** |
+| **Build185 / 0.14.18** | Restore carousel page-slide semantics + refine initial axis acquisition | Dedicated Release CI passed and IPA produced. Restores Logo/rating/year/type/overview horizontal page travel, removes the old initial 1.08 horizontal-dominance gate, and locks horizontal/vertical once at first meaningful 0.5pt movement while preserving 0pt drag delivery and continuous reversal. **Real-device EX comparison pending.** |
 
 ## Current accepted baseline
 
@@ -45,7 +47,7 @@ This is a milestone index, not a list of every experimental build.
 - target device: iPhone 15 Pro Max / iOS 17.0
 - evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements / merged to main**
 
-Build179 has been rejected by real-device carousel evidence. Build180 remains the home-carousel test candidate. Build181 is now a useful detail-page diagnostic reference: scroll isolation is clearly improved on device, but its process-only warm cache failed the force-quit/relaunch requirement. Build182 is the current detail-page candidate and does not replace Build178 until target-device validation is accepted.
+Build182 is additionally real-device accepted/frozen for the two detail performance/cache requirements, but the overall canonical runtime baseline remains Build178 until an integrated candidate is explicitly accepted and merged. Current independent Active candidates are Build184 detail visual refinement and Build185 home-carousel interaction.
 
 ## Episode-selection evidence trail
 
@@ -108,28 +110,56 @@ Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 R
 - IPA: `OnePlayer-0.14.12-build179-home-carousel-smoothness-unsigned.ipa`
 - IPA SHA-256: `80f2c70215fe3f1c9323894eedbd22c5f61b29bcfb61e3a6e14115a4b932ddd8`
 - MinOS: app and main runtime Mach-O validated at iOS 15.0; compatibility audit OK
-- CI evidence: carousel state-isolation/4 pt drag contract passed; home-carousel and scroll-performance checks passed; Build178 series-ordering check passed; Build176/178 accepted player/order files and P0 frozen modules were zero-diff from the Build178 integration base; Xcode 16.4 Release build passed; app identity validated as 0.14.12 (179); IPA packaged and uploaded.
-- real-device evidence: user installed Build179 on iPhone 15 Pro Max / iOS 17.0 and reported a persistent start dead zone plus a visible freeze/large catch-up jump when reversing direction through the center. New `轮播图卡顿.mp4` supports that rejection.
+- real-device evidence: persistent start dead zone plus freeze/large catch-up jump when reversing direction through center.
 - evidence level: **Code written / CI passed / IPA produced / real-device tested and rejected / not stable**
 
 ## Build180 home-carousel evidence
 
-- task: `DEV-home-carousel-drag-smoothness` — Active, pending real-device acceptance
 - branch: `perf/home-carousel-drag-smoothness-build180`
-- base: Build179 clean product head `839cc0c3506c68e1c04887e438a77575a10fd8a0`
 - product head before temporary helper: `cdc86d7fd75b30194b5363bf9abb497da2cc5a7b`
 - dedicated standard MPV Release CI source: `8d630a200cd1e0d9b06da90bc7d71e0fb4a7b6c5`
 - workflow-restored branch head: `452ba27a661b4427471a975de99bb30e5e59a469`
 - CI run: `32845376285` — success
 - artifact: `OnePlayer-0.14.13-build180-home-carousel-continuous-drag`
 - artifact ID: `9562183159`
-- artifact archive digest: `sha256:416615755d1c171860b92529489e4137f5f7a43321698bd151e213a3cd7d0e0c`
-- IPA: `OnePlayer-0.14.13-build180-home-carousel-continuous-drag-unsigned.ipa`
 - IPA SHA-256: `9da61f301e610fd2dd8a20aafba22dd55fb415e609ac8b2fe8923407d73d40cc`
-- source zip SHA-256: `0742f8d9aac518929bdf1e22e11c65e6338ed6ebbdf069a26600a3b72815a7e8`
-- MinOS: app and main runtime Mach-O validated at iOS 15.0; compatibility audit OK
-- CI evidence: zero-point drag, initial-only axis acquisition, old 4 pt gate removal, raw manual artwork progress, Build179 local-owner isolation, home/scroll/series-ordering checks, Build180 delta restriction and Build176/178/P0 zero-diff all passed; Xcode 16.4 Release build passed; app identity validated as 0.14.13 (180); IPA packaged and uploaded.
-- evidence level: **Code written / CI passed / IPA produced / real-device not yet tested / not stable**
+- MinOS: app/runtime Mach-O validated at iOS 15.0
+- real-device evidence: reversal continuity fixed; initial visible motion still coarse and overall feel below EX.
+- evidence level: **Code written / CI passed / IPA produced / real-device tested / partial improvement / rejected for acceptance**
+
+## Build183 home-carousel crossfade evidence
+
+- branch: `perf/home-carousel-drag-smoothness-build183`
+- dedicated standard MPV Release CI source: `b7fc842ddfe245a42e68a7d80082e11e63f17938`
+- workflow-restored branch head: `4569dc4b0bb711328a50c5c074d8913329e9812c`
+- CI run: `32849750890` — success
+- artifact: `OnePlayer-0.14.16-build183-home-carousel-crossfade`
+- artifact ID: `9563857302`
+- IPA SHA-256: `ad96332ea3ce0bab9eabd03cfe16e39fe5a3c10513eacb4c072f9f8cd0133e57`
+- implementation: foreground Logo/rating/year/type/overview stopped horizontal travel and crossfaded in place.
+- real-device evidence: user said the feel seemed somewhat finer but immediately identified the changed interaction; the fixed foreground prevented valid comparison with the established slide behavior.
+- result: **diagnostically useful but interaction regression / rejected as default direction**.
+
+## Build185 home-carousel evidence
+
+- task: `DEV-home-carousel-drag-smoothness` — Active, current carousel candidate
+- branch: `perf/home-carousel-drag-smoothness-build185`
+- base product semantics: Build180 clean carousel line `452ba27a661b4427471a975de99bb30e5e59a469`
+- product head before temporary CI helper: `1297d740795dec868368e80119c562e4932abc9e`
+- dedicated standard MPV Release CI source: `79f74d438ed8eade5061d6f9b76df4ebdd66a344`
+- workflow-restored branch head: `7e7918c83fce16ada9863956179dc971f79ebe28`
+- CI run: **`32853247583` — success**
+- artifact: `OnePlayer-0.14.18-build185-home-carousel-axis-acquisition`
+- artifact ID: **`9565234614`**
+- artifact digest: `sha256:9799657b332469f65ec117eb7d28eb524ba22f4f5a8887a4a057ad7775164e8d`
+- IPA: `OnePlayer-0.14.18-build185-home-carousel-axis-acquisition-unsigned.ipa`
+- IPA SHA-256: **`1f7ec2f6d09540b344ad10c36c438c4626bf40be3985d01b0d1b3404818e9b24`**
+- source zip SHA-256: `a67c6ad7515ae363ba8bf05ffaee6ef830f1c706762e4517485ec9d93e7c5925`
+- MinOS: app/runtime Mach-O validated at iOS 15.0
+- implementation: restores Build180 foreground page-slide mapping; `DragGesture(minimumDistance: 0)` remains; old `abs(horizontal) > abs(vertical) * 1.08` initial gate is removed; non-render `dragAxis` locks once at first meaningful 0.5pt vector, horizontal stays carousel-owned through reversal, vertical stays ScrollView-owned for the gesture.
+- CI evidence: page-slide restoration, fixed-foreground regression guard, axis-acquisition contract, home/scroll/series-order checks, Build176/178/P0/Frozen zero-diff, Xcode 16.4 Release build, 0.14.18 (185) identity, MinOS and IPA packaging all passed.
+- identity note: a carousel-internal Build184 run also passed CI but was discarded before distribution because the parallel detail task already owned Build184 / 0.14.17. Build185 is the valid unique carousel identity.
+- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
 ## Build181 detail-page evidence
 
@@ -141,35 +171,26 @@ Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 R
 - CI run: `32845717063` — success
 - artifact: `OnePlayer-0.14.14-build181-detail-page-performance`
 - artifact ID: `9562323675`
-- artifact archive digest: `sha256:91b4f6ef3f746197836da99f064d1b0c8791b8d4f49a19eaa7e0d2898de833ae`
-- IPA: `OnePlayer-0.14.14-build181-detail-page-performance-unsigned.ipa`
 - IPA SHA-256: `698d80d59767134c9479d517cedf24bf6494e73099d2f9125fa3d7a431d5a2f8`
 - MinOS: app/runtime Mach-O validated at iOS 15.0
-- CI evidence: detail Hero high-frequency state isolation, warm metadata cache boundaries, live detail/episode/image refresh paths, existing Hero geometry contract, detail range/media/resume checks, Build178 episode-ordering contract and P0/Frozen zero-diff all passed; Xcode 16.4 Release build passed; app identity validated as 0.14.14 (181); IPA packaged and uploaded.
-- real-device evidence: on iPhone 15 Pro Max / iOS 17.0, new 10.2 s / 30 fps recording shows the old obvious pause→catch-up detail scroll pattern is no longer present; continuous inertial segments remain moving frame-to-frame and decay smoothly enough that no further blur/GPU change is currently justified. A second 5.7 s recording after force quit/relaunch shows text title and episode loading state briefly returning before Logo/episodes, proving the session-only `NSCache` does not satisfy cold-relaunch warm start.
-- discarded identity note: an earlier detail 0.14.13 / Build180 package also passed CI, but was retired without user testing after discovering the parallel home-carousel task had already made Build180 its active identity. It is not a valid test baseline.
-- evidence level: **Code written / CI passed / IPA produced / real-device tested / scroll clearly improved / cold-relaunch warm start failed / not stable**
+- real-device evidence: scroll clearly improved; force-quit/relaunch still showed cold presentation before Build182.
+- evidence level: **Code written / CI passed / IPA produced / real-device tested / partial success / not stable**
 
 ## Build182 persistent detail-cache evidence
 
-- task: `DEV-detail-episode-page-optimization` — Active, current detail test candidate
+- task: `DEV-detail-episode-page-optimization`
 - branch: `feat/detail-episode-page-optimization`
-- accepted runtime base: Build178 at `967b743c88d68b05205eb39f1de75cab41362e8b`
-- Build182 product delta vs Build181: `Sources/UI/EmbyDetailPerformanceState.swift` extends the existing presentation snapshot from process-only `NSCache` to an atomic file under `Library/Caches/OnePlayer/DetailPresentation`; `EmbyMediaDetailView.swift` needs no new call-path change.
-- persistence boundary: reconstructed Emby-compatible JSON contains only `LibraryItem` / `EmbyImageInfo` presentation fields. `PlaybackInfo`, `MediaSource`, `PlaySession`, `ResolvedPlaybackSource` and temporary 115/CDN URLs remain excluded; live Emby detail refresh remains unconditional.
 - dedicated standard MPV Release CI source: `f086fc0609f745d737e07d01dba18593285b20be`
 - workflow-restored branch head: `6352671ba843e692c671c66c663c01a43b7848fb`
 - CI run: `32848214004` — success
 - artifact: `OnePlayer-0.14.15-build182-persistent-detail-cache`
 - artifact ID: `9563302306`
-- artifact archive digest: `sha256:16e9e6b728b9e0bbfc295896f791e96f253d0e1516771eaac140534c0c405d67`
-- IPA: `OnePlayer-0.14.15-build182-persistent-detail-cache-unsigned.ipa`
 - IPA SHA-256: `b9638df6f70f11be5f030ec7136a42125f2bc3a16af220c1d8b6de1b0cb3ce4c`
 - MinOS: app/runtime Mach-O validated at iOS 15.0
-- CI evidence: persistent-cache contract, Build181 Hero state isolation, existing Hero/detail range/media/resume checks, Build178 episode-ordering contract and P0/Frozen zero-diff all passed; Xcode 16.4 Release build passed; app identity validated as 0.14.15 (182); IPA packaged and uploaded. Downloaded artifact IPA/source SHA-256 checks both passed again.
-- evidence level: **Code written / CI passed / IPA produced / real-device not yet tested / not stable**
+- real-device evidence: user accepted both detail scroll smoothness and force-quit/relaunch presentation restoration; these two requirements are frozen.
+- authority boundary: presentation cache does not own PlaybackInfo/MediaSource/PlaySession/ResolvedPlaybackSource/115-CDN temporary URL; server refresh remains final authority.
 
-### Build184 / OnePlayer 0.14.17 — detail visual hierarchy refinement
+## Build184 detail visual evidence
 
 - task: `DEV-detail-episode-page-optimization` — Active, pending visual acceptance
 - branch: `feat/detail-episode-page-optimization`
@@ -183,21 +204,15 @@ Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 R
 - IPA SHA-256: `d89953c76b678fe1bc0b9f3fcc8b5b5b3ea430ec74bdd420834b427c91d47eb4`
 - MinOS: app/runtime Mach-O validated at iOS 15.0
 - product delta: “视频信息” follows “更多类似” and precedes the bottom glass media-source summary; main section headers are 19 pt bold; card body text/Hero/spacing are unchanged.
-- frozen evidence: Build182 detail performance/persistent cache and Build176/178/P0 Frozen contracts passed unchanged.
 - evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
 ## Main integration evidence
 
 Build176 was merged through PR #253 and established the accepted player episode-selection/session contract.
 
-Build178 was developed from the accepted Build176 `main` runtime baseline. Before its dedicated CI, target-branch advancement was checked and only governance/project-control files had moved; no relevant runtime source overlap invalidated the Build178 product test. Dedicated run `32836693548` passed, the temporary CI helper was restored, and the final PR diff contained only:
+Build178 was developed from the accepted Build176 `main` runtime baseline. Dedicated run `32836693548` passed, and after user real-device acceptance PR #254 merged at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. Build178 remains the current accepted overall functional baseline.
 
-- `Sources/Core/AppIdentity.swift`
-- `Sources/Networking/EmbyAPIClient.swift`
-- `docs/changelog/CHANGELOG_v0_14_11_build178.md`
-- `scripts/check_series_episode_ordering.py`
-
-After user real-device acceptance, PR #254 was merged to `main` at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. Build178 is therefore the current accepted functional baseline. Build179 is explicitly rejected for carousel interaction; Build180 remains a separate home-carousel candidate, Build181 is a partial-success detail diagnostic reference, and Build182 is the current unvalidated detail cold-start candidate despite successful CI/IPA.
+Build182 is frozen for the two detail performance/cache requirements but remains on its feature line. Build184 detail visual refinement and Build185 carousel interaction are independent active candidates with unique Build identities and no current runtime file/state-owner overlap.
 
 ## Maintenance rule
 
