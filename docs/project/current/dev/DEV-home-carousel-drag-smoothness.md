@@ -109,3 +109,13 @@
 - **Artifact**：`OnePlayer-0.14.26-build193-home-carousel-native-release`；ID `9574238654`；digest `sha256:b7d0d27f39de3e932ae05a8abdf9bd13f0b5e1efa6f983f3f7cbd974e467b8a6`。IPA SHA-256 **`9ad6bc7bb267a6cc61fb2312a7276d41f8989aa11a7883cbc3f3ce97941081a4`**；source ZIP SHA-256 `68e11e59daeaf4b245bba1949bb5d8c0825552baf7c97d280546880f5c19b860`；MinOS 15.0。
 - **Evidence**：Build189 = **real-device rejected / not stable**；Build193 = **Code written / CI passed / IPA produced / real-device pending / not stable**。
 - **Next exact action**：真机先验证松手必定完整 commit/cancel，再重新比较极小起滑、慢拖、连续反向与 EX 的细腻度。
+
+
+## Build193 real-device result — FAILED release lifecycle
+
+- User supplied `RPReplay_Final1787679194.mp4` from the target device and reported Build193 is still completely broken in the same way as the previous native-touch package: drag progress follows the finger, but lifting the finger can leave the carousel permanently frozen at the partial transition.
+- Recording metadata checked locally: **510×1108 / 30 fps / 231 frames / 7.70 s**. The recording shows repeated intermediate-page holds after the touch indicator disappears rather than a complete/cancel settle.
+- Build193 source confirms movement and release still live in two different input surfaces: `V3HomeCarouselNativeDragCapture` is an interactive `.overlay` around the Hero scope and writes progress from raw/coalesced UIKit touches, while `carouselDragGesture(width:)` is attached inside `immersiveCarouselHero` and contains only SwiftUI `.onEnded`.
+- Apple UIKit gesture documentation states a gesture recognizer observes touches hit-tested to its attached view and that view's subviews. The Build193 native capture is layered above the Hero gesture surface, so assuming the underlying SwiftUI gesture will reliably receive the same release sequence is not evidence-supported.
+- **Decision:** Build193 = Code written / CI passed / IPA produced / **real-device rejected** / not stable. Do not allocate Build194 or patch with fallback/timer/watchdog. First prove a single complete begin/move/end/cancel owner and preserve the established full-page foreground slide semantics.
+- **Next exact action:** inspect/export Build193 `HomeCarouselDragTiming` evidence if available. Because that line is emitted only inside SwiftUI `DragGesture.onEnded`, its presence/absence directly distinguishes whether the SwiftUI release callback ran. Then choose the smallest single-lifecycle input architecture; no runtime code change before that evidence/ownership review is complete.
