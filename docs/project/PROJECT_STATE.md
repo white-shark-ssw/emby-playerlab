@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build179 / OnePlayer 0.14.12 home-carousel CI success and IPA production; Build179 still awaits real-device validation, so Build178 remains the accepted functional baseline._
+_Last updated after Build179 / OnePlayer 0.14.12 failed real-device carousel validation and Build180 / OnePlayer 0.14.13 code was written as the next candidate. Build178 remains the accepted functional baseline._
 
 ## Current functional baseline
 
@@ -24,7 +24,9 @@ The latest **real-device accepted** functional baseline is:
 
 Build178 inherits the accepted Build176 player episode-selection/session contract and adds the accepted canonical Emby TV episode-ordering contract. The user completed target-device validation on 2026-08-25 and explicitly approved this task for acceptance, completion and merge.
 
-Build179 / OnePlayer 0.14.12 is now the current **home-carousel test candidate**, not the accepted baseline. Its dedicated Release CI passed and IPA was produced, but there is no Build179 real-device evidence yet.
+Build179 / OnePlayer 0.14.12 is **not** an accepted carousel baseline. Its dedicated Release CI passed and IPA was produced, but the user installed it on the target device and reported that small drags still had a dead zone and direction reversal still produced a visible pause followed by a large catch-up jump. Build179 is therefore real-device tested / rejected.
+
+Build180 / OnePlayer 0.14.13 is now the current **home-carousel code candidate**. It removes the remaining gesture/progress dead zones identified by the Build179 real-device evidence. CI/IPA evidence is still pending.
 
 ## Accepted episode-selection and ordering contracts
 
@@ -49,35 +51,44 @@ Build178 adds the canonical episode-order contract:
 - OnePlayer preserves Emby's returned episode order instead of forcing generic Items `ParentIndexNumber,IndexNumber` sorting;
 - `SeasonId` remains the season-membership authority but is not a second in-season ordering owner;
 - pagination and ID-preserving deduplication remain;
-- no title, filename, DateCreated, item-ID or artificial-number fallback sorting is introduced;
+- no title, filename, DateCreated, item-ID or artificial episode-number fallback sorting is introduced;
 - detail page, all-episodes view, player picker and trusted auto-next consume the same canonical episode array.
 
 The original failing non-standard series had 165 episodes with `nilIndex=164`; Build178 was accepted on real device after switching the shared data path to Emby's TV ordering authority.
 
 ## Current parallel feature candidates
 
-### Build179 / OnePlayer 0.14.12 — home carousel smoothness
+### Build180 / OnePlayer 0.14.13 — home carousel continuous drag
 
-`DEV-home-carousel-drag-smoothness` has been synchronized from its older Build173/Build177 preliminary line onto the accepted Build178 runtime baseline.
+`DEV-home-carousel-drag-smoothness` remains Active. Build179 proved that localizing high-frequency state was necessary but insufficient: the remaining gesture/progress policy itself created a real-device dead zone.
 
-- integration base: `main@967b743c88d68b05205eb39f1de75cab41362e8b`, which already contains accepted Build176/178 runtime behavior
+- accepted integration base inherited through Build179: Build178 runtime at `main@967b743c88d68b05205eb39f1de75cab41362e8b`
+- Build179 clean product head: `839cc0c3506c68e1c04887e438a77575a10fd8a0`
+- Build180 branch: `perf/home-carousel-drag-smoothness-build180`
+- current Build180 product head: `cdc86d7fd75b30194b5363bf9abb497da2cc5a7b`
+- Build180 identity: OnePlayer 0.14.13 / Build180
+- evidence level: **Code written / CI pending / IPA pending / real-device pending / not stable**
+
+Build180 keeps the Build179 single `V3HomeCarouselTransitionState` owner and localized Hero/backdrop scopes, but changes manual drag to receive movement from 0 pt, applies horizontal-dominance only until the drag is initially acquired, removes the additional `abs(horizontal) > 4` gate, and removes the first 8% delayed/smoothstep blend so small finger movement immediately changes visual progress. Existing commit/cancel thresholds, settle animations and auto-advance timing remain unchanged.
+
+### Build179 / OnePlayer 0.14.12 — rejected carousel candidate
+
 - branch: `perf/home-carousel-drag-smoothness-build179`
 - workflow-restored branch head: `839cc0c3506c68e1c04887e438a77575a10fd8a0`
 - dedicated CI source: `22515402f4d17e1a9b4073c535265b65ba55f52d`
-- CI run: `32841344067` — **success**
+- CI run: `32841344067` — success
 - artifact: `OnePlayer-0.14.12-build179-home-carousel-smoothness`
 - artifact ID: `9560700233`
 - IPA SHA-256: `80f2c70215fe3f1c9323894eedbd22c5f61b29bcfb61e3a6e14115a4b932ddd8`
 - MinOS: app/runtime Mach-O validated at iOS 15.0
-- evidence level: **Code written / CI passed / IPA produced / real-device not yet tested / not stable**
+- real-device result: **rejected on iPhone 15 Pro Max / iOS 17.0** — small drag still did not move immediately; reversing through the center could pause and then jump a large distance
+- evidence level: **Code written / CI passed / IPA produced / real-device tested and rejected / not stable**
 
-The Build179 product diff is limited to the two home-carousel source files, AppIdentity, changelog and two relevant static checks. CI explicitly verifies Build176/178 accepted player/order files and the P0 playback/transport/cache files are unchanged from the Build178 base. Build179 should only replace Build178 as the accepted baseline after the user validates the carousel on the target device.
-
-Build179 CI completed after `main` advanced from `967b743` to `2f3209ad`; compare showed that advancement only added `docs/project/current/dev/DEV-detail-episode-page-optimization.md` and changed no runtime source, so it does not invalidate the Build179 test package.
+The Build179 rejection does not affect Build176/178 accepted player/order contracts because those files were zero-diff from the accepted Build178 base.
 
 ### Detail / episode page optimization
 
-`DEV-detail-episode-page-optimization` is a separate Active task on branch `feat/detail-episode-page-optimization`, created from the same accepted Build178 runtime baseline. No Build has been assigned yet. Its current expected scope is detail/episode UI rather than home-carousel files/state owner, so the two tasks can proceed independently unless future requirements expand into shared infrastructure.
+`DEV-detail-episode-page-optimization` is a separate Active task on branch `feat/detail-episode-page-optimization`, created from the same accepted Build178 runtime baseline. At the time Build180 was allocated, its checkpoint still had no Build assigned. Its current expected scope is detail/episode UI rather than home-carousel files/state owner, so the two tasks can proceed independently unless future requirements expand into shared infrastructure.
 
 ## Core playback architecture
 
@@ -161,7 +172,7 @@ Do not start a new PiP optimisation build unless there is a materially new archi
 
 ## Current development direction
 
-Build178 / OnePlayer 0.14.11 remains the current real-device accepted `main` runtime baseline. Build179 is the current carousel test candidate with CI/IPA evidence only. The separate detail/episode page optimization task is also Active and must re-check shared files/state owners if its scope expands.
+Build178 / OnePlayer 0.14.11 remains the current real-device accepted `main` runtime baseline. Build179 carousel is explicitly rejected by real-device evidence. Build180 / OnePlayer 0.14.13 is the current carousel code candidate and must pass dedicated CI/IPA plus another EX-comparison target-device test before it can be accepted. The separate detail/episode page optimization task remains Active and must re-check shared files/state owners if its scope expands.
 
 New work should proceed module-by-module without casually touching:
 
