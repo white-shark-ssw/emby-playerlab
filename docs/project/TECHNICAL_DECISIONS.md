@@ -107,3 +107,20 @@ Episode metadata may be loaded ahead of selection, but the next episode's 115/CD
 Automatic next episode may only advance when the existing pure `PrematureEOFGuard` classifies the current end as non-premature. A raw engine EOF, buffering/starvation, abnormal short-media recovery or premature EOF is not sufficient. No new timer, retry loop or watchdog is part of auto-next.
 
 Build174 established the implementation direction; Build175 refined the interaction; **Build176 / OnePlayer 0.14.9 was accepted by the user on real device and merged to `main` through PR #253 at commit `d10e0d63b429f72a664193a1a5bacf728cac50b6`.** Treat the source-owned episode-session replacement and trusted-natural-end gate as the stable episode-playback contract unless new real-device evidence requires reopening it.
+
+## D011 — Emby TV API owns canonical episode order
+
+OnePlayer must not invent a second client-side ordering rule for a TV series when Emby already exposes its TV episode ordering authority.
+
+Real-device evidence from the non-standard series `137597` showed 165 Episodes with `nilIndex=164`. The previous generic `/Users/{UserId}/Items` query forced `SortBy=ParentIndexNumber,IndexNumber`; `ParentIndexNumber` still grouped seasons, but the missing `IndexNumber` values left the in-season order different from Emby/EplayerX. The detail and picker UIs were only consuming that returned array and were not independently sorting it.
+
+The Build178 direction is therefore:
+
+- load a series episode list from `GET /Shows/{SeriesId}/Episodes`;
+- preserve Emby's returned order;
+- keep `SeasonId`-first logic for season membership, but do not make it a second in-season ordering owner;
+- retain pagination and ID-preserving deduplication;
+- do not add title, file-name, DateCreated, item-ID, or artificial episode-number fallback sorting;
+- downstream detail/picker/player auto-next paths consume the same canonical array.
+
+Build178 / OnePlayer 0.14.11 has passed dedicated standard MPV Release CI and produced an IPA, but this decision's **runtime acceptance remains pending real-device validation** on both the known abnormal series and a normal indexed series. CI success does not promote Build178 above the accepted Build176 baseline by itself.
