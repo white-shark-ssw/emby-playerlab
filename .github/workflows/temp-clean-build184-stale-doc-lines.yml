@@ -1,0 +1,51 @@
+name: Temp Clean Build184 Stale Doc Lines
+
+on:
+  push:
+    branches: [feat/detail-episode-page-optimization]
+    paths:
+      - ".github/workflows/temp-clean-build184-stale-doc-lines.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p=Path('docs/project/PROJECT_STATE.md'); t=p.read_text()
+          changes={
+            'Build180 / OnePlayer 0.14.13 is the current **home-carousel test candidate**. Dedicated standard MPV Release CI passed and IPA was produced; target-device evidence is pending, so it does not replace Build178.': 'Build180 / OnePlayer 0.14.13 is a **historical partial-improvement carousel build**: real-device testing confirmed reversal continuity improved, but initial motion still felt coarse, so it was not accepted. Build185 / OnePlayer 0.14.18 is the current independent home-carousel candidate pending target-device validation.',
+            'Build182 / OnePlayer 0.14.15 is **real-device accepted and frozen for detail scrolling plus force-quit/relaunch presentation restoration** on iPhone 15 Pro Max / iOS 17.0. It remains a feature-line reference while Build178 stays the overall merged baseline.': 'Build182 / OnePlayer 0.14.15 is **real-device accepted and frozen for detail scrolling plus force-quit/relaunch presentation restoration** on iPhone 15 Pro Max / iOS 17.0. Its architecture is now inherited by the accepted Build184 overall baseline on `main`.',
+          }
+          for old,new in changes.items():
+            if old not in t: raise SystemExit(f'PROJECT_STATE stale marker missing: {old[:70]}')
+            t=t.replace(old,new,1)
+          p.write_text(t)
+
+          p=Path('docs/project/BUILD_TEST_INDEX.md'); t=p.read_text()
+          old='| **Build178 / 0.14.11** | Canonical Emby episode ordering for non-standard series | **Current real-device accepted functional baseline and merged to `main`.** Uses `/Shows/{SeriesId}/Episodes` server order instead of forcing generic Items `ParentIndexNumber,IndexNumber`; dedicated standard MPV Release CI passed, IPA produced, user accepted the result on device, and PR #254 merged at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. |'
+          new='| **Build178 / 0.14.11** | Canonical Emby episode ordering for non-standard series | **Previous accepted baseline, merged to `main` and inherited by Build184.** Uses `/Shows/{SeriesId}/Episodes` server order instead of forcing generic Items `ParentIndexNumber,IndexNumber`; dedicated standard MPV Release CI passed, IPA produced, user accepted the result on device, and PR #254 merged at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. |'
+          if old not in t: raise SystemExit('BUILD_TEST_INDEX Build178 stale row missing')
+          t=t.replace(old,new,1)
+          old='Build182 is additionally real-device accepted/frozen for the two detail performance/cache requirements, but the overall canonical runtime baseline remains Build178 until an integrated candidate is explicitly accepted and merged. Current independent Active candidates are Build184 detail visual refinement and Build185 home-carousel interaction.'
+          new='Build182 remains real-device accepted/frozen for the two detail performance/cache requirements and is inherited by Build184. Build184 / 0.14.17 is now the accepted overall runtime baseline merged to `main`; Build185 home-carousel interaction is the remaining independent Active candidate.'
+          if old not in t: raise SystemExit('BUILD_TEST_INDEX stale baseline summary missing')
+          t=t.replace(old,new,1)
+          p.write_text(t)
+          PY
+          git diff --check
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add docs/project/PROJECT_STATE.md docs/project/BUILD_TEST_INDEX.md
+          git commit -m "Remove stale pre-Build184 baseline wording"
+          git push origin HEAD:main
