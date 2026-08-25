@@ -26,11 +26,11 @@ Build184 inherits the accepted Build176 player episode-selection/session contrac
 
 Build179 / OnePlayer 0.14.12 is **not** an accepted carousel baseline. Its dedicated Release CI passed and IPA was produced, but the user installed it on the target device and reported that small drags still had a dead zone and direction reversal still produced a visible pause followed by a large catch-up jump. Build179 is therefore real-device tested / rejected.
 
-Build180 / OnePlayer 0.14.13 is the current **home-carousel test candidate**. Dedicated standard MPV Release CI passed and IPA was produced; target-device evidence is pending, so it does not replace Build178.
+Build180 / OnePlayer 0.14.13 is a **historical partial-improvement carousel build**: real-device testing confirmed reversal continuity improved, but initial motion still felt coarse, so it was not accepted. Build185 / OnePlayer 0.14.18 is the current independent home-carousel candidate pending target-device validation.
 
 Build181 / OnePlayer 0.14.14 is now a **detail-page diagnostic reference rather than the current candidate**. Target-device recording shows the previous obvious detail scroll pause→catch-up pattern is clearly improved, but a force-quit/relaunch still resets its session-only warm metadata and briefly returns the text-title/episode-loading state. It is real-device tested but not stable.
 
-Build182 / OnePlayer 0.14.15 is **real-device accepted and frozen for detail scrolling plus force-quit/relaunch presentation restoration** on iPhone 15 Pro Max / iOS 17.0. It remains a feature-line reference while Build178 stays the overall merged baseline.
+Build182 / OnePlayer 0.14.15 is **real-device accepted and frozen for detail scrolling plus force-quit/relaunch presentation restoration** on iPhone 15 Pro Max / iOS 17.0. Its architecture is now inherited by the accepted Build184 overall baseline on `main`.
 
 Build184 / OnePlayer 0.14.17 is **real-device accepted, stable for the completed detail-page requirements, and merged to `main` through PR #255**. It preserves Build182 detail performance/cache behavior and only adds the accepted visual hierarchy changes: `视频信息` below `更多类似`, above the bottom glass media-source summary, with the main section headers at 19 pt bold.
 
