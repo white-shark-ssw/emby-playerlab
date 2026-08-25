@@ -1,28 +1,28 @@
 # OnePlayer Project State
 
-_Last updated after Build182 / OnePlayer 0.14.15 was accepted and frozen for detail scrolling plus force-quit/relaunch presentation restoration, and Build184 / OnePlayer 0.14.17 passed dedicated Release CI and produced an IPA for the next detail visual-hierarchy refinement. Build178 remains the accepted overall functional baseline._
+_Last updated after OnePlayer 0.14.17 / Build184 was accepted on iPhone 15 Pro Max / iOS 17.0 and merged to `main` through PR #255. Build184 is now the accepted overall functional baseline, including the frozen Build182 detail scroll/cold-relaunch presentation architecture and the accepted Build184 visual hierarchy. Build185 remains an independent home-carousel candidate pending real-device validation._
 
 ## Current functional baseline
 
 The latest **real-device accepted** functional baseline is:
 
 - Product: **OnePlayer**
-- Version: **0.14.11**
-- Build: **178**
+- Version: **0.14.17**
+- Build: **184**
 - Canonical branch: `main`
-- Final merge PR: **#254**
-- Final merge commit: `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`
-- Development branch: `fix/nonstandard-episode-sorting`
-- Clean product head before merge: `8718f60a1b0a3d0034473f1cc1769c0b5bc3665f`
-- Dedicated CI source: `db9aa2498fba5c6b092bfec2427042859e32b26a`
-- Dedicated CI run: **32836693548**
-- Artifact: `OnePlayer-0.14.11-build178-episode-ordering`
-- IPA SHA-256: `2e4ed5be2c32535249ea2049a9686f6ac24a217e04535806ee6ee4721e78ba5b`
+- Final merge PR: **#255**
+- Final merge commit: `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`
+- Development branch: `feat/detail-episode-page-optimization`
+- Clean product head before merge: `63d4114ca6ef97b419ec31163e6431af5cf2d002`
+- Dedicated CI source: `0238f2c8fd202df6e7ba52d582b1614c9230eef9`
+- Dedicated CI run: **32851745960**
+- Artifact: `OnePlayer-0.14.17-build184-detail-visual-refinement`
+- IPA SHA-256: `d89953c76b678fe1bc0b9f3fcc8b5b5b3ea430ec74bdd420834b427c91d47eb4`
 - Deployment Target: **iOS 15.0**
 - Required target device: **iPhone 15 Pro Max / iOS 17.0**
 - Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements / merged to main**
 
-Build178 inherits the accepted Build176 player episode-selection/session contract and adds the accepted canonical Emby TV episode-ordering contract. The user completed target-device validation on 2026-08-25 and explicitly approved this task for acceptance, completion and merge.
+Build184 inherits the accepted Build176 player episode-selection/session contract and Build178 canonical Emby TV episode-ordering contract, then adds the real-device accepted detail-page line: Build181 Hero-only high-frequency scroll ownership, Build182 persistent presentation-only detail cache, and Build184 visual hierarchy refinement. The user accepted the final Build184 UI on 2026-08-25 and explicitly approved completion and merge through PR #255.
 
 Build179 / OnePlayer 0.14.12 is **not** an accepted carousel baseline. Its dedicated Release CI passed and IPA was produced, but the user installed it on the target device and reported that small drags still had a dead zone and direction reversal still produced a visible pause followed by a large catch-up jump. Build179 is therefore real-device tested / rejected.
 
@@ -32,7 +32,7 @@ Build181 / OnePlayer 0.14.14 is now a **detail-page diagnostic reference rather 
 
 Build182 / OnePlayer 0.14.15 is **real-device accepted and frozen for detail scrolling plus force-quit/relaunch presentation restoration** on iPhone 15 Pro Max / iOS 17.0. It remains a feature-line reference while Build178 stays the overall merged baseline.
 
-Build184 / OnePlayer 0.14.17 is the current **detail visual-hierarchy test candidate**. It only reorders/renames the media-information section and slightly reduces main section-header typography; dedicated Release CI passed and IPA was produced. Real-device visual acceptance is pending.
+Build184 / OnePlayer 0.14.17 is **real-device accepted, stable for the completed detail-page requirements, and merged to `main` through PR #255**. It preserves Build182 detail performance/cache behavior and only adds the accepted visual hierarchy changes: `视频信息` below `更多类似`, above the bottom glass media-source summary, with the main section headers at 19 pt bold.
 
 ## Accepted episode-selection and ordering contracts
 
@@ -135,7 +135,9 @@ An earlier detail 0.14.13 / Build180 package also passed Release CI but was reti
 - artifact ID: `9564647845`
 - IPA SHA-256: `d89953c76b678fe1bc0b9f3fcc8b5b5b3ea430ec74bdd420834b427c91d47eb4`
 - MinOS: 15.0
-- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+- real-device evidence: user reported the final Build184 visual result had no problem and explicitly approved acceptance, task completion and code merge on iPhone 15 Pro Max / iOS 17.0.
+- merge: PR `#255`, merge commit `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`.
+- evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for completed detail requirements / merged to main**
 
 Build184 changes only the detail visual hierarchy: “视频信息” is below “更多类似” and directly above the bottom glass media-source summary, and main section headers use 19 pt bold. Build182 Hero scroll/persistent presentation cache and playback/order/transport contracts remain unchanged.
 

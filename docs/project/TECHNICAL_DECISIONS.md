@@ -159,3 +159,13 @@ The user explicitly allows the Build183-style fixed-foreground/crossfade interac
 The persistent two-image full-screen `.blur(radius: 30)` backdrop remains a next evidence point only if Build185 preserves fine initial motion but continuous dragging still shows frame-rate/compositing stalls. Do not preemptively rewrite the blur/image pipeline in the same patch because that would destroy attribution.
 
 Evidence levels: Build179 = real-device rejected; Build180 = real-device partial improvement but rejected; Build183 = real-device tested, feel somewhat finer but interaction regression/rejected; **Build185 / OnePlayer 0.14.18 = Code written / CI passed / IPA produced / real-device pending / not stable**. Dedicated standard MPV Release run `32853247583` passed the Build185 axis-acquisition/page-slide contracts, home/scroll/series-order checks, Build176/178/P0 zero-diff checks, Xcode 16.4 Release build, 0.14.18 (185) identity, MinOS 15.0 validation and IPA packaging. Do not mark D012 stable/frozen until the user accepts a target-device result against EX.
+
+## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only
+
+The accepted Build181/182/184 detail-page line establishes two long-term ownership boundaries.
+
+First, native detail `UIScrollView.contentOffset` is a high-frequency render input and must not be written into root detail-view state that invalidates the full page. Build181 isolates that raw offset in `EmbyDetailHeroScrollState`, observed only by the Hero scope; the native ScrollView and existing Hero stretch/crop/pin geometry remain authoritative. The user accepted the resulting scrolling behavior on iPhone 15 Pro Max / iOS 17.0.
+
+Second, detail warm state is **presentation-only**. Build182 may persist safe display metadata (`episodes`, `seasons`, `imageInfos`, `similarItems`) under `Library/Caches/OnePlayer/DetailPresentation` so a known detail page can restore Logo/episode presentation across process restarts, but normal Emby loading still refreshes current server data. PlaybackInfo, MediaSource, PlaySession, ResolvedPlaybackSource and temporary 115/CDN URLs must not enter this cache. Resume/played/favorite authority remains the live server/session path.
+
+Build184 adds only the accepted detail visual hierarchy (`视频信息` below `更多类似`, above the bottom glass media-source summary, and 19 pt bold main section headers) and does not reopen those ownership boundaries. **Build184 / OnePlayer 0.14.17 was accepted by the user on real device on 2026-08-25 and merged to `main` through PR #255 at commit `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`.** Treat the detail scroll owner and presentation-cache boundary as stable/frozen unless new real-device regression evidence requires reopening them.

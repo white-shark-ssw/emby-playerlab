@@ -27,25 +27,25 @@ This is a milestone index, not a list of every experimental build.
 | **Build181 / 0.14.14** | Detail-page warm presentation + Hero scroll isolation | Dedicated Release CI/IPA succeeded. Target-device recording showed detail scroll clearly improved, but force-quit/relaunch lost the session-only warm metadata. **Partial success, cold-start requirement failed.** |
 | **Build182 / 0.14.15** | Persistent detail presentation cache | Extends Build181's safe presentation snapshot to `Library/Caches` while retaining live Emby refresh and playback/session boundaries. Dedicated Release CI/IPA succeeded; user accepted detail scrolling plus force-quit/relaunch restoration on target device. **Frozen for these two requirements.** |
 | **Build183 / 0.14.16** | Carousel fixed-foreground crossfade experiment | Dedicated Release CI/IPA succeeded. User said the feel seemed somewhat finer, but Logo/rating/year/type/overview were pinned instead of moving with their carousel page. **Interaction regression; rejected as default direction.** |
-| **Build184 / 0.14.17** | Detail visual hierarchy refinement | Moves “视频信息” below “更多类似” and above the bottom glass media-source card and reduces main detail section headers to 19 pt bold. Dedicated Release CI passed and IPA produced; Build182 scroll/cache and P0 contracts remain unchanged. **Real-device visual validation pending.** |
+| **Build184 / 0.14.17** | Detail performance/cache + visual hierarchy completion | Inherits accepted Build181/182 detail scroll and persistent presentation cache, moves “视频信息” below “更多类似” and above the bottom glass media-source card, and uses 19 pt bold main detail section headers. Dedicated Release CI/IPA succeeded; user accepted the final result on target device and PR #255 merged to `main`. **Current accepted overall baseline.** |
 | **Build185 / 0.14.18** | Restore carousel page-slide semantics + refine initial axis acquisition | Dedicated Release CI passed and IPA produced. Restores Logo/rating/year/type/overview horizontal page travel, removes the old initial 1.08 horizontal-dominance gate, and locks horizontal/vertical once at first meaningful 0.5pt movement while preserving 0pt drag delivery and continuous reversal. **Real-device EX comparison pending.** |
 
 ## Current accepted baseline
 
-- OnePlayer **0.14.11 / Build178**
+- OnePlayer **0.14.17 / Build184**
 - canonical branch: `main`
-- final merge PR: `#254`
-- final merge commit: `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`
-- development branch: `fix/nonstandard-episode-sorting`
-- clean product head before merge: `8718f60a1b0a3d0034473f1cc1769c0b5bc3665f`
-- dedicated CI source: `db9aa2498fba5c6b092bfec2427042859e32b26a`
-- CI run: `32836693548`
-- artifact: `OnePlayer-0.14.11-build178-episode-ordering`
-- artifact ID: `9558981442`
-- IPA: `OnePlayer-0.14.11-build178-episode-ordering-unsigned.ipa`
-- IPA SHA-256: `2e4ed5be2c32535249ea2049a9686f6ac24a217e04535806ee6ee4721e78ba5b`
+- final merge PR: `#255`
+- final merge commit: `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`
+- development branch: `feat/detail-episode-page-optimization`
+- clean product head before merge: `63d4114ca6ef97b419ec31163e6431af5cf2d002`
+- dedicated CI source: `0238f2c8fd202df6e7ba52d582b1614c9230eef9`
+- CI run: `32851745960`
+- artifact: `OnePlayer-0.14.17-build184-detail-visual-refinement`
+- artifact ID: `9564647845`
+- IPA: `OnePlayer-0.14.17-build184-detail-visual-refinement-unsigned.ipa`
+- IPA SHA-256: `d89953c76b678fe1bc0b9f3fcc8b5b5b3ea430ec74bdd420834b427c91d47eb4`
 - target device: iPhone 15 Pro Max / iOS 17.0
-- evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements / merged to main**
+- evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for completed detail requirements / merged to main**
 
 Build182 is additionally real-device accepted/frozen for the two detail performance/cache requirements, but the overall canonical runtime baseline remains Build178 until an integrated candidate is explicitly accepted and merged. Current independent Active candidates are Build184 detail visual refinement and Build185 home-carousel interaction.
 
