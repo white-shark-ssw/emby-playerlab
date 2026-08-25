@@ -6,6 +6,7 @@ struct EmbyServerRootViewV3: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @Environment(\.presentationMode) private var presentationMode
     let session: EmbySession
+    let onClose: (() -> Void)?
 
     @State private var client: EmbyAPIClient?
     @State private var selectedTab: V3ServerTab = .home
@@ -13,6 +14,11 @@ struct EmbyServerRootViewV3: View {
     @State private var homeScrollToTopToken = 0
     @State private var homeCarouselActive = false
     @State private var lastHomeTap = Date.distantPast
+
+    init(session: EmbySession, onClose: (() -> Void)? = nil) {
+        self.session = session
+        self.onClose = onClose
+    }
 
     var body: some View {
         Group {
@@ -39,9 +45,10 @@ struct EmbyServerRootViewV3: View {
             } else {
                 ProgressView("连接 \(session.serverName)…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onAppear {
-                        do { client = try sessionStore.client(for: session) }
-                        catch { presentationMode.wrappedValue.dismiss() }
+                    .task {
+                        guard client == nil else { return }
+                        do { client = try await sessionStore.clientForBestRoute(for: session) }
+                        catch { close() }
                     }
             }
         }
@@ -104,7 +111,8 @@ struct EmbyServerRootViewV3: View {
 
     private func close() {
         sessionStore.leaveServer()
-        presentationMode.wrappedValue.dismiss()
+        if let onClose { onClose() }
+        else { presentationMode.wrappedValue.dismiss() }
     }
 }
 
