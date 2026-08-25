@@ -1,0 +1,131 @@
+name: Temp Finalize Detail Build184 Docs
+
+on:
+  push:
+    branches: [feat/detail-episode-page-optimization]
+    paths:
+      - ".github/workflows/temp-finalize-detail-build184-docs.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Finalize accepted Build184 project state
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          merge_sha = "5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f"
+          feature_head = "63d4114ca6ef97b419ec31163e6431af5cf2d002"
+          ci_source = "0238f2c8fd202df6e7ba52d582b1614c9230eef9"
+          ci_run = "32851745960"
+          artifact = "OnePlayer-0.14.17-build184-detail-visual-refinement"
+          artifact_id = "9564647845"
+          ipa_sha = "d89953c76b678fe1bc0b9f3fcc8b5b5b3ea430ec74bdd420834b427c91d47eb4"
+
+          # PROJECT_STATE.md
+          p = Path("docs/project/PROJECT_STATE.md")
+          t = p.read_text()
+          t = re.sub(r"^_Last updated.*_$", "_Last updated after OnePlayer 0.14.17 / Build184 was accepted on iPhone 15 Pro Max / iOS 17.0 and merged to `main` through PR #255. Build184 is now the accepted overall functional baseline, including the frozen Build182 detail scroll/cold-relaunch presentation architecture and the accepted Build184 visual hierarchy. Build185 remains an independent home-carousel candidate pending real-device validation._", t, count=1, flags=re.M)
+          replacements = {
+              "- Version: **0.14.11**": "- Version: **0.14.17**",
+              "- Build: **178**": "- Build: **184**",
+              "- Final merge PR: **#254**": "- Final merge PR: **#255**",
+              "- Final merge commit: `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`": f"- Final merge commit: `{merge_sha}`",
+              "- Development branch: `fix/nonstandard-episode-sorting`": "- Development branch: `feat/detail-episode-page-optimization`",
+              "- Clean product head before merge: `8718f60a1b0a3d0034473f1cc1769c0b5bc3665f`": f"- Clean product head before merge: `{feature_head}`",
+              "- Dedicated CI source: `db9aa2498fba5c6b092bfec2427042859e32b26a`": f"- Dedicated CI source: `{ci_source}`",
+              "- Dedicated CI run: **32836693548**": f"- Dedicated CI run: **{ci_run}**",
+              "- Artifact: `OnePlayer-0.14.11-build178-episode-ordering`": f"- Artifact: `{artifact}`",
+              "- IPA SHA-256: `2e4ed5be2c32535249ea2049a9686f6ac24a217e04535806ee6ee4721e78ba5b`": f"- IPA SHA-256: `{ipa_sha}`",
+          }
+          for old, new in replacements.items():
+              if old not in t: raise SystemExit(f"PROJECT_STATE marker missing: {old}")
+              t = t.replace(old, new, 1)
+          old = "Build178 inherits the accepted Build176 player episode-selection/session contract and adds the accepted canonical Emby TV episode-ordering contract. The user completed target-device validation on 2026-08-25 and explicitly approved this task for acceptance, completion and merge."
+          new = "Build184 inherits the accepted Build176 player episode-selection/session contract and Build178 canonical Emby TV episode-ordering contract, then adds the real-device accepted detail-page line: Build181 Hero-only high-frequency scroll ownership, Build182 persistent presentation-only detail cache, and Build184 visual hierarchy refinement. The user accepted the final Build184 UI on 2026-08-25 and explicitly approved completion and merge through PR #255."
+          if old not in t: raise SystemExit("PROJECT_STATE baseline paragraph missing")
+          t = t.replace(old, new, 1)
+          old = "Build184 / OnePlayer 0.14.17 is the current **detail visual-hierarchy test candidate**. It only reorders/renames the media-information section and slightly reduces main section-header typography; dedicated Release CI passed and IPA was produced. Real-device visual acceptance is pending."
+          new = "Build184 / OnePlayer 0.14.17 is **real-device accepted, stable for the completed detail-page requirements, and merged to `main` through PR #255**. It preserves Build182 detail performance/cache behavior and only adds the accepted visual hierarchy changes: `视频信息` below `更多类似`, above the bottom glass media-source summary, with the main section headers at 19 pt bold."
+          if old in t: t = t.replace(old, new, 1)
+          h = "### Build184 / OnePlayer 0.14.17 — detail visual hierarchy refinement"
+          if h in t:
+              s = t.index(h); e = t.find("\n### ", s + len(h)); e = len(t) if e < 0 else e
+              sec = t[s:e]
+              sec = sec.replace("- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**", "- real-device evidence: user reported the final Build184 visual result had no problem and explicitly approved acceptance, task completion and code merge on iPhone 15 Pro Max / iOS 17.0.\n- merge: PR `#255`, merge commit `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`.\n- evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for completed detail requirements / merged to main**")
+              t = t[:s] + sec + t[e:]
+          p.write_text(t)
+
+          # MODULE_STATUS.md
+          p = Path("docs/project/MODULE_STATUS.md")
+          t = p.read_text()
+          old = '| Detail / episode page visual refinement | **Active Build184 candidate** | UI-only scope: move media stream information below “更多类似” and above the bottom glass media-source card, rename it “视频信息”, and slightly reduce detail section-header typography. Build182 performance/cache owner stays frozen. Dedicated CI/IPA succeeded; real-device validation pending. |'
+          new = '| Detail / episode page visual refinement | **Stable at Build184 / merged to main** | User accepted the final “视频信息” placement/title and 19 pt main section-header hierarchy on iPhone 15 Pro Max / iOS 17.0. Build182 performance/cache owner remains frozen; PR #255 merged at `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`. |'
+          if old not in t: raise SystemExit("MODULE_STATUS Build184 row missing")
+          t = t.replace(old, new, 1)
+          old = '| Other product modules | Active parallel work | Build178 remains the accepted overall runtime baseline. Build185 carousel and Build184 detail visual refinement are separate candidates with unique Build identities and no current file/state-owner overlap. |'
+          new = '| Other product modules | Active parallel work | Build184 / 0.14.17 is the accepted overall runtime baseline on `main`. Build185 home-carousel remains an independent candidate pending real-device validation. |'
+          if old not in t: raise SystemExit("MODULE_STATUS overall baseline row missing")
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          # BUILD_TEST_INDEX.md
+          p = Path("docs/project/BUILD_TEST_INDEX.md")
+          t = p.read_text()
+          old = '| **Build184 / 0.14.17** | Detail visual hierarchy refinement | Moves “视频信息” below “更多类似” and above the bottom glass media-source card and reduces main detail section headers to 19 pt bold. Dedicated Release CI passed and IPA produced; Build182 scroll/cache and P0 contracts remain unchanged. **Real-device visual validation pending.** |'
+          new = '| **Build184 / 0.14.17** | Detail performance/cache + visual hierarchy completion | Inherits accepted Build181/182 detail scroll and persistent presentation cache, moves “视频信息” below “更多类似” and above the bottom glass media-source card, and uses 19 pt bold main detail section headers. Dedicated Release CI/IPA succeeded; user accepted the final result on target device and PR #255 merged to `main`. **Current accepted overall baseline.** |'
+          if old not in t: raise SystemExit("BUILD_TEST_INDEX Build184 row missing")
+          t = t.replace(old, new, 1)
+          base_start = t.index("## Current accepted baseline")
+          base_end = t.index("\n## ", base_start + 4)
+          block = t[base_start:base_end]
+          block = re.sub(r"- OnePlayer \*\*0\.14\.11 / Build178\*\*", "- OnePlayer **0.14.17 / Build184**", block)
+          block = re.sub(r"- final merge PR: `#254`", "- final merge PR: `#255`", block)
+          block = re.sub(r"- final merge commit: `[^`]+`", f"- final merge commit: `{merge_sha}`", block, count=1)
+          block = re.sub(r"- development branch: `[^`]+`", "- development branch: `feat/detail-episode-page-optimization`", block, count=1)
+          block = re.sub(r"- clean product head before merge: `[^`]+`", f"- clean product head before merge: `{feature_head}`", block, count=1)
+          block = re.sub(r"- dedicated CI source: `[^`]+`", f"- dedicated CI source: `{ci_source}`", block, count=1)
+          block = re.sub(r"- CI run: `[^`]+`", f"- CI run: `{ci_run}`", block, count=1)
+          block = re.sub(r"- artifact: `[^`]+`", f"- artifact: `{artifact}`", block, count=1)
+          block = re.sub(r"- artifact ID: `[^`]+`", f"- artifact ID: `{artifact_id}`", block, count=1)
+          block = re.sub(r"- IPA: `[^`]+`", "- IPA: `OnePlayer-0.14.17-build184-detail-visual-refinement-unsigned.ipa`", block, count=1)
+          block = re.sub(r"- IPA SHA-256: `[^`]+`", f"- IPA SHA-256: `{ipa_sha}`", block, count=1)
+          block = re.sub(r"- evidence level: \*\*.*?\*\*", "- evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for completed detail requirements / merged to main**", block, count=1)
+          t = t[:base_start] + block + t[base_end:]
+          h = "### Build184 / OnePlayer 0.14.17 — detail visual hierarchy refinement"
+          if h in t:
+              s = t.index(h); e = t.find("\n### ", s + len(h)); e = len(t) if e < 0 else e
+              sec = t[s:e]
+              sec = sec.replace("- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**", "- real-device evidence: user accepted the final Build184 visual result and explicitly approved task completion and code merge on iPhone 15 Pro Max / iOS 17.0.\n- final merge PR: `#255`\n- final merge commit: `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`\n- evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for completed detail requirements / merged to main**")
+              t = t[:s] + sec + t[e:]
+          p.write_text(t)
+
+          # TECHNICAL_DECISIONS.md
+          p = Path("docs/project/TECHNICAL_DECISIONS.md")
+          t = p.read_text()
+          if "## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only" not in t:
+              t = t.rstrip() + '''\n\n## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only\n\nThe accepted Build181/182/184 detail-page line establishes two long-term ownership boundaries.\n\nFirst, native detail `UIScrollView.contentOffset` is a high-frequency render input and must not be written into root detail-view state that invalidates the full page. Build181 isolates that raw offset in `EmbyDetailHeroScrollState`, observed only by the Hero scope; the native ScrollView and existing Hero stretch/crop/pin geometry remain authoritative. The user accepted the resulting scrolling behavior on iPhone 15 Pro Max / iOS 17.0.\n\nSecond, detail warm state is **presentation-only**. Build182 may persist safe display metadata (`episodes`, `seasons`, `imageInfos`, `similarItems`) under `Library/Caches/OnePlayer/DetailPresentation` so a known detail page can restore Logo/episode presentation across process restarts, but normal Emby loading still refreshes current server data. PlaybackInfo, MediaSource, PlaySession, ResolvedPlaybackSource and temporary 115/CDN URLs must not enter this cache. Resume/played/favorite authority remains the live server/session path.\n\nBuild184 adds only the accepted detail visual hierarchy (`视频信息` below `更多类似`, above the bottom glass media-source summary, and 19 pt bold main section headers) and does not reopen those ownership boundaries. **Build184 / OnePlayer 0.14.17 was accepted by the user on real device on 2026-08-25 and merged to `main` through PR #255 at commit `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`.** Treat the detail scroll owner and presentation-cache boundary as stable/frozen unless new real-device regression evidence requires reopening them.\n'''
+          p.write_text(t)
+          PY
+          git diff --check
+          test -f docs/project/current/dev/DEV-detail-episode-page-optimization.md
+          git rm docs/project/current/dev/DEV-detail-episode-page-optimization.md
+          git diff --check
+      - name: Commit final detail project state
+        run: |
+          set -euo pipefail
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add docs/project/PROJECT_STATE.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/TECHNICAL_DECISIONS.md
+          git commit -m "Finalize accepted Build184 detail baseline"
+          git push origin HEAD:main
