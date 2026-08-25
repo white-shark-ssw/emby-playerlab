@@ -23,6 +23,16 @@ assert 'let refreshed = try await client.libraryItem(itemId: item.id)' in detail
 assert 'episodes = try await client.seriesEpisodes(seriesId: refreshed.id)' in detail
 assert 'imageInfos = try await client.imageInfos(itemId: refreshed.id)' in detail
 
+# The same presentation snapshot survives process death through Library/Caches, while NSCache remains the hot path.
+assert 'NSCache<NSString, Box>()' in state
+assert 'urls(for: .cachesDirectory, in: .userDomainMask)' in state
+assert 'appendingPathComponent("DetailPresentation", isDirectory: true)' in state
+assert 'Data(contentsOf: url)' in state
+assert 'data.write(to: url, options: .atomic)' in state
+assert 'JSONSerialization.data(withJSONObject: root)' in state
+assert 'JSONDecoder().decode([LibraryItem].self' in state
+assert 'JSONDecoder().decode([EmbyImageInfo].self' in state
+
 # Warm presentation data must never become a second playback/session/temporary-media cache.
 for forbidden in ['MediaSource', 'ResolvedPlaybackSource', 'PlaySession', 'playSession', 'PlaybackInfo', 'resolvedPlayback', 'directStreamURL']:
     assert forbidden not in state
