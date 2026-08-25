@@ -48,8 +48,9 @@ Build194 真机进一步确认：SeasonId-first 修复后同一非标准 Series 
 - Build195 workflow-restored branch head：`8c2f767652ce449deaa28f8cc9d8c21b95058af1`。
 - Build195 dedicated CI run：**32884343196 — success**。
 - Build195 artifact：`OnePlayer-0.14.28-build195-player-episode-lazy-row`，ID **9577124023**，artifact digest `sha256:262007d104d62252a837e075baf69fcdf36e8761b6fac9424b99f1aadc8de421`。
-- Build195 IPA SHA-256：`fab4e7f6552933096f49b86c4b9d3604025e1dd916b186015a00097802543af2`。
+- Build195 CI IPA SHA-256：`fab4e7f6552933096f49b86c4b9d3604025e1dd916b186015a00097802543af2`；本地 CI artifact 文件大小 **18,258,195 bytes**，解压内容约 49 MB，主 executable **45,360,272 bytes**。
 - Build195 source ZIP SHA-256：`0c5f9e3b2a9621cc712b8ab94d7976199579489f1fc94e887ab7c4984311e394`。
+- Packaging-only full stored rewrap：`OnePlayer-Build195-TrollStore-Full.ipa`，**49,039,009 bytes / 46.77 MiB**，SHA-256 `450e367338ee105bc159f731dd356c959419cc6fa2d6cf466ae4e947bd5fddeb`。
 
 ## Implementation
 
@@ -58,7 +59,7 @@ Current product scope remains one player file plus source-version identity:
 - `Sources/UI/PlayerEpisodeSelection.swift`
 - `Sources/Core/AppIdentity.swift`
 
-Build194 PlayerEpisodeCoordinator loads both canonical episodes and real Season items. Overlay season numbers/current season/membership use SeasonId-first mapping equivalent to detail semantics, with ParentIndexNumber fallback. `nextPlaybackSource()` still indexes the full canonical `episodes` array.
+Build194 PlayerEpisodeCoordinator loads both canonical episodes and real Season items. Overlay season numbers/current season/membership use SeasonId-first mapping equivalent to detail semantics, with ParentIndexNumber fallback. `nextPlaybackSource()` still indexes the full canonical `episodes` array。
 
 Build195 changes only the episode scroller's eager `HStack` to `LazyHStack`, so visible/near-visible card/image views are instantiated on demand while the full canonical episode array remains available for scrolling, selection and auto-next. There is no item cap, manual pagination, timer, debounce, retry or watchdog.
 
@@ -68,13 +69,13 @@ Validation script:
 
 The dedicated contract reproduces the supplied 980-item shape (979 nil ParentIndexNumber, one ParentIndexNumber=1, all one SeasonId), requires all 980 to remain visible through SeasonId grouping, requires `LazyHStack` for the player episode row, and confirms auto-next still uses the complete canonical `episodes` array.
 
-Build195 packaging directly uses the TrollStore-friendly archive order proven installable after Build194: `Payload/`, app bundle, main `Info.plist`, main executable, then remaining bundle files. This is packaging-only and does not alter app file contents.
+Build195 CI packaging uses a TrollStore-friendly archive order with `Payload/`, app bundle, main `Info.plist`, main executable, then remaining bundle files. The later fully-stored rewrap is packaging/distribution-only and uses the same CI-built app bytes.
 
 ## Frozen / parallel boundaries
 
 No changes to PlayerController, MPV Seek, PiP, Transport, Cache, EmbyAPIClient, detail page, full episode picker, Range/302/115 client-direct, Resume/progress or Build178 canonical ordering.
 
-Build192 Add/Edit Emby and carousel work remain independent; no file/state overlap.
+Build196 Add/Edit Emby and carousel work remain independent; no file/state overlap.
 
 ## Validation state
 
@@ -85,17 +86,20 @@ Build192 Add/Edit Emby and carousel work remain independent; no file/state overl
 - Build195 Code written：**YES**。
 - Build195 static contracts：**PASS**。
 - Build195 standard MPV Release CI：**PASS** — Xcode 16.4, 0.14.28 (195), MinOS 15.0, SeasonId/canonical-order/Frozen-P0 checks all passed。
-- Build195 IPA produced：**YES**，TrollStore-friendly package generated directly by CI and locally re-hashed to the recorded SHA-256。
-- Build195 Real-device tested：**NO**。
+- Build195 IPA produced：**YES**。
+- Build195 first distributed copy install：**FAILED before runtime** — target-device TrollStore helper returned `168`; user observed the received `.ipa` was only about **5 MB**, while the verified CI IPA is **18,258,195 bytes**. This proves the tested phone copy was incomplete/truncated in distribution and is not evidence against LazyHStack runtime behavior.
+- Build195 replacement distribution：a fully-stored **46.77 MiB** IPA was produced from the exact same CI-built app to make transfer completeness obvious and avoid high-compression/archive-read ambiguity; target-device install/runtime test pending。
+- Build195 Real-device performance tested：**NO**。
 - Stable：**NO**。
 
 ## Next exact action
 
-1. User installs Build195 and retests the same 980-episode Series.
-2. Opening the picker should be prompt rather than blocking for several seconds; all 980 episodes must remain reachable and in the same canonical order.
-3. Verify current episode auto-position/white outline/`正在播放` marker still works and horizontal scrolling creates later cards normally.
-4. Spot-check a normal Series and manual episode switch; auto-next/session replacement contracts should remain unchanged.
-5. Only after target-device acceptance update Build195 to real-device accepted/stable and consider PR #258 merge.
+1. User downloads `OnePlayer-Build195-TrollStore-Full.ipa` and confirms the received file is roughly **46.8 MiB**, not 5 MB.
+2. Install that package through TrollStore. If transfer still truncates, use the `.zip` wrapper and unzip locally before installation; do not change product code.
+3. After successful installation, retest the same 980-episode Series: picker should appear promptly rather than blocking for several seconds; all 980 episodes must remain reachable and in canonical order.
+4. Verify current episode auto-position/white outline/`正在播放` marker and horizontal on-demand card loading.
+5. Spot-check a normal Series and manual episode switch; auto-next/session replacement contracts should remain unchanged.
+6. Only after target-device acceptance update Build195 to real-device accepted/stable and consider PR #258 merge.
 
 ## Rejected / do-not-repeat
 
@@ -104,4 +108,5 @@ Build192 Add/Edit Emby and carousel work remain independent; no file/state overl
 - Do not make auto-next use the UI-filtered list.
 - Do not modify detail-page files merely to create an abstraction.
 - Do not fix 980-item opening latency by truncating the episode list, changing canonical order, manual pagination, debounce, timer, retry or watchdog.
+- Do not react to the 5 MB truncated distributed file by modifying LazyHStack/product runtime code; the verified CI artifact is complete.
 - Do not treat CI/IPA or installability as proof of runtime performance acceptance.
