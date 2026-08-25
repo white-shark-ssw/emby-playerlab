@@ -123,3 +123,5 @@ jobs:
             min-os-report.log
           if-no-files-found: error
           retention-days: 14
+
+# rerun after updating the inherited SeasonId contract to the current selection target.
