@@ -7,17 +7,21 @@ struct EmbyServerRootViewV3: View {
     @Environment(\.presentationMode) private var presentationMode
     let session: EmbySession
     let onClose: (() -> Void)?
+    private let keepsCachedHomeOnRouteFailure: Bool
 
     @State private var client: EmbyAPIClient?
+    @State private var homeClientGeneration = 0
     @State private var selectedTab: V3ServerTab = .home
     @State private var homeRefreshToken = 0
     @State private var homeScrollToTopToken = 0
     @State private var homeCarouselActive = false
     @State private var lastHomeTap = Date.distantPast
 
-    init(session: EmbySession, onClose: (() -> Void)? = nil) {
+    init(session: EmbySession, initialClient: EmbyAPIClient? = nil, onClose: (() -> Void)? = nil) {
         self.session = session
         self.onClose = onClose
+        keepsCachedHomeOnRouteFailure = initialClient != nil
+        _client = State(initialValue: initialClient)
     }
 
     var body: some View {
@@ -28,6 +32,7 @@ struct EmbyServerRootViewV3: View {
                     let dock = AnyView(serverTabBar)
                     ZStack {
                         V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, onCarouselActiveChanged: { active in homeCarouselActive = active }, dock: dock)
+                            .id(homeClientGeneration)
                             .opacity(selectedTab == .home ? 1 : 0)
                             .allowsHitTesting(selectedTab == .home)
                             .accessibilityHidden(selectedTab != .home)
@@ -45,12 +50,20 @@ struct EmbyServerRootViewV3: View {
             } else {
                 ProgressView("连接 \(session.serverName)…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .task {
-                        guard client == nil else { return }
-                        do { client = try await sessionStore.clientForBestRoute(for: session) }
-                        catch { close() }
-                    }
             }
+        }
+        .task { await resolveClient() }
+    }
+
+    private func resolveClient() async {
+        do {
+            let resolved = try await sessionStore.clientForBestRoute(for: session)
+            let routeChanged = client?.baseURL != resolved.baseURL
+            client = resolved
+            if routeChanged { homeClientGeneration += 1 }
+        } catch {
+            DiagnosticsLogger.shared.log("Session", "Route selection failed server=\(session.serverName): \(error.localizedDescription)")
+            if !keepsCachedHomeOnRouteFailure { close() }
         }
     }
 

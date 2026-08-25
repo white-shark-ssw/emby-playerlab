@@ -118,7 +118,7 @@ final class SessionStore: ObservableObject {
     }
 
     @discardableResult
-    func updateServer(_ stored: EmbySession, serverTexts: [String], autoStart: Bool, iCloudSync: Bool) async -> EmbySession? {
+    func updateServer(_ stored: EmbySession, serverTexts: [String], password: String = "", autoStart: Bool, iCloudSync: Bool) async -> EmbySession? {
         errorMessage = nil
         isWorking = true
         defer { isWorking = false }
@@ -129,6 +129,13 @@ final class SessionStore: ObservableObject {
             let probes = await probeServerRoutes(serverTexts: routes.map { $0.absoluteString }, expectedServerId: stored.serverId)
             let best = try validatedBestProbe(probes, expectedServerId: stored.serverId, requiresSharedIdentity: true)
             guard let baseURL = best.url else { throw SessionStoreError.noAvailableRoute }
+
+            if !password.isEmpty {
+                let auth = try await EmbyAPIClient(baseURL: baseURL).authenticate(username: stored.user.name, password: password)
+                if let authServerId = auth.serverId, authServerId != stored.serverId { throw SessionStoreError.routeIdentityMismatch }
+                guard auth.user.id == stored.user.id else { throw SessionStoreError.userIdentityMismatch }
+                try KeychainStore.set(auth.accessToken, account: stored.tokenAccount)
+            }
 
             let updated = EmbySession(
                 serverURL: baseURL,
@@ -247,6 +254,7 @@ final class SessionStore: ObservableObject {
             return nil
         }
         guard let winner else { throw SessionStoreError.noAvailableRoute }
+        rememberRouteWinner(winner, for: stored)
         DiagnosticsLogger.shared.log("Session", "Route selected server=\(stored.serverName) route=\(SensitiveRedactor.redact(url: winner) ?? winner.absoluteString)")
         return EmbyAPIClient(baseURL: winner, accessToken: token, userId: stored.user.id, serverName: stored.serverName)
     }
@@ -292,6 +300,14 @@ final class SessionStore: ObservableObject {
         }
         guard let best = probes.filter(\.isReachable).min(by: { ($0.latencyMS ?? Int.max) < ($1.latencyMS ?? Int.max) }) else { throw SessionStoreError.noAvailableRoute }
         return best
+    }
+
+    private func rememberRouteWinner(_ winner: URL, for stored: EmbySession) {
+        guard winner != stored.serverURL, let index = sessions.firstIndex(where: { $0.id == stored.id }) else { return }
+        let updated = EmbySession(serverURL: winner, serverId: stored.serverId, serverName: stored.serverName, serverVersion: stored.serverVersion, user: stored.user, tokenAccount: stored.tokenAccount)
+        sessions[index] = updated
+        if session?.id == stored.id { session = updated }
+        persistSessions()
     }
 
     private func persistSessions() {
@@ -370,12 +386,14 @@ final class SessionStore: ObservableObject {
         case noAvailableRoute
         case routeUnavailable(String)
         case routeIdentityMismatch
+        case userIdentityMismatch
 
         var errorDescription: String? {
             switch self {
             case .noAvailableRoute: return "没有可用的 Emby 线路"
             case .routeUnavailable(let route): return "线路不可用：\(route)"
             case .routeIdentityMismatch: return "聚合线路必须指向同一个 Emby 服务器"
+            case .userIdentityMismatch: return "密码必须属于当前 Emby 用户"
             }
         }
     }

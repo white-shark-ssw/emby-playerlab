@@ -235,22 +235,20 @@ private struct ServerEditorView: View {
                         .foregroundColor(.primary)
                 }
             }
-            if editingSession == nil {
-                Divider().padding(.leading, 54)
-                editorInputRow(systemImage: "lock", title: "密码") {
-                    HStack(spacing: 10) {
-                        Group {
-                            if showsPassword { TextField("密码", text: $password) }
-                            else { SecureField("密码", text: $password) }
-                        }
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        Button { showsPassword.toggle() } label: {
-                            Image(systemName: showsPassword ? "eye.slash" : "eye")
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
+            Divider().padding(.leading, 54)
+            editorInputRow(systemImage: "lock", title: "密码") {
+                HStack(spacing: 10) {
+                    Group {
+                        if showsPassword { TextField("密码", text: $password) }
+                        else { SecureField("密码", text: $password) }
                     }
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    Button { showsPassword.toggle() } label: {
+                        Image(systemName: showsPassword ? "eye.slash" : "eye")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -478,7 +476,7 @@ private struct ServerEditorView: View {
 
     private func submit() async {
         if let editingSession {
-            if await sessionStore.updateServer(editingSession, serverTexts: allRouteTexts, autoStart: autoStart, iCloudSync: iCloudSync) != nil {
+            if await sessionStore.updateServer(editingSession, serverTexts: allRouteTexts, password: password, autoStart: autoStart, iCloudSync: iCloudSync) != nil {
                 presentationMode.wrappedValue.dismiss()
             }
         } else if await sessionStore.addServer(serverText: server, username: username, password: password, additionalServerTexts: additionalRoutes, autoStart: autoStart, iCloudSync: iCloudSync) != nil {
