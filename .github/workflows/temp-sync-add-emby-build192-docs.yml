@@ -1,0 +1,210 @@
+name: Sync Build192 Add Emby Docs
+
+on:
+  push:
+    branches: [feat/add-emby-page-optimization]
+
+permissions:
+  contents: write
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Update authoritative project docs
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text()
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(message)
+
+          # BUILD_TEST_INDEX.md
+          path = "docs/project/BUILD_TEST_INDEX.md"
+          text = read(path)
+          if "| **Build192 / 0.14.25** |" not in text:
+              marker = "| **Build191 / 0.14.24** | Detail selected-episode summary/card title unification |"
+              idx = text.find(marker)
+              require(idx >= 0, "Build191 milestone row marker missing")
+              line_end = text.find("\n", idx)
+              row = "\n| **Build192 / 0.14.25** | Add/Edit Emby modernization + same-server multi-route startup | Modern card editor, one-tap clipboard import, editor-only route latency, root-level auto-start, synchronizable Keychain opt-in server registry, and first-valid same-Server-ID route selection before Home client creation. Dedicated Xcode 16.4 standard MPV Release CI passed, app identity/MinOS 15.0 validated and unsigned IPA produced. **Real-device pending; does not replace Build184.** |"
+              text = text[:line_end] + row + text[line_end:]
+          if "## Build192 Add/Edit Emby evidence" not in text:
+              marker = "## Main integration evidence"
+              require(marker in text, "Main integration evidence marker missing")
+              section = """## Build192 Add/Edit Emby evidence
+
+- task: `DEV-add-emby-page-optimization` — Active
+- branch: `feat/add-emby-page-optimization`
+- Draft PR: `#256`
+- accepted runtime base: Build184 / 0.14.17 remains the overall accepted baseline
+- product implementation head: `2d9aca2002e9788d217410d4a8b16772ef79d814`
+- exact dedicated CI source: `49dd9bf9904efd4ef1e6d3ac4d1d57d960ea4f9b`
+- CI run: **`32875941745` — success**
+- artifact: `OnePlayer-0.14.25-build192-add-emby-server`
+- artifact ID: **`9574058602`**
+- artifact archive digest: `sha256:8e675b6154264ee850d6446afa81c6b41cce6aa545f175887b0da9537f536c5d`
+- IPA: `OnePlayer-0.14.25-build192-add-emby-server-unsigned.ipa`
+- IPA SHA-256: **`b13b76d322c0b301b751ad3723ff0368cb9bc9d0182ec701cf5fcc7a16e4c81d`**
+- source ZIP: `OnePlayer-0.14.25-build192-add-emby-server-49dd9bf-source.zip`
+- source ZIP SHA-256: **`87bf231fb49a167a749174fe0e78d79c42ed05172b08df67f31cfb1b8a24ac33`**
+- app identity: bundle `com.embyplayerlab.app`, OnePlayer 0.14.25 (192), display name OnePlayer
+- MinOS: app and main runtime Mach-O validated at iOS 15.0; compatibility audit OK
+- task/Frozen contract: passed; Player/Transport/Cache files absent from the task diff; media bytes remain Emby/STRM → 302 → 115/CDN → iPhone
+- implementation: modern Add/Edit cards; one-tap clipboard parser; same-Emby route add/remove/probe with latency only in Add/Edit; SessionStore-owned separate server configuration; first-valid same-Server-ID route selection before Home client; root-level auto-start before AppShell; synchronizable Keychain registry excluding password
+- workflow cleanup: temporary Build192 CI removed from the feature branch after artifact production at `67d2041d0e4cf06e3c9105a4910eaefc28c14f23`
+- Build191 note: this task's earlier Build191 artifact is retired because the parallel detail task owns Build191; do not distribute or use that collided identity for attribution
+- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+
+"""
+              text = text.replace(marker, section + marker, 1)
+          old = "Build190 and Build191 are real-device pending and neither replaces Build184."
+          if old in text:
+              text = text.replace(old, "Build190, Build191 and Build192 are real-device pending; none replaces Build184.", 1)
+          write(path, text)
+
+          # PROJECT_STATE.md
+          path = "docs/project/PROJECT_STATE.md"
+          text = read(path)
+          lines = text.splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith("_Last updated"):
+                  lines[i] = "_Last updated after the Add/Edit Emby line produced Build192 / OnePlayer 0.14.25 with dedicated standard MPV Release CI/IPA evidence. Build192 modernizes server editing and establishes SessionStore-owned same-server route selection, root-level auto-start and opt-in synchronizable Keychain configuration. Build184 / OnePlayer 0.14.17 remains the accepted overall functional baseline on `main`; Build190 carousel, Build191 detail and Build192 Add Emby remain independent real-device-pending candidates._"
+                  break
+          text = "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+          if "Build192 / OnePlayer 0.14.25 is the independent **Add/Edit Emby" not in text:
+              marker = "## Accepted episode-selection and ordering contracts"
+              require(marker in text, "PROJECT_STATE accepted contracts marker missing")
+              paragraph = "Build192 / OnePlayer 0.14.25 is the independent **Add/Edit Emby modernization and multi-route candidate**. It replaces the old Add Server Form with a card editor, keeps route latency visible only while adding/editing, selects the first valid same-Server-ID route before Home client creation, handles auto-start at RootView before AppShell/server-list rendering, and stores opt-in synced server configuration plus AccessToken in a separate synchronizable Keychain registry while never syncing the password. Dedicated Release run `32875941745` passed; artifact `OnePlayer-0.14.25-build192-add-emby-server` ID `9574058602`; IPA SHA-256 `b13b76d322c0b301b751ad3723ff0368cb9bc9d0182ec701cf5fcc7a16e4c81d`; source ZIP SHA-256 `87bf231fb49a167a749174fe0e78d79c42ed05172b08df67f31cfb1b8a24ac33`; MinOS 15.0. **Real-device and cross-device iCloud behavior are pending; accepted baseline remains Build184.**\n\n"
+              text = text.replace(marker, paragraph + marker, 1)
+          if "### Build192 / OnePlayer 0.14.25 — Add/Edit Emby modernization" not in text:
+              marker = "### Build191 / OnePlayer 0.14.24 — detail selected-episode title unification"
+              require(marker in text, "PROJECT_STATE Build191 candidate marker missing")
+              section = """### Build192 / OnePlayer 0.14.25 — Add/Edit Emby modernization + same-server route selection
+
+`DEV-add-emby-page-optimization` remains Active and is ready for target-device validation.
+
+- branch: `feat/add-emby-page-optimization`
+- Draft PR: `#256`
+- product head: `2d9aca2002e9788d217410d4a8b16772ef79d814`
+- dedicated CI source: `49dd9bf9904efd4ef1e6d3ac4d1d57d960ea4f9b`
+- CI run: **`32875941745` — success**
+- artifact: `OnePlayer-0.14.25-build192-add-emby-server`; ID `9574058602`; digest `sha256:8e675b6154264ee850d6446afa81c6b41cce6aa545f175887b0da9537f536c5d`
+- IPA SHA-256: `b13b76d322c0b301b751ad3723ff0368cb9bc9d0182ec701cf5fcc7a16e4c81d`; source ZIP SHA-256: `87bf231fb49a167a749174fe0e78d79c42ed05172b08df67f31cfb1b8a24ac33`
+- MinOS: 15.0
+- UI: modern Add/Edit cards, one-tap clipboard import, route add/remove/probe, latency/failed/mismatch/fastest shown only in editor
+- state owner: SessionStore owns route configuration, same-server validation, route winner, auto-start identity and synced registry; `EmbySession` schema remains unchanged
+- startup: RootView resolves direct auto-start before AppShell exists; EmbyServerRootViewV3 resolves the best route before creating Home content
+- iCloud boundary: separate synchronizable Keychain record contains only opted-in server configuration + AccessToken + auto-start flag; password is never persisted or synced; cross-device runtime remains real-device pending
+- media/P0 boundary: no Player/Transport/Cache change; route aggregation changes Emby API entry only and does not proxy STRM/302/115 media bytes through NAS
+- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+
+"""
+              text = text.replace(marker, section + marker, 1)
+          write(path, text)
+
+          # TECHNICAL_DECISIONS.md
+          path = "docs/project/TECHNICAL_DECISIONS.md"
+          text = read(path)
+          if "## D014 — Emby server entry selection is Session-owned and media transport remains separate" not in text:
+              text = text.rstrip() + """
+
+## D014 — Emby server entry selection is Session-owned and media transport remains separate
+
+Build192 establishes the server-management ownership boundary without reopening playback transport.
+
+- `SessionStore` remains the single owner of saved Emby sessions and now owns a separate `EmbyServerConfiguration` keyed by session ID for alternate entries, auto-start identity and sync preference. `EmbySession` itself is not broadened merely to carry UI/runtime routing metadata.
+- Alternate entries are required to resolve through the existing `EmbyAPIClient.publicInfo()` path to the same Emby Server ID. At normal entry, candidate routes race before Home client creation; the first valid same-Server-ID route becomes the session client. Home API and image URLs then reuse that winner. Do not turn each poster/image request into a repeated multi-route race.
+- Route latency is diagnostic/editor state only. It may appear in Add/Edit Emby, but not in the server list, Home, favorites, search, settings or auto-start presentation.
+- Auto-start belongs at the root routing boundary. Resolve the target and route before constructing the normal AppShell/server-list root; do not fake direct startup with a first-level render followed by a full-screen presentation.
+- Opt-in iCloud server sync uses a separate `kSecAttrSynchronizable` Keychain record. It may contain server configuration, AccessToken and auto-start flag; it must never contain the user's password. Existing local AccessToken storage keeps its prior `ThisDeviceOnly` accessibility contract.
+- Same-server route selection changes only the Emby API/server entry. Media remains `Emby / STRM → 302 → 115/CDN → iPhone`; NAS must never relay media bytes. Player, UnifiedTransport, Cache, Seek, Resume and PiP contracts remain outside this feature.
+
+Build192 / OnePlayer 0.14.25 passed dedicated Xcode 16.4 standard MPV Release CI and produced an iOS 15.0-compatible IPA. This confirms implementation/build evidence only. Route behavior, root auto-start presentation and synchronizable Keychain behavior—especially cross-device behavior under TrollStore/ad-hoc signing—remain **real-device pending** and are not frozen.
+""" + "\n"
+          write(path, text)
+
+          # MODULE_STATUS.md
+          path = "docs/project/MODULE_STATUS.md"
+          text = read(path)
+          if "| Emby server management / multi-route |" not in text:
+              marker = "| Emby / STRM / 302 | Frozen core | Client-direct final media path. NAS must not relay bytes. |"
+              require(marker in text, "MODULE_STATUS Emby core marker missing")
+              row = marker + "\n| Emby server management / multi-route | **Active Build192 candidate** | SessionStore-owned same-Server-ID route configuration/selection, root-level auto-start and opt-in synchronizable Keychain server registry. Dedicated Release CI/IPA passed; real-device route/iCloud/startup validation pending. This does not reopen the Frozen STRM/302/115 client-direct media path. |"
+              text = text.replace(marker, row, 1)
+          lines = text.splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith("| Other product modules |"):
+                  lines[i] = "| Other product modules | Active parallel work | Build184 / 0.14.17 is the accepted overall runtime baseline on `main`. Build190 / 0.14.23 is the home-carousel candidate, Build191 / 0.14.24 the detail episode-selection follow-up, and Build192 / 0.14.25 the Add/Edit Emby candidate. All three remain real-device pending and none replaces Build184 until accepted. |"
+                  break
+          write(path, "\n".join(lines) + "\n")
+
+          # Task checkpoint
+          path = "docs/project/current/dev/DEV-add-emby-page-optimization.md"
+          text = read(path)
+          text = text.replace("- Latest conflict check：`main@dd04f1944a6c8feeca8d3086dd294b55b7df3900`。Compared from initial base, all 19 main commits only changed `docs/project/*`; there is still no product-source overlap with this task's five modified files.", "- Latest pre-doc-sync conflict check：`main@e62f1a653dbfbe21459b2ccb0670228242c67db6`。The main line continued to advance through parallel project-documentation commits; no new product-source overlap with this task's five modified files was observed before Build192 finalization.")
+          if "## Build192 current candidate evidence" not in text:
+              marker = "## Validation state"
+              require(marker in text, "checkpoint validation marker missing")
+              section = """## Build192 current candidate evidence
+
+- Active identity：**OnePlayer 0.14.25 / Build192**.
+- Exact dedicated CI source：`49dd9bf9904efd4ef1e6d3ac4d1d57d960ea4f9b`.
+- Dedicated standard MPV Release run：**`32875941745` — success**.
+- Artifact：`OnePlayer-0.14.25-build192-add-emby-server`, ID **`9574058602`**, archive digest `sha256:8e675b6154264ee850d6446afa81c6b41cce6aa545f175887b0da9537f536c5d`.
+- IPA：`OnePlayer-0.14.25-build192-add-emby-server-unsigned.ipa`; SHA-256 **`b13b76d322c0b301b751ad3723ff0368cb9bc9d0182ec701cf5fcc7a16e4c81d`**.
+- Exact source ZIP：`OnePlayer-0.14.25-build192-add-emby-server-49dd9bf-source.zip`; SHA-256 **`87bf231fb49a167a749174fe0e78d79c42ed05172b08df67f31cfb1b8a24ac33`**.
+- App validation：`com.embyplayerlab.app`, OnePlayer **0.14.25 (192)**, display name OnePlayer — passed.
+- Compatibility：App MinimumOSVersion **15.0**; main runtime Mach-O minOS **15.0**; compatibility audit passed.
+- Contract validation：Build192 Add Emby source/Frozen contracts passed; no Player/Transport/Cache product files were changed.
+- Temporary Build192 workflow was removed after artifact production; cleanup commit `67d2041d0e4cf06e3c9105a4910eaefc28c14f23`.
+- Build191 remains retired for this task due identity collision with the detail task.
+
+"""
+              text = text.replace(marker, section + marker, 1)
+          text = text.replace("- **Current CI passed**：NO for active identity Build192; rebuild pending.", "- **Current CI passed**：YES — Build192 dedicated run `32875941745` succeeded.")
+          text = text.replace("- **Current valid IPA produced**：NO for active identity Build192.", "- **Current valid IPA produced**：YES — Build192 artifact ID `9574058602`, IPA SHA-256 `b13b76d322c0b301b751ad3723ff0368cb9bc9d0182ec701cf5fcc7a16e4c81d`.")
+          start = text.find("## Next exact action")
+          end = text.find("## Rejected / do-not-repeat")
+          require(start >= 0 and end > start, "checkpoint next-action bounds missing")
+          next_action = """## Next exact action
+
+1. Distribute/install **OnePlayer 0.14.25 / Build192** on iPhone 15 Pro Max / iOS 17.0 for real-device validation.
+2. Verify modern Add/Edit UI, clipboard credential parsing with the user's real sample, route latency/fastest/failure only inside Add/Edit, add/edit persistence and same-server route winner behavior.
+3. Verify automatic startup never visibly renders the first-level server page before the target Emby root, and closing the auto-started root returns cleanly to the normal first-level page.
+4. Verify opt-in iCloud Keychain server configuration/token sync where the signing/iCloud environment permits; do not call this cross-device behavior solved until a second-device result exists.
+5. Regression-check normal Emby entry and playback still follow STRM/302 → 115/CDN client-direct, with existing Seek/PiP/Resume/Cache contracts unchanged.
+6. Only user target-device acceptance may promote/merge/freeze this task; CI/IPA evidence alone is not sufficient.
+
+"""
+          text = text[:start] + next_action + text[end:]
+          write(path, text)
+          PY
+
+          git diff --check
+          git diff -- docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/MODULE_STATUS.md docs/project/current/dev/DEV-add-emby-page-optimization.md
+
+      - name: Guard main and commit docs
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || { echo "::error::main advanced during docs update; refusing to overwrite"; exit 1; }
+          git config user.name "OnePlayer CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/MODULE_STATUS.md docs/project/current/dev/DEV-add-emby-page-optimization.md
+          git commit -m "Record Build192 Add Emby candidate"
+          git push origin HEAD:main
