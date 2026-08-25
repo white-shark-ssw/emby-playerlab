@@ -95,7 +95,11 @@ struct EmbyMediaDetailView: View {
         .fullScreenCover(isPresented: $showFullOverview) {
             EmbyOverviewOverlayView(text: model.normalizedOverview ?? "", backdropURL: heroImageURL)
         }
-        .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
+        .fullScreenCover(item: detailPlaybackSourceBinding) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
+    }
+
+    private var detailPlaybackSourceBinding: Binding<ResolvedPlaybackSource?> {
+        Binding(get: { showAllEpisodes ? nil : model.selectedSource }, set: { model.selectedSource = $0 })
     }
 
     private func hero(width: CGFloat, viewportHeight: CGFloat, rawScrollMinY: CGFloat) -> some View {
@@ -419,6 +423,15 @@ struct EmbyMediaDetailView: View {
                 }
                 .padding(.horizontal, 20)
 
+                Text(model.selectedEpisodeSelectionSummary ?? " ")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary.opacity(0.86))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(height: 16, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .opacity(model.selectedEpisodeSelectionSummary == nil ? 0 : 1)
+
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(model.selectedSeasonEpisodes) { episode in episodePreviewCard(episode).id(episode.id) }
@@ -456,7 +469,7 @@ struct EmbyMediaDetailView: View {
 
     private func episodePreviewCard(_ episode: LibraryItem) -> some View {
         let overview = model.normalizedOverview(for: episode) ?? ""
-        return Button { model.selectEpisode(episode); Task { await model.play(episode) } } label: {
+        return Button { model.selectEpisode(episode) } label: {
             VStack(alignment: .leading, spacing: 5) {
                 EmbyDetailRemoteImage(url: client.imageURL(itemId: episode.preferredPrimaryImageItemId, maxWidth: 620, tag: episode.preferredPrimaryImageTag), contentMode: .fill)
                     .frame(width: 174, height: 98)
@@ -1178,6 +1191,11 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         return season == 0 ? "特别篇" : "第 \(season) 季"
     }
 
+    var selectedEpisodeSelectionSummary: String? {
+        guard let selectedEpisodeID, let episode = episodes.first(where: { $0.id == selectedEpisodeID }) else { return nil }
+        return displayEpisodeTitle(episode)
+    }
+
     var visiblePeople: [EmbyPerson] { Array(item.people.prefix(24)) }
 
     var stillImages: [EmbyImageInfo] {
@@ -1253,8 +1271,16 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         episodeScrollTargetID = nil
     }
 
-    func selectEpisodeRange(_ offset: Int) { selectedEpisodeRangeOffset = max(0, offset); selectedEpisodeID = nil; episodeScrollTargetID = nil }
-    func selectEpisode(_ episode: LibraryItem) { selectedEpisodeID = episode.id }
+    func selectEpisodeRange(_ offset: Int) {
+        let normalized = max(0, offset)
+        selectedEpisodeRangeOffset = normalized
+        selectedEpisodeID = episode(at: normalized)?.id
+        episodeScrollTargetID = nil
+    }
+    func selectEpisode(_ episode: LibraryItem) {
+        selectedEpisodeID = episode.id
+        if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == episode.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
+    }
     func consumeEpisodeScrollTarget(_ itemID: String) { if episodeScrollTargetID == itemID { episodeScrollTargetID = nil } }
 
     func displayEpisodeTitle(_ episode: LibraryItem) -> String {
@@ -1288,20 +1314,14 @@ final class EmbyMediaDetailViewModel: ObservableObject {
 
     private func applyInitialEpisodeSelection() {
         guard isSeries, !episodes.isEmpty else { return }
-        if let initialEpisodeID, let requestedEpisode = episodes.first(where: { $0.id == initialEpisodeID }), let season = seasonNumber(for: requestedEpisode) {
-            selectedSeason = season
-            selectedEpisodeID = requestedEpisode.id
-            if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == requestedEpisode.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
-            episodeScrollTargetID = requestedEpisode.id
-        } else if let playable = primaryPlayableItem, let season = seasonNumber(for: playable) {
-            selectedEpisodeID = nil
-            selectedSeason = season
-            if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == playable.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
-        } else {
-            selectedEpisodeID = nil
-            selectedSeason = seasonNumbers.first
-            selectedEpisodeRangeOffset = 0
-        }
+        let resumeEpisode = episodes.first(where: { $0.playbackProgress > 0.001 && !$0.isPlayed })
+        let requestedEpisode = initialEpisodeID.flatMap { requestedID in episodes.first(where: { $0.id == requestedID }) }
+        guard let target = requestedEpisode ?? resumeEpisode ?? episodes.first else { return }
+        selectedSeason = seasonNumber(for: target)
+        selectedEpisodeID = target.id
+        if let offset = selectedSeasonEpisodes.firstIndex(where: { $0.id == target.id }) { selectedEpisodeRangeOffset = (offset / 10) * 10 }
+        else { selectedEpisodeRangeOffset = 0 }
+        episodeScrollTargetID = target.id
     }
 
     private func storeWarmPresentation() {

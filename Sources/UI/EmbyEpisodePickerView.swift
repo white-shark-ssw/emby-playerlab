@@ -70,7 +70,6 @@ private struct EmbyEpisodePickerHeroView: View {
 }
 
 struct EmbyEpisodePickerView: View {
-    @Environment(\.presentationMode) private var presentationMode
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var model: EmbyMediaDetailViewModel
     let client: EmbyAPIClient
@@ -135,6 +134,7 @@ struct EmbyEpisodePickerView: View {
         .immersiveSystemNavigationAppearance()
         .nativeInteractivePop()
         .detailPagePresentation()
+        .fullScreenCover(item: $model.selectedSource) { source in PlayerScreen(source: source, client: client, preference: .automatic) }
     }
 
     private var displayedEpisodes: [LibraryItem] {
@@ -201,13 +201,7 @@ struct EmbyEpisodePickerView: View {
 
     private func episodeRow(_ episode: LibraryItem) -> some View {
         let overview = model.normalizedOverview(for: episode) ?? ""
-        return Button {
-            presentationMode.wrappedValue.dismiss()
-            Task {
-                try? await Task.sleep(nanoseconds: 100_000_000)
-                await model.play(episode)
-            }
-        } label: {
+        return Button { model.selectEpisode(episode); Task { await model.play(episode) } } label: {
             HStack(alignment: .top, spacing: 13) {
                 ZStack {
                     AsyncImage(url: client.imageURL(itemId: episode.preferredPrimaryImageItemId, maxWidth: 620, tag: episode.preferredPrimaryImageTag)) { phase in
