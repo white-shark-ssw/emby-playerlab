@@ -255,7 +255,7 @@ struct PlayerEpisodeSelectionOverlay: View {
     private var episodeScroller: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 13) {
+                LazyHStack(alignment: .top, spacing: 13) {
                     ForEach(displayedEpisodes) { episode in episodeCard(episode).id(episode.id) }
                 }
             }
