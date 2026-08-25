@@ -10,7 +10,7 @@ detail = Path("Sources/UI/EmbyMediaDetailView.swift").read_text()
 metrics = Path("Sources/UI/ImmersiveUIComponents.swift").read_text()
 project = Path("project.yml").read_text()
 
-require('Text("音视频字幕信息")' in detail, "media stream title must remain present")
+require('Text("视频信息")' in detail, "media stream title must remain present")
 require('if mediaInfoExpanded {' in detail and '.transition(.opacity.combined(with: .move(edge: .top)))' in detail, "media stream expand transition must remain animated")
 media_section = detail.split('private var mediaStreamInfoSection: some View {', 1)[1].split('private func mediaStreamCard', 1)[0]
 require('.clipped()' in media_section, "expanded media stream content must be clipped below its title")
