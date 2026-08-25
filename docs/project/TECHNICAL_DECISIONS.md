@@ -199,3 +199,17 @@ Build192 establishes the server-management ownership boundary without reopening 
 - Same-server route selection changes only the Emby API/server entry. Media remains `Emby / STRM → 302 → 115/CDN → iPhone`; NAS must never relay media bytes. Player, UnifiedTransport, Cache, Seek, Resume and PiP contracts remain outside this feature.
 
 Build192 / OnePlayer 0.14.25 passed dedicated Xcode 16.4 standard MPV Release CI and produced an iOS 15.0-compatible IPA. This confirms implementation/build evidence only. Route behavior, root auto-start presentation and synchronizable Keychain behavior—especially cross-device behavior under TrollStore/ad-hoc signing—remain **real-device pending** and are not frozen.
+
+## D014 — Detail episode browsing separates selection from playback and keeps one selected-episode owner
+
+Build191 establishes the accepted detail/episode-page interaction contract. Detail browsing selection and playback are intentionally separate actions, while `selectedEpisodeID` remains the single visible selection owner.
+
+- tapping a horizontal detail episode card only selects it and moves the blue outline; it does not immediately play;
+- the existing main Play/Resume button remains the detail-page playback action and targets the selected episode through the existing source-owned playback path;
+- normal Series entry chooses explicit `initialEpisodeID` first, otherwise the existing resumable episode, otherwise canonical `episodes.first` from the Build178 Emby TV order;
+- quick range buttons select that range's first canonical episode rather than clearing selection;
+- the compact selected-episode summary must reuse `displayEpisodeTitle(episode)`, the exact formatter used by the horizontal card, instead of maintaining a second naming/classification path;
+- full-picker row taps may select and play directly, but the picker must not dismiss before playback and must not add a fixed delay; the visible picker presents the shared `model.selectedSource`, so closing player reveals the same picker/ScrollView instance and preserves its position without a second offset cache;
+- no second playback-source owner, selected-episode owner, timer, retry, watchdog or manual scroll-position reconciliation is part of this architecture.
+
+This contract inherits Build176 source-owned episode-session replacement, Build178 canonical Emby episode ordering, and Build182 detail scroll/presentation-cache ownership unchanged. It applies to detail-page and full-detail-picker browsing; it does **not** claim to fix the separately confirmed in-player episode-overlay nonstandard season-grouping regression. **Build191 / OnePlayer 0.14.24 passed dedicated Xcode 16.4 Release CI, produced the validated IPA, was accepted by the user on the target device, and merged to `main` through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`.** Treat this detail selection/navigation behavior as stable unless new target-device regression evidence requires reopening it.

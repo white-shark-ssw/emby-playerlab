@@ -1,23 +1,24 @@
 # OnePlayer Project State
 
-_Last updated after Build189 real-device testing exposed a carousel release-settle regression and the corrected passive-native / SwiftUI-release implementation was reassigned around parallel build reservations to OnePlayer 0.14.26 / Build193. Build193 completed dedicated Release CI/IPA and is the current independent carousel candidate. Build191 / 0.14.24 remains the detail summary-title candidate and Build192 / 0.14.25 belongs to Add/Edit Emby. Build184 / 0.14.17 remains the accepted overall functional baseline on `main`; none of these candidates replaces it until target-device evidence is accepted._
+_Last updated after Build191 / OnePlayer 0.14.24 was accepted on the target device and merged to `main` through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`. Build191 is now the accepted overall functional baseline. Build192 / OnePlayer 0.14.25 Add/Edit Emby and Build193 / OnePlayer 0.14.26 home-carousel remain independent Active candidates and must resync with Build191 before final integration. The separately confirmed in-player nonstandard season-grouping regression remains unresolved._
 
 ## Current functional baseline
 
 The latest **real-device accepted** functional baseline is:
 
 - Product: **OnePlayer**
-- Version: **0.14.17**
-- Build: **184**
+- Version: **0.14.24**
+- Build: **191**
 - Canonical branch: `main`
-- Final merge PR: **#255**
-- Final merge commit: `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`
-- Development branch: `feat/detail-episode-page-optimization`
-- Clean product head before merge: `63d4114ca6ef97b419ec31163e6431af5cf2d002`
-- Dedicated CI source: `0238f2c8fd202df6e7ba52d582b1614c9230eef9`
-- Dedicated CI run: **32851745960**
-- Artifact: `OnePlayer-0.14.17-build184-detail-visual-refinement`
-- IPA SHA-256: `d89953c76b678fe1bc0b9f3fcc8b5b5b3ea430ec74bdd420834b427c91d47eb4`
+- Final merge PR: **#257**
+- Final merge commit: `f153a36e9da8a208150fe638e0b9df5835df1dc0`
+- Development branch: `feat/detail-episode-selection-navigation`
+- Final feature head before merge: `8279df9f8ceb7605bad1fade9bcba2582cddbbd6`
+- Functional Build191 commit: `6dc3f69d90049cd9228bdf006e50fc3402c1c6b9`
+- Dedicated CI source: `63fb252936360b284d75c4477d41587193e4fbd8`
+- Dedicated CI run: **32875670990**
+- Artifact: `OnePlayer-0.14.24-build191-detail-summary-title`
+- IPA SHA-256: `03c7dd61c2f151d537e78ec6727f888381d86839ea1ff75f0bbb388c3c56a354`
 - Deployment Target: **iOS 15.0**
 - Required target device: **iPhone 15 Pro Max / iOS 17.0**
 - Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements / merged to main**
@@ -32,13 +33,13 @@ Build181 / OnePlayer 0.14.14 is now a **detail-page diagnostic reference rather 
 
 Build182 / OnePlayer 0.14.15 is **real-device accepted and frozen for detail scrolling plus force-quit/relaunch presentation restoration** on iPhone 15 Pro Max / iOS 17.0. Its architecture is now inherited by the accepted Build184 overall baseline on `main`.
 
-Build184 / OnePlayer 0.14.17 is **real-device accepted, stable for the completed detail-page requirements, and merged to `main` through PR #255**. It preserves Build182 detail performance/cache behavior and only adds the accepted visual hierarchy changes: `视频信息` below `更多类似`, above the bottom glass media-source summary, with the main section headers at 19 pt bold.
+Build184 / OnePlayer 0.14.17 remains **real-device accepted and stable as the detail performance/cache + visual-hierarchy foundation**, merged through PR #255. Its behavior is inherited unchanged by Build191.
 
 Build188 / OnePlayer 0.14.21 established the independent **detail/episode-selection navigation candidate**: select-only horizontal cards, compact selected-episode summary and non-dismissing full picker playback. Dedicated Release CI/IPA succeeded. Target-device follow-up then showed missing default visible selection and quick range buttons clearing selection/title, so Build188 was not accepted.
 
 The detail branch later produced its own **0.14.23 / Build190** package (`OnePlayer-0.14.23-build190-detail-selection-defaults`, IPA SHA-256 `2f05197cebe43b6a50c2eb84225b7d134f364f82baf58772f86d10653f2f298c`). User screenshots from that exact distributed artifact positively confirm quick `10-19 / 20-24` range jumps now retain the target first episode blue selection and summary state. Those screenshots also exposed a pure display inconsistency between the compact summary and horizontal-card title. The same 0.14.23 / Build190 identity was later occupied independently by the home-carousel candidate, so detail no longer reuses that identity; attribution of the screenshots remains tied to the detail artifact SHA above.
 
-Build191 / OnePlayer 0.14.24 is now the independent **detail summary-title follow-up candidate**. `selectedEpisodeSelectionSummary` directly reuses `displayEpisodeTitle(episode)`, the exact formatter used by the selected horizontal card, so the two strings are intentionally identical. Dedicated Release run `32875670990` passed; artifact `OnePlayer-0.14.24-build191-detail-summary-title` ID `9573898096`; downloaded IPA SHA-256 `03c7dd61c2f151d537e78ec6727f888381d86839ea1ff75f0bbb388c3c56a354`; source ZIP SHA-256 `25c28eb7529cb371aa4b2d991691811c041bdecc4e9904538c663fb976267a98`; MinOS 15.0. **Real-device evidence is pending; accepted baseline remains Build184.**
+Build191 / OnePlayer 0.14.24 is **real-device accepted and merged to `main` through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`**. It completes the detail episode-selection/navigation line: select-only horizontal cards with blue selection, explicit-initial → Resume → canonical-first default selection, range-first quick jumps, main Play/Resume targeting the selected episode, non-dismissing full-picker playback that returns at the same scroll position, and a compact summary that exactly reuses the card title formatter. Build176 session replacement, Build178 canonical order and Build182 detail performance/cache remain unchanged. This acceptance does not cover the separately confirmed in-player nonstandard season-grouping regression.
 
 Build192 / OnePlayer 0.14.25 is the independent **Add/Edit Emby modernization and multi-route candidate**. It replaces the old Add Server Form with a card editor, keeps route latency visible only while adding/editing, selects the first valid same-Server-ID route before Home client creation, handles auto-start at RootView before AppShell/server-list rendering, and stores opt-in synced server configuration plus AccessToken in a separate synchronizable Keychain registry while never syncing the password. Dedicated Release run `32875941745` passed; artifact `OnePlayer-0.14.25-build192-add-emby-server` ID `9574058602`; IPA SHA-256 `b13b76d322c0b301b751ad3723ff0368cb9bc9d0182ec701cf5fcc7a16e4c81d`; source ZIP SHA-256 `87bf231fb49a167a749174fe0e78d79c42ed05172b08df67f31cfb1b8a24ac33`; MinOS 15.0. **Real-device and cross-device iCloud behavior are pending; accepted baseline remains Build184.**
 
@@ -70,6 +71,19 @@ Build178 adds the canonical episode-order contract:
 
 The original failing non-standard series had 165 episodes with `nilIndex=164`; Build178 was accepted on real device after switching the shared data path to Emby's TV ordering authority.
 
+
+Build191 adds the accepted detail-browsing contract on top of those player/order owners:
+
+- tapping a horizontal detail episode card changes `selectedEpisodeID` only; it does not autoplay;
+- the blue outline represents the current selected episode, not a separate “currently playing” owner;
+- normal Series entry selects explicit `initialEpisodeID`, otherwise a resumable episode, otherwise canonical `episodes.first`;
+- quick range buttons select the first episode in that canonical range instead of clearing selection;
+- the existing main Play/Resume button plays the selected episode through the existing source-owned playback path;
+- the full episode picker stays mounted while its selected episode plays, so closing player returns to the same picker/ScrollView position without a second manual offset cache;
+- the compact selected-episode summary directly reuses `displayEpisodeTitle(episode)`, the same formatter as the horizontal card.
+
+This detail-page acceptance is separate from the in-player episode overlay. The confirmed nonstandard season-grouping regression in that player overlay remains unresolved.
+
 ## Current parallel feature candidates
 
 ### Build192 / OnePlayer 0.14.25 — Add/Edit Emby modernization + same-server route selection
@@ -89,22 +103,6 @@ The original failing non-standard series had 165 episodes with `nilIndex=164`; B
 - startup: RootView resolves direct auto-start before AppShell exists; EmbyServerRootViewV3 resolves the best route before creating Home content
 - iCloud boundary: separate synchronizable Keychain record contains only opted-in server configuration + AccessToken + auto-start flag; password is never persisted or synced; cross-device runtime remains real-device pending
 - media/P0 boundary: no Player/Transport/Cache change; route aggregation changes Emby API entry only and does not proxy STRM/302/115 media bytes through NAS
-- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
-
-### Build191 / OnePlayer 0.14.24 — detail selected-episode title unification
-
-`DEV-detail-episode-selection-navigation` remains Active. Build191 preserves Build190-detail selection/navigation behavior and changes only the compact selected-episode summary formatter.
-
-- branch: `feat/detail-episode-selection-navigation`
-- functional commit: `6dc3f69d90049cd9228bdf006e50fc3402c1c6b9`
-- dedicated CI source: `63fb252936360b284d75c4477d41587193e4fbd8`
-- workflow-restored head: `516f5cf6e8832af083d3c2605e365cb1dcb7119a`
-- CI run: **`32875670990` — success**
-- artifact: `OnePlayer-0.14.24-build191-detail-summary-title`; ID `9573898096`; digest `sha256:f5403fad91f65ac3cd1810452f7aed9a4537f7a6d46b822f87e83261738dae61`
-- IPA SHA-256: `03c7dd61c2f151d537e78ec6727f888381d86839ea1ff75f0bbb388c3c56a354`; source ZIP SHA-256: `25c28eb7529cb371aa4b2d991691811c041bdecc4e9904538c663fb976267a98`
-- MinOS: 15.0
-- implementation: compact selected-episode summary returns the existing `displayEpisodeTitle(episode)` result used by the horizontal card; no second title-format owner remains
-- unchanged: default selection, quick-range selection, full-picker playback return path, canonical ordering, detail cache/scroll, Player/PiP/Transport/Cache
 - evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
 ### Build193 / OnePlayer 0.14.26 — home-carousel native movement + SwiftUI release ownership

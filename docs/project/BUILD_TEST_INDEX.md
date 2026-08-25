@@ -27,35 +27,38 @@ This is a milestone index, not a list of every experimental build.
 | **Build181 / 0.14.14** | Detail-page warm presentation + Hero scroll isolation | Dedicated Release CI/IPA succeeded. Target-device recording showed detail scroll clearly improved, but force-quit/relaunch lost the session-only warm metadata. **Partial success, cold-start requirement failed.** |
 | **Build182 / 0.14.15** | Persistent detail presentation cache | Extends Build181's safe presentation snapshot to `Library/Caches` while retaining live Emby refresh and playback/session boundaries. Dedicated Release CI/IPA succeeded; user accepted detail scrolling plus force-quit/relaunch restoration on target device. **Frozen for these two requirements.** |
 | **Build183 / 0.14.16** | Carousel fixed-foreground crossfade experiment | Dedicated Release CI/IPA succeeded. User said the feel seemed somewhat finer, but Logo/rating/year/type/overview were pinned instead of moving with their carousel page. **Interaction regression; rejected as default direction.** |
-| **Build184 / 0.14.17** | Detail performance/cache + visual hierarchy completion | Inherits accepted Build181/182 detail scroll and persistent presentation cache, moves “视频信息” below “更多类似” and above the bottom glass media-source card, and uses 19 pt bold main detail section headers. Dedicated Release CI/IPA succeeded; user accepted the final result on target device and PR #255 merged to `main`. **Current accepted overall baseline.** |
+| **Build184 / 0.14.17** | Detail performance/cache + visual hierarchy completion | Inherits accepted Build181/182 detail scroll and persistent presentation cache, moves “视频信息” below “更多类似” and above the bottom glass media-source card, and uses 19 pt bold main detail section headers. Dedicated Release CI/IPA succeeded; user accepted the final result on target device and PR #255 merged to `main`. **Previous accepted overall baseline; inherited unchanged by Build191.** |
 | **Build185 / 0.14.18** | Restore carousel page-slide semantics + refine initial axis acquisition | Dedicated Release CI passed and IPA produced. **Real-device rejected:** page-slide interaction/reversal were correct, but first visible movement remained about 10/12/16 px versus EX about 1/1/2 px and ongoing drag remained visibly coarser. |
 | **Build186 / 0.14.19** | Carousel drag-cadence instrumentation | Dedicated Release CI/IPA succeeded from accepted Build184 integration; passive timing was implemented, but its generic category routed to App logs and the package was not distributed for diagnosis. |
 | **Build187 / 0.14.20** | Exportable carousel drag-cadence diagnostic | Dedicated Release CI/IPA succeeded. **Real-device diagnostic confirmed:** first useful SwiftUI horizontal samples were already about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off, proving threshold tuning cannot recover fine initial sampling in this ScrollView/DragGesture path. |
 | **Build188 / 0.14.21** | Detail episode selection semantics + full picker return | Dedicated Release CI/IPA succeeded. **Real-device follow-up required:** normal Series entry lacked a visible default selection and quick range buttons cleared selection/title; these state issues were addressed on the later detail line. Not accepted/stable. |
 | **Build189 / 0.14.22** | Carousel native raw/coalesced-touch input | Native movement sampling worked, but **real-device rejected:** releasing a drag could leave the carousel frozen at the intermediate progress instead of completing/cancelling. Source inspection showed native recognition was competing with the SwiftUI-only release owner. |
 | **Build190 / 0.14.23** | Carousel release-owner implementation under collided identity | The passive-native / SwiftUI-release implementation passed dedicated Release CI and produced an IPA, but the same Build190 identity was already used by the parallel detail-selection line. **Carousel Build190 identity retired; do not distribute or use for attribution.** |
-| **Build191 / 0.14.24** | Detail selected-episode summary/card title unification | Detail Build190 screenshots positively confirmed quick-range selection retention but exposed inconsistent compact summary formatting. Build191 reuses the exact horizontal-card `displayEpisodeTitle(episode)` formatter instead of maintaining a second summary format. Dedicated Xcode 16.4 Release CI passed, IPA/checksums verified. **Real-device pending.** |
+| **Build191 / 0.14.24** | Detail episode-selection/navigation completion | Inherits the Build188/190 detail-selection follow-ups and unifies the compact summary with the exact horizontal-card `displayEpisodeTitle(episode)` formatter. User accepted the complete detail/episode-page behavior on the target device and PR #257 merged to `main` at `f153a36e9da8a208150fe638e0b9df5835df1dc0`. **Current accepted overall baseline / stable for this detail-selection task.** |
 | **Build192 / 0.14.25** | Add/Edit Emby modernization + same-server multi-route startup | Modern card editor, one-tap clipboard import, editor-only route latency, root-level auto-start, synchronizable Keychain opt-in server registry, and first-valid same-Server-ID route selection before Home client creation. Dedicated Xcode 16.4 standard MPV Release CI passed, app identity/MinOS 15.0 validated and unsigned IPA produced. **Real-device pending; does not replace Build184.** |
 | **Build193 / 0.14.26** | Carousel passive native movement + single SwiftUI release owner | Same release-owner product fix previously compiled under collided carousel 190/191 identities, now assigned a unique build after Build191 was reserved for detail and Build192 for Add/Edit Emby. Dedicated Release CI passed, IPA/checksums verified. **Real-device pending.** |
 
 ## Current accepted baseline
 
-- OnePlayer **0.14.17 / Build184**
+- OnePlayer **0.14.24 / Build191**
 - canonical branch: `main`
-- final merge PR: `#255`
-- final merge commit: `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`
-- development branch: `feat/detail-episode-page-optimization`
-- clean product head before merge: `63d4114ca6ef97b419ec31163e6431af5cf2d002`
-- dedicated CI source: `0238f2c8fd202df6e7ba52d582b1614c9230eef9`
-- CI run: `32851745960`
-- artifact: `OnePlayer-0.14.17-build184-detail-visual-refinement`
-- artifact ID: `9564647845`
-- IPA: `OnePlayer-0.14.17-build184-detail-visual-refinement-unsigned.ipa`
-- IPA SHA-256: `d89953c76b678fe1bc0b9f3fcc8b5b5b3ea430ec74bdd420834b427c91d47eb4`
+- final merge PR: `#257`
+- final merge commit: `f153a36e9da8a208150fe638e0b9df5835df1dc0`
+- development branch: `feat/detail-episode-selection-navigation`
+- final feature head before merge: `8279df9f8ceb7605bad1fade9bcba2582cddbbd6`
+- functional Build191 commit: `6dc3f69d90049cd9228bdf006e50fc3402c1c6b9`
+- dedicated CI source: `63fb252936360b284d75c4477d41587193e4fbd8`
+- CI run: `32875670990`
+- artifact: `OnePlayer-0.14.24-build191-detail-summary-title`
+- artifact ID: `9573898096`
+- IPA: `OnePlayer-0.14.24-build191-detail-summary-title-unsigned.ipa`
+- IPA SHA-256: `03c7dd61c2f151d537e78ec6727f888381d86839ea1ff75f0bbb388c3c56a354`
+- source ZIP SHA-256: `25c28eb7529cb371aa4b2d991691811c041bdecc4e9904538c663fb976267a98`
 - target device: iPhone 15 Pro Max / iOS 17.0
-- evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for completed detail requirements / merged to main**
+- Deployment Target / MinOS: **iOS 15.0**
+- evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for completed detail-selection requirements / merged to main**
 
-Build182 remains real-device accepted/frozen for the two detail performance/cache requirements and is inherited by Build184. Build184 / 0.14.17 is the accepted overall runtime baseline merged to `main`; Build189 is real-device rejected for the carousel release-settle regression, Build190 / 0.14.23 is the current home-carousel candidate, and Build191 / 0.14.24 is the current detail/episode-selection follow-up candidate. Build190 and Build191 are real-device pending and neither replaces Build184.
+Build182 remains accepted/frozen for detail scrolling and force-quit/relaunch presentation restoration; Build184 remains the accepted detail visual-hierarchy foundation. Build191 is now the accepted overall runtime baseline and adds the accepted detail episode-selection/navigation contract. Build192 / 0.14.25 Add/Edit Emby and Build193 / 0.14.26 home-carousel remain independent candidates; each must resync with Build191 and rerun affected validation before final integration. The separately confirmed in-player nonstandard season-grouping regression remains unresolved and is not part of Build191 acceptance.
 
 ## Episode-selection evidence trail
 
@@ -273,6 +276,23 @@ Build176 was merged through PR #253 and established the accepted player episode-
 Build178 was developed from the accepted Build176 `main` runtime baseline. Dedicated run `32836693548` passed, and after user real-device acceptance PR #254 merged at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. Build178 remains the current accepted overall functional baseline.
 
 Build182 is frozen for the two detail performance/cache requirements but remains on its feature line. Build184 detail visual refinement and Build185 carousel interaction are independent active candidates with unique Build identities and no current runtime file/state-owner overlap.
+
+## Build191 detail episode-selection acceptance
+
+- task: `DEV-detail-episode-selection-navigation` — completed and checkpoint retired after merge
+- branch: `feat/detail-episode-selection-navigation`
+- PR: `#257` — merged
+- merge commit: `f153a36e9da8a208150fe638e0b9df5835df1dc0`
+- functional Build191 commit: `6dc3f69d90049cd9228bdf006e50fc3402c1c6b9`
+- dedicated CI source / run: `63fb252936360b284d75c4477d41587193e4fbd8` / `32875670990` — success
+- artifact: `OnePlayer-0.14.24-build191-detail-summary-title`; ID `9573898096`; digest `sha256:f5403fad91f65ac3cd1810452f7aed9a4537f7a6d46b822f87e83261738dae61`
+- IPA SHA-256: `03c7dd61c2f151d537e78ec6727f888381d86839ea1ff75f0bbb388c3c56a354`
+- source ZIP SHA-256: `25c28eb7529cb371aa4b2d991691811c041bdecc4e9904538c663fb976267a98`
+- MinOS: 15.0
+- accepted real-device behavior: detail horizontal cards select without autoplay; normal entry selects explicit initial → resumable → canonical first episode; quick-range buttons select that range's first episode; main Play/Resume plays the selected episode; full picker stays mounted during playback and returns at the same scroll position; compact selected summary exactly matches the selected horizontal-card title.
+- inherited/frozen: Build176 source-owned episode-session replacement, Build178 canonical Emby ordering, Build182 detail scroll/presentation cache, Build173 PiP, MPV fast Seek, UnifiedTransport/Range/302/115 client-direct.
+- scope boundary: the separate in-player episode-overlay nonstandard season-grouping regression remains unresolved and is not claimed fixed by Build191.
+- evidence: **Code written / CI passed / IPA produced / real-device accepted / stable / merged to main**.
 
 ## Maintenance rule
 
