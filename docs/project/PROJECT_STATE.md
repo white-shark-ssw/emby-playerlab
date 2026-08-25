@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build193 / OnePlayer 0.14.26 was rejected on the target device because manual drag still freezes at intermediate progress after finger release. Build191 / OnePlayer 0.14.24 remains the accepted overall functional baseline on `main`. Build192 / OnePlayer 0.14.25 remains the independent Add/Edit Emby candidate. The home-carousel task is back in investigation with no accepted post-Build187 interaction candidate and no next Build allocated. The separately confirmed in-player nonstandard season-grouping regression remains unresolved._
+_Last updated after Build194 / OnePlayer 0.14.27 confirmed the in-player SeasonId grouping fix on the target device but exposed several-second opening latency for a 980-episode eager card row. Build195 / OnePlayer 0.14.28 replaces only that player episode row with `LazyHStack`; dedicated standard MPV Release CI passed and a TrollStore-friendly IPA was produced, with real-device performance validation pending. Build191 / OnePlayer 0.14.24 remains the accepted overall functional baseline on `main`. Build192 / OnePlayer 0.14.25 remains the independent Add/Edit Emby candidate. The home-carousel task remains in investigation after Build193 rejection._
 
 ## Current functional baseline
 
@@ -39,9 +39,11 @@ Build188 / OnePlayer 0.14.21 established the independent **detail/episode-select
 
 The detail branch later produced its own **0.14.23 / Build190** package (`OnePlayer-0.14.23-build190-detail-selection-defaults`, IPA SHA-256 `2f05197cebe43b6a50c2eb84225b7d134f364f82baf58772f86d10653f2f298c`). User screenshots from that exact distributed artifact positively confirm quick `10-19 / 20-24` range jumps now retain the target first episode blue selection and summary state. Those screenshots also exposed a pure display inconsistency between the compact summary and horizontal-card title. The same 0.14.23 / Build190 identity was later occupied independently by the home-carousel candidate, so detail no longer reuses that identity; attribution of the screenshots remains tied to the detail artifact SHA above.
 
-Build191 / OnePlayer 0.14.24 is **real-device accepted and merged to `main` through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`**. It completes the detail episode-selection/navigation line: select-only horizontal cards with blue selection, explicit-initial → Resume → canonical-first default selection, range-first quick jumps, main Play/Resume targeting the selected episode, non-dismissing full-picker playback that returns at the same scroll position, and a compact summary that exactly reuses the card title formatter. Build176 session replacement, Build178 canonical order and Build182 detail performance/cache remain unchanged. This acceptance does not cover the separately confirmed in-player nonstandard season-grouping regression.
+Build191 / OnePlayer 0.14.24 is **real-device accepted and merged to `main` through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`**. It completes the detail episode-selection/navigation line: select-only horizontal cards with blue selection, explicit-initial → Resume → canonical-first default selection, range-first quick jumps, main Play/Resume targeting the selected episode, non-dismissing full-picker playback that returns at the same scroll position, and a compact summary that exactly reuses the card title formatter. Build176 session replacement, Build178 canonical order and Build182 detail performance/cache remain unchanged. This acceptance does not cover the separately developed in-player nonstandard SeasonId grouping follow-up.
 
 Build192 / OnePlayer 0.14.25 is the independent **Add/Edit Emby modernization and multi-route candidate**. It replaces the old Add Server Form with a card editor, keeps route latency visible only while adding/editing, selects the first valid same-Server-ID route before Home client creation, handles auto-start at RootView before AppShell/server-list rendering, and stores opt-in synced server configuration plus AccessToken in a separate synchronizable Keychain registry while never syncing the password. Dedicated Release run `32875941745` passed; artifact `OnePlayer-0.14.25-build192-add-emby-server` ID `9574058602`; IPA SHA-256 `b13b76d322c0b301b751ad3723ff0368cb9bc9d0182ec701cf5fcc7a16e4c81d`; source ZIP SHA-256 `87bf231fb49a167a749174fe0e78d79c42ed05172b08df67f31cfb1b8a24ac33`; MinOS 15.0. **Real-device and cross-device iCloud behavior are pending; accepted baseline is Build191; Build192 must resync with Build191 before final integration.**
+
+Build194 / OnePlayer 0.14.27 is the independent **in-player nonstandard SeasonId grouping follow-up**. The TrollStore-friendly rewrap installed successfully on the target device and the supplied 980-episode Series now displays the full episode set in the player picker, confirming the SeasonId-first grouping correction. That same test exposed a new performance issue: opening the picker blocks for several seconds because the player episode row eagerly constructs all 980 thumbnail/title/overview cards. Build195 / OnePlayer 0.14.28 changes only that row from `HStack` to `LazyHStack`; dedicated Release run `32884343196` passed, artifact `OnePlayer-0.14.28-build195-player-episode-lazy-row` ID `9577124023`, IPA SHA-256 `fab4e7f6552933096f49b86c4b9d3604025e1dd916b186015a00097802543af2`, MinOS 15.0. **Build195 real-device performance validation is pending and it does not replace Build191.**
 
 ## Accepted episode-selection and ordering contracts
 
@@ -71,7 +73,6 @@ Build178 adds the canonical episode-order contract:
 
 The original failing non-standard series had 165 episodes with `nilIndex=164`; Build178 was accepted on real device after switching the shared data path to Emby's TV ordering authority.
 
-
 Build191 adds the accepted detail-browsing contract on top of those player/order owners:
 
 - tapping a horizontal detail episode card changes `selectedEpisodeID` only; it does not autoplay;
@@ -82,7 +83,7 @@ Build191 adds the accepted detail-browsing contract on top of those player/order
 - the full episode picker stays mounted while its selected episode plays, so closing player returns to the same picker/ScrollView position without a second manual offset cache;
 - the compact selected-episode summary directly reuses `displayEpisodeTitle(episode)`, the same formatter as the horizontal card.
 
-This detail-page acceptance is separate from the in-player episode overlay. The confirmed nonstandard season-grouping regression in that player overlay remains unresolved.
+Build194 adds positive real-device evidence for the player-overlay grouping boundary: the player now consumes `seriesEpisodes + seriesSeasons`, maps Episode `SeasonId` to the real Season item/index first and uses `ParentIndexNumber` only as fallback, so the supplied 980-episode single-SeasonId library is complete in the player picker. Build195 does not change this grouping/data/session contract; it only lazily instantiates the horizontal episode cards to address the confirmed opening latency.
 
 ## Current parallel feature candidates
 
@@ -105,6 +106,22 @@ This detail-page acceptance is separate from the in-player episode overlay. The 
 - media/P0 boundary: no Player/Transport/Cache change; route aggregation changes Emby API entry only and does not proxy STRM/302/115 media bytes through NAS
 - evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
+### Build195 / OnePlayer 0.14.28 — player large-season lazy episode row
+
+`DEV-player-nonstandard-episode-season-grouping` remains Active on Draft PR #258.
+
+- branch: `fix/player-nonstandard-episode-season-grouping`
+- Build194 target-device evidence: TrollStore-friendly package installs; supplied 980-episode Series displays complete player-picker data; opening the eager row blocks for several seconds
+- Build195 product delta: one `HStack` → `LazyHStack` change in `PlayerEpisodeSelection.swift`; no episode cap, pagination, reorder or session change
+- dedicated CI source: `edd7d42bdee2b20bc327ed7d4341c7433c58bb15`
+- workflow-restored head: `8c2f767652ce449deaa28f8cc9d8c21b95058af1`
+- CI run: **`32884343196` — success**
+- artifact: `OnePlayer-0.14.28-build195-player-episode-lazy-row`; ID `9577124023`; digest `sha256:262007d104d62252a837e075baf69fcdf36e8761b6fac9424b99f1aadc8de421`
+- IPA SHA-256: `fab4e7f6552933096f49b86c4b9d3604025e1dd916b186015a00097802543af2`; source ZIP SHA-256: `0c5f9e3b2a9621cc712b8ab94d7976199579489f1fc94e887ab7c4984311e394`
+- MinOS: 15.0
+- packaging: TrollStore-friendly archive order is produced directly by CI, following the same structure that made the Build194 rewrap installable
+- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+
 ### Build193 / OnePlayer 0.14.26 — home-carousel native movement + SwiftUI release ownership
 
 `DEV-home-carousel-drag-smoothness` remains Active. Build193 is the unique valid identity for the Build189 release-settle fix after Build190/191 collided with parallel detail work and Build192 was reserved for Add/Edit Emby.
@@ -121,7 +138,7 @@ This detail-page acceptance is separate from the in-player episode overlay. The 
 - IPA SHA-256: `9ad6bc7bb267a6cc61fb2312a7276d41f8989aa11a7883cbc3f3ce97941081a4`; source ZIP SHA-256: `68e11e59daeaf4b245bba1949bb5d8c0825552baf7c97d280546880f5c19b860`
 - MinOS: 15.0
 - unchanged: 0.28 progress / 0.48×width predicted commit, full-page foreground travel, reversal continuity, backdrop/auto-advance/detail click, Player/PiP/Transport/Cache/Emby session contracts
-- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+- evidence level: **Code written / CI passed / IPA produced / real-device rejected / not stable**
 
 ### Build189 / OnePlayer 0.14.22 — home-carousel native-touch input
 
@@ -137,7 +154,7 @@ This detail-page acceptance is separate from the in-player episode overlay. The 
 - IPA SHA-256: `50c74bd43935a31ca3dda781c04a1113c2ce616c7da9e24e438cba78988c3a6d`; source ZIP SHA-256: `ae7b226aa20063700f3a0964714b2a89fe5e7c0eee4bf8b5cae371e432c791e4`
 - MinOS: 15.0
 - implementation boundary: UIKit raw/coalesced touch samples drive manual progress; existing full-page foreground travel and SwiftUI predicted release commit/cancel remain unchanged; P0/Frozen files zero-diff
-- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+- evidence level: **Code written / CI passed / IPA produced / real-device rejected / not stable**
 
 ### Build187 / OnePlayer 0.14.20 — home-carousel drag cadence diagnostic
 
@@ -291,7 +308,7 @@ Exact Seek was tested and rejected as the normal runtime path because its latenc
 
 ## PiP status
 
-PiP development remains **temporarily frozen at Build173** even though the overall accepted functional baseline is now Build178.
+PiP development remains **temporarily frozen at Build173** even though the overall accepted functional baseline is now Build191.
 
 Accepted PiP behaviour:
 
@@ -329,7 +346,7 @@ Do not start a new PiP optimisation build unless there is a materially new archi
 
 ## Current development direction
 
-Build184 / OnePlayer 0.14.17 remains the real-device accepted overall `main` runtime baseline. Build179, Build180 and Build185 carousel candidates are rejected by real-device evidence; Build183 is rejected as the default direction because it changed the established foreground page-slide interaction. Build187 / OnePlayer 0.14.20 is the current carousel drag-cadence diagnostic candidate with CI/IPA evidence and requires iPhone 15 Pro Max / iOS 17.0 recording plus exported playback log before any further rendering change. `DEV-detail-episode-selection-navigation` is a separate active task and currently does not overlap Home carousel files/state owners.
+Build191 / OnePlayer 0.14.24 is the real-device accepted overall `main` runtime baseline. Build192 remains the independent Add/Edit Emby candidate. Build194 positively confirmed the in-player nonstandard SeasonId grouping correction but exposed 980-card eager-row opening latency; Build195 is the current CI/IPA-complete lazy-row performance candidate pending target-device validation. The home-carousel line remains in investigation after Build193 rejection. These tasks remain independent and must each resync/check `main` before final integration.
 
 New work should proceed module-by-module without casually touching:
 
