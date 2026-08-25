@@ -11,10 +11,10 @@
 | Player gesture UI | Stable baseline | Immediate left/right double-tap Seek, scrub, volume/brightness HUD, etc. |
 | Native navigation | Frozen principle | System owns push/pop and interactive pop. |
 | PiP | **Frozen at Build173** | Functional enough to leave for now; known renderer cold-return tail remains. |
-| Player episode selection / auto-next | **Stable at Build176** | User accepted OnePlayer 0.14.9 / Build176 on device and closed the task. Accepted design: fixed existing player-button coordinates; in-player safe-area episode overlay; compact season filtering; detail-style title + two-line overview cards; centered `正在播放`; localized fade prevents lower-button bleed; full source-owned session replacement; auto-next only after trusted non-premature natural end. Frozen playback/transport modules remain untouched. |
+| Player episode selection / auto-next | **Stable at Build176 / merged to main** | User accepted OnePlayer 0.14.9 / Build176 on device. Final merge PR #253 landed on `main` at `d10e0d63b429f72a664193a1a5bacf728cac50b6`. Accepted design: fixed existing player-button coordinates; in-player safe-area episode overlay; compact season filtering; detail-style title + two-line overview cards; centered `正在播放`; localized fade prevents lower-button bleed; full source-owned session replacement; auto-next only after trusted non-premature natural end. |
 | Diagnostics | Required | Playback/App logs remain a first-class debugging surface. |
 | App appearance/theme | Partial | App identity/appearance work exists; broader theme work can be developed separately without touching player core. |
-| Other product modules | Ready for next task | Start new feature work from the Build176 real-device accepted functional baseline unless later evidence establishes a newer one. |
+| Other product modules | Ready for next task | Start new feature work from the Build176 real-device accepted `main` baseline unless later evidence establishes a newer one. |
 
 ## Change discipline
 
