@@ -186,3 +186,16 @@ First, native detail `UIScrollView.contentOffset` is a high-frequency render inp
 Second, detail warm state is **presentation-only**. Build182 may persist safe display metadata (`episodes`, `seasons`, `imageInfos`, `similarItems`) under `Library/Caches/OnePlayer/DetailPresentation` so a known detail page can restore Logo/episode presentation across process restarts, but normal Emby loading still refreshes current server data. PlaybackInfo, MediaSource, PlaySession, ResolvedPlaybackSource and temporary 115/CDN URLs must not enter this cache. Resume/played/favorite authority remains the live server/session path.
 
 Build184 adds only the accepted detail visual hierarchy (`视频信息` below `更多类似`, above the bottom glass media-source summary, and 19 pt bold main section headers) and does not reopen those ownership boundaries. **Build184 / OnePlayer 0.14.17 was accepted by the user on real device on 2026-08-25 and merged to `main` through PR #255 at commit `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`.** Treat the detail scroll owner and presentation-cache boundary as stable/frozen unless new real-device regression evidence requires reopening them.
+
+## D014 — Emby server entry selection is Session-owned and media transport remains separate
+
+Build192 establishes the server-management ownership boundary without reopening playback transport.
+
+- `SessionStore` remains the single owner of saved Emby sessions and now owns a separate `EmbyServerConfiguration` keyed by session ID for alternate entries, auto-start identity and sync preference. `EmbySession` itself is not broadened merely to carry UI/runtime routing metadata.
+- Alternate entries are required to resolve through the existing `EmbyAPIClient.publicInfo()` path to the same Emby Server ID. At normal entry, candidate routes race before Home client creation; the first valid same-Server-ID route becomes the session client. Home API and image URLs then reuse that winner. Do not turn each poster/image request into a repeated multi-route race.
+- Route latency is diagnostic/editor state only. It may appear in Add/Edit Emby, but not in the server list, Home, favorites, search, settings or auto-start presentation.
+- Auto-start belongs at the root routing boundary. Resolve the target and route before constructing the normal AppShell/server-list root; do not fake direct startup with a first-level render followed by a full-screen presentation.
+- Opt-in iCloud server sync uses a separate `kSecAttrSynchronizable` Keychain record. It may contain server configuration, AccessToken and auto-start flag; it must never contain the user's password. Existing local AccessToken storage keeps its prior `ThisDeviceOnly` accessibility contract.
+- Same-server route selection changes only the Emby API/server entry. Media remains `Emby / STRM → 302 → 115/CDN → iPhone`; NAS must never relay media bytes. Player, UnifiedTransport, Cache, Seek, Resume and PiP contracts remain outside this feature.
+
+Build192 / OnePlayer 0.14.25 passed dedicated Xcode 16.4 standard MPV Release CI and produced an iOS 15.0-compatible IPA. This confirms implementation/build evidence only. Route behavior, root auto-start presentation and synchronizable Keychain behavior—especially cross-device behavior under TrollStore/ad-hoc signing—remain **real-device pending** and are not frozen.

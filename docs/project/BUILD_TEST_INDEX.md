@@ -35,6 +35,7 @@ This is a milestone index, not a list of every experimental build.
 | **Build189 / 0.14.22** | Carousel native raw/coalesced-touch input | Native movement sampling worked, but **real-device rejected:** releasing a drag could leave the carousel frozen at the intermediate progress instead of completing/cancelling. Source inspection showed native recognition was competing with the SwiftUI-only release owner. |
 | **Build190 / 0.14.23** | Carousel release-owner implementation under collided identity | The passive-native / SwiftUI-release implementation passed dedicated Release CI and produced an IPA, but the same Build190 identity was already used by the parallel detail-selection line. **Carousel Build190 identity retired; do not distribute or use for attribution.** |
 | **Build191 / 0.14.24** | Detail selected-episode summary/card title unification | Detail Build190 screenshots positively confirmed quick-range selection retention but exposed inconsistent compact summary formatting. Build191 reuses the exact horizontal-card `displayEpisodeTitle(episode)` formatter instead of maintaining a second summary format. Dedicated Xcode 16.4 Release CI passed, IPA/checksums verified. **Real-device pending.** |
+| **Build192 / 0.14.25** | Add/Edit Emby modernization + same-server multi-route startup | Modern card editor, one-tap clipboard import, editor-only route latency, root-level auto-start, synchronizable Keychain opt-in server registry, and first-valid same-Server-ID route selection before Home client creation. Dedicated Xcode 16.4 standard MPV Release CI passed, app identity/MinOS 15.0 validated and unsigned IPA produced. **Real-device pending; does not replace Build184.** |
 | **Build193 / 0.14.26** | Carousel passive native movement + single SwiftUI release owner | Same release-owner product fix previously compiled under collided carousel 190/191 identities, now assigned a unique build after Build191 was reserved for detail and Build192 for Add/Edit Emby. Dedicated Release CI passed, IPA/checksums verified. **Real-device pending.** |
 
 ## Current accepted baseline
@@ -239,6 +240,30 @@ Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 R
 - IPA SHA-256: `d89953c76b678fe1bc0b9f3fcc8b5b5b3ea430ec74bdd420834b427c91d47eb4`
 - MinOS: app/runtime Mach-O validated at iOS 15.0
 - product delta: “视频信息” follows “更多类似” and precedes the bottom glass media-source summary; main section headers are 19 pt bold; card body text/Hero/spacing are unchanged.
+- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+
+## Build192 Add/Edit Emby evidence
+
+- task: `DEV-add-emby-page-optimization` — Active
+- branch: `feat/add-emby-page-optimization`
+- Draft PR: `#256`
+- accepted runtime base: Build184 / 0.14.17 remains the overall accepted baseline
+- product implementation head: `2d9aca2002e9788d217410d4a8b16772ef79d814`
+- exact dedicated CI source: `49dd9bf9904efd4ef1e6d3ac4d1d57d960ea4f9b`
+- CI run: **`32875941745` — success**
+- artifact: `OnePlayer-0.14.25-build192-add-emby-server`
+- artifact ID: **`9574058602`**
+- artifact archive digest: `sha256:8e675b6154264ee850d6446afa81c6b41cce6aa545f175887b0da9537f536c5d`
+- IPA: `OnePlayer-0.14.25-build192-add-emby-server-unsigned.ipa`
+- IPA SHA-256: **`b13b76d322c0b301b751ad3723ff0368cb9bc9d0182ec701cf5fcc7a16e4c81d`**
+- source ZIP: `OnePlayer-0.14.25-build192-add-emby-server-49dd9bf-source.zip`
+- source ZIP SHA-256: **`87bf231fb49a167a749174fe0e78d79c42ed05172b08df67f31cfb1b8a24ac33`**
+- app identity: bundle `com.embyplayerlab.app`, OnePlayer 0.14.25 (192), display name OnePlayer
+- MinOS: app and main runtime Mach-O validated at iOS 15.0; compatibility audit OK
+- task/Frozen contract: passed; Player/Transport/Cache files absent from the task diff; media bytes remain Emby/STRM → 302 → 115/CDN → iPhone
+- implementation: modern Add/Edit cards; one-tap clipboard parser; same-Emby route add/remove/probe with latency only in Add/Edit; SessionStore-owned separate server configuration; first-valid same-Server-ID route selection before Home client; root-level auto-start before AppShell; synchronizable Keychain registry excluding password
+- workflow cleanup: temporary Build192 CI removed after artifact production at `67d2041d0e4cf06e3c9105a4910eaefc28c14f23`
+- Build191 note: this task's earlier Build191 artifact is retired because the parallel detail task owns Build191; do not distribute or use that collided identity for attribution
 - evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
 ## Main integration evidence

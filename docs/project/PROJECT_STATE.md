@@ -40,6 +40,8 @@ The detail branch later produced its own **0.14.23 / Build190** package (`OnePla
 
 Build191 / OnePlayer 0.14.24 is now the independent **detail summary-title follow-up candidate**. `selectedEpisodeSelectionSummary` directly reuses `displayEpisodeTitle(episode)`, the exact formatter used by the selected horizontal card, so the two strings are intentionally identical. Dedicated Release run `32875670990` passed; artifact `OnePlayer-0.14.24-build191-detail-summary-title` ID `9573898096`; downloaded IPA SHA-256 `03c7dd61c2f151d537e78ec6727f888381d86839ea1ff75f0bbb388c3c56a354`; source ZIP SHA-256 `25c28eb7529cb371aa4b2d991691811c041bdecc4e9904538c663fb976267a98`; MinOS 15.0. **Real-device evidence is pending; accepted baseline remains Build184.**
 
+Build192 / OnePlayer 0.14.25 is the independent **Add/Edit Emby modernization and multi-route candidate**. It replaces the old Add Server Form with a card editor, keeps route latency visible only while adding/editing, selects the first valid same-Server-ID route before Home client creation, handles auto-start at RootView before AppShell/server-list rendering, and stores opt-in synced server configuration plus AccessToken in a separate synchronizable Keychain registry while never syncing the password. Dedicated Release run `32875941745` passed; artifact `OnePlayer-0.14.25-build192-add-emby-server` ID `9574058602`; IPA SHA-256 `b13b76d322c0b301b751ad3723ff0368cb9bc9d0182ec701cf5fcc7a16e4c81d`; source ZIP SHA-256 `87bf231fb49a167a749174fe0e78d79c42ed05172b08df67f31cfb1b8a24ac33`; MinOS 15.0. **Real-device and cross-device iCloud behavior are pending; accepted baseline remains Build184.**
+
 ## Accepted episode-selection and ordering contracts
 
 Build176 established the stable in-player episode-selection/session behaviour:
@@ -69,6 +71,25 @@ Build178 adds the canonical episode-order contract:
 The original failing non-standard series had 165 episodes with `nilIndex=164`; Build178 was accepted on real device after switching the shared data path to Emby's TV ordering authority.
 
 ## Current parallel feature candidates
+
+### Build192 / OnePlayer 0.14.25 — Add/Edit Emby modernization + same-server route selection
+
+`DEV-add-emby-page-optimization` remains Active and is ready for target-device validation.
+
+- branch: `feat/add-emby-page-optimization`
+- Draft PR: `#256`
+- product head: `2d9aca2002e9788d217410d4a8b16772ef79d814`
+- dedicated CI source: `49dd9bf9904efd4ef1e6d3ac4d1d57d960ea4f9b`
+- CI run: **`32875941745` — success**
+- artifact: `OnePlayer-0.14.25-build192-add-emby-server`; ID `9574058602`; digest `sha256:8e675b6154264ee850d6446afa81c6b41cce6aa545f175887b0da9537f536c5d`
+- IPA SHA-256: `b13b76d322c0b301b751ad3723ff0368cb9bc9d0182ec701cf5fcc7a16e4c81d`; source ZIP SHA-256: `87bf231fb49a167a749174fe0e78d79c42ed05172b08df67f31cfb1b8a24ac33`
+- MinOS: 15.0
+- UI: modern Add/Edit cards, one-tap clipboard import, route add/remove/probe, latency/failed/mismatch/fastest shown only in editor
+- state owner: SessionStore owns route configuration, same-server validation, route winner, auto-start identity and synced registry; `EmbySession` schema remains unchanged
+- startup: RootView resolves direct auto-start before AppShell exists; EmbyServerRootViewV3 resolves the best route before creating Home content
+- iCloud boundary: separate synchronizable Keychain record contains only opted-in server configuration + AccessToken + auto-start flag; password is never persisted or synced; cross-device runtime remains real-device pending
+- media/P0 boundary: no Player/Transport/Cache change; route aggregation changes Emby API entry only and does not proxy STRM/302/115 media bytes through NAS
+- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
 ### Build191 / OnePlayer 0.14.24 — detail selected-episode title unification
 

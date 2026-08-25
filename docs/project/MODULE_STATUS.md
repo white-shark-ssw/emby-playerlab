@@ -4,6 +4,7 @@
 |---|---|---|
 | Deployment compatibility | Frozen | Prefer iOS 15.0; must work on iPhone 15 Pro Max / iOS 17.0; never raise above iOS 17.0. |
 | Emby / STRM / 302 | Frozen core | Client-direct final media path. NAS must not relay bytes. |
+| Emby server management / multi-route | **Active Build192 candidate** | SessionStore-owned same-Server-ID route configuration/selection, root-level auto-start and opt-in synchronizable Keychain server registry. Dedicated Release CI/IPA passed; real-device route/iCloud/startup validation pending. This does not reopen the Frozen STRM/302/115 client-direct media path. |
 | Emby TV episode ordering | **Stable at Build178 / merged to main** | Canonical series order comes from Emby's `/Shows/{SeriesId}/Episodes`; no title/file/date/ID/artificial-number fallback sorting. |
 | UnifiedTransport | Frozen core | Range/206 + real byte demand. Avoid unrelated edits. |
 | Session cache | Frozen core | Shared playback-path cache contract. |
