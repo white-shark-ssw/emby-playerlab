@@ -1,19 +1,141 @@
 import SwiftUI
 import Combine
 import UIKit
+import Foundation
+
+enum V3HomeCarouselDragAxis {
+    case horizontal
+    case vertical
+}
+
+final class V3HomeCarouselTransitionState: ObservableObject {
+    @Published var fromID: String?
+    @Published var toID: String?
+    @Published var progress: CGFloat = 0
+    @Published var direction = 1
+    var isDragging = false
+    var dragAxis: V3HomeCarouselDragAxis?
+    var tapSuppressedUntil = Date.distantPast
+
+    private var dragSampleCount = 0
+    private var dragFirstSampleTime: TimeInterval?
+    private var dragLastSampleTime: TimeInterval?
+    private var dragFirstTranslation: CGSize?
+    private var dragAxisLockTranslation: CGSize?
+    private var dragTransitionStartTranslation: CGSize?
+    private var dragMaxSampleGap: TimeInterval = 0
+
+    func recordDragSample(_ translation: CGSize) {
+        let now = ProcessInfo.processInfo.systemUptime
+        if dragSampleCount == 0 {
+            dragFirstSampleTime = now
+            dragFirstTranslation = translation
+        }
+        if let last = dragLastSampleTime { dragMaxSampleGap = max(dragMaxSampleGap, now - last) }
+        dragLastSampleTime = now
+        dragSampleCount += 1
+    }
+
+    func recordDragAxisLock(_ translation: CGSize) {
+        if dragAxisLockTranslation == nil { dragAxisLockTranslation = translation }
+    }
+
+    func recordDragTransitionStart(_ translation: CGSize) {
+        if dragTransitionStartTranslation == nil { dragTransitionStartTranslation = translation }
+    }
+
+    func finishDragDiagnostics(axis: V3HomeCarouselDragAxis?, endTranslation: CGSize) {
+        guard dragSampleCount > 0 else { resetDragDiagnostics(); return }
+        let firstTime = dragFirstSampleTime ?? 0
+        let lastTime = dragLastSampleTime ?? firstTime
+        let duration = max(0, lastTime - firstTime)
+        let averageHz = duration > 0 && dragSampleCount > 1 ? Double(dragSampleCount - 1) / duration : 0
+        let axisName: String
+        switch axis {
+        case .horizontal: axisName = "horizontal"
+        case .vertical: axisName = "vertical"
+        case nil: axisName = "unresolved"
+        }
+        let point: (CGSize?) -> String = { value in
+            guard let value else { return "nil" }
+            return String(format: "%.2f,%.2f", value.width, value.height)
+        }
+        DiagnosticsLogger.shared.log("HomeCarouselDragTiming", "axis=\(axisName) samples=\(dragSampleCount) durationMs=\(String(format: "%.2f", duration * 1000)) avgHz=\(String(format: "%.2f", averageHz)) maxGapMs=\(String(format: "%.2f", dragMaxSampleGap * 1000)) first=\(point(dragFirstTranslation)) lock=\(point(dragAxisLockTranslation)) transition=\(point(dragTransitionStartTranslation)) end=\(point(endTranslation)) maxFPS=\(UIScreen.main.maximumFramesPerSecond) lowPower=\(ProcessInfo.processInfo.isLowPowerModeEnabled)")
+        resetDragDiagnostics()
+    }
+
+    func resetDragDiagnostics() {
+        dragSampleCount = 0
+        dragFirstSampleTime = nil
+        dragLastSampleTime = nil
+        dragFirstTranslation = nil
+        dragAxisLockTranslation = nil
+        dragTransitionStartTranslation = nil
+        dragMaxSampleGap = 0
+    }
+}
+
+struct V3HomeCarouselTransitionScope<Content: View>: View {
+    @ObservedObject var state: V3HomeCarouselTransitionState
+    let content: () -> Content
+
+    init(state: V3HomeCarouselTransitionState, @ViewBuilder content: @escaping () -> Content) {
+        self.state = state
+        self.content = content
+    }
+
+    var body: some View { content() }
+}
 
 extension V3EmbyHomeView {
+    var transitionFromID: String? {
+        get { carouselTransitionState.fromID }
+        nonmutating set { carouselTransitionState.fromID = newValue }
+    }
+
+    var transitionToID: String? {
+        get { carouselTransitionState.toID }
+        nonmutating set { carouselTransitionState.toID = newValue }
+    }
+
+    var transitionProgress: CGFloat {
+        get { carouselTransitionState.progress }
+        nonmutating set { carouselTransitionState.progress = newValue }
+    }
+
+    var transitionDirection: Int {
+        get { carouselTransitionState.direction }
+        nonmutating set { carouselTransitionState.direction = newValue }
+    }
+
+    var isCarouselDragging: Bool {
+        get { carouselTransitionState.isDragging }
+        nonmutating set { carouselTransitionState.isDragging = newValue }
+    }
+
+    var carouselTapSuppressedUntil: Date {
+        get { carouselTransitionState.tapSuppressedUntil }
+        nonmutating set { carouselTransitionState.tapSuppressedUntil = newValue }
+    }
+
     func carouselDragGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 12, coordinateSpace: .local)
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
+                carouselTransitionState.recordDragSample(value.translation)
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
-                guard abs(horizontal) > abs(vertical) * 1.08, abs(horizontal) > 4 else { return }
+                if carouselTransitionState.dragAxis == nil {
+                    guard max(abs(horizontal), abs(vertical)) >= 0.5 else { return }
+                    carouselTransitionState.dragAxis = abs(horizontal) >= abs(vertical) ? .horizontal : .vertical
+                    carouselTransitionState.recordDragAxisLock(value.translation)
+                }
+                guard carouselTransitionState.dragAxis == .horizontal else { return }
                 suppressCarouselTap()
                 guard transitionToID == nil || isCarouselDragging else { return }
                 let direction = horizontal < 0 ? 1 : -1
                 guard let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: direction) else { return }
                 if !isCarouselDragging || transitionFromID != currentID || transitionToID != targetID {
+                    carouselTransitionState.recordDragTransitionStart(value.translation)
                     transitionFromID = currentID
                     transitionToID = targetID
                     transitionProgress = 0
@@ -23,7 +145,10 @@ extension V3EmbyHomeView {
                 transitionProgress = min(1, max(0, abs(horizontal) / max(1, width)))
             }
             .onEnded { value in
-                guard isCarouselDragging, let targetID = transitionToID else { return }
+                let dragAxis = carouselTransitionState.dragAxis
+                carouselTransitionState.finishDragDiagnostics(axis: dragAxis, endTranslation: value.translation)
+                carouselTransitionState.dragAxis = nil
+                guard dragAxis == .horizontal, isCarouselDragging, let targetID = transitionToID else { return }
                 suppressCarouselTap()
                 let predicted = abs(value.predictedEndTranslation.width)
                 let shouldCommit = transitionProgress >= 0.28 || predicted >= width * 0.48
@@ -87,6 +212,7 @@ extension V3EmbyHomeView {
         transitionProgress = 0
         transitionDirection = 1
         isCarouselDragging = false
+        carouselTransitionState.dragAxis = nil
         carouselLastSettledAt = Date()
         DiagnosticsLogger.shared.log("HomeCarousel", "settled item=\(itemID)")
     }
@@ -101,6 +227,8 @@ extension V3EmbyHomeView {
             transitionProgress = 0
             transitionDirection = 1
             isCarouselDragging = false
+            carouselTransitionState.dragAxis = nil
+            carouselTransitionState.resetDragDiagnostics()
             onCarouselActiveChanged(false)
             return
         }
@@ -121,6 +249,8 @@ extension V3EmbyHomeView {
             transitionProgress = 0
             transitionDirection = 1
             isCarouselDragging = false
+            carouselTransitionState.dragAxis = nil
+            carouselTransitionState.resetDragDiagnostics()
             carouselLastSettledAt = Date()
         }
         carouselLogoByID = carouselLogoByID.filter { ids.contains($0.key) }
@@ -178,11 +308,7 @@ extension V3EmbyHomeView {
         return itemID == currentCarouselItemID ? 1 : 0
     }
 
-    func carouselBackdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat {
-        let raw = min(1, max(0, rawProgress))
-        let delayed = min(1, max(0, (raw - 0.08) / 0.92))
-        return delayed * delayed * (3 - 2 * delayed)
-    }
+    func carouselBackdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat { min(1, max(0, rawProgress)) }
 
     func carouselForegroundOffset(for itemID: String, width: CGFloat) -> CGFloat {
         guard let fromID = transitionFromID, let toID = transitionToID else { return 0 }
