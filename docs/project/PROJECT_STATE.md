@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build185 home-carousel EX comparison was rejected on iPhone 15 Pro Max / iOS 17.0 and Build187 / OnePlayer 0.14.20 completed dedicated Release CI/IPA as the current drag-cadence diagnostic candidate. Build184 / OnePlayer 0.14.17 remains the accepted overall functional baseline on `main`; Build187 does not replace it until target-device evidence is accepted._
+_Last updated after Build187 / OnePlayer 0.14.20 completed dedicated Release CI/IPA as the current exportable home-carousel diagnostic candidate and Build188 / OnePlayer 0.14.21 completed dedicated Release CI/IPA as the current detail/episode-selection navigation candidate. Build184 / OnePlayer 0.14.17 remains the accepted overall functional baseline on `main`; neither candidate replaces it until target-device evidence is accepted._
 
 ## Current functional baseline
 
@@ -33,6 +33,8 @@ Build181 / OnePlayer 0.14.14 is now a **detail-page diagnostic reference rather 
 Build182 / OnePlayer 0.14.15 is **real-device accepted and frozen for detail scrolling plus force-quit/relaunch presentation restoration** on iPhone 15 Pro Max / iOS 17.0. Its architecture is now inherited by the accepted Build184 overall baseline on `main`.
 
 Build184 / OnePlayer 0.14.17 is **real-device accepted, stable for the completed detail-page requirements, and merged to `main` through PR #255**. It preserves Build182 detail performance/cache behavior and only adds the accepted visual hierarchy changes: `视频信息` below `更多类似`, above the bottom glass media-source summary, with the main section headers at 19 pt bold.
+
+Build188 / OnePlayer 0.14.21 is the current independent **detail/episode-selection navigation candidate**. Detail horizontal episode cards now select only and retain the blue selected outline; a compact 12 pt selected-episode summary appears above the horizontal cards, while the existing main Play/Resume button remains the playback action. Full picker episode playback no longer dismisses the picker or waits 100 ms before resolving playback; the visible picker presents the shared `model.selectedSource`, so closing player should return to the same picker instance/scroll position. Dedicated Release run `32864835934` passed, artifact `9569812832` was produced, and downloaded IPA SHA-256 `c82fcca99162f4840d8b0fccdb7c2f6203426d12901ef5d6ac4f4879db78b9ff` matched the artifact checksum. **Real-device evidence is pending; accepted baseline remains Build184.**
 
 ## Accepted episode-selection and ordering contracts
 

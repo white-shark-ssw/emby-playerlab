@@ -31,6 +31,7 @@ This is a milestone index, not a list of every experimental build.
 | **Build185 / 0.14.18** | Restore carousel page-slide semantics + refine initial axis acquisition | Dedicated Release CI passed and IPA produced. **Real-device rejected:** page-slide interaction/reversal were correct, but first visible movement remained about 10/12/16 px versus EX about 1/1/2 px and ongoing drag remained visibly coarser. |
 | **Build186 / 0.14.19** | Carousel drag-cadence instrumentation | Dedicated Release CI/IPA succeeded from accepted Build184 integration; passive timing was implemented, but its generic category routed to App logs and the package was not distributed for diagnosis. |
 | **Build187 / 0.14.20** | Exportable carousel drag-cadence diagnostic | Same drag behavior as Build186; routes `HomeCarouselDragTiming` through the existing playback-log export. Dedicated Release CI passed, IPA produced and downloaded checksums verified. **Current carousel diagnostic candidate; real-device evidence pending.** |
+| **Build188 / 0.14.21** | Detail episode selection semantics + full picker return | Detail horizontal cards select-only with blue outline and compact selected-episode summary; main Play/Resume plays the selected episode. Full picker no longer dismisses before playback, so closing player should reveal the same picker/scroll position. Dedicated Release CI/IPA succeeded; **real-device evidence pending.** |
 
 ## Current accepted baseline
 
@@ -49,7 +50,7 @@ This is a milestone index, not a list of every experimental build.
 - target device: iPhone 15 Pro Max / iOS 17.0
 - evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for completed detail requirements / merged to main**
 
-Build182 remains real-device accepted/frozen for the two detail performance/cache requirements and is inherited by Build184. Build184 / 0.14.17 is the accepted overall runtime baseline merged to `main`; Build185 is real-device rejected and Build187 / 0.14.20 is the current independent home-carousel diagnostic candidate pending recording plus exported playback log.
+Build182 remains real-device accepted/frozen for the two detail performance/cache requirements and is inherited by Build184. Build184 / 0.14.17 is the accepted overall runtime baseline merged to `main`; Build185 is real-device rejected, Build187 / 0.14.20 is the independent home-carousel diagnostic candidate, and Build188 / 0.14.21 is the independent detail/episode-selection candidate. Both newer candidates remain real-device pending and do not replace Build184.
 
 ## Episode-selection evidence trail
 
