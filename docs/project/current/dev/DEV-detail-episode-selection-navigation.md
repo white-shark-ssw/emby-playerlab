@@ -12,10 +12,8 @@
 - **Working branch**：`feat/detail-episode-selection-navigation`
 - **Branch base**：`dcd6cc6d01319e13ccb991967a190ae1f915053b`
 - **PR**：none
-- **Build / version candidate**：**OnePlayer 0.14.20 / Build187**。
-- **Target artifact**：`OnePlayer-0.14.20-build187-detail-episode-selection-navigation`
-- **Build187 CI source**：`a9893fa2ad5652d6c41affbc6b099b098feb26ee`
-- **Workflow-restored branch head**：`972493d8dd1ada0550d9f760940a55cbc62747f8`
+- **Current Build / version candidate**：**OnePlayer 0.14.21 / Build188**。
+- **Target artifact**：`OnePlayer-0.14.21-build188-detail-episode-selection-navigation`
 
 ## Source evidence before implementation
 
@@ -33,7 +31,7 @@
 
 - `episodePreviewCard(_:)` 现在只调用 `model.selectEpisode(episode)`；不直接 `play`。
 - 既有蓝色 outline 继续由 `model.selectedEpisodeID` 驱动，语义固定为“当前选中集”。
-- `selectEpisode(_:)` 同时把 `selectedEpisodeRangeOffset` 对齐到该集所在的 10 集区间，避免选中第 45 集时仍高亮 `1-10` 等不一致状态；使用现有 canonical selected-season array，不增加排序 owner。
+- `selectEpisode(_:)` 同时把 `selectedEpisodeRangeOffset` 对齐到该集所在的 10 集区间；使用现有 canonical selected-season array，不增加排序 owner。
 - “即将播放”header/range 行下方、横向卡片上方增加固定 16pt 高度的选中集摘要；正文 12pt medium。真实标题存在时显示 `第 N 集 · 标题`，无标题/通用集名时显示 `第 N 集`。未显式选择时保留透明固定高度，避免容器上下跳动。
 - 详情页现有主 Play / Resume 按钮及 `primaryPlayableItem` owner 不变，因此选中后由主按钮播放该集。
 
@@ -43,46 +41,31 @@
 - picker row 现在先 `model.selectEpisode(episode)`，再直接走现有 `model.play(episode)`。
 - `model.selectedSource` 仍是唯一 playback-source presentation state owner。
 - 可见的 `EmbyEpisodePickerView` 直接挂载现有 `fullScreenCover(item: $model.selectedSource)`；底层 detail 的 player cover 通过 `detailPlaybackSourceBinding` 在 `showAllEpisodes == true` 时对 getter 返回 nil，避免两个 route 同时竞争展示同一 source。
-- 没有新增手工 scroll offset、timer、retry、watchdog 或 fallback。picker 导航 entry/ScrollView 不再主动销毁，因此关闭 player 后应自然露出同一 picker 及原位置；是否真机完全保持位置仍需 Build187 验证。
+- 没有新增手工 scroll offset、timer、retry、watchdog 或 fallback。picker 导航 entry/ScrollView 不再主动销毁，因此关闭 player 后应自然露出同一 picker 及原位置；是否真机完全保持位置仍需候选验证。
 
-## Build187 CI / IPA evidence
+## Retired detail Build187 identity
 
-- Dedicated Release run：**`32861023477` — success**。
-- CI source：`a9893fa2ad5652d6c41affbc6b099b098feb26ee`。
-- Workflow-restored branch head：`972493d8dd1ada0550d9f760940a55cbc62747f8`。
-- Artifact：`OnePlayer-0.14.20-build187-detail-episode-selection-navigation`。
-- Artifact ID：`9568302131`。
-- Artifact digest：`sha256:0ec537ee3c11ec06a91159d733e208c418b97bd6951222d55839abd8413b9943`。
-- IPA：`OnePlayer-0.14.20-build187-detail-episode-selection-navigation-unsigned.ipa`。
-- IPA SHA-256：`c99513ec6a57a2a2cde0854520ff1259d46dff0313e536379e0e89dbc1609d01`；下载 artifact 后二次校验与 artifact 内 `.sha256` 一致。
-- Source ZIP SHA-256：`2ed81900fc55ccaf8d714c6ca9041cea572eab7a521e8263eb912bdc78d8718a`。
-- CI passed：selection/navigation contract、detail range jump、Resume button、Build184 visual hierarchy、Hero、Build182 detail performance、Build178 canonical episode ordering、SeasonId grouping、Xcode 16.4 Release device build、0.14.20 (187) app identity、iOS 15.0 MinOS、IPA packaging/upload。
-- 临时 Build187 workflow 已在 CI 成功后从 feature branch 删除；没有将 helper 留在产品分支。
+- 同一功能源码曾以 **0.14.20 / Build187** 跑过 dedicated Release CI，run `32861023477` 成功，artifact ID `9568302131`，详情 IPA SHA-256 `c99513ec6a57a2a2cde0854520ff1259d46dff0313e536379e0e89dbc1609d01`。
+- 在同步 `BUILD_TEST_INDEX.md` 时确认并行 `DEV-home-carousel-drag-smoothness` 已先正式占用 **0.14.20 / Build187** 作为其可导出日志的 carousel diagnostic identity。
+- 因此详情 Build187 **仅保留“代码可编译 / IPA 可生产”的历史证据，身份作废、未分发、不得用于真机或日志归因**。其临时 workflow 已删除。
+- 详情任务顺延到唯一的 **0.14.21 / Build188**；相对上述成功详情 Build187，功能源码不变，只调整 `AppIdentity.swift` 与 changelog/candidate identity。
 
 ## Validation so far
 
 - Product diff vs branch base仅涉及：
   - `Sources/UI/EmbyMediaDetailView.swift`
   - `Sources/UI/EmbyEpisodePickerView.swift`
-  - `Sources/Core/AppIdentity.swift`（仅 Build187 version identity）
+  - `Sources/Core/AppIdentity.swift`（仅候选 version identity）
   - 新静态 contract / changelog。
-- Detail source blob：`e1f0f1e65a7fbe23e73d3a415c66aad5fbe41555`；Picker source blob：`c450c7581f87206edcc3e49b1aa4caede789c21c`。两者与本地已验证源树 hash 一致。
-- Narrow local checks passed：
-  - `check_detail_episode_selection_navigation.py`
-  - `check_detail_episode_range_jump.py`
-  - `check_detail_resume_button.py`
-  - `check_detail_visual_hierarchy.py`
-  - `check_adaptive_hero_reveal.py`
-  - `check_detail_page_performance.py`
-  - `check_series_episode_ordering.py`
-  - `check_season_id_episode_grouping.py`
+- Detail source blob：`e1f0f1e65a7fbe23e73d3a415c66aad5fbe41555`；Picker source blob：`c450c7581f87206edcc3e49b1aa4caede789c21c`。
+- Narrow checks passed：`check_detail_episode_selection_navigation.py`、`check_detail_episode_range_jump.py`、`check_detail_resume_button.py`、`check_detail_visual_hierarchy.py`、`check_adaptive_hero_reveal.py`、`check_detail_page_performance.py`、`check_series_episode_ordering.py`、`check_season_id_episode_grouping.py`。
 - 一个旧 `check_user_data_refresh.py` 在 untouched Build184 source 上也会因其 Home 字符串断言失败，属于既有 stale/unrelated check，不作为本任务回归结论。
-- 为克服 GitHub connector 对超大整文件写入的限制，曾在 feature branch 临时加入一次精确 `replace` workflow；run `32860336514` 仅执行 source patch，成功后 helper 已删除。该 run **不是 Build187 CI，也没有编译/IPA 证据**。
+- 为克服 GitHub connector 对超大整文件写入的限制，曾在 feature branch 临时加入一次精确 `replace` workflow；run `32860336514` 仅执行 source patch，成功后 helper 已删除。该 run 不是 Release CI。
 
 ## Parallel / frozen boundaries
 
-- `DEV-home-carousel-drag-smoothness` 已占用 **OnePlayer 0.14.19 / Build186**；本任务因此使用唯一的 **0.14.20 / Build187**，不复用 Build186。
-- `DEV-add-emby-page-optimization` 仅计划 `ServerListView.swift` / AddServer UI，与本任务详情/选集文件及状态 owner 无重叠；当前未分配 Build。
+- `DEV-home-carousel-drag-smoothness` 已占用 **0.14.20 / Build187**；本任务当前占用 **0.14.21 / Build188**。
+- `DEV-add-emby-page-optimization` 当前未分配 Build，且仅计划 AddServer UI，与本任务文件/state owner 无重叠。
 - Build182 detail Hero scroll isolation / persistent presentation cache 已 Frozen，本任务不修改 `EmbyDetailPerformanceState.swift`。
 - Build176 player episode-session replacement、Build178 Emby canonical episode ordering、Build173 PiP、MPV fast Seek、UnifiedTransport、Range/302/115 client-direct、Session cache、Emby Resume/progress 均保持不变。
 
@@ -90,16 +73,14 @@
 
 - **Code written：YES**
 - **Source/static validation：YES**
-- **Build187 Release CI：PASSED**
-- **IPA：PRODUCED**
+- **Retired detail Build187 Release CI / IPA：PASSED / PRODUCED, identity collided, NOT DISTRIBUTED**
+- **Build188 Release CI：pending**
+- **Build188 IPA：pending**
 - **Real-device：pending**
 - **Stable / frozen：NO**
 
 ## Next exact action
 
-1. 用户真机安装 Build187，重点验证：
-   - 详情横向卡单击只蓝框选择，主播放按钮才进入播放；小号标题位置/字号是否合适；
-   - 完整选集滑到较深位置 → 点某集播放 → 关闭 player，是否仍回完整选集且原位置完全不变；
-   - 收藏 Episode → Series detail 的自动蓝框定位是否仍正常；Resume/已看刷新是否正常。
-2. 若真机确认通过，再升级 evidence 为 real-device accepted，并进入 PR/merge 收尾；若完整选集位置仍丢失，只针对真实重建证据考虑显式 scroll-position state，不能预先增加 offset 缓存。
-3. Accepted overall baseline 在真机验收前仍保持 Build184。
+1. 以功能源码不变的 **0.14.21 / Build188** 重新跑同一套 dedicated Xcode 16.4 Release CI、identity、MinOS 15.0 与 IPA packaging。
+2. CI/IPA 成功后删除临时 helper，同轮更新本 checkpoint 与 `BUILD_TEST_INDEX.md`/必要的 `PROJECT_STATE.md`；accepted overall baseline 仍保持 Build184。
+3. 用户真机重点验证：详情横向卡只蓝框选择；主按钮才播放；小号标题位置/字号；完整选集深位置播放后关闭 player 是否原位返回；收藏 Episode → Series detail 自动蓝框定位；Resume/已看刷新。
