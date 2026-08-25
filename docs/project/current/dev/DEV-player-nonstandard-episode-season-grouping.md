@@ -27,38 +27,45 @@
 - `seasonId={152156=980}`，即 980 集全部属于同一个真实 SeasonId。
 - `seasonIndex={1=1}`，真实 Season item 的 indexNumber 为 1。
 - 播放器 `[EpisodeContext] episodes loaded ... count=980`，证明播放器网络/分页已拿到全部 980 集。
-- 当前 `PlayerEpisodeSelection.swift` 的 `seasonNumbers` 只取 `episodes.compactMap(\.parentIndexNumber)`，`displayedEpisodes` 又按 `parentIndexNumber == season` 过滤，因此只剩唯一一集 `parentIndexNumber=1`。
-- 详情页当前已通过 `seriesSeasons` + `SeasonId` 映射正确得到同季 980 集。
+- 当前旧播放器代码的 `seasonNumbers` 只取 `episodes.compactMap(\.parentIndexNumber)`，`displayedEpisodes` 又按 `parentIndexNumber == season` 过滤，因此只剩唯一一集 `parentIndexNumber=1`。
+- 详情页通过 `seriesSeasons` + `SeasonId` 映射正确得到同季 980 集。
 
 结论：这是播放器选集季分组遗漏，不是 Emby API 少返回、分页失败或 canonical order 问题。
 
 ## Baseline / identity
 
-- Accepted runtime baseline：OnePlayer **0.14.17 / Build184**，已合并 `main`。
-- Main at task creation：`39576a908cc7d1d12e16e4e4721844143f7d3ffb`；该提交仅记录并行 Build192 文档候选，产品运行时代码仍继承 Build184。
+- Latest **accepted overall runtime baseline** remains OnePlayer **0.14.17 / Build184** merged to `main` at `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`.
+- **Integration base used by this task**：`main@39576a908cc7d1d12e16e4e4721844143f7d3ffb`。
+- Identity guard discovered that this current main tree already contains the active detail Build191 product source (`AppIdentity.sourceVersion = 0.14.24`, `EmbyMediaDetailView.swift`, `EmbyEpisodePickerView.swift`) even though Build191 is still real-device pending and does not replace accepted Build184.
+- `main@39576a9` is a descendant of detail workflow-restored head `516f5cf6e8832af083d3c2605e365cb1dcb7119a`; compare reports no remaining file diff to that Build191 head. Therefore this bug was observed and is being fixed on the same Build191-style integration tree shown in the user's screenshot.
+- This task is explicitly **stacked/dependent on the current Build191 detail integration identity**, but its product diff is file-disjoint from the detail task. Build194 validation does not imply Build191 acceptance.
 - Working branch：`fix/player-nonstandard-episode-season-grouping`。
 - Branch base：`39576a908cc7d1d12e16e4e4721844143f7d3ffb`。
+- Current branch head：`2eade5b3b691a77e79345c1b4d8ed18340db6b93`。
 - PR：none。
 - Build candidate：**OnePlayer 0.14.27 / Build194**。
 - Target artifact：`OnePlayer-0.14.27-build194-player-seasonid-grouping`。
 
 ## Files / modules in scope
 
-Primary expected product change:
+Product change:
 
-- `Sources/UI/PlayerEpisodeSelection.swift` — PlayerEpisodeCoordinator 加载真实 Season 列表；overlay 季号/过滤改为与详情页一致的 SeasonId 优先语义。
+- `Sources/UI/PlayerEpisodeSelection.swift` — PlayerEpisodeCoordinator now loads real Season list; overlay season numbers/current season/filtering use SeasonId-first semantics matching detail behavior.
 
-Existing shared API reused without speculative changes unless real compile/runtime evidence requires it:
+Validation:
 
-- `Sources/Networking/EmbyAPIClient.swift` — 已存在 `seriesEpisodes(seriesId:)` 与 `seriesSeasons(seriesId:)`，默认不改。
+- `scripts/check_player_episode_season_grouping.py` — guards the exact SeasonId-first/ParentIndex fallback contract and simulates the supplied 980-episode metadata shape.
 
-Validation/changelog/docs may be added on this task branch or main according to project policy.
+Existing shared API reused unchanged:
+
+- `Sources/Networking/EmbyAPIClient.swift` — existing `seriesEpisodes(seriesId:)` and `seriesSeasons(seriesId:)` are the common data source; no networking change required.
 
 ## State owner / shared dependencies
 
 - PlayerEpisodeCoordinator remains the player-picker metadata owner.
 - EmbyAPIClient remains the canonical network/API owner.
 - Episode array order remains Build178 server-order authority.
+- `nextPlaybackSource()` still indexes the full canonical `episodes` array, not the season-filtered UI list.
 - No new playback source/session owner is introduced.
 - No new timer/retry/watchdog/cache is introduced.
 
@@ -77,40 +84,46 @@ Validation/changelog/docs may be added on this task branch or main according to 
 
 ## Parallel conflicts checked against
 
-- `DEV-detail-episode-selection-navigation` owns active Build191 work in `EmbyMediaDetailView.swift`; this new task **will not modify that file**. It mirrors the already accepted/current detail data semantics by consuming the same `seriesEpisodes + seriesSeasons` API data and SeasonId-first membership rules in player code.
-- `DEV-add-emby-page-optimization` owns Build192 and AddServer/Session/startup files; no overlap.
-- `DEV-home-carousel-drag-smoothness` owns Build193 and Home carousel state/files; no overlap.
-- Build194 is the next unoccupied candidate after 191/192/193.
+- `DEV-detail-episode-selection-navigation` owns active Build191 changes in `EmbyMediaDetailView.swift` / `EmbyEpisodePickerView.swift`. This task does **not** modify those files. It consumes the same `seriesEpisodes + seriesSeasons` API data and mirrors the already-working SeasonId-first membership semantics in player-only code. Because the integration base already contains Build191 source, this task is stacked for testing/merge identity even though source ownership is disjoint.
+- `DEV-add-emby-page-optimization` owns Build192 and AddServer/Session/startup files; no file/state overlap.
+- `DEV-home-carousel-drag-smoothness` owns Build193 and Home carousel state/files; no file/state overlap.
+- Build194 is reserved uniquely for this task after 191/192/193.
 
 ## Completed
 
-- User explicitly approved creating this as a new independent task.
-- Root cause established from current main source + target-device logs.
-- Independent branch created from current main.
-- Build194 identity reserved.
+- User explicitly approved creating this as a new independent task and approved using the same episode/season data semantics as detail.
+- Root cause established from current source + target-device logs.
+- Independent branch created.
+- Product fix commit `bf095264ed61640d6b6840a7fc1d57624fc390f0`.
+- Contract test commit / current head `2eade5b3b691a77e79345c1b4d8ed18340db6b93`.
+- Product diff from branch base is limited to `PlayerEpisodeSelection.swift`; test script is the only additional task file.
+- Player now waits for both canonical episode data and real Season items, then publishes them together; season-fetch failure only logs and retains the existing ParentIndexNumber fallback, matching detail's safe fallback direction without adding retry/timer behavior.
+- Overlay derives explicit season numbers from real Season items when available; current season and membership map Episode.SeasonId to Season.id/indexNumber first, then fall back to ParentIndexNumber.
 
 ## Validation state
 
-- Code written：NO.
-- CI passed：NO.
-- IPA produced：NO.
-- Real-device tested：NO.
-- Stable / frozen：NO.
+- Code written：**YES**。
+- Static contract script written：**YES**，execution in dedicated CI pending。
+- Frozen/P0 product diff：current compare shows only `Sources/UI/PlayerEpisodeSelection.swift` modified; no PlayerController/MPV/PiP/Transport/Cache changes.
+- CI passed：NO。
+- IPA produced：NO。
+- Real-device tested：NO for Build194。
+- Stable / frozen：NO。
 
 ## Pending
 
-- Implement Season list loading in PlayerEpisodeCoordinator without changing playback/session lifecycle.
-- Replace player picker `ParentIndexNumber`-only grouping with SeasonId-first grouping equivalent to detail semantics.
-- Add diagnostics/contracts covering the exact 980-episode shape: one SeasonId, mostly nil ParentIndexNumber.
-- Build/IPA Build194 after code review and target-branch conflict recheck.
-- User real-device validation on the supplied non-standard 980-episode Series plus a normal standard Series.
+- Create Draft PR after rechecking current main advancement and stacked Build191 identity.
+- Run `scripts/check_player_episode_season_grouping.py` in dedicated Build194 Release CI.
+- Compile standard MPV Release with Xcode 16.4, iOS 15.0 MinOS and Build194 identity.
+- User real-device validation on the supplied 980-episode non-standard Series and at least one normal standard Series.
+- Final merge must re-evaluate Build191 detail task state because this task's integration base includes Build191 product source.
 
 ## Next exact action
 
-1. Re-read current branch `PlayerEpisodeSelection.swift` and exact detail season-membership implementation.
-2. Make the smallest player-only change: load `seriesSeasons`, preserve canonical `episodes` order, derive seasonNumbers from explicit seasons when available, and test membership by SeasonId first with ParentIndexNumber fallback.
-3. Ensure manual switching and auto-next continue to consume the unfiltered canonical `episodes` array.
-4. Run static diff check proving Frozen/P0 files unchanged before creating PR/CI candidate.
+1. Recheck current main / other Active checkpoint Build identities before PR/CI.
+2. Create Draft PR for the player-only bug fix.
+3. Run dedicated Build194 standard MPV Release CI with contracts proving: SeasonId-first player grouping, Build178 server order untouched, auto-next still uses full canonical episodes, Frozen/P0 files unchanged, MinOS 15.0.
+4. Produce Build194 IPA for target-device verification.
 
 ## Rejected / do-not-repeat
 
@@ -118,4 +131,5 @@ Validation/changelog/docs may be added on this task branch or main according to 
 - Do not treat nil ParentIndexNumber as “not a real episode”.
 - Do not change auto-next to use the UI-filtered `displayedEpisodes`; it must keep canonical full-series order.
 - Do not refactor `EmbyMediaDetailView.swift` while the independent detail Build191 task is active merely to create an abstraction.
+- Do not describe Build194 success as Build191 detail acceptance.
 - Do not add timer/retry/watchdog/fallback for a deterministic metadata grouping bug.
