@@ -24,7 +24,8 @@ This is a milestone index, not a list of every experimental build.
 | **Build178 / 0.14.11** | Canonical Emby episode ordering for non-standard series | **Current real-device accepted functional baseline and merged to `main`.** Uses `/Shows/{SeriesId}/Episodes` server order instead of forcing generic Items `ParentIndexNumber,IndexNumber`; dedicated standard MPV Release CI passed, IPA produced, user accepted the result on device, and PR #254 merged at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. |
 | **Build179 / 0.14.12** | First accepted-baseline home carousel smoothness candidate | Dedicated standard MPV Release CI passed and IPA produced. High-frequency carousel transition state was scoped away from the full home root and drag start reduced to 4 pt. **Real-device test failed:** small movements still had a dead zone and left↔right reversal could pause then jump a large distance. Rejected, not stable. |
 | **Build180 / 0.14.13** | Continuous home carousel drag through zero/reversal | Dedicated standard MPV Release CI passed and IPA produced. Keeps Build179 local state ownership, receives drag movement from 0 pt, applies axis dominance only on initial acquisition, removes the old 4 pt absolute gate and first 8% delayed blend, while Build176/178 accepted contracts remain zero-diff. **Pending real-device EX comparison; not stable yet.** |
-| **Build181 / 0.14.14** | Detail-page warm presentation + Hero scroll isolation | Dedicated standard MPV Release CI passed and IPA produced. Re-entered details warm-start Logo/episodes/seasons/similar presentation metadata while live Emby refresh remains active; high-frequency native detail scroll offset is scoped to the Hero subtree rather than invalidating the full detail tree. **Pending iPhone 15 Pro Max / iOS 17.0 real-device validation; not stable yet.** |
+| **Build181 / 0.14.14** | Detail-page warm presentation + Hero scroll isolation | Dedicated Release CI/IPA succeeded. Target-device recording shows the previous stop→catch-up scroll stutter is clearly improved, but a force-quit/relaunch still loses the session-only warm metadata and briefly shows text title/loading before Logo/episodes. **Real-device tested; partial success, cold-start requirement failed; not stable.** |
+| **Build182 / 0.14.15** | Persistent detail presentation cache | Extends Build181's safe presentation snapshot from process-only `NSCache` to `Library/Caches` while retaining live Emby refresh and playback/session boundaries. Dedicated standard MPV Release CI passed and IPA produced. **Real-device cold-relaunch validation pending; not stable yet.** |
 
 ## Current accepted baseline
 
@@ -43,7 +44,7 @@ This is a milestone index, not a list of every experimental build.
 - target device: iPhone 15 Pro Max / iOS 17.0
 - evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements / merged to main**
 
-Build179 has been rejected by real-device carousel evidence. Build180 is the current home-carousel test candidate and Build181 is the current detail-page test candidate; neither replaces Build178 until target-device validation is accepted.
+Build179 has been rejected by real-device carousel evidence. Build180 remains the home-carousel test candidate. Build181 is now a useful detail-page diagnostic reference: scroll isolation is clearly improved on device, but its process-only warm cache failed the force-quit/relaunch requirement. Build182 is the current detail-page candidate and does not replace Build178 until target-device validation is accepted.
 
 ## Episode-selection evidence trail
 
@@ -131,7 +132,7 @@ Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 R
 
 ## Build181 detail-page evidence
 
-- task: `DEV-detail-episode-page-optimization` — Active, pending real-device acceptance
+- task: `DEV-detail-episode-page-optimization` — Active; superseded for cold-start testing by Build182
 - branch: `feat/detail-episode-page-optimization`
 - accepted runtime base: Build178 at `967b743c88d68b05205eb39f1de75cab41362e8b`
 - dedicated standard MPV Release CI source: `917c43554876ce7c8751c10356f081cf2c1fe92b`
@@ -144,7 +145,27 @@ Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 R
 - IPA SHA-256: `698d80d59767134c9479d517cedf24bf6494e73099d2f9125fa3d7a431d5a2f8`
 - MinOS: app/runtime Mach-O validated at iOS 15.0
 - CI evidence: detail Hero high-frequency state isolation, warm metadata cache boundaries, live detail/episode/image refresh paths, existing Hero geometry contract, detail range/media/resume checks, Build178 episode-ordering contract and P0/Frozen zero-diff all passed; Xcode 16.4 Release build passed; app identity validated as 0.14.14 (181); IPA packaged and uploaded.
+- real-device evidence: on iPhone 15 Pro Max / iOS 17.0, new 10.2 s / 30 fps recording shows the old obvious pause→catch-up detail scroll pattern is no longer present; continuous inertial segments remain moving frame-to-frame and decay smoothly enough that no further blur/GPU change is currently justified. A second 5.7 s recording after force quit/relaunch shows text title and episode loading state briefly returning before Logo/episodes, proving the session-only `NSCache` does not satisfy cold-relaunch warm start.
 - discarded identity note: an earlier detail 0.14.13 / Build180 package also passed CI, but was retired without user testing after discovering the parallel home-carousel task had already made Build180 its active identity. It is not a valid test baseline.
+- evidence level: **Code written / CI passed / IPA produced / real-device tested / scroll clearly improved / cold-relaunch warm start failed / not stable**
+
+## Build182 persistent detail-cache evidence
+
+- task: `DEV-detail-episode-page-optimization` — Active, current detail test candidate
+- branch: `feat/detail-episode-page-optimization`
+- accepted runtime base: Build178 at `967b743c88d68b05205eb39f1de75cab41362e8b`
+- Build182 product delta vs Build181: `Sources/UI/EmbyDetailPerformanceState.swift` extends the existing presentation snapshot from process-only `NSCache` to an atomic file under `Library/Caches/OnePlayer/DetailPresentation`; `EmbyMediaDetailView.swift` needs no new call-path change.
+- persistence boundary: reconstructed Emby-compatible JSON contains only `LibraryItem` / `EmbyImageInfo` presentation fields. `PlaybackInfo`, `MediaSource`, `PlaySession`, `ResolvedPlaybackSource` and temporary 115/CDN URLs remain excluded; live Emby detail refresh remains unconditional.
+- dedicated standard MPV Release CI source: `f086fc0609f745d737e07d01dba18593285b20be`
+- workflow-restored branch head: `6352671ba843e692c671c66c663c01a43b7848fb`
+- CI run: `32848214004` — success
+- artifact: `OnePlayer-0.14.15-build182-persistent-detail-cache`
+- artifact ID: `9563302306`
+- artifact archive digest: `sha256:16e9e6b728b9e0bbfc295896f791e96f253d0e1516771eaac140534c0c405d67`
+- IPA: `OnePlayer-0.14.15-build182-persistent-detail-cache-unsigned.ipa`
+- IPA SHA-256: `b9638df6f70f11be5f030ec7136a42125f2bc3a16af220c1d8b6de1b0cb3ce4c`
+- MinOS: app/runtime Mach-O validated at iOS 15.0
+- CI evidence: persistent-cache contract, Build181 Hero state isolation, existing Hero/detail range/media/resume checks, Build178 episode-ordering contract and P0/Frozen zero-diff all passed; Xcode 16.4 Release build passed; app identity validated as 0.14.15 (182); IPA packaged and uploaded. Downloaded artifact IPA/source SHA-256 checks both passed again.
 - evidence level: **Code written / CI passed / IPA produced / real-device not yet tested / not stable**
 
 ## Main integration evidence
@@ -158,7 +179,7 @@ Build178 was developed from the accepted Build176 `main` runtime baseline. Befor
 - `docs/changelog/CHANGELOG_v0_14_11_build178.md`
 - `scripts/check_series_episode_ordering.py`
 
-After user real-device acceptance, PR #254 was merged to `main` at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. Build178 is therefore the current accepted functional baseline. Build179 is explicitly rejected for carousel interaction; Build180 and Build181 are separate unvalidated test candidates despite successful CI/IPA.
+After user real-device acceptance, PR #254 was merged to `main` at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. Build178 is therefore the current accepted functional baseline. Build179 is explicitly rejected for carousel interaction; Build180 remains a separate home-carousel candidate, Build181 is a partial-success detail diagnostic reference, and Build182 is the current unvalidated detail cold-start candidate despite successful CI/IPA.
 
 ## Maintenance rule
 
