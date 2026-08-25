@@ -46,10 +46,10 @@ struct EmbyMediaDetailView: View {
                                 overview
                                 if model.isSeries { seriesContent }
                                 castSection
-                                mediaStreamInfoSection
                                 tagSection
                                 stillsSection
                                 similarSection
+                                mediaStreamInfoSection
                                 mediaSourceSummarySection
                                 if let error = model.errorMessage { errorView(error) }
                             }
@@ -395,7 +395,7 @@ struct EmbyMediaDetailView: View {
         ScrollViewReader { proxy in
             VStack(alignment: .leading, spacing: 11) {
                 HStack(spacing: 10) {
-                    Text("即将播放").font(.title2.weight(.bold)).fixedSize()
+                    Text("即将播放").font(.system(size: 19, weight: .bold)).fixedSize()
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 7) {
                             ForEach(model.episodeRanges) { range in
@@ -489,7 +489,7 @@ struct EmbyMediaDetailView: View {
 
     private var seasonsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("季").font(.title2.weight(.bold)).padding(.horizontal, 20)
+            Text("季").font(.system(size: 19, weight: .bold)).padding(.horizontal, 20)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(model.seasonNumbers, id: \.self) { season in seasonCard(season) }
@@ -527,7 +527,7 @@ struct EmbyMediaDetailView: View {
     private var castSection: some View {
         if !model.visiblePeople.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Text("演职人员").font(.title2.weight(.bold)).padding(.horizontal, 20)
+                Text("演职人员").font(.system(size: 19, weight: .bold)).padding(.horizontal, 20)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 12) {
                         ForEach(model.visiblePeople) { person in
@@ -566,7 +566,7 @@ struct EmbyMediaDetailView: View {
                     withAnimation(.easeInOut(duration: 0.34)) { mediaInfoExpanded.toggle() }
                 } label: {
                     HStack(spacing: 10) {
-                        Text("音视频字幕信息").font(.title2.weight(.bold)).foregroundColor(.primary)
+                        Text("视频信息").font(.system(size: 19, weight: .bold)).foregroundColor(.primary)
                         Spacer()
                         Image(systemName: "chevron.up")
                             .font(.system(size: 14, weight: .semibold))
@@ -796,7 +796,7 @@ struct EmbyMediaDetailView: View {
     private var tagSection: some View {
         if !model.detailFilters.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Text("标签").font(.title2.weight(.bold))
+                Text("标签").font(.system(size: 19, weight: .bold))
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8, alignment: .leading)], alignment: .leading, spacing: 8) {
                     ForEach(model.detailFilters) { filter in
                         NavigationLink(destination: EmbyDetailFilterResultsView(filter: filter, client: client)) {
@@ -823,7 +823,7 @@ struct EmbyMediaDetailView: View {
     private var stillsSection: some View {
         if !model.stillImages.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Text("剧照").font(.title2.weight(.bold)).padding(.horizontal, 20)
+                Text("剧照").font(.system(size: 19, weight: .bold)).padding(.horizontal, 20)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(Array(model.stillImages.enumerated()), id: \.element.id) { index, info in
@@ -847,7 +847,7 @@ struct EmbyMediaDetailView: View {
     private var similarSection: some View {
         if !model.similarItems.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Text(model.isSeries ? "更多类似" : "相似作品").font(.title2.weight(.bold)).padding(.horizontal, 20)
+                Text(model.isSeries ? "更多类似" : "相似作品").font(.system(size: 19, weight: .bold)).padding(.horizontal, 20)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 12) {
                         ForEach(model.similarItems) { similar in
