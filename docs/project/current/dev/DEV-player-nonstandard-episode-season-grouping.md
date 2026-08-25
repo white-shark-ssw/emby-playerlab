@@ -29,7 +29,7 @@
 
 因此 API/分页已经拿到全部 980 集；旧播放器 UI 仅按 `ParentIndexNumber` 分季/过滤，最终只显示唯一一集 `parentIndexNumber=1`。详情页 SeasonId 分组正确。
 
-Build194 真机进一步确认：SeasonId-first 修复后同一非标准 Series 已能在播放器选集中正常显示完整剧集；新的问题是点击“选集”后会卡住数秒。当前源码的横向容器是 `ScrollView(.horizontal) + HStack + ForEach(displayedEpisodes)`，每个 child 又包含远程缩略图、标题和两行简介，因此 980 集会在面板出现时建立整条复杂 `HStack`。该结构是当前性能问题的直接源码证据。
+Build194 真机进一步确认：SeasonId-first 修复后同一非标准 Series 已能在播放器选集中正常显示完整剧集；新的问题是点击“选集”后会卡住数秒。Build194 源码的横向容器是 `ScrollView(.horizontal) + HStack + ForEach(displayedEpisodes)`，每个 child 又包含远程缩略图、标题和两行简介，因此 980 集会在面板出现时建立整条复杂 `HStack`。该结构是当前性能问题的直接源码证据。
 
 ## Baseline / identity
 
@@ -37,28 +37,38 @@ Build194 真机进一步确认：SeasonId-first 修复后同一非标准 Series 
 - Working branch：`fix/player-nonstandard-episode-season-grouping`。
 - Draft PR：**#258**。
 - Product SeasonId fix commit：`bf095264ed61640d6b6840a7fc1d57624fc390f0`。
-- Build194：**OnePlayer 0.14.27 / Build194**。
-- Build194 dedicated CI run：**32879897997 — success**。
-- Build194 artifact：`OnePlayer-0.14.27-build194-player-seasonid-grouping`，ID **9575488345**。
-- CI-produced IPA SHA-256：`21ebddfff348efd8a48e82381183f711135dfb054ff6d83d80c54364d5813ad1`。
-- TrollStore-friendly rewrap SHA-256：`e8d969cbdcab42c05e847f1ef16492ea870f62273d65c4bcb5eafbb77f2d55ae`。
-- Next candidate reserved：**OnePlayer 0.14.28 / Build195**，purpose = lazy player episode row / large-list open performance。
+- Build194：**OnePlayer 0.14.27 / Build194**；CI run **32879897997**；artifact ID **9575488345**。
+- Build194 CI-produced IPA SHA-256：`21ebddfff348efd8a48e82381183f711135dfb054ff6d83d80c54364d5813ad1`。
+- Build194 TrollStore-friendly rewrap SHA-256：`e8d969cbdcab42c05e847f1ef16492ea870f62273d65c4bcb5eafbb77f2d55ae`。
+- Build195：**OnePlayer 0.14.28 / Build195**，purpose = lazy player episode row / large-list open performance。
+- Build195 lazy-row commit：`091ad4ca394256951ad7a142b4187cb25f96972c`。
+- Build195 source-version commit：`dc23be7a53865eb4886ab20800c18278d5567eae`。
+- Build195 contract commit：`b00911223f356b28718649274ae261bb61479d63`。
+- Build195 dedicated CI source：`edd7d42bdee2b20bc327ed7d4341c7433c58bb15`。
+- Build195 workflow-restored branch head：`8c2f767652ce449deaa28f8cc9d8c21b95058af1`。
+- Build195 dedicated CI run：**32884343196 — success**。
+- Build195 artifact：`OnePlayer-0.14.28-build195-player-episode-lazy-row`，ID **9577124023**，artifact digest `sha256:262007d104d62252a837e075baf69fcdf36e8761b6fac9424b99f1aadc8de421`。
+- Build195 IPA SHA-256：`fab4e7f6552933096f49b86c4b9d3604025e1dd916b186015a00097802543af2`。
+- Build195 source ZIP SHA-256：`0c5f9e3b2a9621cc712b8ab94d7976199579489f1fc94e887ab7c4984311e394`。
 
 ## Implementation
 
-Current product scope remains one file:
+Current product scope remains one player file plus source-version identity:
 
 - `Sources/UI/PlayerEpisodeSelection.swift`
+- `Sources/Core/AppIdentity.swift`
 
 Build194 PlayerEpisodeCoordinator loads both canonical episodes and real Season items. Overlay season numbers/current season/membership use SeasonId-first mapping equivalent to detail semantics, with ParentIndexNumber fallback. `nextPlaybackSource()` still indexes the full canonical `episodes` array.
 
-Build195 performance direction is intentionally minimal: replace only the episode scroller's eager `HStack` with `LazyHStack`, so only visible/near-visible card/image views are instantiated while the full canonical episode array remains available for scrolling, selection and auto-next.
+Build195 changes only the episode scroller's eager `HStack` to `LazyHStack`, so visible/near-visible card/image views are instantiated on demand while the full canonical episode array remains available for scrolling, selection and auto-next. There is no item cap, manual pagination, timer, debounce, retry or watchdog.
 
 Validation script:
 
 - `scripts/check_player_episode_season_grouping.py`
 
-The dedicated contract reproduces the supplied 980-item shape (979 nil ParentIndexNumber, one ParentIndexNumber=1, all one SeasonId) and requires all 980 to remain visible through SeasonId grouping. Build195 will extend the static contract to require the lazy horizontal episode row and reject reintroduction of the eager episode-card `HStack`.
+The dedicated contract reproduces the supplied 980-item shape (979 nil ParentIndexNumber, one ParentIndexNumber=1, all one SeasonId), requires all 980 to remain visible through SeasonId grouping, requires `LazyHStack` for the player episode row, and confirms auto-next still uses the complete canonical `episodes` array.
+
+Build195 packaging directly uses the TrollStore-friendly archive order proven installable after Build194: `Payload/`, app bundle, main `Info.plist`, main executable, then remaining bundle files. This is packaging-only and does not alter app file contents.
 
 ## Frozen / parallel boundaries
 
@@ -68,24 +78,24 @@ Build192 Add/Edit Emby and carousel work remain independent; no file/state overl
 
 ## Validation state
 
-- Build194 code written：**YES**。
-- Build194 static contract：**PASS**。
-- Build194 standard MPV Release CI：**PASS** — Xcode 16.4, 0.14.27 (194), MinOS 15.0, Frozen/P0 checks all passed。
-- Build194 IPA produced：**YES**。
+- Build194 code/CI/IPA：**PASS**。
 - Build194 TrollStore-friendly rewrap installation：**PASS on target device**。
 - Build194 SeasonId grouping runtime：**POSITIVE** — user confirms the 980-episode Series now displays correctly in the player picker。
-- Build194 large-list performance：**FAILED / follow-up required** — opening the picker blocks for several seconds with 980 episodes。
-- Build194 Stable：**NO**。
-- Build195：reserved; code/CI/IPA pending。
+- Build194 large-list performance：**FAILED / superseded by Build195** — opening the picker blocks for several seconds with 980 episodes。
+- Build195 Code written：**YES**。
+- Build195 static contracts：**PASS**。
+- Build195 standard MPV Release CI：**PASS** — Xcode 16.4, 0.14.28 (195), MinOS 15.0, SeasonId/canonical-order/Frozen-P0 checks all passed。
+- Build195 IPA produced：**YES**，TrollStore-friendly package generated directly by CI and locally re-hashed to the recorded SHA-256。
+- Build195 Real-device tested：**NO**。
+- Stable：**NO**。
 
 ## Next exact action
 
-1. In `PlayerEpisodeSelection.swift`, change only the episode row from eager `HStack` to `LazyHStack`; do not add pagination, timers, retries or item-count caps.
-2. Keep fixed 174-point card geometry and existing ScrollViewReader/current-episode positioning contract.
-3. Extend the task static contract to require the lazy row while preserving SeasonId grouping and full canonical auto-next.
-4. Build **OnePlayer 0.14.28 / Build195** with dedicated Xcode 16.4 standard MPV Release CI and MinOS 15.0.
-5. Target-device retest the same 980-episode Series: picker should appear promptly, all episodes remain reachable, current episode auto-position/selection works, and horizontal scrolling loads cards on demand without changing order.
-6. Also spot-check a normal Series before considering PR #258 stable/mergeable.
+1. User installs Build195 and retests the same 980-episode Series.
+2. Opening the picker should be prompt rather than blocking for several seconds; all 980 episodes must remain reachable and in the same canonical order.
+3. Verify current episode auto-position/white outline/`正在播放` marker still works and horizontal scrolling creates later cards normally.
+4. Spot-check a normal Series and manual episode switch; auto-next/session replacement contracts should remain unchanged.
+5. Only after target-device acceptance update Build195 to real-device accepted/stable and consider PR #258 merge.
 
 ## Rejected / do-not-repeat
 
