@@ -1,0 +1,137 @@
+//
+//  global.swift
+//
+//  Created by iqiyi on 2020/12/3.
+//
+
+import Foundation
+#if canImport(mdk)
+import mdk
+#endif
+
+
+public enum MediaType : Int32 {
+    case Unknown = -1
+    case Video = 0
+    case Audio = 1
+    case Subtitle = 2
+}
+
+public struct MediaStatus : OptionSet, Sendable {
+    public let rawValue: Int32
+    public init(rawValue: Int32) {
+        self.rawValue = rawValue
+    }
+
+    static let NoMedia = MediaStatus([])
+    static let Unloaded = MediaStatus(rawValue: 1)
+    static let Loading = MediaStatus(rawValue: 1<<1)
+    static let Loaded = MediaStatus(rawValue: 1<<2)
+    static let Prepared = MediaStatus(rawValue: 1<<8)
+    static let Stalled = MediaStatus(rawValue: 1<<3)
+    static let Buffering = MediaStatus(rawValue: 1<<4)
+    static let Buffered = MediaStatus(rawValue: 1<<5)
+    static let End = MediaStatus(rawValue: 1<<6)
+    static let Seeking = MediaStatus(rawValue: 1<<7)
+    static let Invalid = MediaStatus(rawValue: 1<<31)
+}
+
+public enum State : UInt32 {
+    case Stopped = 0
+    case Playing = 1
+    case Paused = 2
+}
+
+public enum SeekFlag : UInt32 {
+    case From0 = 1
+    case FromStart = 2
+    case FromNow = 4
+    case Frame = 64
+    case KeyFrame = 256
+    case FastFrom0 = 257
+    case FastFromNow = 260
+    case InCache = 1024
+    case AccurateFromStartInCache = 1026 // FromStart|InCache, verified against MDK v0.38.0 headers
+    case FastFromStartInCache = 1282 // FromStart|KeyFrame|InCache, retained only for Build124 comparison
+    case Default = 258 // Legacy wrapper default retained so prepare()/setNext()/unqualified seek behavior stays frozen for A/B
+}
+
+public enum VideoEffect : UInt32 {
+    case Brightness = 0
+    case Contrast = 1
+    case Hue = 2
+    case Saturation = 3
+}
+
+public enum LogLevel : UInt32 {
+    case Off = 0
+    case Error = 1
+    case Warning = 2
+    case Info = 3
+    case Debug = 4
+    case All = 5
+}
+
+public enum ColorSpace : UInt32 {
+    case Unknown = 0
+    case BT709 = 1
+    case BT2020_PQ = 2
+    case ExtendedLinearDisplayP3 = 4
+    case ExtendedSRGB = 5
+    case ExtendedLinearSRGB = 6
+    case BT2100_HLG = 7
+}
+
+public func version() ->Int32 {
+    return MDK_version()
+}
+
+public var logLevel : LogLevel {
+    get {
+        LogLevel(rawValue: MDK_logLevel().rawValue)!
+    }
+
+    set {
+        MDK_setLogLevel(MDK_LogLevel(newValue.rawValue))
+    }
+}
+
+public typealias LogHandler = @Sendable (LogLevel,String)->Void
+public func setLogHandler(_ callback:LogHandler?) {
+    class L {
+        var cb : LogHandler?
+    }
+    struct H {
+        nonisolated(unsafe) static let l = L()
+    }
+
+    H.l.cb = callback
+    func _f(level : MDK_LogLevel, msg : UnsafePointer<CChar>?, opaque : UnsafeMutableRawPointer?) {
+        let obj = Unmanaged<L>.fromOpaque(opaque!).takeUnretainedValue()
+        obj.cb?(LogLevel(rawValue: level.rawValue)!, String(cString: msg!))
+    }
+    var h = mdkLogHandler()
+    if callback == nil {
+        h.opaque = nil
+    } else {
+        h.opaque = bridge(obj: H.l)
+    }
+    h.cb = _f
+    MDK_setLogHandler(h)
+}
+
+public func setGlobalOption<T>(name:String, value:T) {
+    if let v = value as? String {
+        v.withCString({
+            MDK_setGlobalOptionString(name, $0)
+        })
+    } else if let v = value as? Int32 {
+        MDK_setGlobalOptionInt32(name, v)
+    } else if let v = value as? Bool {
+        let i = Int32(v ? 1 : 0)
+        MDK_setGlobalOptionInt32(name, i)
+    } else if let v = value as? Int {
+        let i = Int32(v)
+        MDK_setGlobalOptionInt32(name, i)
+    }
+}

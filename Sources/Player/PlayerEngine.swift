@@ -1,9 +1,8 @@
 import Foundation
 
 enum PlayerEngineKind: String, CaseIterable, Identifiable {
-    // Retired implementations remain internal until their large controller branches are
-    // removed in a dedicated source-only cleanup. They are not exposed by
-    // PlayerEnginePreference and are never selected by automatic mode.
+    // Legacy implementations remain internal unless explicitly exposed by
+    // PlayerEnginePreference for an available build variant.
     case ktvAVPlayer
     case ksAVIO
     case resourceLoaderAVPlayer
@@ -16,11 +15,16 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .ktvAVPlayer: return "旧 KTV AVPlayer"
-        case .ksAVIO: return "旧 KSPlayer FFmpeg"
+        case .ksAVIO:
+            #if MDK_LAB
+            return "MDK高性能引擎"
+            #else
+            return "KSPlayer KSME（实验）"
+            #endif
         case .resourceLoaderAVPlayer: return "智能 AVPlayer"
         case .transportAVPlayer: return "统一缓存 AVPlayer"
         case .avPlayer: return "直连 AVPlayer"
-        case .mpv: return "MPV 兼容引擎"
+        case .mpv: return "MPV高兼容引擎"
         }
     }
 
@@ -30,8 +34,8 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
         case .mpv: return 1
         case .transportAVPlayer: return 2
         case .avPlayer: return 3
+        case .ksAVIO: return 4
         case .ktvAVPlayer: return 100
-        case .ksAVIO: return 101
         }
     }
 }
@@ -42,17 +46,56 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
     case transportAVPlayer
     case avPlayer
     case mpv
+    case ksAVIO
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .automatic: return "自动（推荐）"
+        case .automatic: return "自动（高性能优先）"
         case .resourceLoaderAVPlayer: return "诊断：智能 AVPlayer"
         case .transportAVPlayer: return "统一缓存 AVPlayer"
         case .avPlayer: return "诊断：直连 AVPlayer"
-        case .mpv: return "MPV 兼容引擎"
+        case .mpv: return "MPV高兼容引擎"
+        case .ksAVIO:
+            #if MDK_LAB
+            return "MDK高性能引擎"
+            #else
+            return "KSPlayer KSME（实验）"
+            #endif
         }
+    }
+
+    static var selectableCases: [PlayerEnginePreference] {
+        var result: [PlayerEnginePreference] = []
+        #if canImport(Libmpv)
+        result.append(.mpv)
+        #endif
+        #if MDK_LAB && canImport(KSPlayer)
+        result.append(.ksAVIO)
+        #endif
+        return result
+    }
+
+    static var automaticCompatibilityKind: PlayerEngineKind {
+        #if canImport(Libmpv)
+        return .mpv
+        #elseif MDK_LAB && canImport(KSPlayer)
+        return .ksAVIO
+        #elseif canImport(KSPlayer)
+        return .ksAVIO
+        #else
+        return .resourceLoaderAVPlayer
+        #endif
+    }
+
+    static var defaultPreference: PlayerEnginePreference {
+        selectableCases.first ?? .mpv
+    }
+
+    static func persisted(rawValue: String?) -> PlayerEnginePreference {
+        guard let preference = rawValue.flatMap(PlayerEnginePreference.init(rawValue:)), selectableCases.contains(preference) else { return defaultPreference }
+        return preference
     }
 
     var isAutomatic: Bool { self == .automatic }
@@ -63,24 +106,26 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
         case .transportAVPlayer: return .transportAVPlayer
         case .avPlayer: return .avPlayer
         case .mpv: return .mpv
+        case .ksAVIO: return .ksAVIO
         case .automatic:
-            let nativeContainers: Set<String> = ["mp4", "mov", "m4v"]
-            let nativeVideo: Set<String> = ["h264", "hevc", "h265"]
-            let nativeAudio: Set<String> = ["aac", "alac", "mp3", "ac3", "eac3"]
-            let video = source.videoCodec?.lowercased() ?? ""
-            let audio = source.audioCodec?.lowercased() ?? ""
-            if nativeContainers.contains(source.normalizedContainer),
-               video.isEmpty || nativeVideo.contains(video),
-               audio.isEmpty || nativeAudio.contains(audio) {
-                return .resourceLoaderAVPlayer
-            }
+            #if MDK_LAB && canImport(KSPlayer)
+            return .ksAVIO
+            #elseif canImport(Libmpv)
             return .mpv
+            #elseif canImport(KSPlayer)
+            return .ksAVIO
+            #else
+            return .resourceLoaderAVPlayer
+            #endif
         }
     }
 }
 
 struct PlayerSnapshot: Equatable {
+    /// Engine playback clock. This is not proof that the frame is visible.
     var position: Double = 0
+    /// Timestamp of the latest frame actually submitted to the renderer, when the engine can provide it.
+    var renderedPosition: Double? = nil
     var duration: Double = 0
     var bufferedRanges: [ClosedRange<Double>] = []
     var isPlaying = false
@@ -91,6 +136,16 @@ struct PlayerSnapshot: Equatable {
     var accessLogStalls = 0
     var droppedVideoFrames = 0
     var observedBitrate: Double = 0
+}
+
+struct PlaybackBufferState: Equatable {
+    /// Engine-confirmed instantaneous playable media-time ranges.
+    var livePlayableRanges: [ClosedRange<Double>] = []
+    /// Session-persistent media-time ranges that were actually verified playable by the engine.
+    /// These are historical playback facts, not a byte-to-time projection of the disk cache.
+    var verifiedHistoryRanges: [ClosedRange<Double>] = []
+    var isBuffering = false
+    var waitingReason: String?
 }
 
 struct SeekResult {

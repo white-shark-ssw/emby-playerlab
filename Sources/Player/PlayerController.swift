@@ -13,11 +13,14 @@ final class PlayerController: ObservableObject {
     @Published private(set) var lastSeekSummary = "尚未 Seek"
     @Published private(set) var prematureEOFMessage: String?
     @Published private(set) var stallMessage: String?
+    @Published private(set) var engineSwitchNotice: String?
     @Published private(set) var engineKind: PlayerEngineKind
     @Published private(set) var transportSummary: String?
     @Published private(set) var transportCacheFraction: Double = 0
     @Published private(set) var transportCacheRanges: [ClosedRange<Double>] = []
     @Published private(set) var verifiedBufferedRanges: [ClosedRange<Double>] = []
+    @Published private(set) var bufferState = PlaybackBufferState()
+    @Published private(set) var networkBufferingVisible = false
 
     @Published private(set) var source: ResolvedPlaybackSource
 
@@ -26,6 +29,8 @@ final class PlayerController: ObservableObject {
     private let orchestrator: PlaybackOrchestrator
     private let transportContext: PlaybackTransportContext?
     private var preferredForwardBuffer: Double = 90
+    private var startupResumeTask: Task<Double, Never>?
+    private var startupTransportPrewarmTask: Task<Void, Never>?
     private var initialPlaybackTask: Task<Void, Never>?
     private var progressTask: Task<Void, Never>?
     private var feedbackTask: Task<Void, Never>?
@@ -34,6 +39,7 @@ final class PlayerController: ObservableObject {
     private var watchdogTask: Task<Void, Never>?
     private var transportMetricsTask: Task<Void, Never>?
     private var engineSwitchTask: Task<Void, Never>?
+    private var engineSwitchNoticeTask: Task<Void, Never>?
     private var startupFallbackTask: Task<Void, Never>?
     private var engineSwitchInProgress = false
     private var engineTransitionAwaitingFirstSnapshot = false
@@ -44,9 +50,13 @@ final class PlayerController: ObservableObject {
     private var userIsScrubbing = false
     private var pendingSeekTarget: Double?
     private var pendingSeekDirection: SeekDirection?
+    private var fastSeekLogicalTarget: Double?
+    private var lastFastSeekRequestAt: CFTimeInterval?
+    private static let fastSeekBurstWindow: CFTimeInterval = 1.0
     private var screenScrubStartPosition: Double?
     private var engineGeneration = 0
     private var eofRetryCount = 0
+    private var prematureEOFRecovery = PrematureEOFRecoveryCoordinator()
     private var stallRecoveryCount = 0
     private var lastWatchdogPosition: Double = 0
     private var lastWatchdogBufferEnd: Double = 0
@@ -59,6 +69,8 @@ final class PlayerController: ObservableObject {
     private var hasPlaybackAdvanced = false
     private var initialResumeConfirmationPending = false
     private var initialResumePlaybackBaseline: Double?
+    private var lastTransportPlaybackReportPosition: Double = -1
+    private var lastTransportPlaybackReportAt = Date.distantPast
 
     var ksAVIOView: UIView? {
         #if canImport(KSPlayer)
@@ -80,6 +92,8 @@ final class PlayerController: ObservableObject {
         return nil
     }
 
+    private var mdkDirectHTTPABActive: Bool { false }
+
     init(source: ResolvedPlaybackSource, client: EmbyAPIClient, preference: PlayerEnginePreference) {
         self.source = source
         self.client = client
@@ -96,8 +110,33 @@ final class PlayerController: ObservableObject {
         bindEngine()
     }
 
+    func prewarmStartup() {
+        guard !started else { return }
+        if startupResumeTask == nil {
+            startupResumeTask = Task { [weak self] in
+                guard let self else { return 0 }
+                let began = CACurrentMediaTime()
+                DiagnosticsLogger.shared.playback("StartupFastPath", "resume lookup begin item=\(self.source.itemId)")
+                let position = await self.resolveInitialPlaybackPosition()
+                DiagnosticsLogger.shared.playback("StartupFastPath", "resume lookup ready item=\(self.source.itemId) position=\(String(format: "%.3f", position)) ms=\(Int((CACurrentMediaTime() - began) * 1000))")
+                return position
+            }
+        }
+        if !mdkDirectHTTPABActive, startupTransportPrewarmTask == nil, let session = transportContext?.session {
+            startupTransportPrewarmTask = Task { [weak self] in
+                guard let self else { return }
+                let began = CACurrentMediaTime()
+                DiagnosticsLogger.shared.playback("StartupFastPath", "transport resolve begin item=\(self.source.itemId)")
+                let ready = await session.prewarmStartupResolve()
+                guard !Task.isCancelled else { return }
+                DiagnosticsLogger.shared.playback("StartupFastPath", "transport resolve ready item=\(self.source.itemId) success=\(ready) ms=\(Int((CACurrentMediaTime() - began) * 1000))")
+            }
+        }
+    }
+
     func start(preferredForwardBuffer: Double) {
         guard !started else { return }
+        prewarmStartup()
         started = true
         self.preferredForwardBuffer = preferredForwardBuffer > 0 ? preferredForwardBuffer : 90
         configureAudioSession()
@@ -105,18 +144,38 @@ final class PlayerController: ObservableObject {
         initialPlaybackTask?.cancel()
         initialPlaybackTask = Task { [weak self] in
             guard let self else { return }
-            let startPosition = await self.resolveInitialPlaybackPosition()
+            let startPosition: Double
+            if let resumeTask = self.startupResumeTask { startPosition = await resumeTask.value }
+            else { startPosition = await self.resolveInitialPlaybackPosition() }
             guard !Task.isCancelled, self.started else { return }
-            if startPosition > 0.5, let session = self.transportContext?.session {
-                await session.prepareInitialPlayback(position: startPosition, duration: self.source.mediaSource.durationSeconds ?? 0)
+            let duration = self.source.mediaSource.durationSeconds ?? 0
+            if startPosition > 0.5, let prewarmTask = self.startupTransportPrewarmTask {
+                await prewarmTask.value
+                guard !Task.isCancelled, self.started else { return }
+                DiagnosticsLogger.shared.playback("StartupFastPath", "cold resume transport resolve awaited item=\(self.source.itemId) position=\(String(format: "%.3f", startPosition))")
+            }
+            if !self.mdkDirectHTTPABActive, let session = self.transportContext?.session {
+                await session.releaseStartupPrewarm(initialPosition: startPosition, duration: duration)
                 guard !Task.isCancelled, self.started else { return }
             }
             self.initialPlaybackTask = nil
+            DiagnosticsLogger.shared.playback("StartupFastPath", "engine activation item=\(self.source.itemId) position=\(String(format: "%.3f", startPosition)) transportResolveStarted=\(self.startupTransportPrewarmTask != nil)")
             self.startEngine(at: startPosition)
         }
     }
 
     private func resolveInitialPlaybackPosition() async -> Double {
+        if let ticks = source.initialPlaybackPositionTicks {
+            let seconds = max(0, Double(ticks) / AppIdentity.ticksPerSecond)
+            let duration = source.mediaSource.durationSeconds ?? 0
+            if duration > 0, seconds / duration >= 0.995 {
+                DiagnosticsLogger.shared.playback("Resume", "item=\(source.itemId) source-hint treated-as-complete ticks=\(ticks)")
+                return 0
+            }
+            let resolved = duration > 0 ? min(seconds, duration) : seconds
+            DiagnosticsLogger.shared.playback("Resume", "item=\(source.itemId) source-hint position=\(String(format: "%.3f", resolved)) duration=\(String(format: "%.3f", duration))")
+            return resolved
+        }
         do {
             let item = try await client.libraryItem(itemId: source.itemId)
             guard item.isPlayed == false,
@@ -137,6 +196,7 @@ final class PlayerController: ObservableObject {
     private func startEngine(at startPosition: Double) {
         let position = max(0, startPosition)
         displayedPosition = position
+        prematureEOFRecovery.reset()
         initialResumeConfirmationPending = position > 0.5
         initialResumePlaybackBaseline = nil
         suppressStallWatchdog(for: engineKind == .mpv ? 12 : 6)
@@ -144,7 +204,7 @@ final class PlayerController: ObservableObject {
         engine.prepare(url: source.url, headers: source.headers, preferredForwardBuffer: preferredForwardBuffer, startPosition: position)
         if engineKind == .mpv { DiagnosticsLogger.shared.log("MPVLifecycle", "prepare returned item=\(source.itemId)") }
         engine.play()
-        if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }
+        if !mdkDirectHTTPABActive, let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }
         playbackSessionStarted = true
 
         DiagnosticsLogger.shared.log(
@@ -178,10 +238,17 @@ final class PlayerController: ObservableObject {
         userWantsPlayback = false
         initialResumeConfirmationPending = false
         initialResumePlaybackBaseline = nil
+        prematureEOFRecovery.reset()
+        lastTransportPlaybackReportPosition = -1
+        lastTransportPlaybackReportAt = .distantPast
         let shouldReportStop = playbackSessionStarted
         playbackSessionStarted = false
         DiagnosticsLogger.shared.log("Lifecycle", "player close requested engine=\(engineKind.title) position=\(snapshot.position)")
 
+        startupResumeTask?.cancel()
+        startupResumeTask = nil
+        startupTransportPrewarmTask?.cancel()
+        startupTransportPrewarmTask = nil
         initialPlaybackTask?.cancel()
         initialPlaybackTask = nil
         progressTask?.cancel()
@@ -193,8 +260,13 @@ final class PlayerController: ObservableObject {
         transportSummary = nil
         transportCacheFraction = 0
         transportCacheRanges = []
+        bufferState = PlaybackBufferState()
+        networkBufferingVisible = false
         engineSwitchTask?.cancel()
         engineSwitchTask = nil
+        engineSwitchNoticeTask?.cancel()
+        engineSwitchNoticeTask = nil
+        engineSwitchNotice = nil
         startupFallbackTask?.cancel()
         startupFallbackTask = nil
         engineSwitchInProgress = false
@@ -236,6 +308,8 @@ final class PlayerController: ObservableObject {
 
         pendingSeekTarget = nil
         pendingSeekDirection = nil
+        fastSeekLogicalTarget = nil
+        lastFastSeekRequestAt = nil
         screenScrubStartPosition = nil
         DiagnosticsLogger.shared.log("Lifecycle", "player close detached")
     }
@@ -244,12 +318,12 @@ final class PlayerController: ObservableObject {
         if userWantsPlayback {
             userWantsPlayback = false
             engine.pause()
-            if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(false) } }
+            if !mdkDirectHTTPABActive, let session = transportContext?.session { Task { await session.setPlaybackAdvancing(false) } }
             Task { await client.reportProgress(source: source, position: snapshot.position, paused: true, eventName: "Pause") }
         } else {
             userWantsPlayback = true
             engine.play()
-            if let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }
+            if !mdkDirectHTTPABActive, let session = transportContext?.session { Task { await session.setPlaybackAdvancing(true) } }
             Task { await client.reportProgress(source: source, position: snapshot.position, paused: false, eventName: "Unpause") }
         }
     }
@@ -257,14 +331,21 @@ final class PlayerController: ObservableObject {
     func seek(by offset: Double) {
         seekAnchorReleaseTask?.cancel()
         seekAnchorReleaseTask = nil
-        let base = pendingSeekTarget ?? snapshot.position
+        let now = CACurrentMediaTime()
+        let withinFastSeekBurst = lastFastSeekRequestAt.map { now - $0 <= Self.fastSeekBurstWindow } ?? false
+        let base = withinFastSeekBurst ? (fastSeekLogicalTarget ?? snapshot.position) : snapshot.position
         let target = clampPosition(base + offset)
+        fastSeekLogicalTarget = target
+        lastFastSeekRequestAt = now
         pendingSeekTarget = target
         pendingSeekDirection = offset >= 0 ? .forward : .backward
         displayedPosition = target
         suppressStallWatchdog(for: 3)
-        DiagnosticsLogger.shared.log("SeekAnchor", "offset=\(offset) base=\(base) target=\(target) enginePosition=\(snapshot.position)")
+        DiagnosticsLogger.shared.log("SeekAnchor", "offset=\(offset) base=\(base) target=\(target) enginePosition=\(snapshot.position) logicalBurst=\(withinFastSeekBurst)")
         engine.seek(to: target, direction: offset >= 0 ? .forward : .backward)
+        #if MDK_LAB
+        if engineKind == .ksAVIO { scheduleSeekAnchorRelease(expectedTarget: target) }
+        #endif
         showSeekFeedback(offset: offset)
         scheduleSeekReport(position: pendingSeekTarget ?? target)
     }
@@ -274,6 +355,8 @@ final class PlayerController: ObservableObject {
         seekAnchorReleaseTask = nil
         pendingSeekTarget = nil
         pendingSeekDirection = nil
+        fastSeekLogicalTarget = nil
+        lastFastSeekRequestAt = nil
         userIsScrubbing = true
         screenScrubStartPosition = nil
     }
@@ -286,8 +369,10 @@ final class PlayerController: ObservableObject {
         seekAnchorReleaseTask = nil
         pendingSeekTarget = nil
         pendingSeekDirection = nil
+        fastSeekLogicalTarget = nil
+        lastFastSeekRequestAt = nil
         userIsScrubbing = true
-        let start = snapshot.position
+        let start = displayedPosition
         screenScrubStartPosition = start
         displayedPosition = start
         scrubFeedback = "\(formatTime(start)) / \(formatTime(effectiveDuration))"
@@ -325,6 +410,7 @@ final class PlayerController: ObservableObject {
         let shouldPlay = userWantsPlayback
         let previousKind = engineKind
         let previousEngine = engine
+        let fastMDKFallback = previousKind == .ksAVIO && kind == .mpv && reason != "用户切换"
         engineSwitchInProgress = true
         engineTransitionAwaitingFirstSnapshot = true
         engineSwitchSerial &+= 1
@@ -334,12 +420,15 @@ final class PlayerController: ObservableObject {
 
         pendingSeekTarget = nil
         pendingSeekDirection = nil
+        fastSeekLogicalTarget = nil
+        lastFastSeekRequestAt = nil
         seekAnchorReleaseTask?.cancel()
         seekAnchorReleaseTask = nil
         transportMetricsTask?.cancel()
         transportMetricsTask = nil
         lastTransportMetrics = nil
         transportSummary = nil
+        networkBufferingVisible = false
         startupFallbackTask?.cancel()
         startupFallbackTask = nil
 
@@ -348,7 +437,12 @@ final class PlayerController: ObservableObject {
         previousEngine.onSeekCompleted = nil
         engine = SuspendedPlayerEngine(kind: previousKind)
         resetWatchdog()
-        stallMessage = "正在自动切换到 \(kind.title)：\(reason)"
+        if kind == .mpv, reason != "用户切换" {
+            stallMessage = nil
+            showAutomaticMPVSwitchNotice()
+        } else {
+            stallMessage = reason == "用户切换" ? nil : "正在自动切换到 \(kind.title)：\(reason)"
+        }
         EngineTransitionBreadcrumb.record(stage: "old-callbacks-detached", from: previousKind, to: kind, position: resumePosition, reason: reason)
 
         previousEngine.stop()
@@ -357,10 +451,15 @@ final class PlayerController: ObservableObject {
         engineSwitchTask?.cancel()
         engineSwitchTask = Task { [weak self] in
             guard let self else { return }
-            if let transportContext = self.transportContext { await transportContext.quiesceConsumers() }
-            guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
-            EngineTransitionBreadcrumb.record(stage: "transport-quiesced", from: previousKind, to: kind, position: resumePosition, reason: reason)
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            if fastMDKFallback {
+                EngineTransitionBreadcrumb.record(stage: "transport-preserved", from: previousKind, to: kind, position: resumePosition, reason: reason)
+                DiagnosticsLogger.shared.playback("EngineTransition", "from=\(previousKind.title) to=\(kind.title) transport=preserve-live-unified settleMs=0 fastFallback=true")
+            } else {
+                if let transportContext = self.transportContext { await transportContext.quiesceConsumers() }
+                guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
+                EngineTransitionBreadcrumb.record(stage: "transport-quiesced", from: previousKind, to: kind, position: resumePosition, reason: reason)
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
             guard !Task.isCancelled, self.started, self.engineSwitchSerial == serial else { return }
 
             let nextEngine = Self.makeEngine(kind: kind, source: self.source, client: self.client, transportContext: self.transportContext)
@@ -414,6 +513,23 @@ final class PlayerController: ObservableObject {
 
     var verifiedBufferedEnd: Double { verifiedBufferedRanges.map(\.upperBound).max() ?? 0 }
 
+    private func updatePlaybackBufferState(from value: PlayerSnapshot) {
+        let livePlayableRanges: [ClosedRange<Double>]
+        if !value.bufferedRanges.isEmpty {
+            livePlayableRanges = value.bufferedRanges
+        } else if !value.isBuffering {
+            livePlayableRanges = bufferState.livePlayableRanges.filter { $0.lowerBound <= value.position + 0.05 && $0.upperBound >= value.position - 0.05 }
+        } else {
+            livePlayableRanges = []
+        }
+        bufferState = PlaybackBufferState(
+            livePlayableRanges: livePlayableRanges,
+            verifiedHistoryRanges: verifiedBufferedRanges,
+            isBuffering: value.isBuffering,
+            waitingReason: value.waitingReason
+        )
+    }
+
     private func updateVerifiedBufferedRanges(from value: PlayerSnapshot) {
         guard !value.bufferedRanges.isEmpty else { return }
         if engineKind == .mpv {
@@ -459,6 +575,7 @@ final class PlayerController: ObservableObject {
             return AVPlayerEngine(kind: .transportAVPlayer, transportSource: source, transportClient: client, transportConfiguration: configuration, sharedTransportSession: transportContext?.session)
         case .ksAVIO:
             #if canImport(KSPlayer)
+            DiagnosticsLogger.shared.playback("MDKTransport", "mode=unified-localhost-v2 sharedTransportPassed=true highSpeedCache=true nasMediaProxy=false")
             return KSAVIOPlayerEngine(source: source, client: client, configuration: configuration, sharedTransportSession: transportContext?.session, ktvCacheSession: nil)
             #else
             return SuspendedPlayerEngine(kind: .ksAVIO)
@@ -480,17 +597,21 @@ final class PlayerController: ObservableObject {
                 guard generation == self.engineGeneration else { return }
                 let wasEnd = self.snapshot.didReachEnd
                 self.snapshot = value
+                self.networkBufferingVisible = value.isBuffering && (self.transportContext?.starvationState.isStarving ?? false)
+                self.prematureEOFRecovery.observe(snapshot: value)
                 if value.position > 0.25 { self.hasPlaybackAdvanced = true }
                 self.confirmInitialResumePlaybackIfNeeded(value)
                 self.updateVerifiedBufferedRanges(from: value)
+                self.updatePlaybackBufferState(from: value)
                 self.logBufferTimelineIfNeeded(value)
+                self.reportPlaybackClockToTransportIfNeeded(value)
                 if self.engineTransitionAwaitingFirstSnapshot {
                     self.engineTransitionAwaitingFirstSnapshot = false
                     if let error = value.errorMessage, !error.isEmpty { DiagnosticsLogger.shared.log("Engine", "Switch first snapshot error engine=\(self.engineKind.title) error=\(error)") }
                     else { EngineTransitionBreadcrumb.clear(); DiagnosticsLogger.shared.log("Engine", "Switch first snapshot engine=\(self.engineKind.title) position=\(value.position)") }
                 }
 
-                if self.engineKind != .mpv, !self.userIsScrubbing, let pending = self.pendingSeekTarget, self.hasReachedPendingTarget(actual: value.position, target: pending) {
+                if self.snapshotCanCompleteSeekAnchor, !self.userIsScrubbing, let pending = self.pendingSeekTarget, self.hasReachedPendingTarget(actual: value.position, target: pending) {
                     self.seekAnchorReleaseTask?.cancel()
                     self.seekAnchorReleaseTask = nil
                     self.pendingSeekTarget = nil
@@ -498,7 +619,7 @@ final class PlayerController: ObservableObject {
                     self.displayedPosition = value.position
                     DiagnosticsLogger.shared.log("SeekAnchor", "reached target=\(pending) actual=\(value.position)")
                 } else if !self.userIsScrubbing, self.pendingSeekTarget == nil {
-                    self.displayedPosition = value.position
+                    self.displayedPosition = self.presentationPosition(for: value)
                 }
 
                 if let error = value.errorMessage, !error.isEmpty, error != self.lastHandledEngineError {
@@ -514,6 +635,7 @@ final class PlayerController: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 guard generation == self.engineGeneration else { return }
+                self.prematureEOFRecovery.reset()
                 if let pending = self.pendingSeekTarget, abs(pending - result.target) < 0.01 {
                     self.seekAnchorReleaseTask?.cancel()
                     self.seekAnchorReleaseTask = nil
@@ -528,6 +650,17 @@ final class PlayerController: ObservableObject {
                 DiagnosticsLogger.shared.log("Seek", "engine=\(self.engineKind.title) target=\(result.target) actual=\(actualText) bufferHit=\(result.bufferHit) completionMs=\(result.completionLatencyMs) measurement=\(result.measurement)")
             }
         }
+    }
+
+    private func reportPlaybackClockToTransportIfNeeded(_ value: PlayerSnapshot) {
+        guard !mdkDirectHTTPABActive, let session = transportContext?.session, value.position.isFinite else { return }
+        let now = Date()
+        let positionMoved = abs(value.position - lastTransportPlaybackReportPosition) >= 0.10
+        let heartbeatDue = now.timeIntervalSince(lastTransportPlaybackReportAt) >= 0.50
+        guard positionMoved || heartbeatDue else { return }
+        lastTransportPlaybackReportPosition = value.position
+        lastTransportPlaybackReportAt = now
+        Task { await session.reportPlaybackProgress(position: value.position, isBuffering: value.isBuffering) }
     }
 
     private func confirmInitialResumePlaybackIfNeeded(_ value: PlayerSnapshot) {
@@ -545,16 +678,21 @@ final class PlayerController: ObservableObject {
         initialResumeConfirmationPending = false
         initialResumePlaybackBaseline = nil
         DiagnosticsLogger.shared.playback("Resume", "playback advanced baseline=\(String(format: "%.3f", baseline)) current=\(String(format: "%.3f", value.position)) action=confirm-real-byte-head")
-        if let session = transportContext?.session { Task { await session.confirmInitialResumePlayback() } }
+        if !mdkDirectHTTPABActive, let session = transportContext?.session { Task { await session.confirmInitialResumePlayback() } }
     }
 
     private func commitScrubbedPosition() {
         userIsScrubbing = false
+        fastSeekLogicalTarget = nil
+        lastFastSeekRequestAt = nil
         let target = clampPosition(displayedPosition)
         pendingSeekTarget = target
         pendingSeekDirection = .absolute
         suppressStallWatchdog(for: 3)
         engine.seek(to: target, direction: .absolute)
+        #if MDK_LAB
+        if engineKind == .ksAVIO { scheduleSeekAnchorRelease(expectedTarget: target) }
+        #endif
         Task { await client.reportProgress(source: source, position: target, paused: !snapshot.isPlaying, eventName: "TimeUpdate") }
     }
 
@@ -565,9 +703,25 @@ final class PlayerController: ObservableObject {
             guard let self, !Task.isCancelled, let pending = self.pendingSeekTarget, abs(pending - expectedTarget) < 0.01 else { return }
             self.pendingSeekTarget = nil
             self.pendingSeekDirection = nil
-            self.displayedPosition = self.snapshot.position
-            DiagnosticsLogger.shared.log("SeekAnchor", "timeout target=\(expectedTarget) actual=\(self.snapshot.position)")
+            if let rendered = self.snapshot.renderedPosition { self.displayedPosition = rendered }
+            DiagnosticsLogger.shared.log("SeekAnchor", "timeout target=\(expectedTarget) clock=\(self.snapshot.position) rendered=\(self.snapshot.renderedPosition.map { String(format: "%.3f", $0) } ?? "nil") presentation=renderer-backed")
         }
+    }
+
+
+    private func presentationPosition(for value: PlayerSnapshot) -> Double {
+        #if MDK_LAB
+        if engineKind == .ksAVIO, let rendered = value.renderedPosition { return rendered }
+        #endif
+        return value.position
+    }
+
+    private var snapshotCanCompleteSeekAnchor: Bool {
+        #if MDK_LAB
+        return engineKind != .mpv && engineKind != .ksAVIO
+        #else
+        return engineKind != .mpv
+        #endif
     }
 
     private func hasReachedPendingTarget(actual: Double, target: Double) -> Bool {
@@ -608,10 +762,37 @@ final class PlayerController: ObservableObject {
             return
         }
 
-        switch orchestrator.actionForPrematureEOF(kind: engineKind, reason: decision.reason) {
-        case .switchEngine(let next, let reason): prematureEOFMessage = "\(decision.reason)；App 正在自动切换到 \(next.title)。"; switchEngine(to: next, reason: reason)
-        case .reloadCurrent(let reason): prematureEOFMessage = reason; engine.reload(at: snapshot.position); engine.play()
-        case .recoverTransport(let message), .wait(let message): prematureEOFMessage = message; engine.recoverStall(position: snapshot.position, duration: effectiveDuration)
+        switch prematureEOFRecovery.begin(position: snapshot.position) {
+        case .recoverInPlace:
+            let action = orchestrator.actionForPrematureEOF(kind: engineKind, reason: decision.reason, snapshot: snapshot, metrics: lastTransportMetrics)
+            switch action {
+            case .recoverTransport(let message), .wait(let message):
+                prematureEOFMessage = message
+                DiagnosticsLogger.shared.playback("EOFRecovery", "state=recovering engine=\(engineKind.title) position=\(String(format: "%.3f", snapshot.position)) action=in-place")
+                engine.recoverStall(position: snapshot.position, duration: effectiveDuration)
+            case .reloadCurrent(let reason):
+                prematureEOFMessage = reason
+                DiagnosticsLogger.shared.playback("EOFRecovery", "state=recovering engine=\(engineKind.title) action=blocked-recursive-reload reason=\(reason)")
+                engine.recoverStall(position: snapshot.position, duration: effectiveDuration)
+            case .switchEngine(let next, let reason):
+                prematureEOFMessage = "\(decision.reason)；自动切换被恢复隔离层阻止，请手动选择 \(next.title)。"
+                DiagnosticsLogger.shared.playback("EOFRecovery", "state=recovering action=blocked-runtime-switch next=\(next.title) reason=\(reason)")
+            }
+        case .waitForCurrentRecovery:
+            DiagnosticsLogger.shared.playback("EOFRecovery", "state=recovering action=ignore-duplicate position=\(String(format: "%.3f", snapshot.position))")
+        case .quarantine:
+            prematureEOFMessage = "该媒体连续触发异常 EOF，MDK 已停止自动恢复以保护 App。可手动切换到 MPV高兼容引擎继续测试。"
+            DiagnosticsLogger.shared.playback("EOFRecovery", "state=quarantined engine=\(engineKind.title) position=\(String(format: "%.3f", snapshot.position)) action=no-rebuild")
+        }
+    }
+
+    private func showAutomaticMPVSwitchNotice() {
+        engineSwitchNoticeTask?.cancel()
+        engineSwitchNotice = "自动切换为 MPV 高兼容引擎"
+        engineSwitchNoticeTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.engineSwitchNotice = nil
         }
     }
 
@@ -619,7 +800,11 @@ final class PlayerController: ObservableObject {
         guard !engineSwitchInProgress, !engineTransitionAwaitingFirstSnapshot else { return }
         if scheduleStartupCompatibilityFallbackIfNeeded(message: message) { return }
         guard let action = orchestrator.actionForEngineError(kind: engineKind, message: message) else { return }
-        if case .switchEngine(let next, let reason) = action { stallMessage = "\(engineKind.title) 发生错误，正在自动切换到 \(next.title)。"; switchEngine(to: next, reason: reason) }
+        if case .switchEngine(let next, let reason) = action {
+            if engineKind == .ksAVIO, next == .mpv { DiagnosticsLogger.shared.playback("Compatibility", "item=\(source.itemId) mdkFailureHistory=diagnostic-only persistentEngineRouting=false error=\(message)") }
+            stallMessage = "\(engineKind.title) 发生错误，正在自动切换到 \(next.title)。"
+            switchEngine(to: next, reason: reason)
+        }
     }
 
     private func scheduleStartupCompatibilityFallbackIfNeeded(message: String) -> Bool {
@@ -644,7 +829,7 @@ final class PlayerController: ObservableObject {
                 DiagnosticsLogger.shared.log("StartupFallback", "check item=\(self.source.itemId) attempt=\(attempt) downloaded=\(healthyBytes) cache=\(cacheBytes) speed=\(Int(speed))B/s active=\(active) healthy=\(transportHealthy)")
                 guard transportHealthy else { continue }
                 MediaCompatibilityStore.markCompatibilityEngineRequired(itemId: self.source.itemId, reason: "avplayer-startup-cannot-open")
-                self.stallMessage = "媒体数据下载正常，但 AVPlayer 无法打开容器；正在从当前播放点使用 MPV 兼容引擎重新打开。"
+                self.stallMessage = "媒体数据下载正常，但 AVPlayer 无法打开容器；正在从当前播放点使用 高兼容引擎重新打开。"
                 self.startupFallbackTask = nil
                 self.switchEngine(to: .mpv, reason: "启动阶段 Cannot Open，传输健康，受控回退到 MPV")
                 return
@@ -690,6 +875,7 @@ final class PlayerController: ObservableObject {
         let fullRange = 0...duration
         guard verifiedBufferedRanges != [fullRange] else { return }
         verifiedBufferedRanges = [fullRange]
+        bufferState.verifiedHistoryRanges = verifiedBufferedRanges
         DiagnosticsLogger.shared.log("BufferHistory", "transport cache complete bytes=\(metrics.cacheBytes)/\(metrics.resourceBytes) action=promote-full-duration duration=\(String(format: "%.3f", duration))")
     }
 

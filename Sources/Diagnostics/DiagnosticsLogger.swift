@@ -14,6 +14,13 @@ enum DiagnosticsLogChannel: String, CaseIterable, Identifiable {
 final class DiagnosticsLogger {
     static let shared = DiagnosticsLogger()
 
+    private struct PendingEvent {
+        let channel: DiagnosticsLogChannel
+        let category: String
+        let message: String
+        let date: Date
+    }
+
     private final class ChannelStore {
         let channel: DiagnosticsLogChannel
         let persistentURL: URL
@@ -31,11 +38,17 @@ final class DiagnosticsLogger {
     }
 
     private let queue = DispatchQueue(label: "com.oneplayer.diagnostics", qos: .utility)
+    private let ingressLock = NSLock()
     private let formatter: ISO8601DateFormatter
     private let maximumPersistentBytes: UInt64 = 8 * 1024 * 1024
     private let flushThresholdBytes = 64 * 1024
     private let flushDelay: TimeInterval = 0.35
+    private let maximumPendingEvents = 2_048
+    private let drainBatchSize = 256
     private var stores: [DiagnosticsLogChannel: ChannelStore] = [:]
+    private var pendingEvents: [PendingEvent] = []
+    private var drainScheduled = false
+    private var droppedEvents: [DiagnosticsLogChannel: Int] = [:]
 
     private init() {
         formatter = ISO8601DateFormatter()
@@ -58,6 +71,7 @@ final class DiagnosticsLogger {
 
     func export(_ channel: DiagnosticsLogChannel) throws -> URL {
         try queue.sync {
+            drainIngressOnQueue()
             guard let store = stores[channel] else { throw CocoaError(.fileNoSuchFile) }
             flushWorkItem(store)
             try? store.persistentHandle?.synchronize()
@@ -72,6 +86,7 @@ final class DiagnosticsLogger {
 
     func clear(_ channel: DiagnosticsLogChannel) {
         queue.async {
+            self.drainIngressOnQueue()
             guard let store = self.stores[channel] else { return }
             store.flushWorkItem?.cancel()
             store.flushWorkItem = nil
@@ -86,6 +101,7 @@ final class DiagnosticsLogger {
 
     func fileSize(_ channel: DiagnosticsLogChannel) -> UInt64 {
         queue.sync {
+            drainIngressOnQueue()
             guard let path = stores[channel]?.persistentURL.path,
                   let attributes = try? FileManager.default.attributesOfItem(atPath: path),
                   let size = attributes[.size] as? NSNumber else { return 0 }
@@ -94,21 +110,68 @@ final class DiagnosticsLogger {
     }
 
     private func write(channel: DiagnosticsLogChannel, category: String, message: String) {
+        if shouldSuppressHighFrequencyEvent(category: category, message: message) { return }
         guard UserDefaults.standard.bool(forKey: channel.enabledKey) else {
             #if DEBUG
             print("[\(channel.rawValue)] [\(category)] \(SensitiveRedactor.redact(message))")
             #endif
             return
         }
-        queue.async {
-            guard let store = self.stores[channel] else { return }
-            let line = "\(self.formatter.string(from: Date())) [\(category)] \(SensitiveRedactor.redact(message))"
-            if let data = (line + "\n").data(using: .utf8) { store.pendingPersistentData.append(data) }
-            if store.pendingPersistentData.count >= self.flushThresholdBytes { self.flush(store) }
-            else { self.scheduleFlush(store) }
-            #if DEBUG
-            print(line)
-            #endif
+
+        var shouldSchedule = false
+        ingressLock.lock()
+        if pendingEvents.count >= maximumPendingEvents {
+            droppedEvents[channel, default: 0] += 1
+        } else {
+            pendingEvents.append(PendingEvent(channel: channel, category: category, message: message, date: Date()))
+            if !drainScheduled {
+                drainScheduled = true
+                shouldSchedule = true
+            }
+        }
+        ingressLock.unlock()
+
+        if shouldSchedule { queue.async { [weak self] in self?.drainIngressOnQueue() } }
+    }
+
+    private func drainIngressOnQueue() {
+        while true {
+            let batch: [PendingEvent]
+            let dropped: [DiagnosticsLogChannel: Int]
+
+            ingressLock.lock()
+            if pendingEvents.isEmpty {
+                drainScheduled = false
+                dropped = droppedEvents
+                droppedEvents.removeAll(keepingCapacity: true)
+                ingressLock.unlock()
+                appendDroppedSummaries(dropped)
+                return
+            }
+            let count = min(drainBatchSize, pendingEvents.count)
+            batch = Array(pendingEvents.prefix(count))
+            pendingEvents.removeFirst(count)
+            dropped = [:]
+            ingressLock.unlock()
+
+            for event in batch { append(event) }
+        }
+    }
+
+    private func append(_ event: PendingEvent) {
+        guard let store = stores[event.channel] else { return }
+        let line = "\(formatter.string(from: event.date)) [\(event.category)] \(SensitiveRedactor.redact(event.message))"
+        if let data = (line + "\n").data(using: .utf8) { store.pendingPersistentData.append(data) }
+        if store.pendingPersistentData.count >= flushThresholdBytes { flush(store) }
+        else { scheduleFlush(store) }
+        #if DEBUG
+        print(line)
+        #endif
+    }
+
+    private func appendDroppedSummaries(_ dropped: [DiagnosticsLogChannel: Int]) {
+        for (channel, count) in dropped where count > 0 {
+            append(PendingEvent(channel: channel, category: "DiagnosticsBackpressure", message: "droppedEvents=\(count) reason=bounded-ingress", date: Date()))
         }
     }
 
@@ -157,9 +220,19 @@ final class DiagnosticsLogger {
         try? store.persistentHandle?.seekToEnd()
     }
 
+    private func shouldSuppressHighFrequencyEvent(category: String, message: String) -> Bool {
+        guard category == "SeekTransportRead" else { return false }
+        if message.contains("phase=begin") { return true }
+        guard message.contains("phase=end"), let marker = message.range(of: "waitMs=") else { return false }
+        let suffix = message[marker.upperBound...]
+        let token = suffix.prefix { $0.isNumber || $0 == "." || $0 == "-" }
+        guard let waitMs = Double(token) else { return false }
+        return waitMs < 5
+    }
+
     private func playbackCategory(_ category: String, message: String) -> Bool {
         let normalized = category.lowercased()
-        let playbackTokens = ["player", "playback", "seek", "buffer", "engine", "mpv", "avplayer", "avio", "transport", "range", "eof", "stall", "decoder", "video", "audio", "resource", "cachelane", "upstream"]
+        let playbackTokens = ["player", "playback", "seek", "buffer", "engine", "mpv", "avplayer", "avio", "transport", "range", "eof", "stall", "decoder", "video", "audio", "resource", "cachelane", "upstream", "unified"]
         if playbackTokens.contains(where: { normalized.contains($0) }) { return true }
         return normalized == "lifecycle" && message.lowercased().contains("player")
     }

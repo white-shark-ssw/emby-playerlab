@@ -11,9 +11,9 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     private let source: ResolvedPlaybackSource
     private let client: EmbyAPIClient
     private let configuration: MediaTransportConfiguration
-    private let sharedTransportSession: MediaTransportSession?
+    private let sharedTransportSession: TransportDataSession?
     private var player: KSMEPlayer?
-    private var session: MediaTransportSession?
+    private var session: TransportDataSession?
     private var coordinator: SparseAVIOReadCoordinator?
     private var context: KSPlayerSparseAVIOContext?
     private var options: KSAVIOOptions?
@@ -28,6 +28,8 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     private var lastHeaders: [String: String] = [:]
     private var initialSeek: Double?
     private var initialSeekCommitted = false
+    private var playbackRate: Double = 1
+    private var rateGeneration = 0
     private var generation = 0
 
     var playerView: UIView? { player?.view }
@@ -36,7 +38,7 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
         source: ResolvedPlaybackSource,
         client: EmbyAPIClient,
         configuration: MediaTransportConfiguration,
-        sharedTransportSession: MediaTransportSession? = nil,
+        sharedTransportSession: TransportDataSession? = nil,
         ktvCacheSession: KTVCachePlaybackSession? = nil
     ) {
         self.source = source
@@ -61,11 +63,8 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
         initialSeek = startPosition > 0 ? startPosition : nil
         initialSeekCommitted = false
 
-        if configuration.strategy == .ktvHTTP {
-            prepareKTVBacked(currentGeneration: currentGeneration)
-        } else {
-            prepareAVIOBacked(currentGeneration: currentGeneration)
-        }
+        if configuration.strategy == .ktvHTTP { prepareKTVBacked(currentGeneration: currentGeneration) }
+        else { prepareAVIOBacked(currentGeneration: currentGeneration) }
     }
 
     func play() {
@@ -76,6 +75,24 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     func pause() {
         shouldPlay = false
         player?.pause()
+    }
+
+    func setPlaybackRate(_ rate: Double) {
+        let clamped = min(8, max(0.15, rate))
+        playbackRate = clamped
+        rateGeneration &+= 1
+        let currentRateGeneration = rateGeneration
+        guard let player else {
+            DiagnosticsLogger.shared.playback("KSRate", "requested=\(String(format: "%.2f", clamped)) state=pending-player")
+            return
+        }
+        let startPosition = sane(player.currentPlaybackTime)
+        let startedAt = CACurrentMediaTime()
+        player.playbackRate = Float(clamped)
+        DiagnosticsLogger.shared.playback("KSRate", "requested=\(String(format: "%.2f", clamped)) applied=\(String(format: "%.2f", Double(player.playbackRate))) sourceFPS=\(sourceFrameRateText) hardwareDecode=enabled engine=KSME")
+        guard player.isPlaying else { return }
+        scheduleRateHealth(player: player, generation: currentRateGeneration, requested: clamped, startedAt: startedAt, startPosition: startPosition, delay: 1.5)
+        scheduleRateHealth(player: player, generation: currentRateGeneration, requested: clamped, startedAt: startedAt, startPosition: startPosition, delay: 4.0)
     }
 
     func seek(to seconds: Double, direction: SeekDirection) {
@@ -91,9 +108,7 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
         if let ktvCacheSession {
             let duration = max(source.mediaSource.durationSeconds ?? 0, player.duration)
             ktvCacheSession.prioritizeSeek(position: target, duration: duration)
-        } else {
-            coordinator?.armUserSeek()
-        }
+        } else { coordinator?.armUserSeek() }
         player.seek(time: target) { [weak self, weak player] success in
             guard let self else { return }
             let actual = player?.currentPlaybackTime
@@ -109,11 +124,8 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     }
 
     func recoverStall(position: Double, duration: Double) {
-        if let ktvCacheSession {
-            ktvCacheSession.ensurePreloadActive(reason: "KSPlayer stall at \(String(format: "%.2f", position))")
-        } else {
-            coordinator?.recoverStall(position: position, duration: duration)
-        }
+        if let ktvCacheSession { ktvCacheSession.ensurePreloadActive(reason: "KSPlayer stall at \(String(format: "%.2f", position))") }
+        else { coordinator?.recoverStall(position: position, duration: duration) }
     }
 
     func transportMetrics() async -> TransportMetricsSnapshot? {
@@ -131,6 +143,7 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     func stop() {
         shouldPlay = false
         generation += 1
+        rateGeneration &+= 1
         prepareTask?.cancel()
         prepareTask = nil
         ktvStartupMonitorTask?.cancel()
@@ -145,7 +158,8 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
     private func prepareKTVBacked(currentGeneration: Int) {
         do {
             let cacheSession: KTVCachePlaybackSession
-            if let ktvCacheSession { cacheSession = ktvCacheSession } else { cacheSession = try KTVCachePlaybackSession(source: source, configuration: configuration, openWarmupEnabled: true) }
+            if let ktvCacheSession { cacheSession = ktvCacheSession }
+            else { cacheSession = try KTVCachePlaybackSession(source: source, configuration: configuration, openWarmupEnabled: true) }
             ktvCacheSession = cacheSession
             cacheSession.prepareForPlayback { [weak self, weak cacheSession] in
                 guard let self, let cacheSession, currentGeneration == self.generation, self.ktvCacheSession === cacheSession else { return }
@@ -167,12 +181,13 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
                 let player = KSMEPlayer(url: cacheSession.proxyURL, options: options)
                 player.view?.backgroundColor = .black
                 player.view?.contentMode = .scaleAspectFit
+                player.playbackRate = Float(self.playbackRate)
                 self.ktvOptions = options
                 self.player = player
                 self.startStateTimer()
                 player.prepareToPlay()
                 if self.shouldPlay { player.play() }
-                DiagnosticsLogger.shared.log("KSKTV", "prepared item=\(self.source.itemId) proxyPort=\(cacheSession.proxyURL.port ?? 0) transport=KTV-contiguous-frontier startupFallback=state-driven")
+                DiagnosticsLogger.shared.log("KSKTV", "prepared item=\(self.source.itemId) proxyPort=\(cacheSession.proxyURL.port ?? 0) transport=KTV-contiguous-frontier startupFallback=state-driven hardwareDecode=true")
                 self.startKTVStartupMonitor(player: player, cacheSession: cacheSession, generation: currentGeneration)
             }
         } catch {
@@ -181,7 +196,6 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
             prepareAVIOBacked(currentGeneration: currentGeneration)
         }
     }
-
 
     private func startKTVStartupMonitor(player: KSMEPlayer, cacheSession: KTVCachePlaybackSession, generation: Int) {
         ktvStartupMonitorTask?.cancel()
@@ -193,9 +207,7 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
                 if player.isReadyToPlay || player.currentPlaybackTime > 0.25 { self.ktvStartupMonitorTask = nil; return }
                 let metrics = cacheSession.metrics()
                 var reason = cacheSession.startupFallbackReason()
-                if reason == nil, Date().timeIntervalSince(startedAt) >= 8, metrics.contiguousCacheBytes >= 64 * 1_048_576 {
-                    reason = "FFmpeg未ready但已有\(metrics.contiguousCacheBytes / 1_048_576)MiB连续数据"
-                }
+                if reason == nil, Date().timeIntervalSince(startedAt) >= 8, metrics.contiguousCacheBytes >= 64 * 1_048_576 { reason = "FFmpeg未ready但已有\(metrics.contiguousCacheBytes / 1_048_576)MiB连续数据" }
                 guard let reason else { continue }
                 DiagnosticsLogger.shared.log("KSKTV", "startup fatal item=\(self.source.itemId) reason=\(reason); fallback transport=AVIO")
                 self.ktvStartupMonitorTask = nil
@@ -230,11 +242,12 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
                     let player = KSMEPlayer(url: virtualURL, options: options)
                     player.view?.backgroundColor = .black
                     player.view?.contentMode = .scaleAspectFit
+                    player.playbackRate = Float(self.playbackRate)
                     self.player = player
                     self.startStateTimer()
                     player.prepareToPlay()
                     if self.shouldPlay { player.play() }
-                    DiagnosticsLogger.shared.log("KSAVIO", "prepared item=\(self.source.itemId) bytes=\(resource.contentLength) sharedWindow=true buffer=262144")
+                    DiagnosticsLogger.shared.log("KSAVIO", "prepared item=\(self.source.itemId) bytes=\(resource.contentLength) sharedWindow=true buffer=262144 hardwareDecode=true rate=\(String(format: "%.2f", self.playbackRate))")
                 }
             } catch {
                 await MainActor.run {
@@ -290,6 +303,22 @@ final class KSAVIOPlayerEngine: NSObject, PlayerEngine {
             didReachEnd: player.isReadyToPlay && player.playbackState == .finished
         )
         onSnapshot?(snapshot)
+    }
+
+    private func scheduleRateHealth(player: KSMEPlayer, generation: Int, requested: Double, startedAt: TimeInterval, startPosition: Double, delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak player] in
+            guard let self, let player, self.rateGeneration == generation, self.player === player else { return }
+            let elapsed = max(0.001, CACurrentMediaTime() - startedAt)
+            let currentPosition = self.sane(player.currentPlaybackTime)
+            let actualRate = max(0, (currentPosition - startPosition) / elapsed)
+            DiagnosticsLogger.shared.playback("KSRateHealth", "requested=\(String(format: "%.2f", requested)) actual=\(String(format: "%.2f", actualRate)) sample=\(String(format: "%.1f", elapsed))s position=\(String(format: "%.3f", currentPosition)) playable=\(String(format: "%.3f", self.sane(player.playableTime))) loadState=\(String(describing: player.loadState)) playing=\(player.isPlaying) sourceFPS=\(self.sourceFrameRateText) hardwareDecode=enabled")
+        }
+    }
+
+    private var sourceFrameRateText: String {
+        let video = source.mediaSource.mediaStreams?.first(where: { $0.type?.caseInsensitiveCompare("Video") == .orderedSame })
+        let fps = video?.averageFrameRate ?? video?.realFrameRate
+        return fps.map { String(format: "%.3f", $0) } ?? "unknown"
     }
 
     private func emitError(_ message: String) {

@@ -26,14 +26,12 @@ enum MotionSmoothingMode: String, CaseIterable, Identifiable, Equatable {
 
 enum VideoEnhancementFeature: String, Hashable {
     case upscale
-    case sharpen
     case deband
     case chroma
 
     var title: String {
         switch self {
         case .upscale: return "高质缩放"
-        case .sharpen: return "锐化"
         case .deband: return "去色带"
         case .chroma: return "色度增强"
         }
@@ -90,11 +88,11 @@ final class PlaybackPresentationCoordinator: ObservableObject {
 
     func makePlan(rate: Double, motionSmoothingMode: MotionSmoothingMode, videoEnhancementEnabled: Bool, displayFPS: Double) -> PlaybackPresentationPlan {
         let rate = min(8, max(0.15, rate))
-        let measuredDisplayFPS = min(240, max(30, displayFPS.isFinite ? displayFPS : 60))
-        let motionTarget = resolvedMotionTarget(rate: rate, mode: motionSmoothingMode, displayFPS: measuredDisplayFPS)
-        let timingDisplayFPS = motionTarget ?? measuredDisplayFPS
+        let targetDisplayFPS = min(240, max(30, displayFPS.isFinite ? displayFPS : 60))
+        let motionTarget = resolvedMotionTarget(rate: rate, mode: motionSmoothingMode, displayFPS: targetDisplayFPS)
+        let timingDisplayFPS = motionTarget ?? targetDisplayFPS
         let timingStrategy: PlaybackTimingStrategy = motionTarget != nil ? .motionSmoothed : (rate > 2 ? .displayCadenced : .audioMaster)
-        let enhancementFeatures = videoEnhancementEnabled && rate <= 2 ? resolvedEnhancementFeatures() : []
+        let enhancementFeatures = resolvedEnhancementFeatures(rate: rate, enabled: videoEnhancementEnabled)
         return PlaybackPresentationPlan(
             requestedRate: rate,
             sourceFPS: sourceFPS,
@@ -137,19 +135,30 @@ final class PlaybackPresentationCoordinator: ObservableObject {
 
     private func resolvedMotionTarget(rate: Double, mode: MotionSmoothingMode, displayFPS: Double) -> Double? {
         guard abs(rate - 1) < 0.01 else { return nil }
+        let target: Double
         switch mode {
         case .off: return nil
         case .automatic:
             guard let sourceFPS, sourceFPS < 50 else { return nil }
-            return displayFPS >= 100 ? min(120, displayFPS) : min(60, displayFPS)
+            target = displayFPS >= 100 ? min(120, displayFPS) : min(60, displayFPS)
         case .fps60:
-            return min(60, displayFPS)
+            target = min(60, displayFPS)
         case .fps120:
-            return min(120, displayFPS)
+            target = min(120, displayFPS)
         }
+        guard let sourceFPS, sourceFPS.isFinite, sourceFPS > 0 else { return target }
+        return sourceFPS < target - 0.5 ? target : nil
     }
 
-    private func resolvedEnhancementFeatures() -> [VideoEnhancementFeature] {
+    private func resolvedEnhancementFeatures(rate: Double, enabled: Bool) -> [VideoEnhancementFeature] {
+        guard enabled else { return [] }
+        if rate > 2.0 { return [] }
+        if rate > 1.5 { return [.deband] }
+        if rate > 1.05 { return [.deband, .chroma] }
+        return resolvedFullEnhancementFeatures()
+    }
+
+    private func resolvedFullEnhancementFeatures() -> [VideoEnhancementFeature] {
         guard let sourceWidth, let sourceHeight else { return [.deband, .chroma] }
         if sourceWidth <= 1920 || sourceHeight <= 1080 { return [.upscale, .deband, .chroma] }
         return [.deband, .chroma]

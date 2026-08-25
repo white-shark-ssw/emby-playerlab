@@ -9,6 +9,7 @@ final class MPVSurfaceUIView: UIView {
     private var lastGeometryLog = ""
     private var lastReportedGeometry: RendererSurfaceGeometry?
     private var layoutGeneration: UInt64 = 0
+    private var lastHandledReplayGeneration: UInt64 = 0
     private var presentationGateObserver: NSObjectProtocol?
     var onGeometrySettled: ((RendererSurfaceGeometry) -> Void)?
 
@@ -94,9 +95,13 @@ final class MPVSurfaceUIView: UIView {
         guard Thread.isMainThread else { DispatchQueue.main.async { [weak self] in self?.presentationGateDidChange() }; return }
         let gate = PlayerSurfacePresentationGate.shared
         presentationCoverView.isHidden = !gate.isHolding
-        if gate.requiresRendererAcknowledgement {
+        if gate.replayGeneration != lastHandledReplayGeneration {
+            lastHandledReplayGeneration = gate.replayGeneration
             lastReportedGeometry = nil
-            DiagnosticsLogger.shared.log("MPVSurface", "foreground presentation replay epoch=\(gate.epoch) reason=renderer-ack-required")
+            DiagnosticsLogger.shared.log("MPVSurface", "foreground presentation replay epoch=\(gate.epoch) replayGeneration=\(gate.replayGeneration) reason=explicit-gate-replay")
+        } else if gate.requiresRendererAcknowledgement {
+            lastReportedGeometry = nil
+            DiagnosticsLogger.shared.log("MPVSurface", "foreground presentation replay epoch=\(gate.epoch) replayGeneration=\(gate.replayGeneration) reason=renderer-ack-required")
         }
         setNeedsLayout()
         if window != nil { layoutIfNeeded() }

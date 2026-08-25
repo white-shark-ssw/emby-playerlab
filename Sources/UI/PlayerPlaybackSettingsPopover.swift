@@ -13,7 +13,8 @@ struct PlayerPlaybackSettingsPopover: View {
     private enum Page: Equatable { case root, motionSmoothing }
     private let rootHeight: CGFloat = 139
     private let motionHeight: CGFloat = 224
-    private let pageAnimation = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.28)
+    private let forwardPageAnimation = Animation.timingCurve(0.20, 0.82, 0.24, 1, duration: 0.20)
+    private let backwardPageAnimation = Animation.easeOut(duration: 0.17)
 
     var body: some View {
         GeometryReader { geometry in
@@ -26,42 +27,52 @@ struct PlayerPlaybackSettingsPopover: View {
                 popover
                     .padding(.trailing, 18)
                     .padding(.bottom, 58)
-                    .scaleEffect(appeared ? 1 : 0.96, anchor: .bottomTrailing)
+                    .scaleEffect(appeared ? 1 : 0.98, anchor: .bottomTrailing)
                     .opacity(appeared ? 1 : 0)
-                    .offset(x: appeared ? 0 : 5, y: appeared ? 0 : 5)
+                    .offset(x: appeared ? 0 : 3, y: appeared ? 0 : 3)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .onAppear {
             page = .root
-            withAnimation(.easeOut(duration: 0.20)) { appeared = true }
+            withAnimation(.easeOut(duration: 0.18)) { appeared = true }
         }
         .onDisappear { appeared = false }
     }
 
     private var popover: some View {
-        ZStack(alignment: .bottom) {
-            rootPage
-                .frame(width: 258, height: rootHeight, alignment: .bottom)
-                .opacity(page == .root ? 1 : 0)
-                .offset(x: page == .root ? 0 : -14)
+        ZStack(alignment: .bottomTrailing) {
+            panel(rootPage, height: rootHeight)
+                .scaleEffect(page == .root ? 1 : 0.985, anchor: .bottomTrailing)
+                .opacity(page == .root ? 1 : 0.30)
+                .offset(x: page == .root ? 0 : -4)
                 .allowsHitTesting(page == .root)
 
-            motionPage
-                .frame(width: 258, height: motionHeight, alignment: .bottom)
-                .opacity(page == .motionSmoothing ? 1 : 0)
-                .offset(x: page == .motionSmoothing ? 0 : 14)
-                .allowsHitTesting(page == .motionSmoothing)
+            if page == .motionSmoothing {
+                panel(motionPage, height: motionHeight)
+                    .transition(submenuTransition)
+                    .zIndex(2)
+            }
         }
-        .frame(width: 258, height: page == .root ? rootHeight : motionHeight, alignment: .bottom)
-        .clipped()
-        .animation(pageAnimation, value: page)
-        .background(PlayerPlaybackSettingsGlassBackground())
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.13), lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.30), radius: 18, x: 0, y: 8)
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .onTapGesture { }
+        .frame(width: 258, height: motionHeight, alignment: .bottomTrailing)
+    }
+
+    private var submenuTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .offset(x: 10, y: 2)).combined(with: .scale(scale: 0.985, anchor: .bottomTrailing)),
+            removal: .opacity.combined(with: .offset(x: 6, y: 2)).combined(with: .scale(scale: 0.99, anchor: .bottomTrailing))
+        )
+    }
+
+    private func panel<Content: View>(_ content: Content, height: CGFloat) -> some View {
+        content
+            .frame(width: 258, height: height, alignment: .bottom)
+            .background(PlayerPlaybackSettingsGlassBackground())
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.13), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.30), radius: 18, x: 0, y: 8)
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .onTapGesture { }
     }
 
     private var rootPage: some View {
@@ -70,18 +81,15 @@ struct PlayerPlaybackSettingsPopover: View {
             separator
             actionRow(title: "超画", systemImage: "sparkles", leadingCheck: videoEnhancementEnabled) {
                 videoEnhancementEnabled.toggle()
-                onPreferencesChanged()
             }
             separator
-            actionRow(title: "运动平滑", systemImage: "waveform.path", trailingChevron: true) {
-                page = .motionSmoothing
-            }
+            actionRow(title: "运动平滑", systemImage: "waveform.path", trailingChevron: true, action: showMotionSmoothing)
         }
     }
 
     private var motionPage: some View {
         VStack(spacing: 0) {
-            Button { page = .root } label: {
+            Button(action: showRoot) {
                 HStack(spacing: 8) {
                     Image(systemName: "chevron.left").font(.system(size: 14, weight: .semibold))
                     Text("运动平滑").font(.system(size: 16, weight: .medium))
@@ -98,7 +106,6 @@ struct PlayerPlaybackSettingsPopover: View {
                 separator
                 Button {
                     motionSmoothingRaw = mode.rawValue
-                    onPreferencesChanged()
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "checkmark")
@@ -152,9 +159,12 @@ struct PlayerPlaybackSettingsPopover: View {
     private var separator: some View { Rectangle().fill(Color.white.opacity(0.13)).frame(height: 0.5) }
     private var currentMotionMode: MotionSmoothingMode { MotionSmoothingMode(rawValue: motionSmoothingRaw) ?? .off }
 
+    private func showMotionSmoothing() { withAnimation(forwardPageAnimation) { page = .motionSmoothing } }
+    private func showRoot() { withAnimation(backwardPageAnimation) { page = .root } }
+
     private func dismiss() {
-        withAnimation(.easeIn(duration: 0.16)) { appeared = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { isPresented = false }
+        withAnimation(.easeOut(duration: 0.15)) { appeared = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { isPresented = false }
     }
 }
 

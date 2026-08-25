@@ -70,6 +70,8 @@ struct GlobalSettingsView: View {
                     }
 
                     settingsGroup {
+                        NavigationLink(destination: LocalPlaybackView()) { settingsRow("本地播放", systemImage: "folder.fill.badge.play") }
+                        Divider().padding(.leading, 48)
                         Button {
                             do { shareURL = try DiagnosticsLogger.shared.export() } catch {}
                         } label: {

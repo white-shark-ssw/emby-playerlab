@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PlayerSettingsView: View {
+    @AppStorage(PlayerPreferenceKeys.enginePreference) private var enginePreference = PlayerEnginePreference.defaultPreference.rawValue
     @AppStorage(PlayerPreferenceKeys.backwardSeconds) private var backwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.forwardSeconds) private var forwardSeconds = 10
     @AppStorage(PlayerPreferenceKeys.bufferPreset) private var bufferPreset = BufferPreset.balanced.rawValue
@@ -12,6 +13,7 @@ struct PlayerSettingsView: View {
     @AppStorage(PlayerPreferenceKeys.resumeWhenForegrounded) private var resumeWhenForegrounded = false
     @AppStorage(PlayerPreferenceKeys.defaultScaleMode) private var defaultScaleMode = PlayerVideoScaleMode.fit.rawValue
     @AppStorage(PlayerPreferenceKeys.controlsAutoHideSeconds) private var controlsAutoHideSeconds = 3.0
+    @AppStorage(PlayerPreferenceKeys.autoLoadNextEpisode) private var autoLoadNextEpisode = true
 
     @Environment(\.presentationMode) private var presentationMode
     private let seekIntervals = [5, 10, 15, 20, 30, 60]
@@ -21,10 +23,17 @@ struct PlayerSettingsView: View {
     var body: some View {
         NavigationView {
             Form {
+                Section(header: Text("播放器引擎"), footer: Text("MPV高兼容引擎为默认选择；MDK高性能引擎可手动切换。当前设置决定新播放会话使用的引擎。")) {
+                    Picker("播放引擎", selection: $enginePreference) {
+                        ForEach(PlayerEnginePreference.selectableCases) { preference in Text(preference.title).tag(preference.rawValue) }
+                    }
+                }
+
                 Section(header: Text("播放")) {
                     Picker("播放方向", selection: $orientationPolicy) {
                         ForEach(PlaybackOrientationPolicy.allCases) { policy in Text(policy.title).tag(policy.rawValue) }
                     }
+                    Toggle("自动加载下一集", isOn: $autoLoadNextEpisode)
                     Toggle("挂起后自动暂停", isOn: $pauseWhenBackgrounded)
                     Toggle("回到前台自动播放", isOn: $resumeWhenForegrounded)
                 }
@@ -62,6 +71,10 @@ struct PlayerSettingsView: View {
                 }
             }
             .navigationTitle("播放设置")
+            .onAppear {
+                let available = PlayerEnginePreference.persisted(rawValue: enginePreference)
+                if available.rawValue != enginePreference { enginePreference = available.rawValue }
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { presentationMode.wrappedValue.dismiss() } }
             }

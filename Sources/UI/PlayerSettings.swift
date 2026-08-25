@@ -1,6 +1,7 @@
 import Foundation
 
 enum PlayerPreferenceKeys {
+    static let enginePreference = "player.enginePreference"
     static let backwardSeconds = "seek.backwardSeconds"
     static let forwardSeconds = "seek.forwardSeconds"
     static let bufferPreset = "buffer.preset"
@@ -13,6 +14,7 @@ enum PlayerPreferenceKeys {
     static let resumeWhenForegrounded = "player.resumeWhenForegrounded"
     static let defaultScaleMode = "player.defaultScaleMode"
     static let controlsAutoHideSeconds = "player.controlsAutoHideSeconds"
+    static let autoLoadNextEpisode = "player.autoLoadNextEpisode"
 }
 
 enum PlaybackOrientationPolicy: String, CaseIterable, Identifiable {

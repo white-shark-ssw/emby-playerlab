@@ -183,7 +183,7 @@ final class EmbyAPIClient {
         return try await send(path: "Items/\(itemId)/PlaybackInfo", method: "GET", query: query)
     }
 
-    func resolvePlaybackSource(itemId: String, itemName: String, mediaSource: MediaSource, playSessionId: String?) throws -> ResolvedPlaybackSource {
+    func resolvePlaybackSource(itemId: String, itemName: String, mediaSource: MediaSource, playSessionId: String?, initialPlaybackPositionTicks: Int64? = nil) throws -> ResolvedPlaybackSource {
         var url: URL?
         if let direct = mediaSource.directStreamURL, !direct.isEmpty {
             if let absolute = URL(string: direct), absolute.scheme != nil { url = absolute }
@@ -206,7 +206,7 @@ final class EmbyAPIClient {
         }
         components.queryItems = items
         guard let finalURL = components.url else { throw EmbyAPIError.invalidPlaybackURL }
-        return ResolvedPlaybackSource(itemId: itemId, itemName: itemName, mediaSource: mediaSource, playSessionId: playSessionId, url: finalURL, headers: safeMediaHeaders(mediaSource.requiredHTTPHeaders ?? [:]))
+        return ResolvedPlaybackSource(itemId: itemId, itemName: itemName, mediaSource: mediaSource, playSessionId: playSessionId, initialPlaybackPositionTicks: initialPlaybackPositionTicks, url: finalURL, headers: safeMediaHeaders(mediaSource.requiredHTTPHeaders ?? [:]))
     }
 
     func reportStart(source: ResolvedPlaybackSource, position: Double, paused: Bool) async { _ = await report(path: "Sessions/Playing", eventName: nil, source: source, position: position, paused: paused) }

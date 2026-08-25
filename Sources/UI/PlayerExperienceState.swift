@@ -36,8 +36,8 @@ struct PlayerCapabilities {
             )
         case .mpv:
             return PlayerCapabilities(
-                supportsSystemRoutePicker: false,
-                supportsPictureInPicture: false,
+                supportsSystemRoutePicker: true,
+                supportsPictureInPicture: true,
                 supportsRotation: true,
                 supportsPictureSize: true,
                 supportsAudioTrackSelection: false,
@@ -45,8 +45,8 @@ struct PlayerCapabilities {
             )
         case .ksAVIO:
             return PlayerCapabilities(
-                supportsSystemRoutePicker: false,
-                supportsPictureInPicture: false,
+                supportsSystemRoutePicker: true,
+                supportsPictureInPicture: true,
                 supportsRotation: true,
                 supportsPictureSize: false,
                 supportsAudioTrackSelection: false,
