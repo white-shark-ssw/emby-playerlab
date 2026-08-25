@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build179 / OnePlayer 0.14.12 failed real-device carousel validation and Build180 / OnePlayer 0.14.13 passed dedicated CI and produced an IPA. Build178 remains the accepted functional baseline pending Build180 real-device validation._
+_Last updated after Build180 / OnePlayer 0.14.13 home-carousel candidate and Build181 / OnePlayer 0.14.14 detail-page candidate both passed dedicated CI and produced IPAs. Build178 remains the accepted functional baseline pending target-device validation of the active candidates._
 
 ## Current functional baseline
 
@@ -26,7 +26,9 @@ Build178 inherits the accepted Build176 player episode-selection/session contrac
 
 Build179 / OnePlayer 0.14.12 is **not** an accepted carousel baseline. Its dedicated Release CI passed and IPA was produced, but the user installed it on the target device and reported that small drags still had a dead zone and direction reversal still produced a visible pause followed by a large catch-up jump. Build179 is therefore real-device tested / rejected.
 
-Build180 / OnePlayer 0.14.13 is now the current **home-carousel test candidate**. Dedicated standard MPV Release CI passed and IPA was produced; target-device evidence is still pending, so it does not replace Build178 as the accepted baseline.
+Build180 / OnePlayer 0.14.13 is the current **home-carousel test candidate**. Dedicated standard MPV Release CI passed and IPA was produced; target-device evidence is pending, so it does not replace Build178.
+
+Build181 / OnePlayer 0.14.14 is the current **detail-page performance test candidate**. Dedicated standard MPV Release CI passed and IPA was produced; target-device evidence is pending, so it also does not replace Build178.
 
 ## Accepted episode-selection and ordering contracts
 
@@ -77,7 +79,25 @@ The original failing non-standard series had 165 episodes with `nilIndex=164`; B
 
 Build180 keeps the Build179 single `V3HomeCarouselTransitionState` owner and localized Hero/backdrop scopes, but changes manual drag to receive movement from 0 pt, applies horizontal-dominance only until the drag is initially acquired, removes the additional `abs(horizontal) > 4` gate, and removes the first 8% delayed/smoothstep blend so small finger movement immediately changes visual progress. Existing commit/cancel thresholds, settle animations and auto-advance timing remain unchanged.
 
-The dedicated CI also verifies Build180's delta from Build179 is restricted to the direct carousel follow-up plus identity/changelog/check, and that Build176/178 accepted player/order files plus P0/Frozen modules remain unchanged from the accepted integration base.
+### Build181 / OnePlayer 0.14.14 — detail-page warm presentation + scroll isolation
+
+`DEV-detail-episode-page-optimization` remains Active on branch `feat/detail-episode-page-optimization`.
+
+- accepted runtime base: Build178 at `967b743c88d68b05205eb39f1de75cab41362e8b`
+- dedicated CI source: `917c43554876ce7c8751c10356f081cf2c1fe92b`
+- workflow-restored branch head: `a8c445af44036218c6c085ae3b4b657ddb0902b1`
+- CI run: `32845717063` — **success**
+- artifact: `OnePlayer-0.14.14-build181-detail-page-performance`
+- artifact ID: `9562323675`
+- artifact digest: `sha256:91b4f6ef3f746197836da99f064d1b0c8791b8d4f49a19eaa7e0d2898de833ae`
+- IPA: `OnePlayer-0.14.14-build181-detail-page-performance-unsigned.ipa`
+- IPA SHA-256: `698d80d59767134c9479d517cedf24bf6494e73099d2f9125fa3d7a431d5a2f8`
+- MinOS: app/runtime Mach-O validated at iOS 15.0
+- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+
+Build181 warm-starts only safe detail presentation metadata (`episodes`, `seasons`, `imageInfos`, `similarItems`) using session-level `NSCache` while the normal Emby load still refreshes server-owned data. PlaybackInfo, MediaSource, PlaySession, ResolvedPlaybackSource and temporary 115/CDN URLs are explicitly excluded. High-frequency native detail scroll offset is moved out of root render state and observed only by the Hero scope; native ScrollView and existing Hero stretch/crop/pin mathematics remain unchanged.
+
+An earlier detail 0.14.13 / Build180 package also passed Release CI but was retired before user testing after discovering the parallel home-carousel task had already made Build180 its active identity. Build181 is the only valid detail-page test identity.
 
 ### Build179 / OnePlayer 0.14.12 — rejected carousel candidate
 
@@ -93,10 +113,6 @@ The dedicated CI also verifies Build180's delta from Build179 is restricted to t
 - evidence level: **Code written / CI passed / IPA produced / real-device tested and rejected / not stable**
 
 The Build179 rejection does not affect Build176/178 accepted player/order contracts because those files were zero-diff from the accepted Build178 base.
-
-### Build181 — detail / episode page optimization
-
-`DEV-detail-episode-page-optimization` is a separate Active task on branch `feat/detail-episode-page-optimization`. It has reserved Build181. Its current expected scope is detail/episode UI rather than home-carousel files/state owner, so the two tasks remain independent unless future requirements expand into shared infrastructure. Build180 CI completed before this reservation; the subsequent `main` change only updated that task's checkpoint and changed no runtime source, so Build180 CI/IPA remains valid against the current accepted runtime baseline.
 
 ## Core playback architecture
 
@@ -180,7 +196,7 @@ Do not start a new PiP optimisation build unless there is a materially new archi
 
 ## Current development direction
 
-Build178 / OnePlayer 0.14.11 remains the current real-device accepted `main` runtime baseline. Build179 carousel is explicitly rejected by real-device evidence. Build180 / OnePlayer 0.14.13 is the current carousel test candidate with CI/IPA evidence and must pass another EX-comparison target-device test before it can be accepted. Build181 detail/episode work is a separate parallel candidate and must re-check shared files/state owners if its scope expands.
+Build178 / OnePlayer 0.14.11 remains the current real-device accepted `main` runtime baseline. Build179 carousel is explicitly rejected by real-device evidence. Build180 / OnePlayer 0.14.13 is the current carousel test candidate with CI/IPA evidence. Build181 / OnePlayer 0.14.14 is the current detail-page test candidate with CI/IPA evidence. Both candidates require iPhone 15 Pro Max / iOS 17.0 real-device validation before acceptance.
 
 New work should proceed module-by-module without casually touching:
 
