@@ -95,3 +95,15 @@
 - **CI coverage**：native/coalesced touch、simultaneous ScrollView、原 page-slide/predicted release commit、Build183 fixed-foreground 拒绝合同、ProMotion opt-in、Build184 detail 与 P0/Frozen zero-diff、Xcode 16.4 Release、0.14.22 (189) identity、MinOS 15.0、IPA packaging/upload 均通过。
 - **Evidence**：**Code written / CI passed / IPA produced / real-device pending / not stable**。
 - **Next exact action**：安装 Build189，在 iPhone 15 Pro Max / iOS 17.0 重点验证极小起滑、慢短拖、正常/快速拖、按住左右反向穿越中心、Hero 区纵向滚动和详情点击。核心判据是第一段可见位移是否从“累计 4–16pt 后才动”变为立即、细粒度跟手。
+
+
+## Build189 real-device release regression / Build190 candidate
+
+- **Build189 real-device result — REJECTED**：用户安装 0.14.22 / Build189 后提供 `RPReplay_Final1787675510.mp4`（510×1108 / 30 fps / 9.07 s），明确报告“不能完整切换，滑到哪里就定格在那里”。录屏多次显示手动 progress 能随拖动到中间位置，但松手后没有 complete/cancel settle，页面停在两页之间。
+- **Source evidence**：Build189 native recognizer 横向采样时进入 `.began/.changed`，而 complete/cancel 的唯一入口仍是 SwiftUI `carouselDragGesture(...).onEnded`，形成结束所有权竞争。
+- **Build190 architecture**：native raw/coalesced sampler 保留，但横向时保持 passive；`canPrevent` / `canBePrevented` 均为 false，touch end/cancel 只令 sampler `.failed`。SwiftUI `DragGesture` 删除全部 per-frame `onChanged` progress 写入，只保留原 `onEnded`、`predictedEndTranslation`、0.28 / 0.48×width commit 与原 complete/cancel。移动 progress 单 owner = native；release settle 单 owner = SwiftUI。
+- **Build / branch**：OnePlayer **0.14.23 / Build190**；`fix/home-carousel-native-release-build190`。
+- **CI source / run**：`8effb767af988c9bb4e6230ffc8b1a7f664c2619`；run **`32873473886` success**；Release workflow restored at `817897ef6bd95d710657c3d12acc4d48ec8f2d39`.
+- **Artifact**：`OnePlayer-0.14.23-build190-home-carousel-native-release`；ID `9573068806`；digest `sha256:355afc63f6b87251fce6c200af4796733bff8b947a27e71293e596745467437e`。IPA SHA-256 **`873abefa8c585ba577222a00d6feb99639bf3aa60861334d178eb8b4a26a24ba`**；source ZIP SHA-256 `e9491fbf27610421d46e1fd1325be1d8d86c6e6d7010adfd721ae542a34fd0cb`；MinOS 15.0。
+- **Evidence**：Build189 = **real-device rejected / not stable**；Build190 = **Code written / CI passed / IPA produced / real-device pending / not stable**。
+- **Next exact action**：真机先验证松手必定完整 commit/cancel，再重新比较极小起滑、慢拖、连续反向与 EX 的细腻度。

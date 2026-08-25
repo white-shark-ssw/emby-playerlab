@@ -32,7 +32,8 @@ This is a milestone index, not a list of every experimental build.
 | **Build186 / 0.14.19** | Carousel drag-cadence instrumentation | Dedicated Release CI/IPA succeeded from accepted Build184 integration; passive timing was implemented, but its generic category routed to App logs and the package was not distributed for diagnosis. |
 | **Build187 / 0.14.20** | Exportable carousel drag-cadence diagnostic | Dedicated Release CI/IPA succeeded. **Real-device diagnostic confirmed:** first useful SwiftUI horizontal samples were already about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off, proving threshold tuning cannot recover fine initial sampling in this ScrollView/DragGesture path. |
 | **Build188 / 0.14.21** | Detail episode selection semantics + full picker return | Detail horizontal cards select-only with blue outline and compact selected-episode summary; main Play/Resume plays the selected episode. Full picker no longer dismisses before playback, so closing player should reveal the same picker/scroll position. Dedicated Release CI/IPA succeeded; **real-device evidence pending.** |
-| **Build189 / 0.14.22** | Carousel native raw/coalesced-touch input | Replaces only manual drag sampling with UIKit raw/coalesced touches while preserving full-page slide semantics and the existing SwiftUI predicted release commit. Dedicated Release CI passed, IPA produced and downloaded checksums verified. **Real-device pending.** |
+| **Build189 / 0.14.22** | Carousel native raw/coalesced-touch input | Native movement sampling worked, but **real-device rejected:** releasing a drag could leave the carousel frozen at the intermediate progress instead of completing/cancelling. Source inspection showed native recognition was competing with the SwiftUI-only release owner. |
+| **Build190 / 0.14.23** | Passive native movement sampling + single SwiftUI release owner | Native raw/coalesced samples remain the only progress writer; native recognizer no longer claims horizontal recognition, while SwiftUI keeps the original predicted `onEnded` commit/cancel semantics. Dedicated Release CI passed, IPA produced and downloaded checksums verified. **Real-device pending.** |
 
 ## Current accepted baseline
 
@@ -51,7 +52,7 @@ This is a milestone index, not a list of every experimental build.
 - target device: iPhone 15 Pro Max / iOS 17.0
 - evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for completed detail requirements / merged to main**
 
-Build182 remains real-device accepted/frozen for the two detail performance/cache requirements and is inherited by Build184. Build184 / 0.14.17 is the accepted overall runtime baseline merged to `main`; Build187 has now completed the carousel diagnostic gate on real device, Build189 / 0.14.22 is the current independent home-carousel native-touch candidate, and Build188 / 0.14.21 remains the independent detail/episode-selection candidate. Build188 and Build189 remain real-device pending and neither replaces Build184.
+Build182 remains real-device accepted/frozen for the two detail performance/cache requirements and is inherited by Build184. Build184 / 0.14.17 is the accepted overall runtime baseline merged to `main`; Build187 completed the carousel diagnostic gate, Build189 is real-device rejected for the release-settle regression, Build190 / 0.14.23 is the current independent home-carousel candidate, and Build188 / 0.14.21 remains the independent detail/episode-selection candidate. Build188 and Build190 remain real-device pending and neither replaces Build184.
 
 ## Episode-selection evidence trail
 
