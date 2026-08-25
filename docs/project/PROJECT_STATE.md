@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after OnePlayer 0.14.17 / Build184 was accepted on iPhone 15 Pro Max / iOS 17.0 and merged to `main` through PR #255. Build184 is now the accepted overall functional baseline, including the frozen Build182 detail scroll/cold-relaunch presentation architecture and the accepted Build184 visual hierarchy. Build185 remains an independent home-carousel candidate pending real-device validation._
+_Last updated after Build185 home-carousel EX comparison was rejected on iPhone 15 Pro Max / iOS 17.0 and Build187 / OnePlayer 0.14.20 completed dedicated Release CI/IPA as the current drag-cadence diagnostic candidate. Build184 / OnePlayer 0.14.17 remains the accepted overall functional baseline on `main`; Build187 does not replace it until target-device evidence is accepted._
 
 ## Current functional baseline
 
@@ -26,7 +26,7 @@ Build184 inherits the accepted Build176 player episode-selection/session contrac
 
 Build179 / OnePlayer 0.14.12 is **not** an accepted carousel baseline. Its dedicated Release CI passed and IPA was produced, but the user installed it on the target device and reported that small drags still had a dead zone and direction reversal still produced a visible pause followed by a large catch-up jump. Build179 is therefore real-device tested / rejected.
 
-Build180 / OnePlayer 0.14.13 is a **historical partial-improvement carousel build**: real-device testing confirmed reversal continuity improved, but initial motion still felt coarse, so it was not accepted. Build185 / OnePlayer 0.14.18 is the current independent home-carousel candidate pending target-device validation.
+Build180 / OnePlayer 0.14.13 is a **historical partial-improvement carousel build**: real-device testing confirmed reversal continuity improved, but initial motion still felt coarse, so it was not accepted. Build185 / OnePlayer 0.14.18 restored the required page-slide interaction but was also **real-device rejected**: first visible movement remained about 10/12/16 px versus EX about 1/1/2 px, and ongoing drag still felt materially less fine. Build187 / OnePlayer 0.14.20 is now the independent carousel diagnostic candidate with CI/IPA evidence; it preserves Build185 interaction semantics and only adds exportable drag-cadence diagnostics.
 
 Build181 / OnePlayer 0.14.14 is now a **detail-page diagnostic reference rather than the current candidate**. Target-device recording shows the previous obvious detail scroll pause→catch-up pattern is clearly improved, but a force-quit/relaunch still resets its session-only warm metadata and briefly returns the text-title/episode-loading state. It is real-device tested but not stable.
 
@@ -63,6 +63,21 @@ Build178 adds the canonical episode-order contract:
 The original failing non-standard series had 165 episodes with `nilIndex=164`; Build178 was accepted on real device after switching the shared data path to Emby's TV ordering authority.
 
 ## Current parallel feature candidates
+
+### Build187 / OnePlayer 0.14.20 — home-carousel drag cadence diagnostic
+
+`DEV-home-carousel-drag-smoothness` remains Active. Build187 preserves Build185 page-slide behavior and adds exportable timing evidence rather than another threshold tweak.
+
+- accepted runtime base: Build184 `main@dcd6cc6d01319e13ccb991967a190ae1f915053b`
+- branch: `perf/home-carousel-drag-cadence-build187`
+- dedicated CI source: `6d562b2f5cf76be41cb0e763c8f3c50c4f0d724f`
+- workflow-restored branch head: `468986492f639959f7f31129dadf5b49e781d37f`
+- CI run: `32860057516` — **success**
+- artifact: `OnePlayer-0.14.20-build187-home-carousel-drag-timing`; ID `9567940931`; digest `sha256:0eb2a44b736a84e8237415465f064f6a23a163b5ef802875b483cda672b19766`
+- IPA SHA-256: `5fa04513919b5e2928ee2ca09cf45dddc79c91d64858971f571b423dbb2d50f8`; source ZIP SHA-256: `70ef0df0ef48c9be558674cfd892a39e9836780602992e482f2f0d806d24d40a`
+- MinOS: 15.0
+- diagnostic summary: first/lock/transition translations, sample count/duration, avg callback Hz, max gap, maximumFramesPerSecond and Low Power Mode; emitted once at gesture end through the exported playback-log channel
+- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
 
 ### Build180 / OnePlayer 0.14.13 — home carousel continuous drag
 
@@ -238,7 +253,7 @@ Do not start a new PiP optimisation build unless there is a materially new archi
 
 ## Current development direction
 
-Build178 / OnePlayer 0.14.11 remains the current real-device accepted `main` runtime baseline. Build179 carousel is explicitly rejected by real-device evidence. Build180 / OnePlayer 0.14.13 is the current carousel test candidate with CI/IPA evidence. Build181 / OnePlayer 0.14.14 is a real-device-tested partial-success detail reference: scroll is clearly improved but cold-relaunch warm start failed. Build182 / OnePlayer 0.14.15 is the current detail cold-relaunch test candidate with CI/IPA evidence. Build180 and Build182 both require iPhone 15 Pro Max / iOS 17.0 validation before acceptance.
+Build184 / OnePlayer 0.14.17 remains the real-device accepted overall `main` runtime baseline. Build179, Build180 and Build185 carousel candidates are rejected by real-device evidence; Build183 is rejected as the default direction because it changed the established foreground page-slide interaction. Build187 / OnePlayer 0.14.20 is the current carousel drag-cadence diagnostic candidate with CI/IPA evidence and requires iPhone 15 Pro Max / iOS 17.0 recording plus exported playback log before any further rendering change. `DEV-detail-episode-selection-navigation` is a separate active task and currently does not overlap Home carousel files/state owners.
 
 New work should proceed module-by-module without casually touching:
 

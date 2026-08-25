@@ -28,7 +28,9 @@ This is a milestone index, not a list of every experimental build.
 | **Build182 / 0.14.15** | Persistent detail presentation cache | Extends Build181's safe presentation snapshot to `Library/Caches` while retaining live Emby refresh and playback/session boundaries. Dedicated Release CI/IPA succeeded; user accepted detail scrolling plus force-quit/relaunch restoration on target device. **Frozen for these two requirements.** |
 | **Build183 / 0.14.16** | Carousel fixed-foreground crossfade experiment | Dedicated Release CI/IPA succeeded. User said the feel seemed somewhat finer, but Logo/rating/year/type/overview were pinned instead of moving with their carousel page. **Interaction regression; rejected as default direction.** |
 | **Build184 / 0.14.17** | Detail performance/cache + visual hierarchy completion | Inherits accepted Build181/182 detail scroll and persistent presentation cache, moves “视频信息” below “更多类似” and above the bottom glass media-source card, and uses 19 pt bold main detail section headers. Dedicated Release CI/IPA succeeded; user accepted the final result on target device and PR #255 merged to `main`. **Current accepted overall baseline.** |
-| **Build185 / 0.14.18** | Restore carousel page-slide semantics + refine initial axis acquisition | Dedicated Release CI passed and IPA produced. Restores Logo/rating/year/type/overview horizontal page travel, removes the old initial 1.08 horizontal-dominance gate, and locks horizontal/vertical once at first meaningful 0.5pt movement while preserving 0pt drag delivery and continuous reversal. **Real-device EX comparison pending.** |
+| **Build185 / 0.14.18** | Restore carousel page-slide semantics + refine initial axis acquisition | Dedicated Release CI passed and IPA produced. **Real-device rejected:** page-slide interaction/reversal were correct, but first visible movement remained about 10/12/16 px versus EX about 1/1/2 px and ongoing drag remained visibly coarser. |
+| **Build186 / 0.14.19** | Carousel drag-cadence instrumentation | Dedicated Release CI/IPA succeeded from accepted Build184 integration; passive timing was implemented, but its generic category routed to App logs and the package was not distributed for diagnosis. |
+| **Build187 / 0.14.20** | Exportable carousel drag-cadence diagnostic | Same drag behavior as Build186; routes `HomeCarouselDragTiming` through the existing playback-log export. Dedicated Release CI passed, IPA produced and downloaded checksums verified. **Current carousel diagnostic candidate; real-device evidence pending.** |
 
 ## Current accepted baseline
 
@@ -47,7 +49,7 @@ This is a milestone index, not a list of every experimental build.
 - target device: iPhone 15 Pro Max / iOS 17.0
 - evidence level: **Code written / CI passed / IPA produced / real-device accepted / stable for completed detail requirements / merged to main**
 
-Build182 remains real-device accepted/frozen for the two detail performance/cache requirements and is inherited by Build184. Build184 / 0.14.17 is now the accepted overall runtime baseline merged to `main`; Build185 home-carousel interaction is the remaining independent Active candidate.
+Build182 remains real-device accepted/frozen for the two detail performance/cache requirements and is inherited by Build184. Build184 / 0.14.17 is the accepted overall runtime baseline merged to `main`; Build185 is real-device rejected and Build187 / 0.14.20 is the current independent home-carousel diagnostic candidate pending recording plus exported playback log.
 
 ## Episode-selection evidence trail
 
@@ -159,7 +161,16 @@ Build176 passed the dedicated selector/frozen-file contract checks, Xcode 16.4 R
 - implementation: restores Build180 foreground page-slide mapping; `DragGesture(minimumDistance: 0)` remains; old `abs(horizontal) > abs(vertical) * 1.08` initial gate is removed; non-render `dragAxis` locks once at first meaningful 0.5pt vector, horizontal stays carousel-owned through reversal, vertical stays ScrollView-owned for the gesture.
 - CI evidence: page-slide restoration, fixed-foreground regression guard, axis-acquisition contract, home/scroll/series-order checks, Build176/178/P0/Frozen zero-diff, Xcode 16.4 Release build, 0.14.18 (185) identity, MinOS and IPA packaging all passed.
 - identity note: a carousel-internal Build184 run also passed CI but was discarded before distribution because the parallel detail task already owned Build184 / 0.14.17. Build185 is the valid unique carousel identity.
-- evidence level: **Code written / CI passed / IPA produced / real-device pending / not stable**
+- real-device result: **rejected** after OP vs EX recordings quantified first visible movement around 10/12/16 px vs 1/1/2 px and coarser ongoing increments.
+- evidence level: **Code written / CI passed / IPA produced / real-device tested and rejected / not stable**
+
+## Build186 / Build187 home-carousel cadence evidence
+
+- Build186 CI source `80d7b8b503d10bd8d10d62714afa9557a5988ab4`; run `32858062142` success; artifact `9567101523`; IPA SHA-256 `08cdf0398e024f8cc64dd75b2e6dfecab2b26833807feb810e280034b345f780`. Build186 preserved Build185 behavior and added passive timing, but was not distributed after confirming its generic timing log was outside the existing playback-log export.
+- Build187 branch `perf/home-carousel-drag-cadence-build187`; only runtime delta vs Build186 is `DiagnosticsLogger.shared.playback("HomeCarouselDragTiming", ...)`; version 0.14.20 / Build187.
+- Build187 CI source `6d562b2f5cf76be41cb0e763c8f3c50c4f0d724f`; restored head `468986492f639959f7f31129dadf5b49e781d37f`; run **`32860057516` success**.
+- Artifact `OnePlayer-0.14.20-build187-home-carousel-drag-timing`; ID **`9567940931`**; digest `sha256:0eb2a44b736a84e8237415465f064f6a23a163b5ef802875b483cda672b19766`; IPA SHA-256 **`5fa04513919b5e2928ee2ca09cf45dddc79c91d64858971f571b423dbb2d50f8`**; source ZIP SHA-256 `70ef0df0ef48c9be558674cfd892a39e9836780602992e482f2f0d806d24d40a`; MinOS 15.0.
+- Evidence: Build186 = **Code written / CI passed / IPA produced / not distributed for diagnosis**; Build187 = **Code written / CI passed / IPA produced / real-device pending / not stable**.
 
 ## Build181 detail-page evidence
 

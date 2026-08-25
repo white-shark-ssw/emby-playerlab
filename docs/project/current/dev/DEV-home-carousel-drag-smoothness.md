@@ -64,4 +64,15 @@
 - Build180 = real-device partial improvement but rejected.
 - Build183 = real-device feel somewhat finer but interaction regression, rejected.
 - Build185 = **Code written / CI passed / IPA produced / real-device tested and rejected / not stable**.
-- Build186 = **Code written / CI passed / IPA produced / real-device pending / not stable**.
+- Build186 = **Code written / CI passed / IPA produced / not distributed for diagnosis / not stable**.
+- Build187 = **Code written / CI passed / IPA produced / real-device pending / not stable**.
+
+
+## Build187 final diagnostic package
+
+- Build186 CI/IPA succeeded but was not distributed after confirming `HomeCarouselDragTiming` generic logging would not be included in the existing playback-log export.
+- Build187 / OnePlayer 0.14.20 keeps Build186/Build185 drag behavior unchanged and routes only that summary through `DiagnosticsLogger.shared.playback(...)`.
+- branch `perf/home-carousel-drag-cadence-build187`; CI source `6d562b2f5cf76be41cb0e763c8f3c50c4f0d724f`; restored head `468986492f639959f7f31129dadf5b49e781d37f`; run `32860057516` success.
+- artifact `9567940931`; IPA SHA-256 `5fa04513919b5e2928ee2ca09cf45dddc79c91d64858971f571b423dbb2d50f8`; source ZIP SHA-256 `70ef0df0ef48c9be558674cfd892a39e9836780602992e482f2f0d806d24d40a`; MinOS 15.0.
+- validation: **Code written / CI passed / IPA produced / real-device pending / not stable**.
+- next exact action: reproduce tiny starts/slow drags/reversals on iPhone 15 Pro Max / iOS 17.0, record screen, then use Settings → 导出播放日志 and provide the log containing `HomeCarouselDragTiming`.
