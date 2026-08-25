@@ -125,20 +125,29 @@ The accepted Build178 contract is:
 
 **Build178 / OnePlayer 0.14.11 passed dedicated standard MPV Release CI, produced an IPA, was accepted by the user on real device on 2026-08-25, and merged to `main` through PR #254 at commit `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`.** Treat Emby's TV episode response order as the stable canonical-order authority unless new real-device evidence requires reopening this decision.
 
-## D012 — High-frequency home-carousel drag state is locally scoped
+## D012 — Home-carousel manual drag must be continuous through first movement and direction reversal
 
-The OP vs EX real-device recordings on 2026-08-25 showed that the OnePlayer home carousel could visually pause and then catch up during continuous manual drag. Source inspection showed the drag callback updated `transitionProgress` and tap-suppression state as root `V3EmbyHomeView` `@State`, even though only the clear Hero and persistent backdrop needed the per-finger-movement transition values.
+The OP vs EX recordings established a P0 interaction requirement for the V3 home carousel: finger motion itself is the authority during manual drag. The UI must not wait for a debounce-like distance window, must not freeze while crossing the gesture origin, and must not convert a small reverse movement into a later large catch-up jump.
 
-The current Build179 implementation direction is therefore:
+Build179 first localized high-frequency carousel transition state into one `V3HomeCarouselTransitionState`, observed only by the Hero/persistent-backdrop scopes. That architecture remains valid and should not be reverted: root `V3EmbyHomeView` must not regain per-finger `transitionProgress/from/to`, drag flags, or tap-suppression `@State`.
 
-- keep one carousel transition owner, `V3HomeCarouselTransitionState`;
-- Hero and persistent backdrop observe that owner through local `V3HomeCarouselTransitionScope` instances;
-- do not put high-frequency `transitionProgress/from/to` back into the full home root `@State`;
-- keep drag-only `isDragging` and tap suppression as non-render event state rather than root invalidation triggers;
-- do not improve perceived smoothness by throttling/debouncing finger updates—the interaction must remain directly responsive;
-- use the existing horizontal-dominance guard with a 4 pt `DragGesture` start distance rather than the former 12 pt dead zone;
-- keep the existing commit/cancel thresholds, settle animations, auto-advance timing and visual design unless separate evidence requires changing them.
+However, Build179 / OnePlayer 0.14.12 was **rejected on real device**. The user reported that a small drag still did not move immediately and that dragging slightly to one side then reversing toward the other side could visibly pause before jumping a large distance. Source inspection showed two remaining policy dead zones that directly matched that feedback:
 
-The persistent two-image full-screen `.blur(radius: 30)` backdrop composition remains unchanged. It is a possible next GPU evidence point if the scoped-state change still fails real-device smoothness testing, but it is **not** currently proven to be the remaining bottleneck and should not be speculatively rewritten.
+- `DragGesture(minimumDistance: 4)` plus `abs(horizontal) > 4` withheld progress until an accumulated translation threshold was crossed;
+- the horizontal-dominance guard was re-applied on every `onChanged`, so an already-established horizontal drag could stop updating while reversing through the center where horizontal translation approaches zero;
+- `carouselBackdropBlendProgress` discarded the first 8% of raw progress and then applied smoothstep, so the main artwork intentionally showed no response for small movement even after the drag existed.
 
-**Evidence level for D012 is currently Code written / CI passed / IPA produced only.** Build179 / OnePlayer 0.14.12 run `32841344067` passed Xcode 16.4 Release CI and produced artifact `9560700233`; target-device validation against EX is still pending. Do not mark this carousel architecture stable/frozen until the user reports the Build179 real-device result.
+Build180 therefore adopts the following current direction:
+
+- retain one locally scoped `V3HomeCarouselTransitionState` owner; no second progress owner or reconciliation loop;
+- use `DragGesture(minimumDistance: 0)` so SwiftUI delivers the first movement instead of enforcing an application-level start distance;
+- use horizontal dominance only to acquire the initial carousel drag; once `isCarouselDragging` is true, keep tracking horizontal translation continuously through zero and direction reversal rather than re-entering the axis gate;
+- remove the extra absolute `abs(horizontal) > 4` gate;
+- map manual artwork blend directly from clamped raw transition progress instead of discarding the first 8% or applying a low-response smoothstep;
+- do not throttle/debounce finger updates;
+- keep the existing commit/cancel thresholds, release animations and auto-advance timing unless separate real-device evidence requires changing them;
+- keep Player/Transport/Cache/PiP and accepted Build176/178 contracts untouched.
+
+The persistent two-image full-screen `.blur(radius: 30)` backdrop remains a **next evidence point, not a proven root cause**. If Build180 still shows reversal stalls after the gesture/progress dead zones are removed, then inspect target replacement and full-screen blur/compositing cost with the new real-device evidence. Do not preemptively rewrite the image pipeline in the same patch because that would destroy attribution.
+
+Evidence levels: Build179 = Code written / CI passed / IPA produced / **real-device tested and rejected**. Build180 = **Code written only** at this decision update; CI/IPA/real-device validation still required. Do not mark D012 stable/frozen until the user accepts a target-device result against EX.
