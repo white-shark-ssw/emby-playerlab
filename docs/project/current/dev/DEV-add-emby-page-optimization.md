@@ -28,8 +28,8 @@
 - Working branch：`feat/add-emby-page-optimization`。
 - Current product head：`2d9aca2002e9788d217410d4a8b16772ef79d814`。
 - Draft PR：**#256** — `Add modern Emby server editor and multi-route startup`。
-- PR creation observed main advance through docs-only commits; latest observed main is `a2d99adc36854b19c3db6dfe083ebcc5c6509928`. Comparison from initial base showed only `docs/project/*` changes, no product-source overlap with this task's five modified files. Final merge/IPA must re-check main again.
-- Build candidate：**not allocated yet**。Other active identities include carousel/detail Build numbers through 190; this task must select a new free identity after source validation.
+- Latest conflict check：`main@dd04f1944a6c8feeca8d3086dd294b55b7df3900`。Compared from initial base, all 19 main commits only changed `docs/project/*`; there is still no product-source overlap with this task's five modified files.
+- Current Build candidate：**OnePlayer 0.14.25 / Build192** — reserved for this task after Build191 identity collision was detected.
 
 ## Source evidence / architecture
 
@@ -63,24 +63,32 @@
 - Parallel detail/carousel tasks have no current file overlap with this five-file product diff.
 - MDK/KSPlayer PR workflows may run automatically from PR creation; they are experiment workflows and are not acceptance authority for this standard MPV task.
 
+## Build191 collision / retired evidence
+
+- This task briefly allocated **OnePlayer 0.14.24 / Build191** after the then-current docs showed no Build191 owner.
+- Dedicated run `32875040639` at source head `32128f3905a86e2d2dfaab646c446840c6476595` completed successfully: task/Frozen contracts, Xcode 16.4 standard MPV Release, app identity, MinOS 15.0, unsigned IPA packaging and artifact upload all passed.
+- Artifact `OnePlayer-0.14.24-build191-add-emby-server`, ID `9573677580`, digest `sha256:01e75e9fedf34ca146d2b3b1d3027841511763cf501497be48634d0fccc7f50a`.
+- During/after that run, parallel detail task authoritatively reserved **OnePlayer 0.14.24 / Build191** in `docs/project/current/dev/DEV-detail-episode-selection-navigation.md` and `main@dd04f194...`.
+- Therefore this task's Build191 artifact is **retired due to identity collision**: it is valid compile/IPA evidence for the same product code, but must not be distributed, used for real-device attribution, or treated as this task's active candidate.
+- New unique identity is **OnePlayer 0.14.25 / Build192**.
+
 ## Validation state
 
 - **Code written**：YES — first implementation on product head `2d9aca2`.
 - **Draft PR**：#256.
-- **Validate Source**：run `32873926692` queued at checkpoint time.
-- **KSPlayer Lab PR workflow**：run `32873926668` in progress at checkpoint time; not task acceptance authority.
-- **MDK Lab PR workflow**：run `32873926739` failed at its MDK local-file contract before build; unrelated to the standard MPV product path and not evidence that this feature compiles/fails.
-- **CI passed**：NO, pending Validate Source.
-- **IPA produced**：NO valid task IPA.
+- **Legacy Validate Source**：run `32873926692` is not acceptance authority because its old 0.13.3 / Build69 identity guard is stale relative to current accepted 0.14.x project state.
+- **Dedicated Build191 compile evidence**：YES, run `32875040639` success, but identity retired after parallel collision.
+- **Current CI passed**：NO for active identity Build192; rebuild pending.
+- **Current valid IPA produced**：NO for active identity Build192.
 - **Real-device tested**：NO.
 - **Stable / frozen**：NO.
 
 ## Next exact action
 
-1. Wait for PR #256 `Validate Source` and inspect exact build errors if it fails.
-2. Fix only evidence-backed compile/contract issues; keep diff restricted to the five current files unless validation proves another file is required.
-3. After source validation passes, re-check active Build identities and allocate the next free OnePlayer version/Build.
-4. Produce a dedicated standard MPV Release/IPA candidate with app identity + MinOS 15.0 + frozen/P0 zero-diff checks.
+1. Rebuild the unchanged Add Emby product implementation as **OnePlayer 0.14.25 / Build192** using dedicated Xcode 16.4 standard MPV Release CI.
+2. Validate app identity 0.14.25 (192), MinOS 15.0, IPA packaging, task scope and Frozen/P0 zero-diff contracts.
+3. Remove the temporary Build192 workflow from the feature branch after the artifact is safely produced; final PR must not retain test-only workflow files.
+4. Update `BUILD_TEST_INDEX.md` and this checkpoint with Build192 run/artifact/hash evidence in the same work cycle.
 5. User real-device test must cover modern Add UI, clipboard credentials, multi-route latency only in Add/Edit, route winner behavior, no first-level auto-start flash, iCloud sync where available, and unchanged 302→115/CDN playback.
 
 ## Rejected / do-not-repeat
