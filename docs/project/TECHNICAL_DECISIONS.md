@@ -200,7 +200,7 @@ Build192 establishes the server-management ownership boundary without reopening 
 
 Build192 / OnePlayer 0.14.25 passed dedicated Xcode 16.4 standard MPV Release CI and produced an iOS 15.0-compatible IPA. This confirms implementation/build evidence only. Route behavior, root auto-start presentation and synchronizable Keychain behavior—especially cross-device behavior under TrollStore/ad-hoc signing—remain **real-device pending** and are not frozen.
 
-## D014 — Detail episode browsing separates selection from playback and keeps one selected-episode owner
+## D015 — Detail episode browsing separates selection from playback and keeps one selected-episode owner
 
 Build191 establishes the accepted detail/episode-page interaction contract. Detail browsing selection and playback are intentionally separate actions, while `selectedEpisodeID` remains the single visible selection owner.
 
