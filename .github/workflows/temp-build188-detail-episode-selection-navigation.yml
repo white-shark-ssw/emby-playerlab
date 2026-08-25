@@ -1,0 +1,121 @@
+name: Build188 Detail Episode Selection Navigation IPA
+
+on:
+  push:
+    branches: [feat/detail-episode-selection-navigation]
+    paths:
+      - ".github/workflows/temp-build188-detail-episode-selection-navigation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate Build188 source contracts
+        run: |
+          set -euo pipefail
+          git diff --check
+          python3 scripts/check_detail_episode_selection_navigation.py
+          python3 scripts/check_detail_episode_range_jump.py
+          python3 scripts/check_detail_resume_button.py
+          python3 scripts/check_detail_visual_hierarchy.py
+          python3 scripts/check_adaptive_hero_reveal.py
+          python3 scripts/check_detail_page_performance.py
+          python3 scripts/check_series_episode_ordering.py
+          python3 scripts/check_season_id_episode_grouping.py
+          python3 - <<'PY'
+          import subprocess
+          expected = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyEpisodePickerView.swift',
+              'Sources/UI/EmbyMediaDetailView.swift',
+          }
+          changed = set(filter(None, subprocess.check_output(['git', 'diff', '--name-only', 'dcd6cc6d01319e13ccb991967a190ae1f915053b...HEAD', '--', 'Sources']).decode().splitlines()))
+          if changed != expected:
+              raise SystemExit(f'Unexpected Sources diff: {sorted(changed)}')
+          print('Build188 Sources scope:', sorted(changed))
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -resolvePackageDependencies
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            MARKETING_VERSION=0.14.21 \
+            CURRENT_PROJECT_VERSION=188 \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build188.log
+
+      - name: Validate built app and MinOS
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -type d -print -quit)"
+          test -n "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.14.21" --build "188" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" "15.0" "17.0" min-os-report.log build188.log
+
+      - name: Package candidate and source snapshot
+        run: |
+          set -euo pipefail
+          APP_PATH="${{ steps.app.outputs.path }}"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA="OnePlayer-0.14.21-build188-detail-episode-selection-navigation-unsigned.ipa"
+          zip -qry "$IPA" Payload
+          unzip -t "$IPA"
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          SOURCE="OnePlayer-0.14.21-build188-source.zip"
+          git archive --format=zip --output "$SOURCE" HEAD
+          shasum -a 256 "$SOURCE" | tee "$SOURCE.sha256"
+
+      - name: Upload Build188 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.21-build188-detail-episode-selection-navigation
+          path: |
+            OnePlayer-0.14.21-build188-detail-episode-selection-navigation-unsigned.ipa
+            OnePlayer-0.14.21-build188-detail-episode-selection-navigation-unsigned.ipa.sha256
+            OnePlayer-0.14.21-build188-source.zip
+            OnePlayer-0.14.21-build188-source.zip.sha256
+            build188.log
+            min-os-report.log
+          if-no-files-found: error
+          retention-days: 14
