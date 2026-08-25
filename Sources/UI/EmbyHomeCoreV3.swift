@@ -134,6 +134,12 @@ struct V3EmbyHomeView: View {
                                 V3HomeCarouselTransitionScope(state: carouselTransitionState) {
                                     immersiveCarouselHero(width: width, viewportHeight: viewportHeight)
                                 }
+                                .overlay {
+                                    V3HomeCarouselNativeDragCapture(
+                                        onBegan: { beginNativeCarouselDrag() },
+                                        onSample: { translation in handleNativeCarouselDrag(translation, width: width) }
+                                    )
+                                }
                             }
                         } else {
                             Color.clear.frame(height: 1)
