@@ -124,3 +124,21 @@ The accepted Build178 contract is:
 - downstream detail/picker/player auto-next paths consume the same canonical array.
 
 **Build178 / OnePlayer 0.14.11 passed dedicated standard MPV Release CI, produced an IPA, was accepted by the user on real device on 2026-08-25, and merged to `main` through PR #254 at commit `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`.** Treat Emby's TV episode response order as the stable canonical-order authority unless new real-device evidence requires reopening this decision.
+
+## D012 — High-frequency home-carousel drag state is locally scoped
+
+The OP vs EX real-device recordings on 2026-08-25 showed that the OnePlayer home carousel could visually pause and then catch up during continuous manual drag. Source inspection showed the drag callback updated `transitionProgress` and tap-suppression state as root `V3EmbyHomeView` `@State`, even though only the clear Hero and persistent backdrop needed the per-finger-movement transition values.
+
+The current Build179 implementation direction is therefore:
+
+- keep one carousel transition owner, `V3HomeCarouselTransitionState`;
+- Hero and persistent backdrop observe that owner through local `V3HomeCarouselTransitionScope` instances;
+- do not put high-frequency `transitionProgress/from/to` back into the full home root `@State`;
+- keep drag-only `isDragging` and tap suppression as non-render event state rather than root invalidation triggers;
+- do not improve perceived smoothness by throttling/debouncing finger updates—the interaction must remain directly responsive;
+- use the existing horizontal-dominance guard with a 4 pt `DragGesture` start distance rather than the former 12 pt dead zone;
+- keep the existing commit/cancel thresholds, settle animations, auto-advance timing and visual design unless separate evidence requires changing them.
+
+The persistent two-image full-screen `.blur(radius: 30)` backdrop composition remains unchanged. It is a possible next GPU evidence point if the scoped-state change still fails real-device smoothness testing, but it is **not** currently proven to be the remaining bottleneck and should not be speculatively rewritten.
+
+**Evidence level for D012 is currently Code written / CI passed / IPA produced only.** Build179 / OnePlayer 0.14.12 run `32841344067` passed Xcode 16.4 Release CI and produced artifact `9560700233`; target-device validation against EX is still pending. Do not mark this carousel architecture stable/frozen until the user reports the Build179 real-device result.
