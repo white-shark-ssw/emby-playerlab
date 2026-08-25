@@ -125,29 +125,37 @@ The accepted Build178 contract is:
 
 **Build178 / OnePlayer 0.14.11 passed dedicated standard MPV Release CI, produced an IPA, was accepted by the user on real device on 2026-08-25, and merged to `main` through PR #254 at commit `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`.** Treat Emby's TV episode response order as the stable canonical-order authority unless new real-device evidence requires reopening this decision.
 
-## D012 — Home-carousel manual drag must be continuous through first movement and direction reversal
+## D012 — Home-carousel manual drag keeps page-slide semantics and must track the finger continuously
 
-The OP vs EX recordings established a P0 interaction requirement for the V3 home carousel: finger motion itself is the authority during manual drag. The UI must not wait for a debounce-like distance window, must not freeze while crossing the gesture origin, and must not convert a small reverse movement into a later large catch-up jump.
+The OP vs EX recordings establish a P0 interaction requirement for the V3 home carousel: finger motion is authoritative during manual drag. The UI must not wait for a debounce-like distance window, must not freeze while crossing the gesture origin, and must not convert small motion into a later catch-up jump.
 
-Build179 first localized high-frequency carousel transition state into one `V3HomeCarouselTransitionState`, observed only by the Hero/persistent-backdrop scopes. That architecture remains valid and should not be reverted: root `V3EmbyHomeView` must not regain per-finger `transitionProgress/from/to`, drag flags, or tap-suppression `@State`.
+Build179 first localized high-frequency carousel transition state into one `V3HomeCarouselTransitionState`, observed only by the Hero/persistent-backdrop scopes. That ownership model remains valid and must not be reverted: root `V3EmbyHomeView` must not regain per-finger `transitionProgress/from/to`, drag flags, or tap-suppression `@State`.
 
-However, Build179 / OnePlayer 0.14.12 was **rejected on real device**. The user reported that a small drag still did not move immediately and that dragging slightly to one side then reversing toward the other side could visibly pause before jumping a large distance. Source inspection showed three remaining policy dead zones that directly matched that feedback:
+Build179 was rejected because small motion still had a dead zone and reversal could pause then jump. Build180 removed the 4pt `DragGesture` start distance, the extra `abs(horizontal) > 4` gate, the repeated center-direction gate after horizontal drag had started, and the first 8% delayed artwork blend. Real-device testing confirmed reversal continuity improved, but the initial visible movement still felt coarse.
 
-- `DragGesture(minimumDistance: 4)` plus `abs(horizontal) > 4` withheld progress until an accumulated translation threshold was crossed;
-- the horizontal-dominance guard was re-applied on every `onChanged`, so an already-established horizontal drag could stop updating while reversing through the center where horizontal translation approaches zero;
-- `carouselBackdropBlendProgress` discarded the first 8% of raw progress and then applied smoothstep, so the main artwork intentionally showed no response for small movement even after the drag existed.
+Build183 then experimentally removed foreground horizontal travel and crossfaded the Logo/rating/year/type/overview in place. The user reported that the feel seemed somewhat finer, but also correctly identified this as an unauthorized interaction change: those foreground elements are part of each carousel page and were previously designed to move with the page. Because the interaction model changed, Build183 is **rejected as the default direction** even though it provided useful diagnostic evidence.
 
-Build180 therefore adopts the following current direction:
+The established interaction contract is therefore:
 
-- retain one locally scoped `V3HomeCarouselTransitionState` owner; no second progress owner or reconciliation loop;
-- use `DragGesture(minimumDistance: 0)` so SwiftUI delivers the first movement instead of enforcing an application-level start distance;
-- use horizontal dominance only to acquire the initial carousel drag; once `isCarouselDragging` is true, keep tracking horizontal translation continuously through zero and direction reversal rather than re-entering the axis gate;
-- remove the extra absolute `abs(horizontal) > 4` gate;
-- map manual artwork blend directly from clamped raw transition progress instead of discarding the first 8% or applying a low-response smoothstep;
-- do not throttle/debounce finger updates;
-- keep the existing commit/cancel thresholds, release animations and auto-advance timing unless separate real-device evidence requires changing them;
+- Logo, rating, year, type and overview remain attached to their carousel item and travel horizontally with that page;
+- `carouselForegroundOpacity` keeps transition from/to foregrounds present during the slide;
+- `carouselForegroundOffset` keeps the page-slide mapping (`from = -direction × progress × width`, `to = direction × (1-progress) × width`);
+- do not pin/crossfade those foreground elements as a silent performance optimization.
+
+Build185 targets the remaining initial-acquisition discontinuity without changing that slide semantics:
+
+- retain one locally scoped `V3HomeCarouselTransitionState` owner;
+- use `DragGesture(minimumDistance: 0)`;
+- remove the old initial `abs(horizontal) > abs(vertical) * 1.08` requirement;
+- keep a non-render gesture-axis state and lock horizontal/vertical once at the first meaningful 0.5pt movement using the first motion vector;
+- horizontal lock continuously applies the original `translation.width` to progress, including direction reversal through zero;
+- vertical lock keeps carousel updates out of that touch so the homepage ScrollView remains authoritative;
+- reset the axis at gesture end; do not introduce reconciliation, debounce, throttle, interpolation, accumulated correction, timer, retry, watchdog or fallback;
+- preserve existing commit/cancel thresholds, release animations, auto-advance timing and artwork/backdrop blend;
 - keep Player/Transport/Cache/PiP and accepted Build176/178 contracts untouched.
 
-The persistent two-image full-screen `.blur(radius: 30)` backdrop remains a **next evidence point, not a proven root cause**. If Build180 still shows reversal stalls after the gesture/progress dead zones are removed, then inspect target replacement and full-screen blur/compositing cost with the new real-device evidence. Do not preemptively rewrite the image pipeline in the same patch because that would destroy attribution.
+The user explicitly allows the Build183-style fixed-foreground/crossfade interaction only as a **final fallback** if further real-device evidence shows that the established page-slide interaction cannot be made acceptably smooth. It must not be selected merely because it is easier to render.
 
-Evidence levels: Build179 = Code written / CI passed / IPA produced / **real-device tested and rejected**. Build180 = **Code written / CI passed / IPA produced / real-device not yet tested / not stable**. Build180 dedicated standard MPV Release run `32845376285` passed the zero-point drag/initial-axis-lock/no-old-gate contracts, Build179 local-owner contract, home/scroll/series-order checks, Build176/178/P0 zero-diff checks, Xcode 16.4 Release build, 0.14.13 (180) identity, MinOS 15.0 validation and IPA packaging. Do not mark D012 stable/frozen until the user accepts a target-device result against EX.
+The persistent two-image full-screen `.blur(radius: 30)` backdrop remains a next evidence point only if Build185 preserves fine initial motion but continuous dragging still shows frame-rate/compositing stalls. Do not preemptively rewrite the blur/image pipeline in the same patch because that would destroy attribution.
+
+Evidence levels: Build179 = real-device rejected; Build180 = real-device partial improvement but rejected; Build183 = real-device tested, feel somewhat finer but interaction regression/rejected; **Build185 / OnePlayer 0.14.18 = Code written / CI passed / IPA produced / real-device pending / not stable**. Dedicated standard MPV Release run `32853247583` passed the Build185 axis-acquisition/page-slide contracts, home/scroll/series-order checks, Build176/178/P0 zero-diff checks, Xcode 16.4 Release build, 0.14.18 (185) identity, MinOS 15.0 validation and IPA packaging. Do not mark D012 stable/frozen until the user accepts a target-device result against EX.
