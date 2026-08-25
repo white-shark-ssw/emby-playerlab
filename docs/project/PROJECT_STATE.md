@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after user real-device acceptance of Build176 / OnePlayer 0.14.9 episode selection and auto-next._
+_Last updated after merging the user-accepted Build176 / OnePlayer 0.14.9 functional baseline to `main`._
 
 ## Current functional baseline
 
@@ -9,18 +9,24 @@ The latest **real-device accepted** functional baseline is:
 - Product: **OnePlayer**
 - Version: **0.14.9**
 - Build: **176**
+- Canonical branch: `main`
+- Final merge PR: **#253**
+- Final merge commit: `d10e0d63b429f72a664193a1a5bacf728cac50b6`
 - Development branch: `feat/player-episode-picker-0.14.7`
-- PR: **#249**
-- Product source before the temporary CI helper: `f701f0446d65e84fc686f69ec14d60402c94839c`
+- Development PR: **#249** (historical / superseded by final main merge PR #253)
+- Product source before the temporary Build176 CI helper: `f701f0446d65e84fc686f69ec14d60402c94839c`
 - Dedicated CI source: `221630297dc1080279bb8a3f05d69586461b328c`
 - Workflow-restored branch head after Build176 CI: `4b26a7d3a9826c58bfdddd6aafaeb9eeb5c7c943`
+- Main-synchronization merge on the feature branch: `1ff5598c18e8c46856efecbd1d2f15df422098c6`
 - Dedicated CI run: **32782048086**
 - Artifact: `OnePlayer-0.14.9-build176-episode-picker-ui`
 - Deployment Target: **iOS 15.0**
 - Required target device: **iPhone 15 Pro Max / iOS 17.0**
-- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements**
+- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for current requirements / merged to main**
 
-The repository `main` branch is not necessarily the latest functional player baseline. Always resolve the current accepted branch/build before analysing logs or changing player code.
+`main` now contains the accepted Build176 product tree. Future work must still resolve the actual current Build / PR / branch / commit before analysis because later parallel tasks may advance `main` again.
+
+Before PR #253, `main` had advanced independently with project governance/history/CI files only. The synchronization step preserved those current `main` files while reusing the exact accepted Build176 product trees/blobs for `Sources`, `Resources`, `Config`, `scripts`, project specs and Podfile. No runtime source was changed by synchronization, so no Build177 was created merely for the merge.
 
 Build176 completes the player episode-selection task for the current requirements. The accepted behaviour includes:
 
@@ -119,9 +125,9 @@ Do not start a new PiP optimisation build unless there is a materially new archi
 
 ## Current development direction
 
-The episode-selection task is complete. There is no current episode-selection development checkpoint.
+The episode-selection task is complete and merged to `main`. There is no current episode-selection development checkpoint.
 
-Future feature work should start from the **Build176 / OnePlayer 0.14.9 real-device accepted baseline** unless a later user test establishes a newer baseline. New work should proceed module-by-module without casually touching:
+Future feature work should start from the **Build176 / OnePlayer 0.14.9 real-device accepted main baseline** unless later evidence establishes a newer one. New work should proceed module-by-module without casually touching:
 
 - MPV Seek;
 - PiP;
