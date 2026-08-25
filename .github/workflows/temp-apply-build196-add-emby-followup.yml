@@ -1,0 +1,226 @@
+name: Apply Build196 Add Emby Follow-up
+
+on:
+  push:
+    branches: [feat/add-emby-page-optimization]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'Add temporary Build196 Add Emby follow-up applicator'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/add-emby-page-optimization
+          fetch-depth: 0
+      - name: Verify and apply minimal follow-up
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "780667040a2f749d029f9d821337fb4262a966f1" || { echo "::error::unexpected feature base"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: anchor count {text.count(old)} != 1')
+              p.write_text(text.replace(old, new, 1))
+
+          # Edit page: always expose an empty password field. Empty keeps current token;
+          # a supplied password is consumed by SessionStore.updateServer.
+          replace_once('Sources/UI/ServerListView.swift', '''            if editingSession == nil {
+                Divider().padding(.leading, 54)
+                editorInputRow(systemImage: "lock", title: "密码") {
+                    HStack(spacing: 10) {
+                        Group {
+                            if showsPassword { TextField("密码", text: $password) }
+                            else { SecureField("密码", text: $password) }
+                        }
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        Button { showsPassword.toggle() } label: {
+                            Image(systemName: showsPassword ? "eye.slash" : "eye")
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+''', '''            Divider().padding(.leading, 54)
+            editorInputRow(systemImage: "lock", title: "密码") {
+                HStack(spacing: 10) {
+                    Group {
+                        if showsPassword { TextField("密码", text: $password) }
+                        else { SecureField("密码", text: $password) }
+                    }
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    Button { showsPassword.toggle() } label: {
+                        Image(systemName: showsPassword ? "eye.slash" : "eye")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+''')
+          replace_once('Sources/UI/ServerListView.swift', '''            if await sessionStore.updateServer(editingSession, serverTexts: allRouteTexts, autoStart: autoStart, iCloudSync: iCloudSync) != nil {
+''', '''            if await sessionStore.updateServer(editingSession, serverTexts: allRouteTexts, password: password, autoStart: autoStart, iCloudSync: iCloudSync) != nil {
+''')
+
+          # Edit password semantics: empty password leaves the current token untouched.
+          # A non-empty password reauthenticates the same stored user on the selected
+          # same-server route, then replaces only the token.
+          replace_once('Sources/Session/SessionStore.swift', '''    func updateServer(_ stored: EmbySession, serverTexts: [String], autoStart: Bool, iCloudSync: Bool) async -> EmbySession? {
+''', '''    func updateServer(_ stored: EmbySession, serverTexts: [String], password: String = "", autoStart: Bool, iCloudSync: Bool) async -> EmbySession? {
+''')
+          replace_once('Sources/Session/SessionStore.swift', '''            guard let baseURL = best.url else { throw SessionStoreError.noAvailableRoute }
+
+            let updated = EmbySession(
+''', '''            guard let baseURL = best.url else { throw SessionStoreError.noAvailableRoute }
+
+            if !password.isEmpty {
+                let auth = try await EmbyAPIClient(baseURL: baseURL).authenticate(username: stored.user.name, password: password)
+                if let authServerId = auth.serverId, authServerId != stored.serverId { throw SessionStoreError.routeIdentityMismatch }
+                guard auth.user.id == stored.user.id else { throw SessionStoreError.userIdentityMismatch }
+                try KeychainStore.set(auth.accessToken, account: stored.tokenAccount)
+            }
+
+            let updated = EmbySession(
+''')
+
+          # Remember the runtime route winner. Image disk-cache keys include host/base URL,
+          # so the next cached-first auto-start should generate URLs from the previous winner.
+          replace_once('Sources/Session/SessionStore.swift', '''        guard let winner else { throw SessionStoreError.noAvailableRoute }
+        DiagnosticsLogger.shared.log("Session", "Route selected server=\\(stored.serverName) route=\\(SensitiveRedactor.redact(url: winner) ?? winner.absoluteString)")
+        return EmbyAPIClient(baseURL: winner, accessToken: token, userId: stored.user.id, serverName: stored.serverName)
+''', '''        guard let winner else { throw SessionStoreError.noAvailableRoute }
+        rememberRouteWinner(winner, for: stored)
+        DiagnosticsLogger.shared.log("Session", "Route selected server=\\(stored.serverName) route=\\(SensitiveRedactor.redact(url: winner) ?? winner.absoluteString)")
+        return EmbyAPIClient(baseURL: winner, accessToken: token, userId: stored.user.id, serverName: stored.serverName)
+''')
+          replace_once('Sources/Session/SessionStore.swift', '''    private func persistSessions() {
+''', '''    private func rememberRouteWinner(_ winner: URL, for stored: EmbySession) {
+        guard winner != stored.serverURL, let index = sessions.firstIndex(where: { $0.id == stored.id }) else { return }
+        let updated = EmbySession(serverURL: winner, serverId: stored.serverId, serverName: stored.serverName, serverVersion: stored.serverVersion, user: stored.user, tokenAccount: stored.tokenAccount)
+        sessions[index] = updated
+        if session?.id == stored.id { session = updated }
+        persistSessions()
+    }
+
+    private func persistSessions() {
+''')
+          replace_once('Sources/Session/SessionStore.swift', '''        case routeIdentityMismatch
+
+        var errorDescription: String? {
+''', '''        case routeIdentityMismatch
+        case userIdentityMismatch
+
+        var errorDescription: String? {
+''')
+          replace_once('Sources/Session/SessionStore.swift', '''            case .routeIdentityMismatch: return "聚合线路必须指向同一个 Emby 服务器"
+''', '''            case .routeIdentityMismatch: return "聚合线路必须指向同一个 Emby 服务器"
+            case .userIdentityMismatch: return "密码必须属于当前 Emby 用户"
+''')
+
+          # Auto-start gets a synchronous local-token client before any network work, so
+          # V3 Home can restore its existing UserDefaults snapshots and image disk cache.
+          replace_once('Sources/App/RootView.swift', '''    @State private var autoStartedSession: EmbySession?
+''', '''    @State private var autoStartedSession: EmbySession?
+    @State private var autoStartedClient: EmbyAPIClient?
+''')
+          replace_once('Sources/App/RootView.swift', '''                EmbyServerRootViewV3(session: autoStartedSession, onClose: {
+                    self.autoStartedSession = nil
+                })
+''', '''                EmbyServerRootViewV3(session: autoStartedSession, initialClient: autoStartedClient, onClose: {
+                    self.autoStartedSession = nil
+                    self.autoStartedClient = nil
+                })
+''')
+          replace_once('Sources/App/RootView.swift', '''                sessionStore.activate(stored)
+                autoStartedSession = stored
+''', '''                sessionStore.activate(stored)
+                autoStartedClient = try? sessionStore.client(for: stored)
+                autoStartedSession = stored
+''')
+
+          # Render cached Home immediately when RootView supplied an initial client.
+          # Best-route selection runs concurrently. If the winner differs, rebuild only
+          # Home's StateObject so it refreshes through the winner. If route selection fails,
+          # cached content remains visible and auto-start does not fall back to server list.
+          replace_once('Sources/UI/EmbyServerRootViewV3.swift', '''    let session: EmbySession
+    let onClose: (() -> Void)?
+
+    @State private var client: EmbyAPIClient?
+''', '''    let session: EmbySession
+    let onClose: (() -> Void)?
+    private let keepsCachedHomeOnRouteFailure: Bool
+
+    @State private var client: EmbyAPIClient?
+    @State private var homeClientGeneration = 0
+''')
+          replace_once('Sources/UI/EmbyServerRootViewV3.swift', '''    init(session: EmbySession, onClose: (() -> Void)? = nil) {
+        self.session = session
+        self.onClose = onClose
+    }
+''', '''    init(session: EmbySession, initialClient: EmbyAPIClient? = nil, onClose: (() -> Void)? = nil) {
+        self.session = session
+        self.onClose = onClose
+        keepsCachedHomeOnRouteFailure = initialClient != nil
+        _client = State(initialValue: initialClient)
+    }
+''')
+          replace_once('Sources/UI/EmbyServerRootViewV3.swift', '''                        V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, onCarouselActiveChanged: { active in homeCarouselActive = active }, dock: dock)
+                            .opacity(selectedTab == .home ? 1 : 0)
+''', '''                        V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, onCarouselActiveChanged: { active in homeCarouselActive = active }, dock: dock)
+                            .id(homeClientGeneration)
+                            .opacity(selectedTab == .home ? 1 : 0)
+''')
+          replace_once('Sources/UI/EmbyServerRootViewV3.swift', '''            } else {
+                ProgressView("连接 \\(session.serverName)…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .task {
+                        guard client == nil else { return }
+                        do { client = try await sessionStore.clientForBestRoute(for: session) }
+                        catch { close() }
+                    }
+            }
+        }
+    }
+''', '''            } else {
+                ProgressView("连接 \\(session.serverName)…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task { await resolveClient() }
+    }
+''')
+          replace_once('Sources/UI/EmbyServerRootViewV3.swift', '''    private var serverTabBar: some View {
+''', '''    private func resolveClient() async {
+        do {
+            let resolved = try await sessionStore.clientForBestRoute(for: session)
+            let routeChanged = client?.baseURL != resolved.baseURL
+            client = resolved
+            if routeChanged { homeClientGeneration += 1 }
+        } catch {
+            DiagnosticsLogger.shared.log("Session", "Route selection failed server=\\(session.serverName): \\(error.localizedDescription)")
+            if !keepsCachedHomeOnRouteFailure { close() }
+        }
+    }
+
+    private var serverTabBar: some View {
+''')
+          PY
+          git diff --check
+          git diff -- Sources/UI/ServerListView.swift Sources/Session/SessionStore.swift Sources/App/RootView.swift Sources/UI/EmbyServerRootViewV3.swift
+      - name: Commit product follow-up
+        run: |
+          set -euo pipefail
+          git config user.name "OnePlayer CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add Sources/UI/ServerListView.swift Sources/Session/SessionStore.swift Sources/App/RootView.swift Sources/UI/EmbyServerRootViewV3.swift
+          git commit -m "Add cached auto-start and editable password"
+          git push origin HEAD:feat/add-emby-page-optimization
