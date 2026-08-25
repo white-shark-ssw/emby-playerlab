@@ -94,7 +94,7 @@ A successful GitHub Action does not equal a solved playback bug.
 
 A OnePlayer playback session is source-owned: `PlayerController`, `PlaybackOrchestrator`, `PlaybackTransportContext`, Emby PlaySession and the resolved 115/CDN path all correspond to the current media item.
 
-Therefore episode selection must **not** mutate `PlayerController.source` in place. Build174 uses a persistent fullscreen player host that replaces the entire child playback session for the selected episode:
+Therefore episode selection must **not** mutate `PlayerController.source` in place. The accepted Build176 architecture uses a persistent fullscreen player host that replaces the entire child playback session for the selected episode:
 
 - stop the old source/session through the existing lifecycle;
 - keep the fullscreen host presented;
@@ -106,4 +106,4 @@ Episode metadata may be loaded ahead of selection, but the next episode's 115/CD
 
 Automatic next episode may only advance when the existing pure `PrematureEOFGuard` classifies the current end as non-premature. A raw engine EOF, buffering/starvation, abnormal short-media recovery or premature EOF is not sufficient. No new timer, retry loop or watchdog is part of auto-next.
 
-Build174 establishes this as an implementation/CI/IPA decision; real-device acceptance is still pending.
+Build174 established the implementation direction; Build175 refined the interaction; **Build176 / OnePlayer 0.14.9 was accepted by the user on real device and closes the task for the current requirements.** Treat the source-owned episode-session replacement and trusted-natural-end gate as the stable episode-playback contract unless new real-device evidence requires reopening it.
