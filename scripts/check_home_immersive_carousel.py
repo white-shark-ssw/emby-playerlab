@@ -1,6 +1,8 @@
 from pathlib import Path
 
 root = Path('Sources/UI/EmbyServerRootViewV3.swift').read_text()
+core = Path('Sources/UI/EmbyHomeCoreV3.swift').read_text()
+carousel = Path('Sources/UI/EmbyHomeCarouselStateV3.swift').read_text()
 home_files = [
     'Sources/UI/EmbyHomeCoreV3.swift',
     'Sources/UI/EmbyHomeHeroV3.swift',
@@ -22,6 +24,15 @@ assert 'immersiveCarouselHero(width:' in home
 assert 'PageTabViewStyle' not in home
 assert 'carouselPageOffset' not in home
 assert 'V3HomeCarouselPageOffsetObserver' not in home
+
+# High-frequency manual drag state is isolated from the root home tree while remaining a single owner.
+assert '@State var transitionProgress' not in core
+assert '@State var carouselTapSuppressedUntil' not in core
+assert '@State var carouselTransitionState = V3HomeCarouselTransitionState()' in core
+assert 'V3HomeCarouselTransitionScope(state: carouselTransitionState)' in core
+assert 'final class V3HomeCarouselTransitionState: ObservableObject' in carousel
+assert 'var tapSuppressedUntil = Date.distantPast' in carousel
+assert 'DragGesture(minimumDistance: 4, coordinateSpace: .local)' in carousel
 
 # Vertical Hero physics reuse the detail page's proven metric functions, but Home owns its observer.
 assert 'AdaptiveHeroRevealMetrics.detailCropResponseFactor' in home
