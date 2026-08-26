@@ -155,6 +155,7 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
         let lastLoadAheadID = lastLoadAhead?.itemID ?? "none"
         DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\(gapText) scroll_route=\(sample.route) phase=\(phase) offset_y=\(offsetText) delta_y=\(deltaText) velocity_y=\(velocityText) registered_scrolls=\(scrollObservations.count) moving_scrolls=\(movingSamples.count) visible=\(visiblePosterCount) last_cell=\(lastCellID) cell_route=\(lastCellRoute) cell_age_ms=\(cellAgeText) image_age_ms=\(imageAgeText) load_ahead=\(lastLoadAheadID) load_ahead_age_ms=\(loadAheadAgeText)")
     }
+
 }
 
 final class EmbyPosterScrollMotionProbeView: UIView {
@@ -443,37 +444,46 @@ private final class EmbyPosterTouchControl: UIControl {
         onActiveTouchCountChanged?(count)
     }
 
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesBegan(touches, with: event); reportTouchCount(event) }
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesMoved(touches, with: event); reportTouchCount(event) }
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesEnded(touches, with: event); reportTouchCount(event) }
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { super.touchesCancelled(touches, with: event); reportTouchCount(event) }
+    override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+        reportTouchCount(event)
+        return super.beginTracking(touch, with: event)
+    }
+
+    override func continueTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+        reportTouchCount(event)
+        return super.continueTracking(touch, with: event)
+    }
 }
 
-private struct EmbyPosterTouchGate: UIViewRepresentable {
-    let ownerID: UUID
-    let onTap: () -> Void
+private struct EmbyExclusivePosterTapControl: UIViewRepresentable {
+    let action: () -> Void
 
-    final class Coordinator {
-        let ownerID: UUID
-        let onTap: () -> Void
-        private var ownsTouch = false
+    final class Coordinator: NSObject {
+        let id = UUID()
+        var action: () -> Void
+        var ownsPressLock = false
 
-        init(ownerID: UUID, onTap: @escaping () -> Void) { self.ownerID = ownerID; self.onTap = onTap }
+        init(action: @escaping () -> Void) { self.action = action }
 
-        @objc func touchDown(_ sender: EmbyPosterTouchControl) {
-            ownsTouch = EmbyPosterPressLock.shared.begin(ownerID)
-            if !ownsTouch { EmbyPosterPressLock.shared.contaminate() }
+        deinit {
+            if ownsPressLock { EmbyPosterPressLock.shared.abandon(id) }
         }
 
-        @objc func touchUpInside(_ sender: EmbyPosterTouchControl) {
-            let shouldTrigger = ownsTouch && EmbyPosterPressLock.shared.end(ownerID, trigger: true)
-            ownsTouch = false
-            if shouldTrigger { onTap() }
+        @objc func touchDown() {
+            guard !ownsPressLock else { return }
+            ownsPressLock = EmbyPosterPressLock.shared.begin(id)
         }
 
-        @objc func touchCancelled(_ sender: EmbyPosterTouchControl) {
-            if ownsTouch { EmbyPosterPressLock.shared.end(ownerID, trigger: false) }
-            ownsTouch = false
+        @objc func touchUpInside() {
+            guard ownsPressLock else { return }
+            ownsPressLock = false
+            if EmbyPosterPressLock.shared.end(id, trigger: true) { action() }
+        }
+
+        @objc func touchEnded() {
+            guard ownsPressLock else { return }
+            ownsPressLock = false
+            _ = EmbyPosterPressLock.shared.end(id, trigger: false)
         }
 
         func activeTouchCountChanged(_ count: Int) {
@@ -481,80 +491,205 @@ private struct EmbyPosterTouchGate: UIViewRepresentable {
         }
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(ownerID: ownerID, onTap: onTap) }
+    func makeCoordinator() -> Coordinator { Coordinator(action: action) }
 
-    func makeUIView(context: Context) -> EmbyPosterTouchControl {
+    func makeUIView(context: Context) -> UIControl {
         let control = EmbyPosterTouchControl(frame: .zero)
         control.backgroundColor = .clear
-        control.isMultipleTouchEnabled = true
-        control.addTarget(context.coordinator, action: #selector(Coordinator.touchDown(_:)), for: .touchDown)
-        control.addTarget(context.coordinator, action: #selector(Coordinator.touchUpInside(_:)), for: .touchUpInside)
-        control.addTarget(context.coordinator, action: #selector(Coordinator.touchCancelled(_:)), for: [.touchCancel, .touchDragExit, .touchUpOutside])
+        control.isOpaque = false
+        control.isExclusiveTouch = false
+        control.isMultipleTouchEnabled = false
         control.onActiveTouchCountChanged = { [weak coordinator = context.coordinator] count in coordinator?.activeTouchCountChanged(count) }
+        control.addTarget(context.coordinator, action: #selector(Coordinator.touchDown), for: .touchDown)
+        control.addTarget(context.coordinator, action: #selector(Coordinator.touchUpInside), for: .touchUpInside)
+        control.addTarget(context.coordinator, action: #selector(Coordinator.touchEnded), for: [.touchCancel, .touchUpOutside])
         return control
     }
 
-    func updateUIView(_ uiView: EmbyPosterTouchControl, context: Context) {}
+    func updateUIView(_ uiView: UIControl, context: Context) { context.coordinator.action = action }
 }
 
-struct EmbyPosterDetailDestination: View {
+struct EmbyCachedRemoteImage: View {
+    let url: URL?
+    let contentMode: ContentMode
+    let placeholderSystemImage: String
+    let showsLoadingIndicator: Bool
+    let onImageLoaded: ((UIImage) -> Void)?
+    @StateObject private var loader: EmbyCachedImageLoader
+    @State private var reportedImageIdentifier: ObjectIdentifier?
+
+    init(url: URL?, contentMode: ContentMode, placeholderSystemImage: String = "photo", showsLoadingIndicator: Bool = true, onImageLoaded: ((UIImage) -> Void)? = nil) {
+        self.url = url
+        self.contentMode = contentMode
+        self.placeholderSystemImage = placeholderSystemImage
+        self.showsLoadingIndicator = showsLoadingIndicator
+        self.onImageLoaded = onImageLoaded
+        _loader = StateObject(wrappedValue: EmbyCachedImageLoader(initialURL: onImageLoaded == nil ? url : nil))
+    }
+
+    var body: some View {
+        if let onImageLoaded {
+            imageBody.onReceive(loader.$image.compactMap { $0 }) { image in
+                let identifier = ObjectIdentifier(image)
+                guard reportedImageIdentifier != identifier else { return }
+                reportedImageIdentifier = identifier
+                onImageLoaded(image)
+            }
+        } else {
+            imageBody
+        }
+    }
+
+    private var imageBody: some View {
+        ZStack {
+            if let image = loader.image {
+                Image(uiImage: image).resizable().aspectRatio(contentMode: contentMode)
+            } else {
+                Color(uiColor: .secondarySystemBackground)
+                Image(systemName: placeholderSystemImage).font(.system(size: 24, weight: .medium)).foregroundColor(.secondary.opacity(0.62))
+                if showsLoadingIndicator && loader.isLoading { ProgressView() }
+            }
+        }
+        .onAppear { loader.load(url, reportsLoadingState: showsLoadingIndicator) }
+        .onDisappear { loader.cancel(reportsLoadingState: showsLoadingIndicator) }
+        .onChange(of: url) {
+            if onImageLoaded != nil { reportedImageIdentifier = nil }
+            loader.load($0, reportsLoadingState: showsLoadingIndicator)
+        }
+    }
+}
+
+enum EmbyImageContrastAnalyzer {
+    private static let context = CIContext()
+
+    static func prefersLightForeground(for image: UIImage) -> Bool {
+        guard let input = CIImage(image: image) else { return true }
+        let extent = input.extent
+        guard extent.width > 1, extent.height > 1 else { return true }
+        let sample = CGRect(
+            x: extent.minX + extent.width * 0.14,
+            y: extent.minY + extent.height * 0.06,
+            width: extent.width * 0.72,
+            height: extent.height * 0.34
+        ).intersection(extent)
+        guard !sample.isNull, sample.width > 0, sample.height > 0,
+              let filter = CIFilter(name: "CIAreaAverage") else { return true }
+        filter.setValue(input, forKey: kCIInputImageKey)
+        filter.setValue(CIVector(cgRect: sample), forKey: kCIInputExtentKey)
+        guard let output = filter.outputImage else { return true }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        context.render(output, toBitmap: &pixel, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
+        let r = CGFloat(pixel[0]) / 255
+        let g = CGFloat(pixel[1]) / 255
+        let b = CGFloat(pixel[2]) / 255
+        let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return luminance < 0.56
+    }
+}
+
+private struct EmbyPosterDetailDestination: View {
     let item: LibraryItem
     let client: EmbyAPIClient
 
-    var body: some View { EmbyMediaDetailView(item: item, client: client) }
+    var body: some View {
+        if item.type?.caseInsensitiveCompare("Episode") == .orderedSame, let seriesID = item.seriesId, !seriesID.isEmpty {
+            EmbyEpisodeSeriesDestinationView(episode: item, seriesID: seriesID, client: client)
+        } else {
+            EmbyMediaDetailView(item: item, client: client)
+        }
+    }
 }
 
-struct EmbyPosterDetailLink<Label: View>: View {
+private struct EmbyEpisodeSeriesDestinationView: View {
+    let episode: LibraryItem
+    let seriesID: String
+    let client: EmbyAPIClient
+    @State private var seriesItem: LibraryItem?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Group {
+            if let seriesItem {
+                EmbyMediaDetailView(item: seriesItem, client: client, initialEpisodeID: episode.id)
+            } else if let errorMessage {
+                VStack(spacing: 12) {
+                    Text("无法打开对应剧集").font(.headline)
+                    Text(errorMessage).font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
+                    Button("重试") { self.errorMessage = nil; Task { await loadSeries() } }
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ProgressView("正在打开剧集…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .task { if seriesItem == nil && errorMessage == nil { await loadSeries() } }
+    }
+
+    @MainActor
+    private func loadSeries() async {
+        do { seriesItem = try await client.libraryItem(itemId: seriesID) }
+        catch { if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription } }
+    }
+}
+
+private struct EmbyGridPosterNavigationLink<Content: View>: View {
+    @ObservedObject var state: EmbyPosterGridNavigationState
+    let item: LibraryItem
+    let client: EmbyAPIClient
+    let content: Content
+
+    var body: some View {
+        NavigationLink(
+            destination: EmbyPosterDetailDestination(item: item, client: client)
+                .onAppear { state.destinationDidAppear(itemID: item.id) }
+                .onDisappear { state.destinationDidDisappear(itemID: item.id) },
+            tag: item.id,
+            selection: state.selectionBinding(for: item.id)
+        ) {
+            content.contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct EmbyPosterDetailLink<Content: View>: View {
     @Environment(\.embyPosterGridNavigationState) private var gridNavigationState
     let item: LibraryItem
     let client: EmbyAPIClient
-    private let label: () -> Label
-    @State private var isPresented = false
-    @State private var touchOwnerID = UUID()
-    @State private var navigationOwnerID = UUID().uuidString
+    private let content: Content
+    @State private var isActive = false
 
-    init(item: LibraryItem, client: EmbyAPIClient, @ViewBuilder label: @escaping () -> Label) {
+    init(item: LibraryItem, client: EmbyAPIClient, @ViewBuilder content: () -> Content) {
         self.item = item
         self.client = client
-        self.label = label
+        self.content = content()
     }
-
-    private var posterLabel: some View { label().contentShape(Rectangle()) }
 
     var body: some View {
-        ZStack {
-            posterLabel
-            EmbyPosterTouchGate(ownerID: touchOwnerID) { open() }
-        }
-        .background(
-            NavigationLink(destination: EmbyPosterDetailDestination(item: item, client: client), isActive: $isPresented) { EmptyView() }
-                .hidden()
-        )
-        .onAppear { EmbyPosterScrollHitchDiagnostics.shared.posterDidAppear(itemID: item.id, route: gridNavigationState == nil ? "row" : "grid") }
-        .onDisappear { EmbyPosterScrollHitchDiagnostics.shared.posterDidDisappear() }
-        .onChange(of: isPresented) { presented in
-            if !presented {
-                gridNavigationState?.didReturnToGrid(itemID: item.id)
-                EmbyPosterNavigationGate.shared.release(navigationOwnerID)
+        Group {
+            if let gridNavigationState {
+                EmbyGridPosterNavigationLink(state: gridNavigationState, item: item, client: client, content: content)
+            } else {
+                content
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        guard !isActive, EmbyPosterNavigationGate.shared.acquire(item.id) else { return }
+                        isActive = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { EmbyPosterNavigationGate.shared.release(item.id) }
+                    }
+                    .background(
+                        NavigationLink(destination: EmbyPosterDetailDestination(item: item, client: client), isActive: $isActive) { EmptyView() }
+                            .frame(width: 0, height: 0)
+                            .hidden()
+                    )
+                    .onChange(of: isActive) { active in
+                        if !active { EmbyPosterNavigationGate.shared.release(item.id) }
+                    }
             }
         }
-        .onChange(of: gridNavigationState?.selectedItemID) { selectedID in
-            guard !isPresented, selectedID == item.id else { return }
-            activateNavigation()
-        }
-    }
-
-    private func open() {
-        if let gridNavigationState {
-            gridNavigationState.requestNavigation(itemID: item.id) { activateNavigation() }
-        } else {
-            activateNavigation()
-        }
-    }
-
-    private func activateNavigation() {
-        guard !isPresented else { return }
-        guard EmbyPosterNavigationGate.shared.acquire(navigationOwnerID) else { return }
-        isPresented = true
+        .onAppear { EmbyPosterScrollHitchDiagnostics.shared.posterDidAppear(itemID: item.id, route: gridNavigationState == nil ? "row" : "grid") }
+        .onDisappear { EmbyPosterScrollHitchDiagnostics.shared.posterDidDisappear() }
     }
 }
