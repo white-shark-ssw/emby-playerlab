@@ -29,9 +29,9 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build201 / 0.14.34** | 15% short-travel horizontal slide + linear blend | CI/IPA verified; target-device feedback: **“有点那种感觉了”**. Direction partially positive; not final. |
 | **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | CI/IPA verified, but target-device recording still shows stop/catch-up hitch; rejected for smoothness. |
 | **Build203 / 0.14.36** | 30% carousel travel + accelerating opacity | CI/IPA verified. Target-device: 30% still too short overall while raw-progress spatial mapping makes the initial displacement/jitter perceptible again. Rejected as final parameterization; input owner retained. |
-| **Build204 / 0.14.37** | Poster warm-cache cell-entry reduction | **Owned by poster-scroll.** CI/IPA passed and independently verified; target-device validation pending. A separately-created carousel Build204 package was retired because this identity was already occupied and must not be used for attribution. |
+| **Build204 / 0.14.37** | Poster warm-cache cell-entry reduction | **Owned by poster-scroll.** CI/IPA passed; target-device tested on Home and library 3×3 and rejected because visible stop/catch-up hitching remains. A separately-created carousel Build204 package was retired because this identity was already occupied and must not be used for attribution. |
 | **Build205 / 0.14.38** | 80% carousel travel + whole-range `progress²` visual mapping | CI/IPA verified; target-device rejected the curve as final: drag start is over-restrained and the whole-range nonlinear tail feels like unnatural easing. 80% travel and single UIKit input owner are retained. |
-| **Build206 / 0.14.39** | Poster-scroll diagnostic line | **Owned by the independent poster task.** Carousel must not use this identity. |
+| **Build206 / 0.14.39** | Poster-scroll hitch diagnostics | **Owned by the independent poster task.** Diagnostic-only shared `CADisplayLink` logs ≥30 ms display gaps plus nearest poster-cell/image/load-ahead event; CI/IPA produced+verified, real-device log capture pending. Carousel must not use this identity. |
 | **Build207 / 0.14.40** | 80% carousel travel + soft-start / linear-tail visual mapping | **Current carousel candidate.** Replaces whole-range `progress²` with `progress * (1 - 0.60 * (1-progress)^6)` for opacity + spatial progress while raw gesture/commit/release stay unchanged. CI/IPA passed and independently verified; real-device pending. |
 
 ## Current accepted baseline
@@ -157,18 +157,29 @@ A carousel package was briefly produced as `0.14.37 / Build204` with the intende
 - latest target-device recording around 4.067 s shows approximately `-6.36 px → 0 px → -26.19 px`, confirming the stop-frame/catch-up hitch remains.
 - result: **Code written / CI passed / IPA produced+verified / real-device tested / smoothness rejected / not stable.**
 
-### Build204 — current poster-scroll candidate
+### Build204 — real-device rejected
 
-- identity: **0.14.37 / 204**; this is the canonical Build204 owner.
-- exact CI source: `e6a97b5083691ed10795a402edc0fd30f996cffc`.
-- durable cleanup head: `170778c3934a280d9b539fb45f0bfef673687825`.
-- runtime delta from Build202 is limited to `AppIdentity.swift` and `EmbySharedImageAndNavigation.swift`.
-- ordinary images without `onImageLoaded` no longer install a no-op `loader.$image` Combine subscriber.
-- ordinary warm-cache cells initialize from the existing decoded-memory cache so `onAppear` avoids a second synchronous cached-image publication.
-- run/job: `32996847597` / `98268250117` — success.
-- artifact ID: `9617026984`.
-- IPA SHA-256: `b4ba266086674f95a09ef92500c78926b4bc9cfd022c637075985cd55c598130`.
-- evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / not stable.**
+- identity: **0.14.37 / 204**; canonical Build204 owner.
+- exact CI source: `e6a97b5083691ed10795a402edc0fd30f996cffc`; durable cleanup head `170778c3934a280d9b539fb45f0bfef673687825`.
+- run/job `32996847597` / `98268250117` — success; artifact ID `9617026984`; IPA SHA-256 `b4ba266086674f95a09ef92500c78926b4bc9cfd022c637075985cd55c598130`.
+- target-device result: visible hitching remains on both Home poster-heavy scrolling and library 3×3 pages.
+- latest 30 fps recording contains at least two stop/catch-up events: ~5.900 s (`-1.56 px → 0 → -10.33 px`) and ~7.133 s (`-1.99 px → 0 → -20.27 px`).
+- conclusion: no-op image-subscriber removal and warm-cache first-body seeding are retained source reductions but are **not** sufficient to explain/fix the cross-page hitch.
+- evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device tested / smoothness rejected / not stable.**
+
+### Build206 — current poster diagnostic candidate
+
+- identity: **0.14.39 / 206**; poster-scroll owns this identity.
+- exact diagnostic source: **`351c62694ac25404c2bd4eb36a03314dd58ffed2`**.
+- runtime diagnostic scope: shared poster path only; one `CADisplayLink` while poster cells are visible, logging `PosterScrollHitch` only for display gaps **≥30 ms**, with nearest cell-appear, image-commit and grid-load-ahead timestamps.
+- no change to scroll mechanics, lazy-container semantics, image request sizing/caching policy, NavigationLink behavior, carousel input/state owner, Player/MPV/PiP/Transport/Cache/Session.
+- source/Frozen/carousel-owner guard: PASS.
+- run/job: **`33000992493` / `98282482225` — success**.
+- artifact: `OnePlayer-0.14.39-build206-poster-hitch-diagnostics`; artifact ID **`9618646972`**; artifact digest `sha256:eb780276e88fcd6ce41df5e962168dec5976913a0f9e9a829350efc89ea29dbe`.
+- independently downloaded IPA SHA-256: **`ee981133777c316305c4890aaa1a99b8906792783cad1496d880bf786611e18c`**.
+- source ZIP SHA-256: **`68fcde68a4fbf157bfe50a3ae5957e67e6664c461c067132d8d33f73553239ab`**.
+- independent package validation: ZIP integrity OK; `** BUILD SUCCEEDED **`; bundle `com.embyplayerlab.app`; OnePlayer **0.14.39 (206)**; `MinimumOSVersion=15.0`; MinOS audit OK.
+- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic capture pending / not stable.**
 
 ## Accepted foundation evidence
 
