@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after OnePlayer 0.14.32 / Build199 passed target-device acceptance for the Add/Edit Emby server-management line. The user explicitly accepted the result and requested task closure/code merge on 2026-08-26. PR #256 merged the accepted product code to `main` at `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`. Build199 is now the accepted overall functional baseline. The home-carousel Build198 task remains an independent Active line and is not implied accepted by this merge._
+_Last updated after OnePlayer 0.14.32 / Build199 passed target-device acceptance for the Add/Edit Emby server-management line. The user explicitly accepted the result and requested task closure/code merge on 2026-08-26. PR #256 merged the accepted product code to `main` at `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`. Build199 remains the accepted overall functional baseline. Two later feature lines are currently Active and independent: the Home-carousel Build198 task and `DEV-poster-grid-smoothness`; neither is implied accepted by Build199._
 
 ## Current functional baseline
 
@@ -122,6 +122,23 @@ Known carousel evidence remains:
 
 Do not reuse Build198 for another task and do not infer carousel acceptance from the Build199 merge.
 
+### Poster 3-column grid smoothness — Active independent task
+
+`DEV-poster-grid-smoothness` was opened for the user's new 3×3/3-column page smoothness task. It is isolated on `perf/poster-grid-smoothness` with draft PR **#259**.
+
+Current Stage 1 evidence:
+
+- Base source is current `main@d0c9f5fb5237041f09f46e9468240fc09986aca0`; accepted runtime remains Build199.
+- The existing shared grid is already `LazyVGrid`, so this task does not replace it with another lazy container.
+- Branch head `1ef1624285f7e125e2bfe5f9ca18f45bbff211ce` changes only `Sources/UI/EmbyPosterGrid.swift` plus `scripts/check_poster_grid_smoothness.py`.
+- The code moves the two identical, grid-owned Environment injections from every cell to the `LazyVGrid` ancestor. Grid geometry, cell content, load-ahead `onAppear`, native navigation ownership and image pipeline are otherwise unchanged.
+- Exact diff contains no Home-carousel Build198 file and no Player/MPV/PiP/UnifiedTransport/Cache/Emby playback-session path.
+- Global `EmbyCachedRemoteImage` optimization is explicitly deferred because that shared component is also consumed by the active Build198 Home Hero.
+- Evidence level is **Code written + scoped diff only**. No PR workflow run was observed immediately after PR creation; CI/IPA/target-device A/B remain pending.
+- No Build/version candidate is allocated yet, avoiding `AppIdentity.swift` overlap with Build198 until an IPA is actually needed.
+
+Do not describe this Stage 1 source reduction as a real-device performance win until target-device A/B evidence exists.
+
 ## Current development direction
 
-Build199 / OnePlayer 0.14.32 is the current real-device accepted overall `main` functional baseline. Add/Edit Emby is complete and its active checkpoint should be retired. New work must resync against current `main` and protect all frozen playback/transport/cache/PiP/episode contracts above. The only currently known independent feature line is the home-carousel Build198 task, which keeps its own branch, identity and evidence state.
+Build199 / OnePlayer 0.14.32 remains the current real-device accepted overall `main` functional baseline. New work must protect all frozen playback/transport/cache/PiP/episode contracts above. Current independent Active feature lines are the Home-carousel Build198 task and `DEV-poster-grid-smoothness`; each keeps its own checkpoint/branch/PR/evidence. The poster-grid task should keep Stage 1 grid-local while Build198 is active, and must not expand into the shared image loader without explicit dependency handling or new evidence.
