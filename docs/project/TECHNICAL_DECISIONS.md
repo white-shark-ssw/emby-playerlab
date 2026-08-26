@@ -111,22 +111,42 @@ Accepted Build178 contract:
 
 Build178 / OnePlayer 0.14.11 was real-device accepted and merged through PR #254 at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. This ordering authority remains stable.
 
-## D012 — Home-carousel manual drag keeps page-slide semantics and needs one complete interaction owner
+## D012 — Home-carousel manual drag keeps one complete UIKit interaction owner; current visual candidate is fixed-spatial progress blend
 
-The carousel line is still Active and is not made stable by Build199. The current task checkpoint is authoritative for exact Build198 branch/head/CI state.
+The carousel line remains Active and is not made stable by Build199. The current task checkpoint is authoritative for exact Build200 branch/head/CI state.
 
-Long-term evidence already established:
+Long-term evidence:
 
 - high-frequency carousel transition state stays localized to `V3HomeCarouselTransitionState`; root Home must not regain per-finger transition progress/from/to/drag state;
-- Logo, rating, year, type and overview belong to their carousel page and, by default, travel horizontally with that page;
-- Build183 fixed-spatial foreground/crossfade may be used only as the user's explicitly allowed fallback if a correct page-slide architecture remains perceptually unacceptable; it is not the default interaction;
-- Build185 real-device comparison showed required page-slide behavior but coarse first visible movement (about 10/12/16 px versus EX about 1/1/2 px);
+- Build185 real-device comparison showed full page-slide but coarse first visible movement (about 10/12/16 px versus EX about 1/1/2 px);
 - Build187 proved the first useful SwiftUI horizontal samples on the target device could already be roughly 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off; further arbitrary threshold tuning is not evidence-supported;
-- Build189 native raw/coalesced movement plus separate SwiftUI release ownership could freeze at intermediate progress after release;
-- Build193 made native capture passive but retained the separate SwiftUI release owner and reproduced the release freeze on real device;
+- Build189 native movement plus separate SwiftUI release ownership could freeze at intermediate progress;
+- Build193 retained separate SwiftUI release ownership and reproduced the same freeze;
 - therefore hybrid native-move / separate-SwiftUI-end ownership is rejected. Do not patch it with timer/watchdog/reconciliation.
 
-The next valid page-slide architecture must have one complete begin/move/end/cancel lifecycle owner while preserving vertical Home ScrollView arbitration and the established page-slide rendering contract. Do not combine lifecycle attribution work with unrelated blur/compositing rewrites or speculative smoothing.
+Build198 established the retained input architecture:
+
+- one UIKit interaction surface owns begin/move/end/cancel;
+- vertical acquisition yields to the Home `UIScrollView`, while horizontal acquisition owns the carousel gesture to completion/cancel;
+- actual touch position is the render input; predicted touch is release-only;
+- 0.5pt axis acquisition, 0.28 progress commit threshold, 0.48×width predicted-distance gate and existing settle timing remain one contract;
+- no second SwiftUI drag/release owner is allowed.
+
+Build198 target-device result on 2026-08-27 then separated **input correctness** from **visual smoothness**: release/settle/reversal and other tested behavior were okay, but the user reported that minimum/subtle movement was still “比较大” and less delicate than EX. Therefore the single-owner UIKit lifecycle is retained, while the old assumption that full-width foreground page translation must remain the default visual mapping is no longer supported for this task.
+
+EX forensic evidence had already shown the Hero content remaining effectively spatially fixed while blend weight changes. Build183's fixed-foreground crossfade felt somewhat finer but was premature then because page-slide had not yet been proven under a correct single owner. Build198 now satisfies that prerequisite and still fails the subtle-motion target, so the previously conditional fallback is activated for Build200.
+
+Current Build200 decision:
+
+- keep the Build198 UIKit interaction owner and all release/axis/settle semantics unchanged;
+- use the existing single `transitionProgress` as the only visual transition progress;
+- keep foreground Logo/rating/year/type/overview spatially fixed (`carouselForegroundOffset = 0`);
+- outgoing foreground opacity = `1 - progress`, incoming foreground opacity = `progress`;
+- backdrop already follows the same progress-driven blend and does not gain a second state owner;
+- do not add interpolation, timer, watchdog, retry, debounce or throttle simply to make opacity motion look smoother;
+- if Build200 remains perceptually coarse, first attribute whether the remaining difference is publication cadence, compositing cost or blend curve before changing code again.
+
+This visual decision is **not stable yet**: Build200 still requires CI/IPA and target-device A/B. The retained single-owner UIKit input architecture is the stronger architectural conclusion; the exact fixed-spatial blend curve remains under test.
 
 ## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only
 
