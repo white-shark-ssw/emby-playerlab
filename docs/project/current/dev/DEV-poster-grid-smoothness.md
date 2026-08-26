@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build202 target-device tested and rejected; Build204 CI/IPA produced+verified; real-device pending**
+**Active — Build204 target-device tested and rejected; Build206 diagnostic CI/IPA produced+verified; real-device log capture pending**
 
 - **Work ID**：`DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**：3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -24,8 +24,9 @@
 - Working branch：`perf/poster-grid-smoothness`。
 - Draft PR：#259。
 - Build202：**0.14.35 / 202** — CI/IPA verified, target-device rejected for remaining hitch。
-- Build203：owned by independent Home-carousel task; do not reuse。
-- Current candidate：**OnePlayer 0.14.37 / Build204**。
+- Build204：**0.14.37 / 204** — CI/IPA verified, target-device rejected on Home and library 3×3。
+- Build205 / Build207：owned by independent Home-carousel task; do not reuse。
+- Current diagnostic candidate：**OnePlayer 0.14.39 / Build206**。
 
 ## Initial real-device evidence before Build202
 
@@ -89,9 +90,9 @@ These costs are common to Home poster rows, 3-column grids and person/search pos
 
 Navigation destination construction remains **not changed** because the recording still does not isolate it as the stall source。
 
-## Build204 — current candidate
+## Build204 — implementation and CI evidence
 
-Identity：**OnePlayer 0.14.37 / Build204**。Build203 is skipped because the carousel task owns it。
+Identity：**OnePlayer 0.14.37 / Build204**。
 
 Build204 product commits after Build202 durable head:
 
@@ -129,39 +130,79 @@ No new cache, decoder, retry, timer, fallback or navigation owner is added。
 - IPA SHA-256：**`b4ba266086674f95a09ef92500c78926b4bc9cfd022c637075985cd55c598130`**；
 - source ZIP SHA-256：**`9f04a9f40f7f2617b0c9edee6cd2844cd4d3d7beed169eb5431ecbef5c01c506`**；
 - IPA/source ZIP integrity：passed；
-- build log contains `** BUILD SUCCEEDED **`；
-- temporary Build204 feature workflow and one-shot main helper were removed after evidence capture；parallel Build203 helpers/source were not modified by this cleanup。
+- build log contains `** BUILD SUCCEEDED **`。
+
+## Build204 target-device result — rejected — 2026-08-27
+
+User reported that Build204 still visibly hitches and explicitly reproduced the same problem on the library 3×3 page as well as Home poster-heavy scrolling。
+
+Latest recording lower-bound evidence (30 fps):
+
+- around **5.900 s**: tracked vertical motion approximately **-1.56 px → 0 px → -10.33 px**；
+- around **7.133 s**: approximately **-1.99 px → 0 px → -20.27 px**；
+- both are the same stop-recorded-frame → catch-up-next-frame signature seen before。
+
+Conclusion: Build204's ordinary-poster no-op subscriber removal and warm-cache first-body seeding are not the main cross-page root cause. Build204 is **real-device tested and rejected for smoothness**, not stable。
+
+## Build206 — diagnostic-only candidate
+
+Identity：**OnePlayer 0.14.39 / Build206**。
+
+Exact diagnostic source：`351c62694ac25404c2bd4eb36a03314dd58ffed2`。
+
+Build206 deliberately does not attempt another speculative rendering fix. It adds only a low-noise shared poster hitch diagnostic:
+
+- one `CADisplayLink` exists only while poster cells are visible；
+- normal frames produce no log；
+- only a main display interval **≥30 ms** writes `PosterScrollHitch`；
+- the hitch record includes the nearest poster-cell appearance, image commit and grid load-ahead timestamps/identifiers；
+- existing diagnostics export UI is reused; no new logging screen is added；
+- scrolling, navigation, image policy, carousel ownership and all P0 playback/transport/cache/session paths are unchanged。
+
+### Build206 CI / IPA evidence
+
+- exact-source run/job：**`33000992493` / `98282482225` — success**；
+- source contract / exact five-file scope / Frozen / carousel-owner guards：passed；
+- Xcode 16.4 Release build：passed；
+- artifact：`OnePlayer-0.14.39-build206-poster-hitch-diagnostics`；artifact ID **`9618646972`**；
+- artifact digest：`sha256:eb780276e88fcd6ce41df5e962168dec5976913a0f9e9a829350efc89ea29dbe`；
+- independently downloaded IPA SHA-256：**`ee981133777c316305c4890aaa1a99b8906792783cad1496d880bf786611e18c`**；
+- source ZIP SHA-256：**`68fcde68a4fbf157bfe50a3ae5957e67e6664c461c067132d8d33f73553239ab`**；
+- IPA ZIP integrity：passed；build log contains `** BUILD SUCCEEDED **`；
+- bundle/version/build：`com.embyplayerlab.app`, OnePlayer **0.14.39 (206)**；
+- `MinimumOSVersion=15.0` and MinOS audit：passed。
+
+Evidence level：**Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic capture pending / not stable.**
 
 ## Parallel safety
 
-- Active carousel task owns Build203 and its own carousel state/gesture files。
-- Build204 does not modify `EmbyHomeCarouselInteractionV3.swift`, `EmbyHomeCarouselStateV3.swift`, `EmbyHomeHeroV3.swift` or `EmbyHomeCoreV3.swift`。
-- `EmbySharedImageAndNavigation.swift` is shared infrastructure, so callback semantics are deliberately preserved and final integration must revalidate against then-current main。
+- Active carousel task owns Build205 / Build207 and its own carousel state/gesture files；Build206 remains poster-owned。
+- Build206 does not modify `EmbyHomeCarouselInteractionV3.swift`, `EmbyHomeCarouselStateV3.swift`, `EmbyHomeHeroV3.swift` or `EmbyHomeCoreV3.swift`。
+- `EmbySharedImageAndNavigation.swift` is shared infrastructure, so final integration must revalidate against then-current main。
 - Current main changes relative to the poster task's product base remain project-doc / parallel-CI control-plane changes; no accepted main product-source delta has silently been imported into this branch。
 
 ## Validation state
 
-- Build202 existing-problem / rejection recording：✅
-- Build202 CI / IPA：✅
 - Build202 target-device smoothness：❌ rejected
-- Build204 code written：✅
-- Build204 exact scoped diff / source contract：✅
-- Build204 CI passed：✅
-- Build204 IPA produced + independently verified：✅
-- Build204 real-device：❌ pending
+- Build204 code / scope / CI / IPA：✅
+- Build204 target-device smoothness：❌ rejected on Home + library 3×3
+- Build206 code / exact diagnostic scope：✅
+- Build206 CI passed：✅
+- Build206 IPA produced + independently verified：✅
+- Build206 real-device diagnostic capture：❌ pending
 - Stable：❌
 
 ## Next exact action
 
-1. Install/test Build204 on the target device using the same Home poster-row scroll path first, especially while lower poster rows enter the viewport。
-2. Repeat library 3×3, favorites/more, search, tag search and actor/person results。
-3. If Build204 still shows the same stop/catch-up event, do **not** immediately rewrite NavigationLink or lazy containers. Obtain new evidence for the next synchronous cell-entry/layout/compositing cost first。
-4. Acceptance requires the user to report materially smoother continuous scrolling; CI/IPA alone cannot close the task。
+1. Install Build206 on iPhone 15 Pro Max / iOS 17.0 and reproduce the hitch on Home poster-heavy scrolling and library 3×3 first; favorites/more, search, tag search and actor/person results can follow if needed。
+2. Immediately after reproduction, use the existing **“导出播放日志”** action and collect the diagnostics containing `PosterScrollHitch`。
+3. Correlate each ≥30 ms display gap with the recorded nearest cell-appear / image-commit / grid-load-ahead event before changing code again。
+4. Do not claim Build206 improves smoothness; it is a diagnostic baseline only. A subsequent fix still requires separate CI/IPA and target-device acceptance。
 
 ## Rejected / do-not-repeat
 
 - Treating `LazyVGrid` replacement as the fix。
-- Treating Build202 as accepted merely because CI/IPA succeeded。
+- Treating Build202 or Build204 as accepted merely because CI/IPA succeeded。
 - Adding another image cache/decoder。
 - Lowering image below actual rendered device pixels。
 - timer/debounce/throttle/watchdog/retry/fallback。
