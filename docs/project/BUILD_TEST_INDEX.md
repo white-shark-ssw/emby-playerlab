@@ -26,7 +26,7 @@ This is a milestone index, not a list of every experimental build. Evidence leve
 | **Build180 / 0.14.13** | Carousel reversal continuity | Real-device partial improvement: reversal fixed, initial motion still coarse; rejected for acceptance. |
 | **Build181 / 0.14.14** | Detail Hero scroll isolation | Real-device scroll clearly improved; force-quit/relaunch warm presentation still failed. |
 | **Build182 / 0.14.15** | Persistent detail presentation cache | Real-device accepted/frozen for detail scrolling and force-quit/relaunch presentation restoration. |
-| **Build183 / 0.14.16** | Carousel fixed-foreground crossfade experiment | Felt somewhat finer but changed required page-slide semantics; rejected as default direction. |
+| **Build183 / 0.14.16** | Carousel fixed-foreground crossfade experiment | Felt somewhat finer but changed required page-slide semantics; rejected as default direction at that stage. |
 | **Build184 / 0.14.17** | Detail visual hierarchy completion | Real-device accepted; PR #255 merged at `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`. |
 | **Build185 / 0.14.18** | Carousel axis-acquisition/page-slide refinement | Real-device rejected: first visible movement remained about 10/12/16 px vs EX about 1/1/2 px. |
 | Build186 / 0.14.19 | Carousel drag-cadence instrumentation | CI/IPA only; first log channel was not exportable through existing playback logs. |
@@ -40,8 +40,9 @@ This is a milestone index, not a list of every experimental build. Evidence leve
 | **Build194 / 0.14.27** | Player nonstandard SeasonId grouping | Real-device grouping positive: complete supplied 980-episode Series appeared; eager 980-card row exposed opening latency. |
 | **Build195 / 0.14.28** | Lazy player episode row | Real-device accepted; `LazyHStack` solved the large-row construction issue while preserving complete canonical data. PR #258 merged at `a3f79b5bed7ec835cd53f48aa9eb6cadcdf884e1`. |
 | **Build196 / 0.14.29** | Cached-first auto-start + optional password reauth | Dedicated CI/IPA passed. Historical predecessor to Build199; its password-exclusion policy was superseded by the user's retained-password/iCloud-sync requirement. |
-| **Build198 / 0.14.31** | Home-carousel single UIKit lifecycle owner | Dedicated CI run `32987054824` passed; IPA artifact produced and independently verified. Target-device A/B is still pending, so Build198 is not stable/accepted yet. |
+| **Build198 / 0.14.31** | Home-carousel single UIKit lifecycle owner | CI/IPA passed and verified. Real-device: release/settle/reversal and other tested behavior were okay, but minimum/subtle drag remained visibly coarse vs EX; rejected for final carousel smoothness while its single-owner input architecture is retained. |
 | **Build199 / 0.14.32** | Add/Edit Emby completion + password retention/iCloud sync | Dedicated standard MPV CI passed, IPA produced, target-device acceptance passed, and PR #256 merged at `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`. **Current accepted overall baseline.** |
+| **Build200 / 0.14.33** | Carousel fixed-spatial foreground + linear EX blend | Current candidate. Retains Build198's single UIKit lifecycle owner and changes only foreground visual mapping from full-width translation to progress-driven fixed-spatial crossfade. Code written; CI/IPA pending at this index update. |
 
 ## Current accepted baseline
 
@@ -63,7 +64,7 @@ This is a milestone index, not a list of every experimental build. Evidence leve
 - target device: **iPhone 15 Pro Max / iOS 17.0**
 - evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for accepted Add/Edit Emby requirements / merged to main**
 
-Build199 inherits all previously accepted/frozen player, PiP, transport, cache, episode-ordering, detail-presentation and episode-selection contracts. The independent home-carousel Build198 task remains Active and is not made stable by this merge.
+Build199 inherits all previously accepted/frozen player, PiP, transport, cache, episode-ordering, detail-presentation and episode-selection contracts. The independent home-carousel line remains Active and is not made stable by this merge.
 
 ## Build199 Add/Edit Emby evidence
 
@@ -126,21 +127,20 @@ The carousel line is independent from Build199 and remains Active under its own 
 - Build187: target-device diagnostic showed first useful SwiftUI horizontal samples about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off.
 - Build189: native movement worked, but release could freeze because movement/release ownership was split.
 - Build193: making native capture passive did not fix the split-owner release freeze; that hybrid architecture is rejected.
-- Build198 implements one complete UIKit begin/move/end/cancel owner while preserving the required page-slide foreground semantics.
-- Build198 successful CI source: **`a569155d443433a5f4769dfe506fec6ab9bdd0e6`**.
-- Build198 CI: **run `32987054824` / job `98235720724` — success**.
-- Artifact: `OnePlayer-0.14.31-build198-home-carousel-single-owner`, ID **`9613342337`**.
-- Artifact digest: `sha256:4597f6b9bcdd74a44441632f72c5c4b9127aab03e3dad7e38478c552cae773f3`.
-- IPA: `OnePlayer-0.14.31-build198-home-carousel-single-owner-unsigned.ipa`.
-- IPA SHA-256: **`9432928b31898c0c3f05e7e0affb6949c23339a37edd8f14c1d47343ff31f3d8`**.
-- Source ZIP SHA-256: **`00e3fd353c487d185469a2bd9679031cc8a3da9829b310281d8e638c10cd046d`**.
-- Built app identity independently verified: `com.embyplayerlab.app`, OnePlayer `0.14.31 (198)`, `MinimumOSVersion=15.0`, runtime app Mach-O minOS `15.0`, primary/alternate icons `OnePlayerIcon` / `OnePlayerAltIcon`.
-- Durable branch head after CI-helper cleanup: **`c769f2c4c05fffdb36e90d78d8baddec5e0e7c21`**. Tested-source → cleanup-head delta removes only the temporary Build198 workflow; product/runtime source is unchanged.
-- Evidence: **Code written / CI passed / IPA produced + independently verified / real-device pending / not stable**.
+- Build198 implemented one complete UIKit begin/move/end/cancel owner while preserving full page-slide foreground semantics.
+- Build198 successful CI source: `a569155d443433a5f4769dfe506fec6ab9bdd0e6`; run `32987054824`, job `98235720724`, success.
+- Build198 artifact: `OnePlayer-0.14.31-build198-home-carousel-single-owner`, ID `9613342337`, digest `sha256:4597f6b9bcdd74a44441632f72c5c4b9127aab03e3dad7e38478c552cae773f3`.
+- Build198 IPA SHA-256: `9432928b31898c0c3f05e7e0affb6949c23339a37edd8f14c1d47343ff31f3d8`; source ZIP SHA-256: `00e3fd353c487d185469a2bd9679031cc8a3da9829b310281d8e638c10cd046d`.
+- Build198 target-device result: lifecycle/settle/reversal and other tested behavior were okay, but the minimum visible drag still felt “比较大” and less delicate than EX. Build198 is therefore **real-device tested but rejected for final smoothness**; its single-owner UIKit input architecture remains the foundation.
+- EX forensic evidence and the Build198 result now justify the previously conditional fixed-spatial crossfade fallback.
+- Build200 branch: `perf/home-carousel-ex-blend-build200`, based on Build198 durable head `c769f2c4c05fffdb36e90d78d8baddec5e0e7c21`.
+- Build200 CI source: `4d3afe36768b7749d9d0bd0081725f3d947b2099`.
+- Build200 product delta from Build198 is limited to `AppIdentity.swift` and `EmbyHomeCarouselStateV3.swift`: foreground offset becomes zero and outgoing/incoming foreground opacity becomes `1-progress` / `progress`. UIKit input owner, Hero/Core structure, thresholds and settle behavior are unchanged.
+- Build200 evidence at this update: **Code written; CI/IPA pending; real-device pending; not stable**.
 
 ## Main integration evidence
 
-Build176, Build178, Build184, Build191 and Build195 established the accepted foundations inherited by Build199. Build199 is now the accepted overall `main` runtime baseline after target-device acceptance and PR #256 merge. The carousel Build198 work remains a separate Active feature line and must resync with then-current `main` only after its own target-device result.
+Build176, Build178, Build184, Build191 and Build195 established the accepted foundations inherited by Build199. Build199 remains the accepted overall `main` runtime baseline. The carousel line is a separate Active feature line: Build198 is now a real-device rejected visual candidate whose single-owner input architecture is retained, and Build200 is the current visual candidate. Final integration must resync with then-current `main` only after Build200's own target-device result.
 
 ## Maintenance rule
 
