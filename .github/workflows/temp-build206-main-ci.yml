@@ -17,13 +17,13 @@ jobs:
       - name: Checkout exact Build206 source
         uses: actions/checkout@v4
         with:
-          ref: 6be72b78957aab3d4a321f0302b69286f8f11751
+          ref: 351c62694ac25404c2bd4eb36a03314dd58ffed2
           fetch-depth: 0
 
       - name: Validate Build206 diagnostic source contract
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "6be72b78957aab3d4a321f0302b69286f8f11751"
+          test "$(git rev-parse HEAD)" = "351c62694ac25404c2bd4eb36a03314dd58ffed2"
           python3 scripts/check_poster_grid_smoothness.py
           python3 -m py_compile scripts/check_poster_grid_smoothness.py
           rm -rf scripts/__pycache__
