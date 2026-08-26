@@ -3,8 +3,6 @@ name: Build198 Carousel Single Owner IPA
 on:
   push:
     branches: [perf/home-carousel-single-owner-build198]
-    paths:
-      - ".github/workflows/temp-build198-carousel-ci.yml"
 
 permissions:
   contents: read
