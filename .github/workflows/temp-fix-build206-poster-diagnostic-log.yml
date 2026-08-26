@@ -1,0 +1,65 @@
+name: One-shot fix Build206 poster diagnostic log
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temp-fix-build206-poster-diagnostic-log.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/poster-grid-smoothness
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard exact failed Build206 source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "6be72b78957aab3d4a321f0302b69286f8f11751"
+
+      - name: Fix diagnostic string parsing only
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Sources/UI/EmbySharedImageAndNavigation.swift')
+          source = path.read_text(encoding='utf-8')
+          old = '''        let gapText = String(format: "%.1f", gap * 1000)
+                  let cellAgeText = String(format: "%.1f", cellAge)
+                  let imageAgeText = String(format: "%.1f", imageAge)
+                  let loadAheadAgeText = String(format: "%.1f", loadAheadAge)
+                  DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\\(gapText) visible=\\(visiblePosterCount) last_cell=\\(lastCellAppear?.itemID ?? \\\"none\\\") cell_route=\\(lastCellAppear?.route ?? \\\"none\\\") cell_age_ms=\\(cellAgeText) image_age_ms=\\(imageAgeText) load_ahead=\\(lastLoadAhead?.itemID ?? \\\"none\\\") load_ahead_age_ms=\\(loadAheadAgeText)")
+          '''
+          new = '''        let gapText = String(format: "%.1f", gap * 1000)
+                  let cellAgeText = String(format: "%.1f", cellAge)
+                  let imageAgeText = String(format: "%.1f", imageAge)
+                  let loadAheadAgeText = String(format: "%.1f", loadAheadAge)
+                  let lastCellID = lastCellAppear?.itemID ?? "none"
+                  let lastCellRoute = lastCellAppear?.route ?? "none"
+                  let lastLoadAheadID = lastLoadAhead?.itemID ?? "none"
+                  DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\\(gapText) visible=\\(visiblePosterCount) last_cell=\\(lastCellID) cell_route=\\(lastCellRoute) cell_age_ms=\\(cellAgeText) image_age_ms=\\(imageAgeText) load_ahead=\\(lastLoadAheadID) load_ahead_age_ms=\\(loadAheadAgeText)")
+          '''
+          if source.count(old) != 1:
+              raise SystemExit(f'Build206 diagnostic log anchor count={source.count(old)}')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
+          python3 scripts/check_poster_grid_smoothness.py
+          git diff --check
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = "1"
+          test "$(git diff --name-only)" = "Sources/UI/EmbySharedImageAndNavigation.swift"
+
+      - name: Commit corrected Build206 source
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/UI/EmbySharedImageAndNavigation.swift
+          git commit -m "Fix Build206 hitch diagnostic log formatting"
+          git push origin HEAD:perf/poster-grid-smoothness
