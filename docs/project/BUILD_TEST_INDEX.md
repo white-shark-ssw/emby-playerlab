@@ -30,9 +30,10 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | CI/IPA verified, but target-device recording still shows stop/catch-up hitch; rejected for smoothness. |
 | **Build203 / 0.14.36** | 30% carousel travel + accelerating opacity | CI/IPA verified. Target-device: 30% still too short overall while raw-progress spatial mapping makes the initial displacement/jitter perceptible again. Rejected as final parameterization; input owner retained. |
 | **Build204 / 0.14.37** | Poster warm-cache cell-entry reduction | **Owned by poster-scroll.** CI/IPA passed; target-device tested on Home and library 3×3 and rejected because visible stop/catch-up hitching remains. A separately-created carousel Build204 package was retired because this identity was already occupied and must not be used for attribution. |
-| **Build205 / 0.14.38** | 80% carousel travel + whole-range `progress²` visual mapping | CI/IPA verified; target-device rejected the curve as final: drag start is over-restrained and the whole-range nonlinear tail feels like unnatural easing. 80% travel and single UIKit input owner are retained. |
-| **Build206 / 0.14.39** | Poster-scroll hitch diagnostics | **Owned by the independent poster task.** CI/IPA verified and target-device App-log captured: 17 diagnostic gaps (row 7, grid 10; grid max 118.7 ms), all with `load_ahead=none`; 8/10 grid records were >1 s after both latest cell appearance and image commit. This narrows away immediate cell/image/load-ahead as a universal trigger, but the detector is not active-scroll/motion gated, so the capture does not prove every gap is a scrolling stall. Diagnostic-only; not stable. |
-| **Build207 / 0.14.40** | 80% carousel travel + soft-start / linear-tail visual mapping | **Current carousel candidate.** Replaces whole-range `progress²` with `progress * (1 - 0.60 * (1-progress)^6)` for opacity + spatial progress while raw gesture/commit/release stay unchanged. CI/IPA passed and independently verified; real-device pending. |
+| **Build205 / 0.14.38** | 80% carousel travel + whole-range `progress²` visual mapping | CI/IPA verified; target-device rejected the curve as final: drag start is over-restrained and the whole-range nonlinear tail feels like unnatural easing. |
+| **Build206 / 0.14.39** | Poster-scroll hitch diagnostics | **Owned by the independent poster task.** CI/IPA verified and target-device App-log captured: 17 diagnostic gaps (row 7, grid 10; grid max 118.7 ms), all with `load_ahead=none`; motion-aware correlation is still required. Diagnostic-only; not stable. |
+| **Build207 / 0.14.40** | 80% soft-start / linear-tail carousel mapping | CI/IPA verified; target-device rejected as final. First visible displacement still too large and screenshots exposed structural foreground overlap: full-width foreground pages were only `0.80 × width` apart while EX preserved visible page separation. |
+| **Build208 / 0.14.41** | Full-width carousel foreground page slots | **Current carousel candidate.** Uses `pageStep = width`, preserving ~56pt content separation with existing `width-56` foreground content; earliest attenuation tightened only for first samples. CI/IPA passed and independently verified; real-device pending. |
 
 ## Current accepted baseline
 
@@ -62,7 +63,7 @@ Build199 inherits the accepted/frozen player, PiP, transport, cache, episode-ord
 
 Build198 successful CI source `a569155d443433a5f4769dfe506fec6ab9bdd0e6`; run/job `32987054824` / `98235720724`; artifact ID `9613342337`; IPA SHA-256 `9432928b31898c0c3f05e7e0affb6949c23339a37edd8f14c1d47343ff31f3d8`.
 
-Target-device result: lifecycle/settle/reversal okay, minimum/subtle movement still too coarse versus EX. Input architecture retained; full-width raw visual mapping not final.
+Target-device result: lifecycle/settle/reversal okay, minimum/subtle movement still too coarse versus EX. Input architecture retained.
 
 ### Build200 rejected visual mapping
 
@@ -74,72 +75,77 @@ Target-device result: lifecycle/settle/reversal okay, minimum/subtle movement st
 
 ### Build201 partially positive real-device result
 
-- branch: `perf/home-carousel-short-travel-build201`
 - tested source: `e61070146d91bac45400e3f95e28eead756faa81`
 - run/job: `32993286519` / `98255950676`
 - artifact ID: `9615585817`
 - IPA SHA-256: `d889f2c36b3f617b429e4f39ba54d39d7f2826a058a2d4f874bc7a9bb574db58`
-- visual mapping: horizontal foreground travel `0.15 × Hero width`, linear opacity blend.
-- target-device result on 2026-08-27: user reported **“有点那种感觉了”**; 15% was closer partly because total movement was very small, but total travel was insufficient.
-- evidence: **Code written / CI passed / IPA produced+verified / real-device tested / direction partially positive / not stable.**
+- horizontal foreground travel `0.15 × Hero width`, linear opacity blend.
+- target-device result: **“有点那种感觉了”**, but total travel was insufficient.
 
 ### Build203 real-device result
 
 - identity: **0.14.36 / 203**
-- branch: `perf/home-carousel-accelerating-blend-build203`
 - tested source: `69beee45b93dc11c7c5be2ee4b81a5a0157f2653`
 - durable cleanup head: `edafd5d784cfacdcf8c451fad93535a55fb880fb`
-- foreground travel: `0.30 × Hero width`.
-- backdrop + foreground opacity blend: clamped `progress²`.
-- spatial offset still used raw linear `transitionProgress`.
-- existing `(index + direction + count) % count` remained first↔last authority.
 - run/job: `32995898318` / `98264917294` — success
 - artifact ID: `9616576496`
 - IPA SHA-256: `cee7241b73c4dc38efb6593c3d6ec9f54981f8e5a609be78a491b869df685226`
-- target-device result on 2026-08-27: 30% total travel still felt insufficient, while the larger raw-linear spatial mapping exposed the coarse first visible displacement/jitter again. User requested the spatial motion itself use the same restrained-start/accelerating-later curve as opacity and total travel increase to 80%.
-- conclusion: remaining issue is more specifically **raw progress → spatial offset mapping**, not gesture lifecycle ownership.
-- evidence: **Code written / CI passed / IPA produced+verified / real-device tested / rejected as final parameterization / not stable.**
+- target-device: 30% total travel remained insufficient and the larger raw-linear mapping exposed coarse first displacement/jitter again.
+- conclusion: visual spatial mapping, not the single UIKit lifecycle owner, remained the problem.
 
 ### Build204 carousel collision — retired
 
-A carousel package was briefly produced as `0.14.37 / Build204` with the intended 80% + `progress²` spatial mapping. During mandatory global state resync, `DEV-poster-grid-smoothness` was found to already own Build204 / 0.14.37. Therefore the carousel Build204 package is retired before distribution and must not be used for source/IPA attribution. Canonical Build204 ownership remains poster-scroll.
+A carousel `0.14.37 / Build204` package was produced briefly, but the poster-scroll task already owned Build204. The carousel Build204 package is retired and must not be used for attribution.
 
 ### Build205 real-device result
 
 - identity: **0.14.38 / 205**
-- branch: `perf/home-carousel-eased-travel-build205`
 - tested source: `e5f2e7b4135eca333d5dda24545f19ee8d0be439`
 - durable cleanup head: `70d6cca676911e656591aae6b342c771cc92b9fe`
 - run/job: `32998533448` / `98273968966` — success
 - artifact ID: `9617634710`
 - IPA SHA-256: `fe4a81ebee9d330526c108edf2ab4652632ae5b204719864e0b5dee486086479`
-- total foreground travel: `0.80 × Hero width`.
-- foreground/backdrop opacity and spatial offset both used clamped `progress²`; raw `transitionProgress`, 0.28 commit, 0.48×width predicted gate and settle ownership stayed unchanged.
-- target-device result on 2026-08-27: user asked to **relax the start restraint slightly** and reported that the beginning/tail felt like an unnatural easing effect. Whole-range `progress²` is therefore rejected as final, while 80% total travel and the UIKit owner remain retained.
-- evidence: **Code written / CI passed / IPA produced+verified / real-device tested / visual curve rejected as final / not stable.**
+- 80% foreground travel; foreground/backdrop opacity and spatial offset both used clamped `progress²`.
+- target-device: start over-restrained and whole-range nonlinear tail felt unnatural; curve rejected as final.
 
-### Build207 current carousel candidate
+### Build207 real-device result — structural overlap discovered
 
 - identity: **0.14.40 / 207**
 - branch: `perf/home-carousel-soft-start-linear-tail-build207`
-- base: Build205 durable cleanup head `70d6cca676911e656591aae6b342c771cc92b9fe`
-- tested source: **`06936503a6c382d1d39d3cdd52f23bfe2058901e`**
-- durable cleanup head: **`7044ca68c7082cd055a7e4ce42dda6f00fe29674`**
-- tested-source → cleanup-head delta: temporary Build207 workflow deletion only; product/runtime source unchanged.
-- runtime delta from Build205 is limited to `Sources/Core/AppIdentity.swift` + `Sources/UI/EmbyHomeCarouselStateV3.swift`.
-- total foreground travel remains **`0.80 × Hero width`**.
-- visual progress is clamped `progress * (1 - 0.60 * (1-progress)^6)` for foreground/backdrop opacity and foreground spatial offset.
-- initial slope is about 0.40; raw progress 0.05 maps to visual ~0.028 and 0.10 maps to ~0.068.
-- attenuation rapidly decays; mid/late drag converges closely to raw progress; endpoint is 1.0 and tail derivative tends to 1.0.
+- tested source: `06936503a6c382d1d39d3cdd52f23bfe2058901e`
+- durable cleanup head: `7044ca68c7082cd055a7e4ce42dda6f00fe29674`
+- run/job: `33000526138` / `98280846494` — success
+- artifact ID: `9618484884`
+- IPA SHA-256: `bbd7c9c22c2a79a89f41e0d94db16023cf7cd2a720ffeb3c4f31cb9066a15a21`
+- foreground page travel remained `0.80 × Hero width`; visual progress was `progress * (1 - 0.60 * (1-progress)^6)`.
+- latest target-device screenshots on 2026-08-27 show two direct failures: earliest visible displacement is still too long, and adjacent foreground Logo/title/rating/overview content overlaps while EX shows a clear gap.
+- source explains the overlap deterministically: each `carouselHeroForeground` is a full-width page, but outgoing/incoming page centers were kept only `0.80 × width` apart, forcing 20% page-frame overlap at every transition progress.
+- existing page content width is `width - 56`; full-width page centers therefore imply ~56pt content separation.
+- evidence: **Code written / CI passed / IPA produced+verified / real-device tested / foreground layout rejected / not stable.**
+
+### Build208 current carousel candidate
+
+- identity: **0.14.41 / 208**
+- branch: `perf/home-carousel-page-slots-build208`
+- base: Build207 durable cleanup head `7044ca68c7082cd055a7e4ce42dda6f00fe29674`
+- tested source: **`2ad089f0ea8b4b6827257bb3a91a67c2d3748e5f`**
+- durable cleanup head: **`51c366b6840d77c818eae20e1f3f43c0dbd75c72`**
+- tested-source → cleanup-head delta: temporary Build208 workflow deletion only; product/runtime source unchanged.
+- runtime delta is limited to `Sources/Core/AppIdentity.swift` + `Sources/UI/EmbyHomeCarouselStateV3.swift`.
+- foreground page step is **`pageStep = width`**.
+- outgoing offset = `-direction × visualProgress × pageStep`; incoming offset = `direction × (1 - visualProgress) × pageStep`.
+- page-center separation is exactly one Hero width for all progress values; existing `contentWidth = width - 56` gives ~56pt constant content separation.
+- earliest visual attenuation is clamped `progress * (1 - 0.85 * (1-progress)^6)`; this reduces only the first few-percent displacement versus Build207 while mid/late progress rapidly returns near linear and endpoint/tail remain natural.
+- foreground/backdrop opacity uses the same visual progress.
 - raw `transitionProgress`, 0.28 commit, 0.48×width predicted gate, reversal/settle ownership and first↔last modulo lookup are unchanged.
 - source/Frozen guard: PASS.
-- run/job: **`33000526138` / `98280846494` — success**
-- artifact: `OnePlayer-0.14.40-build207-home-carousel-soft-start-linear-tail`
-- artifact ID: **`9618484884`**
-- artifact digest / independently downloaded ZIP SHA-256: **`c6a60537969f4d49f90f2ae47b033094640233f1085db6f5b1e75d18a86b62e4`**
-- IPA SHA-256: **`bbd7c9c22c2a79a89f41e0d94db16023cf7cd2a720ffeb3c4f31cb9066a15a21`**
-- source ZIP SHA-256: **`ecb6f4dbfb0609194406dbb5e0efc3ecde8907ed22992ee7aa4dcf6a886bc275`**
-- independent validation: artifact/IPA integrity, embedded hashes, bundle `com.embyplayerlab.app`, version/build `0.14.40 (207)`, OnePlayer icons, `MinimumOSVersion=15.0`, source snapshot confirms new curve and absence of whole-range `return progress * progress`.
+- run/job: **`33004390654` / `98294100402` — success**.
+- artifact: `OnePlayer-0.14.41-build208-home-carousel-page-slots`.
+- artifact ID: **`9620046266`**.
+- artifact digest / independently downloaded ZIP SHA-256: **`4ace3db785c131b987bfd9e18dc931e1bdeaf9f7528d85b8807214b45774afbb`**.
+- IPA SHA-256: **`24f47ac5cd5685f6eea85b1c3a4fad2841d81f6169a90cd0629bea85a2072308`**.
+- source ZIP SHA-256: **`807d03947c0d087ddc54f295e63fdabc37ac0ddfbe0e0f03da4477eb750e95ee`**.
+- independent validation: artifact digest exact match; IPA/source hashes match embedded checksums; IPA `unzip -t` passed; bundle `com.embyplayerlab.app`; version/build `0.14.41 (208)`; OnePlayer primary/alternate icons; `MinimumOSVersion=15.0`; source snapshot confirms `pageStep = width`, `0.85` mapping and existing `width - 56` content width.
 - evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
 
 ## Poster-scroll evidence
@@ -154,36 +160,28 @@ A carousel package was briefly produced as `0.14.37 / Build204` with the intende
 - run/job: `32993726508` / `98257448257` — success
 - artifact ID: `9615751921`
 - IPA SHA-256: `f6e3a30206acf2cfd877df74f41aa13f1575e1614407eff79466884f9ec51279`
-- latest target-device recording around 4.067 s shows approximately `-6.36 px → 0 px → -26.19 px`, confirming the stop-frame/catch-up hitch remains.
-- result: **Code written / CI passed / IPA produced+verified / real-device tested / smoothness rejected / not stable.**
+- target-device recording confirms stop-frame/catch-up hitch remains.
 
 ### Build204 — real-device rejected
 
 - identity: **0.14.37 / 204**; canonical Build204 owner.
 - exact CI source: `e6a97b5083691ed10795a402edc0fd30f996cffc`; durable cleanup head `170778c3934a280d9b539fb45f0bfef673687825`.
 - run/job `32996847597` / `98268250117` — success; artifact ID `9617026984`; IPA SHA-256 `b4ba266086674f95a09ef92500c78926b4bc9cfd022c637075985cd55c598130`.
-- target-device result: visible hitching remains on both Home poster-heavy scrolling and library 3×3 pages.
-- latest 30 fps recording contains at least two stop/catch-up events: ~5.900 s (`-1.56 px → 0 → -10.33 px`) and ~7.133 s (`-1.99 px → 0 → -20.27 px`).
-- conclusion: no-op image-subscriber removal and warm-cache first-body seeding are retained source reductions but are **not** sufficient to explain/fix the cross-page hitch.
-- evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device tested / smoothness rejected / not stable.**
+- target-device: visible hitching remains on both Home poster-heavy scrolling and library 3×3 pages.
+- conclusion: no-op image-subscriber removal and warm-cache first-body seeding are retained reductions but are not sufficient to explain/fix the cross-page hitch.
 
 ### Build206 — target-device diagnostic capture obtained
 
 - identity: **0.14.39 / 206**; poster-scroll owns this identity.
 - exact diagnostic source: **`351c62694ac25404c2bd4eb36a03314dd58ffed2`**.
-- runtime diagnostic scope: shared poster path only; one `CADisplayLink` while poster cells are visible, logging `PosterScrollHitch` only for display gaps **≥30 ms**, with nearest cell-appear, image-commit and grid-load-ahead timestamps.
+- runtime diagnostic scope: shared poster path only; one `CADisplayLink` while poster cells are visible, logging `PosterScrollHitch` only for display gaps ≥30 ms, with nearest cell-appear, image-commit and grid-load-ahead timestamps.
 - no change to scroll mechanics, lazy-container semantics, image request sizing/caching policy, NavigationLink behavior, carousel input/state owner, Player/MPV/PiP/Transport/Cache/Session.
-- source/Frozen/carousel-owner guard: PASS.
-- run/job: **`33000992493` / `98282482225` — success**.
-- artifact: `OnePlayer-0.14.39-build206-poster-hitch-diagnostics`; artifact ID **`9618646972`**; artifact digest `sha256:eb780276e88fcd6ce41df5e962168dec5976913a0f9e9a829350efc89ea29dbe`.
-- independently downloaded IPA SHA-256: **`ee981133777c316305c4890aaa1a99b8906792783cad1496d880bf786611e18c`**.
-- source ZIP SHA-256: **`68fcde68a4fbf157bfe50a3ae5957e67e6664c461c067132d8d33f73553239ab`**.
-- independent package validation: ZIP integrity OK; `** BUILD SUCCEEDED **`; bundle `com.embyplayerlab.app`; OnePlayer **0.14.39 (206)**; `MinimumOSVersion=15.0`; MinOS audit OK.
-- target-device App log `OnePlayer-App-1787770662.log` contains **17** `PosterScrollHitch` records: row 7 / grid 10. Row median/max gap **47.1 / 88.3 ms**; grid median/max **55.85 / 118.7 ms**.
-- **17/17** records have `load_ahead=none`; **8/10 grid** records happened >1 s after both the most recent recorded cell appearance and image commit; grid has 0/10 image commits within 20 ms. Two Home-row records happened ~10.5/9.4 ms after image commit, so image commit may contribute locally but is not a universal cross-page trigger.
-- the exported playback-log file was empty, but the shared App log contains the intended poster diagnostic records, so the diagnostic capture itself succeeded.
-- exact-source limitation: `CADisplayLink` runs whenever posters are visible and records no actual vertical offset/delta, drag/deceleration state or velocity. Therefore these ≥30 ms callback gaps cannot all be classified as proven user-visible scrolling stalls; motion-aware correlation is required before another performance-source change.
-- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device diagnostic capture ✅ / root-cause attribution incomplete / not stable.**
+- run/job: **`33000992493` / `98282482225` — success**; artifact ID **`9618646972`**.
+- IPA SHA-256: **`ee981133777c316305c4890aaa1a99b8906792783cad1496d880bf786611e18c`**.
+- target-device App log contains **17** `PosterScrollHitch` records: row 7 / grid 10; grid max 118.7 ms.
+- all 17 have `load_ahead=none`; 8/10 grid records happened >1 s after both most recent recorded cell appearance and image commit.
+- exact-source limitation: diagnostics are not active-scroll/motion gated, so captured gaps cannot all be classified as proven user-visible scrolling stalls. Motion-aware correlation remains required.
+- evidence: **Code written / CI passed / IPA produced+verified / target-device diagnostic capture / root-cause attribution incomplete / not stable.**
 
 ## Accepted foundation evidence
 
