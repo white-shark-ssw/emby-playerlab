@@ -1,10 +1,12 @@
 name: Build199 Add Emby Password Sync
 
 on:
+  workflow_dispatch:
   push:
     branches: [feat/add-emby-page-optimization]
     paths:
       - .github/workflows/temp-add-emby-build199.yml
+      - Sources/Session/SessionStore.swift
 
 concurrency:
   group: build199-add-emby-password-sync
@@ -53,7 +55,7 @@ jobs:
               "Sources/UI/EmbyServerRootViewV3.swift",
               "Sources/UI/ServerListView.swift",
           }
-          allowed = product | {".github/workflows/temp-add-emby-build199.yml"}
+          allowed = product | {".github/workflows/temp-add-emby-build199.yml", ".github/workflows/temp-fix-add-emby-build199.yml"}
           require(changed <= allowed, f"unexpected delta from accepted Build195 main: {sorted(changed - allowed)}")
           require(product <= changed, "expected Add Emby product files missing from Build195 delta")
           require(not any(path.startswith(("Sources/Player/", "Sources/Transport/", "Sources/Cache/")) for path in changed), "frozen playback/transport/cache file changed")
@@ -74,6 +76,7 @@ jobs:
           require('password == initialPassword ? nil : password' in ui, "unchanged password must not force reauthentication")
           require('func updateServer(_ stored: EmbySession, serverTexts: [String], password: String? = nil' in session, "optional password update contract missing")
           require('func password(for stored: EmbySession) -> String?' in session, "password lookup API missing")
+          require('self.password(for: stored)' in session, "password lookup must not be shadowed by update parameter")
           require('OnePlayer.ServerPassword.' in session and 'OnePlayer.SyncedServerPassword.' in session, "separate local/synchronizable password accounts missing")
           require('try KeychainStore.set(password, account: passwordAccount(tokenAccount))' in session, "local Keychain password persistence missing")
           require('try KeychainStore.setSynchronizable(password, account: syncedPasswordAccount(tokenAccount))' in session, "iCloud Keychain password persistence missing")
