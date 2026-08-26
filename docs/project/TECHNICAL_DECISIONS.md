@@ -1,16 +1,16 @@
 # OnePlayer Technical Decisions
 
-This file records decisions that have already consumed significant real-device testing. Do not casually re-run rejected directions.
+This file records decisions that have already consumed significant implementation or real-device testing. Do not casually re-run rejected directions.
 
 ## D001 — Media bytes never transit the NAS
 
 Normal playback is client-direct:
 
 ```text
-Emby / STRM → 302 → 115/CDN → iPhone
+Emby / STRM → HTTP 302 → 115/CDN → iPhone
 ```
 
-The NAS/Emby side may resolve or redirect, but it must not become the media data relay.
+The NAS/Emby side may resolve or redirect, but it must never become the actual media-byte relay.
 
 ## D002 — Real byte demand is authoritative
 
@@ -20,231 +20,195 @@ Do not map playback time to file byte offset using:
 targetTime / duration × fileSize
 ```
 
-This was rejected. Actual AVPlayer Range demand or player byte seek/demand is authoritative.
+That time→byte proportional guess is rejected as a Seek/Transport anchor. Actual player byte demand / HTTP Range demand is authoritative.
 
 ## D003 — Unified transport/cache is shared infrastructure
 
-Network, 302, Range/206, cache and playback-demand handling belong below the playback engine. Do not rebuild separate 115/CDN networking inside each engine.
+Network, HTTP 302, Range/206, cache and playback-demand handling belong below the playback engine. Do not rebuild separate 115/CDN networking inside each engine and do not let ordinary UI work create a competing transport owner.
 
-## D004 — Fast interaction beats exact seek
+## D004 — Fast interaction beats exact Seek
 
-For double-tap / rapid ±N second Seek:
+For double-tap / rapid ±N-second Seek:
 
 - latency is P0;
 - MPV `absolute+keyframes` is the accepted runtime contract;
-- `absolute+exact` was rejected for the default path because it produced materially higher latency;
-- no hidden second corrective native Seek.
+- `absolute+exact` was rejected as the normal path because it materially increased latency;
+- there is no hidden second corrective native Seek.
 
-Long-GOP accuracy error is an accepted physical limitation of keyframe-based fast Seek.
+Long-GOP accuracy error is an accepted physical limitation of keyframe-oriented fast Seek.
 
 ## D005 — MDK is not the automatic daily authority
 
-MDK showed strong performance in some media/high-rate scenarios, but extensive real-device work did not beat MPV on the project's primary metric: repeated fast ±10-second Seek consistency and long-tail stability.
-
-Current strategy:
-
-- MPV = normal/main engine.
-- MDK = manual backup/experimental engine.
+MDK remains a manual backup/experimental engine. MPV is the normal/main engine because repeated real-device work did not show MDK beating MPV on the primary requirement: repeated fast ±10-second Seek consistency and long-tail stability.
 
 Do not silently restore broad automatic engine fallback logic.
 
 ## D006 — Renderer ownership must respect MoltenVK/MPV
 
-Previous attempts to manually take over `CAMetalLayer.delegate` / drawable lifecycle caused real-device instability or crashes.
-
-UIKit may own host geometry; do not casually seize MoltenVK's drawable/swapchain ownership.
+Previous attempts to manually seize `CAMetalLayer.delegate` / drawable lifecycle caused real-device instability or crashes. UIKit may own host geometry; do not casually take over MoltenVK/MPV drawable or swapchain ownership.
 
 ## D007 — System navigation is system-owned
 
-Immersive UI must not take ownership of or disable native navigation stack behaviour or interactive pop.
+Native iOS push/pop and interactive-pop behavior remain system-owned. Immersive appearance may adapt around navigation, but product code must not replace that ownership merely for visual convenience or by raising the minimum OS.
 
-Preferred approach:
+## D008 — PiP uses a visual bridge; MPV remains authority
 
-- system navigation stays intact;
-- visual appearance is adapted around it;
-- compatibility layers use mature UIKit/SwiftUI APIs rather than raising the minimum OS.
+PiP is frozen at the accepted Build173 architecture unless new real-device evidence or a materially better renderer-lifecycle idea appears.
 
-## D008 — PiP uses a visual bridge, MPV remains authority
+Accepted semantics include:
 
-Current PiP architecture uses SampleBuffer for the native PiP visual surface while MPV remains the playback/audio/time authority.
+- SampleBuffer provides the native PiP visual surface/bridge;
+- MPV remains playback/audio/time authority;
+- background MPV video suspension uses `vid=no`;
+- the SampleBuffer bridge persists through return while the MPV renderer recovers;
+- PiP X = `pauseAndSuspend`, not Stop;
+- completion follows visual/timebase commit rather than callback entry;
+- the periodic bridge catch-up/rebase loop tested before Build173 is not part of the frozen design.
 
-Frozen later semantics include:
+Known MPV/MoltenVK cold-return tail is accepted for now rather than reopening renderer ownership.
 
-- background MPV video suspension using `vid=no`;
-- persistent SampleBuffer visual bridge during return;
-- PiP X = `pauseAndSuspend`, not player Stop;
-- completion after visual/timebase commit;
-- no periodic bridge catch-up loop in Build173.
-
-Further PiP work is paused unless a new renderer-lifecycle approach materially changes the trade-off.
-
-## D009 — Evidence must be labelled
+## D009 — Evidence levels must remain explicit
 
 Always distinguish:
 
-- implementation;
-- CI;
-- IPA;
-- real-device result;
-- frozen/stable result.
+1. Code written;
+2. CI passed;
+3. IPA produced;
+4. Real-device tested;
+5. Stable / frozen.
 
-A successful GitHub Action does not equal a solved playback bug.
+A successful GitHub Action or generated IPA does not by itself prove a runtime issue solved.
 
 ## D010 — Episode changes replace the source-owned playback session
 
-A OnePlayer playback session is source-owned: `PlayerController`, `PlaybackOrchestrator`, `PlaybackTransportContext`, Emby PlaySession and the resolved 115/CDN path all correspond to the current media item.
+A playback session is source-owned: `PlayerController`, `PlaybackOrchestrator`, `PlaybackTransportContext`, Emby PlaySession and resolved media path correspond to the current item.
 
-Therefore episode selection must **not** mutate `PlayerController.source` in place. The accepted Build176 architecture uses a persistent fullscreen player host that replaces the entire child playback session for the selected episode:
+Therefore selecting another episode must not mutate `PlayerController.source` in place. The accepted Build176 architecture keeps the fullscreen host presented while replacing the complete child playback session:
 
-- stop the old source/session through the existing lifecycle;
-- keep the fullscreen host presented;
-- resolve the selected episode through the existing Emby direct-play path;
-- create a fresh `PlayerController` / orchestrator / transport context for that source;
-- do not intentionally restore the main-interface portrait orientation between child sessions.
+- stop the previous source/session through existing lifecycle;
+- resolve the newly selected episode through the existing Emby direct-play path;
+- create a fresh controller/orchestrator/transport context/session;
+- do not intentionally bounce the main interface through portrait between child sessions.
 
-Episode metadata may be loaded ahead of selection, but the next episode's 115/CDN temporary media URL is not pre-resolved or retained. Resolve it only after explicit user selection or after a trusted natural end.
+Episode metadata may be prefetched, but the next episode's temporary 115/CDN URL is resolved only after explicit user selection or trusted natural auto-next.
 
-Automatic next episode may only advance when the existing pure `PrematureEOFGuard` classifies the current end as non-premature. A raw engine EOF, buffering/starvation, abnormal short-media recovery or premature EOF is not sufficient. No new timer, retry loop or watchdog is part of auto-next.
+Auto-next may advance only after the existing pure `PrematureEOFGuard` classifies the end as non-premature. Raw engine EOF, buffering/starvation, abnormal short-media recovery or premature EOF is insufficient. No new timer/retry/watchdog is part of this contract.
 
-Build174 established the implementation direction; Build175 refined the interaction; **Build176 / OnePlayer 0.14.9 was accepted by the user on real device and merged to `main` through PR #253 at commit `d10e0d63b429f72a664193a1a5bacf728cac50b6`.** Treat the source-owned episode-session replacement and trusted-natural-end gate as the stable episode-playback contract unless new real-device evidence requires reopening it.
+Build176 / OnePlayer 0.14.9 was real-device accepted and merged through PR #253 at `d10e0d63b429f72a664193a1a5bacf728cac50b6`. Treat this session-replacement and trusted-end gate as stable unless new real-device regression evidence requires reopening it.
 
 ## D011 — Emby TV API owns canonical episode order
 
-OnePlayer must not invent a second client-side ordering rule for a TV series when Emby already exposes its TV episode ordering authority.
+For a TV series, OnePlayer must not invent a second client-side ordering rule when Emby already exposes TV episode order.
 
-Real-device evidence from the non-standard series `137597` showed 165 Episodes with `nilIndex=164`. The previous generic `/Users/{UserId}/Items` query forced `SortBy=ParentIndexNumber,IndexNumber`; `ParentIndexNumber` still grouped seasons, but the missing `IndexNumber` values left the in-season order different from Emby/EplayerX. The detail and picker UIs were only consuming that returned array and were not independently sorting it.
+Accepted Build178 contract:
 
-The accepted Build178 contract is:
-
-- load a series episode list from `GET /Shows/{SeriesId}/Episodes`;
+- load series episodes from `GET /Shows/{SeriesId}/Episodes`;
 - preserve Emby's returned order;
-- keep `SeasonId`-first logic for season membership, but do not make it a second in-season ordering owner;
+- keep Episode `SeasonId` as season-membership authority but not as another in-season ordering owner;
 - retain pagination and ID-preserving deduplication;
-- do not add title, file-name, DateCreated, item-ID, or artificial episode-number fallback sorting;
-- downstream detail/picker/player auto-next paths consume the same canonical array.
+- do not add title, filename, DateCreated, item-ID or artificial episode-number fallback sorting;
+- detail, full picker, player picker and trusted auto-next consume the same canonical array.
 
-**Build178 / OnePlayer 0.14.11 passed dedicated standard MPV Release CI, produced an IPA, was accepted by the user on real device on 2026-08-25, and merged to `main` through PR #254 at commit `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`.** Treat Emby's TV episode response order as the stable canonical-order authority unless new real-device evidence requires reopening this decision.
+Build178 / OnePlayer 0.14.11 was real-device accepted and merged through PR #254 at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. This ordering authority remains stable.
 
-## D012 — Home-carousel manual drag keeps page-slide semantics and must track the finger continuously
+## D012 — Home-carousel manual drag keeps page-slide semantics and needs one complete interaction owner
 
-The OP vs EX recordings establish a P0 interaction requirement for the V3 home carousel: finger motion is authoritative during manual drag. The UI must not wait for a debounce-like distance window, must not freeze while crossing the gesture origin, and must not convert small motion into a later catch-up jump.
+The carousel line is still Active and is not made stable by Build199. The current task checkpoint is authoritative for exact Build198 branch/head/CI state.
 
-Build179 first localized high-frequency carousel transition state into one `V3HomeCarouselTransitionState`, observed only by the Hero/persistent-backdrop scopes. That ownership model remains valid and must not be reverted: root `V3EmbyHomeView` must not regain per-finger `transitionProgress/from/to`, drag flags, or tap-suppression `@State`.
+Long-term evidence already established:
 
-Build179 was rejected because small motion still had a dead zone and reversal could pause then jump. Build180 removed the 4pt `DragGesture` start distance, the extra `abs(horizontal) > 4` gate, the repeated center-direction gate after horizontal drag had started, and the first 8% delayed artwork blend. Real-device testing confirmed reversal continuity improved, but the initial visible movement still felt coarse.
+- high-frequency carousel transition state stays localized to `V3HomeCarouselTransitionState`; root Home must not regain per-finger transition progress/from/to/drag state;
+- Logo, rating, year, type and overview belong to their carousel page and, by default, travel horizontally with that page;
+- Build183 fixed-spatial foreground/crossfade may be used only as the user's explicitly allowed fallback if a correct page-slide architecture remains perceptually unacceptable; it is not the default interaction;
+- Build185 real-device comparison showed required page-slide behavior but coarse first visible movement (about 10/12/16 px versus EX about 1/1/2 px);
+- Build187 proved the first useful SwiftUI horizontal samples on the target device could already be roughly 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off; further arbitrary threshold tuning is not evidence-supported;
+- Build189 native raw/coalesced movement plus separate SwiftUI release ownership could freeze at intermediate progress after release;
+- Build193 made native capture passive but retained the separate SwiftUI release owner and reproduced the release freeze on real device;
+- therefore hybrid native-move / separate-SwiftUI-end ownership is rejected. Do not patch it with timer/watchdog/reconciliation.
 
-Build183 then experimentally removed foreground horizontal travel and crossfaded the Logo/rating/year/type/overview in place. The user reported that the feel seemed somewhat finer, but also correctly identified this as an unauthorized interaction change: those foreground elements are part of each carousel page and were previously designed to move with the page. Because the interaction model changed, Build183 is **rejected as the default direction** even though it provided useful diagnostic evidence.
-
-The established interaction contract is therefore:
-
-- Logo, rating, year, type and overview remain attached to their carousel item and travel horizontally with that page;
-- `carouselForegroundOpacity` keeps transition from/to foregrounds present during the slide;
-- `carouselForegroundOffset` keeps the page-slide mapping (`from = -direction × progress × width`, `to = direction × (1-progress) × width`);
-- do not pin/crossfade those foreground elements as a silent performance optimization.
-
-Build185 targets the remaining initial-acquisition discontinuity without changing that slide semantics:
-
-- retain one locally scoped `V3HomeCarouselTransitionState` owner;
-- use `DragGesture(minimumDistance: 0)`;
-- remove the old initial `abs(horizontal) > abs(vertical) * 1.08` requirement;
-- keep a non-render gesture-axis state and lock horizontal/vertical once at the first meaningful 0.5pt movement using the first motion vector;
-- horizontal lock continuously applies the original `translation.width` to progress, including direction reversal through zero;
-- vertical lock keeps carousel updates out of that touch so the homepage ScrollView remains authoritative;
-- reset the axis at gesture end; do not introduce reconciliation, debounce, throttle, interpolation, accumulated correction, timer, retry, watchdog or fallback;
-- preserve existing commit/cancel thresholds, release animations, auto-advance timing and artwork/backdrop blend;
-- keep Player/Transport/Cache/PiP and accepted Build176/178 contracts untouched.
-
-The user explicitly allows the Build183-style fixed-foreground/crossfade interaction only as a **final fallback** if further real-device evidence shows that the established page-slide interaction cannot be made acceptably smooth. It must not be selected merely because it is easier to render.
-
-The persistent two-image full-screen `.blur(radius: 30)` backdrop remains a next evidence point only if Build185 preserves fine initial motion but continuous dragging still shows frame-rate/compositing stalls. Do not preemptively rewrite the blur/image pipeline in the same patch because that would destroy attribution.
-
-Evidence levels: Build179 = real-device rejected; Build180 = real-device partial improvement but rejected; Build183 = real-device tested, feel somewhat finer but interaction regression/rejected; **Build185 / OnePlayer 0.14.18 = Code written / CI passed / IPA produced / real-device tested and rejected / not stable**. Dedicated standard MPV Release run `32853247583` passed the Build185 axis-acquisition/page-slide contracts, home/scroll/series-order checks, Build176/178/P0 zero-diff checks, Xcode 16.4 Release build, 0.14.18 (185) identity, MinOS 15.0 validation and IPA packaging. Do not mark D012 stable/frozen until the user accepts a target-device result against EX.
-
-Build185 was subsequently **real-device rejected** despite preserving the required page-slide semantics. Paired 30fps recordings measured first visible OnePlayer foreground movement around 10/12/16 px across three starts versus EX around 1/1/2 px; ongoing increments were also coarser. Because OnePlayer already opts into high refresh with `CADisableMinimumFrameDurationOnPhone = true`, arbitrary gesture-threshold tuning is no longer evidence-supported.
-
-The next decision is diagnostic: preserve Build185 interaction behavior and measure first `onChanged`, axis-lock and transition-start translation plus callback Hz/max-gap/maxFPS/Low-Power state, emitting only one summary at gesture end. If the first delivered sample is already ~8–15pt, investigate `DragGesture`/vertical-`ScrollView` delivery and arbitration; if it is ~0–1pt with healthy cadence while the visual still jumps, investigate atomic transition publication and Hero/persistent-backdrop invalidation/compositing. Only then may the dual full-screen `.blur(radius: 30)` backdrop become the next GPU target.
-
-Build186 / OnePlayer 0.14.19 implemented that passive diagnostic and passed CI/IPA, but its generic category was not part of the existing playback-log export. Build187 / OnePlayer 0.14.20 changes only that diagnostic channel to `DiagnosticsLogger.shared.playback(...)`; drag behavior is unchanged. Run `32860057516` passed, artifact `9567940931` was produced, and downloaded IPA SHA-256 is `5fa04513919b5e2928ee2ca09cf45dddc79c91d64858971f571b423dbb2d50f8`. Evidence: Build185 = **real-device rejected**; Build186 = **CI/IPA, not distributed for diagnosis**; Build187 = **Code written / CI passed / IPA produced / real-device tested / diagnostic gate confirmed / not stable**.
-
-Build187 target-device logs resolved that diagnostic gate. Although SwiftUI reported an initial `first=0.00,0.00`, the first useful horizontal/axis-lock/transition translations across actual drags were already approximately **4.33pt / 8.00pt / 15.67pt / 11.00pt**, with lock and transition occurring at the same translation. The same logs reported `UIScreen.main.maximumFramesPerSecond = 120` and Low Power Mode disabled. Therefore the remaining long first-motion distance is not evidence for another 0.5/0.2/0.1pt threshold tweak; in this vertical-ScrollView path the SwiftUI `DragGesture` simply is not supplying sufficiently fine initial horizontal samples to the carousel.
-
-The next evidence-supported architecture is consequently limited to the input layer: UIKit raw `touchesMoved` plus `coalescedTouches` drives manual progress, with one-time axis acquisition, no touch cancellation/delay, and simultaneous recognition with the vertical ScrollView. The established page-slide mapping remains unchanged, and the existing SwiftUI `DragGesture` remains solely to preserve its current `predictedEndTranslation` release commit/cancel behavior. This is not a rendering rewrite and does not reopen blur, auto-advance, Player, Transport, Cache or PiP.
-
-A carousel package was initially compiled as 0.14.21 / Build188, but the parallel Active `DEV-detail-episode-selection-navigation` had already formally allocated **0.14.21 / Build188** and produced its own CI/IPA. Under the project identity guard, the carousel Build188 identity is invalid and must not be distributed or used for attribution. The valid carousel native-touch candidate is **Build189 / OnePlayer 0.14.22** on `perf/home-carousel-native-touch-build189-from187`. Dedicated Release run `32868634314` passed and artifact `9571260479` was produced; downloaded IPA SHA-256 is `50c74bd43935a31ca3dda781c04a1113c2ce616c7da9e24e438cba78988c3a6d`. Evidence: Build187 = **real-device diagnostic confirmed / not stable**; Build189 = **Code written / CI passed / IPA produced / real-device pending / not stable**.
-
-Build189 target-device testing added a second ownership constraint. Native raw/coalesced touch sampling successfully drove partial progress, but the custom recognizer also entered `.began/.changed` while complete/cancel remained exclusively in SwiftUI `DragGesture.onEnded`. The supplied recording showed the carousel repeatedly staying frozen at the exact partial progress after finger release. Therefore a native movement sampler must not also claim the horizontal gesture if SwiftUI remains the release/prediction authority.
-
-Build193 / OnePlayer 0.14.26 tested the attempted split where native raw/coalesced touch capture stayed passive while the underlying SwiftUI `DragGesture.onEnded` remained the sole release owner. **Target-device testing rejected this architecture:** the supplied recording again shows progress moving during the drag and then remaining frozen between pages after finger release. Source layout places `V3HomeCarouselNativeDragCapture` as an interactive overlay outside the Hero view that owns `.simultaneousGesture(carouselDragGesture)`, so treating the underlying SwiftUI gesture as a reliable independent release authority is not evidence-supported. Do not patch this with a timer/watchdog or another reconciliation owner. Before the next Build, prove one complete gesture lifecycle owner for begin/move/end/cancel (and preserve the established full-page slide interaction); Build193 remains Code written / CI passed / IPA produced / real-device rejected / not stable.
-
-Repeated forensic review of the EX reference recording further clarifies why its interaction feels finer. Across three visible transitions, outgoing/incoming Hero title templates remain at effectively fixed horizontal coordinates (0 px shift through the first two high-confidence windows; background approximately 0–1 px), while opacity/content blend changes continuously. In the first slow transition the estimated blend increment is about 1% per 30 fps recorded frame median; the same normalized increment mapped to OnePlayer's 510 pt page slide would be roughly 5 pt of spatial travel. Therefore EX-like perceived smoothness is not evidence of a higher refresh rate alone: its fixed-spatial blend mapping inherently hides coarse input quantization better than full-width translation. This does not revoke the user's established page-slide requirement, but it defines the stop condition for further slide work and keeps Build183-style crossfade as the explicit fallback if a correct single-owner page-slide remains perceptually inferior.
-
-The post-Build193 implementation order is now fixed for attribution: first establish one UIKit interaction surface with one complete begin/move/end/cancel drag owner, while preserving full-page slide rendering; coalesced touches must not emit multiple historical SwiftUI progress writes per UIEvent. Do not combine that lifecycle correction with transition-state atomization, blur changes, predicted-touch rendering or smoothing. Only after the lifecycle layer is real-device stable may transition publication be optimized separately.
+The next valid page-slide architecture must have one complete begin/move/end/cancel lifecycle owner while preserving vertical Home ScrollView arbitration and the established page-slide rendering contract. Do not combine lifecycle attribution work with unrelated blur/compositing rewrites or speculative smoothing.
 
 ## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only
 
-The accepted Build181/182/184 detail-page line establishes two long-term ownership boundaries.
+Build181/182/184 established two accepted ownership boundaries.
 
-First, native detail `UIScrollView.contentOffset` is a high-frequency render input and must not be written into root detail-view state that invalidates the full page. Build181 isolates that raw offset in `EmbyDetailHeroScrollState`, observed only by the Hero scope; the native ScrollView and existing Hero stretch/crop/pin geometry remain authoritative. The user accepted the resulting scrolling behavior on iPhone 15 Pro Max / iOS 17.0.
+First, native detail `UIScrollView.contentOffset` is a high-frequency render input and must not be written into root detail-view state that invalidates the whole page. Build181 isolates the raw offset in the Hero-scoped owner while native ScrollView geometry remains authoritative.
 
-Second, detail warm state is **presentation-only**. Build182 may persist safe display metadata (`episodes`, `seasons`, `imageInfos`, `similarItems`) under `Library/Caches/OnePlayer/DetailPresentation` so a known detail page can restore Logo/episode presentation across process restarts, but normal Emby loading still refreshes current server data. PlaybackInfo, MediaSource, PlaySession, ResolvedPlaybackSource and temporary 115/CDN URLs must not enter this cache. Resume/played/favorite authority remains the live server/session path.
+Second, warm detail state is presentation-only. Build182 may persist safe display metadata such as episodes, seasons, image info and similar items under `Library/Caches/OnePlayer/DetailPresentation`, but normal Emby loading still refreshes current server data. PlaybackInfo, MediaSource, PlaySession, ResolvedPlaybackSource and temporary 115/CDN URLs do not enter this cache. Resume/played/favorite authority remains live server/session state.
 
-Build184 adds only the accepted detail visual hierarchy (`视频信息` below `更多类似`, above the bottom glass media-source summary, and 19 pt bold main section headers) and does not reopen those ownership boundaries. **Build184 / OnePlayer 0.14.17 was accepted by the user on real device on 2026-08-25 and merged to `main` through PR #255 at commit `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`.** Treat the detail scroll owner and presentation-cache boundary as stable/frozen unless new real-device regression evidence requires reopening them.
+Build182 was real-device accepted for detail scrolling and force-quit/relaunch restoration. Build184 added the accepted visual hierarchy and merged through PR #255 at `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`. Treat these boundaries as stable/frozen unless new regression evidence appears.
 
 ## D014 — Emby server entry selection is Session-owned and media transport remains separate
 
-Build192 establishes the server-management ownership boundary without reopening playback transport.
+The Add/Edit Emby line is now stable at Build199.
 
-- `SessionStore` remains the single owner of saved Emby sessions and now owns a separate `EmbyServerConfiguration` keyed by session ID for alternate entries, auto-start identity and sync preference. `EmbySession` itself is not broadened merely to carry UI/runtime routing metadata.
-- Alternate entries are required to resolve through the existing `EmbyAPIClient.publicInfo()` path to the same Emby Server ID. At normal entry, candidate routes race before Home client creation; the first valid same-Server-ID route becomes the session client. Home API and image URLs then reuse that winner. Do not turn each poster/image request into a repeated multi-route race.
-- Route latency is diagnostic/editor state only. It may appear in Add/Edit Emby, but not in the server list, Home, favorites, search, settings or auto-start presentation.
-- Auto-start belongs at the root routing boundary. Resolve the target and route before constructing the normal AppShell/server-list root; do not fake direct startup with a first-level render followed by a full-screen presentation.
-- Opt-in iCloud server sync uses a separate `kSecAttrSynchronizable` Keychain record. It may contain server configuration, AccessToken and auto-start flag; it must never contain the user's password. Existing local AccessToken storage keeps its prior `ThisDeviceOnly` accessibility contract.
-- Same-server route selection changes only the Emby API/server entry. Media remains `Emby / STRM → 302 → 115/CDN → iPhone`; NAS must never relay media bytes. Player, UnifiedTransport, Cache, Seek, Resume and PiP contracts remain outside this feature.
+Ownership and routing contract:
 
-Build192 / OnePlayer 0.14.25 passed dedicated Xcode 16.4 standard MPV Release CI and produced an iOS 15.0-compatible IPA. This confirms implementation/build evidence only. Route behavior, root auto-start presentation and synchronizable Keychain behavior—especially cross-device behavior under TrollStore/ad-hoc signing—remain **real-device pending** and are not frozen.
+- `SessionStore` remains the single owner of saved Emby sessions and a separate `EmbyServerConfiguration` keyed by session ID for alternate entries, auto-start identity and sync preference. `EmbySession` is not broadened merely to carry UI/runtime routing state.
+- Alternate entries are validated through the existing `EmbyAPIClient.publicInfo()` path and must resolve to the same Emby Server ID.
+- At normal entry, valid same-server candidates race before the normal Home client is selected; the winner is then reused rather than racing every poster/image request.
+- Route latency is editor/diagnostic state only and does not become presentation state across Home/favorites/search/settings.
+- Same-server route selection changes only the Emby API/server entry. Media remains `Emby / STRM → 302 → 115/CDN → iPhone`; NAS never becomes a media-byte relay.
+- Player, UnifiedTransport, Cache, Seek, Resume, episode ordering and PiP remain outside this feature.
+
+Credential split accepted at Build199:
+
+- local AccessToken storage keeps its existing local Keychain ownership/accessibility contract;
+- password is stored in a **separate dedicated local Keychain item** for retained/editable credentials;
+- the synchronized server registry may contain server configuration, AccessToken and auto-start state but **does not embed the password**;
+- when `iCloud 同步` is enabled for that server, password is additionally stored in an independent `kSecAttrSynchronizable` Keychain password item;
+- turning iCloud sync off removes that synchronizable password item while retaining the local password;
+- password remains absent from UserDefaults, plain server configuration and diagnostics.
+
+Build192 established the editor/server-routing ownership boundary. Build196 refined startup to cached-first. Build199 / OnePlayer 0.14.32 completed retained/editable password handling plus opt-in iCloud Keychain password synchronization, passed dedicated standard MPV CI, produced the validated iOS 15.0 IPA, was accepted by the user on the target device, and merged through PR #256 at `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`.
+
+Treat this Add/Edit Emby ownership/credential split as stable unless new target-device regression evidence requires reopening it.
+
+## D014A — Auto-start is cached-first; retained password is Keychain-owned
+
+Build192 target-device feedback and accepted Build196/199 follow-ups establish the startup/editor runtime contract without reopening playback transport.
+
+- Auto-start must not gate Home construction on network route selection. After local session/token restore, `RootView` creates the normal authenticated client synchronously and constructs the target Emby root immediately.
+- Existing `V3EmbyHomeViewModel` UserDefaults snapshots and `EmbyImageDiskCache` are the cached-home authorities. Do not add a second offline-home model or duplicate state owner.
+- Best-route selection runs concurrently. If the winner differs, normal Home is rebuilt/refreshed with that client. If route selection fails while an initial local client exists, stale cached Home remains rather than closing to the server list.
+- `EmbyImageDiskCache.stableKey(for:)` removes token query items but retains scheme/host/path; persisting the runtime same-server winner as current `serverURL` improves future image-cache host matching without a second route-cache owner.
+- Edit Server preloads the retained password from its dedicated local Keychain item.
+- Saving an unchanged password does not force reauthentication.
+- A changed password authenticates the stored username on the validated same-server best route and must preserve the same Server ID (when returned) and exact User ID before AccessToken replacement.
+- With iCloud sync enabled, the password is also written to its separate synchronizable Keychain item. Disabling sync removes only that synchronizable password copy.
+- Password stays out of UserDefaults, plain `EmbyServerConfiguration`, diagnostics and the synchronized JSON server registry.
+- Manual entry from the first-level server list retains its pre-Home route-selection behavior; cached-first is specifically required for auto-start.
+
+Build199 dedicated standard MPV run `32942618979` passed; artifact `OnePlayer-0.14.32-build199-add-emby-password-sync` ID `9597143667` produced an iOS 15.0 IPA whose SHA-256 is `8f0f43f62705e5e13ae666cc54d32fd047c596df1d0e9335668b01a25b6eb003`. The user accepted the target-device result and requested completion/merge; PR #256 merged at `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`. This contract is stable for the accepted Add/Edit Emby requirements.
 
 ## D015 — Detail episode browsing separates selection from playback and keeps one selected-episode owner
 
-Build191 establishes the accepted detail/episode-page interaction contract. Detail browsing selection and playback are intentionally separate actions, while `selectedEpisodeID` remains the single visible selection owner.
+Build191 establishes the accepted detail/episode browsing contract:
 
-- tapping a horizontal detail episode card only selects it and moves the blue outline; it does not immediately play;
-- the existing main Play/Resume button remains the detail-page playback action and targets the selected episode through the existing source-owned playback path;
-- normal Series entry chooses explicit `initialEpisodeID` first, otherwise the existing resumable episode, otherwise canonical `episodes.first` from the Build178 Emby TV order;
+- tapping a horizontal detail episode card selects it and moves the blue outline; it does not autoplay;
+- `selectedEpisodeID` is the single visible selection owner;
+- normal Series entry chooses explicit `initialEpisodeID`, otherwise resumable episode, otherwise canonical `episodes.first`;
 - quick range buttons select that range's first canonical episode rather than clearing selection;
-- the compact selected-episode summary must reuse `displayEpisodeTitle(episode)`, the exact formatter used by the horizontal card, instead of maintaining a second naming/classification path;
-- full-picker row taps may select and play directly, but the picker must not dismiss before playback and must not add a fixed delay; the visible picker presents the shared `model.selectedSource`, so closing player reveals the same picker/ScrollView instance and preserves its position without a second offset cache;
-- no second playback-source owner, selected-episode owner, timer, retry, watchdog or manual scroll-position reconciliation is part of this architecture.
+- the existing main Play/Resume action targets the selected episode through the source-owned playback path;
+- compact selected summary reuses the same `displayEpisodeTitle(episode)` formatter as the horizontal card;
+- full-picker playback keeps the picker mounted so closing player returns to the same picker/ScrollView position without a second offset cache;
+- no second playback-source owner, selection owner, timer, retry, watchdog or manual scroll-position reconciliation belongs here.
 
-This contract inherits Build176 source-owned episode-session replacement, Build178 canonical Emby episode ordering, and Build182 detail scroll/presentation-cache ownership unchanged. It applies to detail-page and full-detail-picker browsing; it does **not** claim to fix the separately confirmed in-player episode-overlay nonstandard season-grouping regression. **Build191 / OnePlayer 0.14.24 passed dedicated Xcode 16.4 Release CI, produced the validated IPA, was accepted by the user on the target device, and merged to `main` through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`.** Treat this detail selection/navigation behavior as stable unless new target-device regression evidence requires reopening it.
-
-## D015 — Auto-start is cached-first; Edit password is optional reauthentication
-
-Build192 target-device feedback and the user's startup requirement refine D014 without reopening playback transport.
-
-- Auto-start must not gate Home construction on network route selection. After local session/token restore, `RootView` creates the normal authenticated client synchronously and constructs the target Emby root immediately.
-- Existing `V3EmbyHomeViewModel` UserDefaults snapshots (libraries / resume / latest / carousel) and `EmbyImageDiskCache` are the only cached-home authorities. Do not add a second offline-home model or duplicate state owner.
-- Best-route selection still runs concurrently. If the winner differs, Home is rebuilt with that client so the existing refresh path fetches current data. If route selection fails while an initial local client exists, retain stale cached Home; do not close back to the first-level server page.
-- `EmbyImageDiskCache.stableKey(for:)` removes token query items but retains scheme/host/path. Therefore the runtime same-server winner is persisted as the current session `serverURL`, allowing the next cached-first launch to generate image URLs on the previous winner and maximize disk-cache hits.
-- Edit Server always exposes the password row, initially empty because password is never stored. Empty means keep the current AccessToken. Non-empty means authenticate the stored username on the validated same-server best route, require the same Server ID (when returned) and exact same User ID, then replace only the AccessToken.
-- Password remains absent from UserDefaults, local server configuration and synchronizable Keychain registry. Existing local token and opt-in synchronizable token contracts remain unchanged.
-- Manual entry from the first-level server list keeps its pre-Home route-selection behavior; cached-first is specifically required for auto-start in this decision.
-- Build196 / OnePlayer 0.14.29 passed dedicated Xcode 16.4 standard MPV Release CI, app/runtime MinOS 15.0 validation and IPA packaging. This is build evidence only; cached-first presentation, offline/stale behavior, edit-password runtime semantics and iCloud cross-device behavior remain target-device pending.
+This inherits Build176 session replacement, Build178 canonical ordering and Build182 detail presentation ownership. Build191 / OnePlayer 0.14.24 was real-device accepted and merged through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`.
 
 ## D016 — Player episode grouping follows real SeasonId; very large rows are lazy
 
-The Build194/195 target-device line closes the gap between the detail episode data model and the in-player episode picker.
+The Build194/195 target-device line closes the nonstandard-season gap between detail and the in-player picker.
 
-The supplied non-standard Series contained 980 episodes. All 980 shared one real Episode `SeasonId`, while 979 had `ParentIndexNumber=nil` and only one had `ParentIndexNumber=1`. The player already loaded all 980 canonical episodes; the old picker lost 979 only because its season list and filter trusted `ParentIndexNumber` alone. The detail page was correct because it also loaded the real Season items and resolved Episode `SeasonId` against `Season.id/indexNumber`.
+Accepted contract:
 
-The accepted contract is:
-
-- the player picker consumes the same canonical `seriesEpisodes(seriesId:) + seriesSeasons(seriesId:)` data semantics as detail;
-- season membership resolves Episode `SeasonId` against the real Season item/index first;
-- `ParentIndexNumber` is only the compatibility fallback when the real Season mapping cannot be established;
-- Build178 `/Shows/{SeriesId}/Episodes` response order remains the only in-series ordering authority; SeasonId grouping must not introduce a second sort;
-- trusted auto-next continues to index the full canonical `episodes` array, not the currently filtered UI season;
-- for the horizontal in-player episode row, use `LazyHStack` so a 980-item season does not eagerly instantiate every thumbnail/title/overview card when the overlay opens;
-- do not solve large-season performance by truncating episodes, manual pagination, artificial sorting, debounce, timer, retry or watchdog;
+- player picker consumes the same canonical `seriesEpisodes(seriesId:) + seriesSeasons(seriesId:)` semantics as detail;
+- Episode `SeasonId` resolves against the real Season item/index first;
+- `ParentIndexNumber` is only the compatibility fallback when real Season mapping cannot be established;
+- Build178 `/Shows/{SeriesId}/Episodes` response order remains the only in-series ordering authority; grouping does not introduce a second sort;
+- trusted auto-next continues indexing the full canonical episodes array rather than the filtered UI season;
+- the horizontal in-player episode row uses `LazyHStack` so a 980-item season does not eagerly instantiate every complex card on open;
+- do not solve large-season performance by truncation, manual pagination, artificial sorting, debounce, timer, retry or watchdog;
 - this decision does not modify PlayerController, MPV Seek, PiP, UnifiedTransport, Cache, Range/302/115 client-direct or Emby Resume/progress ownership.
 
-Build194 / OnePlayer 0.14.27 confirmed the SeasonId grouping correction on the target device, then exposed the eager-row opening cost. Build195 / OnePlayer 0.14.28 passed dedicated Xcode 16.4 Release CI, produced the validated iOS 15.0 IPA, and was accepted by the user on the target device after the `LazyHStack` follow-up. The earlier TrollStore helper `168` attempt was traced to an incomplete downloaded copy rather than the compiled app. **PR #258 merged Build195 to `main` at `a3f79b5bed7ec835cd53f48aa9eb6cadcdf884e1`. Treat SeasonId-first player grouping and the lazy large-season row as stable unless new target-device regression evidence requires reopening them.**
+Build194 proved the SeasonId correction on the target device and exposed eager-row opening cost. Build195 / OnePlayer 0.14.28 added only the lazy row, was real-device accepted, and merged through PR #258 at `a3f79b5bed7ec835cd53f48aa9eb6cadcdf884e1`. Treat SeasonId-first grouping and lazy large-season rendering as stable unless new target-device regression evidence requires reopening them.
