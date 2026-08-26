@@ -166,8 +166,6 @@ struct EmbyPosterGrid<Content: View>: View {
         return LazyVGrid(columns: columns, alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing) {
             ForEach(items) { item in
                 content(item)
-                    .environment(\.embyPosterGridNavigationState, navigationState)
-                    .environment(\.embyPosterGridCellWidth, cellWidth)
                     .frame(width: cellWidth, alignment: .topLeading)
                     .contentShape(Rectangle())
                     .onAppear {
@@ -176,6 +174,8 @@ struct EmbyPosterGrid<Content: View>: View {
                     }
             }
         }
+        .environment(\.embyPosterGridNavigationState, navigationState)
+        .environment(\.embyPosterGridCellWidth, cellWidth)
         .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(GeometryReader { proxy in Color.clear.preference(key: EmbyPosterGridWidthPreferenceKey.self, value: proxy.size.width) })
