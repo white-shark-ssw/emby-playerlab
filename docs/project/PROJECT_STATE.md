@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after OnePlayer 0.14.32 / Build199 passed target-device acceptance for the Add/Edit Emby server-management line, after Home-carousel Build198 completed CI/IPA and real-device testing, and after Build200 was opened as the evidence-supported EX-blend follow-up. Build199 remains the accepted overall functional baseline. Two later feature lines are currently Active and independent: the Home-carousel Build200 task and `DEV-poster-grid-smoothness`; neither is implied accepted by Build199._
+_Last updated after OnePlayer 0.14.32 / Build199 passed target-device acceptance for the Add/Edit Emby server-management line, after Home-carousel Build200 completed CI/IPA but was rejected on the target device for fixed foreground semantics, and after Build201 restored horizontal foreground motion with short travel and produced a verified IPA. Build199 remains the accepted overall functional baseline. The Home-carousel Build201 task and `DEV-poster-grid-smoothness` remain Active and independent._
 
 ## Current functional baseline
 
@@ -111,38 +111,44 @@ Build195 remains the accepted player grouping/large-list foundation inherited by
 
 ### Home carousel interaction — Active independent task
 
-`DEV-home-carousel-drag-smoothness` is now testing **OnePlayer 0.14.33 / Build200** on its own branch/checkpoint. Build199 remains the accepted overall runtime baseline; Build200 is not yet accepted, merged or stable.
+`DEV-home-carousel-drag-smoothness` is now testing **OnePlayer 0.14.34 / Build201**. Build199 remains the accepted overall runtime baseline; Build201 is not yet target-device accepted, merged or stable.
 
-Build198 evidence now has a real-device conclusion:
+Build198 retained evidence:
 
 - Build198 identity: `0.14.31 / 198`.
-- Build198 single-owner input foundation: one UIKit interaction surface owns begin/move/end/cancel; SwiftUI only renders `V3HomeCarouselTransitionState`.
-- Successful CI / IPA source: `a569155d443433a5f4769dfe506fec6ab9bdd0e6`.
-- Dedicated CI run / job: `32987054824` / `98235720724` — success.
-- Artifact: `OnePlayer-0.14.31-build198-home-carousel-single-owner`, ID `9613342337`, digest `sha256:4597f6b9bcdd74a44441632f72c5c4b9127aab03e3dad7e38478c552cae773f3`.
-- IPA SHA-256: `9432928b31898c0c3f05e7e0affb6949c23339a37edd8f14c1d47343ff31f3d8`.
-- Durable Build198 product head after CI cleanup: `c769f2c4c05fffdb36e90d78d8baddec5e0e7c21`.
-- Target-device result on 2026-08-27: release/settle/reversal and the other tested behavior were okay, but the minimum/subtle drag remained visibly coarse and less delicate than EX.
-- Evidence: **Code written / CI passed / IPA produced + independently verified / real-device tested / rejected for final minimum smoothness / not stable**.
+- One UIKit interaction surface owns begin/move/end/cancel; SwiftUI renders `V3HomeCarouselTransitionState`.
+- Successful CI/IPA source: `a569155d443433a5f4769dfe506fec6ab9bdd0e6`; run/job `32987054824` / `98235720724`.
+- Durable base after CI cleanup: `c769f2c4c05fffdb36e90d78d8baddec5e0e7c21`.
+- Target-device result: release/settle/reversal and other tested behavior okay, but minimum/subtle drag still too coarse vs EX.
+- Conclusion: **single UIKit input ownership retained; full-width visual mapping not accepted as final smoothness.**
 
-Build198 therefore retains its **single UIKit lifecycle owner** as the input architecture but does not retain full-width foreground page translation as the current visual direction.
+Build200 evidence:
 
-Current Build200 evidence:
+- identity/source: `0.14.33 / 200`, `4d3afe36768b7749d9d0bd0081725f3d947b2099`.
+- visual delta: foreground offset fixed at zero; linear `1-progress / progress` blend; Build198 input owner/thresholds/settle unchanged.
+- CI run/job `32991758526` / `98250719262` succeeded through Release/app validation/MinOS/packaging/upload.
+- artifact ID `9614995121`; IPA SHA-256 `509395ca7fb847548110c22ec0a3f6b005e6b3f4521f911eb9b3f765ca6d1b1a`.
+- target-device result on 2026-08-27: **rejected regression** because foreground content became fixed and no longer slid horizontally.
+- Evidence: **Code written / CI passed / IPA produced+verified / real-device tested / rejected / not stable.**
+- Fully fixed foreground must not be restored as the default carousel behavior.
 
-- Identity: **0.14.33 / 200**.
-- Branch: `perf/home-carousel-ex-blend-build200`.
-- Base: Build198 durable head `c769f2c4c05fffdb36e90d78d8baddec5e0e7c21`.
-- Current CI source: `4d3afe36768b7749d9d0bd0081725f3d947b2099`.
-- Product/runtime delta from Build198 is only `Sources/Core/AppIdentity.swift` and `Sources/UI/EmbyHomeCarouselStateV3.swift`.
-- Foreground Logo/rating/year/type/overview no longer uses `progress × fullWidth` translation; its offset is fixed at zero.
-- Outgoing/incoming foreground opacity is driven by the existing single transition progress as `1-progress` / `progress`; backdrop was already progress-driven and is structurally unchanged.
-- `EmbyHomeCarouselInteractionV3.swift`, Hero/Core structure, 0.5pt axis acquisition, 0.28 commit threshold, 0.48×width predicted release gate, settle timing, vertical ScrollView arbitration, detail tap and auto-advance are unchanged.
-- Frozen Player/MPV/PiP/UnifiedTransport/Cache/Emby playback/session paths are untouched.
-- Evidence at this state capture: **Code written / scoped Build198→Build200 delta verified / CI trigger submitted / CI result pending / IPA pending / real-device pending / not stable**.
+Current Build201 evidence:
 
-Build200 exists specifically because EX forensic evidence showed the Hero remaining spatially stable while blend weight changes, and Build198 proved that correct single-owner page-slide still does not reach the user's minimum-motion target. If Build200 still feels coarse after real-device testing, do not add speculative smoothing; first attribute progress publication cadence, compositing cost or blend curve.
+- identity: **0.14.34 / 201**.
+- branch: `perf/home-carousel-short-travel-build201`.
+- tested source: `e61070146d91bac45400e3f95e28eead756faa81`.
+- runtime delta from Build198 remains scoped to `Sources/Core/AppIdentity.swift` and `Sources/UI/EmbyHomeCarouselStateV3.swift`; no Frozen/P0 runtime path touched.
+- foreground horizontal slide is restored, but total travel is `0.15 × Hero width`; foreground opacity is the same linear progress blend.
+- Build198 UIKit lifecycle owner, 0.5pt acquisition, 0.28 commit, 0.48×width release gate, settle, Hero/Core ownership, vertical ScrollView arbitration, tap and auto-advance remain unchanged.
+- first one-shot run `32992912212` stopped before compilation because the inherited contract script hard-coded Build198 version `0.14.31`; product code did not fail. The check was minimally corrected for Build201's actual version/travel/blend contract.
+- successful fixed-source run/job: **`32993286519` / `98255950676`** — source/Frozen guard, Xcode 16.4, icons, dependencies, Release build, app validation, MinOS, packaging and upload all succeeded.
+- artifact: `OnePlayer-0.14.34-build201-home-carousel-short-travel`, ID **`9615585817`**, digest `sha256:95dcc70016c72c3dcab2a918331ebb5c5e3a9d1348a4ac3139fbc647c3dea231`.
+- IPA SHA-256: `d889f2c36b3f617b429e4f39ba54d39d7f2826a058a2d4f874bc7a9bb574db58`; source ZIP SHA-256: `5f0392a2e472ed1e863c265a05a695ba1788b02c163f0c21e3117b0be002ea6e`.
+- independent verification: bundle `com.embyplayerlab.app`, version/build `0.14.34 / 201`, MinOS `15.0`, primary/alternate icons and artifact hashes all correct.
+- one-shot main helper was deleted after artifact capture; cleanup commit `a041d883dc153cc3b9be57dc4a8f4160ab779c02` changes only CI helper state.
+- Evidence: **Code written / CI passed / IPA produced+verified / real-device pending / not stable.**
 
-Do not infer Build200 acceptance from Build198's lifecycle success or from future CI/IPA production.
+Target-device next action is Build201 A/B against Build198/Build200/EX: confirm foreground clearly slides again and judge whether 15% travel makes tiny motion materially finer without losing directionality. Do not change the 15% factor before that evidence.
 
 ### Poster 3-column grid smoothness — Active independent task
 
@@ -154,7 +160,7 @@ Current Stage 1 evidence:
 - The existing shared grid is already `LazyVGrid`, so this task does not replace it with another lazy container.
 - Branch head `1ef1624285f7e125e2bfe5f9ca18f45bbff211ce` changes only `Sources/UI/EmbyPosterGrid.swift` plus `scripts/check_poster_grid_smoothness.py`.
 - The code moves the two identical, grid-owned Environment injections from every cell to the `LazyVGrid` ancestor. Grid geometry, cell content, load-ahead `onAppear`, native navigation ownership and image pipeline are otherwise unchanged.
-- Exact diff contains no Home-carousel Build198/Build200 runtime file and no Player/MPV/PiP/UnifiedTransport/Cache/Emby playback-session path.
+- Exact diff contains no Home-carousel Build198/Build200/Build201 runtime file and no Player/MPV/PiP/UnifiedTransport/Cache/Emby playback-session path.
 - Global `EmbyCachedRemoteImage` optimization is explicitly deferred because that shared component is also consumed by the active Home Hero line.
 - Evidence level is **Code written + scoped diff only**. CI/IPA/target-device A/B remain pending unless its own checkpoint records newer evidence.
 - No Build/version candidate was allocated at the time this parallel guard was established, avoiding `AppIdentity.swift` overlap with the carousel line.
@@ -163,4 +169,4 @@ Do not describe this Stage 1 source reduction as a real-device performance win u
 
 ## Current development direction
 
-Build199 / OnePlayer 0.14.32 remains the current real-device accepted overall `main` functional baseline. Current independent Active feature lines are Home-carousel Build200 and `DEV-poster-grid-smoothness`; each keeps its own checkpoint/branch/PR/evidence. Build200 must first complete CI/IPA and target-device A/B. If the carousel line is eventually accepted, its durable product diff must be resynced against then-current `main` in a separate integration step; old-base CI must not be treated as proof for materially changed merged source. The poster-grid task should remain grid-local while the carousel line is active and must not expand into the shared image loader without explicit dependency handling or new evidence. Protect all frozen playback/transport/cache/PiP/episode contracts throughout both lines.
+Build199 / OnePlayer 0.14.32 remains the current real-device accepted overall `main` functional baseline. Current independent Active feature lines are Home-carousel Build201 and `DEV-poster-grid-smoothness`; each keeps its own checkpoint/branch/PR/evidence. Build201 now has verified CI/IPA evidence and requires target-device A/B before any acceptance or integration. If the carousel line is accepted, its durable product diff must be resynced against then-current `main` in a separate integration step; old-base CI is not proof for materially changed merged source. The poster-grid task should remain grid-local while the carousel line is active and must not expand into the shared image loader without explicit dependency handling or new evidence. Protect all frozen playback/transport/cache/PiP/episode contracts throughout both lines.
