@@ -59,6 +59,11 @@ jobs:
           brew install xcodegen
           sudo gem install cocoapods -v 1.16.2 --no-document
 
+      - name: Prepare OnePlayer app icons
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+
       - name: Generate project and install dependencies
         run: |
           set -euo pipefail
