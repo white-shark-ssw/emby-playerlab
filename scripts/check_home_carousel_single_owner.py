@@ -8,7 +8,7 @@ identity = Path('Sources/Core/AppIdentity.swift').read_text()
 info = Path('Config/Info.plist').read_text()
 project = Path('project.yml').read_text()
 
-assert 'static let sourceVersion = "0.14.34"' in identity
+assert 'static let sourceVersion = "0.14.36"' in identity
 assert 'V3HomeCarouselTransitionState' in interaction
 assert '@State var carouselTransitionState = V3HomeCarouselTransitionState()' in core
 assert '@State var transitionProgress' not in core
@@ -51,13 +51,15 @@ assert 'autoAdvanceCarouselIfNeeded()' in core
 assert 'carouselForegroundOpacity' in state
 assert 'if itemID == fromID { return Double(1 - blend) }' in state
 assert 'if itemID == toID { return Double(blend) }' in state
-assert 'let travel = width * 0.15' in state
+assert 'let travel = width * 0.30' in state
 assert 'return -direction * progress * travel' in state
 assert 'return direction * (1 - progress) * travel' in state
-assert 'func carouselBackdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat { min(1, max(0, rawProgress)) }' in state
+assert 'let progress = min(1, max(0, rawProgress))' in state
+assert 'return progress * progress' in state
+assert 'let next = (index + direction + items.count) % items.count' in state
 assert '.blur(radius: 30)' in hero
 assert '<key>CADisableMinimumFrameDurationOnPhone</key>' in info
 assert '<true/>' in info.split('<key>CADisableMinimumFrameDurationOnPhone</key>', 1)[1][:80]
 assert 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' in project
 
-print('Build201 home carousel single-owner short-travel contracts passed')
+print('Build203 home carousel single-owner 30%-travel accelerated-blend contracts passed')
