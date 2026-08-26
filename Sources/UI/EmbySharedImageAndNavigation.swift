@@ -30,6 +30,11 @@ private final class EmbyCachedImageLoader: ObservableObject {
     private var currentURL: URL?
     private var task: Task<Void, Never>?
 
+    init(initialURL: URL? = nil) {
+        currentURL = initialURL
+        image = initialURL.flatMap { EmbyDecodedImageRenderPool.shared.image(for: $0) }
+    }
+
     private func setLoading(_ value: Bool, reportsLoadingState: Bool) {
         if !reportsLoadingState {
             if isLoading { isLoading = false }
@@ -292,7 +297,7 @@ struct EmbyCachedRemoteImage: View {
     let placeholderSystemImage: String
     let showsLoadingIndicator: Bool
     let onImageLoaded: ((UIImage) -> Void)?
-    @StateObject private var loader = EmbyCachedImageLoader()
+    @StateObject private var loader: EmbyCachedImageLoader
     @State private var reportedImageIdentifier: ObjectIdentifier?
 
     init(url: URL?, contentMode: ContentMode, placeholderSystemImage: String = "photo", showsLoadingIndicator: Bool = true, onImageLoaded: ((UIImage) -> Void)? = nil) {
@@ -301,9 +306,23 @@ struct EmbyCachedRemoteImage: View {
         self.placeholderSystemImage = placeholderSystemImage
         self.showsLoadingIndicator = showsLoadingIndicator
         self.onImageLoaded = onImageLoaded
+        _loader = StateObject(wrappedValue: EmbyCachedImageLoader(initialURL: onImageLoaded == nil ? url : nil))
     }
 
     var body: some View {
+        if let onImageLoaded {
+            imageBody.onReceive(loader.$image.compactMap { $0 }) { image in
+                let identifier = ObjectIdentifier(image)
+                guard reportedImageIdentifier != identifier else { return }
+                reportedImageIdentifier = identifier
+                onImageLoaded(image)
+            }
+        } else {
+            imageBody
+        }
+    }
+
+    private var imageBody: some View {
         ZStack {
             if let image = loader.image {
                 Image(uiImage: image).resizable().aspectRatio(contentMode: contentMode)
@@ -318,13 +337,6 @@ struct EmbyCachedRemoteImage: View {
         .onChange(of: url) {
             if onImageLoaded != nil { reportedImageIdentifier = nil }
             loader.load($0, reportsLoadingState: showsLoadingIndicator)
-        }
-        .onReceive(loader.$image.compactMap { $0 }) { image in
-            guard let onImageLoaded else { return }
-            let identifier = ObjectIdentifier(image)
-            guard reportedImageIdentifier != identifier else { return }
-            reportedImageIdentifier = identifier
-            onImageLoaded(image)
         }
     }
 }
