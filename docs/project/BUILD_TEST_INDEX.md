@@ -31,7 +31,7 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build203 / 0.14.36** | 30% carousel travel + accelerating opacity | CI/IPA verified. Target-device: 30% still too short overall while raw-progress spatial mapping makes the initial displacement/jitter perceptible again. Rejected as final parameterization; input owner retained. |
 | **Build204 / 0.14.37** | Poster warm-cache cell-entry reduction | **Owned by poster-scroll.** CI/IPA passed; target-device tested on Home and library 3×3 and rejected because visible stop/catch-up hitching remains. A separately-created carousel Build204 package was retired because this identity was already occupied and must not be used for attribution. |
 | **Build205 / 0.14.38** | 80% carousel travel + whole-range `progress²` visual mapping | CI/IPA verified; target-device rejected the curve as final: drag start is over-restrained and the whole-range nonlinear tail feels like unnatural easing. 80% travel and single UIKit input owner are retained. |
-| **Build206 / 0.14.39** | Poster-scroll hitch diagnostics | **Owned by the independent poster task.** Diagnostic-only shared `CADisplayLink` logs ≥30 ms display gaps plus nearest poster-cell/image/load-ahead event; CI/IPA produced+verified, real-device log capture pending. Carousel must not use this identity. |
+| **Build206 / 0.14.39** | Poster-scroll hitch diagnostics | **Owned by the independent poster task.** CI/IPA verified and target-device App-log captured: 17 diagnostic gaps (row 7, grid 10; grid max 118.7 ms), all with `load_ahead=none`; 8/10 grid records were >1 s after both latest cell appearance and image commit. This narrows away immediate cell/image/load-ahead as a universal trigger, but the detector is not active-scroll/motion gated, so the capture does not prove every gap is a scrolling stall. Diagnostic-only; not stable. |
 | **Build207 / 0.14.40** | 80% carousel travel + soft-start / linear-tail visual mapping | **Current carousel candidate.** Replaces whole-range `progress²` with `progress * (1 - 0.60 * (1-progress)^6)` for opacity + spatial progress while raw gesture/commit/release stay unchanged. CI/IPA passed and independently verified; real-device pending. |
 
 ## Current accepted baseline
@@ -167,7 +167,7 @@ A carousel package was briefly produced as `0.14.37 / Build204` with the intende
 - conclusion: no-op image-subscriber removal and warm-cache first-body seeding are retained source reductions but are **not** sufficient to explain/fix the cross-page hitch.
 - evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device tested / smoothness rejected / not stable.**
 
-### Build206 — current poster diagnostic candidate
+### Build206 — target-device diagnostic capture obtained
 
 - identity: **0.14.39 / 206**; poster-scroll owns this identity.
 - exact diagnostic source: **`351c62694ac25404c2bd4eb36a03314dd58ffed2`**.
@@ -179,7 +179,11 @@ A carousel package was briefly produced as `0.14.37 / Build204` with the intende
 - independently downloaded IPA SHA-256: **`ee981133777c316305c4890aaa1a99b8906792783cad1496d880bf786611e18c`**.
 - source ZIP SHA-256: **`68fcde68a4fbf157bfe50a3ae5957e67e6664c461c067132d8d33f73553239ab`**.
 - independent package validation: ZIP integrity OK; `** BUILD SUCCEEDED **`; bundle `com.embyplayerlab.app`; OnePlayer **0.14.39 (206)**; `MinimumOSVersion=15.0`; MinOS audit OK.
-- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic capture pending / not stable.**
+- target-device App log `OnePlayer-App-1787770662.log` contains **17** `PosterScrollHitch` records: row 7 / grid 10. Row median/max gap **47.1 / 88.3 ms**; grid median/max **55.85 / 118.7 ms**.
+- **17/17** records have `load_ahead=none`; **8/10 grid** records happened >1 s after both the most recent recorded cell appearance and image commit; grid has 0/10 image commits within 20 ms. Two Home-row records happened ~10.5/9.4 ms after image commit, so image commit may contribute locally but is not a universal cross-page trigger.
+- the exported playback-log file was empty, but the shared App log contains the intended poster diagnostic records, so the diagnostic capture itself succeeded.
+- exact-source limitation: `CADisplayLink` runs whenever posters are visible and records no actual vertical offset/delta, drag/deceleration state or velocity. Therefore these ≥30 ms callback gaps cannot all be classified as proven user-visible scrolling stalls; motion-aware correlation is required before another performance-source change.
+- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device diagnostic capture ✅ / root-cause attribution incomplete / not stable.**
 
 ## Accepted foundation evidence
 
