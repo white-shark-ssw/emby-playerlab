@@ -1,4 +1,5 @@
 name: One-shot Build202 Poster Scroll Smoothness IPA
+# Registered one-shot helper; this update triggers the existing workflow without changing Build202 source.
 
 on:
   push:
