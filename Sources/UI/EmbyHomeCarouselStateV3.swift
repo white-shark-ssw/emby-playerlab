@@ -174,7 +174,12 @@ extension V3EmbyHomeView {
     }
 
     func carouselForegroundOpacity(for itemID: String) -> Double {
-        if let fromID = transitionFromID, let toID = transitionToID { return itemID == fromID || itemID == toID ? 1 : 0 }
+        if let fromID = transitionFromID, let toID = transitionToID {
+            let blend = carouselBackdropBlendProgress(transitionProgress)
+            if itemID == fromID { return Double(1 - blend) }
+            if itemID == toID { return Double(blend) }
+            return 0
+        }
         return itemID == currentCarouselItemID ? 1 : 0
     }
 
@@ -184,8 +189,9 @@ extension V3EmbyHomeView {
         guard let fromID = transitionFromID, let toID = transitionToID else { return 0 }
         let direction = CGFloat(transitionDirection)
         let progress = min(1, max(0, transitionProgress))
-        if itemID == fromID { return -direction * progress * width }
-        if itemID == toID { return direction * (1 - progress) * width }
+        let travel = width * 0.15
+        if itemID == fromID { return -direction * progress * travel }
+        if itemID == toID { return direction * (1 - progress) * travel }
         return 0
     }
 
