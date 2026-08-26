@@ -2,124 +2,157 @@
 
 ## Status
 
-**Active**
+**Active — handoff ready**
 
 - **Work ID**：`DEV-home-carousel-drag-smoothness`
 - **Routing aliases / keywords**：轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
-- **Task**：优化 OnePlayer 首页 V3 轮播图手动横向拖动，目标达到用户 EX 参考录屏同级别的丝滑、细腻和跟手，不出现起滑大跳、不跟手、卡顿、抖动、冻结后追帧或反向切换断点。
-- **Acceptance**：手指轻微移动必须立即有细腻连续反馈；持续慢拖、快速拖、左右反向穿越中心必须连续；Logo、评分、年份、类型、剧情简介等前景内容必须继续作为轮播页内容随页面横向平移；松手吸附自然；不得破坏首页纵向滚动、自动轮播、详情点击、媒体行或播放器/P0 合同。
-- **Accepted integration baseline**：当前真实 accepted runtime baseline 已推进到 **OnePlayer 0.14.17 / Build184** 并在 `main`。后续 carousel 包必须从当前 accepted `main` 集成，不能再用旧 carousel 分支整体状态替代 accepted Build184。
+- **Task**：优化 OnePlayer 首页 V3 轮播图手动横向拖动，目标达到用户 EX 参考录屏同级别的丝滑、细腻和跟手，不出现起滑大跳、不跟手、卡顿、抖动、冻结后追帧或松手停在中间态。
+- **Handoff time**：2026-08-26 22:05 +08:00。
+- **User handoff instruction**：当前会话停止继续构建/修改；新会话从本文档接手。后续不要猜、不要重复无效 CI；先定位 Build198 post-build validation 的真实失败原因，直到生成并校验 IPA 后再发给用户。
 
-## Real-device evidence trail
+## Acceptance contract
 
-- **Build179**：Code written / CI passed / IPA produced / **real-device rejected**。轻微拖动仍有死区，反向穿越中心会卡住后大跳。
-- **Build180 implementation**：`DragGesture.minimumDistance = 0`；移除 4pt gate；横向 dominance 只用于第一次进入拖动，建立横向拖动后反向穿越中心不断流；移除 backdrop 前 8% delayed blend；保留单一 `V3HomeCarouselTransitionState` owner/local scope 与原 commit/cancel/auto-advance/blur 合同。
-- **Build180 real-device result — PARTIAL / FAILED**：用户确认按住不松手左右反向已不再卡住，说明方向反转状态机修正有效；但起滑第一段位移仍明显过大，整体仍不够细腻丝滑，与 EX 有明显差距，因此不可接受/冻结。
-- **Build183 experiment**：为验证“空间位移是否是粗糙感来源”，曾将 foreground full-width travel 改为 linear crossfade、`carouselForegroundOffset = 0`。CI/IPA 成功。
-- **Build183 real-device result — PARTIAL FEEL IMPROVEMENT / INTERACTION REGRESSION / REJECTED**：用户明确反馈手感“好像比之前细腻了一些”，但同时指出 Logo、评分、年份、类型、剧情简介被固定在屏幕上，原本已经确定的“随轮播页一起横向切换”交互被未经允许改变。Build183 因交互回归不能作为正式方向。
-- **Evidence correction after Build183**：用户最新真机交互要求优先。foreground 横向平移是既定交互合同，不能为了表面更顺而擅自取消。只有传统平移方案被证据证明无法达到可接受丝滑度时，用户才允许 Build183 类 foreground 固定/crossfade 作为最终兜底。
+1. 手指极小横向移动必须立即、细腻、连续反馈；不得先积累一段位移后突然追上。
+2. 慢拖、快速拖、按住左右反向穿越中心必须连续。
+3. Logo、评分、年份、类型、剧情简介属于对应轮播页，默认必须继续随页面整体横向平移。
+4. 松手必须可靠 complete 或 cancel，绝不能冻结在两页中间。
+5. Hero 区纵向滑动必须继续交给首页 `ScrollView`；详情点击正常；自动轮播正常。
+6. 不得影响 Player / MPV / PiP / Transport / Cache / Emby Session / STRM→302→115/CDN client-direct 等 P0/Frozen 合同。
+7. Build183 类“前景固定 + interactive crossfade”只有在正确的 page-slide 基础框架真机稳定后仍无法达到可接受细腻度时，才是用户明确允许的最终 fallback；不得未经允许提前改交互。
 
-## Build185 implementation and result
+## Current accepted / parallel identities
 
-- **Implementation**：Build185 从 Build180 clean carousel line 继续，恢复并锁定原 foreground slide contract；保留 `DragGesture(minimumDistance: 0)`；新增非渲染态 `V3HomeCarouselDragAxis / dragAxis`，第一次有效位移达到 **0.5pt** 时按 `abs(horizontal) >= abs(vertical)` 一次性锁定 horizontal / vertical。horizontal 锁定后使用原始 `translation.width` 连续驱动 progress，左右反向穿越中心不断流；vertical 锁定后整次触摸不让 carousel 接管，保护首页纵向 ScrollView。没有 debounce、throttle、插值、累计补偿、timer、watchdog、retry 或 fallback。
-- **Established slide contract**：`carouselForegroundOpacity` 在 transition 中保持 from/to 均可见；`carouselForegroundOffset` 使用原 Build180 公式：from = `-direction * progress * width`，to = `direction * (1 - progress) * width`。Logo/评分/年份/类型/剧情简介继续与所属轮播页一起平移。
-- **Unchanged**：artwork/backdrop raw blend、commit threshold `0.28`、predicted threshold `0.48 × width`、0.22/0.18s complete/cancel settle、6s auto-advance、0.62s auto transition、详情点击、persistent `.blur(radius: 30)`、首页纵向滚动、Build179 local state owner/scope 均未改变。
-- **Working branch**：`perf/home-carousel-drag-smoothness-build185`；PR = none。
-- **Build identity**：OnePlayer **0.14.18 / Build185**。
-- **Dedicated CI source / run**：`79f74d438ed8eade5061d6f9b76df4ebdd66a344`；run **`32853247583` success**。
-- **Artifact**：`OnePlayer-0.14.18-build185-home-carousel-axis-acquisition`；artifact ID `9565234614`；IPA SHA-256 `1f7ec2f6d09540b344ad10c36c438c4626bf40be3985d01b0d1b3404818e9b24`；MinOS 15.0。
-- **Build185 real-device result — FAILED acceptance**：用户 2026-08-25 在 iPhone 15 Pro Max / iOS 17.0 提供两段对照录屏，第一段 `RPReplay_Final1787665181.mp4` 为 OnePlayer，第二段 `RPReplay_Final1787665268.mp4` 为 EX。用户明确报告：1）从手指按住到轮播第一次开始移动，OnePlayer 仍总有一段明显偏长的首段位移；2）持续拖动整体仍不及 EX 丝滑、细腻，体感近似“OnePlayer 像 60Hz、EX 像 120Hz”。因此 Build185 不接受、不稳定。
-- **New recording format**：两段均为 510×1108 / 30 fps；OP 186 帧 / 6.20s，EX 193 帧 / 6.43s；视频时间轴本身稳定 30fps，不能仅凭录屏宣称真实 UI 就是 60Hz 或 120Hz。
-- **Quantified first-motion evidence**：跟踪前景文字/元信息横向位置，OP 三次起滑第一帧可见位移约 **10px / 12px / 16px**；EX 三次约 **1px / 1px / 2px**。OP 第一段手势里，录屏触摸圆点已先横移约 **8px**，前景连续两帧仍保持原位，随后直接跳约 10px；支持“输入先动、视觉接管后追累计 translation”的现象。
-- **Quantified drag granularity**：OP 非零逐帧前景位移中位数约 **3px**、P75 约 **4px**；EX 中位数约 **1px**、P75 约 **2px**。该数据与用户“EX 更细腻”的体感一致，但 30fps 录屏不能单独用于推断真实 display refresh rate。
-- **ProMotion configuration evidence**：Build185 `Config/Info.plist` 已存在 `CADisableMinimumFrameDurationOnPhone = true`；仓库已有 `DisplayRefreshRateMonitor`，其 `CADisplayLink` 目标使用 `UIScreen.main.maximumFramesPerSecond`。目前没有证据表明 OnePlayer 只是漏开 >60Hz ProMotion 配置。
-- **Source evidence after Build185**：第一次真正进入 horizontal transition 时会依次修改 `fromID / toID / progress / direction` 多个独立 `@Published` 字段，并先写一次 `progress = 0`，同一回调末尾再写真实 `progress`；该结构可能制造首次 transition invalidation，但不能仅凭源码区分 gesture delivery 延迟与 render/compositing 延迟。
+- **Accepted overall runtime baseline**：OnePlayer **0.14.28 / Build195**。
+- `main` current head at handoff：`3c0782c93c37bedf4193a76648c9c7ecff91a9e3`；Build195 PR #258 已合并，玩家大选集 LazyHStack/SeasonId 分组已真机接受。
+- Parallel Active task：`DEV-add-emby-page-optimization`，working branch `feat/add-emby-page-optimization`，**Build197 / 0.14.30 已由该任务占用**。不要复用 Build197。
+- Carousel current candidate：**OnePlayer 0.14.31 / Build198**。
+- Carousel working branch：`perf/home-carousel-single-owner-build198`。
+- PR：none。
+- Branch head at handoff：**`2a3cec5f3d004db0617aa5a1c3417701a96d5140`**。
+- Resume identity guard result at handoff：Build198 branch head 与 CI source 一致；branch 相对 `main@3c0782c9...` ahead 11 / behind 0。
 
-## Build186 diagnostic candidate
+## Why the architecture changed
 
-- **Direction**：不再做 0.2pt/0.1pt 等阈值微调，也不改变既定 full-page foreground slide。Build186 从当前 accepted Build184 `main` 集成 Build185 carousel owner/0pt/axis/reversal/raw-progress 合同，并仅新增被动 drag cadence 诊断。
-- **Branch**：`perf/home-carousel-drag-cadence-build186`；PR = none。
-- **Build identity**：**OnePlayer 0.14.19 / Build186**。
-- **Accepted base**：`main@dcd6cc6d01319e13ccb991967a190ae1f915053b`，继承 Build184 已接受的 detail performance/cache/visual hierarchy。
-- **Product head before temporary CI helper**：`22434e79ca8476af326a3427d16fc0390c98e94d`。
-- **Dedicated CI source / run**：`80d7b8b503d10bd8d10d62714afa9557a5988ab4`；run **`32858062142` success**。
-- **Workflow-restored branch head**：`2ba1ad1f1d9e05b0fe8075226de3695a7b2a2b71`。
-- **CI coverage**：Build185 carousel contracts、accepted Build184 integration、detail performance/visual hierarchy、series ordering、ProMotion opt-in、Xcode 16.4 Release device build、0.14.19 (186) identity、MinOS 15.0、IPA packaging/upload 全部通过。
-- **Diagnostic behavior**：每次拖动记录首个 `onChanged` translation、axis lock translation、transition start translation、样本数、持续时间、平均 callback Hz、最大 callback gap、`UIScreen.main.maximumFramesPerSecond` 与 Low Power Mode 状态；拖动过程中不逐帧写日志，只在结束时写一条 `HomeCarouselDragTiming`，避免 logging 本身干扰手感。
-- **Artifact**：`OnePlayer-0.14.19-build186-home-carousel-drag-timing`；artifact ID **`9567101523`**；artifact digest `sha256:9df143abb6935702e55516ce9ba042220080142c7dfb304b9e53d36548c4f3c7`。
-- **IPA**：`OnePlayer-0.14.19-build186-home-carousel-drag-timing-unsigned.ipa`；下载后二次 SHA-256 = **`08cdf0398e024f8cc64dd75b2e6dfecab2b26833807feb810e280034b345f780`**，与 artifact 内校验文件一致。
-- **Source ZIP SHA-256**：`47c9b3c1c0870e3c0be7615efc850f8ec32093ff8d653070339cb541c71b1ae2`，下载后二次校验一致。
-- **Decision gate**：如果首个 `onChanged` 本身约 8–15pt，优先处理 SwiftUI DragGesture / vertical ScrollView 首次 delivery/arbitration；如果首样本约 0–1pt 且 callback cadence 足够高，但视觉仍晚/粗，则优先处理 transition state 原子提交和 Hero/persistent backdrop SwiftUI invalidation/compositing；只有 cadence 足够而画面仍低粒度，才进入两张 full-screen `.blur(radius: 30)` layer 的 GPU/compositing 检查。
+### Build185 / Build187 — pure SwiftUI input is too coarse at drag start
 
-## Frozen / inherited boundaries
+- Build185 restored the required full-page foreground slide and removed old 4pt/1.08 start gates, but target-device recordings still showed first visible page movement around **10 / 12 / 16 px** versus EX around **1 / 1 / 2 px**.
+- Build187 real-device diagnostics proved the source of the initial quantization: SwiftUI reported an initial `0,0`, but the first useful horizontal/axis-lock/transition samples were already approximately **4.33pt / 8.00pt / 15.67pt / 11.00pt**.
+- Same device logs confirmed `UIScreen.main.maximumFramesPerSecond = 120` and Low Power Mode off. Therefore continued 0.5/0.2/0.1pt threshold tuning is not evidence-supported; SwiftUI `DragGesture` in the vertical `ScrollView` path is not delivering sufficiently fine first horizontal samples.
 
-- Build176 player episode-selection/session replacement、Build178 canonical episode ordering、Build173 PiP、MPV fast Seek、UnifiedTransport、Range/302/115 客户端直连、Session cache、Cache UI、Emby progress/Resume、native navigation 均不得因本任务变化。
-- Build184 已接受的详情页性能/视觉改动属于当前 overall accepted runtime；Build186 已从当前 accepted `main` 集成，不再从旧 Build180/185 branch 整体状态出包。
-- **Fallback policy explicitly allowed by user**：只有在保留既定容器平移交互继续验证后，若证据证明实在无法达到可接受丝滑度，才允许回到 Build183 类“foreground 固定、轮播主体 crossfade”的交互作为最终兜底。
-- **Rejected / do-not-repeat**：不要恢复 4/12pt 起拖门槛；不要恢复 `1.08` 初始优势门槛；不要在已建立 horizontal drag 后重新进入中心方向 gate；不要用 debounce/throttle/补间动画掩盖跟手问题；不要擅自取消 foreground page travel；不要复用其他 Active task 的 Build 编号；不要为首页轮播修改 Player/Transport/Cache。
+### Build189 / Build193 — hybrid move/end ownership is invalid
 
-## Validation state
+- Build189 used native raw/coalesced movement while SwiftUI still owned release. Target device could drag to partial progress but release could leave the carousel frozen between pages.
+- Build193 tried making the native sampler passive and leaving SwiftUI as the sole release owner. Target device reproduced the same freeze.
+- Source layout showed movement and release lived on different input/hit-test surfaces: native interactive overlay above Hero + underlying SwiftUI gesture. This hybrid architecture is rejected. Do not patch it with timer/watchdog/reconciliation/fallback.
+- Build193 playback-log follow-up was inconclusive because Playback logging was disabled; absence of `HomeCarouselDragTiming` is not evidence for or against SwiftUI `onEnded`. Do not ask user to repeat Build193 just for that log.
 
-- Build179 = real-device rejected.
-- Build180 = real-device partial improvement but rejected.
-- Build183 = real-device feel somewhat finer but interaction regression, rejected.
-- Build185 = **Code written / CI passed / IPA produced / real-device tested and rejected / not stable**.
-- Build186 = **Code written / CI passed / IPA produced / not distributed for diagnosis / not stable**.
-- Build187 = **Code written / CI passed / IPA produced / real-device tested / diagnostic gate confirmed / not stable**.
-- Build189 = **Code written / CI passed / IPA produced / real-device pending / not stable**.
+### EX forensic evidence
 
+Repeated frame/template review of the EX reference recording shows outgoing/incoming Hero content is effectively **spatially fixed** during transitions (matched title regions ≈0 px horizontal shift; background ≈0–1 px) while blend weight changes continuously. In a slow transition the estimated blend increment is about **1% per 30fps recorded frame median**. Mapping the same normalized 1% progress to OnePlayer's ~510pt full-width slide produces about **5pt spatial movement**, explaining why the same input granularity looks much harsher under page translation.
 
-## Build187 final diagnostic package
+This explains why Build183 fixed/crossfade felt somewhat finer, but the user rejected its unauthorized interaction change. Current order remains: first prove a correct single-owner page-slide; only if that stable implementation still cannot approach EX feel may the user-authorized fixed-spatial interactive blend be adopted as fallback.
 
-- Build186 CI/IPA succeeded but was not distributed after confirming `HomeCarouselDragTiming` generic logging would not be included in the existing playback-log export.
-- Build187 / OnePlayer 0.14.20 keeps Build186/Build185 drag behavior unchanged and routes only that summary through `DiagnosticsLogger.shared.playback(...)`.
-- branch `perf/home-carousel-drag-cadence-build187`; CI source `6d562b2f5cf76be41cb0e763c8f3c50c4f0d724f`; restored head `468986492f639959f7f31129dadf5b49e781d37f`; run `32860057516` success.
-- artifact `9567940931`; IPA SHA-256 `5fa04513919b5e2928ee2ca09cf45dddc79c91d64858971f571b423dbb2d50f8`; source ZIP SHA-256 `70ef0df0ef48c9be558674cfd892a39e9836780602992e482f2f0d806d24d40a`; MinOS 15.0.
-- validation: **Code written / CI passed / IPA produced / real-device tested / diagnostic gate confirmed / not stable**.
-- **Build187 real-device result — DIAGNOSIS CONFIRMED**：iPhone 15 Pro Max / iOS 17.0 真机导出日志显示每次触摸先出现 `first=0.00,0.00`，但第一次真正可用的 horizontal / axis-lock / transition 位移已经分别约为 **4.33pt / 8.00pt / 15.67pt / 11.00pt**；`lock` 与 `transition` 位移相同，说明 carousel 第一次能够建立横向 transition 时，手指位移已经累计了数点到十余点。日志同时确认 `maximumFramesPerSecond=120`、Low Power Mode = false。
-- **Build187 conclusion**：0.5pt 阈值没有机会成为实际首段响应粒度；当前纵向 `ScrollView` 场景下 SwiftUI `DragGesture` 没有向 carousel 提供 0.5/1/2pt 级别的有效首段横向样本。停止继续做 0.2pt/0.1pt 等阈值微调，后续只针对输入采样层做最小替换。
+## Build198 Stage 1 — single UIKit lifecycle owner
 
-## Build188 identity collision / Build189 native-touch candidate
+### Goal
 
-- **Identity guard**：并行 Active `DEV-detail-episode-selection-navigation` 已正式占用 **OnePlayer 0.14.21 / Build188**，并已有独立成功 CI/IPA。因此此前 carousel native-touch 的 0.14.21 / Build188 包发生 Build 身份冲突，**不得分发、不得用于真机或日志归因**；其产品逻辑虽通过 CI，但该身份作废。
-- **Valid carousel identity**：carousel native-touch 候选顺延为唯一的 **OnePlayer 0.14.22 / Build189**；GitHub 搜索及并行 checkpoint 核对时 Build189 未被其他 Active task 占用。
-- **Architecture**：只替换手动拖动的输入采样层。新增 UIKit `UIGestureRecognizer` 从 `touchesMoved` 读取 `event.coalescedTouches(for:)`，第一次约 0.5pt 有效向量锁定横向/纵向；横向仍按 `abs(translation) / width` 一对一驱动既有 transition progress。recognizer 不 cancel/delay touches，并允许与纵向 ScrollView simultaneous recognition。
-- **Release semantics unchanged**：原 SwiftUI `DragGesture(minimumDistance: 0)` 保留，继续使用原 `predictedEndTranslation.width`、0.28 progress / 0.48×width predicted commit 门槛以及原 complete/cancel settle；Logo、评分、年份、类型、剧情简介继续与所属轮播页整页横向平移。没有 debounce、throttle、插值、累计补偿、timer、watchdog、retry 或 fallback。
-- **Branch**：`perf/home-carousel-native-touch-build189-from187`；PR = none。
-- **Build identity**：**OnePlayer 0.14.22 / Build189**。
-- **Product head before temporary CI helper**：`36bfd4c1600add86dccc0f9917eea28dc39173f4`。
-- **Dedicated CI source / run**：`7ddb4453abdf671c936a7f42d72fb837d943cc73`；run **`32868634314` success**。
-- **Workflow-restored branch head**：`c3b122f6f2934dc5c32c67e0fcae392a5c13cd14`。
-- **Artifact**：`OnePlayer-0.14.22-build189-home-carousel-native-touch`；artifact ID **`9571260479`**；artifact digest `sha256:e33fdc0b4b185b3062e43ee3e506ff40399a8dbee8872c5344a1b7a4a9b65726`。
-- **IPA**：`OnePlayer-0.14.22-build189-home-carousel-native-touch-unsigned.ipa`；下载后二次 SHA-256 = **`50c74bd43935a31ca3dda781c04a1113c2ce616c7da9e24e438cba78988c3a6d`**，与 artifact 内 `.sha256` 一致。Source ZIP SHA-256 = **`ae7b226aa20063700f3a0964714b2a89fe5e7c0eee4bf8b5cae371e432c791e4`**。
-- **CI coverage**：native/coalesced touch、simultaneous ScrollView、原 page-slide/predicted release commit、Build183 fixed-foreground 拒绝合同、ProMotion opt-in、Build184 detail 与 P0/Frozen zero-diff、Xcode 16.4 Release、0.14.22 (189) identity、MinOS 15.0、IPA packaging/upload 均通过。
-- **Evidence**：**Code written / CI passed / IPA produced / real-device pending / not stable**。
-- **Next exact action**：安装 Build189，在 iPhone 15 Pro Max / iOS 17.0 重点验证极小起滑、慢短拖、正常/快速拖、按住左右反向穿越中心、Hero 区纵向滚动和详情点击。核心判据是第一段可见位移是否从“累计 4–16pt 后才动”变为立即、细粒度跟手。
+Stage 1 changes **only gesture lifecycle ownership**. Do not combine this with transition-state atomization, blur/compositing changes, predicted-touch rendering, interpolation/smoothing, crossfade, timer, watchdog, debounce, throttle, retry or fallback.
 
+Target structure:
 
-## Build189 real-device release regression / Build193 candidate
+`one UIKit interaction surface → one complete begin/move/end/cancel owner → existing carousel transition state → SwiftUI render only`
 
-- **Build189 real-device result — REJECTED**：用户安装 0.14.22 / Build189 后提供 `RPReplay_Final1787675510.mp4`（510×1108 / 30 fps / 9.07 s），明确报告“不能完整切换，滑到哪里就定格在那里”。录屏多次显示手动 progress 能随拖动到中间位置，但松手后没有 complete/cancel settle，页面停在两页之间。
-- **Source evidence**：Build189 native recognizer 横向采样时进入 `.began/.changed`，而 complete/cancel 的唯一入口仍是 SwiftUI `carouselDragGesture(...).onEnded`，形成结束所有权竞争。
-- **Build193 architecture**：native raw/coalesced sampler 保留，但横向时保持 passive；`canPrevent` / `canBePrevented` 均为 false，touch end/cancel 只令 sampler `.failed`。SwiftUI `DragGesture` 删除全部 per-frame `onChanged` progress 写入，只保留原 `onEnded`、`predictedEndTranslation`、0.28 / 0.48×width commit 与原 complete/cancel。移动 progress 单 owner = native；release settle 单 owner = SwiftUI。
-- **Identity guard**：carousel Build190 与 Build191 均因并行 detail 任务占用相同 Build 身份而作废；Build192 已由 Add/Edit Emby 任务正式预留。carousel 本轮唯一有效身份为 **OnePlayer 0.14.26 / Build193**。
-- **Build / branch**：OnePlayer **0.14.26 / Build193**；`fix/home-carousel-native-release-build193`。
-- **Product head before dedicated CI helper**：`2e162dcfaea98bc8c8d916c843498671bba0396e`。
-- **CI source / run**：`441d147628d2ad8ea9eee9224ed2baa2a76a7668`；run **`32876508226` success**；Release workflow restored at `42eeb10439ecc1d02576082875c055e830f059c5`。
-- **Artifact**：`OnePlayer-0.14.26-build193-home-carousel-native-release`；ID `9574238654`；digest `sha256:b7d0d27f39de3e932ae05a8abdf9bd13f0b5e1efa6f983f3f7cbd974e467b8a6`。IPA SHA-256 **`9ad6bc7bb267a6cc61fb2312a7276d41f8989aa11a7883cbc3f3ce97941081a4`**；source ZIP SHA-256 `68e11e59daeaf4b245bba1949bb5d8c0825552baf7c97d280546880f5c19b860`；MinOS 15.0。
-- **Evidence**：Build189 = **real-device rejected / not stable**；Build193 = **Code written / CI passed / IPA produced / real-device pending / not stable**。
-- **Next exact action**：真机先验证松手必定完整 commit/cancel，再重新比较极小起滑、慢拖、连续反向与 EX 的细腻度。
+### Implemented behavior
 
+- New `Sources/UI/EmbyHomeCarouselInteractionV3.swift` provides the native carousel interaction layer/custom continuous recognizer.
+- Hero no longer relies on a separate SwiftUI drag lifecycle for manual carousel movement/release. The native interaction surface owns the horizontal gesture from begin through move to end/cancel.
+- The same interaction surface coordinates detail tap and horizontal drag; do not reintroduce overlapping native-move + SwiftUI-end ownership.
+- First meaningful raw motion uses approximately **0.5pt** only to determine direction. Vertical determination fails the carousel recognizer so the ancestor homepage `UIScrollView` remains authoritative; horizontal determination begins the carousel gesture and owns it through release.
+- Build193-style unconditional simultaneous recognition is not the intended model. Horizontal carousel recognition and vertical ScrollView arbitration are explicit.
+- Rendering publishes only the **latest actual touch position once per UIEvent**. Do not loop historical `coalescedTouches` and publish multiple SwiftUI progress values in one event.
+- Predicted touch information is not used to render ahead of the finger. It is retained only for release prediction/commit semantics so the existing fast-flick behavior can remain equivalent without inventing an arbitrary velocity magic number.
+- Existing commit/cancel semantics remain: progress threshold **0.28**, predicted-distance gate corresponding to **0.48 × width**, existing complete/cancel settle durations, auto-advance and artwork/backdrop behavior.
+- Foreground page-slide contract remains unchanged: from/to Logo/rating/year/type/overview travel with their page; no Build183 fixed foreground/crossfade in Stage 1.
+- High-frequency carousel transition ownership remains local to `V3HomeCarouselTransitionState`; do not move per-finger progress/from/to/drag state back to Home root.
 
-## Build193 real-device result — FAILED release lifecycle
+### Build198 diff against accepted main
 
-- User supplied `RPReplay_Final1787679194.mp4` from the target device and reported Build193 is still completely broken in the same way as the previous native-touch package: drag progress follows the finger, but lifting the finger can leave the carousel permanently frozen at the partial transition.
-- Recording metadata checked locally: **510×1108 / 30 fps / 231 frames / 7.70 s**. The recording shows repeated intermediate-page holds after the touch indicator disappears rather than a complete/cancel settle.
-- Build193 source confirms movement and release still live in two different input surfaces: `V3HomeCarouselNativeDragCapture` is an interactive `.overlay` around the Hero scope and writes progress from raw/coalesced UIKit touches, while `carouselDragGesture(width:)` is attached inside `immersiveCarouselHero` and contains only SwiftUI `.onEnded`.
-- Apple UIKit gesture documentation states a gesture recognizer observes touches hit-tested to its attached view and that view's subviews. The Build193 native capture is layered above the Hero gesture surface, so assuming the underlying SwiftUI gesture will reliably receive the same release sequence is not evidence-supported.
-- **Decision:** Build193 = Code written / CI passed / IPA produced / **real-device rejected** / not stable. Do not allocate Build194 or patch with fallback/timer/watchdog. First prove a single complete begin/move/end/cancel owner and preserve the established full-page foreground slide semantics.
-- **Build193 playback-log follow-up:** user exported `OnePlayer-App-1787680075.log`; it contains only App lifecycle entries. A second attempt found the Playback log empty. `DiagnosticsLogger.playback(...)` drops events when the Playback channel is disabled, so absence of `HomeCarouselDragTiming` is **not evidence** for or against SwiftUI `onEnded`. Do not ask the user to repeat Build193 solely for this log.
-- **EX forensic review (three transition windows):** repeated frame/template comparison shows the outgoing and incoming Hero remain spatially fixed while blending. In the first two transitions, matched outgoing and incoming title regions stay at **0 px horizontal shift** throughout all high-correlation frames; the background remains within about **0–1 px**. The first slow transition changes estimated blend progress by roughly **1% per 33 ms frame median** before settle. Mapping that same 1% progress to OnePlayer's 510 pt full-width slide would create about **5 pt of visible movement per recorded frame**, explaining why identical input granularity is perceptually much harsher for page translation than for opacity blend. This strengthens the existing Build183 fallback rationale but does not authorize changing the established page-slide contract yet.
-- **Framework decision before next Build:** reject the Build189/193 hybrid input architecture. The next implementation must use **one UIKit interaction surface and one complete horizontal drag lifecycle owner (begin/move/end/cancel)**. SwiftUI must not separately own drag/end. The same surface must explicitly coordinate horizontal drag, vertical ScrollView release, and detail tap. Coalesced touches may inform cadence/velocity diagnostics but must not publish multiple historical progress values in one UIEvent; rendering receives only the latest actual position once per event. Preserve the existing full-page foreground slide and existing settle durations in this first stage.
-- **Staged attribution rule:** Stage 1 changes only gesture lifecycle ownership. Do **not** simultaneously rewrite the four transition fields into an atomic snapshot, change blur/compositing, add predicted-touch rendering, timers, watchdogs, interpolation or crossfade. Only after Stage 1 is real-device stable may Stage 2 address transition publication/atomicity if the user still reports coarse motion. If a stable single-owner page-slide still cannot approach EX feel, the already user-authorized Build183-style fixed spatial crossfade becomes the evidence-supported fallback.
-- **Next exact action:** design and source-review that single UIKit lifecycle owner against current accepted `main`, including the exact tap/vertical-scroll arbitration and a non-speculative native release-commit rule. Do not allocate the next Build until this ownership design is complete and parallel Build identities have been rechecked.
+Current branch compared with `main@3c0782c93c37bedf4193a76648c9c7ecff91a9e3` changes exactly these paths:
+
+- `.github/workflows/temp-build198-carousel-ci.yml` — **temporary CI helper; still present at current branch head and must be removed/restored after final valid Build198 CI**.
+- `Sources/Core/AppIdentity.swift`
+- `Sources/UI/EmbyHomeCarouselInteractionV3.swift` — new native single-owner interaction layer.
+- `Sources/UI/EmbyHomeCarouselStateV3.swift`
+- `Sources/UI/EmbyHomeCoreV3.swift`
+- `Sources/UI/EmbyHomeHeroV3.swift`
+- `docs/changelog/CHANGELOG_v0_14_31_build198.md`
+- `scripts/check_home_carousel_single_owner.py`
+
+No intended changes to Player / MPV / PiP / UnifiedTransport / Cache / Emby Session / Add/Edit Emby product files.
+
+## Build198 validation history
+
+### Earlier dedicated-CI attempts
+
+Two early attempts stopped before real compile because old repository checks were already stale relative to accepted Build195 `main`:
+
+1. old `check_home_immersive_carousel.py` still expected `AdaptiveHeroRevealMetrics.backdropPinOffset`, while current accepted main had already moved that calculation into Hero-local source;
+2. old `check_home_horizontal_tap_routing.py` still searched `EmbyServerRootViewV3.swift` for `private func landscapeRow`, which is no longer true on accepted main.
+
+Do **not** mutate Build198 product code merely to satisfy those historical script assumptions. The third dedicated workflow was intentionally scoped to the new Build198 single-owner contract + Python syntax + exact diff/Frozen guard + real Xcode Release/MinOS/IPA pipeline.
+
+### Current effective CI attempt
+
+- Workflow：`Build198 Carousel Single Owner IPA`
+- Workflow file：`.github/workflows/temp-build198-carousel-ci.yml`
+- Run：**`32890283594`**
+- Job：**`97940357582`**
+- Event：push
+- Source/head SHA：**`2a3cec5f3d004db0617aa5a1c3417701a96d5140`**
+- Conclusion：**failure**
+
+Evidence reached in this run:
+
+- Build198 dedicated single-owner source contract: **PASS**.
+- Python syntax / exact scope / P0-Frozen diff guard: **PASS**.
+- Xcode 16.4 environment / dependency resolution: **PASS**.
+- **Real Xcode Release compilation: PASS**. This is important: current evidence does not justify changing the gesture/runtime source because Swift/UIKit compilation succeeded.
+- Failure occurs **after Release compile**, at step **`Locate and validate app`**.
+- IPA packaging/upload did not complete; **Build198 currently has no valid IPA artifact and must not be described as CI passed or IPA produced**.
+
+Current evidence level:
+
+**Build198 = Code written ✅ / scoped contract ✅ / diff-Frozen guard ✅ / Release compile ✅ / post-build app validation ❌ / IPA not produced / real-device not tested / not stable.**
+
+## Critical do-not-do list for the next session
+
+- Do not restart the carousel design from Build193.
+- Do not change the Build198 gesture/runtime source merely because CI is red; Release compilation already passed.
+- Do not rerun CI blindly before identifying the exact `Locate and validate app` failure.
+- Do not re-enable stale old test assumptions by modifying accepted product source.
+- Do not add timer/watchdog/retry/fallback/interpolation/debounce/throttle.
+- Do not combine Stage 1 with atomic transition snapshot work, blur optimization, predicted-touch rendering or EX crossfade fallback.
+- Do not change Player/Transport/Cache/PiP/Emby media byte path.
+- Do not reuse Build197 or another Active task's candidate identity.
+- Do not claim Build198 is solved until target-device acceptance.
+
+## Next exact action — new session starts here
+
+1. New session routes explicitly to **`DEV-home-carousel-drag-smoothness`** and re-reads `AGENTS.md`, `START_HERE.md`, `CURRENT_WORK.md`, `CURRENT_WORK_DEV.md`, this checkpoint, current `MODULE_STATUS.md`, `PROJECT_STATE.md`, `TECHNICAL_DECISIONS.md`, `BUILD_TEST_INDEX.md`.
+2. Re-run resume identity guard before any write: confirm `main` has not materially advanced, carousel branch remains `perf/home-carousel-single-owner-build198@2a3cec5f...`, Build198 remains unique, and parallel Build197/other Active candidates have not collided.
+3. **First technical action is not a code change:** fetch the decoded logs for Job `97940357582` and inspect the exact output of step `Locate and validate app`. Also inspect that step's actual shell in `.github/workflows/temp-build198-carousel-ci.yml` and compare its assumed `.app` path / identity checks with the Xcode Release output path.
+4. Only if the log directly proves a CI/packaging-path or identity-validation bug, make the smallest workflow/packaging fix. Do not touch gesture product source unless the log explicitly proves a product-side app build/identity problem.
+5. Re-run the dedicated Build198 Release pipeline only after that evidence-based fix. Required final gates: single-owner contract, exact diff/Frozen guard, Xcode Release build, app identity **0.14.31 (198)**, `MinimumOSVersion = 15.0`, unsigned IPA packaging, artifact upload.
+6. After success, restore/remove `.github/workflows/temp-build198-carousel-ci.yml` from the durable feature branch, without altering the successful CI source attribution.
+7. Download the artifact and independently verify: artifact ZIP integrity, `Payload/*.app`, `CFBundleShortVersionString=0.14.31`, `CFBundleVersion=198`, `MinimumOSVersion=15.0`, IPA SHA-256 and source ZIP SHA-256.
+8. Update this checkpoint plus relevant `PROJECT_STATE.md` / `MODULE_STATUS.md` / `TECHNICAL_DECISIONS.md` / `BUILD_TEST_INDEX.md` with **CI passed / IPA produced only**; do not mark real-device solved.
+9. Send the verified Build198 IPA to the user. Target-device Stage-1 validation order: tiny initial drag → small drag release must cancel fully → committed/fast flick must complete fully → hold and reverse through center → vertical Hero scroll → detail tap → compare continuous feel with EX.
+10. If Stage 1 lifecycle is real-device stable but page-slide remains perceptually much coarser than EX, only then consider Stage 2 transition-publication/atomicity. If a correct Stage 1+subsequent page-slide path still cannot approach EX, the user-authorized fixed-spatial interactive crossfade is the evidence-supported fallback.
+
+## Evidence labels at handoff
+
+- Build185：real-device rejected — coarse initial page movement.
+- Build187：real-device diagnostic confirmed — SwiftUI first useful samples already 4–16pt, maxFPS=120.
+- Build189：real-device rejected — native movement + SwiftUI release could freeze.
+- Build193：real-device rejected — passive native movement + underlying SwiftUI release still froze; hybrid ownership rejected.
+- Build198：**current Stage-1 single-owner candidate; Release source compiles, post-build validation unresolved, no IPA yet, no real-device result.**
