@@ -1,0 +1,148 @@
+name: One-shot Build206 Poster Hitch Diagnostics IPA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temp-build206-main-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact Build206 source
+        uses: actions/checkout@v4
+        with:
+          ref: 6be72b78957aab3d4a321f0302b69286f8f11751
+          fetch-depth: 0
+
+      - name: Validate Build206 diagnostic source contract
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "6be72b78957aab3d4a321f0302b69286f8f11751"
+          python3 scripts/check_poster_grid_smoothness.py
+          python3 -m py_compile scripts/check_poster_grid_smoothness.py
+          rm -rf scripts/__pycache__
+          python3 - <<'PY'
+          import subprocess
+          base = '170778c3934a280d9b539fb45f0bfef673687825'
+          allowed = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyPosterGrid.swift',
+              'Sources/UI/EmbySharedImageAndNavigation.swift',
+              'docs/changelog/CHANGELOG_v0_14_39_build206.md',
+              'scripts/check_poster_grid_smoothness.py',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', f'{base}...HEAD'], text=True).splitlines())
+          if changed != allowed:
+              raise SystemExit(f'Build206 expected exact five-file delta, got: {sorted(changed)}')
+          frozen_prefixes = ('Sources/Player/', 'Sources/Transport/', 'Sources/Cache/', 'Sources/Session/', 'Sources/AVIO/')
+          touched_frozen = sorted(path for path in changed if path.startswith(frozen_prefixes))
+          if touched_frozen:
+              raise SystemExit(f'Build206 touched frozen/P0 paths: {touched_frozen}')
+          carousel_paths = ('Sources/UI/EmbyHomeCarouselInteractionV3.swift', 'Sources/UI/EmbyHomeCarouselStateV3.swift', 'Sources/UI/EmbyHomeHeroV3.swift', 'Sources/UI/EmbyHomeCoreV3.swift')
+          touched_carousel = sorted(path for path in changed if path in carousel_paths)
+          if touched_carousel:
+              raise SystemExit(f'Build206 touched active carousel owner files: {touched_carousel}')
+          identity = open('Sources/Core/AppIdentity.swift', encoding='utf-8').read()
+          if 'static let sourceVersion = "0.14.39"' not in identity:
+              raise SystemExit('Build206 AppIdentity sourceVersion mismatch')
+          shared = open('Sources/UI/EmbySharedImageAndNavigation.swift', encoding='utf-8').read()
+          if shared.count('DiagnosticsLogger.shared.log("PosterScrollHitch"') != 1:
+              raise SystemExit('Build206 hitch logger ownership mismatch')
+          if shared.count('CADisplayLink(target: self') != 1:
+              raise SystemExit('Build206 display-link ownership mismatch')
+          print('Build206 exact diagnostic delta scope: PASS')
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Prepare OnePlayer app icons
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache | tee package-resolution.log
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION=0.14.39 \
+            CURRENT_PROJECT_VERSION=206 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build206.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version 0.14.39 --build 206 --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+
+      - name: Validate MinOS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" 15.0 17.0 build206-min-os.log build206.log
+
+      - name: Package unsigned IPA and source snapshot
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA="OnePlayer-0.14.39-build206-poster-hitch-diagnostics-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA"
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          SOURCE="OnePlayer-0.14.39-build206-source.zip"
+          git archive --format=zip --output "$SOURCE" HEAD
+          shasum -a 256 "$SOURCE" | tee "$SOURCE.sha256"
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          echo "SOURCE=$SOURCE" >> "$GITHUB_ENV"
+
+      - name: Upload Build206 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.39-build206-poster-hitch-diagnostics
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+            ${{ env.SOURCE }}
+            ${{ env.SOURCE }}.sha256
+            build206.log
+            build206-min-os.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 30
