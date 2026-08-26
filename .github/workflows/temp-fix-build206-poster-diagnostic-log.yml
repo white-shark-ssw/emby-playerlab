@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/temp-fix-build206-poster-diagnostic-log.yml"
 
+# Registered helper trigger for exact failed Build206 source.
 permissions:
   contents: write
 
