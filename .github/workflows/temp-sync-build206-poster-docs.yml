@@ -1,4 +1,5 @@
 name: One-shot sync Build206 poster diagnostic evidence
+# trigger: registered workflow execution
 
 on:
   push:
@@ -32,13 +33,11 @@ jobs:
                   raise SystemExit(f'{path}: anchor count {s.count(old)} for {old[:80]!r}')
               p.write_text(s.replace(old, new, 1), encoding='utf-8')
 
-          # MODULE_STATUS
           path = 'docs/project/MODULE_STATUS.md'
           old = '| Poster 3-column / poster-heavy scroll smoothness | **Active — Build202 real-device rejected; Build204 CI/IPA verified; real-device pending** | Build202 / 0.14.35 passed CI/IPA, but the latest target-device recording still shows the required failure signature around 4.067 s: vertical motion about `-6.36 px → 0 px → -26.19 px`, so Build202 is real-device tested and rejected for smoothness, not stable. Build204 / 0.14.37 keeps the existing lazy containers and all Build202 reductions, and targets only two deterministic ordinary-poster cell-entry costs: no-callback poster views no longer install a no-op `loader.$image` Combine subscriber, and ordinary warm-cache cells seed the loader from the existing decoded-memory cache so `onAppear` does not synchronously publish a second `image = rendered` invalidation. Hero/detail/carousel callback paths retain their previous publication/callback semantics. Exact CI source `e6a97b5083691ed10795a402edc0fd30f996cffc`; run/job `32996847597` / `98268250117` passed; artifact ID `9617026984`; IPA/source integrity, `0.14.37 (204)` identity and MinOS 15.0 independently verified. No Player/MPV/PiP/Transport/Cache/Session or carousel-owner file changed. Build204 has not yet been real-device tested. |'
           new = '| Poster 3-column / poster-heavy scroll smoothness | **Active — Build204 real-device rejected; Build206 diagnostic CI/IPA verified; real-device log capture pending** | Build204 / 0.14.37 was tested on iPhone 15 Pro Max / iOS 17.0 and still visibly hitches on both Home poster-heavy scrolling and library 3×3 pages. The latest recording again shows stop/catch-up events around 5.900 s (`-1.56 px → 0 → -10.33 px`) and 7.133 s (`-1.99 px → 0 → -20.27 px`), so the warm-cache/no-op-subscriber reductions are not the main root cause. Build206 / 0.14.39 is therefore diagnostic-only: one shared `CADisplayLink` records `PosterScrollHitch` only when the main display interval reaches ≥30 ms and tags the most recent poster-cell appearance, image commit and grid load-ahead event; it does not change scrolling, navigation, image policy, carousel ownership or any Player/MPV/PiP/Transport/Cache/Session path. Exact Build206 source `351c62694ac25404c2bd4eb36a03314dd58ffed2`; run/job `33000992493` / `98282482225` passed; artifact ID `9618646972`; IPA SHA-256 `ee981133777c316305c4890aaa1a99b8906792783cad1496d880bf786611e18c`; source ZIP SHA-256 `68fcde68a4fbf157bfe50a3ae5957e67e6664c461c067132d8d33f73553239ab`; bundle `com.embyplayerlab.app`, version/build `0.14.39 (206)`, MinOS 15.0 independently verified. Real-device diagnostic capture is still pending; Build206 is not a claimed fix. |'
           replace_once(path, old, new)
 
-          # BUILD_TEST_INDEX milestone rows
           path = 'docs/project/BUILD_TEST_INDEX.md'
           replace_once(path,
               '| **Build204 / 0.14.37** | Poster warm-cache cell-entry reduction | **Owned by poster-scroll.** CI/IPA passed and independently verified; target-device validation pending. A separately-created carousel Build204 package was retired because this identity was already occupied and must not be used for attribution. |',
@@ -85,7 +84,6 @@ jobs:
 '''
           replace_once(path, old, new)
 
-          # Task checkpoint
           path = 'docs/project/current/dev/DEV-poster-grid-smoothness.md'
           replace_once(path,
               '**Active — Build202 target-device tested and rejected; Build204 CI/IPA produced+verified; real-device pending**',
@@ -186,7 +184,6 @@ Evidence level：**Code written ✅ / exact scope+Frozen guard ✅ / CI passed �
                   raise SystemExit(f'{p}: Build206 IPA evidence missing/duplicated')
           PY
           git diff --check
-          git diff -- docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/current/dev/DEV-poster-grid-smoothness.md
 
       - name: Commit synced authority docs
         run: |
