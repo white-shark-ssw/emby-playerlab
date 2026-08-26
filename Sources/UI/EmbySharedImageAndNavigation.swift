@@ -307,14 +307,15 @@ struct EmbyCachedRemoteImage: View {
         .onAppear { loader.load(url) }
         .onDisappear { loader.cancel() }
         .onChange(of: url) {
-            reportedImageIdentifier = nil
+            if onImageLoaded != nil { reportedImageIdentifier = nil }
             loader.load($0)
         }
         .onReceive(loader.$image.compactMap { $0 }) { image in
+            guard let onImageLoaded else { return }
             let identifier = ObjectIdentifier(image)
             guard reportedImageIdentifier != identifier else { return }
             reportedImageIdentifier = identifier
-            onImageLoaded?(image)
+            onImageLoaded(image)
         }
     }
 }
