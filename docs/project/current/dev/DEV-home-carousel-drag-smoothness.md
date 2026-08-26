@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build207 / 0.14.40 was target-device tested and exposed a structural foreground-layout problem: the first displacement is still too large, and using two full-width foreground pages with only `0.80 × width` center travel forces adjacent foreground content to overlap during the transition. User screenshots versus EX show EX preserves visible separation between adjacent foreground pages. Build208 / 0.14.41 changes the foreground to full-width page-slot spacing (`pageStep = width`) while keeping the same single UIKit owner; CI running.**
+**Active — Build207 / 0.14.40 was target-device tested and exposed a structural foreground-layout problem: the first displacement is still too large, and using two full-width foreground pages with only `0.80 × width` center travel forces adjacent foreground content to overlap during the transition. User screenshots versus EX show EX preserves visible separation between adjacent foreground pages. Build208 / 0.14.41 changes the foreground to full-width page-slot spacing (`pageStep = width`) while keeping the same single UIKit owner; CI/IPA independently verified, real-device pending.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
@@ -74,7 +74,9 @@ Identity:
 - OnePlayer **0.14.41 / Build208**
 - branch: `perf/home-carousel-page-slots-build208`
 - base: Build207 durable cleanup head `7044ca68c7082cd055a7e4ce42dda6f00fe29674`
-- current source with scoped workflow: `2ad089f0ea8b4b6827257bb3a91a67c2d3748e5f`
+- tested source: **`2ad089f0ea8b4b6827257bb3a91a67c2d3748e5f`**
+- durable cleanup head: **`51c366b6840d77c818eae20e1f3f43c0dbd75c72`**
+- tested-source → cleanup-head delta: temporary Build208 workflow deletion only; product/runtime source unchanged.
 
 Runtime changes remain limited to `Sources/Core/AppIdentity.swift` and `Sources/UI/EmbyHomeCarouselStateV3.swift`:
 
@@ -90,21 +92,36 @@ Runtime changes remain limited to `Sources/Core/AppIdentity.swift` and `Sources/
 - foreground/backdrop opacity continues to use the same visual progress;
 - raw `transitionProgress`, 0.28 commit, 0.48×width predicted-distance gate, direction/reversal/settle and first↔last modulo ownership are unchanged.
 
-Scoped diff before workflow contains only:
+Scoped product delta is limited to:
 
 - `Sources/Core/AppIdentity.swift`
 - `Sources/UI/EmbyHomeCarouselStateV3.swift`
 - `docs/changelog/CHANGELOG_v0_14_41_build208.md`
 - `scripts/check_home_carousel_single_owner.py`
+- temporary Build208 workflow, removed after evidence capture.
 
-Local static contract check passed. Build208 CI run `33004390654`, job `98294100402`; source/Frozen guard passed and pipeline is continuing.
+Validation / packaging evidence:
+
+- local static single-owner/page-slot contract: PASS;
+- CI run/job: **`33004390654` / `98294100402` — success**;
+- source/Frozen guard, Xcode 16.4, icons, dependencies, Release build, app identity, MinOS, IPA/source packaging and artifact upload: all success;
+- artifact: `OnePlayer-0.14.41-build208-home-carousel-page-slots`;
+- artifact ID: **`9620046266`**;
+- artifact digest / independently downloaded ZIP SHA-256: **`4ace3db785c131b987bfd9e18dc931e1bdeaf9f7528d85b8807214b45774afbb`**;
+- IPA SHA-256: **`24f47ac5cd5685f6eea85b1c3a4fad2841d81f6169a90cd0629bea85a2072308`**;
+- source ZIP SHA-256: **`807d03947c0d087ddc54f295e63fdabc37ac0ddfbe0e0f03da4477eb750e95ee`**;
+- embedded checksum files match independent IPA/source hashes;
+- IPA `unzip -t`: PASS;
+- bundle `com.embyplayerlab.app`, display/name OnePlayer, version/build `0.14.41 (208)`, `MinimumOSVersion=15.0`, primary `OnePlayerIcon`, alternate `OnePlayerAltIcon`;
+- source snapshot confirms `pageStep = width`, `0.85` earliest attenuation, existing `contentWidth = width - 56`, and no old `width * 0.80` foreground travel.
+
+**Build208 = Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending / not stable.**
 
 ## Next exact action
 
-1. Complete Build208 CI/IPA and independently verify artifact/identity/MinOS.
-2. Target-device A/B against Build207 and EX.
-3. First priority: verify adjacent foreground Logo/title/rating/overview no longer overlap and show a clear page-to-page gap during left/right drag.
-4. Verify the earliest visible displacement is smaller than Build207.
-5. Verify mid/tail remains natural and page-slot spacing stays constant through reversal, cancel and commit.
-6. Verify first↔last wrapping, vertical Hero scroll, detail tap and auto-advance.
-7. Do not alter UIKit ownership or raw release thresholds unless new device evidence directly requires it.
+1. Install/test Build208 on iPhone 15 Pro Max / iOS 17.0 and A/B against Build207 and EX.
+2. First priority: verify adjacent foreground Logo/title/rating/overview no longer overlap and show a clear page-to-page gap during left/right drag.
+3. Verify the earliest visible displacement is smaller than Build207.
+4. Verify mid/tail remains natural and page-slot spacing stays constant through reversal, cancel and commit.
+5. Verify first↔last wrapping, vertical Hero scroll, detail tap and auto-advance.
+6. Do not alter UIKit ownership or raw release thresholds unless new device evidence directly requires it.
