@@ -24,13 +24,17 @@ if "content(item)\n                    .environment(" in grid_source:
     raise SystemExit("per-cell environment wrappers reintroduced")
 
 required_image = [
+    "init(initialURL: URL? = nil)",
+    "image = initialURL.flatMap { EmbyDecodedImageRenderPool.shared.image(for: $0) }",
     "private func setLoading(_ value: Bool, reportsLoadingState: Bool)",
     "if image != nil { image = nil }",
+    "_loader = StateObject(wrappedValue: EmbyCachedImageLoader(initialURL: onImageLoaded == nil ? url : nil))",
+    "if let onImageLoaded {\n            imageBody.onReceive(loader.$image.compactMap { $0 })",
+    "} else {\n            imageBody\n        }",
     "loader.load(url, reportsLoadingState: showsLoadingIndicator)",
     "loader.cancel(reportsLoadingState: showsLoadingIndicator)",
     "if onImageLoaded != nil { reportedImageIdentifier = nil }",
-    "guard let onImageLoaded else { return }",
-    "reportedImageIdentifier = identifier\n            onImageLoaded(image)",
+    "reportedImageIdentifier = identifier\n                onImageLoaded(image)",
 ]
 for needle in required_image:
     if needle not in image_source:
@@ -38,8 +42,10 @@ for needle in required_image:
 
 if "image = nil\n        isLoading = true" in image_source:
     raise SystemExit("poster loader must not publish unconditional loading state")
-if "reportedImageIdentifier = identifier\n            onImageLoaded?(image)" in image_source:
-    raise SystemExit("poster images without callbacks must not publish redundant reported-image state")
+if "guard let onImageLoaded else { return }" in image_source:
+    raise SystemExit("ordinary poster images must not install a no-op image publisher subscriber")
+if image_source.count("imageBody.onReceive(loader.$image.compactMap { $0 })") != 1:
+    raise SystemExit("image-loaded publisher must exist only on the real callback path")
 
 pixel_width_contract = "private var posterImageMaxWidth: Int { min(440, max(1, Int(ceil(resolvedWidth * UIScreen.main.scale)))) }"
 if pixel_width_contract not in poster_source:
