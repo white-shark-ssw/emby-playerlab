@@ -2,151 +2,119 @@
 
 ## Status
 
-**Active — Stage 1 code written on draft PR #259; CI / IPA / target-device A/B pending**
+**Active — new target-device recording confirms real scroll hitch; Stage 1 grid-only hypothesis is insufficient; shared poster-image update path now in scope**
 
 - **Work ID**：`DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**：3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
-- **Task**：优化 OnePlayer 首页体系内的收藏/搜索等 3 列海报页、媒体库页、分类/文件夹等复用 3 列海报网格的滚动与增量加载流畅度。当前阶段不把首页 Hero/轮播手势作为本任务范围。
+- **Task**：优化首页、媒体库、收藏/更多、搜索、标签搜索、演员搜索等海报密集页面的纵向滚动流畅度。用户最新真机结果优先于此前“只看 3 列 LazyVGrid”的初始假设。
 
 ## User intent / acceptance criteria
 
-- iPhone 15 Pro Max / iOS 17.0 上，现代 3 列海报页面连续上下滚动应更跟手，尤其图片陆续出现、分页接近末尾和大量项目场景不应出现明显掉帧/顿挫。
-- 保持现有 3 列布局、海报比例、标题/年份/播放状态展示与系统原生导航语义。
-- 不以删数据、截断列表、降低到模糊图片、分页假数据或延迟交互来换取“流畅”。
+- Target device：iPhone 15 Pro Max / iOS 17.0。
+- 用户明确反馈：首页、库页、收藏页、收藏中“更多”、搜索、标签搜索、演员搜索，只要是这种海报密集页面，连续上下滑动都会感到抖动/掉帧。
+- 滚动需要连续、跟手；不能出现停一帧后下一帧追位的视觉顿挫。
+- 保持现有海报数量、清晰度、3 列布局、标题/年份/播放状态和系统原生导航语义。
+- 不通过截断列表、降低图片质量、延迟输入、timer/debounce/throttle/watchdog 等方式掩盖卡顿。
 - Deployment Target 保持 iOS 15.0。
-- 不触碰 Player / MPV / PiP / UnifiedTransport / Cache / Emby Resume/Session / STRM→302→115/CDN 客户端直连等冻结合同。
-- 只有用户目标真机结果才能升级为 Real-device tested / Stable；CI 或 IPA 不能代替真机结论。
+- 不触碰 Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Resume/Session / STRM→302→115/CDN 客户端直连冻结合同。
 
-## Baseline
+## Baseline / identity
 
 - Accepted overall runtime baseline：OnePlayer **0.14.32 / Build199**。
 - Accepted product merge：PR #256 / `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`。
-- Base branch：`main`。
-- Base source commit for this task：`d0c9f5fb5237041f09f46e9468240fc09986aca0`。
-- Main advanced at task creation only by this task's control-plane checkpoint commit before PR #259 was opened; no accepted product source changed by that docs commit.
-- Required device：iPhone 15 Pro Max / iOS 17.0。
-- Deployment Target：15.0。
-
-## Working branch / PR / head commit
-
+- Base branch/source：`main@d0c9f5fb5237041f09f46e9468240fc09986aca0`。
 - Working branch：`perf/poster-grid-smoothness`。
-- Branch created from：`d0c9f5fb5237041f09f46e9468240fc09986aca0`。
-- Current branch head：`1ef1624285f7e125e2bfe5f9ca18f45bbff211ce`。
-- Draft PR：**#259** — `Optimize shared 3-column poster grid wrapper cost`。
-- PR base at creation：`main@2cdbf4913898aedda66225381b30ab13d52cecd6`。
+- Draft PR：**#259**。
+- Current product branch head：`069a6064db9ded6fc87954276ac2cde9259f38ca`。
+- Build candidate：**unallocated**。Do not reuse Build198.
 
-## Build candidate
+## New real-device video evidence — 2026-08-27
 
-- **Unallocated.** Build198 remains owned by the active carousel task. This task intentionally does not touch `AppIdentity.swift` yet because that file is already in the concurrent Build198 diff; allocate a unique test Build only when a dedicated IPA candidate is actually needed and the parallel identity/file overlap is explicitly rechecked.
+User supplied `RPReplay_Final1787760518.mp4` from the target-device usage path.
 
-## Evidence
+Measured recording facts:
 
-Current evidence level：**Code written; exact diff scoped; draft PR opened; CI not observed yet**。
+- H.264 screen recording: **510×1108, constant 30 fps, 280 frames, 9.333 s**.
+- The recording is only 30 fps, so it cannot quantify every 120 Hz frame miss on the iPhone 15 Pro Max; it can still prove stalls lasting at least one recorded 33.3 ms frame.
+- Around **6.80 s**, while content is already moving vertically, one frame is effectively repeated: robust feature tracking gives prior-frame vertical motion about **-2.74 px**, the 6.80 s frame **0 px**, then the next frame about **-10.36 px**. Mean image difference for the stalled frame pair is only about **0.069**, followed by a large visual delta on the catch-up frame.
+- This is direct recording evidence of a **stop-one-frame → catch-up-next-frame** cadence, consistent with the user's visible “抖一下/掉帧” report.
 
-Confirmed source facts:
+Important scope correction:
 
-1. `Sources/UI/EmbyPosterGrid.swift` is the shared modern 3-column grid. It already uses `LazyVGrid`; replacing an eager grid with a lazy grid is not a valid optimization direction.
-2. Library item/trailer/collection/favorite tabs, genres, genre grids, folders and other modern poster pages route through `EmbyPosterGrid` and commonly render `V3PosterCard` / related grid cards.
-3. Before this task, every grid item separately applied the same two Environment modifiers: `embyPosterGridNavigationState` and `embyPosterGridCellWidth`. Those values are grid-owned and identical for all cells.
-4. Stage 1 commit `90b27d4ecaba9e8ad3031e8579cddf9af728b1ee` moves those two stable Environment injections to the `LazyVGrid` ancestor. Cell content, frame, contentShape, load-ahead `onAppear`, grid geometry and native navigation state semantics remain otherwise unchanged.
-5. Commit `1ef1624285f7e125e2bfe5f9ca18f45bbff211ce` adds `scripts/check_poster_grid_smoothness.py` to reject regression back to per-cell Environment ownership and to require the existing lazy grid/load-ahead contract.
-6. Exact compare `main-source-base d0c9f5fb... → perf/poster-grid-smoothness@1ef1624...` changes only `Sources/UI/EmbyPosterGrid.swift` (3 additions / 3 deletions) and the new 23-line task checker. No Build198 carousel file and no Player/MPV/PiP/UnifiedTransport/Cache/Emby playback path is in the diff.
-7. `V3PosterCard` already uses the grid-provided cell width and requests a screen-scale-sized poster for the 3-column path; do not assume the grid currently decodes full-resolution artwork.
-8. `EmbyCachedRemoteImage` already has memory-render cache, disk cache, detached ImageIO decode/downsampling and cancellation. Do not add a duplicate image cache/decoder merely for this task.
-9. Static inspection also shows possible avoidable work in the global image loader, but `EmbyCachedRemoteImage` is consumed by the active Build198 Home Hero and its `onImageLoaded` metrics path. That shared dependency remains deferred in Stage 1.
-10. Immediately after opening draft PR #259, the connector returned no pull-request workflow run yet for head `1ef1624...`; therefore CI must remain **not passed / not observed**, not inferred from PR creation.
+- The supplied recording shows Home vertical scrolling.
+- Home poster sections do **not** use `EmbyPosterGrid`; source shows `posterRow` is `ScrollView(.horizontal) + LazyHStack + V3PosterCard` inside the Home vertical scroll.
+- Therefore the same visible hitch on Home cannot be explained by per-cell `EmbyPosterGrid` Environment wrappers. The initial grid-local change may remain a small source cleanup, but it is **not sufficient as the cross-page root-cause theory**.
 
-## Files / modules in scope
+## Source facts after the recording
 
-Stage 1 writable scope:
+1. `EmbyPosterGrid` is still the shared modern 3-column `LazyVGrid` used by library/favorites/genre/folder/person-style result pages.
+2. Home uses `V3PosterCard` in `LazyHStack`, outside `EmbyPosterGrid`, yet shows the same reported hitch.
+3. Person result pages also use `EmbyCachedRemoteImage` directly, so `V3PosterCard` alone is not universal across every reported page.
+4. `EmbyCachedRemoteImage` is a real common rendering dependency across Home posters, 3-column media cards and person-result cards.
+5. The existing image pipeline already has decoded-memory cache, disk cache, ImageIO downsampling and detached decode; a second image cache/decoder is still rejected.
+6. A concrete redundant SwiftUI state update exists in `EmbyCachedRemoteImage`: every loaded image previously wrote `reportedImageIdentifier` even when `onImageLoaded == nil`. Normal poster cards do not need that state; Home/Detail carousel Hero paths with a real callback do need callback deduplication.
+7. Commit `58c0c434dedaa3ed25f035453692204c9e25f269` makes the minimal behavior-preserving correction: URL-change reset of `reportedImageIdentifier` happens only when a callback exists, and the image publisher exits immediately when there is no `onImageLoaded` callback. Real callback paths retain identifier deduplication and callback behavior.
+8. Commit `069a6064db9ded6fc87954276ac2cde9259f38ca` extends the task checker to require this no-callback fast path.
+9. Exact branch compare from task base now changes only:
+   - `Sources/UI/EmbyPosterGrid.swift` — 3 additions / 3 deletions;
+   - `Sources/UI/EmbySharedImageAndNavigation.swift` — 3 additions / 2 deletions;
+   - `scripts/check_poster_grid_smoothness.py` — source contract.
+10. No Player/MPV/PiP/UnifiedTransport/Cache/Emby playback-session file is in the diff.
 
-- `Sources/UI/EmbyPosterGrid.swift` — primary shared 3-column layout/render wrapper.
-- `scripts/check_poster_grid_smoothness.py` — task-specific source contract.
-- Task checkpoint / relevant project docs.
+## Stage history
 
-Read/inspect-only unless new evidence justifies expansion:
+### Stage 1 — grid wrapper reduction
 
-- `Sources/UI/EmbyServerBrowseV3.swift` — library/genre/folder/favorites/search call sites and pagination ownership.
-- `Sources/UI/EmbyServerSharedV3.swift` — `V3PosterCard` geometry/image request sizing.
-- `Sources/UI/EmbySharedImageAndNavigation.swift` — shared image loader/navigation; **deferred from Stage 1 because it is a shared dependency with active Build198 carousel rendering**.
+- Commit `90b27d4ecaba9e8ad3031e8579cddf9af728b1ee` hoisted the two identical grid Environment modifiers from every `EmbyPosterGrid` cell to the `LazyVGrid` ancestor.
+- This is still behavior-preserving and removes repeated grid wrappers.
+- **New video evidence proves this cannot by itself explain/fix the whole user-visible problem**, because Home does not use `EmbyPosterGrid` and still hitches.
 
-## State owner / shared dependencies
+### Stage 2 — shared image callback-state churn reduction
 
-- Grid geometry owner：`EmbyPosterGrid.containerWidth` + `EmbyPosterGridMetrics`。
-- Grid navigation owner：`EmbyPosterGridNavigationState`。
-- Stage 1 moves Environment propagation ownership to the grid ancestor; it does not create a second navigation or width state owner.
-- Page data/pagination owners remain their existing ViewModels (`V3LibraryBrowserViewModel`, genre/folder/favorites/search models). This task must not create a second paging/list-state owner.
-- Image cache/decode owner remains `EmbyDecodedImageRenderPool` + `EmbyImageDiskCache` + `EmbyCachedImageLoader`; Stage 1 does not replace or duplicate them.
-- Native navigation remains system-owned.
+- Commit `58c0c434dedaa3ed25f035453692204c9e25f269` removes one redundant `@State` write/invalidation for ordinary poster images that have no `onImageLoaded` consumer.
+- Hero/carousel/detail images that actually supply `onImageLoaded` preserve their callback and duplicate-image guard semantics.
+- This is a source-proven common-path reduction; its real-device effect size is still unproven.
 
-## Frozen / do-not-touch
+## Parallel dependency / Build198 handling
 
-- Player / MPV fast Seek / PiP。
-- UnifiedTransport / playback Cache / Range 206 / STRM 302 / 115 CDN client-direct media path。
-- Emby playback session / Resume/progress ownership。
-- Native iOS navigation ownership。
-- Build198 carousel gesture lifecycle/state owner files unless this task is explicitly stacked after that task.
-- No debounce/throttle timer, watchdog, speculative retry/fallback, duplicate grid cache/state owner, or unrelated UI refactor.
-
-## Parallel conflicts checked against
-
-Checked against Active `DEV-home-carousel-drag-smoothness` / Build198:
-
-- Build198 direct source scope includes `EmbyHomeCoreV3.swift`, `EmbyHomeHeroV3.swift`, `EmbyHomeCarouselStateV3.swift`, `EmbyHomeCarouselInteractionV3.swift`, `AppIdentity.swift`, its CI helper/checker/changelog.
-- Stage 1 of this task modifies none of those files and does not modify carousel gesture state ownership.
-- A shared dependency exists at `EmbyCachedRemoteImage` / `EmbySharedImageAndNavigation.swift` because Home Hero also consumes it. Global image-loader optimization remains deferred until Build198 is completed/resynced or an explicit stacked dependency is recorded.
-- Build198 owns version/build **0.14.31 / 198**; this task does not reuse that identity and currently has no Build candidate.
-
-## Completed
-
-- New-task routing confirmed from the user's explicit functional-session/new-task instruction.
-- Read current project authority docs, Module Status and technical/build decisions.
-- Confirmed current main source head and accepted Build199 runtime baseline.
-- Read the active Build198 checkpoint and compared files/state owners.
-- Located the shared 3-column grid and its modern library/favorite/genre/folder call sites.
-- Confirmed current image pipeline already performs background downsample/decode and caching; rejected duplicate-cache/redecode speculation.
-- Created isolated branch `perf/poster-grid-smoothness`.
-- **Code written:** hoisted the two stable grid Environment modifiers from each cell to the `LazyVGrid` ancestor without changing geometry, item content, load-ahead behavior or navigation owner.
-- Added task-specific source contract checker.
-- Exact branch compare confirms only the intended grid file + checker are changed.
-- Opened draft PR #259 to establish a review/test surface without claiming acceptance.
+- Active `DEV-home-carousel-drag-smoothness` owns Build198 / 0.14.31 on `perf/home-carousel-single-owner-build198`.
+- Build198 does not directly modify `EmbySharedImageAndNavigation.swift`, but its Home Hero consumes `EmbyCachedRemoteImage` with a real `onImageLoaded` callback.
+- Stage 2 is therefore recorded as a **shared dependency change with preserved callback semantics**, not a silent independent assumption.
+- Build198's already-built IPA/source remains unchanged; this task does not rewrite its evidence.
+- If either task is later merged, the other task must resync against then-current `main` and rerun affected validation. Old CI does not prove the combined source.
+- Do not touch Build198 gesture/state-owner files from this task.
 
 ## Validation state
 
-- Code written：✅ — branch head `1ef1624285f7e125e2bfe5f9ca18f45bbff211ce`
-- Exact diff / Frozen scope check：✅ — 2 files only; no carousel/P0/Frozen media path
-- Source-contract checker present：✅ — not yet promoted to CI-pass evidence
-- CI passed：❌ / not observed yet
+- Code written：✅ — current branch head `069a6064db9ded6fc87954276ac2cde9259f38ca`
+- Exact diff / Frozen scope check：✅ — 3 paths only; no P0 media path
+- New target-device symptom evidence：✅ — baseline recording confirms at least one 33.3 ms stop/catch-up stall
+- Candidate real-device improvement tested：❌ — the recording is evidence of the **existing problem**, not evidence that current branch fixes it
+- CI passed for current head：❌ / not yet established
 - IPA produced：❌
-- Real-device tested：❌
 - Stable / frozen：❌
-
-## Pending
-
-- Observe/execute PR validation for head `1ef1624...`; record the exact run/job/SHA if GitHub schedules it.
-- If CI exposes a real source/compile issue, fix only that issue; do not expand scope because of generic CI noise.
-- Do not allocate a Build/IPA identity until a dedicated target-device candidate is needed and Build198/AppIdentity overlap is rechecked.
-- Target-device A/B should compare long 3-column pages, including image-arrival and pagination-near-end behavior, against accepted Build199 behavior.
-- If this Stage 1 change does not materially improve target-device smoothness, gather concrete frame/hitch evidence before expanding into the shared image loader; do not guess.
 
 ## Next exact action
 
-1. Check PR #259 validation state for exact head `1ef1624285f7e125e2bfe5f9ca18f45bbff211ce`.
-2. If no CI job is scheduled, do not fabricate a pass; keep the candidate at Code-written evidence and decide separately whether a dedicated workflow is justified.
-3. If validation passes and a test IPA is requested/needed, re-run parallel identity guard before touching `AppIdentity.swift` or assigning a Build number.
-4. Preserve the current minimal diff unless new evidence identifies another bottleneck.
-5. Do not claim performance solved until target-device evidence exists.
+1. Treat the 30 fps recording as proof of the existing hitch, not as a complete 120 Hz frame-time trace.
+2. Check/establish compile + source-contract validation for branch head `069a6064...`; do not claim CI before a real run/job exists.
+3. Continue source audit around the other common scrolling costs before allocating a Build: in particular ordinary poster image `isLoading` publications and eager/native NavigationLink destination construction must be inspected, but **do not change them without proving redundant work/ownership first**.
+4. Do not spend more time optimizing only `EmbyPosterGrid`; Home evidence has already falsified that as the sole bottleneck.
+5. Once the shared-path source candidate is coherent, re-run identity guard, allocate a unique Build/version candidate, produce an IPA, then A/B the same Home/library/favorites/search/person flows on iPhone 15 Pro Max / iOS 17.0.
+6. Acceptance requires the user to report materially smoother continuous scrolling; CI/IPA alone cannot close this task.
 
 ## Rejected / do-not-repeat
 
-- Replacing `LazyVGrid` with another lazy grid merely because the symptom is scrolling jank.
-- Adding a second poster cache/decoder; the current shared image pipeline already has decoded-memory cache, disk cache and detached downsample/decode.
-- Blindly changing page size, truncating item arrays or reducing image quality before evidence shows those are the bottleneck.
-- Global image-loader changes while Build198 is concurrently active, unless the work is explicitly made stacked/dependent.
-- Timer/debounce/throttle/watchdog/retry/fallback as a generic smoothness fix.
+- Treating `LazyVGrid` vs another lazy container as the root cause.
+- Treating the Stage 1 Environment hoist as a complete fix after the Home recording.
+- Adding a second poster cache/decoder.
+- Reducing page size/list length/image quality without bottleneck evidence.
+- Generic debounce/throttle/timer/watchdog/retry/fallback.
+- Changing frozen playback/transport/cache/PiP/session contracts.
+- Claiming the current Stage 2 shared-image cleanup fixed the real-device hitch before a new IPA is tested.
 
 ## Open questions / risks
 
-- No target-device trace/log has yet isolated whether remaining visible hitching is dominated by SwiftUI per-cell view graph, pagination updates, image-state publications, or another render path. Stage 1 is intentionally minimal and reversible.
-- The Stage 1 optimization has a clear source-level reduction in repeated view wrappers, but its real-device effect size is unknown until A/B testing.
-- If the first grid-only candidate has little effect, the next useful evidence should be target-device A/B or frame/hitch instrumentation rather than additional speculative patches.
+- The recording proves at least one recorded-frame stall but, because iOS screen recording is 30 fps here, cannot identify every 120 Hz hitch or directly attribute the stall to one SwiftUI component.
+- Shared poster rendering now has one proven redundant state update removed, but remaining cost could still involve image loading-state publications, destination construction, compositing/clipping, page model updates, or more than one cause.
+- Any expansion into shared Home dependencies must preserve Build198 callback/interaction semantics and be resynced before final integration.
