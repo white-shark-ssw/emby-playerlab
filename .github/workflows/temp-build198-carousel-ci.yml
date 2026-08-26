@@ -1,8 +1,7 @@
 name: Build198 Carousel Single Owner IPA
 
 on:
-  push:
-    branches: [perf/home-carousel-single-owner-build198]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,8 +24,11 @@ jobs:
           python3 -m py_compile scripts/check_home_carousel_single_owner.py
           python3 - <<'PY'
           import subprocess
-          allowed = {
+          helpers = {
               '.github/workflows/temp-build198-carousel-ci.yml',
+              '.github/workflows/one-shot-dispatch-build198.yml',
+          }
+          allowed = helpers | {
               'Sources/Core/AppIdentity.swift',
               'Sources/UI/EmbyHomeCarouselInteractionV3.swift',
               'Sources/UI/EmbyHomeCarouselStateV3.swift',
@@ -37,7 +39,7 @@ jobs:
           }
           changed = set(subprocess.check_output(['git', 'diff', '--name-only', 'origin/main...HEAD'], text=True).splitlines())
           extra = sorted(changed - allowed)
-          missing = sorted((allowed - {'.github/workflows/temp-build198-carousel-ci.yml'}) - changed)
+          missing = sorted((allowed - helpers) - changed)
           if extra:
               raise SystemExit(f'Unexpected Build198 files: {extra}')
           if missing:
