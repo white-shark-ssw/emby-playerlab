@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build203 target-device exposed the remaining issue: 30% total travel is still too short overall, yet its raw-progress spatial mapping makes the first visible displacement too large. Build204 keeps the same UIKit owner, raises total travel to 80%, and applies the existing `progress²` visual curve to spatial offset as well as opacity. CI running.**
+**Active — Build203 target-device exposed the remaining issue: 30% total travel is still too short overall, yet raw-progress spatial mapping makes the first visible displacement too large. Carousel Build204 / 0.14.37 was retired before distribution because that identity is already owned by the independent poster-scroll task. Build205 keeps the same 80% + `progress²` visual mapping under a unique identity; CI running.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
@@ -68,46 +68,57 @@ Conclusion: the remaining issue is now more specifically attributed to **raw pro
 
 **Build203 = Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / rejected as final parameterization / not stable.**
 
-## Build204 — current candidate
+## Retired carousel Build204 identity collision
+
+A carousel package was briefly created as `0.14.37 / Build204` with the intended 80% + `progress²` spatial mapping and even completed CI. During the mandatory global project-state reread, the independent poster-scroll task was found to already own **OnePlayer 0.14.37 / Build204** with its own verified source/artifact.
+
+Therefore:
+
+- carousel `0.14.37 / Build204` is **retired and must not be distributed or used for attribution**;
+- its successful CI does not reserve or redefine Build204;
+- canonical Build204 ownership remains the poster-scroll task;
+- carousel moved unchanged product intent to Build205 / 0.14.38.
+
+## Build205 — current candidate
 
 Identity:
 
-- OnePlayer **0.14.37 / Build204**
-- branch: `perf/home-carousel-eased-travel-build204`
+- OnePlayer **0.14.38 / Build205**
+- branch: `perf/home-carousel-eased-travel-build205`
 - base: Build203 durable cleanup head `edafd5d784cfacdcf8c451fad93535a55fb880fb`
-- current CI source: `2690343106f9302278875b2b8d70026361dfe2e1`
+- current CI source: `e5f2e7b4135eca333d5dda24545f19ee8d0be439`
 
 Runtime changes are limited to `Sources/Core/AppIdentity.swift` and `Sources/UI/EmbyHomeCarouselStateV3.swift`:
 
 - total foreground travel: `0.30 × width` → **`0.80 × width`**;
 - `visualProgress = carouselBackdropBlendProgress(transitionProgress)`;
-- existing blend helper remains `progress²` after clamping;
+- existing blend helper remains clamped `progress²`;
 - outgoing offset = `-direction × visualProgress × travel`;
 - incoming offset = `direction × (1 - visualProgress) × travel`;
 - opacity remains outgoing `1-blend`, incoming `blend` using the same `progress²` curve;
 - raw `transitionProgress` is unchanged and remains the release/commit authority.
 
-This separates two requirements that previously fought each other:
+This separates the two requirements that previously fought each other:
 
-- at raw progress 0.10, Build203 spatial displacement was `0.30 × 0.10 = 0.03 width`; Build204 is `0.80 × 0.10² = 0.008 width`, so the start is materially more restrained even though total travel is much larger;
-- at raw progress 0.50, Build204 reaches `0.80 × 0.25 = 0.20 width`;
+- at raw progress 0.10, Build203 spatial displacement was `0.30 × 0.10 = 0.03 width`; Build205 is `0.80 × 0.10² = 0.008 width`, so the start is materially more restrained even though total travel is much larger;
+- at raw progress 0.50, Build205 reaches `0.80 × 0.25 = 0.20 width`;
 - at progress 1.0 it reaches the requested full 80% travel.
 
 Left/right and first↔last boundaries continue to use the existing direction sign plus `(index + direction + items.count) % items.count`; there is no edge-specific state machine or duplicate progress owner.
 
-Build203→Build204 exact pre-CI diff is only:
+Build203→Build205 exact product/scope delta before CI cleanup is limited to:
 
 - `Sources/Core/AppIdentity.swift`
 - `Sources/UI/EmbyHomeCarouselStateV3.swift`
-- `docs/changelog/CHANGELOG_v0_14_37_build204.md`
+- `docs/changelog/CHANGELOG_v0_14_38_build205.md`
 - `scripts/check_home_carousel_single_owner.py`
-- temporary Build204 CI workflow
+- temporary Build205 CI workflow
 
-No Frozen/P0 runtime file is in the diff. Build204 source-contract/Frozen guard already passed in CI run `32997829818`; dependency/build pipeline is continuing.
+No Frozen/P0 runtime file is in the diff. Build205 source-contract/Frozen guard already passed in CI run `32998533448`; dependency/build pipeline is continuing.
 
 ## Next exact action
 
-1. Complete Build204 CI/IPA and independently verify artifact, identity and MinOS.
+1. Complete Build205 CI/IPA and independently verify artifact, identity and MinOS.
 2. Target-device A/B against Build203 and EX.
 3. Focus first on the first few millimeters of drag: the first visible horizontal displacement should be much smaller than Build203 despite the larger 80% total travel.
 4. Confirm mid/late drag accelerates naturally and reaches a substantially larger total slide than Build201/203.
