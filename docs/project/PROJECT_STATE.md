@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after OnePlayer 0.14.32 / Build199 passed target-device acceptance for the Add/Edit Emby server-management line, after Home-carousel Build200 completed CI/IPA but was rejected on the target device for fixed foreground semantics, and after Build201 restored horizontal foreground motion with short travel and produced a verified IPA. Build199 remains the accepted overall functional baseline. The Home-carousel Build201 task and `DEV-poster-grid-smoothness` remain Active and independent._
+_Last updated after OnePlayer 0.14.32 / Build199 passed target-device acceptance for the Add/Edit Emby server-management line, after Home-carousel Build200 completed CI/IPA but was rejected on the target device for fixed foreground semantics, after Build201 restored horizontal foreground motion with short travel and produced a verified IPA, and after poster-scroll Build202 completed CI/IPA with target-device A/B still pending. Build199 remains the accepted overall functional baseline. The Home-carousel Build201 task and `DEV-poster-grid-smoothness` Build202 task remain Active and independent._
 
 ## Current functional baseline
 
@@ -150,23 +150,27 @@ Current Build201 evidence:
 
 Target-device next action is Build201 A/B against Build198/Build200/EX: confirm foreground clearly slides again and judge whether 15% travel makes tiny motion materially finer without losing directionality. Do not change the 15% factor before that evidence.
 
-### Poster 3-column grid smoothness — Active independent task
+### Poster 3-column / poster-heavy scroll smoothness — Active independent task
 
-`DEV-poster-grid-smoothness` was opened for the user's new 3×3/3-column page smoothness task. It is isolated on `perf/poster-grid-smoothness` with draft PR **#259**.
+`DEV-poster-grid-smoothness` owns **OnePlayer 0.14.35 / Build202** on `perf/poster-grid-smoothness`, draft PR **#259**. Its current checkpoint is authoritative for the detailed source/profiling rationale.
 
-Current Stage 1 evidence:
+Current Build202 evidence:
 
-- Base source is current `main@d0c9f5fb5237041f09f46e9468240fc09986aca0`; accepted runtime remains Build199.
-- The existing shared grid is already `LazyVGrid`, so this task does not replace it with another lazy container.
-- Branch head `1ef1624285f7e125e2bfe5f9ca18f45bbff211ce` changes only `Sources/UI/EmbyPosterGrid.swift` plus `scripts/check_poster_grid_smoothness.py`.
-- The code moves the two identical, grid-owned Environment injections from every cell to the `LazyVGrid` ancestor. Grid geometry, cell content, load-ahead `onAppear`, native navigation ownership and image pipeline are otherwise unchanged.
-- Exact diff contains no Home-carousel Build198/Build200/Build201 runtime file and no Player/MPV/PiP/UnifiedTransport/Cache/Emby playback-session path.
-- Global `EmbyCachedRemoteImage` optimization is explicitly deferred because that shared component is also consumed by the active Home Hero line.
-- Evidence level is **Code written + scoped diff only**. CI/IPA/target-device A/B remain pending unless its own checkpoint records newer evidence.
-- No Build/version candidate was allocated at the time this parallel guard was established, avoiding `AppIdentity.swift` overlap with the carousel line.
+- accepted overall runtime remains Build199; Build202 is an independent performance candidate.
+- target-device recording already proves the existing baseline hitch: at least one recorded ~33.3 ms stop-frame followed by catch-up around 6.80 s. This proves the problem, not the candidate fix.
+- exact tested source: `a05dd3424bb499e46dc0834e69cf55654fb7733e`.
+- durable feature head after deleting only the temporary feature workflow: `6e16865d1589a953f58bf65885d9fb01ff6374e0`; tested product/runtime source is unchanged by that cleanup.
+- Build202 keeps the existing lazy containers and removes source-proven common-path poster overhead: duplicate grid Environment injection, unused callback-state publication, invisible loading-state publication, unchanged initial `image=nil` publication, oversized Home poster request width, and actor-result loading-state work.
+- exact feature delta excludes Player/MPV/PiP/UnifiedTransport/playback Cache/Emby playback-session and active carousel gesture/state-owner files.
+- successful exact-source run/job: **`32993726508` / `98257448257`**.
+- artifact: `OnePlayer-0.14.35-build202-poster-scroll-smoothness`, ID **`9615751921`**, digest `sha256:1fa9236d08210440a80b2f9af2fcef24e5608aac6f8c52be602295b40ec68777`.
+- IPA SHA-256: `f6e3a30206acf2cfd877df74f41aa13f1575e1614407eff79466884f9ec51279`; source ZIP SHA-256: `19ebc6a2bcefd61d53eb4a9eea7617d5e98be7f8ae7b4f2dbf027ff62d8fabfe`.
+- IPA/source ZIP integrity, app identity `0.14.35 (202)`, bundle, icons and MinOS `15.0` were independently verified.
+- temporary Build202 feature workflow and one-shot main helper were deleted after evidence capture.
+- Evidence: **Code written / scoped diff + existing-problem real-device evidence / CI passed / IPA produced+verified / candidate real-device pending / not stable.**
 
-Do not describe this Stage 1 source reduction as a real-device performance win until target-device A/B evidence exists.
+Target-device next action for Build202 is A/B across Home, library 3×3, favorites/more, search, tag search and person/actor results. Do not claim the candidate fixed scrolling until that A/B is reported.
 
 ## Current development direction
 
-Build199 / OnePlayer 0.14.32 remains the current real-device accepted overall `main` functional baseline. Current independent Active feature lines are Home-carousel Build201 and `DEV-poster-grid-smoothness`; each keeps its own checkpoint/branch/PR/evidence. Build201 now has verified CI/IPA evidence and requires target-device A/B before any acceptance or integration. If the carousel line is accepted, its durable product diff must be resynced against then-current `main` in a separate integration step; old-base CI is not proof for materially changed merged source. The poster-grid task should remain grid-local while the carousel line is active and must not expand into the shared image loader without explicit dependency handling or new evidence. Protect all frozen playback/transport/cache/PiP/episode contracts throughout both lines.
+Build199 / OnePlayer 0.14.32 remains the current real-device accepted overall `main` functional baseline. Current independent Active feature lines are Home-carousel Build201 and poster-scroll Build202; both now have verified CI/IPA evidence and both still require target-device validation before acceptance or integration. If either line is accepted, its durable product diff must be resynced against then-current `main` and affected validation rerun when the integration source materially changes. Protect all frozen playback/transport/cache/PiP/episode contracts throughout both lines.
