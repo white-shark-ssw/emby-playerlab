@@ -1,0 +1,73 @@
+name: Sync Build199 Global Project Indexes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/temp-doc-build199.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply project index updates
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --rebase origin main
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('docs/project/BUILD_TEST_INDEX.md')
+          t = p.read_text(encoding='utf-8')
+          row = '| **Build199 / 0.14.32** | Add/Edit Emby retained password + iCloud password sync | Exact source `2b5f3bef073754371443c6c7a345657dbfa2a09a`. Dedicated standard MPV workflow `Build199 Add Emby Password Sync`, run `32942618979`, passed; app identity 0.14.32 (199), app/runtime MinOS 15.0 and frozen-contract checks passed; artifact `OnePlayer-0.14.32-build199-add-emby-password-sync` ID `9597143667`; IPA SHA-256 `8f0f43f62705e5e13ae666cc54d32fd047c596df1d0e9335668b01a25b6eb003`. Password is retained in local Keychain and mirrored to a separate synchronizable Keychain item when iCloud sync is enabled; Edit preloads it. **Code written / CI passed / IPA produced / real-device + cross-device pending / not stable; Build195 remains accepted overall baseline.** |'
+          if row not in t:
+              marker = '| **Build196 / 0.14.29** |'
+              pos = t.find(marker)
+              assert pos >= 0, 'Build196 row missing'
+              end = t.find('\n', pos)
+              assert end >= 0, 'Build196 row end missing'
+              t = t[:end + 1] + row + '\n' + t[end + 1:]
+          t = t.replace('Build196 / 0.14.29 is the current Add/Edit Emby cached-first candidate with CI/IPA complete and real-device validation pending.', 'Build199 / 0.14.32 is the current Add/Edit Emby retained-password/iCloud-password-sync candidate with dedicated CI/IPA complete and real-device plus cross-device validation pending.')
+          p.write_text(t, encoding='utf-8')
+          p = Path('docs/project/TECHNICAL_DECISIONS.md')
+          t = p.read_text(encoding='utf-8')
+          old = '- Opt-in iCloud server sync uses a separate `kSecAttrSynchronizable` Keychain record. It may contain server configuration, AccessToken and auto-start flag; it must never contain the user\'s password. Existing local AccessToken storage keeps its prior `ThisDeviceOnly` accessibility contract.'
+          new = '- Opt-in iCloud server sync continues to use `kSecAttrSynchronizable` Keychain storage, but **Build199 supersedes Build192\'s password-exclusion rule because the user explicitly requires retained/editable passwords and cross-device password sync**. Server configuration/AccessToken/auto-start stay in the existing synchronizable registry; the password uses a separate local Keychain account plus a separate synchronizable password account when that server has iCloud sync enabled. The password must not enter UserDefaults, the ordinary server JSON registry or diagnostics. Turning sync off removes the synchronizable password copy; deleting the server removes both local and synchronizable password items. Existing local AccessToken storage keeps its prior `ThisDeviceOnly` accessibility contract.'
+          assert old in t, 'D014 old password rule missing'
+          t = t.replace(old, new, 1)
+          needle = 'Build192 / OnePlayer 0.14.25 passed dedicated Xcode 16.4 standard MPV Release CI and produced an iOS 15.0-compatible IPA. This confirms implementation/build evidence only. Route behavior, root auto-start presentation and synchronizable Keychain behavior—especially cross-device behavior under TrollStore/ad-hoc signing—remain **real-device pending** and are not frozen.'
+          addition = needle + '\n\nBuild199 / OnePlayer 0.14.32 adds the user-required password-retention/sync contract without changing D014\'s media boundary: Edit preloads `SessionStore.password(for:)`; `SessionStore.persistPassword(...)` writes a dedicated local Keychain item and conditionally a dedicated synchronizable Keychain item; unchanged Edit password does not force reauthentication, while changed password must authenticate the stored username and preserve Server ID/User ID. Dedicated standard MPV run `32942618979` succeeded from exact source `2b5f3bef073754371443c6c7a345657dbfa2a09a` and produced the Build199 IPA with MinOS 15.0. **This is Code written / CI passed / IPA produced only; password visibility/edit behavior and actual second-device iCloud propagation remain real-device pending.**'
+          assert needle in t, 'D014 evidence anchor missing'
+          t = t.replace(needle, addition, 1)
+          p.write_text(t, encoding='utf-8')
+          p = Path('docs/project/PROJECT_STATE.md')
+          t = p.read_text(encoding='utf-8')
+          t = re.sub(r'^_Last updated.*_$', '_Last updated after the independent Add/Edit Emby task produced OnePlayer **0.14.32 / Build199** from exact source `2b5f3bef073754371443c6c7a345657dbfa2a09a`: dedicated standard MPV run `32942618979` passed, artifact/IPA were produced, and MinOS remains 15.0. Build199 implements the user-superseded password contract (retain/edit password locally and sync it through a separate synchronizable Keychain item when iCloud sync is enabled). **Build195 / 0.14.28 remains the latest real-device accepted overall baseline** until Build199 is tested on device. Home-carousel Build198 remains a separate Active candidate._', t, count=1, flags=re.M)
+          start = t.find('### Build196 / OnePlayer 0.14.29 — Add/Edit Emby cached-first follow-up')
+          end = t.find('### Build193 / OnePlayer 0.14.26 — home-carousel native movement + SwiftUI release ownership')
+          assert start >= 0 and end > start, 'Add Emby PROJECT_STATE section missing'
+          section = '### Build199 / OnePlayer 0.14.32 — Add/Edit Emby retained password + iCloud password sync\n\n`DEV-add-emby-page-optimization` remains Active.\n\n- latest user contract supersedes the old “password is never persisted/synced” rule: Edit must retain/show the existing password and `iCloud 同步` must include the password across devices\n- exact source / feature head: `2b5f3bef073754371443c6c7a345657dbfa2a09a`; draft PR #256 points to the same head\n- password owner remains SessionStore + Keychain: local password uses a dedicated ordinary Keychain account; iCloud-enabled servers also use a separate `kSecAttrSynchronizable` password account; password is not written into UserDefaults/plain server configuration/logs\n- Edit receives `sessionStore.password(for:)`, preloads the field, provides eye reveal/hide, and only sends a password update when the value changed; changed credentials must still match stored Server ID/User ID before token replacement\n- prior cached-first auto-start, same-server multi-route selection and runtime winner persistence remain unchanged; Player/Transport/Cache/PiP/P0 media contracts are untouched\n- dedicated standard MPV CI run: **`32942618979` — success**\n- artifact: `OnePlayer-0.14.32-build199-add-emby-password-sync`; ID `9597143667`; archive digest `sha256:94d19775fc82d42232d1d5f3efe40b0f04719e599cb5cfb7317746490ca51972`\n- IPA SHA-256: `8f0f43f62705e5e13ae666cc54d32fd047c596df1d0e9335668b01a25b6eb003`; source ZIP SHA-256: `72b690f1f38898c3fdfa82834a06baa4cbb875cbc99b33c1c7b87eaf4848fe18`\n- app identity: 0.14.32 (199); app/main runtime MinOS: 15.0\n- evidence level: **Code written / CI passed / IPA produced / real-device + second-device iCloud pending / not stable**\n\n'
+          t = t[:start] + section + t[end:]
+          t = t.replace('Build196 / OnePlayer 0.14.29 remains the independent Add/Edit Emby cached-first/password candidate with CI/IPA evidence and target-device validation pending.', 'Build199 / OnePlayer 0.14.32 is the independent Add/Edit Emby retained-password/iCloud-password-sync candidate with dedicated CI/IPA evidence and target-device plus second-device iCloud validation pending.')
+          t = t.replace('Build196 / 0.14.29 is the current Add/Edit Emby cached-first candidate with CI/IPA complete and real-device validation pending.', 'Build199 / 0.14.32 is the current Add/Edit Emby retained-password/iCloud-password-sync candidate with dedicated CI/IPA complete and real-device plus second-device iCloud validation pending.')
+          p.write_text(t, encoding='utf-8')
+          PY
+          rm .github/workflows/temp-doc-build199.yml
+      - name: Commit updated indexes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/project/BUILD_TEST_INDEX.md docs/project/TECHNICAL_DECISIONS.md docs/project/PROJECT_STATE.md .github/workflows/temp-doc-build199.yml
+          git diff --cached --check
+          git commit -m "Record Build199 global project evidence"
+          git push origin HEAD:main
