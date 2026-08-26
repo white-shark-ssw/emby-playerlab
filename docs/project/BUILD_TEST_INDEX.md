@@ -30,7 +30,9 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | CI/IPA verified, but target-device recording still shows stop/catch-up hitch; rejected for smoothness. |
 | **Build203 / 0.14.36** | 30% carousel travel + accelerating opacity | CI/IPA verified. Target-device: 30% still too short overall while raw-progress spatial mapping makes the initial displacement/jitter perceptible again. Rejected as final parameterization; input owner retained. |
 | **Build204 / 0.14.37** | Poster warm-cache cell-entry reduction | **Owned by poster-scroll.** CI/IPA passed and independently verified; target-device validation pending. A separately-created carousel Build204 package was retired because this identity was already occupied and must not be used for attribution. |
-| **Build205 / 0.14.38** | 80% carousel travel + eased spatial/opacity mapping | **Current carousel candidate.** Spatial offset and opacity both use clamped `progress²`; raw gesture progress/commit/release remain unchanged. CI/IPA passed and independently verified; target-device validation pending. |
+| **Build205 / 0.14.38** | 80% carousel travel + whole-range `progress²` visual mapping | CI/IPA verified; target-device rejected the curve as final: drag start is over-restrained and the whole-range nonlinear tail feels like unnatural easing. 80% travel and single UIKit input owner are retained. |
+| **Build206 / 0.14.39** | Poster-scroll diagnostic line | **Owned by the independent poster task.** Carousel must not use this identity. |
+| **Build207 / 0.14.40** | 80% carousel travel + soft-start / linear-tail visual mapping | **Current carousel candidate.** Replaces whole-range `progress²` with `progress * (1 - 0.60 * (1-progress)^6)` for opacity + spatial progress while raw gesture/commit/release stay unchanged. CI/IPA passed and independently verified; real-device pending. |
 
 ## Current accepted baseline
 
@@ -102,29 +104,42 @@ Target-device result: lifecycle/settle/reversal okay, minimum/subtle movement st
 
 A carousel package was briefly produced as `0.14.37 / Build204` with the intended 80% + `progress²` spatial mapping. During mandatory global state resync, `DEV-poster-grid-smoothness` was found to already own Build204 / 0.14.37. Therefore the carousel Build204 package is retired before distribution and must not be used for source/IPA attribution. Canonical Build204 ownership remains poster-scroll.
 
-### Build205 current carousel candidate
+### Build205 real-device result
 
 - identity: **0.14.38 / 205**
 - branch: `perf/home-carousel-eased-travel-build205`
-- base: Build203 durable cleanup head `edafd5d784cfacdcf8c451fad93535a55fb880fb`
-- tested source: **`e5f2e7b4135eca333d5dda24545f19ee8d0be439`**
-- durable cleanup head: **`70d6cca676911e656591aae6b342c771cc92b9fe`**
-- tested-source → cleanup-head delta: temporary Build205 workflow deletion only; product/runtime source unchanged.
-- runtime delta from Build203: `Sources/Core/AppIdentity.swift` + `Sources/UI/EmbyHomeCarouselStateV3.swift` only.
-- total foreground travel: **`0.80 × Hero width`**.
-- `visualProgress = carouselBackdropBlendProgress(transitionProgress)` and the helper remains clamped `progress²`.
-- outgoing offset = `-direction × visualProgress × travel`; incoming offset = `direction × (1 - visualProgress) × travel`.
-- foreground/backdrop opacity uses the same `progress²` blend.
-- raw `transitionProgress`, 0.28 commit, 0.48×width predicted gate and settle ownership remain unchanged.
-- at raw progress 0.10, Build203 spatial displacement was `0.03 width`; Build205 is `0.008 width`, despite the much larger final travel.
-- left/right and first↔last boundaries still use existing direction + modulo neighbor ownership; no edge-specific state machine.
-- run/job: **`32998533448` / `98273968966` — success**
-- artifact: `OnePlayer-0.14.38-build205-home-carousel-eased-travel`
-- artifact ID: **`9617634710`**
-- artifact digest / independently downloaded ZIP SHA-256: **`3efb42f2ff3bf7ea7ed31a58f188b30c449e4cb0b703b111ee47ef98e3a51671`**
-- IPA SHA-256: **`fe4a81ebee9d330526c108edf2ab4652632ae5b204719864e0b5dee486086479`**
-- source ZIP SHA-256: **`b556620d0d312259e6d2e823c7f8079109f44c13e00c56b1718cfcfea4cd38f1`**
-- independent validation: artifact digest exact match; IPA/source hashes match embedded checksums; IPA `unzip -t` passed; bundle `com.embyplayerlab.app`; version/build `0.14.38 (205)`; OnePlayer primary/alternate icons; `MinimumOSVersion=15.0`.
+- tested source: `e5f2e7b4135eca333d5dda24545f19ee8d0be439`
+- durable cleanup head: `70d6cca676911e656591aae6b342c771cc92b9fe`
+- run/job: `32998533448` / `98273968966` — success
+- artifact ID: `9617634710`
+- IPA SHA-256: `fe4a81ebee9d330526c108edf2ab4652632ae5b204719864e0b5dee486086479`
+- total foreground travel: `0.80 × Hero width`.
+- foreground/backdrop opacity and spatial offset both used clamped `progress²`; raw `transitionProgress`, 0.28 commit, 0.48×width predicted gate and settle ownership stayed unchanged.
+- target-device result on 2026-08-27: user asked to **relax the start restraint slightly** and reported that the beginning/tail felt like an unnatural easing effect. Whole-range `progress²` is therefore rejected as final, while 80% total travel and the UIKit owner remain retained.
+- evidence: **Code written / CI passed / IPA produced+verified / real-device tested / visual curve rejected as final / not stable.**
+
+### Build207 current carousel candidate
+
+- identity: **0.14.40 / 207**
+- branch: `perf/home-carousel-soft-start-linear-tail-build207`
+- base: Build205 durable cleanup head `70d6cca676911e656591aae6b342c771cc92b9fe`
+- tested source: **`06936503a6c382d1d39d3cdd52f23bfe2058901e`**
+- durable cleanup head: **`7044ca68c7082cd055a7e4ce42dda6f00fe29674`**
+- tested-source → cleanup-head delta: temporary Build207 workflow deletion only; product/runtime source unchanged.
+- runtime delta from Build205 is limited to `Sources/Core/AppIdentity.swift` + `Sources/UI/EmbyHomeCarouselStateV3.swift`.
+- total foreground travel remains **`0.80 × Hero width`**.
+- visual progress is clamped `progress * (1 - 0.60 * (1-progress)^6)` for foreground/backdrop opacity and foreground spatial offset.
+- initial slope is about 0.40; raw progress 0.05 maps to visual ~0.028 and 0.10 maps to ~0.068.
+- attenuation rapidly decays; mid/late drag converges closely to raw progress; endpoint is 1.0 and tail derivative tends to 1.0.
+- raw `transitionProgress`, 0.28 commit, 0.48×width predicted gate, reversal/settle ownership and first↔last modulo lookup are unchanged.
+- source/Frozen guard: PASS.
+- run/job: **`33000526138` / `98280846494` — success**
+- artifact: `OnePlayer-0.14.40-build207-home-carousel-soft-start-linear-tail`
+- artifact ID: **`9618484884`**
+- artifact digest / independently downloaded ZIP SHA-256: **`c6a60537969f4d49f90f2ae47b033094640233f1085db6f5b1e75d18a86b62e4`**
+- IPA SHA-256: **`bbd7c9c22c2a79a89f41e0d94db16023cf7cd2a720ffeb3c4f31cb9066a15a21`**
+- source ZIP SHA-256: **`ecb6f4dbfb0609194406dbb5e0efc3ecde8907ed22992ee7aa4dcf6a886bc275`**
+- independent validation: artifact/IPA integrity, embedded hashes, bundle `com.embyplayerlab.app`, version/build `0.14.40 (207)`, OnePlayer icons, `MinimumOSVersion=15.0`, source snapshot confirms new curve and absence of whole-range `return progress * progress`.
 - evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
 
 ## Poster-scroll evidence
