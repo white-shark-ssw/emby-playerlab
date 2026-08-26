@@ -1,0 +1,283 @@
+name: One-shot apply Build206 poster hitch diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temp-apply-build206-poster-hitch-diagnostics.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/poster-grid-smoothness
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard exact Build204 durable head
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "170778c3934a280d9b539fb45f0bfef673687825"
+
+      - name: Materialize Build206 diagnostics
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          shared = Path('Sources/UI/EmbySharedImageAndNavigation.swift')
+          s = shared.read_text(encoding='utf-8')
+          if 'import QuartzCore\n' not in s:
+              s = s.replace('import ImageIO\n', 'import ImageIO\nimport QuartzCore\n', 1)
+
+          pool = '''final class EmbyDecodedImageRenderPool: @unchecked Sendable {
+              static let shared = EmbyDecodedImageRenderPool()
+              private let cache = NSCache<NSURL, UIImage>()
+
+              private init() {
+                  cache.countLimit = 64
+                  cache.totalCostLimit = 96 * 1024 * 1024
+              }
+
+              func image(for url: URL) -> UIImage? { cache.object(forKey: url as NSURL) }
+
+              func store(_ image: UIImage, for url: URL) {
+                  let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+                  cache.setObject(image, forKey: url as NSURL, cost: cost)
+              }
+
+              func clear() { cache.removeAllObjects() }
+          }
+          '''
+          diagnostic = pool + '''
+          final class EmbyPosterScrollHitchDiagnostics: NSObject {
+              static let shared = EmbyPosterScrollHitchDiagnostics()
+
+              private struct PosterEvent {
+                  let itemID: String
+                  let route: String
+                  let timestamp: CFTimeInterval
+              }
+
+              private var displayLink: CADisplayLink?
+              private var lastDisplayTimestamp: CFTimeInterval?
+              private var visiblePosterCount = 0
+              private var lastCellAppear: PosterEvent?
+              private var lastImageCommitAt: CFTimeInterval?
+              private var lastLoadAhead: PosterEvent?
+
+              private override init() {}
+
+              func posterDidAppear(itemID: String, route: String) {
+                  precondition(Thread.isMainThread)
+                  visiblePosterCount += 1
+                  lastCellAppear = PosterEvent(itemID: itemID, route: route, timestamp: CACurrentMediaTime())
+                  ensureDisplayLink()
+              }
+
+              func posterDidDisappear() {
+                  precondition(Thread.isMainThread)
+                  visiblePosterCount = max(0, visiblePosterCount - 1)
+                  if visiblePosterCount == 0 { stopDisplayLink() }
+              }
+
+              func imageDidCommit() {
+                  precondition(Thread.isMainThread)
+                  lastImageCommitAt = CACurrentMediaTime()
+              }
+
+              func loadAheadDidTrigger(itemID: String) {
+                  precondition(Thread.isMainThread)
+                  lastLoadAhead = PosterEvent(itemID: itemID, route: "grid-load-ahead", timestamp: CACurrentMediaTime())
+              }
+
+              private func ensureDisplayLink() {
+                  guard displayLink == nil else { return }
+                  lastDisplayTimestamp = nil
+                  let link = CADisplayLink(target: self, selector: #selector(displayLinkTick(_:)))
+                  link.add(to: .main, forMode: .common)
+                  displayLink = link
+              }
+
+              private func stopDisplayLink() {
+                  displayLink?.invalidate()
+                  displayLink = nil
+                  lastDisplayTimestamp = nil
+              }
+
+              @objc private func displayLinkTick(_ link: CADisplayLink) {
+                  guard let previous = lastDisplayTimestamp else {
+                      lastDisplayTimestamp = link.timestamp
+                      return
+                  }
+                  let gap = link.timestamp - previous
+                  lastDisplayTimestamp = link.timestamp
+                  guard gap >= 0.030 else { return }
+                  let now = link.timestamp
+                  let cellAge = lastCellAppear.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+                  let imageAge = lastImageCommitAt.map { max(0, (now - $0) * 1000) } ?? -1
+                  let loadAheadAge = lastLoadAhead.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+                  let gapText = String(format: "%.1f", gap * 1000)
+                  let cellAgeText = String(format: "%.1f", cellAge)
+                  let imageAgeText = String(format: "%.1f", imageAge)
+                  let loadAheadAgeText = String(format: "%.1f", loadAheadAge)
+                  DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\(gapText) visible=\(visiblePosterCount) last_cell=\(lastCellAppear?.itemID ?? \"none\") cell_route=\(lastCellAppear?.route ?? \"none\") cell_age_ms=\(cellAgeText) image_age_ms=\(imageAgeText) load_ahead=\(lastLoadAhead?.itemID ?? \"none\") load_ahead_age_ms=\(loadAheadAgeText)")
+              }
+          }
+          '''
+          if pool not in s:
+              raise SystemExit('Build204 render-pool anchor mismatch')
+          s = s.replace(pool, diagnostic, 1)
+
+          replacements = [
+              (
+                  '            image = rendered\n            setLoading(false, reportsLoadingState: reportsLoadingState)\n',
+                  '            image = rendered\n            EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()\n            setLoading(false, reportsLoadingState: reportsLoadingState)\n'
+              ),
+              (
+                  '                            self?.image = cachedImage\n                            self?.setLoading(false, reportsLoadingState: reportsLoadingState)\n',
+                  '                            self?.image = cachedImage\n                            EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()\n                            self?.setLoading(false, reportsLoadingState: reportsLoadingState)\n'
+              ),
+              (
+                  '                    self?.image = loaded\n                    self?.setLoading(false, reportsLoadingState: reportsLoadingState)\n',
+                  '                    self?.image = loaded\n                    EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()\n                    self?.setLoading(false, reportsLoadingState: reportsLoadingState)\n'
+              ),
+          ]
+          for old, new in replacements:
+              if s.count(old) != 1:
+                  raise SystemExit(f'Build204 image commit anchor count mismatch: {old!r}')
+              s = s.replace(old, new, 1)
+
+          tail = '''            }
+              }
+          }
+          '''
+          # Use the exact final EmbyPosterDetailLink tail, not an earlier Group.
+          old_tail = '''            }
+              }
+          }
+          '''
+          detail_marker = 'struct EmbyPosterDetailLink<Content: View>: View {'
+          pos = s.find(detail_marker)
+          if pos < 0:
+              raise SystemExit('EmbyPosterDetailLink missing')
+          prefix, suffix = s[:pos], s[pos:]
+          final = '''            }
+              }
+          }
+          '''
+          if not suffix.endswith(final):
+              raise SystemExit('EmbyPosterDetailLink final tail mismatch')
+          suffix = suffix[:-len(final)] + '''            }
+              }
+              .onAppear { EmbyPosterScrollHitchDiagnostics.shared.posterDidAppear(itemID: item.id, route: gridNavigationState == nil ? "row" : "grid") }
+              .onDisappear { EmbyPosterScrollHitchDiagnostics.shared.posterDidDisappear() }
+          }
+          '''
+          shared.write_text(prefix + suffix, encoding='utf-8')
+
+          grid = Path('Sources/UI/EmbyPosterGrid.swift')
+          g = grid.read_text(encoding='utf-8')
+          old = '''                    .onAppear {
+                                  guard let handler = onApproachingEnd, loadAheadIDs.contains(item.id) else { return }
+                                  handler()
+                              }
+          '''
+          new = '''                    .onAppear {
+                                  guard let handler = onApproachingEnd, loadAheadIDs.contains(item.id) else { return }
+                                  EmbyPosterScrollHitchDiagnostics.shared.loadAheadDidTrigger(itemID: item.id)
+                                  handler()
+                              }
+          '''
+          if g.count(old) != 1:
+              raise SystemExit('Build204 grid load-ahead anchor mismatch')
+          grid.write_text(g.replace(old, new, 1), encoding='utf-8')
+
+          identity = Path('Sources/Core/AppIdentity.swift')
+          i = identity.read_text(encoding='utf-8')
+          if i.count('static let sourceVersion = "0.14.37"') != 1 or i.count('?? "0.14.37"') != 1:
+              raise SystemExit('Build204 identity anchor mismatch')
+          i = i.replace('static let sourceVersion = "0.14.37"', 'static let sourceVersion = "0.14.39"', 1)
+          i = i.replace('?? "0.14.37"', '?? "0.14.39"', 1)
+          identity.write_text(i, encoding='utf-8')
+
+          checker = Path('scripts/check_poster_grid_smoothness.py')
+          c = checker.read_text(encoding='utf-8')
+          old_check = '    ".onAppear {\\n                        guard let handler = onApproachingEnd, loadAheadIDs.contains(item.id) else { return }\\n                        handler()\\n                    }",\n'
+          new_check = '    ".onAppear {\\n                        guard let handler = onApproachingEnd, loadAheadIDs.contains(item.id) else { return }\\n                        EmbyPosterScrollHitchDiagnostics.shared.loadAheadDidTrigger(itemID: item.id)\\n                        handler()\\n                    }",\n'
+          if c.count(old_check) != 1:
+              raise SystemExit('Build204 checker grid anchor mismatch')
+          c = c.replace(old_check, new_check, 1)
+          marker = 'pixel_width_contract = "private var posterImageMaxWidth: Int { min(440, max(1, Int(ceil(resolvedWidth * UIScreen.main.scale)))) }"\n'
+          diagnostic_check = '''required_diagnostics = [
+              "final class EmbyPosterScrollHitchDiagnostics: NSObject",
+              "private var displayLink: CADisplayLink?",
+              "guard gap >= 0.030 else { return }",
+              "DiagnosticsLogger.shared.log(\\\"PosterScrollHitch\\\"",
+              "posterDidAppear(itemID: item.id, route: gridNavigationState == nil ? \\\"row\\\" : \\\"grid\\\")",
+              "EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()",
+              "EmbyPosterScrollHitchDiagnostics.shared.loadAheadDidTrigger(itemID: item.id)",
+          ]
+          for needle in required_diagnostics:
+              if needle not in image_source and needle not in grid_source:
+                  raise SystemExit(f"missing Build206 poster hitch diagnostic contract: {needle}")
+
+          if image_source.count('DiagnosticsLogger.shared.log("PosterScrollHitch"') != 1:
+              raise SystemExit("PosterScrollHitch must log only after one centralized display-link gap detector")
+          if image_source.count("CADisplayLink(target: self") != 1:
+              raise SystemExit("Build206 must own exactly one poster-scroll CADisplayLink implementation")
+
+          '''
+          if c.count(marker) != 1:
+              raise SystemExit('Build204 checker pixel marker mismatch')
+          c = c.replace(marker, diagnostic_check + marker, 1)
+          checker.write_text(c, encoding='utf-8')
+
+          Path('docs/changelog/CHANGELOG_v0_14_39_build206.md').write_text('''# OnePlayer 0.14.39 / Build206
+
+          ## Poster scroll hitch diagnostics
+
+          - Build204 was real-device rejected: visible stop/catch-up jitter still occurs on Home and library poster-heavy pages.
+          - Build206 is diagnostic-only; it does not change poster layout, navigation, image loading policy, carousel behavior, or playback/transport contracts.
+          - While poster links are visible, one shared `CADisplayLink` records only frame gaps of at least 30 ms.
+          - A hitch record includes the most recent poster-cell appearance route (`row` or `grid`), image commit age, and grid load-ahead age.
+          - Ordinary frame callbacks do not write logs, so the diagnostic does not add per-frame logging I/O before a hitch.
+          - Existing Build204 image/cache behavior remains unchanged.
+          - Deployment target remains iOS 15.0.
+          ''', encoding='utf-8')
+          PY
+          python3 scripts/check_poster_grid_smoothness.py
+          python3 -m py_compile scripts/check_poster_grid_smoothness.py
+          git diff --check
+
+      - name: Guard diagnostic-only delta and commit
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+          allowed = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyPosterGrid.swift',
+              'Sources/UI/EmbySharedImageAndNavigation.swift',
+              'docs/changelog/CHANGELOG_v0_14_39_build206.md',
+              'scripts/check_poster_grid_smoothness.py',
+          }
+          changed = set(subprocess.check_output(['git', 'status', '--short'], text=True).splitlines())
+          paths = {line[3:] for line in changed}
+          extra = sorted(paths - allowed)
+          if extra:
+              raise SystemExit(f'Unexpected Build206 materializer delta: {extra}')
+          if not paths:
+              raise SystemExit('Build206 materializer produced no changes')
+          print('Build206 materializer scope: PASS')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyPosterGrid.swift Sources/UI/EmbySharedImageAndNavigation.swift scripts/check_poster_grid_smoothness.py docs/changelog/CHANGELOG_v0_14_39_build206.md
+          git commit -m "Diagnose poster scroll frame hitches"
+          git push origin HEAD:perf/poster-grid-smoothness
