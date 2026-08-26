@@ -1,0 +1,66 @@
+name: One-shot repair Build210 shared diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temp-repair-build210-shared.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/poster-grid-smoothness
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard current Build210 branch state
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "493a737b78690d09e70ccfdb91b0e0b2bd2eb88a"
+          git cat-file -e e95d73b75938ad92f2c4d7f06a3ba2d441bb92f4^{commit}
+
+      - name: Restore exact Build209 shared source and apply multi-owner diagnostic patch
+        run: |
+          set -euo pipefail
+          git checkout e95d73b75938ad92f2c4d7f06a3ba2d441bb92f4 -- Sources/UI/EmbySharedImageAndNavigation.swift
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Sources/UI/EmbySharedImageAndNavigation.swift')
+          s = p.read_text(encoding='utf-8')
+          old_fields = '''    private weak var observedScrollView: UIScrollView?\n    private var observedScrollOwnerID: UUID?\n    private var observedScrollRoute = "none"\n    private var lastScrollOffsetY: CGFloat?\n'''
+          new_fields = '''    private final class ScrollObservation {\n        weak var scrollView: UIScrollView?\n        var route: String\n        var lastOffsetY: CGFloat\n\n        init(scrollView: UIScrollView, route: String) {\n            self.scrollView = scrollView\n            self.route = route\n            lastOffsetY = scrollView.contentOffset.y\n        }\n    }\n\n    private var scrollObservations: [UUID: ScrollObservation] = [:]\n'''
+          if s.count(old_fields) != 1:
+              raise SystemExit('Build209 single-owner field anchor mismatch')
+          s = s.replace(old_fields, new_fields, 1)
+
+          start = s.index('    func observeVerticalScrollView(_ scrollView: UIScrollView, ownerID: UUID, route: String) {')
+          end = s.index('\n}\n\nfinal class EmbyPosterScrollMotionProbeView', start)
+          old_block = s[start:end]
+          new_block = '''    func observeVerticalScrollView(_ scrollView: UIScrollView, ownerID: UUID, route: String) {\n        precondition(Thread.isMainThread)\n        if let observation = scrollObservations[ownerID], observation.scrollView === scrollView {\n            observation.route = route\n        } else {\n            scrollObservations[ownerID] = ScrollObservation(scrollView: scrollView, route: route)\n        }\n    }\n\n    func stopObservingVerticalScrollView(ownerID: UUID) {\n        precondition(Thread.isMainThread)\n        scrollObservations.removeValue(forKey: ownerID)\n    }\n\n    private func ensureDisplayLink() {\n        guard displayLink == nil else { return }\n        lastDisplayTimestamp = nil\n        let link = CADisplayLink(target: self, selector: #selector(displayLinkTick(_:)))\n        link.add(to: .main, forMode: .common)\n        displayLink = link\n    }\n\n    private func stopDisplayLink() {\n        displayLink?.invalidate()\n        displayLink = nil\n        lastDisplayTimestamp = nil\n    }\n\n    @objc private func displayLinkTick(_ link: CADisplayLink) {\n        var movingSamples: [(scrollView: UIScrollView, route: String, deltaY: CGFloat)] = []\n        var staleOwnerIDs: [UUID] = []\n        for (ownerID, observation) in scrollObservations {\n            guard let scrollView = observation.scrollView else {\n                staleOwnerIDs.append(ownerID)\n                continue\n            }\n            let currentOffsetY = scrollView.contentOffset.y\n            let deltaY = currentOffsetY - observation.lastOffsetY\n            observation.lastOffsetY = currentOffsetY\n            if deltaY != 0 { movingSamples.append((scrollView, observation.route, deltaY)) }\n        }\n        for ownerID in staleOwnerIDs { scrollObservations.removeValue(forKey: ownerID) }\n\n        guard let previous = lastDisplayTimestamp else {\n            lastDisplayTimestamp = link.timestamp\n            return\n        }\n        let gap = link.timestamp - previous\n        lastDisplayTimestamp = link.timestamp\n        guard gap >= 0.030 else { return }\n        guard let sample = movingSamples.max(by: { lhs, rhs in\n            let lhsPhase = lhs.scrollView.isDragging ? 2 : (lhs.scrollView.isDecelerating ? 1 : 0)\n            let rhsPhase = rhs.scrollView.isDragging ? 2 : (rhs.scrollView.isDecelerating ? 1 : 0)\n            if lhsPhase != rhsPhase { return lhsPhase < rhsPhase }\n            return abs(lhs.deltaY) < abs(rhs.deltaY)\n        }) else { return }\n\n        let scrollView = sample.scrollView\n        let deltaY = sample.deltaY\n        let now = link.timestamp\n        let cellAge = lastCellAppear.map { max(0, (now - $0.timestamp) * 1000) } ?? -1\n        let imageAge = lastImageCommitAt.map { max(0, (now - $0) * 1000) } ?? -1\n        let loadAheadAge = lastLoadAhead.map { max(0, (now - $0.timestamp) * 1000) } ?? -1\n        let gapText = String(format: "%.1f", gap * 1000)\n        let offsetText = String(format: "%.2f", scrollView.contentOffset.y)\n        let deltaText = String(format: "%.2f", deltaY)\n        let velocityText = String(format: "%.1f", scrollView.panGestureRecognizer.velocity(in: scrollView).y)\n        let cellAgeText = String(format: "%.1f", cellAge)\n        let imageAgeText = String(format: "%.1f", imageAge)\n        let loadAheadAgeText = String(format: "%.1f", loadAheadAge)\n        let phase = scrollView.isDragging ? "dragging" : (scrollView.isDecelerating ? "decelerating" : "moving")\n        let lastCellID = lastCellAppear?.itemID ?? "none"\n        let lastCellRoute = lastCellAppear?.route ?? "none"\n        let lastLoadAheadID = lastLoadAhead?.itemID ?? "none"\n        DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\\(gapText) scroll_route=\\(sample.route) phase=\\(phase) offset_y=\\(offsetText) delta_y=\\(deltaText) velocity_y=\\(velocityText) registered_scrolls=\\(scrollObservations.count) moving_scrolls=\\(movingSamples.count) visible=\\(visiblePosterCount) last_cell=\\(lastCellID) cell_route=\\(lastCellRoute) cell_age_ms=\\(cellAgeText) image_age_ms=\\(imageAgeText) load_ahead=\\(lastLoadAheadID) load_ahead_age_ms=\\(loadAheadAgeText)")\n    }\n'''
+          if 'observedScrollOwnerID' not in old_block or 'lastScrollOffsetY' not in old_block:
+              raise SystemExit('Build209 observer method anchor mismatch')
+          s = s[:start] + new_block + s[end:]
+          p.write_text(s, encoding='utf-8')
+          PY
+          python3 scripts/check_poster_grid_smoothness.py
+          python3 -m py_compile scripts/check_poster_grid_smoothness.py
+          rm -rf scripts/__pycache__
+          git diff --check
+
+      - name: Guard exact repair scope and commit
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only)"
+          test "$changed" = "Sources/UI/EmbySharedImageAndNavigation.swift"
+          test "$(wc -l < Sources/UI/EmbySharedImageAndNavigation.swift | tr -d ' ')" -ge 690
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/UI/EmbySharedImageAndNavigation.swift
+          git commit -m "Repair Build210 multi-owner diagnostic source"
+          git push origin HEAD:perf/poster-grid-smoothness
