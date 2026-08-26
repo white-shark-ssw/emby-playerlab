@@ -52,10 +52,12 @@ required_diagnostics = [
     "final class EmbyPosterScrollHitchDiagnostics: NSObject",
     "private var displayLink: CADisplayLink?",
     "func observeVerticalScrollView(_ scrollView: UIScrollView, ownerID: UUID, route: String)",
-    "let deltaY = currentOffsetY.flatMap { current in lastScrollOffsetY.map { current - $0 } } ?? 0",
+    "private var scrollObservations: [UUID: ScrollObservation] = [:]",
+    "let deltaY = currentOffsetY - observation.lastOffsetY",
+    "if deltaY != 0 { movingSamples.append((scrollView, observation.route, deltaY)) }",
     "guard gap >= 0.030 else { return }",
-    "guard let scrollView, deltaY != 0 else { return }",
-    r"scroll_route=\(observedScrollRoute) phase=\(phase) offset_y=\(offsetText) delta_y=\(deltaText) velocity_y=\(velocityText)",
+    "guard let sample = movingSamples.max(by:",
+    r"scroll_route=\(sample.route) phase=\(phase) offset_y=\(offsetText) delta_y=\(deltaText) velocity_y=\(velocityText) registered_scrolls=\(scrollObservations.count) moving_scrolls=\(movingSamples.count)",
     "DiagnosticsLogger.shared.log(\"PosterScrollHitch\"",
     "posterDidAppear(itemID: item.id, route: gridNavigationState == nil ? \"row\" : \"grid\")",
     "EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()",
@@ -63,7 +65,11 @@ required_diagnostics = [
 ]
 for needle in required_diagnostics:
     if needle not in image_source and needle not in grid_source:
-        raise SystemExit(f"missing Build206 poster hitch diagnostic contract: {needle}")
+        raise SystemExit(f"missing poster hitch diagnostic contract: {needle}")
+
+for legacy in ["observedScrollOwnerID", "observedScrollRoute", "lastScrollOffsetY"]:
+    if legacy in image_source:
+        raise SystemExit(f"single-owner poster motion diagnostic reintroduced: {legacy}")
 
 if image_source.count('DiagnosticsLogger.shared.log("PosterScrollHitch"') != 1:
     raise SystemExit("PosterScrollHitch must log only after one centralized display-link gap detector")
