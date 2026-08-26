@@ -2,13 +2,13 @@
 
 ## Status
 
-**Active — Build198 CI scheduling blocked before job creation; IPA not produced**
+**Active — Build198 CI passed and verified IPA produced; target-device validation pending**
 
 - **Work ID**：`DEV-home-carousel-drag-smoothness`
 - **Routing aliases / keywords**：轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
 - **Task**：优化 OnePlayer 首页 V3 轮播图手动横向拖动，目标达到用户 EX 参考录屏同级别的丝滑、细腻和跟手，不出现起滑大跳、不跟手、卡顿、抖动、冻结后追帧或松手停在中间态。
 - **Evidence sync**：2026-08-27 +08:00。
-- **Current instruction**：继续完成 Build198 IPA，但禁止盲目重复 CI。必须固定真实 run/job/SHA 取证；只有明确失败证据支持时才改 workflow 或源码。当前连接器无法 dispatch 新 workflow，也不能重跑 queued/0-job run，因此在 GitHub Actions 调度阻塞被解释或解除前，不再制造触发提交。
+- **Current instruction**：Build198 已完成 CI/IPA 阶段。下一步只做目标设备 A/B；不得把 CI/IPA 成功写成真机已解决。
 
 ## Acceptance contract
 
@@ -20,66 +20,59 @@
 6. 不得影响 Player / MPV / PiP / Transport / Cache / Emby Session / STRM→302→115/CDN client-direct 等 P0/Frozen 合同。
 7. Build183 类“前景固定 + interactive crossfade”只有在正确的 page-slide 基础框架真机稳定后仍无法达到可接受细腻度时，才是用户明确允许的最终 fallback；不得未经允许提前改交互。
 
-## Current accepted / parallel identities
+## Current identities
 
 - **Accepted overall runtime baseline**：OnePlayer **0.14.32 / Build199**，已真机接受并合并到 `main`。
-- `main` at this evidence capture：`bd1cb7ea3a2be161e13503b88c8a69f5b9441e9e`；Build199 product merge is already accepted, and later documentation/checkpoint cleanup commits do not change that accepted product identity.
-- Carousel current candidate：**OnePlayer 0.14.31 / Build198**。
-- Carousel working branch：`perf/home-carousel-single-owner-build198`。
+- `main` at this evidence capture：`2cdbf4913898aedda66225381b30ab13d52cecd6`。
+- Carousel candidate：**OnePlayer 0.14.31 / Build198**。
+- Working branch：`perf/home-carousel-single-owner-build198`。
 - PR：none。
-- Current carousel branch head：**`294a5b8d993d753690fcaa71a0b5d790b81babe1`**。
-- Current branch relationship to `main@bd1cb7e...`：**ahead 13 / behind 70**, merge base `3c0782c93c37bedf4193a76648c9c7ecff91a9e3`.
-- Build198 remains an independent A/B candidate based on the earlier accepted carousel baseline. Do not merge/rebase the 70 newer main commits merely to make CI green or before the Build198 A/B result, because that would change the test variable. Final integration, if Build198 is accepted, must resync against then-current `main` separately.
+- Successful CI / IPA source：**`a569155d443433a5f4769dfe506fec6ab9bdd0e6`**。
+- Durable branch head after deleting temporary CI helpers：**`c769f2c4c05fffdb36e90d78d8baddec5e0e7c21`**。
+- Tested-source → durable-head compare：**only `.github/workflows/temp-build198-carousel-ci.yml` is removed; product/runtime files are unchanged**。
+- Durable Build198 branch relative to current `main` at capture：**ahead 17 / behind 72**, merge base `3c0782c93c37bedf4193a76648c9c7ecff91a9e3`。
+- Build198 remains an independent A/B candidate. Do not merge/rebase newer `main` work into this test candidate before the target-device result, because that would change the A/B variable. Final integration is a separate step if Build198 is accepted.
 
-## Why the architecture changed
+## Why this architecture exists
 
 ### Build185 / Build187 — pure SwiftUI input is too coarse at drag start
 
-- Build185 restored the required full-page foreground slide and removed old 4pt/1.08 start gates, but target-device recordings still showed first visible page movement around **10 / 12 / 16 px** versus EX around **1 / 1 / 2 px**.
-- Build187 real-device diagnostics proved the source of the initial quantization: SwiftUI reported an initial `0,0`, but the first useful horizontal/axis-lock/transition samples were already approximately **4.33pt / 8.00pt / 15.67pt / 11.00pt**.
-- Same device logs confirmed `UIScreen.main.maximumFramesPerSecond = 120` and Low Power Mode off. Therefore continued 0.5/0.2/0.1pt threshold tuning is not evidence-supported; SwiftUI `DragGesture` in the vertical `ScrollView` path is not delivering sufficiently fine first horizontal samples.
+- Build185 restored the required full-page foreground slide and removed old start gates, but target-device recordings still showed first visible page movement around **10 / 12 / 16 px** versus EX around **1 / 1 / 2 px**.
+- Build187 diagnostics proved the first useful SwiftUI horizontal/axis-lock samples were already about **4.33pt / 8.00pt / 15.67pt / 11.00pt**.
+- The same device reported maxFPS=120 and Low Power Mode off. Therefore further tiny SwiftUI threshold tuning is not evidence-supported.
 
-### Build189 / Build193 — hybrid move/end ownership is invalid
+### Build189 / Build193 — split move/end ownership is rejected
 
-- Build189 used native raw/coalesced movement while SwiftUI still owned release. Target device could drag to partial progress but release could leave the carousel frozen between pages.
-- Build193 tried making the native sampler passive and leaving SwiftUI as the sole release owner. Target device reproduced the same freeze.
-- Source layout showed movement and release lived on different input/hit-test surfaces: native interactive overlay above Hero + underlying SwiftUI gesture. This hybrid architecture is rejected. Do not patch it with timer/watchdog/reconciliation/fallback.
-- Build193 playback-log follow-up was inconclusive because Playback logging was disabled; absence of `HomeCarouselDragTiming` is not evidence for or against SwiftUI `onEnded`. Do not ask user to repeat Build193 just for that log.
+- Build189 used native movement while SwiftUI still owned release; target device could freeze between pages after release.
+- Build193 made native capture passive while SwiftUI remained release owner; target device reproduced the same freeze.
+- Movement and release must not live on separate hit-test/input owners. Do not patch that architecture with timer/watchdog/reconciliation/fallback.
 
-### EX forensic evidence
+### EX evidence
 
-Repeated frame/template review of the EX reference recording shows outgoing/incoming Hero content is effectively **spatially fixed** during transitions (matched title regions ≈0 px horizontal shift; background ≈0–1 px) while blend weight changes continuously. In a slow transition the estimated blend increment is about **1% per 30fps recorded frame median**. Mapping the same normalized 1% progress to OnePlayer's ~510pt full-width slide produces about **5pt spatial movement**, explaining why the same input granularity looks much harsher under page translation.
-
-This explains why Build183 fixed/crossfade felt somewhat finer, but the user rejected its unauthorized interaction change. Current order remains: first prove a correct single-owner page-slide; only if that stable implementation still cannot approach EX feel may the user-authorized fixed-spatial interactive blend be adopted as fallback.
+EX reference analysis showed foreground/background regions remain effectively spatially fixed while blend weight changes continuously. Build183 therefore felt somewhat finer, but it changed the required page-slide semantics without authorization. Current order remains: prove the correct single-owner page-slide first; only if that stable path still cannot approach EX feel may the explicitly allowed fixed-spatial interactive blend be considered.
 
 ## Build198 Stage 1 — single UIKit lifecycle owner
-
-### Goal
-
-Stage 1 changes **only gesture lifecycle ownership**. Do not combine this with transition-state atomization, blur/compositing changes, predicted-touch rendering, interpolation/smoothing, crossfade, timer, watchdog, debounce, throttle, retry or fallback.
 
 Target structure:
 
 `one UIKit interaction surface → one complete begin/move/end/cancel owner → existing carousel transition state → SwiftUI render only`
 
-### Implemented behavior
+Implemented behavior:
 
-- New `Sources/UI/EmbyHomeCarouselInteractionV3.swift` provides the native carousel interaction layer/custom continuous recognizer.
-- Hero no longer relies on a separate SwiftUI drag lifecycle for manual carousel movement/release. The native interaction surface owns the horizontal gesture from begin through move to end/cancel.
-- The same interaction surface coordinates detail tap and horizontal drag; do not reintroduce overlapping native-move + SwiftUI-end ownership.
-- First meaningful raw motion uses approximately **0.5pt** only to determine direction. Vertical determination fails the carousel recognizer so the ancestor homepage `UIScrollView` remains authoritative; horizontal determination begins the carousel gesture and owns it through release.
-- Build193-style unconditional simultaneous recognition is not the intended model. Horizontal carousel recognition and vertical ScrollView arbitration are explicit.
-- Rendering publishes only the **latest actual touch position once per UIEvent**. Do not loop historical `coalescedTouches` and publish multiple SwiftUI progress values in one event.
-- Predicted touch information is not used to render ahead of the finger. It is retained only for release prediction/commit semantics so the existing fast-flick behavior can remain equivalent without inventing an arbitrary velocity magic number.
-- Existing commit/cancel semantics remain: progress threshold **0.28**, predicted-distance gate corresponding to **0.48 × width**, existing complete/cancel settle durations, auto-advance and artwork/backdrop behavior.
-- Foreground page-slide contract remains unchanged: from/to Logo/rating/year/type/overview travel with their page; no Build183 fixed foreground/crossfade in Stage 1.
-- High-frequency carousel transition ownership remains local to `V3HomeCarouselTransitionState`; do not move per-finger progress/from/to/drag state back to Home root.
+- `Sources/UI/EmbyHomeCarouselInteractionV3.swift` is the native single-owner interaction layer/custom continuous recognizer.
+- The Hero no longer splits manual movement and release between native and SwiftUI gesture owners.
+- The same interaction surface coordinates detail tap and horizontal drag.
+- First meaningful raw motion uses approximately **0.5pt** only for direction acquisition. Vertical acquisition fails the carousel recognizer so the ancestor Home `UIScrollView` remains authoritative; horizontal acquisition owns the carousel through end/cancel.
+- Rendering publishes only the latest actual touch position once per UIEvent; it does not replay coalesced touches into multiple SwiftUI progress publications.
+- Predicted touch is not rendered ahead of the finger; it is used only for existing release prediction/commit semantics.
+- Existing commit/cancel semantics remain: progress threshold **0.28**, predicted-distance gate corresponding to **0.48 × width**, and existing settle durations.
+- Logo/rating/year/type/overview remain part of their page and continue page-slide semantics in Stage 1.
+- High-frequency transition ownership remains local to `V3HomeCarouselTransitionState`.
 
-### Current Build198 diff scope
+## Durable Build198 product diff
 
-Current branch compared with current `main` still changes only the Build198 feature/CI paths below; no intended Player / MPV / PiP / UnifiedTransport / Cache / Emby Session / Add/Edit Emby product files are touched:
+After CI-helper cleanup, current Build198 branch changes only these durable feature paths relative to its merge-base line:
 
-- `.github/workflows/temp-build198-carousel-ci.yml` — temporary CI helper; current helper includes icon preparation and no longer has the trigger-only `paths` filter.
 - `Sources/Core/AppIdentity.swift`
 - `Sources/UI/EmbyHomeCarouselInteractionV3.swift`
 - `Sources/UI/EmbyHomeCarouselStateV3.swift`
@@ -88,101 +81,108 @@ Current branch compared with current `main` still changes only the Build198 feat
 - `docs/changelog/CHANGELOG_v0_14_31_build198.md`
 - `scripts/check_home_carousel_single_owner.py`
 
-The exact compare at this evidence capture reports those eight paths only. Frozen/P0 media paths are not part of the Build198 diff.
+No Player / MPV / PiP / UnifiedTransport / Cache / Emby Session / Add/Edit Emby product path is part of the durable Build198 diff.
 
-## Build198 validation history
+## CI / packaging evidence
 
-### Earlier dedicated-CI attempts
+### Failed source — run 32890283594
 
-Two early attempts stopped before real compile because old repository checks were already stale relative to the accepted baseline:
+- Source：`2a3cec5f3d004db0617aa5a1c3417701a96d5140`
+- Run：`32890283594`
+- Job：`97940357582`
+- Result：failure after real Xcode Release compilation.
+- Passed before failure：single-owner contract, Python syntax, diff/Frozen guard, Xcode/dependencies, **Release compilation**.
+- Failed step：`Locate and validate app`.
+- No IPA was produced from this run.
 
-1. old `check_home_immersive_carousel.py` still expected `AdaptiveHeroRevealMetrics.backdropPinOffset`, while accepted source had already moved that calculation into Hero-local source;
-2. old `check_home_horizontal_tap_routing.py` still searched `EmbyServerRootViewV3.swift` for `private func landscapeRow`, which is no longer true on accepted source.
+The repository's known-good IPA workflow was then compared with the Build198 helper. The Build198 helper was missing the required `python3 scripts/generate_oneplayer_icons.py` preparation step. Commit `2746b62774228d94bd8bf56db57cb04ff4406970` added only that workflow preparation; no carousel runtime source was changed for this packaging fix.
 
-Do **not** mutate Build198 product code merely to satisfy those historical script assumptions. The dedicated Build198 workflow is intentionally scoped to the new single-owner contract + Python syntax + exact diff/Frozen guard + real Xcode Release/MinOS/IPA pipeline.
-
-### Run 32890283594 — real compile passed, post-build validation failed
+### Successful Build198 run
 
 - Workflow：`Build198 Carousel Single Owner IPA`
-- Run：**`32890283594`**
-- Job：**`97940357582`**
-- Source/head SHA：**`2a3cec5f3d004db0617aa5a1c3417701a96d5140`**
-- Conclusion：**failure**
+- Run：**`32987054824`**
+- Job：**`98235720724`**
+- Source/head SHA：**`a569155d443433a5f4769dfe506fec6ab9bdd0e6`**
+- Event：push
+- Result：**success**
+- All job gates passed:
+  - source checkout
+  - Build198 single-owner contract + exact diff/Frozen guard
+  - Xcode 16.4/tool setup
+  - OnePlayer icon generation
+  - project/dependency generation
+  - **Xcode Release build**
+  - **built app identity/icon validation**
+  - **MinOS validation**
+  - **unsigned IPA/source packaging**
+  - **artifact upload**
 
-Concrete evidence reached in this run:
+This successful rerun proves the workflow/package correction was sufficient; no product/runtime code change was required to get the Build198 app through validation and packaging.
 
-- Build198 dedicated single-owner source contract: **PASS**.
-- Python syntax / exact scope / P0-Frozen diff guard: **PASS**.
-- Xcode 16.4 environment / dependency resolution: **PASS**.
-- **Real Xcode Release compilation: PASS**. Current evidence does not justify changing the gesture/runtime source because Swift/UIKit compilation succeeded.
-- Failure occurs **after Release compile**, at step **`Locate and validate app`**.
-- IPA packaging/upload did not complete; no Build198 IPA was produced.
+## Verified Build198 artifact
 
-### Workflow evidence after the failure
+- Artifact：`OnePlayer-0.14.31-build198-home-carousel-single-owner`
+- Artifact ID：**`9613342337`**
+- Artifact size：`22,124,833` bytes
+- Artifact digest：**`sha256:4597f6b9bcdd74a44441632f72c5c4b9127aab03e3dad7e38478c552cae773f3`**
+- IPA：`OnePlayer-0.14.31-build198-home-carousel-single-owner-unsigned.ipa`
+- IPA SHA-256：**`9432928b31898c0c3f05e7e0affb6949c23339a37edd8f14c1d47343ff31f3d8`**
+- Source ZIP：`OnePlayer-0.14.31-build198-source.zip`
+- Source ZIP SHA-256：**`00e3fd353c487d185469a2bd9679031cc8a3da9829b310281d8e638c10cd046d`**
+- Independent artifact ZIP integrity check：PASS
+- Independent IPA ZIP integrity check：PASS
+- `CFBundleIdentifier`：`com.embyplayerlab.app`
+- `CFBundleDisplayName` / `CFBundleName`：`OnePlayer`
+- `CFBundleShortVersionString`：`0.14.31`
+- `CFBundleVersion`：`198`
+- `MinimumOSVersion`：`15.0`
+- App executable runtime Mach-O minOS：`15.0`
+- Primary icon：`OnePlayerIcon`
+- Alternate icon：`OnePlayerAltIcon`
+- MinOS audit：PASS, required device ceiling `17.0`
 
-The post-build failure was compared against the repository's known successful unsigned-IPA workflow rather than guessed from product source:
+Evidence level now:
 
-- the successful IPA pipeline runs `python3 scripts/generate_oneplayer_icons.py` before project generation/build;
-- the failing Build198 helper did not run that icon-generation step;
-- the OnePlayer icon asset catalog references generated PNG resources;
-- therefore commit **`2746b62774228d94bd8bf56db57cb04ff4406970`** adds the same icon preparation step before Build198 project generation/build.
+**Build198 = Code written ✅ / scoped contract ✅ / diff-Frozen guard ✅ / CI passed ✅ / IPA produced + independently verified ✅ / real-device not tested / not stable.**
 
-This is a workflow-only, evidence-supported fix. It has **not** been promoted to “root cause proven by rerun”, because GitHub Actions has not scheduled a job for the fixed source yet. The connector did not expose a stable decoded line containing the exact old validator error, so do not invent one.
+## CI-helper cleanup
 
-### Fixed-source run 32984758776 — scheduler never created a job
+After the valid artifact was captured:
 
-- Fixed source SHA：**`2746b62774228d94bd8bf56db57cb04ff4406970`**.
-- Run：**`32984758776`**, workflow run #4.
-- Created：`2026-08-26T15:20:13Z`.
-- Current observed state：**`queued`**, conclusion `null`.
-- `updated_at` remained equal to creation time throughout repeated checks.
-- Jobs endpoint repeatedly returned **`jobs: []`**.
-- Therefore this run never reached Xcode, dependency resolution, source validation, app validation, packaging, or artifact upload. It must not be called CI passed or CI failed-at-build; it is blocked before job creation.
+- temporary one-shot dispatcher was deleted;
+- `.github/workflows/temp-build198-carousel-ci.yml` was deleted from the durable feature branch;
+- durable branch head is `c769f2c4c05fffdb36e90d78d8baddec5e0e7c21`;
+- compare from tested source `a569155d...` to cleanup head changes only removal of the temporary Build198 workflow; product/runtime files are unchanged.
 
-### Trigger investigation — stop point
+Do not re-add these helpers merely for documentation or to create another identical IPA.
 
-The investigation deliberately avoided blind reruns:
+## Target-device validation — next exact action
 
-1. Connector capabilities were checked. It can rerun failed jobs/runs, but it exposes no `workflow_dispatch`, no cancel for the queued run, and no operation to rerun a queued/0-job run.
-2. Rerunning old failed run `32890283594` was rejected because it would execute old SHA `2a3cec5...` without the icon preparation fix.
-3. A one-off no-op trigger commit `a569155d443433a5f4769dfe506fec6ab9bdd0e6` produced no Actions run/check suite and was removed from the active branch; do not use it as a source baseline.
-4. The active branch was restored to `2746b62`, then a dedicated temporary branch was used to make one deterministic trigger change: remove the helper's `paths: [.github/workflows/temp-build198-carousel-ci.yml]` filter while retaining the exact Build198 branch filter and all build gates.
-5. That trigger-only workflow commit is **`294a5b8d993d753690fcaa71a0b5d790b81babe1`**. The Build198 branch was fast-forwarded to it. No business/runtime source changed from `2746b62`.
-6. At the latest evidence check, SHA `294a5b8d...` had **0 workflow runs and 0 check suites**. Therefore no additional trigger commits, workflow clones, retries, ref churn, or speculative CI edits should be made until the GitHub Actions event/scheduling state is understood or becomes operable.
+Install the verified Build198 IPA on **iPhone 15 Pro Max / iOS 17.0** and test in this order:
 
-Current evidence level:
+1. tiny initial horizontal drag — look specifically for the first visible movement granularity versus EX;
+2. small drag + release — must cancel fully, never remain between pages;
+3. committed drag / fast flick — must complete fully;
+4. hold and reverse through center repeatedly — no pause/freeze/catch-up;
+5. vertical drag on Hero — Home vertical `ScrollView` must remain authoritative;
+6. detail tap — must still enter detail normally;
+7. auto-advance — must remain normal;
+8. compare portrait and landscape subjective `drag / layout / settle` feel with EX.
 
-**Build198 = Code written ✅ / scoped contract previously ✅ / diff-Frozen guard previously ✅ / Release compile previously ✅ / icon-preparation workflow fix written ✅ / fixed-source CI not scheduled (queued/0-job) / IPA not produced / real-device not tested / not stable.**
+If Stage 1 is lifecycle-stable but still perceptually too coarse, then inspect transition publication/atomicity before considering the user-authorized fixed-spatial crossfade fallback. Do not add interpolation/timer/watchdog/retry/debounce/throttle without new evidence.
 
-## Critical do-not-do list
+If Build198 is accepted on device, resync the durable product diff against then-current `main` in a separate integration step and rerun any validation affected by that resync. Do not claim the current old-base CI automatically covers future merged source.
 
-- Do not restart the carousel design from Build193.
-- Do not change the Build198 gesture/runtime source merely because CI is blocked; Release compilation already passed.
-- Do not blindly create another Build198 run/trigger commit while run `32984758776` remains queued with zero jobs and the connector cannot dispatch/cancel it.
-- Do not re-enable stale old test assumptions by modifying accepted product source.
-- Do not add timer/watchdog/retry/fallback/interpolation/debounce/throttle.
-- Do not combine Stage 1 with atomic transition snapshot work, blur optimization, predicted-touch rendering or EX crossfade fallback.
-- Do not change Player/Transport/Cache/PiP/Emby media byte path.
-- Do not change Build198 identity away from **0.14.31 / 198**.
-- Do not merge/rebase current `main` into the Build198 A/B candidate simply because the feature branch is behind; final integration resync is a separate step after acceptance.
-- Do not claim Build198 is solved until target-device acceptance.
+## Protected contracts
 
-## Next exact action
+Do not modify for this task unless new direct evidence requires it:
 
-1. Treat `perf/home-carousel-single-owner-build198@294a5b8d993d753690fcaa71a0b5d790b81babe1` as the current Build198 CI-source branch. The runtime/product content is the same Build198 single-owner candidate as `2746b62`; `294a5b8d` only changes the temporary workflow trigger condition.
-2. First resolve or observe a real GitHub Actions scheduling transition for fixed source. The existing fixed run is `32984758776`; if it finally creates a job, inspect that job directly. Do not trigger another run merely to see whether it behaves differently.
-3. If a fixed-source job runs, required gates are: single-owner contract, exact diff/Frozen guard, icon preparation, Xcode Release build, app identity **0.14.31 (198)**, `MinimumOSVersion = 15.0`, unsigned IPA packaging, artifact upload.
-4. If the job fails, read the exact failing step/log before any modification. Only make the smallest evidence-backed workflow/packaging or product fix.
-5. After success, download the artifact and independently verify artifact ZIP integrity, `Payload/*.app`, `CFBundleShortVersionString=0.14.31`, `CFBundleVersion=198`, `MinimumOSVersion=15.0`, IPA SHA-256 and source ZIP SHA-256.
-6. Only after artifact verification mark **CI passed / IPA produced**. Then remove/restore the temporary Build198 workflow without altering successful CI-source attribution.
-7. Send the verified Build198 IPA to the user. Target-device Stage-1 validation order: tiny initial drag → small drag release must cancel fully → committed/fast flick must complete fully → hold and reverse through center → vertical Hero scroll → detail tap → compare continuous feel with EX.
-8. If Stage 1 lifecycle is real-device stable but page-slide remains perceptually much coarser than EX, only then consider Stage 2 transition-publication/atomicity. If a correct Stage 1+subsequent page-slide path still cannot approach EX, the user-authorized fixed-spatial interactive crossfade is the evidence-supported fallback.
-9. If Build198 is accepted, resync/reconcile it against then-current `main` as a separate integration task; do not contaminate the A/B candidate before device validation.
-
-## Evidence labels
-
-- Build185：real-device rejected — coarse initial page movement.
-- Build187：real-device diagnostic confirmed — SwiftUI first useful samples already 4–16pt, maxFPS=120.
-- Build189：real-device rejected — native movement + SwiftUI release could freeze.
-- Build193：real-device rejected — passive native movement + underlying SwiftUI release still froze; hybrid ownership rejected.
-- Build198：**current Stage-1 single-owner candidate; old source Release compilation passed, workflow icon preparation has been fixed, fixed-source Actions scheduling is blocked before job creation, no IPA yet, no real-device result.**
+- immediate left/right double-tap MPV Seek and rapid repeated double-tap behavior;
+- STRM / HTTP 302 / 115-CDN client-direct media path;
+- HTTP Range / 206 and session cache;
+- Emby Resume/progress synchronization;
+- abnormal short-media / premature EOF tolerance and diagnostics;
+- MPV primary playback path;
+- PiP frozen architecture;
+- no NAS media-byte relay;
+- never restore `targetTime / duration × fileSize` as a Seek/Transport anchor.
