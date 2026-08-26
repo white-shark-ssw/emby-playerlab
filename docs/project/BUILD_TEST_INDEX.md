@@ -26,10 +26,11 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build198 / 0.14.31** | Single UIKit carousel lifecycle owner | CI/IPA verified; real-device lifecycle/settle/reversal okay, but minimum drag still too coarse. Single-owner input architecture retained. |
 | **Build199 / 0.14.32** | Add/Edit Emby completion | Dedicated CI/IPA passed; target-device accepted; merged. **Current accepted overall baseline.** |
 | **Build200 / 0.14.33** | Fixed-spatial foreground + linear blend | CI/IPA verified; target-device rejected because foreground stopped sliding horizontally. |
-| **Build201 / 0.14.34** | 15% short-travel horizontal slide + linear blend | CI/IPA verified; target-device feedback: **“有点那种感觉了”**. Direction partially positive; user requested 30% travel and slower-start/faster-later opacity. Not final. |
-| **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | CI/IPA verified, but latest target-device recording still shows a stop/catch-up hitch around 4.067 s (`-6.36 px → 0 px → -26.19 px`). Real-device tested and rejected for smoothness; not stable. |
-| **Build203 / 0.14.36** | 30% carousel travel + accelerating opacity | CI/IPA passed and independently verified. Uses `0.30 × Hero width` and direction-independent `progress²` blend with existing first↔last modulo wrapping. Target-device validation pending. |
-| **Build204 / 0.14.37** | Poster warm-cache cell-entry reduction | Current poster-scroll candidate. Removes no-op image publisher subscribers from ordinary posters and seeds warm-cache ordinary cells before first body pass so `onAppear` does not synchronously publish a second cached-image invalidation. CI/IPA passed and independently verified; target-device validation pending. |
+| **Build201 / 0.14.34** | 15% short-travel horizontal slide + linear blend | CI/IPA verified; target-device feedback: **“有点那种感觉了”**. Direction partially positive; not final. |
+| **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | CI/IPA verified, but target-device recording still shows stop/catch-up hitch; rejected for smoothness. |
+| **Build203 / 0.14.36** | 30% carousel travel + accelerating opacity | CI/IPA verified. Target-device: 30% still too short overall while raw-progress spatial mapping makes the initial displacement/jitter perceptible again. Rejected as final parameterization; input owner retained. |
+| **Build204 / 0.14.37** | Poster warm-cache cell-entry reduction | **Owned by poster-scroll.** CI/IPA passed and independently verified; target-device validation pending. A separately-created carousel Build204 package was retired because this identity was already occupied and must not be used for attribution. |
+| **Build205 / 0.14.38** | 80% carousel travel + eased spatial/opacity mapping | **Current carousel candidate.** Spatial offset and opacity both use clamped `progress²`; raw gesture progress/commit/release remain unchanged. CI/IPA passed and independently verified; target-device validation pending. |
 
 ## Current accepted baseline
 
@@ -53,13 +54,13 @@ Build199 inherits the accepted/frozen player, PiP, transport, cache, episode-ord
 
 - one UIKit interaction surface owns begin/move/end/cancel;
 - vertical acquisition yields to Home `UIScrollView`;
-- actual touch drives render; predicted touch is release-only;
+- actual touch drives raw render progress; predicted touch is release-only;
 - 0.5pt axis acquisition, 0.28 commit, 0.48×width predicted-distance gate and settle timings remain unchanged;
 - no second SwiftUI drag/release owner.
 
 Build198 successful CI source `a569155d443433a5f4769dfe506fec6ab9bdd0e6`; run/job `32987054824` / `98235720724`; artifact ID `9613342337`; IPA SHA-256 `9432928b31898c0c3f05e7e0affb6949c23339a37edd8f14c1d47343ff31f3d8`.
 
-Target-device result: lifecycle/settle/reversal okay, minimum/subtle movement still too coarse versus EX. Input architecture retained; full-width visual mapping not final.
+Target-device result: lifecycle/settle/reversal okay, minimum/subtle movement still too coarse versus EX. Input architecture retained; full-width raw visual mapping not final.
 
 ### Build200 rejected visual mapping
 
@@ -77,30 +78,54 @@ Target-device result: lifecycle/settle/reversal okay, minimum/subtle movement st
 - artifact ID: `9615585817`
 - IPA SHA-256: `d889f2c36b3f617b429e4f39ba54d39d7f2826a058a2d4f874bc7a9bb574db58`
 - visual mapping: horizontal foreground travel `0.15 × Hero width`, linear opacity blend.
-- target-device result on 2026-08-27: user reported **“有点那种感觉了”**, then requested travel `15% → 30%` and opacity that changes little at drag start and increasingly faster later, including left/right and first↔last boundaries.
+- target-device result on 2026-08-27: user reported **“有点那种感觉了”**; 15% was closer partly because total movement was very small, but total travel was insufficient.
 - evidence: **Code written / CI passed / IPA produced+verified / real-device tested / direction partially positive / not stable.**
 
-### Build203 current carousel candidate
+### Build203 real-device result
 
 - identity: **0.14.36 / 203**
 - branch: `perf/home-carousel-accelerating-blend-build203`
-- base: Build201 tested source `e61070146d91bac45400e3f95e28eead756faa81`
 - tested source: `69beee45b93dc11c7c5be2ee4b81a5a0157f2653`
 - durable cleanup head: `edafd5d784cfacdcf8c451fad93535a55fb880fb`
-- tested-source → cleanup-head delta: temporary Build203 workflow deletion only; product/runtime source unchanged.
-- runtime delta is limited to `AppIdentity.swift` and `EmbyHomeCarouselStateV3.swift`.
 - foreground travel: `0.30 × Hero width`.
-- backdrop + foreground blend: clamped `progress²`; outgoing `1-blend`, incoming `blend`.
-- existing modulo neighbor lookup `(index + direction + count) % count` remains the first↔last authority, so no edge-specific state owner was added.
-- Build198 gesture owner/thresholds/release/settle remain unchanged.
-- run/job: **`32995898318` / `98264917294` — success**
-- artifact: `OnePlayer-0.14.36-build203-home-carousel-accelerated-blend`
-- artifact ID: **`9616576496`**
-- artifact digest / independently downloaded ZIP SHA-256: `5df63c68c6a8f97d5c41d12040c297e5d4ca6e58d00aae89b0c17ce5a6441310`
-- IPA SHA-256: **`cee7241b73c4dc38efb6593c3d6ec9f54981f8e5a609be78a491b869df685226`**
-- source ZIP SHA-256: **`4b916a508e258949f9c17b449d38e782030a1130e36d08868cd1c54797a00135`**
-- independent validation: artifact/IPA integrity, bundle `com.embyplayerlab.app`, `0.14.36 (203)`, OnePlayer icons, MinOS 15.0; build log contains `** BUILD SUCCEEDED **`.
-- evidence: **Code written ✅ / scoped diff+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
+- backdrop + foreground opacity blend: clamped `progress²`.
+- spatial offset still used raw linear `transitionProgress`.
+- existing `(index + direction + count) % count` remained first↔last authority.
+- run/job: `32995898318` / `98264917294` — success
+- artifact ID: `9616576496`
+- IPA SHA-256: `cee7241b73c4dc38efb6593c3d6ec9f54981f8e5a609be78a491b869df685226`
+- target-device result on 2026-08-27: 30% total travel still felt insufficient, while the larger raw-linear spatial mapping exposed the coarse first visible displacement/jitter again. User requested the spatial motion itself use the same restrained-start/accelerating-later curve as opacity and total travel increase to 80%.
+- conclusion: remaining issue is more specifically **raw progress → spatial offset mapping**, not gesture lifecycle ownership.
+- evidence: **Code written / CI passed / IPA produced+verified / real-device tested / rejected as final parameterization / not stable.**
+
+### Build204 carousel collision — retired
+
+A carousel package was briefly produced as `0.14.37 / Build204` with the intended 80% + `progress²` spatial mapping. During mandatory global state resync, `DEV-poster-grid-smoothness` was found to already own Build204 / 0.14.37. Therefore the carousel Build204 package is retired before distribution and must not be used for source/IPA attribution. Canonical Build204 ownership remains poster-scroll.
+
+### Build205 current carousel candidate
+
+- identity: **0.14.38 / 205**
+- branch: `perf/home-carousel-eased-travel-build205`
+- base: Build203 durable cleanup head `edafd5d784cfacdcf8c451fad93535a55fb880fb`
+- tested source: **`e5f2e7b4135eca333d5dda24545f19ee8d0be439`**
+- durable cleanup head: **`70d6cca676911e656591aae6b342c771cc92b9fe`**
+- tested-source → cleanup-head delta: temporary Build205 workflow deletion only; product/runtime source unchanged.
+- runtime delta from Build203: `Sources/Core/AppIdentity.swift` + `Sources/UI/EmbyHomeCarouselStateV3.swift` only.
+- total foreground travel: **`0.80 × Hero width`**.
+- `visualProgress = carouselBackdropBlendProgress(transitionProgress)` and the helper remains clamped `progress²`.
+- outgoing offset = `-direction × visualProgress × travel`; incoming offset = `direction × (1 - visualProgress) × travel`.
+- foreground/backdrop opacity uses the same `progress²` blend.
+- raw `transitionProgress`, 0.28 commit, 0.48×width predicted gate and settle ownership remain unchanged.
+- at raw progress 0.10, Build203 spatial displacement was `0.03 width`; Build205 is `0.008 width`, despite the much larger final travel.
+- left/right and first↔last boundaries still use existing direction + modulo neighbor ownership; no edge-specific state machine.
+- run/job: **`32998533448` / `98273968966` — success**
+- artifact: `OnePlayer-0.14.38-build205-home-carousel-eased-travel`
+- artifact ID: **`9617634710`**
+- artifact digest / independently downloaded ZIP SHA-256: **`3efb42f2ff3bf7ea7ed31a58f188b30c449e4cb0b703b111ee47ef98e3a51671`**
+- IPA SHA-256: **`fe4a81ebee9d330526c108edf2ab4652632ae5b204719864e0b5dee486086479`**
+- source ZIP SHA-256: **`b556620d0d312259e6d2e823c7f8079109f44c13e00c56b1718cfcfea4cd38f1`**
+- independent validation: artifact digest exact match; IPA/source hashes match embedded checksums; IPA `unzip -t` passed; bundle `com.embyplayerlab.app`; version/build `0.14.38 (205)`; OnePlayer primary/alternate icons; `MinimumOSVersion=15.0`.
+- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
 
 ## Poster-scroll evidence
 
@@ -113,32 +138,22 @@ Target-device result: lifecycle/settle/reversal okay, minimum/subtle movement st
 - durable cleanup head: `6e16865d1589a953f58bf65885d9fb01ff6374e0`
 - run/job: `32993726508` / `98257448257` — success
 - artifact ID: `9615751921`
-- artifact digest: `sha256:1fa9236d08210440a80b2f9af2fcef24e5608aac6f8c52be602295b40ec68777`
 - IPA SHA-256: `f6e3a30206acf2cfd877df74f41aa13f1575e1614407eff79466884f9ec51279`
-- source ZIP SHA-256: `19ebc6a2bcefd61d53eb4a9eea7617d5e98be7f8ae7b4f2dbf027ff62d8fabfe`
-- latest target-device recording `RPReplay_Final1787766039.mp4`: 510×1108, 30 fps, 205 frames / 6.833 s; around 4.067 s vertical movement is approximately `-6.36 px → 0 px → -26.19 px`, confirming the visible stop-frame/catch-up hitch remains.
-- result: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / smoothness rejected ❌ / not stable.**
+- latest target-device recording around 4.067 s shows approximately `-6.36 px → 0 px → -26.19 px`, confirming the stop-frame/catch-up hitch remains.
+- result: **Code written / CI passed / IPA produced+verified / real-device tested / smoothness rejected / not stable.**
 
 ### Build204 — current poster-scroll candidate
 
-- identity: **0.14.37 / 204**; Build203 belongs to the carousel line and is not reused.
-- base: Build202 durable head `6e16865d1589a953f58bf65885d9fb01ff6374e0`.
+- identity: **0.14.37 / 204**; this is the canonical Build204 owner.
 - exact CI source: `e6a97b5083691ed10795a402edc0fd30f996cffc`.
 - durable cleanup head: `170778c3934a280d9b539fb45f0bfef673687825`.
-- tested-source → cleanup-head delta: temporary Build204 feature workflow deletion only; product/runtime source unchanged.
 - runtime delta from Build202 is limited to `AppIdentity.swift` and `EmbySharedImageAndNavigation.swift`.
 - ordinary images without `onImageLoaded` no longer install a no-op `loader.$image` Combine subscriber.
-- ordinary warm-cache cells initialize the loader from the existing decoded-memory cache, so the first visible body pass can already contain the cached UIImage and `onAppear` does not synchronously publish a second `image = rendered` invalidation.
-- real `onImageLoaded` callback paths used by Hero/detail/carousel retain the previous publication/dedup/callback semantics and are not warm-seeded through this shortcut.
-- no cache/decoder duplication, no timer/retry/fallback, no navigation rewrite, no Player/MPV/PiP/UnifiedTransport/Cache/Session/carousel-owner change.
-- run/job: **`32996847597` / `98268250117` — success**.
-- artifact: `OnePlayer-0.14.37-build204-poster-warm-cache`.
-- artifact ID: **`9617026984`**.
-- artifact digest / independently downloaded artifact ZIP SHA-256: **`7115be086057ba9254012df365e2e3f9b0f2d30a2d587b9e6bfcb65756c0f794`**.
-- IPA SHA-256: **`b4ba266086674f95a09ef92500c78926b4bc9cfd022c637075985cd55c598130`**.
-- source ZIP SHA-256: **`9f04a9f40f7f2617b0c9edee6cd2844cd4d3d7beed169eb5431ecbef5c01c506`**.
-- independent validation: artifact/IPA/source integrity, bundle `com.embyplayerlab.app`, `0.14.37 (204)`, OnePlayer icons, MinOS 15.0; build log contains `** BUILD SUCCEEDED **`.
-- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
+- ordinary warm-cache cells initialize from the existing decoded-memory cache so `onAppear` avoids a second synchronous cached-image publication.
+- run/job: `32996847597` / `98268250117` — success.
+- artifact ID: `9617026984`.
+- IPA SHA-256: `b4ba266086674f95a09ef92500c78926b4bc9cfd022c637075985cd55c598130`.
+- evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / not stable.**
 
 ## Accepted foundation evidence
 
