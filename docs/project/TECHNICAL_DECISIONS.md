@@ -58,7 +58,7 @@ Selecting another episode replaces the complete source-owned playback session wh
 
 Canonical series order comes from `GET /Shows/{SeriesId}/Episodes`; OnePlayer preserves Emby's returned order. `SeasonId` is season-membership authority, not a second in-season sort owner. Do not add title/file/date/item-ID/artificial-number fallback sorting. Build178 was accepted and merged through PR #254.
 
-## D012 — Home-carousel drag keeps one UIKit owner; foreground must slide and visual mapping is tuned separately
+## D012 — Home-carousel drag keeps one UIKit owner; raw input progress and visual progress are separate concerns
 
 The carousel line remains Active and independent from Build199.
 
@@ -67,7 +67,7 @@ Retained input architecture from Build198:
 - one UIKit interaction surface owns begin/move/end/cancel;
 - vertical acquisition yields to Home `UIScrollView`;
 - horizontal acquisition owns the gesture through end/cancel;
-- actual touch drives rendering; predicted touch is release-only;
+- actual touch drives raw `transitionProgress`; predicted touch is release-only;
 - 0.5pt axis acquisition, 0.28 commit threshold, 0.48×width predicted-distance release gate and existing settle timing remain one contract;
 - high-frequency transition state remains localized to `V3HomeCarouselTransitionState`;
 - no second SwiftUI drag/release owner;
@@ -79,31 +79,32 @@ Rejected/retained evidence:
 - Build189/193 proved split native-move / SwiftUI-release ownership can freeze between pages; that architecture is rejected.
 - Build198 proved the single UIKit lifecycle fixes the ownership failure mode, but minimum/subtle motion still felt too coarse.
 - Build200 fixed the foreground spatially and used linear crossfade. It passed CI/IPA but target-device testing rejected the semantic regression because foreground no longer slid horizontally. **Fully fixed foreground is rejected.**
-- Build201 restored horizontal movement at `0.15 × Hero width` with linear opacity. Target-device feedback on 2026-08-27 was partially positive — **“有点那种感觉了”** — and specifically requested travel `15% → 30%` plus opacity that changes little at drag start and increasingly faster later.
+- Build201 restored horizontal movement at `0.15 × Hero width` with linear opacity. Target-device feedback on 2026-08-27 was partially positive — **“有点那种感觉了”** — but the total travel was too short.
+- Build203 increased foreground travel to `0.30 × Hero width` and changed opacity to clamped `progress²`, while spatial offset still used raw linear progress. Target-device feedback then showed the important distinction: 30% still felt too short overall, yet the larger raw-linear spatial mapping made the coarse first visible displacement/jitter perceptible again.
 
-Current Build203 visual candidate:
+Therefore the current architectural conclusion is:
 
-- keep the Build198 UIKit owner and all gesture/release/settle semantics unchanged;
-- keep one clamped `transitionProgress` as the only visual progress owner;
-- foreground total travel = **`0.30 × Hero width`**;
-- outgoing/incoming directional offset formulas remain unchanged;
-- backdrop and foreground use the same **`blend = progress²`** mapping;
-- outgoing opacity = `1 - blend`; incoming opacity = `blend`;
-- this is mathematically an accelerating/ease-in curve, matching the user's requested perceptual behavior: very small opacity change at drag start, increasingly faster later;
-- blend is independent of direction. Existing neighbor lookup `(index + direction + count) % count` remains first↔last wrapping authority, so left/right and edge wraps do not get a second boundary state machine.
+- do **not** change the UIKit gesture owner or raw `transitionProgress` ownership based on Build203;
+- keep raw `transitionProgress` linear and authoritative for release/commit logic;
+- visual opacity and visual spatial mapping may transform that raw progress independently, as long as they reuse the same single state owner and do not feed back into gesture thresholds;
+- current visual mapping uses clamped **`visualProgress = progress²`** for both opacity and spatial interpolation;
+- foreground total travel is **`0.80 × Hero width`**;
+- outgoing offset = `-direction × visualProgress × travel`;
+- incoming offset = `direction × (1 - visualProgress) × travel`;
+- outgoing opacity = `1 - visualProgress`; incoming opacity = `visualProgress`;
+- at raw progress 0.10 this maps spatial movement to `0.80 × 0.10² = 0.008 width`, materially smaller than Build203's `0.30 × 0.10 = 0.03 width`, while still allowing 80% total travel at completion;
+- mapping is direction-independent. Existing neighbor lookup `(index + direction + count) % count` remains first↔last wrapping authority; left/right and edge wraps do not get a second state machine.
 
-Build203 / OnePlayer 0.14.36 evidence:
+Identity/evidence discipline:
 
-- branch `perf/home-carousel-accelerating-blend-build203`
-- tested source `69beee45b93dc11c7c5be2ee4b81a5a0157f2653`
-- durable cleanup head `edafd5d784cfacdcf8c451fad93535a55fb880fb`; cleanup removes only the temporary workflow
-- run/job `32995898318` / `98264917294` — success
-- artifact ID `9616576496`
-- IPA SHA-256 `cee7241b73c4dc38efb6593c3d6ec9f54981f8e5a609be78a491b869df685226`
-- MinOS 15.0 verified
-- evidence: **Code written / CI passed / IPA produced+verified / real-device pending / not stable**.
+- Build203 / OnePlayer 0.14.36 is the real-device reference that rejected raw-linear 30% spatial mapping as final.
+- A carousel `0.14.37 / Build204` package was briefly produced with the intended 80% eased mapping but was retired before distribution after mandatory global state resync showed that Build204 already belongs to the independent poster-scroll task. Do not use that carousel package for attribution.
+- Current carousel candidate is **Build205 / OnePlayer 0.14.38** on `perf/home-carousel-eased-travel-build205`.
+- Build205 tested source `e5f2e7b4135eca333d5dda24545f19ee8d0be439`; durable cleanup head `70d6cca676911e656591aae6b342c771cc92b9fe`; cleanup removes only the temporary workflow.
+- Build205 run/job `32998533448` / `98273968966` — success; artifact ID `9617634710`; IPA SHA-256 `fe4a81ebee9d330526c108edf2ab4652632ae5b204719864e0b5dee486086479`; MinOS 15.0 independently verified.
+- Build205 evidence: **Code written / CI passed / IPA produced+verified / real-device pending / not stable**.
 
-Do not tune 30% or the `progress²` curve again before Build203 target-device evidence.
+Do not tune the 80% factor or `progress²` visual mapping again before Build205 target-device evidence.
 
 ## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only
 
