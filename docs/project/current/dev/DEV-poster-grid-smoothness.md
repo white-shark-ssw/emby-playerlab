@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — new target-device recording confirms real scroll hitch; Stage 1 grid-only hypothesis is insufficient; shared poster-image update path now in scope**
+**Active — target-device recording confirms real scroll hitch; shared poster-path candidate written as OnePlayer 0.14.35 / Build202; CI / IPA / candidate real-device A/B pending**
 
 - **Work ID**：`DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**：3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -13,8 +13,8 @@
 - Target device：iPhone 15 Pro Max / iOS 17.0。
 - 用户明确反馈：首页、库页、收藏页、收藏中“更多”、搜索、标签搜索、演员搜索，只要是这种海报密集页面，连续上下滑动都会感到抖动/掉帧。
 - 滚动需要连续、跟手；不能出现停一帧后下一帧追位的视觉顿挫。
-- 保持现有海报数量、清晰度、3 列布局、标题/年份/播放状态和系统原生导航语义。
-- 不通过截断列表、降低图片质量、延迟输入、timer/debounce/throttle/watchdog 等方式掩盖卡顿。
+- 保持现有海报数量、3 列布局、标题/年份/播放状态、原生导航语义和目标显示清晰度。
+- 不通过截断列表、模糊图片、延迟输入、timer/debounce/throttle/watchdog 等方式掩盖卡顿。
 - Deployment Target 保持 iOS 15.0。
 - 不触碰 Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Resume/Session / STRM→302→115/CDN 客户端直连冻结合同。
 
@@ -22,13 +22,15 @@
 
 - Accepted overall runtime baseline：OnePlayer **0.14.32 / Build199**。
 - Accepted product merge：PR #256 / `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`。
-- Base branch/source：`main@d0c9f5fb5237041f09f46e9468240fc09986aca0`。
+- Base product source：`main@d0c9f5fb5237041f09f46e9468240fc09986aca0`。
+- Current `main` has advanced from that source base only through project documentation and one-shot carousel CI helpers; compare `d0c9f5fb... → main` showed no product-source file changes before Build202 allocation.
 - Working branch：`perf/poster-grid-smoothness`。
-- Draft PR：**#259**。
-- Current product branch head：`069a6064db9ded6fc87954276ac2cde9259f38ca`。
-- Build candidate：**unallocated**。Do not reuse Build198.
+- Draft PR：**#259** — `Optimize shared poster scrolling smoothness`。
+- **Build candidate：OnePlayer 0.14.35 / Build202**。
+- Build200 / 0.14.33 and Build201 / 0.14.34 are owned by the independent Home-carousel line; this task deliberately skips both identities.
+- Build202 exact feature source：`a05dd3424bb499e46dc0834e69cf55654fb7733e`。
 
-## New real-device video evidence — 2026-08-27
+## Real-device problem evidence — 2026-08-27
 
 User supplied `RPReplay_Final1787760518.mp4` from the target-device usage path.
 
@@ -36,85 +38,94 @@ Measured recording facts:
 
 - H.264 screen recording: **510×1108, constant 30 fps, 280 frames, 9.333 s**.
 - The recording is only 30 fps, so it cannot quantify every 120 Hz frame miss on the iPhone 15 Pro Max; it can still prove stalls lasting at least one recorded 33.3 ms frame.
-- Around **6.80 s**, while content is already moving vertically, one frame is effectively repeated: robust feature tracking gives prior-frame vertical motion about **-2.74 px**, the 6.80 s frame **0 px**, then the next frame about **-10.36 px**. Mean image difference for the stalled frame pair is only about **0.069**, followed by a large visual delta on the catch-up frame.
-- This is direct recording evidence of a **stop-one-frame → catch-up-next-frame** cadence, consistent with the user's visible “抖一下/掉帧” report.
+- Around **6.80 s**, while content is moving vertically, one frame is effectively repeated: robust feature tracking gives prior-frame vertical motion about **-2.74 px**, the 6.80 s frame **0 px**, then the next frame about **-10.36 px**.
+- This is direct recording evidence of a **stop-one-frame → catch-up-next-frame** cadence, consistent with the user's visible“抖一下/掉帧” report。
 
-Important scope correction:
+Scope correction from that recording:
 
 - The supplied recording shows Home vertical scrolling.
-- Home poster sections do **not** use `EmbyPosterGrid`; source shows `posterRow` is `ScrollView(.horizontal) + LazyHStack + V3PosterCard` inside the Home vertical scroll.
-- Therefore the same visible hitch on Home cannot be explained by per-cell `EmbyPosterGrid` Environment wrappers. The initial grid-local change may remain a small source cleanup, but it is **not sufficient as the cross-page root-cause theory**.
+- Home poster sections do **not** use `EmbyPosterGrid`; source shows Home poster rows are `ScrollView(.horizontal) + LazyHStack + V3PosterCard` inside the Home vertical scroll.
+- Therefore the same visible hitch on Home cannot be explained by `EmbyPosterGrid` alone. Grid-local cleanup remains useful but is not treated as the cross-page root-cause theory.
 
-## Source facts after the recording
+## Source facts / current Build202 changes
 
-1. `EmbyPosterGrid` is still the shared modern 3-column `LazyVGrid` used by library/favorites/genre/folder/person-style result pages.
-2. Home uses `V3PosterCard` in `LazyHStack`, outside `EmbyPosterGrid`, yet shows the same reported hitch.
-3. Person result pages also use `EmbyCachedRemoteImage` directly, so `V3PosterCard` alone is not universal across every reported page.
-4. `EmbyCachedRemoteImage` is a real common rendering dependency across Home posters, 3-column media cards and person-result cards.
-5. The existing image pipeline already has decoded-memory cache, disk cache, ImageIO downsampling and detached decode; a second image cache/decoder is still rejected.
-6. A concrete redundant SwiftUI state update exists in `EmbyCachedRemoteImage`: every loaded image previously wrote `reportedImageIdentifier` even when `onImageLoaded == nil`. Normal poster cards do not need that state; Home/Detail carousel Hero paths with a real callback do need callback deduplication.
-7. Commit `58c0c434dedaa3ed25f035453692204c9e25f269` makes the minimal behavior-preserving correction: URL-change reset of `reportedImageIdentifier` happens only when a callback exists, and the image publisher exits immediately when there is no `onImageLoaded` callback. Real callback paths retain identifier deduplication and callback behavior.
-8. Commit `069a6064db9ded6fc87954276ac2cde9259f38ca` extends the task checker to require this no-callback fast path.
-9. Exact branch compare from task base now changes only:
-   - `Sources/UI/EmbyPosterGrid.swift` — 3 additions / 3 deletions;
-   - `Sources/UI/EmbySharedImageAndNavigation.swift` — 3 additions / 2 deletions;
-   - `scripts/check_poster_grid_smoothness.py` — source contract.
-10. No Player/MPV/PiP/UnifiedTransport/Cache/Emby playback-session file is in the diff.
+1. `EmbyPosterGrid` is already the shared modern 3-column `LazyVGrid`; replacing it with another lazy container is not a valid optimization.
+2. Stage 1 keeps that grid and only moves the two identical grid-owned Environment values (`embyPosterGridNavigationState`, `embyPosterGridCellWidth`) from every cell to the `LazyVGrid` ancestor.
+3. `EmbyCachedRemoteImage` is a real common dependency across Home posters, 3-column media cards and person-result cards. The existing pipeline already owns decoded-memory cache, disk cache and detached ImageIO downsample/decode; no second cache/decoder is added.
+4. Ordinary posters have no `onImageLoaded` consumer. Their image completion previously still wrote `reportedImageIdentifier` `@State`; Build202 exits that publisher path immediately when there is no callback. Hero/detail/carousel callback users preserve identifier deduplication and callback behavior.
+5. `V3RemoteImage` always renders `EmbyCachedRemoteImage(... showsLoadingIndicator: false)`, but the loader previously still published `isLoading=true/false`. Because the loader is a `@StateObject`, those invisible `@Published` changes still invalidated SwiftUI. Build202 threads `showsLoadingIndicator` into the loader and publishes loading state only when the view can actually render it.
+6. Cache-miss first load previously assigned `image=nil` even when already nil. Build202 guards that assignment, so an unchanged empty image no longer emits object change.
+7. Visible image assignment itself remains unchanged and remains the actual rendering update.
+8. `V3PosterCard` explicit-width Home posters previously requested fixed `MaxWidth=440`. Build202 uses `min(440, ceil(resolvedWidth × UIScreen.main.scale))`; on the target 3× device a 118 pt Home poster requests about **354 px**, matching displayed device pixels instead of decoding roughly **54% more pixels by area** at 440 px. This is not a quality reduction: request width remains at the actual rendered pixel width.
+9. Grid cards continue to use their real resolved grid width × screen scale, capped at the existing 440 px.
+10. `EmbyPersonResultPoster` now uses `showsLoadingIndicator:false`, aligning actor/person 3×3 results with the ordinary poster path and avoiding invisible loading-state publications.
+11. Home high-frequency scroll observation was inspected and is already isolated through `V3HomeHeroScrollState` / `V3HomeHeroScrollScope`; there is no evidence to reopen that owner for this task.
+12. `EmbyPosterDetailLink` navigation construction was inspected but not changed because no current evidence proves it is the scrolling-time stall source.
 
-## Stage history
+## Build202 exact feature delta
 
-### Stage 1 — grid wrapper reduction
+Compare `d0c9f5fb5237041f09f46e9468240fc09986aca0 → a05dd3424bb499e46dc0834e69cf55654fb7733e` is limited to:
 
-- Commit `90b27d4ecaba9e8ad3031e8579cddf9af728b1ee` hoisted the two identical grid Environment modifiers from every `EmbyPosterGrid` cell to the `LazyVGrid` ancestor.
-- This is still behavior-preserving and removes repeated grid wrappers.
-- **New video evidence proves this cannot by itself explain/fix the whole user-visible problem**, because Home does not use `EmbyPosterGrid` and still hitches.
+- `.github/workflows/temp-build202-poster-scroll-ci.yml`
+- `Sources/Core/AppIdentity.swift`
+- `Sources/UI/EmbyPersonMediaView.swift`
+- `Sources/UI/EmbyPosterGrid.swift`
+- `Sources/UI/EmbyServerSharedV3.swift`
+- `Sources/UI/EmbySharedImageAndNavigation.swift`
+- `docs/changelog/CHANGELOG_v0_14_35_build202.md`
+- `scripts/check_poster_grid_smoothness.py`
 
-### Stage 2 — shared image callback-state churn reduction
+No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby playback-session file and no active Home-carousel gesture/state-owner file is in the feature delta.
 
-- Commit `58c0c434dedaa3ed25f035453692204c9e25f269` removes one redundant `@State` write/invalidation for ordinary poster images that have no `onImageLoaded` consumer.
-- Hero/carousel/detail images that actually supply `onImageLoaded` preserve their callback and duplicate-image guard semantics.
-- This is a source-proven common-path reduction; its real-device effect size is still unproven.
+## Parallel dependency / carousel handling
 
-## Parallel dependency / Build198 handling
+- The independent carousel task owns Build200 and Build201; Build202 is unique to this task.
+- Carousel runtime files `EmbyHomeCarouselInteractionV3.swift`, `EmbyHomeCarouselStateV3.swift`, `EmbyHomeHeroV3.swift`, `EmbyHomeCoreV3.swift` are explicitly rejected by the Build202 CI scope guard.
+- `EmbySharedImageAndNavigation.swift` is a shared dependency because Home Hero consumes `EmbyCachedRemoteImage` with a real callback. Build202 preserves callback semantics, but this remains a dependency boundary: after either feature merges, the other must resync/revalidate against then-current `main` before final merge.
+- `AppIdentity.swift` is also concurrently modified by test candidates, but each branch has a unique numeric identity. No Build number or IPA name is reused.
 
-- Active `DEV-home-carousel-drag-smoothness` owns Build198 / 0.14.31 on `perf/home-carousel-single-owner-build198`.
-- Build198 does not directly modify `EmbySharedImageAndNavigation.swift`, but its Home Hero consumes `EmbyCachedRemoteImage` with a real `onImageLoaded` callback.
-- Stage 2 is therefore recorded as a **shared dependency change with preserved callback semantics**, not a silent independent assumption.
-- Build198's already-built IPA/source remains unchanged; this task does not rewrite its evidence.
-- If either task is later merged, the other task must resync against then-current `main` and rerun affected validation. Old CI does not prove the combined source.
-- Do not touch Build198 gesture/state-owner files from this task.
+## CI / packaging setup
+
+- Feature workflow：`.github/workflows/temp-build202-poster-scroll-ci.yml` on `perf/poster-grid-smoothness`.
+- Feature workflow did not immediately produce a registered run after source push; no CI pass is inferred.
+- One-shot `main` helper：`.github/workflows/temp-build202-main-ci.yml` checks out **exactly** `a05dd3424bb499e46dc0834e69cf55654fb7733e` and does not build `main` product source.
+- Required gates: task checker + Python compile, exact delta/Frozen/carousel-owner guard, Xcode 16.4 Release build, identity `0.14.35 (202)`, MinOS 15.0 validation, IPA ZIP integrity, source snapshot and artifact upload.
+- At this checkpoint update, no Build202 workflow run has yet been observed; CI/IPA remain pending.
 
 ## Validation state
 
-- Code written：✅ — current branch head `069a6064db9ded6fc87954276ac2cde9259f38ca`
-- Exact diff / Frozen scope check：✅ — 3 paths only; no P0 media path
-- New target-device symptom evidence：✅ — baseline recording confirms at least one 33.3 ms stop/catch-up stall
-- Candidate real-device improvement tested：❌ — the recording is evidence of the **existing problem**, not evidence that current branch fixes it
-- CI passed for current head：❌ / not yet established
+- Existing-problem real-device recording：✅ — at least one recorded 33.3 ms stop/catch-up stall
+- Build202 code written：✅ — exact feature source `a05dd3424bb499e46dc0834e69cf55654fb7733e`
+- Exact diff / Frozen / carousel-owner scope reviewed：✅ — 8 paths only, no P0 or carousel owner files
+- Source-contract checker updated：✅ — execution pass not claimed until a real run executes it
+- CI passed：❌ / not yet observed
 - IPA produced：❌
+- Candidate real-device tested：❌
 - Stable / frozen：❌
 
 ## Next exact action
 
-1. Treat the 30 fps recording as proof of the existing hitch, not as a complete 120 Hz frame-time trace.
-2. Check/establish compile + source-contract validation for branch head `069a6064...`; do not claim CI before a real run/job exists.
-3. Continue source audit around the other common scrolling costs before allocating a Build: in particular ordinary poster image `isLoading` publications and eager/native NavigationLink destination construction must be inspected, but **do not change them without proving redundant work/ownership first**.
-4. Do not spend more time optimizing only `EmbyPosterGrid`; Home evidence has already falsified that as the sole bottleneck.
-5. Once the shared-path source candidate is coherent, re-run identity guard, allocate a unique Build/version candidate, produce an IPA, then A/B the same Home/library/favorites/search/person flows on iPhone 15 Pro Max / iOS 17.0.
-6. Acceptance requires the user to report materially smoother continuous scrolling; CI/IPA alone cannot close this task.
+1. Observe a real Build202 CI run for exact source `a05dd3424...`; do not infer success from workflow files or pushes.
+2. If CI exposes a source/compile/contract problem, fix only that concrete failure and rebuild an exact new source SHA under the same Build202 identity before any real-device attribution.
+3. After successful artifact production, independently verify IPA/source ZIP integrity, app identity `0.14.35 (202)` and MinOS 15.0.
+4. Target-device A/B should cover the user's reported paths: Home vertical scroll, library 3×3, favorites, favorites “更多”, search, tag search and actor/person search/results; include image-arrival and longer continuous scrolling.
+5. Acceptance requires materially smoother continuous motion and no new image-quality/navigation regression. CI/IPA cannot close the task.
+6. After Build202 evidence is captured, delete only this task's temporary CI helpers; do not touch carousel Build200/201 helpers from this task.
 
 ## Rejected / do-not-repeat
 
 - Treating `LazyVGrid` vs another lazy container as the root cause.
-- Treating the Stage 1 Environment hoist as a complete fix after the Home recording.
+- Treating the grid Environment hoist as a complete fix after the Home recording.
 - Adding a second poster cache/decoder.
-- Reducing page size/list length/image quality without bottleneck evidence.
+- Reducing page size/list length or requesting below actual rendered device-pixel width.
 - Generic debounce/throttle/timer/watchdog/retry/fallback.
+- Reopening Home high-frequency scroll owner without new evidence.
+- Refactoring navigation merely because `NavigationLink` looks expensive without a scrolling-time trace/source proof.
 - Changing frozen playback/transport/cache/PiP/session contracts.
-- Claiming the current Stage 2 shared-image cleanup fixed the real-device hitch before a new IPA is tested.
+- Claiming Build202 fixed the real-device hitch before the new IPA is tested.
 
 ## Open questions / risks
 
-- The recording proves at least one recorded-frame stall but, because iOS screen recording is 30 fps here, cannot identify every 120 Hz hitch or directly attribute the stall to one SwiftUI component.
-- Shared poster rendering now has one proven redundant state update removed, but remaining cost could still involve image loading-state publications, destination construction, compositing/clipping, page model updates, or more than one cause.
-- Any expansion into shared Home dependencies must preserve Build198 callback/interaction semantics and be resynced before final integration.
+- The 30 fps recording proves a visible recorded-frame stall but cannot identify every 120 Hz miss or attribute all hitching to one component.
+- Build202 removes several source-proven common-path invalidations and an oversized Home poster request; the real-device effect size remains unknown.
+- More than one bottleneck may exist. Any follow-up patch after Build202 should be driven by the new target-device result or concrete profiling evidence rather than speculative expansion.
