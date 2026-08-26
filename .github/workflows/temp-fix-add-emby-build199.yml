@@ -53,3 +53,5 @@ jobs:
           git add .github/workflows/temp-add-emby-build199.yml Sources/Session/SessionStore.swift
           git commit -m "Fix Build199 SessionStore password lookup"
           git push origin HEAD:feat/add-emby-page-optimization
+
+# one-shot trigger
