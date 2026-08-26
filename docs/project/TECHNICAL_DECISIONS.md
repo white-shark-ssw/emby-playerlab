@@ -80,31 +80,38 @@ Rejected/retained evidence:
 - Build198 proved the single UIKit lifecycle fixes the ownership failure mode, but minimum/subtle motion still felt too coarse.
 - Build200 fixed the foreground spatially and used linear crossfade. It passed CI/IPA but target-device testing rejected the semantic regression because foreground no longer slid horizontally. **Fully fixed foreground is rejected.**
 - Build201 restored horizontal movement at `0.15 × Hero width` with linear opacity. Target-device feedback on 2026-08-27 was partially positive — **“有点那种感觉了”** — but the total travel was too short.
-- Build203 increased foreground travel to `0.30 × Hero width` and changed opacity to clamped `progress²`, while spatial offset still used raw linear progress. Target-device feedback then showed the important distinction: 30% still felt too short overall, yet the larger raw-linear spatial mapping made the coarse first visible displacement/jitter perceptible again.
+- Build203 increased foreground travel to `0.30 × Hero width` and changed opacity to clamped `progress²`, while spatial offset still used raw linear progress. Target-device feedback showed 30% still felt too short overall while the larger raw-linear spatial mapping exposed the coarse first visible displacement/jitter again.
+- Build205 raised total foreground travel to `0.80 × Hero width` and applied clamped `progress²` to both opacity and spatial interpolation. Target-device testing then rejected that whole-range curve as final: drag start felt too restrained, and the continued nonlinear tail felt like an unnatural easing effect.
 
 Therefore the current architectural conclusion is:
 
-- do **not** change the UIKit gesture owner or raw `transitionProgress` ownership based on Build203;
+- do **not** change the UIKit gesture owner or raw `transitionProgress` ownership based on these visual findings;
 - keep raw `transitionProgress` linear and authoritative for release/commit logic;
 - visual opacity and visual spatial mapping may transform that raw progress independently, as long as they reuse the same single state owner and do not feed back into gesture thresholds;
-- current visual mapping uses clamped **`visualProgress = progress²`** for both opacity and spatial interpolation;
-- foreground total travel is **`0.80 × Hero width`**;
+- keep total foreground travel at **`0.80 × Hero width`** unless new device evidence specifically rejects that distance;
+- do **not** apply `progress²` over the entire transition;
+- current Build207 visual mapping is `progress * (1 - 0.60 * (1-progress)^6)` after clamping;
+- this gives an initial slope of about **0.40**, so start motion is restrained but substantially less than Build205's zero-slope `progress²` start;
+- the attenuation decays rapidly and mid/late drag converges closely to raw linear progress;
+- endpoint remains exactly 1.0 and tail derivative tends to **1.0**, avoiding artificial tail acceleration/deceleration;
+- foreground/backdrop opacity and foreground spatial interpolation use the same visual progress;
 - outgoing offset = `-direction × visualProgress × travel`;
 - incoming offset = `direction × (1 - visualProgress) × travel`;
 - outgoing opacity = `1 - visualProgress`; incoming opacity = `visualProgress`;
-- at raw progress 0.10 this maps spatial movement to `0.80 × 0.10² = 0.008 width`, materially smaller than Build203's `0.30 × 0.10 = 0.03 width`, while still allowing 80% total travel at completion;
 - mapping is direction-independent. Existing neighbor lookup `(index + direction + count) % count` remains first↔last wrapping authority; left/right and edge wraps do not get a second state machine.
 
 Identity/evidence discipline:
 
 - Build203 / OnePlayer 0.14.36 is the real-device reference that rejected raw-linear 30% spatial mapping as final.
-- A carousel `0.14.37 / Build204` package was briefly produced with the intended 80% eased mapping but was retired before distribution after mandatory global state resync showed that Build204 already belongs to the independent poster-scroll task. Do not use that carousel package for attribution.
-- Current carousel candidate is **Build205 / OnePlayer 0.14.38** on `perf/home-carousel-eased-travel-build205`.
-- Build205 tested source `e5f2e7b4135eca333d5dda24545f19ee8d0be439`; durable cleanup head `70d6cca676911e656591aae6b342c771cc92b9fe`; cleanup removes only the temporary workflow.
-- Build205 run/job `32998533448` / `98273968966` — success; artifact ID `9617634710`; IPA SHA-256 `fe4a81ebee9d330526c108edf2ab4652632ae5b204719864e0b5dee486086479`; MinOS 15.0 independently verified.
-- Build205 evidence: **Code written / CI passed / IPA produced+verified / real-device pending / not stable**.
+- A carousel `0.14.37 / Build204` package was briefly produced with the intended 80% eased mapping but was retired before distribution because Build204 already belongs to the independent poster-scroll task. Do not use that carousel package for attribution.
+- Build205 / OnePlayer 0.14.38 was CI/IPA verified and then target-device tested; its whole-range `progress²` mapping is rejected as final.
+- Build206 is owned by the independent poster diagnostics task.
+- Current carousel candidate is **Build207 / OnePlayer 0.14.40** on `perf/home-carousel-soft-start-linear-tail-build207`.
+- Build207 tested source `06936503a6c382d1d39d3cdd52f23bfe2058901e`; durable cleanup head `7044ca68c7082cd055a7e4ce42dda6f00fe29674`; cleanup removes only the temporary workflow.
+- Build207 run/job `33000526138` / `98280846494` — success; artifact ID `9618484884`; IPA SHA-256 `bbd7c9c22c2a79a89f41e0d94db16023cf7cd2a720ffeb3c4f31cb9066a15a21`; source ZIP SHA-256 `ecb6f4dbfb0609194406dbb5e0efc3ecde8907ed22992ee7aa4dcf6a886bc275`; MinOS 15.0 independently verified.
+- Build207 evidence: **Code written / CI passed / IPA produced+verified / real-device pending / not stable**.
 
-Do not tune the 80% factor or `progress²` visual mapping again before Build205 target-device evidence.
+Do not retune the 80% distance, start attenuation coefficient or exponent until Build207 target-device feedback establishes which part is still wrong, if any.
 
 ## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only
 
