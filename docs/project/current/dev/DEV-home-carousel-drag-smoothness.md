@@ -2,14 +2,15 @@
 
 ## Status
 
-**Active — Build201 target-device direction improved (“有点那种感觉了”); Build203 30% travel + accelerating opacity curve has passed CI and produced a verified IPA. Target-device validation pending.**
+**Active — Build203 target-device exposed the remaining issue: 30% total travel is still too short overall, yet its raw-progress spatial mapping makes the first visible displacement too large. Build204 keeps the same UIKit owner, raises total travel to 80%, and applies the existing `progress²` visual curve to spatial offset as well as opacity. CI running.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
-- Accepted overall baseline remains OnePlayer **0.14.32 / Build199** on `main`; this carousel line is independent and not stable.
+- Accepted overall baseline: OnePlayer **0.14.32 / Build199** on `main`.
+- Target device: iPhone 15 Pro Max / iOS 17.0.
 - Evidence sync: 2026-08-27 +08:00.
 
-## Retained contract
+## Retained input contract
 
 Build198 remains the input foundation:
 
@@ -20,100 +21,95 @@ Do not change without new direct evidence:
 - 0.5pt axis acquisition;
 - vertical acquisition yields to Home `UIScrollView`;
 - horizontal acquisition owns the gesture through end/cancel;
-- actual touch drives rendering, predicted touch is release-only;
+- actual touch drives raw `transitionProgress`; predicted touch is release-only;
 - commit threshold 0.28;
-- predicted-distance release gate 0.48 × width;
+- predicted-distance gate 0.48 × width;
 - existing settle ownership/timings;
 - no second SwiftUI drag/release owner;
 - no interpolation/timer/watchdog/retry/debounce/throttle.
 
 Player / MPV / PiP / Transport / Cache / Emby Session / STRM→302→115/CDN client-direct paths remain outside this task.
 
-## Historical evidence retained
+## Key real-device history
 
-- Build185: first visible movement roughly 10/12/16 px versus EX roughly 1/1/2 px.
-- Build187: first useful horizontal samples roughly 4.33/8.00/15.67/11.00pt, maxFPS=120, Low Power Mode off.
-- Build189 / Build193: split move/end ownership could freeze between pages; rejected architecture.
-- Build198 / 0.14.31: single UIKit owner fixed lifecycle/settle/reversal behavior, but minimum/subtle drag remained too coarse versus EX.
-- Build200 / 0.14.33: fixed foreground + linear crossfade passed CI/IPA but target-device rejected the semantic regression because foreground no longer slid horizontally. Fully fixed foreground must not return.
+- Build185/187: first visible / useful horizontal motion remained much coarser than EX; SwiftUI input cadence was not fine enough to justify more threshold tuning.
+- Build189/193: split move/end ownership could freeze between pages; rejected architecture.
+- Build198 / 0.14.31: single UIKit owner fixed lifecycle/settle/reversal behavior, but minimum/subtle drag still felt too coarse versus EX.
+- Build200 / 0.14.33: fully fixed foreground + crossfade passed CI/IPA but was rejected because foreground stopped sliding horizontally. Fully fixed foreground must not return.
+- Build201 / 0.14.34: 15% horizontal travel restored directional slide and user reported **“有点那种感觉了”**; this proved short-travel visual mapping can reduce the perceived initial jump, but 15% was not enough total travel.
 
-## Build201 — target-device result
+## Build203 — target-device result
 
-Build201 restored horizontal foreground movement with `travel = width * 0.15` and retained linear `1-progress / progress` opacity.
+Build203 / 0.14.36 used:
 
-Identity/evidence:
+- foreground travel `0.30 × width`;
+- opacity/backdrop blend = clamped `progress²`;
+- foreground spatial offset still used **raw linear `transitionProgress`**;
+- existing left/right + first↔last modulo neighbor ownership unchanged.
 
-- version/build: **OnePlayer 0.14.34 / Build201**
-- branch: `perf/home-carousel-short-travel-build201`
-- tested source: `e61070146d91bac45400e3f95e28eead756faa81`
-- successful run/job: `32993286519` / `98255950676`
-- artifact ID: `9615585817`
-- IPA SHA-256: `d889f2c36b3f617b429e4f39ba54d39d7f2826a058a2d4f874bc7a9bb574db58`
-- MinOS 15.0 verified.
+Verified evidence:
 
-Target-device result on 2026-08-27:
-
-- user: **“有点那种感觉了”** — 15% short-travel direction is materially closer to the desired feel;
-- user requested travel increase **15% → 30%**;
-- user requested transition opacity to change very little at drag start and increasingly faster later;
-- this must work identically for left/right swipes and first↔last wrap boundaries.
-
-**Build201 = Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / direction partially positive / parameter not accepted as final / not stable.**
-
-## Build203 — current candidate
-
-Build202 is occupied by the independent poster-scroll task, so the next carousel identity is **OnePlayer 0.14.36 / Build203**.
-
-Branch: `perf/home-carousel-accelerating-blend-build203`
-Base: Build201 tested source `e61070146d91bac45400e3f95e28eead756faa81`.
-
-Runtime changes are deliberately limited to `AppIdentity.swift` and `EmbyHomeCarouselStateV3.swift`:
-
-- foreground total travel: `0.15 × width` → **`0.30 × width`**;
-- outgoing/incoming horizontal offset formulas and direction ownership remain unchanged;
-- the existing single clamped `transitionProgress` remains the only visual progress owner;
-- backdrop and foreground use the same accelerating blend: **`blend = progress²`**;
-- outgoing opacity = `1 - blend`; incoming opacity = `blend`;
-- this matches the requested perceptual behavior: very small opacity change at drag start, increasingly faster change later;
-- the curve is direction-independent. Existing `neighborCarouselItemID` uses `(index + direction + count) % count`, so left/right swipes and first↔last wrapping use the same blend without a second edge/boundary state machine.
-
-Unchanged:
-
-- `EmbyHomeCarouselInteractionV3.swift` input owner;
-- 0.5pt acquisition / 0.28 commit / 0.48×width predicted release gate;
-- release/cancel/settle ownership;
-- Hero/Core ownership, vertical scrolling, detail tap and auto-advance;
-- all Frozen/P0 playback/transport/cache/PiP/session paths.
-
-## Build203 CI / packaging evidence
-
+- branch: `perf/home-carousel-accelerating-blend-build203`
 - tested source: `69beee45b93dc11c7c5be2ee4b81a5a0157f2653`
 - durable cleanup head: `edafd5d784cfacdcf8c451fad93535a55fb880fb`
-- tested-source → cleanup-head delta: only `.github/workflows/temp-build203-carousel-ci.yml` deletion; product/runtime source unchanged.
-- exact Build201→Build203 feature diff: Build201→Build203 workflow rename, `AppIdentity.swift`, `EmbyHomeCarouselStateV3.swift`, Build203 changelog and updated contract checker only.
-- Frozen/P0 scope guard: PASS.
-- CI run/job: **`32995898318` / `98264917294` — success**.
-- source contract, Xcode 16.4, icon generation, dependencies, Release build, app identity, MinOS, IPA/source packaging and upload: all success.
-- artifact: `OnePlayer-0.14.36-build203-home-carousel-accelerated-blend`
-- artifact ID: **`9616576496`**
-- artifact digest: `sha256:5df63c68c6a8f97d5c41d12040c297e5d4ca6e58d00aae89b0c17ce5a6441310`
-- independently downloaded artifact ZIP SHA-256: `5df63c68c6a8f97d5c41d12040c297e5d4ca6e58d00aae89b0c17ce5a6441310` — exact digest match.
-- IPA: `OnePlayer-0.14.36-build203-home-carousel-accelerated-blend-unsigned.ipa`
-- IPA SHA-256: **`cee7241b73c4dc38efb6593c3d6ec9f54981f8e5a609be78a491b869df685226`**
-- source ZIP SHA-256: **`4b916a508e258949f9c17b449d38e782030a1130e36d08868cd1c54797a00135`**
-- independent `unzip -t`: artifact ZIP ✅ / IPA ✅.
-- independent Info.plist: bundle `com.embyplayerlab.app`, display/name `OnePlayer`, version/build `0.14.36 (203)`, `MinimumOSVersion=15.0`, primary `OnePlayerIcon`, alternate `OnePlayerAltIcon`.
-- CI MinOS audit: runtime compatibility OK at iOS 15.0.
-- build log contains `** BUILD SUCCEEDED **`.
+- CI run/job: `32995898318` / `98264917294` — success
+- artifact ID: `9616576496`
+- IPA SHA-256: `cee7241b73c4dc38efb6593c3d6ec9f54981f8e5a609be78a491b869df685226`
+- MinOS 15.0 independently verified.
 
-**Build203 = Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending / not stable.**
+Latest target-device result on 2026-08-27:
+
+- 30% total travel still feels insufficient overall;
+- unlike 15%, 30% makes the **initial drag jitter / first visible displacement** perceptible again;
+- user explicitly identified that 15% may have felt closer partly because the entire travel was very small;
+- requested the spatial motion to use the same restrained-start / accelerating-later idea as opacity, while increasing total travel to **80%**.
+
+Conclusion: the remaining issue is now more specifically attributed to **raw progress → spatial offset mapping**, not to gesture ownership and not simply to total travel length.
+
+**Build203 = Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / rejected as final parameterization / not stable.**
+
+## Build204 — current candidate
+
+Identity:
+
+- OnePlayer **0.14.37 / Build204**
+- branch: `perf/home-carousel-eased-travel-build204`
+- base: Build203 durable cleanup head `edafd5d784cfacdcf8c451fad93535a55fb880fb`
+- current CI source: `2690343106f9302278875b2b8d70026361dfe2e1`
+
+Runtime changes are limited to `Sources/Core/AppIdentity.swift` and `Sources/UI/EmbyHomeCarouselStateV3.swift`:
+
+- total foreground travel: `0.30 × width` → **`0.80 × width`**;
+- `visualProgress = carouselBackdropBlendProgress(transitionProgress)`;
+- existing blend helper remains `progress²` after clamping;
+- outgoing offset = `-direction × visualProgress × travel`;
+- incoming offset = `direction × (1 - visualProgress) × travel`;
+- opacity remains outgoing `1-blend`, incoming `blend` using the same `progress²` curve;
+- raw `transitionProgress` is unchanged and remains the release/commit authority.
+
+This separates two requirements that previously fought each other:
+
+- at raw progress 0.10, Build203 spatial displacement was `0.30 × 0.10 = 0.03 width`; Build204 is `0.80 × 0.10² = 0.008 width`, so the start is materially more restrained even though total travel is much larger;
+- at raw progress 0.50, Build204 reaches `0.80 × 0.25 = 0.20 width`;
+- at progress 1.0 it reaches the requested full 80% travel.
+
+Left/right and first↔last boundaries continue to use the existing direction sign plus `(index + direction + items.count) % items.count`; there is no edge-specific state machine or duplicate progress owner.
+
+Build203→Build204 exact pre-CI diff is only:
+
+- `Sources/Core/AppIdentity.swift`
+- `Sources/UI/EmbyHomeCarouselStateV3.swift`
+- `docs/changelog/CHANGELOG_v0_14_37_build204.md`
+- `scripts/check_home_carousel_single_owner.py`
+- temporary Build204 CI workflow
+
+No Frozen/P0 runtime file is in the diff. Build204 source-contract/Frozen guard already passed in CI run `32997829818`; dependency/build pipeline is continuing.
 
 ## Next exact action
 
-1. Install/test the verified Build203 IPA on iPhone 15 Pro Max / iOS 17.0.
-2. A/B against Build201 and EX.
-3. Verify tiny drag: opacity change should begin subtly while horizontal motion remains obvious.
-4. Verify later transition: opacity should accelerate rather than remain linear.
-5. Verify normal left/right, first→last and last→first wrap drags use the same visual curve and settle correctly.
-6. Verify reversal, cancel/commit, vertical Hero scroll, detail tap and auto-advance remain unchanged.
-7. Do not alter gesture ownership or add smoothing infrastructure unless new device evidence requires it.
+1. Complete Build204 CI/IPA and independently verify artifact, identity and MinOS.
+2. Target-device A/B against Build203 and EX.
+3. Focus first on the first few millimeters of drag: the first visible horizontal displacement should be much smaller than Build203 despite the larger 80% total travel.
+4. Confirm mid/late drag accelerates naturally and reaches a substantially larger total slide than Build201/203.
+5. Verify left/right, first→last, last→first, reversal, cancel/commit, vertical Hero scroll, detail tap and auto-advance.
+6. Do not alter the UIKit owner or raw commit/release thresholds unless new target-device evidence requires it.
