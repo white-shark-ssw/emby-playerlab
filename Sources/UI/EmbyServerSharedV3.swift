@@ -93,7 +93,7 @@ struct V3HomeNativeScrollObserver: UIViewRepresentable {
         func detach() {
             contentOffsetObservation?.invalidate()
             contentOffsetObservation = nil
-            if scrollView?.refreshControl === refreshControl { scrollView.refreshControl = nil }
+            if scrollView?.refreshControl === refreshControl { scrollView?.refreshControl = nil }
             scrollView = nil
         }
 
