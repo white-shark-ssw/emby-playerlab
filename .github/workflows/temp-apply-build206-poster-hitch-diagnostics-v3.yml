@@ -1,0 +1,71 @@
+name: One-shot apply Build206 poster hitch diagnostics v3
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temp-apply-build206-poster-hitch-diagnostics-v3.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/poster-grid-smoothness
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard exact Build204 durable head
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "170778c3934a280d9b539fb45f0bfef673687825"
+
+      - name: Reuse validated v2 materialization step
+        run: |
+          set -euo pipefail
+          git show origin/main:.github/workflows/temp-apply-build206-poster-hitch-diagnostics-v2.yml > /tmp/build206-v2.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          lines = Path('/tmp/build206-v2.yml').read_text(encoding='utf-8').splitlines()
+          marker = '      - name: Materialize Build206 diagnostics'
+          start = lines.index(marker)
+          run_index = next(i for i in range(start + 1, len(lines)) if lines[i] == '        run: |')
+          end = next(i for i in range(run_index + 1, len(lines)) if lines[i].startswith('      - name: '))
+          body = []
+          for line in lines[run_index + 1:end]:
+              if line.startswith('          '): body.append(line[10:])
+              elif line == '': body.append('')
+              else: raise SystemExit(f'unexpected materializer indentation: {line!r}')
+          Path('/tmp/build206-materialize.sh').write_text('\n'.join(body) + '\n', encoding='utf-8')
+          PY
+          bash /tmp/build206-materialize.sh
+          rm -rf scripts/__pycache__
+
+      - name: Guard exact diagnostic delta and commit
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+          allowed = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyPosterGrid.swift',
+              'Sources/UI/EmbySharedImageAndNavigation.swift',
+              'docs/changelog/CHANGELOG_v0_14_39_build206.md',
+              'scripts/check_poster_grid_smoothness.py',
+          }
+          lines = subprocess.check_output(['git', 'status', '--short'], text=True).splitlines()
+          paths = {line[3:] for line in lines}
+          if paths != allowed:
+              raise SystemExit(f'Build206 expected exact five-file delta, got: {sorted(paths)}')
+          print('Build206 exact five-file materializer scope: PASS')
+          PY
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyPosterGrid.swift Sources/UI/EmbySharedImageAndNavigation.swift scripts/check_poster_grid_smoothness.py docs/changelog/CHANGELOG_v0_14_39_build206.md
+          git commit -m "Diagnose poster scroll frame hitches"
+          git push origin HEAD:perf/poster-grid-smoothness
