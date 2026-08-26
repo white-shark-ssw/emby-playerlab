@@ -32,6 +32,7 @@ jobs:
               'Sources/Core/AppIdentity.swift',
               'Sources/UI/EmbyHomeCarouselStateV3.swift',
               'docs/changelog/CHANGELOG_v0_14_34_build201.md',
+              'scripts/check_home_carousel_single_owner.py',
           }
           changed = set(subprocess.check_output(['git', 'diff', '--name-only', f'{base}...HEAD'], text=True).splitlines())
           extra = sorted(changed - allowed)
