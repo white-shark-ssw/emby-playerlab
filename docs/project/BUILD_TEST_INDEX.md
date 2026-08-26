@@ -34,6 +34,7 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build206 / 0.14.39** | Poster-scroll hitch diagnostics | **Owned by the independent poster task.** CI/IPA verified and target-device App-log captured: 17 diagnostic gaps (row 7, grid 10; grid max 118.7 ms), all with `load_ahead=none`; motion-aware correlation is still required. Diagnostic-only; not stable. |
 | **Build207 / 0.14.40** | 80% soft-start / linear-tail carousel mapping | CI/IPA verified; target-device rejected as final. First visible displacement still too large and screenshots exposed structural foreground overlap: full-width foreground pages were only `0.80 × width` apart while EX preserved visible page separation. |
 | **Build208 / 0.14.41** | Full-width carousel foreground page slots | **Current carousel candidate.** Uses `pageStep = width`, preserving ~56pt content separation with existing `width-56` foreground content; earliest attenuation tightened only for first samples. CI/IPA passed and independently verified; real-device pending. |
+| **Build209 / 0.14.42** | Motion-aware poster-scroll diagnostics | **Current poster diagnostic candidate.** Keeps the single shared poster `CADisplayLink`, resolves the real vertical `UIScrollView`, and logs ≥30 ms gaps only when actual `contentOffset.y` changed, adding route/phase/offset/delta/velocity. CI/IPA independently verified; target-device App-log pending. Diagnostic-only; not stable. |
 
 ## Current accepted baseline
 
@@ -182,6 +183,25 @@ A carousel `0.14.37 / Build204` package was produced briefly, but the poster-scr
 - all 17 have `load_ahead=none`; 8/10 grid records happened >1 s after both most recent recorded cell appearance and image commit.
 - exact-source limitation: diagnostics are not active-scroll/motion gated, so captured gaps cannot all be classified as proven user-visible scrolling stalls. Motion-aware correlation remains required.
 - evidence: **Code written / CI passed / IPA produced+verified / target-device diagnostic capture / root-cause attribution incomplete / not stable.**
+
+### Build209 — current motion-aware diagnostic candidate
+
+- identity: **0.14.42 / 209**; poster-scroll owns this identity.
+- Build206 base: `351c62694ac25404c2bd4eb36a03314dd58ffed2`.
+- exact CI source: **`e95d73b75938ad92f2c4d7f06a3ba2d441bb92f4`**.
+- exact Build206→Build209 delta is six files only: AppIdentity, Home scroll probe, shared grid probe, shared diagnostics, Build209 changelog and poster checker.
+- runtime remains diagnostic-only: Home/shared 3-column routes resolve the real ancestor vertical non-paging `UIScrollView`; the existing single poster `CADisplayLink` samples `contentOffset.y`; `PosterScrollHitch` is emitted only for **gap ≥30 ms AND `delta_y != 0`**.
+- each hitch adds `scroll_route`, `phase=dragging/decelerating/moving`, `offset_y`, `delta_y`, `velocity_y`, while retaining cell/image/load-ahead timing.
+- no second display link, KVO polling, timer, retry/fallback, scroll-physics, image-policy, NavigationLink, carousel-owner or P0 playback/transport/cache/session change.
+- Build208 / 0.14.41 is owned by Home-carousel; a poster package briefly built with that identity was retired before distribution and is not valid for poster attribution.
+- run/job: **`33006881819` / `98302809290` — success**.
+- artifact: `OnePlayer-0.14.42-build209-poster-motion-diagnostics`; artifact ID **`9621031556`**.
+- artifact digest / independently downloaded artifact ZIP SHA-256: **`dc9d9aec4b266543fd894f8e6cdc6a5e811f88113c4a5fc7e1da83f1545dae7e`**.
+- IPA SHA-256: **`85f6649352718a8cac2b269ee090e19bfbb173881845462ed1493e1d90129572`**.
+- source ZIP SHA-256: **`4437f8e1c7af4f28ac4682c6eea05cbfdd86f2f2a806a793ec81f91353cb716b`**.
+- independent validation: embedded checksums match; IPA `unzip -t` passed; bundle `com.embyplayerlab.app`; OnePlayer `0.14.42 (209)`; `MinimumOSVersion=15.0`; source snapshot confirms the motion gate, Home/grid probes, exactly one poster `CADisplayLink`, and no retired poster Build208 changelog.
+- target-device App-log capture: **pending**.
+- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic pending / performance fix not claimed / not stable.**
 
 ## Accepted foundation evidence
 
