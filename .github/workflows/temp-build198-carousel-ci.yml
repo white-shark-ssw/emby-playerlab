@@ -2,7 +2,7 @@ name: Build198 Carousel Single Owner IPA
 
 on:
   push:
-    branches: [perf/home-carousel-single-owner-build198]
+    branches: [master]
 
 permissions:
   contents: read
