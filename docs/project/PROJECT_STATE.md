@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Home-carousel Build201 target-device feedback became partially positive and Build203 completed CI/IPA. Build199 remains the latest real-device accepted overall baseline. Home-carousel Build203 and poster-scroll Build202 are independent Active candidates; neither is stable or merged._
+_Last updated after Home-carousel Build201 target-device feedback became partially positive and Build203 completed CI/IPA, and after poster-scroll Build202 was target-device rejected while Build204 completed CI/IPA. Build199 remains the latest real-device accepted overall baseline. Home-carousel Build203 and poster-scroll Build204 are independent Active candidates; neither is stable or merged._
 
 ## Current accepted overall baseline
 
@@ -80,7 +80,7 @@ Build201 evidence:
 
 ### Current candidate: Build203 / 0.14.36
 
-Build202 belongs to the independent poster-scroll task, so carousel uses Build203.
+Build202/Build204 belong to the independent poster-scroll task, so carousel uses Build203.
 
 - branch: `perf/home-carousel-accelerating-blend-build203`
 - base: Build201 tested source `e61070146d91bac45400e3f95e28eead756faa81`
@@ -113,21 +113,57 @@ Next action: install/test Build203 on target device; compare tiny drag, later op
 
 Work: `DEV-poster-grid-smoothness`.
 
+### Build202 real-device conclusion
+
 - identity: **OnePlayer 0.14.35 / Build202**
 - branch / draft PR: `perf/poster-grid-smoothness` / #259
 - tested source: `a05dd3424bb499e46dc0834e69cf55654fb7733e`
 - durable cleanup head: `6e16865d1589a953f58bf65885d9fb01ff6374e0`
-- user recording proves an existing stop-one-recorded-frame → catch-up hitch; that proves the baseline problem, not candidate success.
-- candidate keeps existing lazy containers and reduces source-proven shared poster invalidation/decode overhead.
-- no Player/MPV/PiP/Transport/Cache/Session or active carousel gesture/state-owner file changed.
 - run/job: `32993726508` / `98257448257` — success
 - artifact ID: `9615751921`
 - IPA SHA-256: `f6e3a30206acf2cfd877df74f41aa13f1575e1614407eff79466884f9ec51279`
 - source ZIP SHA-256: `19ebc6a2bcefd61d53eb4a9eea7617d5e98be7f8ae7b4f2dbf027ff62d8fabfe`
-- evidence: **Code written / scoped diff / existing-problem real-device evidence / CI passed / IPA produced+verified / candidate real-device pending / not stable.**
+- latest target-device recording `RPReplay_Final1787766039.mp4`: **510×1108 / 30 fps / 205 frames / 6.833 s**.
+- around **4.067 s**, vertical movement is approximately **`-6.36 px → 0 px → -26.19 px`** across consecutive recorded transitions, directly confirming the stop-frame/catch-up hitch remains.
+- recording starts after Hero is scrolled away and the stall occurs while poster rows continue entering view; visible posters are already rendered and there is no obvious single network image-arrival event exactly at the freeze.
+- conclusion: **Build202 = Code written / CI passed / IPA produced+verified / real-device tested / smoothness rejected / not stable.**
 
-Its own checkpoint is authoritative for detailed poster-path rationale. Do not mutate it from the carousel task.
+### Current poster candidate: Build204 / 0.14.37
+
+Build203 belongs to the independent carousel task, so poster-scroll uses Build204.
+
+Source evidence after Build202 rejection identified two deterministic ordinary-poster cell-entry costs still present in Build202:
+
+- every ordinary image installed `loader.$image` subscriber machinery even when it had no `onImageLoaded` consumer;
+- a newly-created warm-cache ordinary cell hit the decoded-memory pool during `onAppear` and synchronously published `image = rendered`, immediately invalidating the just-created SwiftUI cell a second time.
+
+Build204 therefore makes only the following common-path change:
+
+- no-callback ordinary poster images install no image-publisher subscriber;
+- only no-callback ordinary images seed `EmbyCachedImageLoader` from the existing decoded-memory cache at StateObject construction, allowing a warm-cache UIImage to be present on the first body pass;
+- the later `onAppear` sees the same URL/image and returns without the second cached-image publication;
+- real `onImageLoaded` paths used by Hero/detail/carousel retain their previous publisher/dedup/callback semantics and are not warm-seeded;
+- existing Build202 lazy-layout, image-size, loading-state and nil-publication reductions remain;
+- no NavigationLink rewrite is made because the current recording/profile evidence does not tie destination construction to the stall.
+
+Build204 evidence:
+
+- exact CI source: **`e6a97b5083691ed10795a402edc0fd30f996cffc`**
+- durable cleanup head: **`170778c3934a280d9b539fb45f0bfef673687825`**
+- tested-source → cleanup-head: temporary Build204 feature workflow deletion only; product/runtime source unchanged.
+- runtime delta from Build202: `Sources/Core/AppIdentity.swift` + `Sources/UI/EmbySharedImageAndNavigation.swift` only.
+- run/job: **`32996847597` / `98268250117` — success**
+- artifact: `OnePlayer-0.14.37-build204-poster-warm-cache`
+- artifact ID: **`9617026984`**
+- artifact digest / independently downloaded artifact ZIP SHA-256: **`7115be086057ba9254012df365e2e3f9b0f2d30a2d587b9e6bfcb65756c0f794`**
+- IPA SHA-256: **`b4ba266086674f95a09ef92500c78926b4bc9cfd022c637075985cd55c598130`**
+- source ZIP SHA-256: **`9f04a9f40f7f2617b0c9edee6cd2844cd4d3d7beed169eb5431ecbef5c01c506`**
+- independently verified: artifact/IPA/source integrity, bundle `com.embyplayerlab.app`, version/build `0.14.37 (204)`, OnePlayer icons, MinOS 15.0, `** BUILD SUCCEEDED **`.
+- no Player/MPV/PiP/Transport/Cache/Session or active carousel owner file changed.
+- evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / not stable.**
+
+Next action: test Build204 first on the same Home poster-row path, especially while lower rows enter view, then library 3×3, favorites/more, search, tag search and actor/person results. If the stop/catch-up remains, do not jump to NavigationLink/container rewrites without new evidence.
 
 ## Parallel integration rule
 
-Build199 remains the accepted overall baseline. Build203 and Build202 are independent feature candidates with different Build identities and branches. If either is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
+Build199 remains the accepted overall baseline. Build203 and Build204 are independent feature candidates with different Build identities and branches. If either is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
