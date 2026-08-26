@@ -187,16 +187,16 @@ extension V3EmbyHomeView {
         let progress = min(1, max(0, rawProgress))
         let remaining = 1 - progress
         let earlyWeight = remaining * remaining * remaining * remaining * remaining * remaining
-        return progress * (1 - 0.60 * earlyWeight)
+        return progress * (1 - 0.85 * earlyWeight)
     }
 
     func carouselForegroundOffset(for itemID: String, width: CGFloat) -> CGFloat {
         guard let fromID = transitionFromID, let toID = transitionToID else { return 0 }
         let direction = CGFloat(transitionDirection)
         let visualProgress = carouselBackdropBlendProgress(transitionProgress)
-        let travel = width * 0.80
-        if itemID == fromID { return -direction * visualProgress * travel }
-        if itemID == toID { return direction * (1 - visualProgress) * travel }
+        let pageStep = width
+        if itemID == fromID { return -direction * visualProgress * pageStep }
+        if itemID == toID { return direction * (1 - visualProgress) * pageStep }
         return 0
     }
 
@@ -217,7 +217,7 @@ extension V3EmbyHomeView {
     }
 
     func updateCarouselImageMetrics(_ image: UIImage, itemID: String) {
-        if carouselSourceSizeByID[itemID] != image.size { carouselSourceSizeByID[itemID] = image.size }
+        if carouselSourceSizeByID[itemID] != image.size { carouselSourceSizeByID[item.id] = image.size }
         let prefersLight = EmbyImageContrastAnalyzer.prefersLightForeground(for: image)
         guard carouselLightForegroundByID[itemID] != prefersLight else { return }
         withAnimation(.easeOut(duration: 0.18)) { carouselLightForegroundByID[itemID] = prefersLight }
