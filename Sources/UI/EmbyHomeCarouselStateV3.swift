@@ -191,10 +191,10 @@ extension V3EmbyHomeView {
     func carouselForegroundOffset(for itemID: String, width: CGFloat) -> CGFloat {
         guard let fromID = transitionFromID, let toID = transitionToID else { return 0 }
         let direction = CGFloat(transitionDirection)
-        let progress = min(1, max(0, transitionProgress))
-        let travel = width * 0.30
-        if itemID == fromID { return -direction * progress * travel }
-        if itemID == toID { return direction * (1 - progress) * travel }
+        let visualProgress = carouselBackdropBlendProgress(transitionProgress)
+        let travel = width * 0.80
+        if itemID == fromID { return -direction * visualProgress * travel }
+        if itemID == toID { return direction * (1 - visualProgress) * travel }
         return 0
     }
 
