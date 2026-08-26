@@ -42,8 +42,8 @@ This is a milestone index, not a list of every experimental build. Evidence leve
 | **Build196 / 0.14.29** | Cached-first auto-start + optional password reauth | Dedicated CI/IPA passed. Historical predecessor to Build199; its password-exclusion policy was superseded by the user's retained-password/iCloud-sync requirement. |
 | **Build198 / 0.14.31** | Home-carousel single UIKit lifecycle owner | CI/IPA passed and verified. Real-device: release/settle/reversal and other tested behavior were okay, but minimum/subtle drag remained visibly coarse vs EX; rejected for final carousel smoothness while its single-owner input architecture is retained. |
 | **Build199 / 0.14.32** | Add/Edit Emby completion + password retention/iCloud sync | Dedicated standard MPV CI passed, IPA produced, target-device acceptance passed, and PR #256 merged at `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`. **Current accepted overall baseline.** |
-| **Build200 / 0.14.33** | Carousel fixed-spatial foreground + linear EX blend | Independent carousel candidate; not owned by the poster-scroll task. Refer to `DEV-home-carousel-drag-smoothness` for its latest evidence. |
-| **Build201 / 0.14.34** | Carousel short-travel follow-up | Independent carousel candidate; exact Build201 CI helpers/source exist, so this identity is reserved to the carousel line and must not be reused. |
+| **Build200 / 0.14.33** | Carousel fixed-spatial foreground + linear blend | CI/IPA passed and verified, but target-device testing rejected the semantic regression: foreground content became fixed and no longer slid horizontally. Fully fixed foreground is not the current direction. |
+| **Build201 / 0.14.34** | Carousel short-travel horizontal slide + linear blend | CI/IPA passed and independently verified. Restores horizontal foreground motion with total travel `0.15 × Hero width` while retaining Build198's single UIKit owner; target-device A/B pending. |
 | **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | `DEV-poster-grid-smoothness` candidate. Target-device recording proves an existing stop-frame/catch-up hitch. Exact feature source `a05dd3424bb499e46dc0834e69cf55654fb7733e` removes source-proven poster invalidation/decode overhead while preserving layouts/navigation/P0 paths. One-shot run `32993726508` is in progress at this index update; CI pass, IPA and candidate real-device improvement are not yet claimed. |
 
 ## Current accepted baseline
@@ -61,7 +61,7 @@ This is a milestone index, not a list of every experimental build. Evidence leve
 - artifact ID: **`9597143667`**
 - artifact digest: `sha256:94d19775fc82d42232d1d5f3efe40b0f04719e599cb5cfb7317746490ca51972`
 - IPA: `OnePlayer-0.14.32-build199-add-emby-password-sync-unsigned.ipa`
-- IPA SHA-256: **`8f0f43f62705e5e13ae666cc54d32fd047c596df1d0e9335668b01a25b6eb003`
+- IPA SHA-256: **`8f0f43f62705e5e13ae666cc54d32fd047c596df1d0e9335668b01a25b6eb003`**
 - Deployment Target / built MinOS: **iOS 15.0**
 - target device: **iPhone 15 Pro Max / iOS 17.0**
 - evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for accepted Add/Edit Emby requirements / merged to main**
@@ -139,21 +139,19 @@ Build199 inherits all previously accepted/frozen player, PiP, transport, cache, 
 
 ## Home-carousel independent evidence
 
-The carousel line is independent from Build199 and remains Active under its own checkpoint/identity. Build200 and Build201 are reserved to that line; this section preserves the previously recorded Build198/Build200 evidence while deferring newer Build201 detail to its active checkpoint.
+The carousel line is independent from Build199 and remains Active under `DEV-home-carousel-drag-smoothness`.
 
 - Build187: target-device diagnostic showed first useful SwiftUI horizontal samples about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off.
-- Build189: native movement worked, but release could freeze because movement/release ownership was split.
-- Build193: making native capture passive did not fix the split-owner release freeze; that hybrid architecture is rejected.
-- Build198 implemented one complete UIKit begin/move/end/cancel owner while preserving full page-slide foreground semantics.
-- Build198 successful CI source: `a569155d443433a5f4769dfe506fec6ab9bdd0e6`; run `32987054824`, job `98235720724`, success.
-- Build198 artifact: `OnePlayer-0.14.31-build198-home-carousel-single-owner`, ID `9613342337`, digest `sha256:4597f6b9bcdd74a44441632f72c5c4b9127aab03e3dad7e38478c552cae773f3`.
-- Build198 IPA SHA-256: `9432928b31898c0c3f05e7e0affb6949c23339a37edd8f14c1d47343ff31f3d8`; source ZIP SHA-256: `00e3fd353c487d185469a2bd9679031cc8a3da9829b310281d8e638c10cd046d`.
-- Build198 target-device result: lifecycle/settle/reversal and other tested behavior were okay, but the minimum visible drag still felt“比较大”and less delicate than EX. Build198 is therefore **real-device tested but rejected for final smoothness**; its single-owner UIKit input architecture remains the foundation.
-- EX forensic evidence and the Build198 result justified the previously conditional fixed-spatial crossfade fallback.
-- Build200 branch: `perf/home-carousel-ex-blend-build200`, based on Build198 durable head `c769f2c4c05fffdb36e90d78d8baddec5e0e7c21`.
-- Build200 CI source recorded at that stage: `4d3afe36768b7749d9d0bd0081725f3d947b2099`.
-- Build200 product delta from Build198 was limited to `AppIdentity.swift` and `EmbyHomeCarouselStateV3.swift`: foreground offset becomes zero and outgoing/incoming foreground opacity becomes `1-progress` / `progress`. UIKit input owner, Hero/Core structure, thresholds and settle behavior are unchanged.
-- Build201 / 0.14.34 is a later carousel short-travel candidate; exact-source CI helper/source evidence proves the identity is occupied by the carousel task. Read `docs/project/current/dev/DEV-home-carousel-drag-smoothness.md` before changing that line.
+- Build189 / Build193: split movement/release ownership could freeze between pages; that hybrid architecture remains rejected.
+- Build198 established one complete UIKit begin/move/end/cancel owner. Successful CI source `a569155d443433a5f4769dfe506fec6ab9bdd0e6`; run/job `32987054824` / `98235720724`; durable base `c769f2c4c05fffdb36e90d78d8baddec5e0e7c21`.
+- Build198 target-device result: lifecycle/settle/reversal and other tested behavior were okay, but minimum visible drag remained too coarse versus EX. Single UIKit ownership is retained; full-width visual translation is not the final accepted mapping.
+- Build200 source `4d3afe36768b7749d9d0bd0081725f3d947b2099` used fixed foreground + linear blend. Run/job `32991758526` / `98250719262` passed; artifact ID `9614995121`; IPA SHA-256 `509395ca7fb847548110c22ec0a3f6b005e6b3f4521f911eb9b3f765ca6d1b1a`.
+- Build200 target-device result: **rejected** because foreground content became fixed and no longer slid horizontally. Do not restore fully fixed foreground as the default.
+- Build201 / 0.14.34 restores horizontal foreground motion with total travel `0.15 × Hero width` plus linear blend while retaining Build198's UIKit owner/thresholds/settle.
+- Build201 tested source: `e61070146d91bac45400e3f95e28eead756faa81`; successful run/job **`32993286519` / `98255950676`**.
+- Build201 artifact: `OnePlayer-0.14.34-build201-home-carousel-short-travel`, ID **`9615585817`**, digest `sha256:95dcc70016c72c3dcab2a918331ebb5c5e3a9d1348a4ac3139fbc647c3dea231`.
+- Build201 IPA SHA-256: `d889f2c36b3f617b429e4f39ba54d39d7f2826a058a2d4f874bc7a9bb574db58`; source ZIP SHA-256: `5f0392a2e472ed1e863c265a05a695ba1788b02c163f0c21e3117b0be002ea6e`; MinOS 15.0 and bundle/icons independently verified.
+- Build201 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
 
 ## Main integration evidence
 
