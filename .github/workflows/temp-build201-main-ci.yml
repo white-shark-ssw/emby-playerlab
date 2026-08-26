@@ -17,13 +17,13 @@ jobs:
       - name: Checkout exact Build201 source
         uses: actions/checkout@v4
         with:
-          ref: 6f219089c50009e2243c730bb247b45c5c0fe1c6
+          ref: e61070146d91bac45400e3f95e28eead756faa81
           fetch-depth: 0
 
       - name: Validate Build201 source contract
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "6f219089c50009e2243c730bb247b45c5c0fe1c6"
+          test "$(git rev-parse HEAD)" = "e61070146d91bac45400e3f95e28eead756faa81"
           python3 scripts/check_home_carousel_single_owner.py
           python3 -m py_compile scripts/check_home_carousel_single_owner.py
           python3 - <<'PY'
@@ -34,6 +34,7 @@ jobs:
               'Sources/Core/AppIdentity.swift',
               'Sources/UI/EmbyHomeCarouselStateV3.swift',
               'docs/changelog/CHANGELOG_v0_14_34_build201.md',
+              'scripts/check_home_carousel_single_owner.py',
           }
           changed = set(subprocess.check_output(['git', 'diff', '--name-only', f'{base}...HEAD'], text=True).splitlines())
           extra = sorted(changed - allowed)
