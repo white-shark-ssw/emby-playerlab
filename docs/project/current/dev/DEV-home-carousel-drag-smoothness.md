@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build201 target-device direction improved (“有点那种感觉了”); Build203 raises foreground travel to 30% and uses an accelerating opacity curve. CI in progress.**
+**Active — Build201 target-device direction improved (“有点那种感觉了”); Build203 30% travel + accelerating opacity curve has passed CI and produced a verified IPA. Target-device validation pending.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
@@ -85,15 +85,33 @@ Unchanged:
 - Hero/Core ownership, vertical scrolling, detail tap and auto-advance;
 - all Frozen/P0 playback/transport/cache/PiP/session paths.
 
-Build203 current source before CI result: `69beee45b93dc11c7c5be2ee4b81a5a0157f2653`.
-Feature diff from Build201 contains the Build201→Build203 CI workflow rename, `AppIdentity.swift`, `EmbyHomeCarouselStateV3.swift`, Build203 changelog and updated contract checker only. Frozen/P0 source guard passed.
+## Build203 CI / packaging evidence
 
-CI run: `32995898318`; job `98264917294`; Release pipeline in progress at this checkpoint update.
+- tested source: `69beee45b93dc11c7c5be2ee4b81a5a0157f2653`
+- durable cleanup head: `edafd5d784cfacdcf8c451fad93535a55fb880fb`
+- tested-source → cleanup-head delta: only `.github/workflows/temp-build203-carousel-ci.yml` deletion; product/runtime source unchanged.
+- exact Build201→Build203 feature diff: Build201→Build203 workflow rename, `AppIdentity.swift`, `EmbyHomeCarouselStateV3.swift`, Build203 changelog and updated contract checker only.
+- Frozen/P0 scope guard: PASS.
+- CI run/job: **`32995898318` / `98264917294` — success**.
+- source contract, Xcode 16.4, icon generation, dependencies, Release build, app identity, MinOS, IPA/source packaging and upload: all success.
+- artifact: `OnePlayer-0.14.36-build203-home-carousel-accelerated-blend`
+- artifact ID: **`9616576496`**
+- artifact digest: `sha256:5df63c68c6a8f97d5c41d12040c297e5d4ca6e58d00aae89b0c17ce5a6441310`
+- independently downloaded artifact ZIP SHA-256: `5df63c68c6a8f97d5c41d12040c297e5d4ca6e58d00aae89b0c17ce5a6441310` — exact digest match.
+- IPA: `OnePlayer-0.14.36-build203-home-carousel-accelerated-blend-unsigned.ipa`
+- IPA SHA-256: **`cee7241b73c4dc38efb6593c3d6ec9f54981f8e5a609be78a491b869df685226`**
+- source ZIP SHA-256: **`4b916a508e258949f9c17b449d38e782030a1130e36d08868cd1c54797a00135`**
+- independent `unzip -t`: artifact ZIP ✅ / IPA ✅.
+- independent Info.plist: bundle `com.embyplayerlab.app`, display/name `OnePlayer`, version/build `0.14.36 (203)`, `MinimumOSVersion=15.0`, primary `OnePlayerIcon`, alternate `OnePlayerAltIcon`.
+- CI MinOS audit: runtime compatibility OK at iOS 15.0.
+- build log contains `** BUILD SUCCEEDED **`.
+
+**Build203 = Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending / not stable.**
 
 ## Next exact action
 
-1. Finish Build203 CI/IPA and independently verify identity/MinOS/hashes.
-2. Target-device A/B against Build201 and EX.
+1. Install/test the verified Build203 IPA on iPhone 15 Pro Max / iOS 17.0.
+2. A/B against Build201 and EX.
 3. Verify tiny drag: opacity change should begin subtly while horizontal motion remains obvious.
 4. Verify later transition: opacity should accelerate rather than remain linear.
 5. Verify normal left/right, first→last and last→first wrap drags use the same visual curve and settle correctly.
