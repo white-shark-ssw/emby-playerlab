@@ -61,7 +61,7 @@ This is a milestone index, not a list of every experimental build. Evidence leve
 - artifact ID: **`9597143667`**
 - artifact digest: `sha256:94d19775fc82d42232d1d5f3efe40b0f04719e599cb5cfb7317746490ca51972`
 - IPA: `OnePlayer-0.14.32-build199-add-emby-password-sync-unsigned.ipa`
-- IPA SHA-256: **`8f0f43f62705e5e13ae666cc54d32fd047c596df1d0e9335668b01a25b6eb003`**
+- IPA SHA-256: **`8f0f43f62705e5e13ae666cc54d32fd047c596df1d0e9335668b01a25b6eb003`
 - Deployment Target / built MinOS: **iOS 15.0**
 - target device: **iPhone 15 Pro Max / iOS 17.0**
 - evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for accepted Add/Edit Emby requirements / merged to main**
@@ -139,11 +139,26 @@ Build199 inherits all previously accepted/frozen player, PiP, transport, cache, 
 
 ## Home-carousel independent evidence
 
-The carousel line is independent from Build199 and remains Active under its own checkpoint/identities. Build200 and Build201 are reserved to that line; this file does not override the carousel checkpoint's more recent detailed state.
+The carousel line is independent from Build199 and remains Active under its own checkpoint/identity. Build200 and Build201 are reserved to that line; this section preserves the previously recorded Build198/Build200 evidence while deferring newer Build201 detail to its active checkpoint.
 
 - Build187: target-device diagnostic showed first useful SwiftUI horizontal samples about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off.
-- Build189/193: split movement/release ownership could freeze and is rejected.
-- Build198: single UIKit lifecycle owner retained; CI/IPA passed, real-device lifecycle/settle good, minimum visual drag still too coarse vs EX.
-- Build200 / 0.14.33: fixed-spatial/progress-blend carousel candidate.
-- Build201 / 0.14.34: later carousel short-travel candidate; exact-source CI helper proves the identity is occupied by that task.
-- Refer to `docs/project/current/dev/DEV-home-carousel-drag-smoothness.md` and its current source/CI evidence before any carousel change.
+- Build189: native movement worked, but release could freeze because movement/release ownership was split.
+- Build193: making native capture passive did not fix the split-owner release freeze; that hybrid architecture is rejected.
+- Build198 implemented one complete UIKit begin/move/end/cancel owner while preserving full page-slide foreground semantics.
+- Build198 successful CI source: `a569155d443433a5f4769dfe506fec6ab9bdd0e6`; run `32987054824`, job `98235720724`, success.
+- Build198 artifact: `OnePlayer-0.14.31-build198-home-carousel-single-owner`, ID `9613342337`, digest `sha256:4597f6b9bcdd74a44441632f72c5c4b9127aab03e3dad7e38478c552cae773f3`.
+- Build198 IPA SHA-256: `9432928b31898c0c3f05e7e0affb6949c23339a37edd8f14c1d47343ff31f3d8`; source ZIP SHA-256: `00e3fd353c487d185469a2bd9679031cc8a3da9829b310281d8e638c10cd046d`.
+- Build198 target-device result: lifecycle/settle/reversal and other tested behavior were okay, but the minimum visible drag still felt“比较大”and less delicate than EX. Build198 is therefore **real-device tested but rejected for final smoothness**; its single-owner UIKit input architecture remains the foundation.
+- EX forensic evidence and the Build198 result justified the previously conditional fixed-spatial crossfade fallback.
+- Build200 branch: `perf/home-carousel-ex-blend-build200`, based on Build198 durable head `c769f2c4c05fffdb36e90d78d8baddec5e0e7c21`.
+- Build200 CI source recorded at that stage: `4d3afe36768b7749d9d0bd0081725f3d947b2099`.
+- Build200 product delta from Build198 was limited to `AppIdentity.swift` and `EmbyHomeCarouselStateV3.swift`: foreground offset becomes zero and outgoing/incoming foreground opacity becomes `1-progress` / `progress`. UIKit input owner, Hero/Core structure, thresholds and settle behavior are unchanged.
+- Build201 / 0.14.34 is a later carousel short-travel candidate; exact-source CI helper/source evidence proves the identity is occupied by the carousel task. Read `docs/project/current/dev/DEV-home-carousel-drag-smoothness.md` before changing that line.
+
+## Main integration evidence
+
+Build176, Build178, Build184, Build191 and Build195 established the accepted foundations inherited by Build199. Build199 remains the accepted overall `main` runtime baseline. The carousel and poster-scroll lines are separate Active feature lines. Final integration of either must resync with then-current `main` after its own target-device result; old-base CI is not proof for materially changed merged source.
+
+## Maintenance rule
+
+Add or update an entry when a build materially changes architectural understanding, becomes a real-device reference point, freezes/rejects a direction, or becomes the accepted functional baseline. Do not treat CI success or IPA production as real-device acceptance.
