@@ -217,7 +217,7 @@ extension V3EmbyHomeView {
     }
 
     func updateCarouselImageMetrics(_ image: UIImage, itemID: String) {
-        if carouselSourceSizeByID[itemID] != image.size { carouselSourceSizeByID[item.id] = image.size }
+        if carouselSourceSizeByID[itemID] != image.size { carouselSourceSizeByID[itemID] = image.size }
         let prefersLight = EmbyImageContrastAnalyzer.prefersLightForeground(for: image)
         guard carouselLightForegroundByID[itemID] != prefersLight else { return }
         withAnimation(.easeOut(duration: 0.18)) { carouselLightForegroundByID[itemID] = prefersLight }
