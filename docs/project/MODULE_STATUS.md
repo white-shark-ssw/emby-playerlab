@@ -4,7 +4,7 @@
 |---|---|---|
 | Deployment compatibility | Frozen | Prefer iOS 15.0; must work on iPhone 15 Pro Max / iOS 17.0; never raise above iOS 17.0. |
 | Emby / STRM / 302 | Frozen core | Client-direct final media path. NAS must not relay bytes. |
-| Emby server management / multi-route | **Active Build199 candidate; IPA produced / device pending** | Build199 supersedes the earlier password-exclusion policy after the user explicitly required retained/editable passwords and iCloud cross-device password sync. SessionStore remains the owner: password is kept in a dedicated local Keychain item and, only when iCloud sync is enabled, a separate synchronizable Keychain item; Edit preloads it and unchanged saves avoid extra reauth. Cached-first auto-start and same-server route selection remain intact. Dedicated standard MPV Build199 run `32942618979` passed and IPA was produced; real-device/cross-device validation is pending. Frozen STRM/302/115 client-direct media path remains untouched. |
+| Emby server management / multi-route | **Stable at Build199 / merged to main** | Build199 / 0.14.32 completed the Add/Edit Emby line: modern editor, same-server multi-route selection, cached-first auto-start, local Keychain password retention/edit refill, unchanged-password no-op reauth behavior, changed-password same Server ID/User ID validation, and opt-in separate synchronizable Keychain password storage for iCloud cross-device sync. User accepted Build199 on the target device and approved completion/merge; PR #256 merged at `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`. Password remains absent from UserDefaults/plain server configuration/diagnostics, and frozen STRM/302/115 client-direct media transport is untouched. |
 | Emby TV episode ordering | **Stable at Build178 / merged to main** | Canonical series order comes from Emby's `/Shows/{SeriesId}/Episodes`; no title/file/date/ID/artificial-number fallback sorting. |
 | UnifiedTransport | Frozen core | Range/206 + real byte demand. Avoid unrelated edits. |
 | Session cache | Frozen core | Shared playback-path cache contract. |
@@ -20,7 +20,7 @@
 | Detail episode selection navigation | **Stable at Build191 / merged to main** | Build191 / 0.14.24 was accepted on the target device and merged through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`. Detail horizontal cards select only; normal Series entry selects explicit initial episode → resumable episode → canonical first episode; quick range buttons select the target-range first episode; the compact summary reuses the exact card title formatter; full-picker playback closes back to the same picker/scroll position. Build182 scroll/cache, Build176 source-owned episode-session replacement and Build178 canonical order remain unchanged. |
 | Diagnostics | Required | Playback/App logs remain a first-class debugging surface. |
 | App appearance/theme | Partial | Broader theme work can proceed separately without touching player core. |
-| Other product modules | Active parallel work | Build195 / 0.14.28 is the accepted overall runtime baseline on `main`. Build199 / 0.14.32 is the independent Add/Edit Emby password-sync candidate with dedicated CI/IPA complete and target-device validation pending. Home-carousel Build198 / 0.14.31 remains a separate Active task/identity. |
+| Other product modules | Active parallel work | Build199 / 0.14.32 is the accepted overall runtime baseline on `main`. Home-carousel Build198 / 0.14.31 remains a separate Active task/identity and is not implied accepted by the Build199 merge. |
 
 ## Change discipline
 
