@@ -58,7 +58,7 @@ Selecting another episode replaces the complete source-owned playback session wh
 
 Canonical series order comes from `GET /Shows/{SeriesId}/Episodes`; OnePlayer preserves Emby's returned order. `SeasonId` is season-membership authority, not a second in-season sort owner. Do not add title/file/date/item-ID/artificial-number fallback sorting. Build178 was accepted and merged through PR #254.
 
-## D012 — Home-carousel drag keeps one UIKit owner; raw input progress and visual progress are separate concerns
+## D012 — Home-carousel drag keeps one UIKit owner; foreground uses full-width page slots
 
 The carousel line remains Active and independent from Build199.
 
@@ -78,40 +78,47 @@ Rejected/retained evidence:
 - Build185/187 proved initial full-width page motion remained visibly coarse even with 120 Hz available.
 - Build189/193 proved split native-move / SwiftUI-release ownership can freeze between pages; that architecture is rejected.
 - Build198 proved the single UIKit lifecycle fixes the ownership failure mode, but minimum/subtle motion still felt too coarse.
-- Build200 fixed the foreground spatially and used linear crossfade. It passed CI/IPA but target-device testing rejected the semantic regression because foreground no longer slid horizontally. **Fully fixed foreground is rejected.**
-- Build201 restored horizontal movement at `0.15 × Hero width` with linear opacity. Target-device feedback on 2026-08-27 was partially positive — **“有点那种感觉了”** — but the total travel was too short.
-- Build203 increased foreground travel to `0.30 × Hero width` and changed opacity to clamped `progress²`, while spatial offset still used raw linear progress. Target-device feedback showed 30% still felt too short overall while the larger raw-linear spatial mapping exposed the coarse first visible displacement/jitter again.
-- Build205 raised total foreground travel to `0.80 × Hero width` and applied clamped `progress²` to both opacity and spatial interpolation. Target-device testing then rejected that whole-range curve as final: drag start felt too restrained, and the continued nonlinear tail felt like an unnatural easing effect.
+- Build200 fixed the foreground spatially and was rejected because foreground horizontal-slide semantics disappeared.
+- Build201 restored horizontal movement at `0.15 × Hero width`; target-device feedback was partially positive but total travel was too short.
+- Build203 used 30% spatial travel; target-device testing showed 30% was still too short and raw-linear spatial mapping exposed the coarse first displacement again.
+- Build205 used 80% total travel and whole-range `progress²`; target-device testing rejected that curve because the start was over-restrained and the nonlinear tail felt unnatural.
+- Build207 kept 80% travel and changed to an early-only soft-start / linear-tail mapping. Target-device screenshots then exposed a deeper layout defect: the first visible displacement was still too large, and adjacent foreground Logo/title/rating/overview content visibly overlapped while EX preserved a clear separation.
 
-Therefore the current architectural conclusion is:
+Source-backed layout conclusion from Build207:
 
-- do **not** change the UIKit gesture owner or raw `transitionProgress` ownership based on these visual findings;
-- keep raw `transitionProgress` linear and authoritative for release/commit logic;
-- visual opacity and visual spatial mapping may transform that raw progress independently, as long as they reuse the same single state owner and do not feed back into gesture thresholds;
-- keep total foreground travel at **`0.80 × Hero width`** unless new device evidence specifically rejects that distance;
-- do **not** apply `progress²` over the entire transition;
-- current Build207 visual mapping is `progress * (1 - 0.60 * (1-progress)^6)` after clamping;
-- this gives an initial slope of about **0.40**, so start motion is restrained but substantially less than Build205's zero-slope `progress²` start;
-- the attenuation decays rapidly and mid/late drag converges closely to raw linear progress;
-- endpoint remains exactly 1.0 and tail derivative tends to **1.0**, avoiding artificial tail acceleration/deceleration;
-- foreground/backdrop opacity and foreground spatial interpolation use the same visual progress;
-- outgoing offset = `-direction × visualProgress × travel`;
-- incoming offset = `direction × (1 - visualProgress) × travel`;
-- outgoing opacity = `1 - visualProgress`; incoming opacity = `visualProgress`;
-- mapping is direction-independent. Existing neighbor lookup `(index + direction + count) % count` remains first↔last wrapping authority; left/right and edge wraps do not get a second state machine.
+- every `carouselHeroForeground` is itself a full Hero-width page;
+- Build207 placed outgoing/incoming full-width page centers only `0.80 × width` apart, so the page frames structurally overlap by 20% throughout the transition;
+- existing foreground content width is `width - 56`;
+- therefore the correct minimal page model is **full-width page slots**: outgoing/incoming page centers stay exactly one `width` apart;
+- with the existing `width - 56` content width, adjacent foreground content edges keep a constant ~56pt separation instead of overlapping;
+- this is implemented mathematically with the existing two visible foreground pages and one transition owner; do not add a second ScrollView/HStack gesture owner merely to express page slots.
+
+Current Build208 visual contract:
+
+- foreground `pageStep = width`;
+- outgoing offset = `-direction × visualProgress × pageStep`;
+- incoming offset = `direction × (1 - visualProgress) × pageStep`;
+- distance between page centers is exactly one Hero width at every transition progress;
+- raw `transitionProgress` remains linear and authoritative for release/commit logic;
+- earliest visual attenuation remains a pure stateless mapping: `progress * (1 - 0.85 * (1-progress)^6)` after clamping;
+- the `0.85` coefficient reduces only the earliest first-sample displacement relative to Build207, while exponent 6 still makes mid/late drag converge rapidly to raw linear progress and tail derivative reach 1.0;
+- foreground/backdrop opacity uses the same visual progress;
+- mapping remains direction-independent; existing `(index + direction + count) % count` remains first↔last wrapping authority.
 
 Identity/evidence discipline:
 
-- Build203 / OnePlayer 0.14.36 is the real-device reference that rejected raw-linear 30% spatial mapping as final.
-- A carousel `0.14.37 / Build204` package was briefly produced with the intended 80% eased mapping but was retired before distribution because Build204 already belongs to the independent poster-scroll task. Do not use that carousel package for attribution.
-- Build205 / OnePlayer 0.14.38 was CI/IPA verified and then target-device tested; its whole-range `progress²` mapping is rejected as final.
-- Build206 is owned by the independent poster diagnostics task.
-- Current carousel candidate is **Build207 / OnePlayer 0.14.40** on `perf/home-carousel-soft-start-linear-tail-build207`.
-- Build207 tested source `06936503a6c382d1d39d3cdd52f23bfe2058901e`; durable cleanup head `7044ca68c7082cd055a7e4ce42dda6f00fe29674`; cleanup removes only the temporary workflow.
-- Build207 run/job `33000526138` / `98280846494` — success; artifact ID `9618484884`; IPA SHA-256 `bbd7c9c22c2a79a89f41e0d94db16023cf7cd2a720ffeb3c4f31cb9066a15a21`; source ZIP SHA-256 `ecb6f4dbfb0609194406dbb5e0efc3ecde8907ed22992ee7aa4dcf6a886bc275`; MinOS 15.0 independently verified.
-- Build207 evidence: **Code written / CI passed / IPA produced+verified / real-device pending / not stable**.
+- A carousel `0.14.37 / Build204` package was retired because Build204 already belongs to the poster-scroll task; do not use it for attribution.
+- Build205 / 0.14.38 and Build207 / 0.14.40 are real-device-tested rejected visual references, not stable builds.
+- Build206 belongs to the independent poster-scroll diagnostics line.
+- Current carousel candidate is **Build208 / OnePlayer 0.14.41** on `perf/home-carousel-page-slots-build208`.
+- Build208 tested source `2ad089f0ea8b4b6827257bb3a91a67c2d3748e5f`; durable cleanup head `51c366b6840d77c818eae20e1f3f43c0dbd75c72`; cleanup removes only the temporary Build208 workflow.
+- Build208 run/job `33004390654` / `98294100402` — success; artifact ID `9620046266`.
+- artifact ZIP digest `sha256:4ace3db785c131b987bfd9e18dc931e1bdeaf9f7528d85b8807214b45774afbb`.
+- IPA SHA-256 `24f47ac5cd5685f6eea85b1c3a4fad2841d81f6169a90cd0629bea85a2072308`; source ZIP SHA-256 `807d03947c0d087ddc54f295e63fdabc37ac0ddfbe0e0f03da4477eb750e95ee`.
+- bundle identity `0.14.41 (208)` and MinOS 15.0 independently verified.
+- Build208 evidence: **Code written / CI passed / IPA produced+verified / real-device pending / not stable**.
 
-Do not retune the 80% distance, start attenuation coefficient or exponent until Build207 target-device feedback establishes which part is still wrong, if any.
+Do not retune UIKit ownership or release thresholds based on the Build207 foreground-layout failure. First test the full-width page-slot model on device.
 
 ## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only
 
