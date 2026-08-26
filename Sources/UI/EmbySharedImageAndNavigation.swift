@@ -96,7 +96,10 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
         let cellAgeText = String(format: "%.1f", cellAge)
         let imageAgeText = String(format: "%.1f", imageAge)
         let loadAheadAgeText = String(format: "%.1f", loadAheadAge)
-        DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\(gapText) visible=\(visiblePosterCount) last_cell=\(lastCellAppear?.itemID ?? \"none\") cell_route=\(lastCellAppear?.route ?? \"none\") cell_age_ms=\(cellAgeText) image_age_ms=\(imageAgeText) load_ahead=\(lastLoadAhead?.itemID ?? \"none\") load_ahead_age_ms=\(loadAheadAgeText)")
+        let lastCellID = lastCellAppear?.itemID ?? "none"
+        let lastCellRoute = lastCellAppear?.route ?? "none"
+        let lastLoadAheadID = lastLoadAhead?.itemID ?? "none"
+        DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\(gapText) visible=\(visiblePosterCount) last_cell=\(lastCellID) cell_route=\(lastCellRoute) cell_age_ms=\(cellAgeText) image_age_ms=\(imageAgeText) load_ahead=\(lastLoadAheadID) load_ahead_age_ms=\(loadAheadAgeText)")
     }
 }
 
