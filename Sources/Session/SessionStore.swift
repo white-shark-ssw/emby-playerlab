@@ -137,7 +137,7 @@ final class SessionStore: ObservableObject {
                 guard auth.user.id == stored.user.id else { throw SessionStoreError.userIdentityMismatch }
                 try KeychainStore.set(auth.accessToken, account: stored.tokenAccount)
                 try persistPassword(password, tokenAccount: stored.tokenAccount, iCloudSync: iCloudSync)
-            } else if let existingPassword = password(for: stored) {
+            } else if let existingPassword = self.password(for: stored) {
                 try persistPassword(existingPassword, tokenAccount: stored.tokenAccount, iCloudSync: iCloudSync)
             }
 
