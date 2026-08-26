@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build204 target-device tested and rejected; Build206 diagnostic CI/IPA produced+verified; real-device log capture pending**
+**Active — Build204 target-device tested and rejected; Build206 target-device App-log captured; first diagnostic attribution remains inconclusive because display-link gaps are not scroll-state gated**
 
 - **Work ID**：`DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**：3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -26,7 +26,7 @@
 - Build202：**0.14.35 / 202** — CI/IPA verified, target-device rejected for remaining hitch。
 - Build204：**0.14.37 / 204** — CI/IPA verified, target-device rejected on Home and library 3×3。
 - Build205 / Build207：owned by independent Home-carousel task; do not reuse。
-- Current diagnostic candidate：**OnePlayer 0.14.39 / Build206**。
+- Current diagnostic baseline：**OnePlayer 0.14.39 / Build206**。
 
 ## Initial real-device evidence before Build202
 
@@ -144,7 +144,7 @@ Latest recording lower-bound evidence (30 fps):
 
 Conclusion: Build204's ordinary-poster no-op subscriber removal and warm-cache first-body seeding are not the main cross-page root cause. Build204 is **real-device tested and rejected for smoothness**, not stable。
 
-## Build206 — diagnostic-only candidate
+## Build206 — diagnostic-only baseline
 
 Identity：**OnePlayer 0.14.39 / Build206**。
 
@@ -156,7 +156,7 @@ Build206 deliberately does not attempt another speculative rendering fix. It add
 - normal frames produce no log；
 - only a main display interval **≥30 ms** writes `PosterScrollHitch`；
 - the hitch record includes the nearest poster-cell appearance, image commit and grid load-ahead timestamps/identifiers；
-- existing diagnostics export UI is reused; no new logging screen is added；
+- existing diagnostics logger/export surfaces are reused; no new logging screen is added；
 - scrolling, navigation, image policy, carousel ownership and all P0 playback/transport/cache/session paths are unchanged。
 
 ### Build206 CI / IPA evidence
@@ -172,7 +172,27 @@ Build206 deliberately does not attempt another speculative rendering fix. It add
 - bundle/version/build：`com.embyplayerlab.app`, OnePlayer **0.14.39 (206)**；
 - `MinimumOSVersion=15.0` and MinOS audit：passed。
 
-Evidence level：**Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic capture pending / not stable.**
+### Build206 target-device App-log result — 2026-08-27
+
+The user exported an empty playback-log file but supplied `OnePlayer-App-1787770662.log`. That App log **does contain the Build206 poster diagnostics**, so the poster task is not blocked by the empty playback log。
+
+Observed `PosterScrollHitch` records:
+
+- total：**17**；Home/non-grid `row`：**7**；3-column `grid`：**10**；
+- row gaps：36.2 / 33.3 / 87.0 / 33.3 / 63.1 / 47.1 / 88.3 ms；median **47.1 ms**，max **88.3 ms**；
+- grid gaps：46.2 / 49.4 / 99.6 / 62.1 / 33.3 / 118.7 / 76.0 / 49.6 / 39.7 / 97.6 ms；median **55.85 ms**，max **118.7 ms**；
+- **17/17** records report `load_ahead=none`；
+- **8/10 grid** records happened more than **1 s** after both the most recent recorded poster-cell appearance and image commit；
+- grid has **0/10** records within 20 ms of an image commit；
+- Home `row` has **2/7** records about **10.5 ms / 9.4 ms** after an image commit, so image commit can still be a local contributor in some Home cases, but it does not explain the common Home+grid signature by itself。
+
+This is useful negative evidence: **immediate new-cell entry, image commit, and grid load-ahead are not a universal trigger for the cross-page hitch.** It does not justify another image-cache, pagination, NavigationLink or lazy-container rewrite。
+
+However, exact-source review exposes an important diagnostic limitation: Build206 starts its shared `CADisplayLink` whenever at least one poster is visible. It does **not** record whether the vertical container is actually dragging/decelerating/moving, nor vertical offset/delta/velocity. Therefore a recorded ≥30 ms display-link interval is not sufficient by itself to classify that sample as a user-visible scrolling stall; some entries can reflect display-callback cadence while content is not moving. `visible` is also the diagnostic's active poster appearance count, not a literal count of posters currently inside the screen bounds。
+
+Conclusion：**Build206 target-device diagnostic capture succeeded, but root-cause attribution is not yet conclusive.** The source evidence is strong enough to stop treating cell/image/load-ahead as the universal explanation, but not strong enough to modify another runtime path yet。
+
+Evidence level：**Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device diagnostic capture ✅ / root-cause attribution incomplete / not stable.**
 
 ## Parallel safety
 
@@ -189,20 +209,22 @@ Evidence level：**Code written ✅ / exact scope+Frozen guard ✅ / CI passed �
 - Build206 code / exact diagnostic scope：✅
 - Build206 CI passed：✅
 - Build206 IPA produced + independently verified：✅
-- Build206 real-device diagnostic capture：❌ pending
+- Build206 target-device diagnostic capture：✅ App log contains 17 records
+- Build206 diagnostic attribution：❌ incomplete because active-scroll/motion state is absent
 - Stable：❌
 
 ## Next exact action
 
-1. Install Build206 on iPhone 15 Pro Max / iOS 17.0 and reproduce the hitch on Home poster-heavy scrolling and library 3×3 first; favorites/more, search, tag search and actor/person results can follow if needed。
-2. Immediately after reproduction, use the existing **“导出播放日志”** action and collect the diagnostics containing `PosterScrollHitch`。
-3. Correlate each ≥30 ms display gap with the recorded nearest cell-appear / image-commit / grid-load-ahead event before changing code again。
-4. Do not claim Build206 improves smoothness; it is a diagnostic baseline only. A subsequent fix still requires separate CI/IPA and target-device acceptance。
+1. Before changing performance behavior, inspect the exact Home vertical-scroll owner, shared grid scroll ownership and existing offset observers/call sites on the Build206 source line。
+2. If no existing signal already provides the needed facts, add the smallest **diagnostic-only** motion correlation: record actual vertical offset delta plus drag/deceleration/moving phase around a display-gap event. Do not change scrolling behavior, image policy, navigation ownership, cache policy or lazy-container structure。
+3. Only count/correlate ≥30 ms gaps that overlap verified vertical motion; then compare those real motion stalls against cell/image/load-ahead timing。
+4. Allocate another unique Build/version only after the diagnostic delta and global identity ownership are checked. A later performance fix still requires separate CI/IPA and target-device acceptance。
 
 ## Rejected / do-not-repeat
 
 - Treating `LazyVGrid` replacement as the fix。
 - Treating Build202 or Build204 as accepted merely because CI/IPA succeeded。
+- Treating every Build206 `CADisplayLink` ≥30 ms interval as a proven scroll hitch without motion state。
 - Adding another image cache/decoder。
 - Lowering image below actual rendered device pixels。
 - timer/debounce/throttle/watchdog/retry/fallback。
