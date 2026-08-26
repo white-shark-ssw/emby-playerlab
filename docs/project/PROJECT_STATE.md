@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after OnePlayer 0.14.32 / Build199 passed target-device acceptance for the Add/Edit Emby server-management line. The user explicitly accepted the result and requested task closure/code merge on 2026-08-26. PR #256 merged the accepted product code to `main` at `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`. Build199 remains the accepted overall functional baseline. Two later feature lines are currently Active and independent: the Home-carousel Build198 task and `DEV-poster-grid-smoothness`; neither is implied accepted by Build199._
+_Last updated after OnePlayer 0.14.32 / Build199 passed target-device acceptance for the Add/Edit Emby server-management line and after the independent Home-carousel Build198 line completed CI/IPA production. Build199 remains the accepted overall functional baseline. Two later feature lines are currently Active and independent: the Home-carousel Build198 task and `DEV-poster-grid-smoothness`; neither is implied accepted by Build199, and Build198 is still awaiting target-device acceptance._
 
 ## Current functional baseline
 
@@ -111,16 +111,30 @@ Build195 remains the accepted player grouping/large-list foundation inherited by
 
 ### Home carousel interaction — Active independent task
 
-`DEV-home-carousel-drag-smoothness` remains Active and owns **OnePlayer 0.14.31 / Build198** on its own branch/checkpoint. It is an independent interaction task and was not accepted, merged or stabilized by Build199.
+`DEV-home-carousel-drag-smoothness` owns **OnePlayer 0.14.31 / Build198** on its own branch/checkpoint. Build198 has completed CI and IPA production, but it has **not** been target-device accepted, merged or stabilized.
 
-Known carousel evidence remains:
+Current Build198 evidence:
 
+- Working branch: `perf/home-carousel-single-owner-build198`.
+- Stage-1 architecture: one UIKit interaction surface owns begin/move/end/cancel; SwiftUI renders transition state only.
 - Build187 proved the first useful SwiftUI horizontal samples can already arrive several points into the gesture on the target device.
 - Build189/193 proved split ownership between native movement and a separate SwiftUI release owner can freeze at intermediate progress after release; that hybrid architecture is rejected.
-- The accepted page-slide visual requirement remains unless the user explicitly selects the previously allowed fixed-spatial/crossfade fallback.
-- The carousel task's own current checkpoint is authoritative for its exact Build198 head/CI state and next action.
+- Successful CI / IPA source: **`a569155d443433a5f4769dfe506fec6ab9bdd0e6`**.
+- Dedicated CI run / job: **`32987054824` / `98235720724` — success**.
+- Artifact: `OnePlayer-0.14.31-build198-home-carousel-single-owner`.
+- Artifact ID: **`9613342337`**.
+- Artifact digest: `sha256:4597f6b9bcdd74a44441632f72c5c4b9127aab03e3dad7e38478c552cae773f3`.
+- IPA: `OnePlayer-0.14.31-build198-home-carousel-single-owner-unsigned.ipa`.
+- IPA SHA-256: **`9432928b31898c0c3f05e7e0affb6949c23339a37edd8f14c1d47343ff31f3d8`**.
+- Source ZIP SHA-256: **`00e3fd353c487d185469a2bd9679031cc8a3da9829b310281d8e638c10cd046d`**.
+- Independent verification passed for artifact ZIP integrity, IPA ZIP integrity, bundle ID `com.embyplayerlab.app`, display/name `OnePlayer`, version/build `0.14.31 (198)`, `MinimumOSVersion=15.0`, runtime app Mach-O minOS `15.0`, and primary/alternate icon metadata.
+- Durable branch head after temporary CI-helper cleanup: **`c769f2c4c05fffdb36e90d78d8baddec5e0e7c21`**.
+- Tested-source → durable-head delta removes only the temporary Build198 workflow; product/runtime files are unchanged.
+- Evidence: **Code written / CI passed / IPA produced + independently verified / real-device pending / not stable**.
 
-Do not reuse Build198 for another task and do not infer carousel acceptance from the Build199 merge.
+The next authority is target-device testing on iPhone 15 Pro Max / iOS 17.0. The required page-slide visual semantics remain unless real-device evidence supports moving to the previously allowed fixed-spatial/crossfade fallback.
+
+Do not reuse Build198 for another task and do not infer carousel acceptance from CI, IPA production, or the Build199 merge.
 
 ### Poster 3-column grid smoothness — Active independent task
 
@@ -141,4 +155,4 @@ Do not describe this Stage 1 source reduction as a real-device performance win u
 
 ## Current development direction
 
-Build199 / OnePlayer 0.14.32 remains the current real-device accepted overall `main` functional baseline. New work must protect all frozen playback/transport/cache/PiP/episode contracts above. Current independent Active feature lines are the Home-carousel Build198 task and `DEV-poster-grid-smoothness`; each keeps its own checkpoint/branch/PR/evidence. The poster-grid task should keep Stage 1 grid-local while Build198 is active, and must not expand into the shared image loader without explicit dependency handling or new evidence.
+Build199 / OnePlayer 0.14.32 remains the current real-device accepted overall `main` functional baseline. Current independent Active feature lines are the Home-carousel Build198 task and `DEV-poster-grid-smoothness`; each keeps its own checkpoint/branch/PR/evidence. Build198 now has a verified IPA and is waiting for target-device A/B. If Build198 is accepted, its durable product diff must be resynced against then-current `main` in a separate integration step; old-base CI must not be treated as proof for materially changed merged source. The poster-grid task should keep Stage 1 grid-local while Build198 is active, and must not expand into the shared image loader without explicit dependency handling or new evidence. Protect all frozen playback/transport/cache/PiP/episode contracts throughout both lines.
