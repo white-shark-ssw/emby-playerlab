@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build202 target-device tested and rejected; Build204 warm-cache cell-entry follow-up code written; CI / IPA pending**
+**Active — Build202 target-device tested and rejected; Build204 CI/IPA produced+verified; real-device pending**
 
 - **Work ID**：`DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**：3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -89,16 +89,20 @@ These costs are common to Home poster rows, 3-column grids and person/search pos
 
 Navigation destination construction remains **not changed** because the recording still does not isolate it as the stall source。
 
-## Build204 — current code-written candidate
+## Build204 — current candidate
 
 Identity：**OnePlayer 0.14.37 / Build204**。Build203 is skipped because the carousel task owns it。
 
-Current branch commits after Build202 durable head:
+Build204 product commits after Build202 durable head:
 
 - `d80c1944007b88a4954e6bbd5811916f3300e1a6` — ordinary poster warm-cache entry fast path；
 - `82f427123d2b219d2b8b3459d44671792b320b3f` — checker guards the new contract；
 - `50767ea48a32a1c1377d870fd4a473d796f50823` — AppIdentity 0.14.37 / Build204 allocation；
 - `7cc4c966cf912c9b7decf16dd1d08138d7667686` — Build204 changelog。
+
+Exact CI source：`e6a97b5083691ed10795a402edc0fd30f996cffc`。
+Durable branch head after removing only the temporary Build204 feature workflow：`170778c3934a280d9b539fb45f0bfef673687825`。
+CI-source → durable-head diff：**only `.github/workflows/temp-build204-poster-scroll-ci.yml` deletion; product/runtime source unchanged**。
 
 Runtime change remains in `EmbySharedImageAndNavigation.swift` only, plus AppIdentity for test attribution：
 
@@ -110,6 +114,23 @@ Runtime change remains in `EmbySharedImageAndNavigation.swift` only, plus AppIde
 - Build202's loading-state, nil-publication and image-size reductions remain intact。
 
 No new cache, decoder, retry, timer, fallback or navigation owner is added。
+
+### Build204 CI / IPA evidence
+
+- one-shot exact-source run/job：**`32996847597` / `98268250117` — success**；
+- source-contract checker / exact Build202→Build204 delta guard / Frozen-path guard / carousel-owner guard：passed；
+- Xcode 16.4 Release build：passed；
+- app identity：`com.embyplayerlab.app`, OnePlayer, **`0.14.37 (204)`**；
+- MinOS：**15.0**；runtime Mach-O minOS audit passed；
+- artifact：`OnePlayer-0.14.37-build204-poster-warm-cache`；
+- artifact ID：**`9617026984`**；
+- artifact digest / independently downloaded artifact ZIP SHA-256：**`7115be086057ba9254012df365e2e3f9b0f2d30a2d587b9e6bfcb65756c0f794`**；
+- IPA：`OnePlayer-0.14.37-build204-poster-warm-cache-unsigned.ipa`；
+- IPA SHA-256：**`b4ba266086674f95a09ef92500c78926b4bc9cfd022c637075985cd55c598130`**；
+- source ZIP SHA-256：**`9f04a9f40f7f2617b0c9edee6cd2844cd4d3d7beed169eb5431ecbef5c01c506`**；
+- IPA/source ZIP integrity：passed；
+- build log contains `** BUILD SUCCEEDED **`；
+- temporary Build204 feature workflow and one-shot main helper were removed after evidence capture；parallel Build203 helpers/source were not modified by this cleanup。
 
 ## Parallel safety
 
@@ -124,18 +145,18 @@ No new cache, decoder, retry, timer, fallback or navigation owner is added。
 - Build202 CI / IPA：✅
 - Build202 target-device smoothness：❌ rejected
 - Build204 code written：✅
-- Build204 source-contract checker updated：✅ locally checked
-- Build204 CI passed：❌ pending
-- Build204 IPA：❌ pending
+- Build204 exact scoped diff / source contract：✅
+- Build204 CI passed：✅
+- Build204 IPA produced + independently verified：✅
 - Build204 real-device：❌ pending
 - Stable：❌
 
 ## Next exact action
 
-1. Run exact-source Build204 CI with a scope guard that allows only the existing Build202 poster files plus the new Build204 identity/changelog/workflow/checker delta。
-2. Require Xcode 16.4 Release build, `0.14.37 (204)`, MinOS 15.0, IPA/source packaging and artifact upload。
-3. If CI/IPA passes, test the same Home scroll path first, especially when lower poster rows enter view; then repeat library 3×3, favorites/more, search, tag search and actor/person results。
-4. If Build204 still shows the same stop/catch-up event, do **not** immediately rewrite NavigationLink or lazy containers. Obtain new evidence for the next synchronous cell-entry/layout/compositing cost first。
+1. Install/test Build204 on the target device using the same Home poster-row scroll path first, especially while lower poster rows enter the viewport。
+2. Repeat library 3×3, favorites/more, search, tag search and actor/person results。
+3. If Build204 still shows the same stop/catch-up event, do **not** immediately rewrite NavigationLink or lazy containers. Obtain new evidence for the next synchronous cell-entry/layout/compositing cost first。
+4. Acceptance requires the user to report materially smoother continuous scrolling; CI/IPA alone cannot close the task。
 
 ## Rejected / do-not-repeat
 
