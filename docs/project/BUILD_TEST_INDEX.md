@@ -1,50 +1,34 @@
 # OnePlayer Build / Test Index
 
-This is a milestone index, not a list of every experimental build. Evidence levels are kept distinct: Code written → CI passed → IPA produced → real-device tested → stable/frozen.
+This is a milestone index, not a list of every experiment. Evidence levels remain distinct: Code written → CI passed → IPA produced → real-device tested → stable/frozen.
 
 | Milestone | Main purpose | Result / current meaning |
 |---|---|---|
-| Build84 / 0.13.17 | MDK RecoveryIsolation | Protected app/exit lifecycle better; did not prove abnormal media was solved. |
+| Build84 / 0.13.17 | MDK RecoveryIsolation | Protected app/exit lifecycle better; did not prove abnormal media solved. |
 | Build96 | MDK single-generation safety | Avoided unsafe same-process MDK generation rebuild after failure. |
-| Build98 / 0.13.31 | Recovery/refresh continuation | Continued protection/detail-state work; protection ≠ MDK compatibility solved. |
-| Build111 / 0.13.44 | MDK Seek / transport-tail experiments | Real-device feedback still showed worse long-tail Seek than MPV. |
-| Build131 / 0.13.64 | MPV intent Seek | Fast double-tap recovered low latency; exact scrub path demonstrated precision/latency trade-off. |
-| Build145 / 0.13.78 | MPV fast keyframe Seek convergence | Current fast-Seek architecture established; no-cache tests were roughly P50 86.6 ms, P90 106 ms, P95 111.8 ms. |
-| Build146 / 0.13.79 | MPV Seek code cleanup | Removed historical experiment scaffolding while keeping Build145 runtime contract. |
-| Build160 / 0.13.93 | PiP native handoff work | Expanded SampleBuffer handoff and fresh-frame return gating. |
-| Build167 / 0.14.0 | PiP lifecycle semantics | `vid=no` background video suspension; PiP X = `pauseAndSuspend`. |
-| Build170 / 0.14.3 | Persistent PiP visual bridge | SampleBuffer host remains the visual bridge while MPV renderer recovers. |
-| Build171 / 0.14.4 | PiP authority/seek-tail guard | Added return authority alignment and rare long-tail visual escape. |
-| Build172 / 0.14.5 | PiP handoff authority controls | Real-device analysis showed periodic bridge catch-up introduced visible churn. |
-| **Build173 / 0.14.6** | PiP Seek completion + return simplification | PiP freeze point. Functional enough to keep frozen unless a materially better renderer-lifecycle approach appears. |
-| Build174 / 0.14.7 | First player episode selector + auto-next | CI/IPA succeeded; target device confirmed data path but rejected the large gray sheet/X/title presentation. |
-| Build175 / 0.14.8 | Episode selector UI refinement | CI/IPA succeeded; real-device screenshot exposed lower-button visual bleed and badge alignment. |
-| **Build176 / 0.14.9** | Episode overlay completion | Real-device accepted; PR #253 merged at `d10e0d63b429f72a664193a1a5bacf728cac50b6`. Source-owned episode-session replacement and trusted-natural-end auto-next remain stable. |
-| Build177 / 0.14.10 | Preliminary carousel smoothness | CI/IPA only; superseded before distribution. |
-| **Build178 / 0.14.11** | Canonical Emby episode ordering | Real-device accepted; `/Shows/{SeriesId}/Episodes` order became canonical; PR #254 merged at `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`. |
-| **Build179 / 0.14.12** | First accepted-baseline carousel candidate | Real-device rejected: small-drag dead zone and reversal pause/catch-up remained. |
-| **Build180 / 0.14.13** | Carousel reversal continuity | Real-device partial improvement: reversal fixed, initial motion still coarse; rejected for acceptance. |
-| **Build181 / 0.14.14** | Detail Hero scroll isolation | Real-device scroll clearly improved; force-quit/relaunch warm presentation still failed. |
-| **Build182 / 0.14.15** | Persistent detail presentation cache | Real-device accepted/frozen for detail scrolling and force-quit/relaunch presentation restoration. |
-| **Build183 / 0.14.16** | Carousel fixed-foreground crossfade experiment | Felt somewhat finer but changed required page-slide semantics; rejected as default direction at that stage. |
-| **Build184 / 0.14.17** | Detail visual hierarchy completion | Real-device accepted; PR #255 merged at `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`. |
-| **Build185 / 0.14.18** | Carousel axis-acquisition/page-slide refinement | Real-device rejected: first visible movement remained about 10/12/16 px vs EX about 1/1/2 px. |
-| Build186 / 0.14.19 | Carousel drag-cadence instrumentation | CI/IPA only; first log channel was not exportable through existing playback logs. |
-| **Build187 / 0.14.20** | Exportable carousel cadence diagnostic | Real-device diagnostic confirmed first useful SwiftUI horizontal samples about 4.33/8.00/15.67/11.00pt, maxFPS=120, Low Power Mode off. |
-| **Build188 / 0.14.21** | Detail episode-selection first candidate | CI/IPA succeeded; real-device follow-up exposed missing default selection and range-button selection clearing. |
-| **Build189 / 0.14.22** | Carousel native raw/coalesced movement | Real-device rejected: release could freeze between pages because native movement and SwiftUI release ownership diverged. |
-| Build190 / 0.14.23 | Collided carousel identity | Carousel package retired because the same identity belonged to the parallel detail line; do not use for attribution. |
-| **Build191 / 0.14.24** | Detail episode-selection/navigation completion | Real-device accepted; PR #257 merged at `f153a36e9da8a208150fe638e0b9df5835df1dc0`. |
-| **Build192 / 0.14.25** | Add/Edit Emby modernization + multi-route startup | CI/IPA passed; real-device accepted editor direction but exposed missing Edit password row and refined startup to cached-first. Superseded. |
-| **Build193 / 0.14.26** | Carousel passive native movement + SwiftUI release | Real-device rejected: split ownership still froze at intermediate progress. Hybrid native-move/separate-SwiftUI-release architecture rejected. |
-| **Build194 / 0.14.27** | Player nonstandard SeasonId grouping | Real-device grouping positive: complete supplied 980-episode Series appeared; eager 980-card row exposed opening latency. |
-| **Build195 / 0.14.28** | Lazy player episode row | Real-device accepted; `LazyHStack` solved the large-row construction issue while preserving complete canonical data. PR #258 merged at `a3f79b5bed7ec835cd53f48aa9eb6cadcdf884e1`. |
-| **Build196 / 0.14.29** | Cached-first auto-start + optional password reauth | Dedicated CI/IPA passed. Historical predecessor to Build199; its password-exclusion policy was superseded by the user's retained-password/iCloud-sync requirement. |
-| **Build198 / 0.14.31** | Home-carousel single UIKit lifecycle owner | CI/IPA passed and verified. Real-device: release/settle/reversal and other tested behavior were okay, but minimum/subtle drag remained visibly coarse vs EX; rejected for final carousel smoothness while its single-owner input architecture is retained. |
-| **Build199 / 0.14.32** | Add/Edit Emby completion + password retention/iCloud sync | Dedicated standard MPV CI passed, IPA produced, target-device acceptance passed, and PR #256 merged at `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`. **Current accepted overall baseline.** |
-| **Build200 / 0.14.33** | Carousel fixed-spatial foreground + linear blend | CI/IPA passed and verified, but target-device testing rejected the semantic regression: foreground content became fixed and no longer slid horizontally. Fully fixed foreground is not the current direction. |
-| **Build201 / 0.14.34** | Carousel short-travel horizontal slide + linear blend | CI/IPA passed and independently verified. Restores horizontal foreground motion with total travel `0.15 × Hero width` while retaining Build198's single UIKit owner; target-device A/B pending. |
-| **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | `DEV-poster-grid-smoothness` candidate. Existing target-device recording proves a stop-frame/catch-up hitch. Exact source `a05dd3424bb499e46dc0834e69cf55654fb7733e` passed run/job `32993726508` / `98257448257`; artifact `9615751921` and IPA/source ZIP were independently verified. Candidate real-device A/B remains pending, so no smoothness fix is yet claimed. |
+| Build111 / 0.13.44 | MDK Seek experiments | Real-device long-tail Seek remained worse than MPV. |
+| Build131 / 0.13.64 | MPV intent Seek | Recovered fast double-tap latency; exact scrub exposed precision/latency trade-off. |
+| Build145 / 0.13.78 | MPV fast keyframe Seek | Current fast-Seek architecture established. |
+| **Build173 / 0.14.6** | PiP completion/return simplification | PiP freeze point. |
+| **Build176 / 0.14.9** | Episode overlay completion | Real-device accepted; source-owned episode-session replacement and trusted-natural-end auto-next stable. |
+| **Build178 / 0.14.11** | Canonical Emby episode ordering | Real-device accepted; `/Shows/{SeriesId}/Episodes` order is canonical. |
+| **Build179 / 0.14.12** | Carousel candidate | Real-device rejected: small-drag dead zone/reversal issues. |
+| **Build180 / 0.14.13** | Carousel reversal continuity | Reversal improved; initial motion still coarse. |
+| **Build182 / 0.14.15** | Detail scroll/presentation cache | Real-device accepted/frozen. |
+| **Build183 / 0.14.16** | Fixed-foreground carousel experiment | Felt finer but changed required horizontal-slide semantics. |
+| **Build184 / 0.14.17** | Detail visual hierarchy | Real-device accepted; merged. |
+| **Build185 / 0.14.18** | Carousel page-slide refinement | Real-device rejected: first visible movement ~10/12/16 px vs EX ~1/1/2 px. |
+| **Build187 / 0.14.20** | Carousel cadence diagnostics | Target device: first useful samples ~4.33/8.00/15.67/11.00pt; 120 Hz available. |
+| **Build189 / 0.14.22** | Native carousel movement | Real-device rejected: split move/release owner could freeze between pages. |
+| **Build191 / 0.14.24** | Detail episode selection/navigation | Real-device accepted; merged. |
+| **Build193 / 0.14.26** | Passive native move + SwiftUI release | Real-device rejected; split-owner architecture rejected. |
+| **Build195 / 0.14.28** | Lazy large player episode row | Real-device accepted; merged. |
+| **Build198 / 0.14.31** | Single UIKit carousel lifecycle owner | CI/IPA verified; real-device lifecycle/settle/reversal okay, but minimum drag still too coarse. Single-owner input architecture retained. |
+| **Build199 / 0.14.32** | Add/Edit Emby completion | Dedicated CI/IPA passed; target-device accepted; merged. **Current accepted overall baseline.** |
+| **Build200 / 0.14.33** | Fixed-spatial foreground + linear blend | CI/IPA verified; target-device rejected because foreground stopped sliding horizontally. |
+| **Build201 / 0.14.34** | 15% short-travel horizontal slide + linear blend | CI/IPA verified; target-device feedback: **“有点那种感觉了”**. Direction partially positive; user requested 30% travel and slower-start/faster-later opacity. Not final. |
+| **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | Independent poster task. CI/IPA verified; candidate real-device A/B pending. |
+| **Build203 / 0.14.36** | 30% carousel travel + accelerating opacity | CI/IPA passed and independently verified. Uses `0.30 × Hero width` and direction-independent `progress²` blend with existing first↔last modulo wrapping. Target-device validation pending. |
 
 ## Current accepted baseline
 
@@ -52,120 +36,96 @@ This is a milestone index, not a list of every experimental build. Evidence leve
 - canonical branch: `main`
 - final merge PR: `#256`
 - final merge commit: `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`
-- development branch: `feat/add-emby-page-optimization`
-- real-device-tested product source / dedicated CI source: `2b5f3bef073754371443c6c7a345657dbfa2a09a`
-- final PR head after temporary workflow cleanup: `9357f0cd9395b3e8ef75920d630578d739d5518b`
-- tested-source → final-PR-head diff: the two temporary Build199 workflows were deleted; accepted product files were unchanged
-- CI run: **`32942618979` — success**
-- artifact: `OnePlayer-0.14.32-build199-add-emby-password-sync`
-- artifact ID: **`9597143667`**
-- artifact digest: `sha256:94d19775fc82d42232d1d5f3efe40b0f04719e599cb5cfb7317746490ca51972`
-- IPA: `OnePlayer-0.14.32-build199-add-emby-password-sync-unsigned.ipa`
-- IPA SHA-256: **`8f0f43f62705e5e13ae666cc54d32fd047c596df1d0e9335668b01a25b6eb003`**
-- Deployment Target / built MinOS: **iOS 15.0**
-- target device: **iPhone 15 Pro Max / iOS 17.0**
+- tested product source / dedicated CI source: `2b5f3bef073754371443c6c7a345657dbfa2a09a`
+- CI run: `32942618979` — success
+- artifact ID: `9597143667`
+- IPA SHA-256: `8f0f43f62705e5e13ae666cc54d32fd047c596df1d0e9335668b01a25b6eb003`
+- Deployment Target / built MinOS: iOS 15.0
+- target device: iPhone 15 Pro Max / iOS 17.0
 - evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for accepted Add/Edit Emby requirements / merged to main**
 
-Build199 inherits all previously accepted/frozen player, PiP, transport, cache, episode-ordering, detail-presentation and episode-selection contracts. The independent home-carousel and poster-scroll lines remain Active and are not made stable by this merge.
+Build199 inherits the accepted/frozen player, PiP, transport, cache, episode-ordering, detail-presentation and episode-selection contracts. Home-carousel and poster-scroll remain independent Active lines.
+
+## Home-carousel evidence
+
+### Build198 retained input foundation
+
+- one UIKit interaction surface owns begin/move/end/cancel;
+- vertical acquisition yields to Home `UIScrollView`;
+- actual touch drives render; predicted touch is release-only;
+- 0.5pt axis acquisition, 0.28 commit, 0.48×width predicted-distance gate and settle timings remain unchanged;
+- no second SwiftUI drag/release owner.
+
+Build198 successful CI source `a569155d443433a5f4769dfe506fec6ab9bdd0e6`; run/job `32987054824` / `98235720724`; artifact ID `9613342337`; IPA SHA-256 `9432928b31898c0c3f05e7e0affb6949c23339a37edd8f14c1d47343ff31f3d8`.
+
+Target-device result: lifecycle/settle/reversal okay, minimum/subtle movement still too coarse versus EX. Input architecture retained; full-width visual mapping not final.
+
+### Build200 rejected visual mapping
+
+- source: `4d3afe36768b7749d9d0bd0081725f3d947b2099`
+- run/job: `32991758526` / `98250719262`
+- artifact ID: `9614995121`
+- IPA SHA-256: `509395ca7fb847548110c22ec0a3f6b005e6b3f4521f911eb9b3f765ca6d1b1a`
+- real-device: rejected because foreground became fixed and no longer slid horizontally.
+
+### Build201 partially positive real-device result
+
+- branch: `perf/home-carousel-short-travel-build201`
+- tested source: `e61070146d91bac45400e3f95e28eead756faa81`
+- run/job: `32993286519` / `98255950676`
+- artifact ID: `9615585817`
+- IPA SHA-256: `d889f2c36b3f617b429e4f39ba54d39d7f2826a058a2d4f874bc7a9bb574db58`
+- visual mapping: horizontal foreground travel `0.15 × Hero width`, linear opacity blend.
+- target-device result on 2026-08-27: user reported **“有点那种感觉了”**, then requested travel `15% → 30%` and opacity that changes little at drag start and increasingly faster later, including left/right and first↔last boundaries.
+- evidence: **Code written / CI passed / IPA produced+verified / real-device tested / direction partially positive / not stable.**
+
+### Build203 current carousel candidate
+
+- identity: **0.14.36 / 203**
+- branch: `perf/home-carousel-accelerating-blend-build203`
+- base: Build201 tested source `e61070146d91bac45400e3f95e28eead756faa81`
+- tested source: `69beee45b93dc11c7c5be2ee4b81a5a0157f2653`
+- durable cleanup head: `edafd5d784cfacdcf8c451fad93535a55fb880fb`
+- tested-source → cleanup-head delta: temporary Build203 workflow deletion only; product/runtime source unchanged.
+- runtime delta is limited to `AppIdentity.swift` and `EmbyHomeCarouselStateV3.swift`.
+- foreground travel: `0.30 × Hero width`.
+- backdrop + foreground blend: clamped `progress²`; outgoing `1-blend`, incoming `blend`.
+- existing modulo neighbor lookup `(index + direction + count) % count` remains the first↔last authority, so no edge-specific state owner was added.
+- Build198 gesture owner/thresholds/release/settle remain unchanged.
+- run/job: **`32995898318` / `98264917294` — success**
+- artifact: `OnePlayer-0.14.36-build203-home-carousel-accelerated-blend`
+- artifact ID: **`9616576496`**
+- artifact digest / independently downloaded ZIP SHA-256: `5df63c68c6a8f97d5c41d12040c297e5d4ca6e58d00aae89b0c17ce5a6441310`
+- IPA SHA-256: **`cee7241b73c4dc38efb6593c3d6ec9f54981f8e5a609be78a491b869df685226`**
+- source ZIP SHA-256: **`4b916a508e258949f9c17b449d38e782030a1130e36d08868cd1c54797a00135`**
+- independent validation: artifact/IPA integrity, bundle `com.embyplayerlab.app`, `0.14.36 (203)`, OnePlayer icons, MinOS 15.0; build log contains `** BUILD SUCCEEDED **`.
+- evidence: **Code written ✅ / scoped diff+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
 
 ## Build202 poster-scroll evidence
 
 - task: `DEV-poster-grid-smoothness`
 - branch / draft PR: `perf/poster-grid-smoothness` / #259
 - identity: **0.14.35 / 202**
-- successful CI / IPA source: `a05dd3424bb499e46dc0834e69cf55654fb7733e`
-- durable branch head after deleting only the temporary feature workflow: `6e16865d1589a953f58bf65885d9fb01ff6374e0`
-- tested-source → durable-head delta: **temporary feature workflow deletion only; product/runtime source unchanged**
-- existing-problem real-device evidence: supplied 30 fps recording contains at least one stop-one-recorded-frame → catch-up-next-frame event around 6.80 s; this proves the baseline hitch, not the candidate fix
-- source scope: `EmbyPosterGrid`, shared image loader/view, `V3PosterCard`, person-result poster, AppIdentity, changelog and checker; no Player/MPV/PiP/UnifiedTransport/playback Cache/Emby playback-session or carousel gesture/state-owner file
-- key reductions: no per-cell duplicate grid Environment wrappers; no unused callback-tracking state write; no invisible loading-state publication for ordinary posters; no unchanged initial `image=nil` publication; Home 118 pt posters request actual screen-scale pixel width (~354 px on 3×) instead of fixed 440 px
-- one-shot exact-source CI run/job: **`32993726508` / `98257448257` — success**
-- artifact: `OnePlayer-0.14.35-build202-poster-scroll-smoothness`
-- artifact ID: **`9615751921`**
+- tested source: `a05dd3424bb499e46dc0834e69cf55654fb7733e`
+- durable cleanup head: `6e16865d1589a953f58bf65885d9fb01ff6374e0`
+- user recording proves an existing stop-frame/catch-up hitch; that proves the baseline problem, not the candidate fix.
+- run/job: `32993726508` / `98257448257` — success
+- artifact ID: `9615751921`
 - artifact digest: `sha256:1fa9236d08210440a80b2f9af2fcef24e5608aac6f8c52be602295b40ec68777`
-- independently downloaded artifact ZIP SHA-256: `1fa9236d08210440a80b2f9af2fcef24e5608aac6f8c52be602295b40ec68777` — exact digest match
-- IPA: `OnePlayer-0.14.35-build202-poster-scroll-smoothness-unsigned.ipa`
-- IPA SHA-256: **`f6e3a30206acf2cfd877df74f41aa13f1575e1614407eff79466884f9ec51279`**
-- source ZIP SHA-256: **`19ebc6a2bcefd61d53eb4a9eea7617d5e98be7f8ae7b4f2dbf027ff62d8fabfe`**
-- independent validation: IPA/source ZIP integrity passed; bundle ID `com.embyplayerlab.app`; display/name `OnePlayer`; version/build `0.14.35 (202)`; `MinimumOSVersion=15.0`; icon metadata present; CI MinOS audit passed for runtime app Mach-O
-- temporary Build202 feature workflow and one-shot main helper were removed after evidence capture; Build201 helpers were not modified by this task
-- target-device result: pending
-- evidence: **Code written ✅ / exact scoped diff ✅ / existing-problem real-device evidence ✅ / CI passed ✅ / IPA produced+verified ✅ / candidate real-device pending / not stable**
-
-## Build199 Add/Edit Emby evidence
-
-- task: `DEV-add-emby-page-optimization` — **completed; checkpoint retired after final documentation sync**
-- Build192 real-device feedback: editor direction accepted; tested route displayed latency/fastest state; auto-start+iCloud controls rendered; missing Edit password row rejected
-- Build196: established cached-first Home startup and optional changed-password reauthentication; later superseded on credential retention/sync policy
-- Build199 accepted credential contract:
-  - dedicated local Keychain password item for retained/editable password
-  - Edit Server preloads that password
-  - unchanged password does not force reauthentication
-  - changed password authenticates stored username and requires same Server ID/User ID before token replacement
-  - opt-in iCloud sync uses a separate `kSecAttrSynchronizable` Keychain password item
-  - disabling iCloud sync removes the synchronizable password item while retaining the local password
-  - password is not embedded in UserDefaults, plain server configuration, diagnostics, or synchronized JSON registry
-- cached-first startup remains: local session/token can construct Home before route selection/live refresh; stale cached Home survives route failure when the initial client exists
-- same-server route selection remains: alternate entries must resolve to the same Emby Server ID; runtime winner can become current `serverURL` for future host-sensitive cache hits
-- frozen media path remains `Emby / STRM → 302 → 115/CDN → iPhone`; no NAS byte relay
-- tested source / CI source: `2b5f3bef073754371443c6c7a345657dbfa2a09a`
-- final PR head after deleting temporary CI helpers only: `9357f0cd9395b3e8ef75920d630578d739d5518b`
-- dedicated standard MPV run: **`32942618979` — success**
-- artifact / ID: `OnePlayer-0.14.32-build199-add-emby-password-sync` / `9597143667`
-- artifact digest: `sha256:94d19775fc82d42232d1d5f3efe40b0f04719e599cb5cfb7317746490ca51972`
-- IPA SHA-256: `8f0f43f62705e5e13ae666cc54d32fd047c596df1d0e9335668b01a25b6eb003`
-- MinOS: 15.0
-- real-device result: **accepted** — user explicitly reported acceptance and requested task closure/code merge on 2026-08-26
-- merge: PR `#256` → `main` at `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`
+- IPA SHA-256: `f6e3a30206acf2cfd877df74f41aa13f1575e1614407eff79466884f9ec51279`
+- source ZIP SHA-256: `19ebc6a2bcefd61d53eb4a9eea7617d5e98be7f8ae7b4f2dbf027ff62d8fabfe`
+- candidate real-device result: pending.
 
 ## Accepted foundation evidence
 
-### Build176 episode-session replacement
-
-- merge PR #253: `d10e0d63b429f72a664193a1a5bacf728cac50b6`
-- accepted contract: selecting another episode replaces the complete source-owned playback session; auto-next uses trusted natural-end/PrematureEOFGuard rather than raw EOF.
-
-### Build178 canonical episode order
-
-- merge PR #254: `9e0d0cecb2df0a263a9a4a4c1f92c2d0e473d78f`
-- accepted contract: canonical series order comes from `GET /Shows/{SeriesId}/Episodes`; no title/file/date/ID/artificial-number fallback sorting.
-
-### Build182/184 detail presentation
-
-- Build182: real-device accepted/frozen for detail scroll isolation and persistent presentation-only cache.
-- Build184 merge PR #255: `5bf00bb0f48d0b640bcbea740d4c17c9f8e7be8f`
-- accepted boundary: presentation cache excludes PlaybackInfo/MediaSource/PlaySession/ResolvedPlaybackSource/temporary 115-CDN URL and live server refresh remains final authority.
-
-### Build191 detail episode selection
-
-- merge PR #257: `f153a36e9da8a208150fe638e0b9df5835df1dc0`
-- accepted behavior: select-only horizontal cards; explicit initial → resumable → canonical-first default; range-first quick jumps; main Play/Resume targets selection; full picker remains mounted through playback; compact summary matches card title formatter.
-
-### Build194/195 player SeasonId + large-list behavior
-
-- Build195 merge PR #258: `a3f79b5bed7ec835cd53f48aa9eb6cadcdf884e1`
-- accepted behavior: Episode `SeasonId` resolves against real Season item/index first, `ParentIndexNumber` only fallback; full 980-episode canonical array remains; horizontal player row uses `LazyHStack`; no truncation/artificial pagination/second sort.
-
-## Home-carousel independent evidence
-
-The carousel line is independent from Build199 and remains Active under `DEV-home-carousel-drag-smoothness`.
-
-- Build187: target-device diagnostic showed first useful SwiftUI horizontal samples about 4.33/8.00/15.67/11.00pt with maxFPS=120 and Low Power Mode off.
-- Build189 / Build193: split movement/release ownership could freeze between pages; that hybrid architecture remains rejected.
-- Build198 established one complete UIKit begin/move/end/cancel owner. Successful CI source `a569155d443433a5f4769dfe506fec6ab9bdd0e6`; run/job `32987054824` / `98235720724`; durable base `c769f2c4c05fffdb36e90d78d8baddec5e0e7c21`.
-- Build198 target-device result: lifecycle/settle/reversal and other tested behavior were okay, but minimum visible drag remained too coarse versus EX. Single UIKit ownership is retained; full-width visual translation is not the final accepted mapping.
-- Build200 source `4d3afe36768b7749d9d0bd0081725f3d947b2099` used fixed foreground + linear blend. Run/job `32991758526` / `98250719262` passed; artifact ID `9614995121`; IPA SHA-256 `509395ca7fb847548110c22ec0a3f6b005e6b3f4521f911eb9b3f765ca6d1b1a`.
-- Build200 target-device result: **rejected** because foreground content became fixed and no longer slid horizontally. Do not restore fully fixed foreground as the default.
-- Build201 / 0.14.34 restores horizontal foreground motion with total travel `0.15 × Hero width` plus linear blend while retaining Build198's UIKit owner/thresholds/settle.
-- Build201 tested source: `e61070146d91bac45400e3f95e28eead756faa81`; successful run/job **`32993286519` / `98255950676`**.
-- Build201 artifact: `OnePlayer-0.14.34-build201-home-carousel-short-travel`, ID **`9615585817`**, digest `sha256:95dcc70016c72c3dcab2a918331ebb5c5e3a9d1348a4ac3139fbc647c3dea231`.
-- Build201 IPA SHA-256: `d889f2c36b3f617b429e4f39ba54d39d7f2826a058a2d4f874bc7a9bb574db58`; source ZIP SHA-256: `5f0392a2e472ed1e863c265a05a695ba1788b02c163f0c21e3117b0be002ea6e`; MinOS 15.0 and bundle/icons independently verified.
-- Build201 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
-
-## Main integration evidence
-
-Build176, Build178, Build184, Build191 and Build195 established the accepted foundations inherited by Build199. Build199 remains the accepted overall `main` runtime baseline. The carousel and poster-scroll lines are separate Active feature lines. Final integration of either must resync with then-current `main` after its own target-device result; old-base CI is not proof for materially changed merged source.
+- Build176: source-owned episode-session replacement + trusted natural-end auto-next; merged PR #253.
+- Build178: Emby `/Shows/{SeriesId}/Episodes` canonical order; merged PR #254.
+- Build182: detail high-rate scroll isolation + presentation-only persistent cache; real-device accepted/frozen.
+- Build184: detail visual hierarchy; merged PR #255.
+- Build191: select-only detail episode browsing/navigation; merged PR #257.
+- Build195: SeasonId-first player grouping + lazy large episode row; merged PR #258.
+- Build199: Add/Edit Emby modern editor, same-server route selection, cached-first startup, retained password + optional iCloud Keychain sync; merged PR #256.
 
 ## Maintenance rule
 
-Add or update an entry when a build materially changes architectural understanding, becomes a real-device reference point, freezes/rejects a direction, or becomes the accepted functional baseline. Do not treat CI success or IPA production as real-device acceptance.
+Update this index when a build materially changes architectural understanding, becomes a real-device reference point, rejects/freezes a direction, or becomes the accepted baseline. Never treat CI success or IPA production as real-device acceptance.
