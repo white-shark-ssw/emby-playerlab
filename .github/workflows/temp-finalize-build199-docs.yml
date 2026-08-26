@@ -1,0 +1,30 @@
+name: Finalize Build199 Project Docs
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event.head_commit.message == 'Trigger Build199 documentation finalization'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Finalize project documentation
+        run: python3 scripts/temp_finalize_build199_docs.py
+      - name: Commit final state
+        run: |
+          set -euo pipefail
+          git config user.name white-shark-ssw
+          git config user.email houstools@gmail.com
+          git add -A
+          git diff --cached --check
+          git commit -m "Finalize accepted Build199 project state"
+          git push origin HEAD:main
