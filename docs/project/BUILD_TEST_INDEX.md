@@ -44,7 +44,7 @@ This is a milestone index, not a list of every experimental build. Evidence leve
 | **Build199 / 0.14.32** | Add/Edit Emby completion + password retention/iCloud sync | Dedicated standard MPV CI passed, IPA produced, target-device acceptance passed, and PR #256 merged at `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`. **Current accepted overall baseline.** |
 | **Build200 / 0.14.33** | Carousel fixed-spatial foreground + linear blend | CI/IPA passed and verified, but target-device testing rejected the semantic regression: foreground content became fixed and no longer slid horizontally. Fully fixed foreground is not the current direction. |
 | **Build201 / 0.14.34** | Carousel short-travel horizontal slide + linear blend | CI/IPA passed and independently verified. Restores horizontal foreground motion with total travel `0.15 × Hero width` while retaining Build198's single UIKit owner; target-device A/B pending. |
-| **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | `DEV-poster-grid-smoothness` candidate. Target-device recording proves an existing stop-frame/catch-up hitch. Exact feature source `a05dd3424bb499e46dc0834e69cf55654fb7733e` removes source-proven poster invalidation/decode overhead while preserving layouts/navigation/P0 paths. One-shot run `32993726508` is in progress at this index update; CI pass, IPA and candidate real-device improvement are not yet claimed. |
+| **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | `DEV-poster-grid-smoothness` candidate. Existing target-device recording proves a stop-frame/catch-up hitch. Exact source `a05dd3424bb499e46dc0834e69cf55654fb7733e` passed run/job `32993726508` / `98257448257`; artifact `9615751921` and IPA/source ZIP were independently verified. Candidate real-device A/B remains pending, so no smoothness fix is yet claimed. |
 
 ## Current accepted baseline
 
@@ -73,15 +73,24 @@ Build199 inherits all previously accepted/frozen player, PiP, transport, cache, 
 - task: `DEV-poster-grid-smoothness`
 - branch / draft PR: `perf/poster-grid-smoothness` / #259
 - identity: **0.14.35 / 202**
-- exact feature source: `a05dd3424bb499e46dc0834e69cf55654fb7733e`
+- successful CI / IPA source: `a05dd3424bb499e46dc0834e69cf55654fb7733e`
+- durable branch head after deleting only the temporary feature workflow: `6e16865d1589a953f58bf65885d9fb01ff6374e0`
+- tested-source → durable-head delta: **temporary feature workflow deletion only; product/runtime source unchanged**
 - existing-problem real-device evidence: supplied 30 fps recording contains at least one stop-one-recorded-frame → catch-up-next-frame event around 6.80 s; this proves the baseline hitch, not the candidate fix
-- source scope: `EmbyPosterGrid`, shared image loader/view, `V3PosterCard`, person-result poster, AppIdentity, changelog, checker and task CI helper only
+- source scope: `EmbyPosterGrid`, shared image loader/view, `V3PosterCard`, person-result poster, AppIdentity, changelog and checker; no Player/MPV/PiP/UnifiedTransport/playback Cache/Emby playback-session or carousel gesture/state-owner file
 - key reductions: no per-cell duplicate grid Environment wrappers; no unused callback-tracking state write; no invisible loading-state publication for ordinary posters; no unchanged initial `image=nil` publication; Home 118 pt posters request actual screen-scale pixel width (~354 px on 3×) instead of fixed 440 px
-- no Player/MPV/PiP/UnifiedTransport/playback Cache/Emby playback-session or carousel gesture/state-owner file in the feature delta
-- one-shot exact-source CI run: **32993726508 — in progress at this update**
-- artifact / IPA: pending
+- one-shot exact-source CI run/job: **`32993726508` / `98257448257` — success**
+- artifact: `OnePlayer-0.14.35-build202-poster-scroll-smoothness`
+- artifact ID: **`9615751921`**
+- artifact digest: `sha256:1fa9236d08210440a80b2f9af2fcef24e5608aac6f8c52be602295b40ec68777`
+- independently downloaded artifact ZIP SHA-256: `1fa9236d08210440a80b2f9af2fcef24e5608aac6f8c52be602295b40ec68777` — exact digest match
+- IPA: `OnePlayer-0.14.35-build202-poster-scroll-smoothness-unsigned.ipa`
+- IPA SHA-256: **`f6e3a30206acf2cfd877df74f41aa13f1575e1614407eff79466884f9ec51279`**
+- source ZIP SHA-256: **`19ebc6a2bcefd61d53eb4a9eea7617d5e98be7f8ae7b4f2dbf027ff62d8fabfe`**
+- independent validation: IPA/source ZIP integrity passed; bundle ID `com.embyplayerlab.app`; display/name `OnePlayer`; version/build `0.14.35 (202)`; `MinimumOSVersion=15.0`; icon metadata present; CI MinOS audit passed for runtime app Mach-O
+- temporary Build202 feature workflow and one-shot main helper were removed after evidence capture; Build201 helpers were not modified by this task
 - target-device result: pending
-- evidence: **Code written ✅ / exact scoped diff ✅ / existing-problem real-device evidence ✅ / CI running / IPA pending / candidate real-device pending / not stable**
+- evidence: **Code written ✅ / exact scoped diff ✅ / existing-problem real-device evidence ✅ / CI passed ✅ / IPA produced+verified ✅ / candidate real-device pending / not stable**
 
 ## Build199 Add/Edit Emby evidence
 
