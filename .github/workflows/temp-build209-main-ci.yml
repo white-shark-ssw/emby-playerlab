@@ -1,0 +1,168 @@
+name: One-shot Build209 Poster Motion Diagnostics IPA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temp-build209-main-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact Build209 source
+        uses: actions/checkout@v4
+        with:
+          ref: e95d73b75938ad92f2c4d7f06a3ba2d441bb92f4
+          fetch-depth: 0
+
+      - name: Validate Build209 diagnostic source contract
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "e95d73b75938ad92f2c4d7f06a3ba2d441bb92f4"
+          python3 scripts/check_poster_grid_smoothness.py
+          python3 -m py_compile scripts/check_poster_grid_smoothness.py
+          rm -rf scripts/__pycache__
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+          base = '351c62694ac25404c2bd4eb36a03314dd58ffed2'
+          expected = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyHomeCoreV3.swift',
+              'Sources/UI/EmbyPosterGrid.swift',
+              'Sources/UI/EmbySharedImageAndNavigation.swift',
+              'docs/changelog/CHANGELOG_v0_14_42_build209.md',
+              'scripts/check_poster_grid_smoothness.py',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', f'{base}...HEAD'], text=True).splitlines())
+          if changed != expected:
+              raise SystemExit(f'Build209 expected exact six-file delta, got: {sorted(changed)}')
+          frozen = ('Sources/Player/', 'Sources/Transport/', 'Sources/Cache/', 'Sources/Session/', 'Sources/AVIO/')
+          touched = sorted(p for p in changed if p.startswith(frozen))
+          if touched:
+              raise SystemExit(f'Build209 touched frozen/P0 paths: {touched}')
+          forbidden_carousel = {
+              'Sources/UI/EmbyHomeCarouselInteractionV3.swift',
+              'Sources/UI/EmbyHomeCarouselStateV3.swift',
+              'Sources/UI/EmbyHomeHeroV3.swift',
+          }
+          touched_carousel = sorted(changed & forbidden_carousel)
+          if touched_carousel:
+              raise SystemExit(f'Build209 touched active carousel owner files: {touched_carousel}')
+          identity = open('Sources/Core/AppIdentity.swift', encoding='utf-8').read()
+          if 'static let sourceVersion = "0.14.42"' not in identity or '?? "0.14.42"' not in identity:
+              raise SystemExit('Build209 AppIdentity mismatch')
+          shared = open('Sources/UI/EmbySharedImageAndNavigation.swift', encoding='utf-8').read()
+          home = open('Sources/UI/EmbyHomeCoreV3.swift', encoding='utf-8').read()
+          grid = open('Sources/UI/EmbyPosterGrid.swift', encoding='utf-8').read()
+          required = [
+              'guard let scrollView, deltaY != 0 else { return }',
+              'scroll_route=\\(observedScrollRoute)',
+              'phase=\\(phase)',
+              'delta_y=\\(deltaText)',
+              'velocity_y=\\(velocityText)',
+          ]
+          for needle in required:
+              if needle not in shared:
+                  raise SystemExit(f'Build209 motion diagnostic missing: {needle}')
+          if shared.count('CADisplayLink(target: self') != 1:
+              raise SystemExit('Build209 must retain one shared poster CADisplayLink')
+          if 'EmbyPosterScrollMotionProbe(route: "home")' not in home:
+              raise SystemExit('Build209 Home motion probe missing')
+          if 'EmbyPosterScrollMotionProbe(route: "grid")' not in grid:
+              raise SystemExit('Build209 grid motion probe missing')
+          print('Build209 exact diagnostic delta scope: PASS')
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Prepare OnePlayer app icons
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache | tee package-resolution.log
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION=0.14.42 \
+            CURRENT_PROJECT_VERSION=209 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build209.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version 0.14.42 --build 209 --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+
+      - name: Validate MinOS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" 15.0 17.0 build209-min-os.log build209.log
+
+      - name: Package unsigned IPA and source snapshot
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA="OnePlayer-0.14.42-build209-poster-motion-diagnostics-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA"
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          SOURCE="OnePlayer-0.14.42-build209-source.zip"
+          git archive --format=zip --output "$SOURCE" HEAD
+          shasum -a 256 "$SOURCE" | tee "$SOURCE.sha256"
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          echo "SOURCE=$SOURCE" >> "$GITHUB_ENV"
+
+      - name: Upload Build209 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.42-build209-poster-motion-diagnostics
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+            ${{ env.SOURCE }}
+            ${{ env.SOURCE }}.sha256
+            build209.log
+            build209-min-os.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 30
