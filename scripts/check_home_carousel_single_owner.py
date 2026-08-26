@@ -8,7 +8,7 @@ identity = Path('Sources/Core/AppIdentity.swift').read_text()
 info = Path('Config/Info.plist').read_text()
 project = Path('project.yml').read_text()
 
-assert 'static let sourceVersion = "0.14.31"' in identity
+assert 'static let sourceVersion = "0.14.33"' in identity
 assert 'V3HomeCarouselTransitionState' in interaction
 assert '@State var carouselTransitionState = V3HomeCarouselTransitionState()' in core
 assert '@State var transitionProgress' not in core
@@ -49,13 +49,16 @@ assert 'carouselTimer = Timer.publish(every: 1' in core
 assert 'autoAdvanceCarouselIfNeeded()' in core
 
 assert 'carouselForegroundOpacity' in state
-assert 'if let fromID = transitionFromID, let toID = transitionToID { return itemID == fromID || itemID == toID ? 1 : 0 }' in state
-assert 'return -direction * progress * width' in state
-assert 'return direction * (1 - progress) * width' in state
+assert 'let blend = carouselBackdropBlendProgress(transitionProgress)' in state
+assert 'if itemID == fromID { return Double(1 - blend) }' in state
+assert 'if itemID == toID { return Double(blend) }' in state
+assert 'func carouselForegroundOffset(for itemID: String, width: CGFloat) -> CGFloat { 0 }' in state
+assert 'return -direction * progress * width' not in state
+assert 'return direction * (1 - progress) * width' not in state
 assert 'func carouselBackdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat { min(1, max(0, rawProgress)) }' in state
 assert '.blur(radius: 30)' in hero
 assert '<key>CADisableMinimumFrameDurationOnPhone</key>' in info
 assert '<true/>' in info.split('<key>CADisableMinimumFrameDurationOnPhone</key>', 1)[1][:80]
 assert 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' in project
 
-print('Build198 home carousel single-owner contracts passed')
+print('Build200 home carousel single-owner + EX blend contracts passed')
