@@ -1,0 +1,55 @@
+name: Apply Build199 Add Emby Compile Fix
+
+on:
+  push:
+    branches: [feat/add-emby-page-optimization]
+    paths:
+      - .github/workflows/temp-fix-add-emby-build199.yml
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/add-emby-page-optimization
+          fetch-depth: 0
+
+      - name: Apply exact compile fix and Build199 trigger
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          session_path = Path("Sources/Session/SessionStore.swift")
+          session = session_path.read_text()
+          old = "} else if let existingPassword = password(for: stored) {"
+          new = "} else if let existingPassword = self.password(for: stored) {"
+          if session.count(old) != 1:
+              raise SystemExit(f"expected exactly one SessionStore match, found {session.count(old)}")
+          session_path.write_text(session.replace(old, new, 1))
+
+          workflow_path = Path(".github/workflows/temp-add-emby-build199.yml")
+          workflow = workflow_path.read_text()
+          old_trigger = "    paths:\n      - .github/workflows/temp-add-emby-build199.yml"
+          new_trigger = "    paths:\n      - .github/workflows/temp-add-emby-build199.yml\n      - Sources/Session/SessionStore.swift"
+          if workflow.count(old_trigger) != 1:
+              raise SystemExit(f"expected exactly one Build199 trigger match, found {workflow.count(old_trigger)}")
+          workflow_path.write_text(workflow.replace(old_trigger, new_trigger, 1))
+          PY
+          git diff --check
+          changed="$(git diff --name-only)"
+          printf '%s\n' "$changed"
+          test "$changed" = $'.github/workflows/temp-add-emby-build199.yml\nSources/Session/SessionStore.swift'
+
+      - name: Commit fix
+        run: |
+          set -euo pipefail
+          git config user.name white-shark-ssw
+          git config user.email houstools@gmail.com
+          git add .github/workflows/temp-add-emby-build199.yml Sources/Session/SessionStore.swift
+          git commit -m "Fix Build199 SessionStore password lookup"
+          git push origin HEAD:feat/add-emby-page-optimization
