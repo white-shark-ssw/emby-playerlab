@@ -171,6 +171,7 @@ struct V3EmbyHomeView: View {
                 .frame(width: width)
                 .background(
                     ZStack {
+                        EmbyPosterScrollMotionProbe(route: "home")
                         V3HomeScrollOffsetObserver { value in
                             guard immersive, isHomeActive else { return }
                             let clampedValue = max(-heroTrackingLimit, value)

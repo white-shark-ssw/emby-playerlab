@@ -40,6 +40,10 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
     private var lastCellAppear: PosterEvent?
     private var lastImageCommitAt: CFTimeInterval?
     private var lastLoadAhead: PosterEvent?
+    private weak var observedScrollView: UIScrollView?
+    private var observedScrollOwnerID: UUID?
+    private var observedScrollRoute = "none"
+    private var lastScrollOffsetY: CGFloat?
 
     private override init() {}
 
@@ -66,9 +70,29 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
         lastLoadAhead = PosterEvent(itemID: itemID, route: "grid-load-ahead", timestamp: CACurrentMediaTime())
     }
 
+    func observeVerticalScrollView(_ scrollView: UIScrollView, ownerID: UUID, route: String) {
+        precondition(Thread.isMainThread)
+        if observedScrollOwnerID != ownerID || observedScrollView !== scrollView {
+            observedScrollOwnerID = ownerID
+            observedScrollView = scrollView
+            lastScrollOffsetY = scrollView.contentOffset.y
+        }
+        observedScrollRoute = route
+    }
+
+    func stopObservingVerticalScrollView(ownerID: UUID) {
+        precondition(Thread.isMainThread)
+        guard observedScrollOwnerID == ownerID else { return }
+        observedScrollOwnerID = nil
+        observedScrollView = nil
+        observedScrollRoute = "none"
+        lastScrollOffsetY = nil
+    }
+
     private func ensureDisplayLink() {
         guard displayLink == nil else { return }
         lastDisplayTimestamp = nil
+        lastScrollOffsetY = observedScrollView?.contentOffset.y
         let link = CADisplayLink(target: self, selector: #selector(displayLinkTick(_:)))
         link.add(to: .main, forMode: .common)
         displayLink = link
@@ -78,9 +102,14 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
         displayLink?.invalidate()
         displayLink = nil
         lastDisplayTimestamp = nil
+        lastScrollOffsetY = observedScrollView?.contentOffset.y
     }
 
     @objc private func displayLinkTick(_ link: CADisplayLink) {
+        let scrollView = observedScrollView
+        let currentOffsetY = scrollView?.contentOffset.y
+        let deltaY = currentOffsetY.flatMap { current in lastScrollOffsetY.map { current - $0 } } ?? 0
+        lastScrollOffsetY = currentOffsetY
         guard let previous = lastDisplayTimestamp else {
             lastDisplayTimestamp = link.timestamp
             return
@@ -88,18 +117,104 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
         let gap = link.timestamp - previous
         lastDisplayTimestamp = link.timestamp
         guard gap >= 0.030 else { return }
+        guard let scrollView, deltaY != 0 else { return }
         let now = link.timestamp
         let cellAge = lastCellAppear.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
         let imageAge = lastImageCommitAt.map { max(0, (now - $0) * 1000) } ?? -1
         let loadAheadAge = lastLoadAhead.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
         let gapText = String(format: "%.1f", gap * 1000)
+        let offsetText = String(format: "%.2f", scrollView.contentOffset.y)
+        let deltaText = String(format: "%.2f", deltaY)
+        let velocityText = String(format: "%.1f", scrollView.panGestureRecognizer.velocity(in: scrollView).y)
         let cellAgeText = String(format: "%.1f", cellAge)
         let imageAgeText = String(format: "%.1f", imageAge)
         let loadAheadAgeText = String(format: "%.1f", loadAheadAge)
+        let phase = scrollView.isDragging ? "dragging" : (scrollView.isDecelerating ? "decelerating" : "moving")
         let lastCellID = lastCellAppear?.itemID ?? "none"
         let lastCellRoute = lastCellAppear?.route ?? "none"
         let lastLoadAheadID = lastLoadAhead?.itemID ?? "none"
-        DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\(gapText) visible=\(visiblePosterCount) last_cell=\(lastCellID) cell_route=\(lastCellRoute) cell_age_ms=\(cellAgeText) image_age_ms=\(imageAgeText) load_ahead=\(lastLoadAheadID) load_ahead_age_ms=\(loadAheadAgeText)")
+        DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\(gapText) scroll_route=\(observedScrollRoute) phase=\(phase) offset_y=\(offsetText) delta_y=\(deltaText) velocity_y=\(velocityText) visible=\(visiblePosterCount) last_cell=\(lastCellID) cell_route=\(lastCellRoute) cell_age_ms=\(cellAgeText) image_age_ms=\(imageAgeText) load_ahead=\(lastLoadAheadID) load_ahead_age_ms=\(loadAheadAgeText)")
+    }
+}
+
+final class EmbyPosterScrollMotionProbeView: UIView {
+    var hierarchyDidChange: ((UIView) -> Void)?
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        hierarchyDidChange?(self)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        hierarchyDidChange?(self)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        hierarchyDidChange?(self)
+    }
+}
+
+struct EmbyPosterScrollMotionProbe: UIViewRepresentable {
+    let route: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(route: route) }
+
+    func makeUIView(context: Context) -> EmbyPosterScrollMotionProbeView {
+        let view = EmbyPosterScrollMotionProbeView(frame: .zero)
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+        view.hierarchyDidChange = { [weak coordinator = context.coordinator] probe in coordinator?.attach(from: probe) }
+        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak view] in
+            guard let view else { return }
+            coordinator?.attach(from: view)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: EmbyPosterScrollMotionProbeView, context: Context) {
+        context.coordinator.route = route
+        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
+            guard let uiView else { return }
+            coordinator?.attach(from: uiView)
+        }
+    }
+
+    static func dismantleUIView(_ uiView: EmbyPosterScrollMotionProbeView, coordinator: Coordinator) {
+        uiView.hierarchyDidChange = nil
+        coordinator.detach()
+    }
+
+    final class Coordinator {
+        let ownerID = UUID()
+        var route: String
+        private weak var scrollView: UIScrollView?
+
+        init(route: String) { self.route = route }
+
+        func attach(from probe: UIView) {
+            guard let scrollView = ancestorVerticalScrollView(from: probe) else { return }
+            if self.scrollView !== scrollView {
+                if self.scrollView != nil { EmbyPosterScrollHitchDiagnostics.shared.stopObservingVerticalScrollView(ownerID: ownerID) }
+                self.scrollView = scrollView
+            }
+            EmbyPosterScrollHitchDiagnostics.shared.observeVerticalScrollView(scrollView, ownerID: ownerID, route: route)
+        }
+
+        func detach() {
+            EmbyPosterScrollHitchDiagnostics.shared.stopObservingVerticalScrollView(ownerID: ownerID)
+            scrollView = nil
+        }
+
+        private func ancestorVerticalScrollView(from probe: UIView) -> UIScrollView? {
+            var current: UIView? = probe
+            while let view = current {
+                if let scrollView = view as? UIScrollView, !scrollView.isPagingEnabled { return scrollView }
+                current = view.superview
+            }
+            return nil
+        }
     }
 }
 

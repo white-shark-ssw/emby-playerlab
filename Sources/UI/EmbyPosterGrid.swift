@@ -180,6 +180,7 @@ struct EmbyPosterGrid<Content: View>: View {
         .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(GeometryReader { proxy in Color.clear.preference(key: EmbyPosterGridWidthPreferenceKey.self, value: proxy.size.width) })
+        .background(EmbyPosterScrollMotionProbe(route: "grid"))
         .onPreferenceChange(EmbyPosterGridWidthPreferenceKey.self) { width in
             if width > 0 && abs(containerWidth - width) > 0.5 { containerWidth = width }
         }

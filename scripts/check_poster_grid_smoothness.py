@@ -5,6 +5,7 @@ grid_source = Path("Sources/UI/EmbyPosterGrid.swift").read_text(encoding="utf-8"
 image_source = Path("Sources/UI/EmbySharedImageAndNavigation.swift").read_text(encoding="utf-8")
 poster_source = Path("Sources/UI/EmbyServerSharedV3.swift").read_text(encoding="utf-8")
 person_source = Path("Sources/UI/EmbyPersonMediaView.swift").read_text(encoding="utf-8")
+home_source = Path("Sources/UI/EmbyHomeCoreV3.swift").read_text(encoding="utf-8")
 
 required_grid = [
     "return LazyVGrid(columns: columns, alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing)",
@@ -50,7 +51,11 @@ if image_source.count("imageBody.onReceive(loader.$image.compactMap { $0 })") !=
 required_diagnostics = [
     "final class EmbyPosterScrollHitchDiagnostics: NSObject",
     "private var displayLink: CADisplayLink?",
+    "func observeVerticalScrollView(_ scrollView: UIScrollView, ownerID: UUID, route: String)",
+    "let deltaY = currentOffsetY.flatMap { current in lastScrollOffsetY.map { current - $0 } } ?? 0",
     "guard gap >= 0.030 else { return }",
+    "guard let scrollView, deltaY != 0 else { return }",
+    r"scroll_route=\(observedScrollRoute) phase=\(phase) offset_y=\(offsetText) delta_y=\(deltaText) velocity_y=\(velocityText)",
     "DiagnosticsLogger.shared.log(\"PosterScrollHitch\"",
     "posterDidAppear(itemID: item.id, route: gridNavigationState == nil ? \"row\" : \"grid\")",
     "EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()",
@@ -62,8 +67,13 @@ for needle in required_diagnostics:
 
 if image_source.count('DiagnosticsLogger.shared.log("PosterScrollHitch"') != 1:
     raise SystemExit("PosterScrollHitch must log only after one centralized display-link gap detector")
+
+if 'EmbyPosterScrollMotionProbe(route: "grid")' not in grid_source:
+    raise SystemExit("3-column grid must register its vertical scroll owner for motion-gated hitch diagnostics")
+if 'EmbyPosterScrollMotionProbe(route: "home")' not in home_source:
+    raise SystemExit("Home poster-heavy scroll must register its vertical scroll owner for motion-gated hitch diagnostics")
 if image_source.count("CADisplayLink(target: self") != 1:
-    raise SystemExit("Build206 must own exactly one poster-scroll CADisplayLink implementation")
+    raise SystemExit("poster diagnostics must keep exactly one shared CADisplayLink implementation")
 
 pixel_width_contract = "private var posterImageMaxWidth: Int { min(440, max(1, Int(ceil(resolvedWidth * UIScreen.main.scale)))) }"
 if pixel_width_contract not in poster_source:
