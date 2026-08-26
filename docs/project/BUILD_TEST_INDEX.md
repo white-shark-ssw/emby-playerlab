@@ -27,8 +27,9 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build199 / 0.14.32** | Add/Edit Emby completion | Dedicated CI/IPA passed; target-device accepted; merged. **Current accepted overall baseline.** |
 | **Build200 / 0.14.33** | Fixed-spatial foreground + linear blend | CI/IPA verified; target-device rejected because foreground stopped sliding horizontally. |
 | **Build201 / 0.14.34** | 15% short-travel horizontal slide + linear blend | CI/IPA verified; target-device feedback: **“有点那种感觉了”**. Direction partially positive; user requested 30% travel and slower-start/faster-later opacity. Not final. |
-| **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | Independent poster task. CI/IPA verified; candidate real-device A/B pending. |
+| **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | CI/IPA verified, but latest target-device recording still shows a stop/catch-up hitch around 4.067 s (`-6.36 px → 0 px → -26.19 px`). Real-device tested and rejected for smoothness; not stable. |
 | **Build203 / 0.14.36** | 30% carousel travel + accelerating opacity | CI/IPA passed and independently verified. Uses `0.30 × Hero width` and direction-independent `progress²` blend with existing first↔last modulo wrapping. Target-device validation pending. |
+| **Build204 / 0.14.37** | Poster warm-cache cell-entry reduction | Current poster-scroll candidate. Removes no-op image publisher subscribers from ordinary posters and seeds warm-cache ordinary cells before first body pass so `onAppear` does not synchronously publish a second cached-image invalidation. CI/IPA passed and independently verified; target-device validation pending. |
 
 ## Current accepted baseline
 
@@ -101,20 +102,43 @@ Target-device result: lifecycle/settle/reversal okay, minimum/subtle movement st
 - independent validation: artifact/IPA integrity, bundle `com.embyplayerlab.app`, `0.14.36 (203)`, OnePlayer icons, MinOS 15.0; build log contains `** BUILD SUCCEEDED **`.
 - evidence: **Code written ✅ / scoped diff+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
 
-## Build202 poster-scroll evidence
+## Poster-scroll evidence
+
+### Build202 — real-device rejected
 
 - task: `DEV-poster-grid-smoothness`
 - branch / draft PR: `perf/poster-grid-smoothness` / #259
 - identity: **0.14.35 / 202**
 - tested source: `a05dd3424bb499e46dc0834e69cf55654fb7733e`
 - durable cleanup head: `6e16865d1589a953f58bf65885d9fb01ff6374e0`
-- user recording proves an existing stop-frame/catch-up hitch; that proves the baseline problem, not the candidate fix.
 - run/job: `32993726508` / `98257448257` — success
 - artifact ID: `9615751921`
 - artifact digest: `sha256:1fa9236d08210440a80b2f9af2fcef24e5608aac6f8c52be602295b40ec68777`
 - IPA SHA-256: `f6e3a30206acf2cfd877df74f41aa13f1575e1614407eff79466884f9ec51279`
 - source ZIP SHA-256: `19ebc6a2bcefd61d53eb4a9eea7617d5e98be7f8ae7b4f2dbf027ff62d8fabfe`
-- candidate real-device result: pending.
+- latest target-device recording `RPReplay_Final1787766039.mp4`: 510×1108, 30 fps, 205 frames / 6.833 s; around 4.067 s vertical movement is approximately `-6.36 px → 0 px → -26.19 px`, confirming the visible stop-frame/catch-up hitch remains.
+- result: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / smoothness rejected ❌ / not stable.**
+
+### Build204 — current poster-scroll candidate
+
+- identity: **0.14.37 / 204**; Build203 belongs to the carousel line and is not reused.
+- base: Build202 durable head `6e16865d1589a953f58bf65885d9fb01ff6374e0`.
+- exact CI source: `e6a97b5083691ed10795a402edc0fd30f996cffc`.
+- durable cleanup head: `170778c3934a280d9b539fb45f0bfef673687825`.
+- tested-source → cleanup-head delta: temporary Build204 feature workflow deletion only; product/runtime source unchanged.
+- runtime delta from Build202 is limited to `AppIdentity.swift` and `EmbySharedImageAndNavigation.swift`.
+- ordinary images without `onImageLoaded` no longer install a no-op `loader.$image` Combine subscriber.
+- ordinary warm-cache cells initialize the loader from the existing decoded-memory cache, so the first visible body pass can already contain the cached UIImage and `onAppear` does not synchronously publish a second `image = rendered` invalidation.
+- real `onImageLoaded` callback paths used by Hero/detail/carousel retain the previous publication/dedup/callback semantics and are not warm-seeded through this shortcut.
+- no cache/decoder duplication, no timer/retry/fallback, no navigation rewrite, no Player/MPV/PiP/UnifiedTransport/Cache/Session/carousel-owner change.
+- run/job: **`32996847597` / `98268250117` — success**.
+- artifact: `OnePlayer-0.14.37-build204-poster-warm-cache`.
+- artifact ID: **`9617026984`**.
+- artifact digest / independently downloaded artifact ZIP SHA-256: **`7115be086057ba9254012df365e2e3f9b0f2d30a2d587b9e6bfcb65756c0f794`**.
+- IPA SHA-256: **`b4ba266086674f95a09ef92500c78926b4bc9cfd022c637075985cd55c598130`**.
+- source ZIP SHA-256: **`9f04a9f40f7f2617b0c9edee6cd2844cd4d3d7beed169eb5431ecbef5c01c506`**.
+- independent validation: artifact/IPA/source integrity, bundle `com.embyplayerlab.app`, `0.14.37 (204)`, OnePlayer icons, MinOS 15.0; build log contains `** BUILD SUCCEEDED **`.
+- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
 
 ## Accepted foundation evidence
 
