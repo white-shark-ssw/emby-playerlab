@@ -9,7 +9,7 @@ person_source = Path("Sources/UI/EmbyPersonMediaView.swift").read_text(encoding=
 required_grid = [
     "return LazyVGrid(columns: columns, alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing)",
     "ForEach(items) { item in",
-    ".onAppear {\n                        guard let handler = onApproachingEnd, loadAheadIDs.contains(item.id) else { return }\n                        handler()\n                    }",
+    ".onAppear {\n                        guard let handler = onApproachingEnd, loadAheadIDs.contains(item.id) else { return }\n                        EmbyPosterScrollHitchDiagnostics.shared.loadAheadDidTrigger(itemID: item.id)\n                        handler()\n                    }",
     "        .environment(\\.embyPosterGridNavigationState, navigationState)\n        .environment(\\.embyPosterGridCellWidth, cellWidth)\n        .padding(.horizontal, horizontalPadding)",
 ]
 for needle in required_grid:
@@ -46,6 +46,24 @@ if "guard let onImageLoaded else { return }" in image_source:
     raise SystemExit("ordinary poster images must not install a no-op image publisher subscriber")
 if image_source.count("imageBody.onReceive(loader.$image.compactMap { $0 })") != 1:
     raise SystemExit("image-loaded publisher must exist only on the real callback path")
+
+required_diagnostics = [
+    "final class EmbyPosterScrollHitchDiagnostics: NSObject",
+    "private var displayLink: CADisplayLink?",
+    "guard gap >= 0.030 else { return }",
+    "DiagnosticsLogger.shared.log(\"PosterScrollHitch\"",
+    "posterDidAppear(itemID: item.id, route: gridNavigationState == nil ? \"row\" : \"grid\")",
+    "EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()",
+    "EmbyPosterScrollHitchDiagnostics.shared.loadAheadDidTrigger(itemID: item.id)",
+]
+for needle in required_diagnostics:
+    if needle not in image_source and needle not in grid_source:
+        raise SystemExit(f"missing Build206 poster hitch diagnostic contract: {needle}")
+
+if image_source.count('DiagnosticsLogger.shared.log("PosterScrollHitch"') != 1:
+    raise SystemExit("PosterScrollHitch must log only after one centralized display-link gap detector")
+if image_source.count("CADisplayLink(target: self") != 1:
+    raise SystemExit("Build206 must own exactly one poster-scroll CADisplayLink implementation")
 
 pixel_width_contract = "private var posterImageMaxWidth: Int { min(440, max(1, Int(ceil(resolvedWidth * UIScreen.main.scale)))) }"
 if pixel_width_contract not in poster_source:

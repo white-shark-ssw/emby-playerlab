@@ -170,6 +170,7 @@ struct EmbyPosterGrid<Content: View>: View {
                     .contentShape(Rectangle())
                     .onAppear {
                         guard let handler = onApproachingEnd, loadAheadIDs.contains(item.id) else { return }
+                        EmbyPosterScrollHitchDiagnostics.shared.loadAheadDidTrigger(itemID: item.id)
                         handler()
                     }
             }

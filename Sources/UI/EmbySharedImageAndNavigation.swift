@@ -4,6 +4,7 @@ import Foundation
 import Combine
 import CoreImage
 import ImageIO
+import QuartzCore
 
 final class EmbyDecodedImageRenderPool: @unchecked Sendable {
     static let shared = EmbyDecodedImageRenderPool()
@@ -22,6 +23,81 @@ final class EmbyDecodedImageRenderPool: @unchecked Sendable {
     }
 
     func clear() { cache.removeAllObjects() }
+}
+
+final class EmbyPosterScrollHitchDiagnostics: NSObject {
+    static let shared = EmbyPosterScrollHitchDiagnostics()
+
+    private struct PosterEvent {
+        let itemID: String
+        let route: String
+        let timestamp: CFTimeInterval
+    }
+
+    private var displayLink: CADisplayLink?
+    private var lastDisplayTimestamp: CFTimeInterval?
+    private var visiblePosterCount = 0
+    private var lastCellAppear: PosterEvent?
+    private var lastImageCommitAt: CFTimeInterval?
+    private var lastLoadAhead: PosterEvent?
+
+    private override init() {}
+
+    func posterDidAppear(itemID: String, route: String) {
+        precondition(Thread.isMainThread)
+        visiblePosterCount += 1
+        lastCellAppear = PosterEvent(itemID: itemID, route: route, timestamp: CACurrentMediaTime())
+        ensureDisplayLink()
+    }
+
+    func posterDidDisappear() {
+        precondition(Thread.isMainThread)
+        visiblePosterCount = max(0, visiblePosterCount - 1)
+        if visiblePosterCount == 0 { stopDisplayLink() }
+    }
+
+    func imageDidCommit() {
+        precondition(Thread.isMainThread)
+        lastImageCommitAt = CACurrentMediaTime()
+    }
+
+    func loadAheadDidTrigger(itemID: String) {
+        precondition(Thread.isMainThread)
+        lastLoadAhead = PosterEvent(itemID: itemID, route: "grid-load-ahead", timestamp: CACurrentMediaTime())
+    }
+
+    private func ensureDisplayLink() {
+        guard displayLink == nil else { return }
+        lastDisplayTimestamp = nil
+        let link = CADisplayLink(target: self, selector: #selector(displayLinkTick(_:)))
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    private func stopDisplayLink() {
+        displayLink?.invalidate()
+        displayLink = nil
+        lastDisplayTimestamp = nil
+    }
+
+    @objc private func displayLinkTick(_ link: CADisplayLink) {
+        guard let previous = lastDisplayTimestamp else {
+            lastDisplayTimestamp = link.timestamp
+            return
+        }
+        let gap = link.timestamp - previous
+        lastDisplayTimestamp = link.timestamp
+        guard gap >= 0.030 else { return }
+        let now = link.timestamp
+        let cellAge = lastCellAppear.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+        let imageAge = lastImageCommitAt.map { max(0, (now - $0) * 1000) } ?? -1
+        let loadAheadAge = lastLoadAhead.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+        let gapText = String(format: "%.1f", gap * 1000)
+        let cellAgeText = String(format: "%.1f", cellAge)
+        let imageAgeText = String(format: "%.1f", imageAge)
+        let loadAheadAgeText = String(format: "%.1f", loadAheadAge)
+        DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\(gapText) visible=\(visiblePosterCount) last_cell=\(lastCellAppear?.itemID ?? \"none\") cell_route=\(lastCellAppear?.route ?? \"none\") cell_age_ms=\(cellAgeText) image_age_ms=\(imageAgeText) load_ahead=\(lastLoadAhead?.itemID ?? \"none\") load_ahead_age_ms=\(loadAheadAgeText)")
+    }
 }
 
 private final class EmbyCachedImageLoader: ObservableObject {
@@ -55,6 +131,7 @@ private final class EmbyCachedImageLoader: ObservableObject {
         }
         if let rendered = EmbyDecodedImageRenderPool.shared.image(for: url) {
             image = rendered
+            EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()
             setLoading(false, reportsLoadingState: reportsLoadingState)
             return
         }
@@ -71,6 +148,7 @@ private final class EmbyCachedImageLoader: ObservableObject {
                         await MainActor.run {
                             guard self?.currentURL == url else { return }
                             self?.image = cachedImage
+                            EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()
                             self?.setLoading(false, reportsLoadingState: reportsLoadingState)
                         }
                         return
@@ -91,6 +169,7 @@ private final class EmbyCachedImageLoader: ObservableObject {
                 await MainActor.run {
                     guard self?.currentURL == url else { return }
                     self?.image = loaded
+                    EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()
                     self?.setLoading(false, reportsLoadingState: reportsLoadingState)
                 }
             } catch {
@@ -471,5 +550,7 @@ struct EmbyPosterDetailLink<Content: View>: View {
                     }
             }
         }
+        .onAppear { EmbyPosterScrollHitchDiagnostics.shared.posterDidAppear(itemID: item.id, route: gridNavigationState == nil ? "row" : "grid") }
+        .onDisappear { EmbyPosterScrollHitchDiagnostics.shared.posterDidDisappear() }
     }
 }
