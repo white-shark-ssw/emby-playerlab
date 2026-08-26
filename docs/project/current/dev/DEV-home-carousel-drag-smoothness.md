@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build203 target-device exposed the remaining issue: 30% total travel is still too short overall, yet raw-progress spatial mapping makes the first visible displacement too large. Carousel Build204 / 0.14.37 was retired before distribution because that identity is already owned by the independent poster-scroll task. Build205 keeps the same 80% + `progress²` visual mapping under a unique identity; CI running.**
+**Active — Build203 target-device exposed the remaining issue: 30% total travel is still too short overall, yet raw-progress spatial mapping makes the first visible displacement too large. Carousel Build204 / 0.14.37 was retired before distribution because that identity is already owned by the independent poster-scroll task. Build205 keeps the same UIKit owner, raises total travel to 80%, and applies the existing `progress²` visual curve to spatial offset as well as opacity. CI/IPA verified; target-device validation pending.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
@@ -70,7 +70,7 @@ Conclusion: the remaining issue is now more specifically attributed to **raw pro
 
 ## Retired carousel Build204 identity collision
 
-A carousel package was briefly created as `0.14.37 / Build204` with the intended 80% + `progress²` spatial mapping and even completed CI. During the mandatory global project-state reread, the independent poster-scroll task was found to already own **OnePlayer 0.14.37 / Build204** with its own verified source/artifact.
+A carousel package was briefly created as `0.14.37 / Build204` with the intended 80% + `progress²` spatial mapping and completed CI. During mandatory global project-state reread, the independent poster-scroll task was found to already own **OnePlayer 0.14.37 / Build204** with its own verified source/artifact.
 
 Therefore:
 
@@ -86,7 +86,9 @@ Identity:
 - OnePlayer **0.14.38 / Build205**
 - branch: `perf/home-carousel-eased-travel-build205`
 - base: Build203 durable cleanup head `edafd5d784cfacdcf8c451fad93535a55fb880fb`
-- current CI source: `e5f2e7b4135eca333d5dda24545f19ee8d0be439`
+- tested source: **`e5f2e7b4135eca333d5dda24545f19ee8d0be439`**
+- durable cleanup head: **`70d6cca676911e656591aae6b342c771cc92b9fe`**
+- tested-source → cleanup-head delta: only `.github/workflows/temp-build205-carousel-ci.yml` deletion; product/runtime source unchanged.
 
 Runtime changes are limited to `Sources/Core/AppIdentity.swift` and `Sources/UI/EmbyHomeCarouselStateV3.swift`:
 
@@ -106,20 +108,37 @@ This separates the two requirements that previously fought each other:
 
 Left/right and first↔last boundaries continue to use the existing direction sign plus `(index + direction + items.count) % items.count`; there is no edge-specific state machine or duplicate progress owner.
 
-Build203→Build205 exact product/scope delta before CI cleanup is limited to:
+Build203→Build205 scoped delta is limited to:
 
 - `Sources/Core/AppIdentity.swift`
 - `Sources/UI/EmbyHomeCarouselStateV3.swift`
 - `docs/changelog/CHANGELOG_v0_14_38_build205.md`
 - `scripts/check_home_carousel_single_owner.py`
-- temporary Build205 CI workflow
+- temporary Build205 CI workflow, removed after evidence capture.
 
-No Frozen/P0 runtime file is in the diff. Build205 source-contract/Frozen guard already passed in CI run `32998533448`; dependency/build pipeline is continuing.
+No Frozen/P0 runtime file is in the diff.
+
+## Build205 CI / packaging evidence
+
+- CI run/job: **`32998533448` / `98273968966` — success**
+- source contract/Frozen guard, Xcode 16.4, icon generation, dependencies, Release build, app identity, MinOS, IPA/source packaging and upload: all success.
+- artifact: `OnePlayer-0.14.38-build205-home-carousel-eased-travel`
+- artifact ID: **`9617634710`**
+- artifact digest: **`sha256:3efb42f2ff3bf7ea7ed31a58f188b30c449e4cb0b703b111ee47ef98e3a51671`**
+- independently downloaded artifact ZIP SHA-256: `3efb42f2ff3bf7ea7ed31a58f188b30c449e4cb0b703b111ee47ef98e3a51671` — exact digest match.
+- IPA: `OnePlayer-0.14.38-build205-home-carousel-eased-travel-unsigned.ipa`
+- IPA SHA-256: **`fe4a81ebee9d330526c108edf2ab4652632ae5b204719864e0b5dee486086479`**
+- source ZIP SHA-256: **`b556620d0d312259e6d2e823c7f8079109f44c13e00c56b1718cfcfea4cd38f1`**
+- embedded checksum files match independent IPA/source hashes.
+- independent IPA `unzip -t`: PASS.
+- independent Info.plist: bundle `com.embyplayerlab.app`, display/name `OnePlayer`, version/build `0.14.38 (205)`, `MinimumOSVersion=15.0`, primary `OnePlayerIcon`, alternate `OnePlayerAltIcon`.
+
+**Build205 = Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending / not stable.**
 
 ## Next exact action
 
-1. Complete Build205 CI/IPA and independently verify artifact, identity and MinOS.
-2. Target-device A/B against Build203 and EX.
+1. Install/test the verified Build205 IPA on iPhone 15 Pro Max / iOS 17.0.
+2. A/B against Build203 and EX.
 3. Focus first on the first few millimeters of drag: the first visible horizontal displacement should be much smaller than Build203 despite the larger 80% total travel.
 4. Confirm mid/late drag accelerates naturally and reaches a substantially larger total slide than Build201/203.
 5. Verify left/right, first→last, last→first, reversal, cancel/commit, vertical Hero scroll, detail tap and auto-advance.
