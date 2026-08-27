@@ -26,13 +26,19 @@ jobs:
       - name: Guard exact Build212 source
         run: test "$(git rev-parse HEAD)" = "4f0a89ab026cd2103f66e5854a1f352d34852e45"
       - name: Apply minimal display-only UIKit surface
-        run: python3 _control/.github/scripts/temp-build213-poster-display-uikit.py
-      - name: Validate source contract and scope
         run: |
-          python3 scripts/check_poster_grid_smoothness.py
-          git diff --check
+          python3 _control/.github/scripts/temp-build213-poster-display-uikit.py
+          git add -N docs/changelog/CHANGELOG_v0_14_46_build213.md
+      - name: Run poster source checker
+        run: python3 scripts/check_poster_grid_smoothness.py
+      - name: Check patch formatting
+        run: git diff --check
+      - name: Check exact patch scope
+        run: |
           git diff --name-only
           test "$(git diff --name-only | sort | tr '\n' ' ')" = "Sources/Core/AppIdentity.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_14_46_build213.md scripts/check_poster_grid_smoothness.py "
+      - name: Guard Frozen and carousel owners
+        run: |
           ! git diff --name-only | grep -E 'Sources/(Player|Transport|Cache)/|EmbyHome(Core|Hero|CarouselState|CarouselInteraction)V3\.swift'
       - name: Commit Build213 candidate
         run: |
