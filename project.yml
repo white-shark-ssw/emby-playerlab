@@ -10,7 +10,7 @@ options:
 packages:
   AetherOnePlayer:
     url: https://github.com/white-shark-ssw/emby-playerlab.git
-    revision: f599ccbf604f5f563643c0f0792c3e96a90e28a0
+    revision: b66a8a02375f7e58a0dc868d57eb0f6f7f0dde11
   MPVKit:
     url: https://github.com/mpvkit/MPVKit.git
     exactVersion: 1.0.0
