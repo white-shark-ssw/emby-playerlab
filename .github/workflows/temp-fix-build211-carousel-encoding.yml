@@ -1,0 +1,57 @@
+name: One-shot Fix Build211 Carousel Encoding
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temp-fix-build211-carousel-encoding.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/home-carousel-acquisition-relative-build211
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard exact Build211 source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "c8a05b2850b6290dbf128f82ca1ca80a7b2c333b"
+
+      - name: Repair three transfer-corrupted tokens only
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift')
+          s = p.read_text()
+          replacements = {
+              'predictedTranslation(&or: touch': 'predictedTranslation(for: touch',
+              'predictedTranslation(for* touch': 'predictedTranslation(for: touch',
+              'renderTranslation(for* translation)': 'renderTranslation(for: translation)',
+          }
+          for old, new in replacements.items():
+              if s.count(old) != 1:
+                  raise SystemExit(f'Build211 repair anchor count {old!r} = {s.count(old)}')
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          python3 scripts/check_home_carousel_single_owner.py
+          python3 -m py_compile scripts/check_home_carousel_single_owner.py
+          git diff --check
+          test "$(git diff --name-only)" = "Sources/UI/EmbyHomeCarouselInteractionV3.swift"
+
+      - name: Commit repaired Build211 source
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          git commit -m "Fix Build211 carousel source token encoding"
+          git push origin HEAD:perf/home-carousel-acquisition-relative-build211
