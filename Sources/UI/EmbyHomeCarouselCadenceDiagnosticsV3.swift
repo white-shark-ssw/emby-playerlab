@@ -51,6 +51,7 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
     private var dragStartedAt: CFTimeInterval = 0
     private var acquisitionTranslation: CGFloat = 0
     private var maximumFPS = 60
+    private var requestedFPS = 0
     private var deliveredTouchStats = IntervalStats()
     private var coalescedTouchStats = IntervalStats()
     private var progressPublishStats = IntervalStats()
@@ -77,6 +78,7 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
         dragStartedAt = CACurrentMediaTime()
         self.acquisitionTranslation = acquisitionTranslation
         maximumFPS = max(60, UIScreen.main.maximumFramesPerSecond)
+        requestedFPS = maximumFPS > 60 ? maximumFPS : 0
         deliveredTouchStats = IntervalStats()
         coalescedTouchStats = IntervalStats()
         progressPublishStats = IntervalStats()
@@ -95,6 +97,10 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
         deliveredTouchStats.record(touch.timestamp)
         recordCoalescedTouches(for: touch, event: event)
         let link = CADisplayLink(target: self, selector: #selector(displayLinkTick(_:)))
+        if requestedFPS > 0 {
+            let requested = Float(requestedFPS)
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: requested, maximum: requested, preferred: requested)
+        }
         link.add(to: .main, forMode: .common)
         displayLink = link
     }
@@ -152,7 +158,7 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
         }.joined(separator: ",")
         DiagnosticsLogger.shared.app(
             "HomeCarouselCadence",
-            "reason=\(reason) duration_ms=\(String(format: "%.1f", durationMS)) maximum_fps=\(maximumFPS) acquisition_x=\(String(format: "%.2f", acquisitionTranslation)) delivered_samples=\(deliveredTouchStats.sampleCount) delivered_avg_gap_ms=\(String(format: "%.2f", deliveredTouchStats.averageGapMS)) delivered_max_gap_ms=\(String(format: "%.2f", deliveredTouchStats.maxGapMS)) delivered_ge12_5=\(deliveredTouchStats.over12_5MS) delivered_ge20=\(deliveredTouchStats.over20MS) delivered_ge30=\(deliveredTouchStats.over30MS) coalesced_samples=\(coalescedTouchStats.sampleCount) coalesced_avg_gap_ms=\(String(format: "%.2f", coalescedTouchStats.averageGapMS)) coalesced_max_gap_ms=\(String(format: "%.2f", coalescedTouchStats.maxGapMS)) publish_calls=\(progressPublishCalls) publish_changes=\(progressPublishStats.sampleCount) publish_avg_gap_ms=\(String(format: "%.2f", progressPublishStats.averageGapMS)) publish_max_gap_ms=\(String(format: "%.2f", progressPublishStats.maxGapMS)) render_changes=\(renderUpdateStats.sampleCount) render_avg_gap_ms=\(String(format: "%.2f", renderUpdateStats.averageGapMS)) render_max_gap_ms=\(String(format: "%.2f", renderUpdateStats.maxGapMS)) publish_to_render_max_ms=\(String(format: "%.2f", maxPublishToRenderLagMS)) display_intervals=\(displayStats.intervalCount) display_avg_gap_ms=\(String(format: "%.2f", displayStats.averageGapMS)) display_p95_gap_ms=\(String(format: "%.2f", p95DisplayGap)) display_max_gap_ms=\(String(format: "%.2f", displayStats.maxGapMS)) display_ge12_5=\(displayStats.over12_5MS) display_ge20=\(displayStats.over20MS) display_ge30=\(displayStats.over30MS) image_events=\(imageEventsDuringDrag) image_roles=\(roles.isEmpty ? "none" : roles) worst_display=\(worst.isEmpty ? "none" : worst)"
+            "reason=\(reason) duration_ms=\(String(format: "%.1f", durationMS)) maximum_fps=\(maximumFPS) requested_fps=\(requestedFPS) acquisition_x=\(String(format: "%.2f", acquisitionTranslation)) delivered_samples=\(deliveredTouchStats.sampleCount) delivered_avg_gap_ms=\(String(format: "%.2f", deliveredTouchStats.averageGapMS)) delivered_max_gap_ms=\(String(format: "%.2f", deliveredTouchStats.maxGapMS)) delivered_ge12_5=\(deliveredTouchStats.over12_5MS) delivered_ge20=\(deliveredTouchStats.over20MS) delivered_ge30=\(deliveredTouchStats.over30MS) coalesced_samples=\(coalescedTouchStats.sampleCount) coalesced_avg_gap_ms=\(String(format: "%.2f", coalescedTouchStats.averageGapMS)) coalesced_max_gap_ms=\(String(format: "%.2f", coalescedTouchStats.maxGapMS)) publish_calls=\(progressPublishCalls) publish_changes=\(progressPublishStats.sampleCount) publish_avg_gap_ms=\(String(format: "%.2f", progressPublishStats.averageGapMS)) publish_max_gap_ms=\(String(format: "%.2f", progressPublishStats.maxGapMS)) render_changes=\(renderUpdateStats.sampleCount) render_avg_gap_ms=\(String(format: "%.2f", renderUpdateStats.averageGapMS)) render_max_gap_ms=\(String(format: "%.2f", renderUpdateStats.maxGapMS)) publish_to_render_max_ms=\(String(format: "%.2f", maxPublishToRenderLagMS)) display_intervals=\(displayStats.intervalCount) display_avg_gap_ms=\(String(format: "%.2f", displayStats.averageGapMS)) display_p95_gap_ms=\(String(format: "%.2f", p95DisplayGap)) display_max_gap_ms=\(String(format: "%.2f", displayStats.maxGapMS)) display_ge12_5=\(displayStats.over12_5MS) display_ge20=\(displayStats.over20MS) display_ge30=\(displayStats.over30MS) image_events=\(imageEventsDuringDrag) image_roles=\(roles.isEmpty ? "none" : roles) worst_display=\(worst.isEmpty ? "none" : worst)"
         )
     }
 
