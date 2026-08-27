@@ -24,9 +24,11 @@
 - **Base commit at task creation:** `7e7e82ccf548b960567445e848260b71ab8a50b2`
 - **Latest main synced before product integration:** `fa90fc31ecf15edd8d9bfbbdb576a949338d6d65`
 - **Working branch:** `feat/aether-multi-engine-comparison`
-- **Current branch merge head before product code:** `b70e9c1c4e7b7f77da97e10bc55e9dc598bdc29b`
+- **Pre-product merge head:** `b70e9c1c4e7b7f77da97e10bc55e9dc598bdc29b`
+- **Initial materialized Build219 source:** `dc0c30a0f2f1e85d27f80934d82b1ca07246f5ef`
+- **Build219 compile-fix source commit:** `90557148e66e1d074cc2831dcb8023ea22dde7e0`
 - **PR:** none yet
-- **Build candidate:** not allocated
+- **Build candidate:** OnePlayer `0.14.52` / Build `219`
 - **Target device:** iPhone 15 Pro Max / iOS 17.0
 
 ## Proven feasibility evidence
@@ -74,45 +76,56 @@
 - **Active engine / Emby reporting / seek owner:** `PlayerController`.
 - **Engine factory:** `PlayerController.makeEngine(...)`.
 - **Transport owner:** one existing `PlaybackTransportContext`; Aether receives its `session` exactly like MPV.
-- **Rendering owner:** `PlayerScreen` hosts an engine-owned view; SwiftUI must not own Aether engine/session lifecycle.
+- **Rendering owner:** `PlayerScreen` hosts an engine-owned view; SwiftUI does not own Aether engine/session lifecycle.
 - **Recovery owner:** `PlaybackOrchestrator`.
-- Existing `MediaTransportSession.recoverStall(position:duration:)` contains an old time→byte approximation; **Aether must not call it**. Aether recovery will reprioritize its reader's last real byte cursor through `prioritizeOffset`.
-- `PlaybackOrchestrator` must classify `.aether` as a UnifiedTransport-backed kind so premature EOF/stall handling does not fall into non-Unified reload behavior.
+- Existing `MediaTransportSession.recoverStall(position:duration:)` contains an old time→byte approximation; **Aether does not call it**. Aether recovery reprioritizes its reader's last real byte cursor through `prioritizeOffset`.
+- `PlaybackOrchestrator` classifies `.aether` as a UnifiedTransport-backed kind so premature EOF/stall handling does not fall into non-Unified reload behavior.
 
-## Minimal product patch plan
+## Implemented Build219 product patch
 
 1. **Dependency/build wiring**
-   - exact Aether 6.50.0 source available at a pinned repository path/dependency mechanism;
-   - add static `AetherEngine` target using current MPVKit FFmpeg + `Dovi=Libdovi`;
-   - App Deployment Target 16.0;
-   - Xcode 26.3 build workflow/toolchain for this candidate.
+   - exact Aether 6.50.0 source is pinned for the product candidate;
+   - static `AetherEngine` target uses current MPVKit FFmpeg + `Dovi=Libdovi` without a second FFmpeg stack;
+   - App Deployment Target is 16.0 for this candidate;
+   - dedicated Build219 workflow uses Xcode 26.3.
 2. **Engine identity** — `Sources/Player/PlayerEngine.swift`
-   - add `.aether` kind/preference;
-   - expose in `selectableCases` only when `canImport(AetherEngine)`;
+   - `.aether` kind/preference added;
+   - existing settings Picker exposes Aether when `canImport(AetherEngine)`;
    - automatic remains MPV.
-3. **Transport bridge** — new `AetherTransportIOReader`
-   - synchronous demux-thread read backed by async `TransportDataSession.read`, following `MPVUnifiedStreamBridge`'s proven blocking pattern;
-   - exact byte cursor; `seek` → `prioritizeOffset`;
-   - cancellation unblocks active read;
-   - independent reader shares the same Transport session but owns its own cursor;
-   - regular media reports `discImageProbeEnabled=false`.
-4. **Engine adapter** — new `AetherPlayerEngine`
-   - owns `AetherEngine`, `AetherPlayerView`, IO reader/load task and Combine subscriptions;
-   - maps Aether state/clock/duration/buffering to `PlayerSnapshot`;
-   - maps Aether `seekEvents.landed(renderedTime:)` to `onSeekCompleted`;
-   - preserves controller's synchronous `prepare`/immediate `play` contract with a `wantsPlayback` flag while async Aether load is in flight;
-   - `setPlaybackRate` → `setRate`;
-   - `recoverStall` → exact current reader cursor reprioritization only;
+3. **Transport bridge** — `Sources/Player/AetherTransportIOReader.swift`
+   - synchronous demux-thread read is backed by the existing Transport session;
+   - exact byte cursor; `seek` reprioritizes exact offsets;
+   - no time→byte approximation.
+4. **Engine adapter** — `Sources/Player/AetherPlayerEngine.swift`
+   - engine owns `AetherEngine`, `AetherPlayerView`, IO reader/load task and state subscriptions;
+   - control/state/seek completion maps into existing `PlayerEngine`/`PlayerSnapshot` contracts;
+   - stall recovery reprioritizes the reader's last real byte cursor only;
    - no Aether-specific retry/watchdog/fallback.
 5. **Controller/surface**
-   - factory branch for explicit `.aether`;
-   - controller accessor for engine-owned `AetherPlayerView`;
-   - thin `UIViewRepresentable` host in `PlayerScreen` without moving engine/session ownership into SwiftUI.
+   - explicit `.aether` factory branch and controller view accessor added;
+   - `Sources/UI/AetherPlayerSurface.swift` is a thin host only; lifecycle remains controller/engine-owned.
 6. **Capabilities/settings/orchestration**
-   - conservative explicit Aether capabilities; do not redesign frozen PiP;
-   - existing settings Picker automatically shows Aether; update explanatory footer only;
-   - add `.aether` to UnifiedTransport-backed recovery sets.
-7. Run product Release CI first. Do not allocate/claim IPA or device validation until that evidence exists.
+   - `.aether` is in UnifiedTransport-backed orchestration sets;
+   - `PlayerExperienceState` now has an explicit conservative Aether capability case: no system route picker, PiP, audio-track or subtitle-selection claim; rotation and generic outer picture-size layout remain available;
+   - frozen PiP implementation is unchanged.
+
+## Build219 CI evidence
+
+### Attempt 1 — failed before IPA
+
+- Workflow run: `33086503411`
+- App Release job: `98567466674`
+- Source entering the build line: materialized product candidate `dc0c30a0f2f1e85d27f80934d82b1ca07246f5ef`.
+- Swift package resolution completed successfully; Aether/MPVKit dependency graph was therefore not the blocker.
+- First real Release compiler error: exhaustive `PlayerEngineKind` switch in `Sources/UI/PlayerExperienceState.swift` did not include `.aether`.
+- No IPA artifact was produced; only diagnostics existed.
+- Aether actor-isolation diagnostics in that log were warnings/notes under the Swift 5 host and are not treated as the first blocker.
+
+### Compile fix
+
+- Commit `90557148e66e1d074cc2831dcb8023ea22dde7e0` adds only the missing explicit `.aether` capability case.
+- No speculative concurrency refactor or unrelated warning cleanup was included.
+- A fresh Build219 Release run is required; rerunning the old attempt itself is invalid because it would use the old source SHA.
 
 ## Frozen / do-not-touch
 
@@ -144,9 +157,11 @@
 - [x] Unchanged OnePlayer Release baseline passed on Xcode26.3 (`33070636640`).
 - [x] Branch resynced to latest main before product code (`b70e9c1...`).
 - [x] Aether load/control/view/IO/seek-event APIs verified from source/docs.
-- [ ] Aether dependency/product source wiring committed.
-- [ ] Aether `PlayerEngine` adapter committed.
-- [ ] Aether rendering surface/settings selection committed.
+- [x] Aether dependency/product source wiring committed.
+- [x] Aether `PlayerEngine` adapter committed.
+- [x] Aether rendering surface/settings selection committed.
+- [x] First Build219 CI attempt produced actionable Release compiler evidence; dependency resolution passed, App compile failed, no IPA.
+- [x] Missing `.aether` capability switch fixed minimally at `90557148...`.
 - [ ] Product CI passed.
 - [ ] IPA produced.
 - [ ] Real-device comparison completed.
@@ -154,12 +169,12 @@
 
 ## Validation state
 
-- **Code written:** No product Aether code yet.
-- **CI passed:** Feasibility only — single-FFmpeg/Xcode probes and unchanged OnePlayer Xcode26 baseline; **no Aether product CI yet**.
+- **Code written:** Yes — Build219 Aether product integration plus the explicit capability-switch compile fix are committed.
+- **CI passed:** No — first product run `33086503411` failed during App Release compile; retry on fixed source is pending.
 - **IPA produced:** No.
 - **Real-device tested:** No.
 - **Stable / frozen:** No.
 
 ## Next exact action
 
-Implement the minimal product patch above on `feat/aether-multi-engine-comparison`, beginning with the pinned Aether source/dependency wiring and then the Aether IOReader/PlayerEngine adapter. After code is committed, update `TECHNICAL_DECISIONS.md`, `MODULE_STATUS.md` / `PROJECT_STATE.md` as required and run a dedicated Xcode26.3 Release CI before any IPA/device claim.
+Run a fresh Build219 / 0.14.52 Release workflow from the fixed branch head, preserving Xcode 26.3, Aether 6.50.0, one-FFmpeg wiring and MinOS 16.0. If it fails, fix only the first actual compiler/linker blocker. If it succeeds, validate the packaged IPA identity/MinOS/SHA, record exact run/job/artifact/source evidence, and send the IPA for iPhone 15 Pro Max / iOS 17.0 real-device comparison.
