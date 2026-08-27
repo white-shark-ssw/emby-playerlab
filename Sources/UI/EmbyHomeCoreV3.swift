@@ -95,7 +95,7 @@ struct V3EmbyHomeView: View {
                     guard let source = notification.object as? EmbyAPIClient, source === client, let itemID = notification.userInfo?[EmbyUserDataChange.itemIDKey] as? String else { return }
                     model.markResumeDirty(itemID)
                 }
-                .onReceive(carouselTimer) { _ in autoAdvanceCarouselIfNeeded() }
+                .onReceive(carouselTimer) { _ in if !heroScrollState.isFullyOffscreen { autoAdvanceCarouselIfNeeded() } }
                 .onChange(of: model.carouselItems.map(\.id)) { _ in synchronizeCarouselItems() }
                 .onDisappear {
                     isHomeActive = false
@@ -174,7 +174,7 @@ struct V3EmbyHomeView: View {
                         V3HomeScrollOffsetObserver { value in
                             guard immersive, isHomeActive else { return }
                             let clampedValue = max(-heroTrackingLimit, value)
-                            heroScrollState.update(clampedValue)
+                            heroScrollState.update(clampedValue, isFullyOffscreen: value <= -heroTrackingLimit)
                         }
                         if immersive {
                             V3HomeOwnedRefreshControl { completion in
