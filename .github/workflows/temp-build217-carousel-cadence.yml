@@ -1,0 +1,175 @@
+name: Build217 Carousel Cadence Diagnostics IPA
+
+on:
+  push:
+    branches: [diag/home-carousel-cadence-build217]
+    paths:
+      - ".github/build217-carousel-cadence-trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout Build217 branch
+        uses: actions/checkout@v4
+        with:
+          ref: diag/home-carousel-cadence-build217
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply and validate diagnostic-only patch
+        run: |
+          set -euo pipefail
+          git pull --ff-only origin diag/home-carousel-cadence-build217
+          python3 .github/scripts/temp-apply-build217-carousel-cadence.py
+          git diff --check
+          python3 scripts/check_home_carousel_single_owner.py
+          python3 -m py_compile scripts/check_home_carousel_single_owner.py .github/scripts/temp-apply-build217-carousel-cadence.py
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselInteractionV3.swift Sources/UI/EmbyHomeHeroV3.swift Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift docs/changelog/CHANGELOG_v0_14_50_build217.md scripts/check_home_carousel_single_owner.py
+            git commit -m "Diag: add Build217 carousel cadence probes"
+            git push origin HEAD:diag/home-carousel-cadence-build217
+          fi
+          echo "BUILD217_SOURCE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Validate exact Build217 scope and Frozen contracts
+        run: |
+          set -euo pipefail
+          base='01a13615fc056fd3b13296d98abfaa7a6aa2b46d'
+          git diff --check "$base"...HEAD
+          python3 - <<'PY'
+          import subprocess
+          base = '01a13615fc056fd3b13296d98abfaa7a6aa2b46d'
+          allowed = {
+              '.github/build217-carousel-cadence-trigger.txt',
+              '.github/scripts/temp-apply-build217-carousel-cadence.py',
+              '.github/workflows/temp-build217-carousel-cadence.yml',
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyHomeCarouselInteractionV3.swift',
+              'Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift',
+              'Sources/UI/EmbyHomeHeroV3.swift',
+              'docs/changelog/CHANGELOG_v0_14_50_build217.md',
+              'scripts/check_home_carousel_single_owner.py',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', f'{base}...HEAD'], text=True).splitlines())
+          extra = sorted(changed - allowed)
+          if extra:
+              raise SystemExit(f'Unexpected Build217 files: {extra}')
+          required = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyHomeCarouselInteractionV3.swift',
+              'Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift',
+              'Sources/UI/EmbyHomeHeroV3.swift',
+              'docs/changelog/CHANGELOG_v0_14_50_build217.md',
+              'scripts/check_home_carousel_single_owner.py',
+          }
+          missing = sorted(required - changed)
+          if missing:
+              raise SystemExit(f'Missing Build217 files: {missing}')
+          frozen_prefixes = ('Sources/Player/', 'Sources/Transport/', 'Sources/Cache/', 'Sources/Session/', 'Sources/AVIO/')
+          touched_frozen = sorted(path for path in changed if path.startswith(frozen_prefixes))
+          if touched_frozen:
+              raise SystemExit(f'Build217 touched Frozen/P0 paths: {touched_frozen}')
+          forbidden = {'Sources/UI/EmbyHomeCarouselStateV3.swift', 'Sources/UI/EmbyHomeCoreV3.swift', 'Sources/UI/EmbySharedImageAndNavigation.swift'}
+          touched_forbidden = sorted(changed & forbidden)
+          if touched_forbidden:
+              raise SystemExit(f'Build217 unexpectedly changed retained/shared owners: {touched_forbidden}')
+          print('Build217 exact diagnostic scope: PASS')
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Prepare OnePlayer app icons
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache | tee package-resolution.log
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION=0.14.50 \
+            CURRENT_PROJECT_VERSION=217 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build217.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version 0.14.50 --build 217 --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+
+      - name: Validate MinOS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" 15.0 17.0 build217-min-os.log build217.log
+
+      - name: Package unsigned IPA and source snapshot
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA="OnePlayer-0.14.50-build217-home-carousel-cadence-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA"
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          SOURCE="OnePlayer-0.14.50-build217-source.zip"
+          git archive --format=zip --output "$SOURCE" HEAD
+          shasum -a 256 "$SOURCE" | tee "$SOURCE.sha256"
+          printf '%s\n' "$BUILD217_SOURCE" > build217-source-sha.txt
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          echo "SOURCE=$SOURCE" >> "$GITHUB_ENV"
+
+      - name: Upload Build217 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.50-build217-home-carousel-cadence
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+            ${{ env.SOURCE }}
+            ${{ env.SOURCE }}.sha256
+            build217-source-sha.txt
+            build217.log
+            build217-min-os.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 30
