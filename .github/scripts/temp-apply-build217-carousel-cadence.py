@@ -61,11 +61,13 @@ s = replace_once(
     'touch end diagnostics')
 s = replace_once(
     s,
-    '''        if axis == .horizontal, state == .began || state == .changed {
+    '''    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        if axis == .horizontal, state == .began || state == .changed {
             onHorizontalCancelled?()
             state = .cancelled
 ''',
-    '''        if axis == .horizontal, state == .began || state == .changed {
+    '''    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        if axis == .horizontal, state == .began || state == .changed {
             V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancelled")
             onHorizontalCancelled?()
             state = .cancelled
