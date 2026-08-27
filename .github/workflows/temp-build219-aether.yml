@@ -1,0 +1,215 @@
+name: Build219 Aether Candidate
+
+on:
+  push:
+    branches: [feat/aether-multi-engine-comparison]
+    paths:
+      - .github/workflows/temp-build219-aether.yml
+
+permissions:
+  contents: write
+
+jobs:
+  integrate-build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply minimal Aether product wiring
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, got {count}: {old[:120]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "Sources/Player/PlayerController.swift",
+              "    var avPlayer: AVPlayer? {\n",
+              "    var aetherPlayerView: UIView? {\n        #if canImport(AetherEngine)\n        return (engine as? AetherPlayerEngine)?.playerView\n        #else\n        return nil\n        #endif\n    }\n\n    var avPlayer: AVPlayer? {\n"
+          )
+
+          replace_once(
+              "Sources/Player/PlayerController.swift",
+              "        case .avPlayer:\n            return AVPlayerEngine()\n        case .mpv:\n            return MPVPlayerEngine(sharedTransportSession: transportContext?.session)\n",
+              "        case .aether:\n            #if canImport(AetherEngine)\n            return AetherPlayerEngine(source: source, sharedTransportSession: transportContext?.session)\n            #else\n            return SuspendedPlayerEngine(kind: .aether)\n            #endif\n        case .avPlayer:\n            return AVPlayerEngine()\n        case .mpv:\n            return MPVPlayerEngine(sharedTransportSession: transportContext?.session)\n"
+          )
+
+          replace_once(
+              "Sources/Player/PlayerController.swift",
+              "        #if MDK_LAB\n        return engineKind != .mpv && engineKind != .ksAVIO\n        #else\n        return engineKind != .mpv\n        #endif\n",
+              "        #if MDK_LAB\n        return engineKind != .mpv && engineKind != .ksAVIO && engineKind != .aether\n        #else\n        return engineKind != .mpv && engineKind != .aether\n        #endif\n"
+          )
+
+          replace_once(
+              "Sources/Player/PlayerController.swift",
+              "            prematureEOFMessage = \"该媒体连续触发异常 EOF，MDK 已停止自动恢复以保护 App。可手动切换到 MPV高兼容引擎继续测试。\"\n",
+              "            prematureEOFMessage = \"该媒体连续触发异常 EOF，当前实验引擎已停止自动恢复以保护 App。可手动切换到 MPV高兼容引擎继续测试。\"\n"
+          )
+
+          replace_once(
+              "Sources/Player/PlaybackOrchestrator.swift",
+              "        if kind == .resourceLoaderAVPlayer || kind == .transportAVPlayer || kind == .mpv || kind == .ksAVIO {\n",
+              "        if kind == .resourceLoaderAVPlayer || kind == .transportAVPlayer || kind == .mpv || kind == .ksAVIO || kind == .aether {\n"
+          )
+
+          replace_once(
+              "Sources/Player/PlaybackOrchestrator.swift",
+              "        let unifiedKinds: Set<PlayerEngineKind> = [.resourceLoaderAVPlayer, .transportAVPlayer, .mpv, .ksAVIO]\n",
+              "        let unifiedKinds: Set<PlayerEngineKind> = [.resourceLoaderAVPlayer, .transportAVPlayer, .mpv, .ksAVIO, .aether]\n"
+          )
+
+          replace_once(
+              "Sources/UI/PlayerScreen.swift",
+              "                if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {\n                    MPVPlayerSurface(displayLayer: layer, onGeometrySettled: controller.rendererSurfaceDidSettle)\n                } else if controller.engineKind == .ksAVIO, let view = controller.ksAVIOView {\n",
+              "                if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {\n                    MPVPlayerSurface(displayLayer: layer, onGeometrySettled: controller.rendererSurfaceDidSettle)\n                } else if controller.engineKind == .aether, let view = controller.aetherPlayerView {\n                    AetherPlayerSurface(playerView: view).id(ObjectIdentifier(view))\n                } else if controller.engineKind == .ksAVIO, let view = controller.ksAVIOView {\n"
+          )
+
+          inspection = []
+          for path in Path("Sources").rglob("*.swift"):
+              text = path.read_text(errors="ignore")
+              if "PlayerCapabilities" in text or "switch kind" in text and "PlayerEngineKind" in text:
+                  inspection.append(f"===== {path} =====\n{text}\n")
+          Path("aether-source-inspection.txt").write_text("\n".join(inspection))
+
+          changelog = Path("docs/changelog/CHANGELOG_v0_14_52_build219.md")
+          changelog.parent.mkdir(parents=True, exist_ok=True)
+          changelog.write_text("""# OnePlayer 0.14.52 / Build219\n\n- AetherEngine 6.50.0 manual comparison candidate.\n- MPV remains the default/automatic playback authority.\n- Aether consumes the existing UnifiedTransport byte session through exact IOReader offsets; no time-to-byte approximation is introduced.\n- STRM -> 302 -> 115/CDN remains client-direct and NAS does not relay media bytes.\n- Candidate deployment target is iOS 16.0 because AetherEngine itself requires iOS 16.\n- MDK is not modified in this candidate.\n""")
+          PY
+          git diff --check
+          grep -R -n "case \.aether\|AetherPlayerEngine\|AetherPlayerSurface\|AetherTransportIOReader" Sources | tee aether-wiring.txt
+
+      - name: Commit exact Build219 product source
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources docs/changelog
+          git commit -m "Integrate Aether Build219 candidate"
+          git push origin HEAD:feat/aether-multi-engine-comparison
+          echo "PRODUCT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git rev-parse HEAD | tee product-sha.txt
+
+      - name: Select Xcode 26.3
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_26.3.app
+          xcodebuild -version | tee xcode-version.txt
+          xcrun --sdk iphoneos --show-sdk-version | tee -a xcode-version.txt
+          swift --version | tee -a xcode-version.txt
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Generate project and install pods
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update 2>&1 | tee pods-install.log
+
+      - name: Resolve Swift packages
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild -resolvePackageDependencies \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -clonedSourcePackagesDirPath .spm-build219 2>&1 | tee package-resolution.log
+
+      - name: Build Release unsigned app
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build/Build219
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/Build219 \
+            -clonedSourcePackagesDirPath .spm-build219 \
+            IPHONEOS_DEPLOYMENT_TARGET=16.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+
+      - name: Package and validate Build219 IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/Build219/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+          python3 - "$APP_PATH/Info.plist" <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], 'rb') as f: info = plistlib.load(f)
+          expected = {
+              'CFBundleIdentifier': 'com.embyplayerlab.app',
+              'CFBundleShortVersionString': '0.14.52',
+              'CFBundleVersion': '219',
+              'MinimumOSVersion': '16.0',
+          }
+          for key, value in expected.items():
+              actual = str(info.get(key))
+              if actual != value:
+                  raise SystemExit(f"{key}: expected {value}, got {actual}")
+          print('Build219 identity/minOS validation: PASS')
+          PY
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-0.14.52-build219-aether-${PRODUCT_SHA::7}-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee ipa-test.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          git archive --format=zip --output "OnePlayer-0.14.52-build219-${PRODUCT_SHA::7}-source.zip" "$PRODUCT_SHA"
+          shasum -a 256 "OnePlayer-0.14.52-build219-${PRODUCT_SHA::7}-source.zip" | tee source.sha256
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          echo "SOURCE_ZIP=OnePlayer-0.14.52-build219-${PRODUCT_SHA::7}-source.zip" >> "$GITHUB_ENV"
+
+      - name: Upload Build219 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.52-build219-aether-${{ env.PRODUCT_SHA }}
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            source.sha256
+            product-sha.txt
+            built-info-plist.log
+            ipa-test.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Build219 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build219-aether-diagnostics-${{ github.sha }}
+          path: |
+            aether-wiring.txt
+            aether-source-inspection.txt
+            xcode-version.txt
+            pods-install.log
+            package-resolution.log
+            build.log
+            product-sha.txt
+            built-info-plist.log
+          if-no-files-found: ignore
+          retention-days: 14
