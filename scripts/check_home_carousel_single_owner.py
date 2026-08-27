@@ -9,7 +9,7 @@ identity = Path('Sources/Core/AppIdentity.swift').read_text()
 info = Path('Config/Info.plist').read_text()
 project = Path('project.yml').read_text()
 
-assert 'static let sourceVersion = "0.14.50"' in identity
+assert 'static let sourceVersion = "0.14.52"' in identity
 assert 'V3HomeCarouselTransitionState' in interaction
 assert '@State var carouselTransitionState = V3HomeCarouselTransitionState()' in core
 assert '@State var transitionProgress' not in core
@@ -93,9 +93,12 @@ assert 'V3HomeCarouselCadenceRenderProbe(progress: transitionProgress)' in hero
 for role in ['hero', 'persistent', 'preload']:
     assert f'recordImageCallback(role: "{role}"' in hero
 assert 'CADisplayLink(target: self' in cadence
+assert 'requestedFPS = maximumFPS > 60 ? maximumFPS : 0' in cadence
+assert 'if requestedFPS > 0 {' in cadence
+assert 'link.preferredFrameRateRange = CAFrameRateRange(minimum: requested, maximum: requested, preferred: requested)' in cadence
+assert 'requested_fps=\\(requestedFPS)' in cadence
 assert 'link.add(to: .main, forMode: .common)' in cadence
 assert 'preferredFramesPerSecond' not in cadence
-assert 'preferredFrameRateRange' not in cadence
 assert 'DiagnosticsLogger.shared.app(' in cadence and '"HomeCarouselCadence"' in cadence
 assert 'Timer.' not in cadence
 assert 'DispatchQueue.main.asyncAfter' not in cadence
@@ -103,4 +106,4 @@ assert 'withAnimation' not in cadence
 assert 'onHorizontalChanged' not in cadence
 assert 'transitionProgress =' not in cadence
 
-print('Build217 home carousel acquisition-relative contracts + cadence diagnostics passed')
+print('Build219 home carousel retained contracts + exact max-refresh diagnostic request passed')
