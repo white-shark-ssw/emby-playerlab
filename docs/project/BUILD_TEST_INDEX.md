@@ -33,31 +33,34 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build205 / 0.14.38** | 80% carousel travel + whole-range `progress²` visual mapping | CI/IPA verified; target-device rejected the curve as final: drag start is over-restrained and the whole-range nonlinear tail feels like unnatural easing. |
 | **Build206 / 0.14.39** | Poster-scroll hitch diagnostics | **Owned by the independent poster task.** CI/IPA verified and target-device App-log captured: 17 diagnostic gaps (row 7, grid 10; grid max 118.7 ms), all with `load_ahead=none`; motion-aware correlation is still required. Diagnostic-only; not stable. |
 | **Build207 / 0.14.40** | 80% soft-start / linear-tail carousel mapping | CI/IPA verified; target-device rejected as final. First visible displacement still too large and screenshots exposed structural foreground overlap: full-width foreground pages were only `0.80 × width` apart while EX preserved visible page separation. |
-| **Build208 / 0.14.41** | Full-width carousel foreground page slots | **Current carousel candidate.** Uses `pageStep = width`, preserving ~56pt content separation with existing `width-56` foreground content; earliest attenuation tightened only for first samples. CI/IPA passed and independently verified; real-device pending. |
+| **Build208 / 0.14.41** | Full-width carousel foreground page slots | **Real-device video tested; layout retained, final motion mapping rejected.** `pageStep = width` fixed structural overlap, but A/B vs EX showed hold-then-jump acquisition, prolonged easing lag and over-faded foreground. This evidence directly motivated Build215. |
 | **Build209 / 0.14.42** | Motion-aware poster-scroll diagnostics | Target-device App log proved three Home motion hitches but grid attribution was invalid because Home/grid shared one global observed-scroll owner. Diagnostic tested; not stable. |
 | **Build210 / 0.14.43** | Multi-owner poster-scroll diagnostics | **Current poster diagnostic baseline.** Target-device log validates simultaneous Home/grid ownership (`registered_scrolls=2`) and correct grid routing. Four Home dragging hitches all landed 6.2–11.0 ms after image commit; the single grid record was programmatic/micro-motion (`phase=moving`, `delta_y=0.33`) and not yet a user-drag grid stall. Real-device diagnostic tested; no performance fix claimed; not stable. |
 | **Build211 / 0.14.44** | Home-carousel acquisition-relative line | **Owned by the independent carousel task.** Poster briefly prepared this identity but retired it before distribution as soon as the collision was confirmed; never use Build211 for poster attribution. |
 | **Build212 / 0.14.45** | Source-aware poster-scroll diagnostics | **Target-device diagnostic tested.** Home: 5 real dragging hitches 43.6–73.8 ms, all 8.3–12.2 ms after memory/callback 1400px publish; callback/contrast only 1–3 ms, so those synchronous calculations are rejected as the primary Home cost. Grid: 11 real dragging hitches 31.0–37.3 ms, all 0–20.1 ms after network/display 378px publish and 118.8–177.8 ms after a cell appearance. Home and grid are now treated as separate runtime paths; no fix tested; not stable. |
 | **Build213 / 0.14.46** | Favorites + Library persistent page warm cache | **Target-device accepted.** Favorites and Library 7 tabs restore persisted presentation data immediately after relaunch, then keep live refresh authoritative and write through only accepted fresh state. Pagination frontier is restored; refresh failure retains old snapshots; `sortBy`/selectedTab/scroll/root lifetime remain separate concerns. Dedicated standard MPV CI/IPA passed; first milestone stable and merged through PR #260 at `2303505ad4403182f5315d33c54f402903c809d2`. |
+| **Build215 / 0.14.48** | Acquisition-relative Home-carousel render + foreground-alpha decoupling | **Real-device tested; partial success, not accepted.** Initial drag is now about as fine as EX and foreground blur/ghosting is gone, confirming acquisition-relative render baseline + opaque foreground. Overall tactile smoothness still trails EX (user: EX feels like smooth glass, OnePlayer like rough paper). 30fps video no longer shows the old macro hold/jump; residual micro-continuity/cadence cause remains unresolved and backdrop timing is only a hypothesis. |
+| **Build216 / 0.14.49** | Detail episode-range inertia interruption | **Target-device accepted; stable and merged.** Range-pill taps synchronously stop active native episode-row deceleration at the current offset before the accepted Build191 range-first selection and existing 0.32 s target scroll. Tested source `dc00cac9f35ee4a3b950e4bb030bb324baf90b18`; run/job `33064051545 / 98489652724`; artifact `9643031850`; IPA SHA-256 `e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075`; MinOS 15.0 verified. User accepted on iPhone 15 Pro Max / iOS 17.0 on 2026-08-27; PR #261 merged at `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`. Build182/Build191/Build195/Build178 and P0 playback/transport remain untouched. |
+| **Build218 / 0.14.51** | Poster grid UIKit display candidate | **CI/IPA verified; Home target-device still visibly hitches; grid A/B not yet reported; distributed package has a confirmed transparent-Logo regression.** Exact source `ccc3a69f3b77c56a730593f072a2c7dfde599073`; run/job `33066739271 / 98498551491`; artifact `9644109849`; IPA SHA-256 `104eb5266c304102c912eaa2b9e95a4f0ae6183b0bf071fd377b3a52ea8d57bc`; MinOS 15.0. The carousel owner file was unchanged, but its transparent Logo entered the poster-task shared UIKit display path and exposed the surface background. Poster branch head `ac8a8cd0b87c4ee544c8817fec13edeea226826b` now contains only the transparency-semantic correction; corrected source has no CI/IPA yet. Not stable. |
 
 ## Current accepted baseline
 
-- Product: **OnePlayer 0.14.46 / Build213**
-- canonical branch: `main` after PR #260 integration
-- final merge PR: `#260`
-- final merge commit: `2303505ad4403182f5315d33c54f402903c809d2`
-- tested product / dedicated CI source: `c8c238816c34ba3d8834ac37bdf7b234cd596458`
-- CI run/job: `33052588518` / `98451457434` — success
-- artifact: `OnePlayer-0.14.46-build213-page-cache`; ID `9638292306`
-- artifact digest: `sha256:e65a3ce06d53cc499a84f86a9cd32978824f1de4899bf2afe310727a2566731c`
-- IPA SHA-256: `a8c2d1753db33f41a5b07ce22c4706eb102cf5d905f1aaeee8f54d689b176fc8`
-- source ZIP SHA-256: `3a59bc8fb8dc55a83abd8adf76841db47640df8944f39920969b06bd55927051`
+- Product: **OnePlayer 0.14.49 / Build216**
+- canonical branch: `main` after PR #261 integration
+- final merge PR: `#261`
+- final merge commit: `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
+- tested product / dedicated CI source: `dc00cac9f35ee4a3b950e4bb030bb324baf90b18`
+- CI run/job: `33064051545 / 98489652724` — success
+- artifact: `OnePlayer-0.14.49-build216-detail-range-inertia`; ID `9643031850`
+- artifact digest: `sha256:9cbccc582be719b2daa10077293da2951f0cbce8016625128de8ef9d85b27f48`
+- IPA SHA-256: `e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075`
+- source ZIP SHA-256: `98e1b5b52ebe5d8b2e3fbf754d3dfb18d0ea082fd77bcd9e6905b0bcb56e0f6f`
 - Deployment Target / built MinOS: iOS 15.0
 - target device: iPhone 15 Pro Max / iOS 17.0
 - target-device result: **accepted by the user on 2026-08-27**
-- evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for the accepted page-cache milestone / merged to main**
+- evidence: **Code written / CI passed / IPA produced / real-device accepted / stable/frozen for the detail episode-range inertia contract / merged to main**
 
-Build213 inherits the accepted/frozen player, PiP, transport, playback-cache, episode-ordering, detail-presentation, episode-selection and Build199 server-management contracts. Home-carousel and poster-scroll remain independent Active lines.
+Build216 inherits the accepted/frozen player, PiP, transport, playback-cache, episode-ordering, Build182 detail-presentation, Build191 detail-selection, Build195 player-episode and Build199 server-management contracts. Its new stable scope is only interruption of active detail episode-row deceleration before a range jump. Home-carousel and poster-scroll remain independent Active lines.
 
 ## Home-carousel evidence
 
@@ -155,6 +158,20 @@ A carousel `0.14.37 / Build204` package was produced briefly, but the poster-scr
 - source ZIP SHA-256: **`807d03947c0d087ddc54f295e63fdabc37ac0ddfbe0e0f03da4477eb750e95ee`**.
 - independent validation: artifact digest exact match; IPA/source hashes match embedded checksums; IPA `unzip -t` passed; bundle `com.embyplayerlab.app`; version/build `0.14.41 (208)`; OnePlayer primary/alternate icons; `MinimumOSVersion=15.0`; source snapshot confirms `pageStep = width`, `0.85` mapping and existing `width - 56` content width.
 - evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
+
+### Build215 current carousel candidate
+
+- identity **0.14.48 / Build215**; branch `perf/home-carousel-acquisition-relative-build215`.
+- tested source **`d22634ece2f29eba2e60de01182bf15d4ba554a7`**; cleanup head **`01a13615fc056fd3b13296d98abfaa7a6aa2b46d`** with workflow deletion only.
+- render baseline is horizontal acquisition; post-acquisition render is `currentTranslation - acquisitionTranslation`.
+- touch-down distance retains 0.28 commit / 0.48×width predicted release, including one-sample fast release.
+- foreground transition pages stay opaque; backdrop crossfade is separate; full-width `pageStep = width` retained.
+- exact scope/Frozen guard passed; no Player/MPV/PiP/Transport/Cache/Session changes.
+- run/job **`33058337107 / 98470624555` — success**; artifact ID **`9640692378`**, digest **`sha256:31a054244bcfbeb39cc5db663aa7580cb4cc742fe88ca998ce9c9ba7a01e2939`**.
+- IPA SHA-256 **`6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`**; source ZIP SHA-256 **`00d2a0aba071dbbce3554d31dba64f0caa70c22b6e067dedeee0bb3b22ebd694`**.
+- independent validation passed for artifact digest, embedded hashes, IPA archive, identity, MinOS 15.0 and exact source contracts.
+- carousel Build214 / 0.14.47 also passed CI/IPA but was retired before distribution due identity collision; never use it for carousel attribution.
+- evidence **Code written ✅ / scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
 
 ## Poster-scroll evidence
 

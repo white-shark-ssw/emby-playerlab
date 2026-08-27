@@ -58,67 +58,17 @@ Selecting another episode replaces the complete source-owned playback session wh
 
 Canonical series order comes from `GET /Shows/{SeriesId}/Episodes`; OnePlayer preserves Emby's returned order. `SeasonId` is season-membership authority, not a second in-season sort owner. Do not add title/file/date/item-ID/artificial-number fallback sorting. Build178 was accepted and merged through PR #254.
 
-## D012 — Home-carousel drag keeps one UIKit owner; foreground uses full-width page slots
+## D012 — Home-carousel keeps one UIKit owner; full-width page slots use acquisition-relative render motion
 
-The carousel line remains Active and independent from Build199.
+Retain Build198 lifecycle ownership and Build208 full-width `pageStep = width`. Horizontal acquisition remains UIKit-owned; vertical acquisition yields to the Home `UIScrollView`; predicted touch stays release-only; one `V3HomeCarouselTransitionState` remains the high-frequency owner; first↔last modulo ownership and settle/cancel semantics remain unchanged. Do not add a second SwiftUI owner, timer, watchdog, retry, interpolation, debounce or throttle.
 
-Retained input architecture from Build198:
+Build208 vs EX real-device video rejected whole-range easing as the remaining fix: OnePlayer published touch-down translation already accumulated before horizontal acquisition, creating a hold-then-jump start, then visually lagged; EX behaved like a short take-up followed by nearly 1:1 motion. EX also kept foreground near opaque while OnePlayer tied foreground fade to the compensating visual progress.
 
-- one UIKit interaction surface owns begin/move/end/cancel;
-- vertical acquisition yields to Home `UIScrollView`;
-- horizontal acquisition owns the gesture through end/cancel;
-- actual touch drives raw `transitionProgress`; predicted touch is release-only;
-- 0.5pt axis acquisition, 0.28 commit threshold, 0.48×width predicted-distance release gate and existing settle timing remain one contract;
-- high-frequency transition state remains localized to `V3HomeCarouselTransitionState`;
-- no second SwiftUI drag/release owner;
-- no timer/watchdog/reconciliation/interpolation/debounce/throttle to mask input/render problems.
+Build215 therefore establishes the current evidence-backed contract: acquisition records `horizontalAcquisitionTranslation` and publishes no acquisition movement; subsequent render is exactly `currentTranslation - acquisitionTranslation`; original touch-down distance still owns 0.28 commit and 0.48×width predicted release, including one-sample fast release; transition foreground pages remain opaque and backdrop crossfade is independent. Whole-range easing/travel-percentage tuning is rejected as the primary solution for first-sample coarseness.
 
-Rejected/retained evidence:
+Carousel Build214 / 0.14.47 passed CI/IPA but was retired before distribution due identity collision with parallel poster work. Current carousel candidate is **Build215 / 0.14.48**, tested source `d22634ece2f29eba2e60de01182bf15d4ba554a7`, cleanup head `01a13615fc056fd3b13296d98abfaa7a6aa2b46d`; run/job `33058337107 / 98470624555`; artifact `9640692378`; IPA SHA `6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`; MinOS 15.0 verified. Build215 target-device testing positively confirms two parts of this contract: the acquisition-relative start is now about as fine as EX, and keeping interactive foreground pages opaque removes the previous blurred/ghosted feel. The overall tactile smoothness still trails EX, described by the user as smooth glass vs rough paper. The residual cause is not yet established; a backdrop-blend timing difference seen in 30fps analysis is only a hypothesis. Evidence is **Code written / CI passed / IPA produced+verified / real-device tested / partial success / not stable**.
 
-- Build185/187 proved initial full-width page motion remained visibly coarse even with 120 Hz available.
-- Build189/193 proved split native-move / SwiftUI-release ownership can freeze between pages; that architecture is rejected.
-- Build198 proved the single UIKit lifecycle fixes the ownership failure mode, but minimum/subtle motion still felt too coarse.
-- Build200 fixed the foreground spatially and was rejected because foreground horizontal-slide semantics disappeared.
-- Build201 restored horizontal movement at `0.15 × Hero width`; target-device feedback was partially positive but total travel was too short.
-- Build203 used 30% spatial travel; target-device testing showed 30% was still too short and raw-linear spatial mapping exposed the coarse first displacement again.
-- Build205 used 80% total travel and whole-range `progress²`; target-device testing rejected that curve because the start was over-restrained and the nonlinear tail felt unnatural.
-- Build207 kept 80% travel and changed to an early-only soft-start / linear-tail mapping. Target-device screenshots then exposed a deeper layout defect: the first visible displacement was still too large, and adjacent foreground Logo/title/rating/overview content visibly overlapped while EX preserved a clear separation.
-
-Source-backed layout conclusion from Build207:
-
-- every `carouselHeroForeground` is itself a full Hero-width page;
-- Build207 placed outgoing/incoming full-width page centers only `0.80 × width` apart, so the page frames structurally overlap by 20% throughout the transition;
-- existing foreground content width is `width - 56`;
-- therefore the correct minimal page model is **full-width page slots**: outgoing/incoming page centers stay exactly one `width` apart;
-- with the existing `width - 56` content width, adjacent foreground content edges keep a constant ~56pt separation instead of overlapping;
-- this is implemented mathematically with the existing two visible foreground pages and one transition owner; do not add a second ScrollView/HStack gesture owner merely to express page slots.
-
-Current Build208 visual contract:
-
-- foreground `pageStep = width`;
-- outgoing offset = `-direction × visualProgress × pageStep`;
-- incoming offset = `direction × (1 - visualProgress) × pageStep`;
-- distance between page centers is exactly one Hero width at every transition progress;
-- raw `transitionProgress` remains linear and authoritative for release/commit logic;
-- earliest visual attenuation remains a pure stateless mapping: `progress * (1 - 0.85 * (1-progress)^6)` after clamping;
-- the `0.85` coefficient reduces only the earliest first-sample displacement relative to Build207, while exponent 6 still makes mid/late drag converge rapidly to raw linear progress and tail derivative reach 1.0;
-- foreground/backdrop opacity uses the same visual progress;
-- mapping remains direction-independent; existing `(index + direction + count) % count` remains first↔last wrapping authority.
-
-Identity/evidence discipline:
-
-- A carousel `0.14.37 / Build204` package was retired because Build204 already belongs to the poster-scroll task; do not use it for attribution.
-- Build205 / 0.14.38 and Build207 / 0.14.40 are real-device-tested rejected visual references, not stable builds.
-- Build206 belongs to the independent poster-scroll diagnostics line.
-- Current carousel candidate is **Build208 / OnePlayer 0.14.41** on `perf/home-carousel-page-slots-build208`.
-- Build208 tested source `2ad089f0ea8b4b6827257bb3a91a67c2d3748e5f`; durable cleanup head `51c366b6840d77c818eae20e1f3f43c0dbd75c72`; cleanup removes only the temporary Build208 workflow.
-- Build208 run/job `33004390654` / `98294100402` — success; artifact ID `9620046266`.
-- artifact ZIP digest `sha256:4ace3db785c131b987bfd9e18dc931e1bdeaf9f7528d85b8807214b45774afbb`.
-- IPA SHA-256 `24f47ac5cd5685f6eea85b1c3a4fad2841d81f6169a90cd0629bea85a2072308`; source ZIP SHA-256 `807d03947c0d087ddc54f295e63fdabc37ac0ddfbe0e0f03da4477eb750e95ee`.
-- bundle identity `0.14.41 (208)` and MinOS 15.0 independently verified.
-- Build208 evidence: **Code written / CI passed / IPA produced+verified / real-device pending / not stable**.
-
-Do not retune UIKit ownership or release thresholds based on the Build207 foreground-layout failure. First test the full-width page-slot model on device.
+Retain acquisition-relative X, opaque foreground, page slots and the original release semantics. Do not add another easing/smoothing layer or change the backdrop curve without stronger evidence; investigate the touch→state→SwiftUI render/compositing cadence first.
 
 ## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only
 
@@ -157,3 +107,9 @@ Build213 / OnePlayer 0.14.46 establishes the accepted first milestone for Favori
 - storage remains `Library/Caches/OnePlayer/PagePresentation`, JSON schema 1 with atomic writes and no TTL/timer/watchdog/retry/fallback layer.
 
 Build213 dedicated MPV run/job `33052588518` / `98451457434` succeeded, artifact `9638292306` was produced with MinOS 15.0, and the user reported target-device acceptance on iPhone 15 Pro Max / iOS 17.0 on 2026-08-27. Player/MPV/PiP, UnifiedTransport, playback Session Cache, STRM/302/115/CDN and shared Home/poster owners were not changed by this feature.
+
+## D018 — Detail range taps cancel native row deceleration before selection
+
+The detail horizontal episode row remains SwiftUI-owned for layout/selection, but quick range-pill taps must not compete with an in-flight native `UIScrollView` deceleration. When the existing episode row is actively decelerating, the range action first synchronously freezes that same native scroll view at its current `contentOffset`, then runs the accepted Build191 range-first selection and existing 0.32 s `ScrollViewReader.scrollTo` target animation. Non-decelerating taps are unchanged.
+
+This is an interaction-ownership fix, not a second episode-selection owner: no timer, watchdog, retry, debounce, throttle, fallback or duplicate range state is allowed. Build182 detail Hero/cache, Build178 canonical order, Build191 detail selection/navigation, Build195 player grouping/lazy row and all Player/MPV/PiP/Transport/Cache/Session contracts remain separate and unchanged. Build216 / OnePlayer 0.14.49 passed dedicated Xcode 16.4 Release CI (`33064051545 / 98489652724`), produced artifact `9643031850` with IPA SHA-256 `e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075` and MinOS 15.0, was accepted on iPhone 15 Pro Max / iOS 17.0 on 2026-08-27, and merged through PR #261 at `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`.

@@ -1,0 +1,92 @@
+name: One-shot Apply Build216 Poster Grid
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/build214-poster-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout control plane
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Guard exact product and poster baselines
+        env:
+          PRODUCT_BASE: 1ba28379296819c9f28ddd7578633c8f9f08de8d
+          OLD_POSTER: 4f0a89ab026cd2103f66e5854a1f352d34852e45
+        run: |
+          set -euo pipefail
+          git fetch origin main perf/poster-grid-smoothness
+          test "$(git rev-parse "$PRODUCT_BASE")" = "$PRODUCT_BASE"
+          test "$(git rev-parse origin/perf/poster-grid-smoothness)" = "$OLD_POSTER"
+          git merge-base --is-ancestor 2303505ad4403182f5315d33c54f402903c809d2 "$PRODUCT_BASE"
+          test "$(git show "$PRODUCT_BASE":Sources/Core/AppIdentity.swift | grep -c 'sourceVersion = "0.14.46"')" = "1"
+          cp .github/scripts/temp-build214-poster-grid.py /tmp/temp-build216-poster-grid.py
+
+      - name: Assemble Build216 from accepted Build213 main
+        env:
+          PRODUCT_BASE: 1ba28379296819c9f28ddd7578633c8f9f08de8d
+          OLD_POSTER: 4f0a89ab026cd2103f66e5854a1f352d34852e45
+        run: |
+          set -euo pipefail
+          git checkout -B build216 "$PRODUCT_BASE"
+          for file in Sources/UI/EmbyPersonMediaView.swift Sources/UI/EmbyPosterGrid.swift Sources/UI/EmbyServerSharedV3.swift Sources/UI/EmbySharedImageAndNavigation.swift scripts/check_poster_grid_smoothness.py; do
+            git show "$OLD_POSTER:$file" > "$file"
+          done
+          python3 /tmp/temp-build216-poster-grid.py
+
+      - name: Validate exact grid-only source scope
+        env:
+          PRODUCT_BASE: 1ba28379296819c9f28ddd7578633c8f9f08de8d
+        run: |
+          set -euo pipefail
+          python3 scripts/check_poster_grid_smoothness.py
+          python3 -m py_compile scripts/check_poster_grid_smoothness.py
+          git diff --check
+          tracked="$(git diff --name-only "$PRODUCT_BASE")"
+          untracked="$(git ls-files --others --exclude-standard | grep -v '^scripts/__pycache__/' || true)"
+          changed="$(printf '%s\n%s\n' "$tracked" "$untracked" | sed '/^$/d' | sort -u)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyPersonMediaView.swift Sources/UI/EmbyPosterGrid.swift Sources/UI/EmbyServerSharedV3.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_14_49_build216.md scripts/check_poster_grid_smoothness.py | sort)"
+          printf 'Build216 changed paths:\n%s\n' "$changed"
+          printf 'Build216 expected paths:\n%s\n' "$expected"
+          test "$changed" = "$expected"
+          test "$(printf '%s\n' "$changed" | sed '/^$/d' | wc -l | tr -d ' ')" = "7"
+          ! printf '%s\n' "$changed" | grep -E 'Sources/(Player|Transport|Session|Cache)/|Sources/UI/(EmbyHomeCoreV3|EmbyHomeHeroV3|EmbyHomeCarouselStateV3|EmbyHomeCarouselInteractionV3|Player|MPV|PlayerPiP)' >/dev/null
+          git diff --quiet "$PRODUCT_BASE" -- Sources/UI/EmbyPagePersistentCache.swift Sources/UI/EmbyServerBrowseV3.swift project.yml Config/Info.plist
+          grep -F 'static let sourceVersion = "0.14.49"' Sources/Core/AppIdentity.swift >/dev/null
+          grep -F 'if onImageLoaded == nil && !showsLoadingIndicator {' Sources/UI/EmbySharedImageAndNavigation.swift >/dev/null
+          grep -F 'imageCancellable = loader.$image.sink' Sources/UI/EmbySharedImageAndNavigation.swift >/dev/null
+          ! git diff --name-only "$PRODUCT_BASE" | grep -F 'Sources/UI/EmbyHomeCoreV3.swift' >/dev/null
+
+      - name: Commit and fast-forward poster branch through history merge
+        env:
+          PRODUCT_BASE: 1ba28379296819c9f28ddd7578633c8f9f08de8d
+          OLD_POSTER: 4f0a89ab026cd2103f66e5854a1f352d34852e45
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyPersonMediaView.swift Sources/UI/EmbyPosterGrid.swift Sources/UI/EmbyServerSharedV3.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_14_49_build216.md scripts/check_poster_grid_smoothness.py
+          git commit -m "Add Build216 grid display UIKit candidate"
+          CANDIDATE_COMMIT="$(git rev-parse HEAD)"
+          CANDIDATE_TREE="$(git rev-parse HEAD^{tree})"
+          git merge -s ours --no-ff "$OLD_POSTER" -m "Integrate Build213 main baseline for poster Build216"
+          test "$(git rev-parse HEAD^{tree})" = "$CANDIDATE_TREE"
+          git merge-base --is-ancestor "$OLD_POSTER" HEAD
+          git merge-base --is-ancestor "$PRODUCT_BASE" HEAD
+          changed="$(git diff --name-only "$PRODUCT_BASE"..HEAD | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyPersonMediaView.swift Sources/UI/EmbyPosterGrid.swift Sources/UI/EmbyServerSharedV3.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_14_49_build216.md scripts/check_poster_grid_smoothness.py | sort)"
+          test "$changed" = "$expected"
+          git push origin HEAD:perf/poster-grid-smoothness
+          echo "Build216 candidate commit: $CANDIDATE_COMMIT"
+          echo "Build216 durable integration head: $(git rev-parse HEAD)"

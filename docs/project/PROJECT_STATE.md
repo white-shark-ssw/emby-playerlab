@@ -1,25 +1,25 @@
 # OnePlayer Project State
 
-_Last updated after OnePlayer 0.14.46 / Build213 page-cache target-device acceptance. Build213 is the latest real-device accepted overall runtime baseline for merged product work; Home-carousel Build208 and poster-scroll Build212 remain independent Active experimental/diagnostic lines and are not folded into this baseline._
+_Last updated after Build218 / 0.14.51 poster-grid candidate target-device Home testing. Build216 remains the latest real-device accepted overall runtime baseline for merged product work; Home-carousel Build217 remains an independent diagnostic line, while poster Build218 is CI/IPA verified but not accepted: Home still visibly hitches, grid A/B is pending, and a shared transparent-Logo presentation regression was identified and corrected in source only._
 
 ## Current accepted overall baseline
 
-- Product: **OnePlayer 0.14.46 / Build213**
-- Canonical branch: `main` after PR #260 integration
-- Final merge PR: **#260**
-- Final merge commit: `2303505ad4403182f5315d33c54f402903c809d2`
-- Accepted/tested product source: `c8c238816c34ba3d8834ac37bdf7b234cd596458`
-- Dedicated standard MPV CI run/job: `33052588518` / `98451457434` — success
-- Artifact: `OnePlayer-0.14.46-build213-page-cache`; ID `9638292306`
-- Artifact digest: `sha256:e65a3ce06d53cc499a84f86a9cd32978824f1de4899bf2afe310727a2566731c`
-- IPA SHA-256: `a8c2d1753db33f41a5b07ce22c4706eb102cf5d905f1aaeee8f54d689b176fc8`
-- Source ZIP SHA-256: `3a59bc8fb8dc55a83abd8adf76841db47640df8944f39920969b06bd55927051`
+- Product: **OnePlayer 0.14.49 / Build216**
+- Canonical branch: `main` after PR #261 integration
+- Final merge PR: **#261**
+- Final merge commit: `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
+- Accepted/tested product source: `dc00cac9f35ee4a3b950e4bb030bb324baf90b18`
+- Dedicated standard MPV CI run/job: `33064051545 / 98489652724` — success
+- Artifact: `OnePlayer-0.14.49-build216-detail-range-inertia`; ID `9643031850`
+- Artifact digest: `sha256:9cbccc582be719b2daa10077293da2951f0cbce8016625128de8ef9d85b27f48`
+- IPA SHA-256: `e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075`
+- Source ZIP SHA-256: `98e1b5b52ebe5d8b2e3fbf754d3dfb18d0ea082fd77bcd9e6905b0bcb56e0f6f`
 - Deployment Target / built MinOS: **iOS 15.0**
 - Target device: **iPhone 15 Pro Max / iOS 17.0**
-- Real-device result: **user reported Build213 acceptance on 2026-08-27**
-- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for the accepted Favorites + Library page-persistence milestone / merged to main**
+- Real-device result: **user reported Build216 acceptance on 2026-08-27**
+- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable/frozen for the detail episode-range inertia contract / merged to main**
 
-Build213 inherits all accepted/frozen player, PiP, transport, playback-cache, episode-ordering, detail-presentation, episode-selection and Build199 server-management contracts. Its new stable runtime scope is limited to non-playback Favorites + Library page presentation persistence.
+Build216 inherits all accepted/frozen player, PiP, transport, playback-cache, episode-ordering, Build182 detail-presentation, Build191 detail-selection, Build195 player-episode and Build199 server-management contracts. Its only new stable runtime scope is stopping active detail episode-row native deceleration before the existing range selection/jump; the Build213 page-persistence milestone remains inherited and unchanged.
 
 ## Frozen / protected contracts
 
@@ -44,6 +44,7 @@ Build213 inherits all accepted/frozen player, PiP, transport, playback-cache, ep
 - **Build195**: SeasonId-first player grouping + lazy very-large episode row; merged PR #258.
 - **Build199**: Add/Edit Emby modern editor, same-server route selection, cached-first auto-start, local retained password and optional synchronizable Keychain password for iCloud; merged PR #256.
 - **Build213**: Favorites + Library 7-tab disk-backed warm presentation cache; cached-first after relaunch, live refresh remains authoritative, successful accepted state writes through, failed refresh retains old snapshot; target-device accepted through PR #260.
+- **Build216**: detail range-pill taps synchronously stop active native episode-row deceleration before the existing Build191 range-first selection and 0.32 s target scroll; target-device accepted and merged through PR #261.
 
 ## Active: Home carousel interaction
 
@@ -97,55 +98,38 @@ Source inspection plus screenshots establish:
 
 Build207 evidence is therefore **real-device tested / foreground layout rejected / not stable**. This is not evidence to change the UIKit gesture owner.
 
-### Current carousel candidate: Build208 / 0.14.41
+### Current carousel candidate: Build215 / 0.14.48
 
-- branch: `perf/home-carousel-page-slots-build208`
-- base: Build207 durable cleanup head `7044ca68c7082cd055a7e4ce42dda6f00fe29674`
-- tested source: **`2ad089f0ea8b4b6827257bb3a91a67c2d3748e5f`**
-- durable cleanup head: **`51c366b6840d77c818eae20e1f3f43c0dbd75c72`**
-- tested-source → cleanup-head: temporary Build208 workflow deletion only; product/runtime source unchanged.
-- runtime product delta from Build207: `Sources/Core/AppIdentity.swift` + `Sources/UI/EmbyHomeCarouselStateV3.swift` only.
-- foreground uses full-width page slots: **`pageStep = width`**.
-- outgoing offset = `-direction × visualProgress × pageStep`; incoming offset = `direction × (1 - visualProgress) × pageStep`.
-- outgoing/incoming page-center separation is exactly one Hero width for every progress value.
-- existing `contentWidth = width - 56` stays unchanged, so adjacent foreground content keeps ~56pt constant separation rather than structural overlap.
-- no new HStack/ScrollView/gesture owner is introduced; this is the same two visible foreground pages and state owner with corrected slot spacing.
-- earliest attenuation is `progress * (1 - 0.85 * (1-progress)^6)` after clamping.
-- compared with Build207, approximate actual displacement at raw 1% / 2% / 4% falls from ~0.35% / 0.75% / 1.70% width to ~0.20% / 0.49% / 1.34% width; around 10% raw progress it has essentially caught up.
-- mid/late drag remains near-linear; endpoint/tail derivative remains 1.0.
-- foreground/backdrop opacity continues to use the same visual progress.
-- raw `transitionProgress`, 0.28 commit, 0.48×width predicted release gate, reversal/settle and first↔last modulo ownership remain unchanged.
-- Frozen Player/MPV/PiP/UnifiedTransport/Cache/Emby playback/session paths untouched.
+Build208 is now the real-device video reference rather than the current candidate. A/B versus EX showed a hold-then-jump acquisition and prolonged visual lag from the easing workaround, while EX behaved like a short take-up followed by nearly 1:1 motion and kept foreground substantially more opaque.
 
-Build208 CI / IPA:
+Build215 retains Build198 one-UIKit-owner lifecycle and Build208 full-width `pageStep = width`, but horizontal acquisition now establishes a render baseline and does not publish the already accumulated touch-down distance. Post-acquisition spatial motion is `currentTranslation - acquisitionTranslation`, with no whole-range easing. Release/commit remains touch-down based with the original 0.28 and 0.48×width gates, including one-sample fast release. Foreground transition pages remain opaque while backdrop crossfade is independent. Wrapping, cancellation/settle and P0/Frozen paths are unchanged.
 
-- run/job: **`33004390654` / `98294100402` — success**
-- source/Frozen guard, Release build, app identity, MinOS, IPA/source packaging and upload all passed.
-- artifact: `OnePlayer-0.14.41-build208-home-carousel-page-slots`
-- artifact ID: **`9620046266`**
-- artifact digest / independently downloaded ZIP SHA-256: **`4ace3db785c131b987bfd9e18dc931e1bdeaf9f7528d85b8807214b45774afbb`**
-- IPA SHA-256: **`24f47ac5cd5685f6eea85b1c3a4fad2841d81f6169a90cd0629bea85a2072308`**
-- source ZIP SHA-256: **`807d03947c0d087ddc54f295e63fdabc37ac0ddfbe0e0f03da4477eb750e95ee`**
-- independently verified: artifact digest exact match; IPA/source embedded checksums match; IPA `unzip -t` passed; bundle `com.embyplayerlab.app`; version/build `0.14.41 (208)`; OnePlayer primary/alternate icons; MinOS 15.0; source snapshot confirms full-width page step, 0.85 earliest attenuation and existing `width - 56` content width.
-- evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / not stable.**
+Carousel Build214 / 0.14.47 passed CI/IPA but was retired before distribution because parallel poster work claimed that identity. Build215 is the valid carousel attribution package.
 
-Next action: target-device A/B Build208 against Build207 and EX. First verify adjacent foreground content keeps a visible stable gap through left/right drag, then verify earliest displacement is reduced without introducing a mid/tail catch-up. Also test first↔last wraps, reversal, cancel/commit, vertical Hero scroll, detail tap and auto-advance. Do not alter gesture ownership before that evidence.
+- tested source `d22634ece2f29eba2e60de01182bf15d4ba554a7`; durable cleanup head `01a13615fc056fd3b13296d98abfaa7a6aa2b46d` (workflow deletion only).
+- run/job `33058337107 / 98470624555` — success.
+- artifact ID `9640692378`; digest `sha256:31a054244bcfbeb39cc5db663aa7580cb4cc742fe88ca998ce9c9ba7a01e2939`.
+- IPA SHA-256 `6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`; source ZIP SHA-256 `00d2a0aba071dbbce3554d31dba64f0caa70c22b6e067dedeee0bb3b22ebd694`.
+- independent artifact/IPA/source/identity/MinOS/source-contract verification passed.
+- real-device result: acquisition-relative start and opaque foreground are positively confirmed; initial drag is now about as fine as EX and foreground blur/ghosting is gone, but overall tactile smoothness still trails EX ("smooth glass" vs "rough paper"). 30fps recording no longer shows the old macro hold/jump; residual micro-continuity/cadence cause remains unresolved and backdrop timing is only a hypothesis.
+- evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device tested / partial success / not stable**.
+
+Next action: inspect the post-acquisition touch→state→SwiftUI render/compositing cadence for evidence of sub-frame irregularity. Do not retune travel/easing or change backdrop timing solely from the current subjective residual gap; backdrop timing remains an unproven hypothesis.
 
 ## Active: Poster-heavy scrolling smoothness
 
 Work: `DEV-poster-grid-smoothness`.
 
-- Build202 and Build204 were target-device rejected; Build206/209/210 progressively established reliable motion attribution.
-- Build212 / 0.14.45 exact source `4f0a89ab026cd2103f66e5854a1f352d34852e45`; run/job `33045869471 / 98429601490`; artifact `9635696107`; IPA SHA-256 `dcdec181dd16e9b3b666882de8347a76671c743ab8392aa27791d40599eec7a1`; MinOS 15.0.
-- target-device log `OnePlayer-App-1787813666.log` contains 5 Home dragging hitches (43.6–73.8 ms), all following `memory/callback/Primary/1400` image publish by 8.3–12.2 ms. Measured callback/contrast durations are only 1.0–3.2 / 1.0–3.0 ms, so contrast analysis is no longer the primary suspect. The stronger Home lead is carousel large-image publish/presentation during vertical scrolling; this overlaps the active carousel task.
-- the same log contains 11 true grid dragging hitches (31.0–37.3 ms), all following `network/display/Primary/378` publish by 0.0–20.1 ms with a newly appeared grid cell 118.8–177.8 ms old. Carousel callback/contrast timestamps are stale and unrelated.
-- therefore the previous universal cross-page-root-cause assumption is rejected. Home and grid should receive separate minimal runtime candidates.
-- Home runtime changes require explicit reconciliation with `DEV-home-carousel-drag-smoothness`; poster work must not independently modify carousel owner files.
-- Grid next step is exact-source inspection of the display-only image publish/render path, preserving 378px rendered-device requirement and forbidding delay/throttle/debounce/timer workarounds.
-- evidence: **Build212 target-device diagnostic tested / Home callback-cost hypothesis rejected / real grid dragging stalls captured / route split established / performance fix not tested / not stable.**
+- Build212 remains the controlling route-split diagnostic: Home dragging hitches correlate with 1400px carousel callback-role image publication, while 11 true grid dragging hitches correlate with newly visible `network/display/Primary/378` publication. Home and grid remain separate runtime paths.
+- Build218 / 0.14.51 exact tested source `ccc3a69f3b77c56a730593f072a2c7dfde599073`; run/job `33066739271 / 98498551491` success; artifact ID `9644109849`; artifact SHA-256 `16096a2c3a1b4dcb4ed3bcfa8524e3839f9114eb040e7ee419279555c1e71c4e`; IPA SHA-256 `104eb5266c304102c912eaa2b9e95a4f0ae6183b0bf071fd377b3a52ea8d57bc`; source ZIP SHA-256 `41dfb97a0bfd38cb65ed000b3f9fc2679dc7bf471abe7635020895a5f4f12b90`; MinOS 15.0.
+- Build218 changed only the pure display-image presentation path: no callback/no spinner images receive the existing loader output through a UIKit `UIImageView` surface so surrounding SwiftUI poster cells do not observe the loader's image publication. Carousel owner files were not modified.
+- 2026-08-27 target-device result: the user still feels **obvious Home vertical jitter**. The supplied 510×1108@30fps recording retains stop/catch-up frames, so Build218 must not be claimed as a Home fix. This turn does not provide a Library/Favorites/Search/Tag/Person 3×3 A/B result; grid effectiveness is still pending.
+- The same target-device screenshot exposed a white rectangle behind a transparent carousel movie Logo. Exact source inspection proves `EmbyHomeHeroV3.swift` is unchanged from Build216, but its Logo call matches Build218's new shared UIKit display path. The new surface retained `secondarySystemBackground` after the image loaded, unlike the old path, so transparent pixels exposed a rectangular background. This is a poster-task shared-image regression, not a carousel-owner edit.
+- Poster branch head `ac8a8cd0b87c4ee544c8817fec13edeea226826b` contains the minimal source correction: loaded images set the shared UIKit surface background to clear; nil-image placeholder state remains `secondarySystemBackground`. No carousel owner source is touched. This corrected head is only **Code written**; no new CI/IPA or target-device evidence exists yet.
+- Current evidence: **Build218 CI/IPA verified / Build218 Home real-device still hitches / Build218 grid A/B pending / Build218 package visual regression confirmed / transparency correction code written / corrected-source CI+IPA pending / not stable**.
 
-Next: reconcile the Home evidence with the carousel task, and independently design the smallest grid display-image publication/render candidate. Keep P0 Player/MPV/PiP/Transport/Cache/Session and iOS 15.0 contracts untouched.
+Next: keep Home runtime ownership with the active carousel task; validate/package the corrected grid UIKit-display candidate under a new unique Build identity, then explicitly A/B the real 3×3 routes. Do not infer grid failure from the Home-only Build218 test.
 
 ## Parallel integration rule
 
-Build213 is the accepted overall runtime baseline after this page-cache closeout. Home-carousel Build208 and poster-scroll remain independent Active lines with separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
+Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel Build215 and poster-scroll remain independent Active lines with separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
