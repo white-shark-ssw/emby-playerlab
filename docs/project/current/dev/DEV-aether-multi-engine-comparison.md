@@ -28,7 +28,7 @@
 - **Initial materialized Build219 source:** `dc0c30a0f2f1e85d27f80934d82b1ca07246f5ef`
 - **Build219 compile-fix source commit:** `90557148e66e1d074cc2831dcb8023ea22dde7e0`
 - **PR:** none yet
-- **Build candidate:** OnePlayer `0.14.52` / Build `219`
+- **Build candidate:** OnePlayer `0.14.55` / Build `222` — reserved after checking main/other Active tasks; global Build219/220/221 were already occupied by parallel candidates
 - **Target device:** iPhone 15 Pro Max / iOS 17.0
 
 ## Proven feasibility evidence
@@ -175,6 +175,34 @@ The best observed landed time is still ~371 ms, so Aether itself may retain a no
 
 **Evidence after this log:** Code written / CI passed / IPA produced+verified / **real-device tested with Aether Seek-latency + per-read transport-churn defect confirmed** / not stable.
 
+
+## Build222 / 0.14.55 — per-read authority churn correction
+
+Build219 real-device evidence proved that ordinary Aether sequential reads were incorrectly promoted through the user-seek authority path. The minimal correction is commit `6f65f6a562c2f4af8a7720b33eb56d4b14b071bd`:
+
+- `AetherTransportIOReader.read()` no longer calls `confirmConcretePlaybackByte(current)` after every successful read;
+- Aether/FFmpeg `IOReader.seek()` still uses the exact byte offset and calls `prioritizeOffset(candidate)`;
+- stall recovery still reprioritizes the reader's exact current byte cursor;
+- no UnifiedTransport core algorithm, MPV fast-Seek path, timer, retry, fallback, watchdog, time→byte estimate or second network owner was added.
+
+Identity guard before allocation found global Build219 already owned by Home-carousel, Build220 by poster-grid and Build221 by Home-carousel, so this Aether follow-up uses unique **OnePlayer 0.14.55 / Build222**.
+
+### Build222 CI / IPA evidence
+
+- Exact tested source: `224199f90d12b39367ae7981463aedd70cdbfe2d`.
+- Runtime fix commit: `6f65f6a562c2f4af8a7720b33eb56d4b14b071bd`.
+- Workflow run/job: `33103909150 / 98628547449` — **success** on Xcode 26.3.
+- Source-contract validation passed: no `confirmConcretePlaybackByte` remains in `AetherTransportIOReader`; exact-byte `prioritizeOffset(candidate)` and recovery `prioritizeOffset(current)` remain present.
+- Release compile, Swift package resolution, IPA identity/MinOS validation and artifact upload passed.
+- Artifact: `OnePlayer-0.14.55-build222-aether-seekfix-224199f90d12b39367ae7981463aedd70cdbfe2d`; ID `9659820803`; digest `sha256:98e3c51177a4803ae0cbefb91d9584a1373b4d6946e2396901e6de475a73252b`.
+- IPA: `OnePlayer-0.14.55-build222-aether-seekfix-224199f-unsigned.ipa`; SHA-256 `a7566dc53a60880096a41ee36bf3eab1dd43f14e2ff4a9b86c1a78372a7af660`.
+- Source ZIP SHA-256: `8def2320dc5190b6f76bbfc6147a2d1f6d89c7c9821446e259f59d418116e923`.
+- Built identity: `com.embyplayerlab.app`, `0.14.55 (222)`, `MinimumOSVersion=16.0`.
+- Independent post-download verification reproduced the IPA SHA-256 and `unzip -t` reported no compressed-data errors.
+- Evidence: **Code written / CI passed / IPA produced+verified / Build222 real-device retest pending / not stable**.
+
+Next device test should repeat the Build219 Aether Seek sequence and compare `SeekEvent.landed` latency plus Range task start/cancel/finish counts. The purpose is to separate the remaining intrinsic Aether exact-seek floor from the removed Build219 adapter-induced transport churn.
+
 ## Frozen / do-not-touch
 
 - MPV remains default/main authority and its fast-seek path is unchanged.
@@ -219,11 +247,11 @@ The best observed landed time is still ~371 ms, so Aether itself may retain a no
 ## Validation state
 
 - **Code written:** Yes — Build219 Aether product integration plus the explicit capability-switch compile fix are committed.
-- **CI passed:** Yes — Build219 run/job `33096553966 / 98602865604` succeeded on exact source `b1a06cb2b3dc9cf715fc5d49a7b324780aa23981`.
-- **IPA produced:** Yes — artifact `9656814369`; IPA SHA-256 `8df11d2db597fd6841a3708976824b21879ee0d47257c1766d1704cc4196d06d`; MinOS 16.0 verified.
-- **Real-device tested:** Yes — first target-device log confirms very accurate but high-latency Aether Seek and a Build219 per-read transport reanchor/cancellation defect.
+- **CI passed:** Yes — latest Build222 run/job `33103909150 / 98628547449` succeeded on exact source `224199f90d12b39367ae7981463aedd70cdbfe2d`.
+- **IPA produced:** Yes — Build222 artifact `9659820803`; IPA SHA-256 `a7566dc53a60880096a41ee36bf3eab1dd43f14e2ff4a9b86c1a78372a7af660`; MinOS 16.0 verified.
+- **Real-device tested:** Build219 yes — high-latency Seek + per-read transport churn confirmed; Build222 corrective candidate not yet device-tested.
 - **Stable / frozen:** No.
 
 ## Next exact action
 
-Make one minimal Aether-bridge correction: ordinary successful `AetherTransportIOReader.read()` must not call the user-seek authority path on every read. Preserve exact-byte demand and the existing UnifiedTransport ownership; do not add timers/retries/fallbacks or time→byte guessing. Then package a new unique build and repeat the same Aether Seek test to separate the remaining intrinsic Aether exact-seek latency from the Build219 adapter-induced transport churn.
+Install Build222 / 0.14.55 on iPhone 15 Pro Max / iOS 17.0 and repeat the same Aether Seek sequence. Compare landed latency/precision and Transport Range task start/cancel/finish behavior against Build219. Do not mark the defect solved until the new device log proves the cancellation storm is gone and quantifies the remaining Aether exact-seek latency.

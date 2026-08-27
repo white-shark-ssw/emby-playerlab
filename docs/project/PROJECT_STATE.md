@@ -134,9 +134,13 @@ Next: keep Home runtime ownership with the active carousel task; validate/packag
 
 Work: `DEV-aether-multi-engine-comparison`.
 
-Build219 / OnePlayer 0.14.52 is the first normal-App Aether comparison package. Exact source `b1a06cb2b3dc9cf715fc5d49a7b324780aa23981` passed Xcode 26.3 Release CI (`33096553966 / 98602865604`) and produced artifact `9656814369`; IPA SHA-256 `8df11d2db597fd6841a3708976824b21879ee0d47257c1766d1704cc4196d06d`, source ZIP SHA-256 `61148b209d543c233502c8412f9448fffa143a97f5753c25595626c72b3e31e4`, built MinOS 16.0. AetherEngine 6.50.0 is manual-only; MPV remains default/automatic authority. Aether reuses existing UnifiedTransport/Session Cache through exact-byte IOReader demand; NAS relay, a second 115/CDN network stack and time→byte proportional Seek are forbidden. Frozen PiP is not redesigned and Aether currently does not claim PiP/audio-track/subtitle-selection capability.
+Build219 established the first target-device Aether evidence: Seek precision was excellent but landed latency was high, and log/source correlation proved ordinary Aether sequential reads were incorrectly calling `confirmConcretePlaybackByte`, manufacturing user-seek authority and repeatedly cancelling/restarting healthy 115/CDN Range lanes.
 
-Current evidence: **Code written / CI passed / IPA produced+verified / real-device not yet tested / not stable**. Build216 remains the latest accepted overall runtime baseline until the user reports Build219 target-device behavior.
+Build222 / OnePlayer 0.14.55 is the minimal corrective candidate. Exact runtime fix `6f65f6a562c2f4af8a7720b33eb56d4b14b071bd` removes only the per-read `confirmConcretePlaybackByte` call from `AetherTransportIOReader.read()`; true Aether/FFmpeg byte seek and exact-byte recovery reprioritization remain unchanged. Global Build219/220/221 identities were already occupied by parallel tasks, so Build222 is the unique follow-up identity.
+
+Exact tested source `224199f90d12b39367ae7981463aedd70cdbfe2d` passed Xcode 26.3 Release CI (`33103909150 / 98628547449`), produced artifact `9659820803` (`sha256:98e3c51177a4803ae0cbefb91d9584a1373b4d6946e2396901e6de475a73252b`), IPA SHA-256 `a7566dc53a60880096a41ee36bf3eab1dd43f14e2ff4a9b86c1a78372a7af660`, source ZIP SHA-256 `8def2320dc5190b6f76bbfc6147a2d1f6d89c7c9821446e259f59d418116e923`, MinOS 16.0. Independent download verification passed.
+
+Current evidence: **Code written / CI passed / IPA produced+verified / Build219 real-device defect confirmed / Build222 real-device retest pending / not stable**. MPV remains default/automatic authority; STRM→302→115/CDN client-direct, exact-byte authority, Session Cache, Emby reporting and frozen PiP contracts remain protected.
 
 ## Parallel integration rule
 
