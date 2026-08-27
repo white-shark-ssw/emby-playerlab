@@ -1,0 +1,77 @@
+name: One-shot Sync Build212 Device Evidence
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Record Build212 target-device evidence
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          log_name = 'OnePlayer-App-1787813666.log'
+          dev_path = Path('docs/project/current/dev/DEV-poster-grid-smoothness.md')
+          module_path = Path('docs/project/MODULE_STATUS.md')
+          index_path = Path('docs/project/BUILD_TEST_INDEX.md')
+          state_path = Path('docs/project/PROJECT_STATE.md')
+
+          dev = dev_path.read_text()
+          old_status = '**Active — Build212 / 0.14.45 source-aware diagnostic candidate is CI/IPA verified and awaiting target-device App-log capture. Build210 remains the controlling real-device evidence: four Home dragging hitches landed 6.2–11.0 ms after shared image commit, while the one grid record was only programmatic/micro-motion. Build212 adds memory/disk/network image source, callback/display role, item/type/MaxWidth, synchronous `onImageLoaded` callback duration and Core Image contrast-render duration without changing scroll/image/navigation behavior or active carousel owner files. Performance root cause remains unresolved and no fix is claimed.**'
+          new_status = '**Active — Build212 / 0.14.45 target-device source-aware diagnostics captured. Home and grid now separate into two evidence-backed paths: Home dragging hitches are tied to memory-hit callback-role 1400px carousel image publishes while callback/contrast work itself is only 1–3 ms; grid has 11 real dragging hitches tied to newly visible 378px network display-image publishes. The earlier single cross-page-root-cause assumption is rejected. No runtime fix is claimed yet; Home changes require reconciliation with the active carousel task, while grid needs a minimal display-image publish/render fix candidate.**'
+          if old_status in dev:
+              dev = dev.replace(old_status, new_status, 1)
+          elif new_status not in dev:
+              raise SystemExit('DEV status anchor missing')
+
+          section = f'''\n## Build212 target-device result — 2026-08-27\n\nLatest App log: `{log_name}`.\n\nBuild212 emitted **18** motion-gated `PosterScrollHitch` records: 6 Home and 12 grid. The useful user-drag samples split cleanly by route.\n\n### Home\n\n- **5 real `phase=dragging` hitches**, frame gaps **43.6–73.8 ms**.\n- All 5 latest image publishes were `image_source=memory`, `image_role=callback`, `image_type=Primary`, `image_max_width=1400`.\n- Image publish age at the hitch was only **8.3–12.2 ms**.\n- The measured synchronous callback duration was only **1.0–3.2 ms**; measured Core Image contrast render was only **1.0–3.0 ms**.\n- Latest ordinary poster-cell appearance was already **7.3–21.9 s** old.\n- The log also shows `HomeCarousel settled` events around the same repeating transition cadence. Some image items produce a hitch before settle and another shortly after settle, consistent with more than one carousel image consumer publishing the same memory-resident 1400px artwork during a transition.\n\nConclusion: the previous suspicion that `CIContext.render` / `onImageLoaded` synchronous work itself explains the 40–70 ms Home stall is **rejected**. Their measured duration is too small. The stronger Home lead is the carousel's 1400px memory-hit image publication / SwiftUI presentation work while the user is vertically scrolling, including when the Hero is far above the visible scroll position. This is Home-specific and overlaps the independent carousel owner.\n\n### Grid\n\n- **11 real `phase=dragging` hitches**, frame gaps **31.0–37.3 ms**.\n- All 11 latest image publishes were `image_source=network`, `image_role=display`, `image_type=Primary`, `image_max_width=378`.\n- Image publish age at the hitch was **0.0–20.1 ms**.\n- Latest grid-cell appearance was only **118.8–177.8 ms** old.\n- Carousel callback/contrast events were stale by **13.6–39.9 s** and therefore unrelated to these grid stalls.\n- Pagination/load-ahead timing is not the common trigger; the repeated pattern is newly visible grid cells plus display-image publication during active dragging.\n\nConclusion: Build212 finally proves the user's library/grid hitch during actual dragging and ties it to the display-only poster image publish/render path, not to the Home carousel callback path.\n\n### Architectural consequence\n\nThe earlier assumption that Home and all 3×3 routes require one universal root cause is no longer supported. Treat them as two independent runtime fixes:\n\n1. **Home**: reconcile with `DEV-home-carousel-drag-smoothness` before touching carousel owner files; investigate suppressing unnecessary offscreen carousel image presentation work rather than contrast-analysis optimization.\n2. **Grid**: inspect the shared display-only poster publish/render path for the smallest change that avoids 31–37 ms main-thread presentation stalls while preserving exact rendered pixel width, image count, navigation and no throttle/debounce/timer behavior.\n\n**Build212 evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device diagnostic tested ✅ / Home callback/contrast as primary cost rejected ✅ / real grid dragging stalls captured ✅ / two-route cause split established ✅ / runtime fix not yet tested / not stable.**\n'''
+          marker = '\n## Parallel safety\n'
+          if '## Build212 target-device result — 2026-08-27' not in dev:
+              if marker not in dev: raise SystemExit('DEV insert marker missing')
+              dev = dev.replace(marker, section + marker, 1)
+
+          next_re = re.compile(r'## Next exact action\n.*?(?=\n## Do not repeat)', re.S)
+          next_text = '''## Next exact action\n\n1. Do not spend another build on callback/contrast timing; Build212 measured it at only 1–3 ms during Home hitches.\n2. Home: hand the 1400px memory/callback image-publish evidence to the active carousel task and inspect visibility/auto-advance/image-consumer ownership before a runtime patch. Poster task must not independently edit carousel owner files.\n3. Grid: inspect the exact display-only image publication/render path (`network`, `display`, 378px) and select the smallest evidence-backed candidate that reduces SwiftUI/main-thread presentation cost without lowering below rendered device pixels or delaying images via throttle/debounce/timer.\n4. Any Home and grid runtime candidates must be separate A/B builds unless an actual shared source change is independently justified.\n5. Preserve all P0 playback/transport/cache/session contracts and iOS 15.0 deployment.\n'''
+          if next_re.search(dev): dev = next_re.sub(next_text, dev, count=1)
+          dev_path.write_text(dev)
+
+          module = module_path.read_text()
+          module = re.sub(r'^\| Poster 3-column / poster-heavy scroll smoothness \|.*$', '| Poster 3-column / poster-heavy scroll smoothness | **Active — Build212 target-device diagnostics captured; Home and grid split into two evidence-backed paths** | `OnePlayer-App-1787813666.log` contains 5 real Home dragging hitches (43.6–73.8 ms), all 8.3–12.2 ms after `memory/callback/Primary/MaxWidth=1400` image publish, while measured callback and contrast work is only 1.0–3.2 ms / 1.0–3.0 ms. Thus callback/contrast itself is too small to explain Home long frames; carousel 1400px image publish/presentation during vertical scrolling is the stronger Home lead and must be reconciled with the active carousel task. Grid now has 11 real dragging hitches (31.0–37.3 ms), all 0.0–20.1 ms after `network/display/Primary/MaxWidth=378` publish with cell age 118.8–177.8 ms; stale carousel callback/contrast data is unrelated. Treat Home and grid as separate runtime fixes; Build212 is diagnostic tested, not stable. |', module, flags=re.M)
+          module_path.write_text(module)
+
+          index = index_path.read_text()
+          old_row = '| **Build212 / 0.14.45** | Source-aware poster-scroll diagnostics | **Current poster diagnostic candidate.** Exact source `4f0a89ab026cd2103f66e5854a1f352d34852e45` adds image source/role/context plus callback/contrast timing while retaining Build210 motion attribution. Run/job `33045869471 / 98429601490` passed; artifact `9635696107` and IPA/source independently verified; target-device log pending; no performance fix claimed; not stable. |'
+          new_row = '| **Build212 / 0.14.45** | Source-aware poster-scroll diagnostics | **Target-device diagnostic tested.** Home: 5 real dragging hitches 43.6–73.8 ms, all 8.3–12.2 ms after memory/callback 1400px publish; callback/contrast only 1–3 ms, so those synchronous calculations are rejected as the primary Home cost. Grid: 11 real dragging hitches 31.0–37.3 ms, all 0–20.1 ms after network/display 378px publish and 118.8–177.8 ms after a cell appearance. Home and grid are now treated as separate runtime paths; no fix tested; not stable. |'
+          if old_row in index: index = index.replace(old_row, new_row, 1)
+          elif new_row not in index: raise SystemExit('index Build212 row missing')
+          if '### Build212 target-device source-aware result' not in index:
+              index += f'''\n\n### Build212 target-device source-aware result\n\n- log: `{log_name}`\n- Home dragging: 5 hitches, 43.6–73.8 ms; `memory/callback/Primary/1400`; image age 8.3–12.2 ms; callback 1.0–3.2 ms; contrast 1.0–3.0 ms; cell age 7.3–21.9 s.\n- Grid dragging: 11 hitches, 31.0–37.3 ms; `network/display/Primary/378`; image age 0.0–20.1 ms; cell age 118.8–177.8 ms.\n- conclusion: Home callback/contrast computation is not large enough to explain the long frame; Home carousel image publish/presentation remains the lead. Grid drag hitch is independently tied to newly visible display-only poster publication. The one-universal-root-cause assumption is rejected.\n- evidence: **real-device diagnostic tested / route split established / no runtime fix tested / not stable.**\n'''
+          index_path.write_text(index)
+
+          state = state_path.read_text()
+          state = re.sub(r'^_Last updated.*_$', '_Last updated after poster-scroll Build212 / 0.14.45 target-device source-aware diagnostics split the remaining Home and grid hitch into two evidence-backed paths. Build199 remains the latest real-device accepted overall baseline. Build211 / 0.14.44 remains owned by the independent carousel line; no Build212 runtime fix is accepted yet._', state, count=1, flags=re.M)
+          poster_re = re.compile(r'## Active: Poster-heavy scrolling smoothness\n.*?(?=\n## Parallel integration rule)', re.S)
+          poster = f'''## Active: Poster-heavy scrolling smoothness\n\nWork: `DEV-poster-grid-smoothness`.\n\n- Build202 and Build204 were target-device rejected; Build206/209/210 progressively established reliable motion attribution.\n- Build212 / 0.14.45 exact source `4f0a89ab026cd2103f66e5854a1f352d34852e45`; run/job `33045869471 / 98429601490`; artifact `9635696107`; IPA SHA-256 `dcdec181dd16e9b3b666882de8347a76671c743ab8392aa27791d40599eec7a1`; MinOS 15.0.\n- target-device log `{log_name}` contains 5 Home dragging hitches (43.6–73.8 ms), all following `memory/callback/Primary/1400` image publish by 8.3–12.2 ms. Measured callback/contrast durations are only 1.0–3.2 / 1.0–3.0 ms, so contrast analysis is no longer the primary suspect. The stronger Home lead is carousel large-image publish/presentation during vertical scrolling; this overlaps the active carousel task.\n- the same log contains 11 true grid dragging hitches (31.0–37.3 ms), all following `network/display/Primary/378` publish by 0.0–20.1 ms with a newly appeared grid cell 118.8–177.8 ms old. Carousel callback/contrast timestamps are stale and unrelated.\n- therefore the previous universal cross-page-root-cause assumption is rejected. Home and grid should receive separate minimal runtime candidates.\n- Home runtime changes require explicit reconciliation with `DEV-home-carousel-drag-smoothness`; poster work must not independently modify carousel owner files.\n- Grid next step is exact-source inspection of the display-only image publish/render path, preserving 378px rendered-device requirement and forbidding delay/throttle/debounce/timer workarounds.\n- evidence: **Build212 target-device diagnostic tested / Home callback-cost hypothesis rejected / real grid dragging stalls captured / route split established / performance fix not tested / not stable.**\n\nNext: reconcile the Home evidence with the carousel task, and independently design the smallest grid display-image publication/render candidate. Keep P0 Player/MPV/PiP/Transport/Cache/Session and iOS 15.0 contracts untouched.\n'''
+          if not poster_re.search(state): raise SystemExit('PROJECT_STATE poster section missing')
+          state = poster_re.sub(poster, state, count=1)
+          state_path.write_text(state)
+          PY
+          git diff --check -- docs/project
+          git diff -- docs/project
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/project/current/dev/DEV-poster-grid-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md
+          git diff --cached --quiet && exit 0
+          git commit -m "Record Build212 target-device poster evidence"
+          git push
