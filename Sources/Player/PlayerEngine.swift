@@ -9,6 +9,7 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
     case transportAVPlayer
     case avPlayer
     case mpv
+    case aether
 
     var id: String { rawValue }
 
@@ -25,6 +26,7 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
         case .transportAVPlayer: return "统一缓存 AVPlayer"
         case .avPlayer: return "直连 AVPlayer"
         case .mpv: return "MPV高兼容引擎"
+        case .aether: return "Aether实验引擎"
         }
     }
 
@@ -35,6 +37,7 @@ enum PlayerEngineKind: String, CaseIterable, Identifiable {
         case .transportAVPlayer: return 2
         case .avPlayer: return 3
         case .ksAVIO: return 4
+        case .aether: return 5
         case .ktvAVPlayer: return 100
         }
     }
@@ -47,6 +50,7 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
     case avPlayer
     case mpv
     case ksAVIO
+    case aether
 
     var id: String { rawValue }
 
@@ -63,6 +67,7 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
             #else
             return "KSPlayer KSME（实验）"
             #endif
+        case .aether: return "Aether实验引擎"
         }
     }
 
@@ -70,6 +75,9 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
         var result: [PlayerEnginePreference] = []
         #if canImport(Libmpv)
         result.append(.mpv)
+        #endif
+        #if canImport(AetherEngine)
+        result.append(.aether)
         #endif
         #if MDK_LAB && canImport(KSPlayer)
         result.append(.ksAVIO)
@@ -107,6 +115,7 @@ enum PlayerEnginePreference: String, CaseIterable, Identifiable {
         case .avPlayer: return .avPlayer
         case .mpv: return .mpv
         case .ksAVIO: return .ksAVIO
+        case .aether: return .aether
         case .automatic:
             #if MDK_LAB && canImport(KSPlayer)
             return .ksAVIO
