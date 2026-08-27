@@ -3,8 +3,10 @@ import Combine
 
 final class V3HomeHeroScrollState: ObservableObject {
     @Published private(set) var rawMinY: CGFloat = 0
+    private(set) var isFullyOffscreen = false
 
-    func update(_ value: CGFloat) {
+    func update(_ value: CGFloat, isFullyOffscreen: Bool) {
+        self.isFullyOffscreen = isFullyOffscreen
         guard abs(rawMinY - value) > 0.10 else { return }
         rawMinY = value
     }
