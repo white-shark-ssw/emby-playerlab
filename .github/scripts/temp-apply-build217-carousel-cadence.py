@@ -145,6 +145,7 @@ s = p.read_text()
 s = replace_once(s, "hero = Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()\n", "hero = Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()\ncadence = Path('Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift').read_text()\n", 'checker cadence source')
 s = replace_once(s, 'assert \'static let sourceVersion = "0.14.48"\' in identity', 'assert \'static let sourceVersion = "0.14.50"\' in identity', 'checker version')
 s = replace_once(s, "assert 'coalescedTouches' not in interaction", "assert 'event.coalescedTouches(for: touch)' in cadence\nassert 'coalescedTouches' not in interaction", 'checker coalesced ownership')
+s = replace_once(s, "assert 'if isCarouselDragging { transitionProgress = 0 }' in interaction", "assert '''if horizontal == 0 {\n            if isCarouselDragging {\n                transitionProgress = 0\n                V3HomeCarouselCadenceDiagnostics.shared.recordProgressPublish(transitionProgress)\n            }\n            return\n        }''' in interaction", 'checker zero-progress diagnostics')
 s = replace_once(s, "print('Build215 home carousel acquisition-relative page-slot contracts passed')", '''assert 'V3HomeCarouselCadenceDiagnostics.shared.begin' in interaction
 assert 'V3HomeCarouselCadenceDiagnostics.shared.recordTouch' in interaction
 assert 'V3HomeCarouselCadenceDiagnostics.shared.recordProgressPublish' in interaction
