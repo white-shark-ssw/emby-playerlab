@@ -39,6 +39,7 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
     private var origin: CGPoint?
     private var axis: V3HomeCarouselTouchAxis?
     private var latestPredictedTranslation: CGSize?
+    private var horizontalAcquisitionTranslation: CGFloat?
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         guard origin == nil, touches.count == 1, let touch = touches.first, let view else {
@@ -54,6 +55,7 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         origin = touch.location(in: view)
         axis = nil
         latestPredictedTranslation = nil
+        horizontalAcquisitionTranslation = nil
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
@@ -66,16 +68,16 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
             axis = abs(translation.width) >= abs(translation.height) ? .horizontal : .vertical
             if axis == .vertical { state = .failed; return }
             guard shouldBeginHorizontal?(translation) == true else { state = .failed; return }
+            horizontalAcquisitionTranslation = translation.width
             latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
             state = .began
-            onHorizontalChanged?(translation)
             return
         }
 
         guard axis == .horizontal, state == .began || state == .changed else { return }
         latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
         state = .changed
-        onHorizontalChanged?(translation)
+        onHorizontalChanged?(renderTranslation(for: translation))
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
@@ -118,6 +120,12 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         origin = nil
         axis = nil
         latestPredictedTranslation = nil
+        horizontalAcquisitionTranslation = nil
+    }
+
+    private func renderTranslation(for translation: CGSize) -> CGSize {
+        guard let acquisitionTranslation = horizontalAcquisitionTranslation else { return translation }
+        return CGSize(width: translation.width - acquisitionTranslation, height: 0)
     }
 
     private func predictedTranslation(for touch: UITouch, event: UIEvent, view: UIView, origin: CGPoint) -> CGSize? {
@@ -192,6 +200,10 @@ extension V3EmbyHomeView {
         let horizontal = translation.width
         suppressCarouselTap()
         guard transitionToID == nil || isCarouselDragging else { return }
+        if horizontal == 0 {
+            if isCarouselDragging { transitionProgress = 0 }
+            return
+        }
         let direction = horizontal < 0 ? 1 : -1
         guard let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: direction) else { return }
         if !isCarouselDragging || transitionFromID != currentID || transitionToID != targetID {
@@ -205,14 +217,25 @@ extension V3EmbyHomeView {
     }
 
     func finishNativeCarouselDrag(_ translation: CGSize, predictedTranslation: CGSize?, width: CGFloat) {
-        guard isCarouselDragging, let targetID = transitionToID else { return }
         suppressCarouselTap()
         let actualDistance = abs(translation.width)
-        let expectedSign: CGFloat = transitionDirection > 0 ? -1 : 1
+        let releaseDirection = isCarouselDragging ? transitionDirection : (translation.width < 0 ? 1 : -1)
+        let expectedSign: CGFloat = releaseDirection > 0 ? -1 : 1
         let predictedDistance: CGFloat
         if let predictedTranslation, predictedTranslation.width == 0 || predictedTranslation.width * expectedSign > 0 { predictedDistance = abs(predictedTranslation.width) }
         else { predictedDistance = actualDistance }
-        let shouldCommit = transitionProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48
+        let actualProgress = min(1, max(0, actualDistance / max(1, width)))
+        let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48
+        if !isCarouselDragging {
+            guard shouldCommit, let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: releaseDirection) else { return }
+            transitionFromID = currentID
+            transitionToID = targetID
+            transitionProgress = 0
+            transitionDirection = releaseDirection
+            completeInteractiveTransition(to: targetID)
+            return
+        }
+        guard let targetID = transitionToID else { return }
         isCarouselDragging = false
         if shouldCommit { completeInteractiveTransition(to: targetID) }
         else { cancelInteractiveTransition() }
