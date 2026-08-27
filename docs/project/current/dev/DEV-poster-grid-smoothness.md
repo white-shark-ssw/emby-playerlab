@@ -2,14 +2,14 @@
 
 ## Status
 
-**Active — Build220 / 0.14.53 is the current poster-grid test candidate. It is synchronized onto the accepted Build216 main runtime baseline, preserves the Build218 grid/display-only UIKit A/B, and adds only the shared transparent-image background correction proven necessary by the Build218 Home screenshot. Exact 7-path scope, poster checker, Xcode 16.4 Release, app identity, MinOS 15.0, IPA/source packaging and independent artifact verification all passed. No Home-carousel owner file changed. Build218 Home vertical hitching remains rejected and is owned separately with the carousel task; Build220 has not yet been target-device tested for its intended 3×3 grid A/B, so no smoothness fix is claimed.**
+**Active — Build220 / 0.14.53 has now been target-device tested for the intended 3×3 route and is not accepted as a smoothness fix. The user reports the tactile result is “基本一样”. The supplied App log still records a real grid dragging hitch at 33.3 ms and a second 74.1 ms moving hitch. Build220 therefore rejects the hypothesis that bypassing surrounding SwiftUI poster-cell observation of the display-image loader is sufficient. The exact source/CI/IPA evidence remains valid, but the candidate is real-device ineffective and not stable. No Home-carousel owner file changed.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
 - **Working branch**: `perf/poster-grid-smoothness`
 - **Draft PR**: #259
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
-- **Accepted overall baseline**: OnePlayer **0.14.32 / Build199**, PR #256, merge `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`
+- **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
 
 ## Acceptance / protected contracts
 
@@ -236,9 +236,26 @@ Build220 is the Build218 grid/display-only UIKit experiment resynchronized onto 
 - exact source snapshot contains the clear-background regression fix and no Build220 temporary workflow
 - one-shot Build220 build helper self-cleaned successfully
 
-**Evidence: Code written ✅ / synchronized exact 7-path scope + checker ✅ / CI passed ✅ / IPA produced + independently verified ✅ / target-device grid A/B pending ❌ / stable or frozen ❌.**
+**Evidence: Code written ✅ / synchronized exact 7-path scope + checker ✅ / CI passed ✅ / IPA produced + independently verified ✅ / target-device tested ✅ / user reports 3×3 basically unchanged ❌ / stable or frozen ❌.**
 
 Target-device test must explicitly cover Library 3×3, Favorites, Favorites → More, Search, Tag and Person/Actor grids. Home may be checked only for regression; Build218 already proved this poster candidate does not solve the separate Home hitch path.
+
+### Build220 target-device result — 2026-08-27
+
+User verdict on the intended 3×3 scrolling A/B: **“体感来说：基本一样”**. This is the controlling real-device result; Build220 must not be described as a grid smoothness improvement.
+
+Uploaded App log: `OnePlayer-App-1787845216.log`. It is short but contains two `PosterScrollHitch` records on the grid route:
+
+1. **33.3 ms**, `phase=dragging`, `offset_y=3506.00`, `delta_y=5.33`, `visible=12`. The latest poster event was item `29670` only **171.7 ms** earlier and is also the load-ahead trigger. The latest image commit was item `29668`, `Primary`, `MaxWidth=378`, `source=network`, `role=display`, **35.8 ms** before the hitch. The `StartIndex=60` page request began about **164 ms** before the hitch.
+2. **74.1 ms**, `phase=moving`, `offset_y=3639.33`, `delta_y=1.00`, `velocity_y=0.0`. The latest image commit was already **1010.1 ms** old and the latest cell/load-ahead event **1146.1 ms** old, so this second sample is not evidence of an immediate image-publish trigger and is weaker than the dragging sample for user-touch attribution.
+
+Exact Build220 source matters for interpretation. The display-only path no longer makes the surrounding SwiftUI poster cell observe loader image changes, but `EmbyCachedImageLoader` still performs `self.image = loaded` on the MainActor. That `@Published` assignment synchronously delivers to the UIKit surface's Combine sink, which then calls `UIImageView.image = image`. Current diagnostics timestamp `imageDidCommit` only **after** the assignment; they do not measure the assignment/publisher/sink/UI image-adoption duration or bursts of several commits. Therefore Build220 falsifies “SwiftUI poster-cell observation is the primary sufficient cause”, but does **not** yet isolate whether the remaining cost is the MainActor publish/Combine→UIImageView adoption/compositor path.
+
+The first hitch also occurs immediately after grid load-ahead starts `StartIndex=60`. On the accepted Build216 baseline, library pagination applies new items on a `@MainActor` model and then synchronously serializes/writes the persistent page snapshot. That path is worth measuring for this pagination-adjacent sample. However it cannot be the universal historical cause: Build212 captured the same 3×3 hitch family before the Build213 persistent-page-cache milestone existed. Do not replace the image-path evidence with a cache-only theory.
+
+**Build220 evidence now: Code written ✅ / synchronized exact scope+checker ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / user reports 3×3 basically unchanged ❌ / grid UIKit observation-bypass hypothesis rejected as sufficient ✅ / root cause still unresolved / not stable.**
+
+Next diagnostic should be measurement-only: time the MainActor `@Published image` assignment including synchronous Combine delivery to the UIKit surface, record image-publish bursts around long frames, and separately time pagination result application plus persistent snapshot serialization/write. Do not add another smoothing patch until those costs are separated.
 
 ## Parallel safety
 
@@ -248,11 +265,11 @@ Target-device test must explicitly cover Library 3×3, Favorites, Favorites → 
 
 ## Next exact action
 
-1. Install Build220 / 0.14.53 on iPhone 15 Pro Max / iOS 17.0.
-2. A/B the intended 3×3 routes: Library, Favorites, Favorites → More, Search, Tag and Person/Actor results; report obvious improvement / unchanged / worse and any image/navigation regression.
-3. Verify the Build218 transparent-Logo rectangle is gone, but do not modify carousel owner code from this task.
-4. Home vertical hitching remains a separate Home/carousel runtime path; do not use Home-only behavior to infer the grid A/B result.
-5. If Build220 is accepted, resync against then-current main before merge and rerun affected validation if the source changes.
+1. Treat Build220 as a real-device ineffective grid candidate; do not merge or tune the UIKit surface blindly.
+2. Add measurement-only diagnostics for MainActor `image` publication / synchronous Combine→`UIImageView` adoption duration and nearby publish bursts.
+3. Add separate timing for pagination result application and Build213 page-persistent snapshot serialization/write, because the first Build220 dragging hitch is pagination-adjacent.
+4. Preserve Build212 as the historical guardrail: persistent page cache cannot be the universal cause because the grid hitch family predates Build213.
+5. Keep Home-carousel ownership separate and do not touch Player / Transport / Cache / Session P0 contracts.
 
 ## Do not repeat
 
