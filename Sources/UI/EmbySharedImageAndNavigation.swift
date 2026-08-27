@@ -610,6 +610,7 @@ private final class EmbyCachedDisplayImageSurfaceView: UIView {
 
     func setImage(_ image: UIImage?) {
         imageView.image = image
+        backgroundColor = image == nil ? .secondarySystemBackground : .clear
         placeholderView.isHidden = image != nil
     }
 }
