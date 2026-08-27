@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build216 / OnePlayer 0.14.49 implementation complete; static contracts passed; Xcode Release CI/IPA pending.**
+**Active — Build216 / OnePlayer 0.14.49 CI passed and IPA produced+verified; target-device test pending.**
 
 - **Work ID**: `DEV-detail-episode-range-inertia-jump`
 - **Routing aliases / keywords**: 详情页选集惯性 / 跳集区间按钮 / 即将播放跳集 / episode range inertia / detail episode jump
@@ -19,17 +19,15 @@
 
 ## Baseline / identity
 
-- **Accepted overall baseline**: OnePlayer **0.14.46 / Build213**.
-- **Current main at task creation**: `81ab52793d9fd64ffcef7302c6e0b2d71754ac75`.
-- `main` later advanced to `bab40171b678019c5b672b33b1a1ae159afa65e0` only by registering this task checkpoint; no product source changed after the branch base.
-- Accepted Build191 detail selection/navigation contract remains stable and is inherited.
-- **Working branch**: `fix/detail-episode-range-inertia-build216`.
+- **Accepted overall baseline**: OnePlayer **0.14.46 / Build213**; Build216 尚未经过真机接受，不替换 accepted baseline。
 - **Branch base**: `main@81ab52793d9fd64ffcef7302c6e0b2d71754ac75`.
-- **Current branch head**: `749fea5cf755fc48c2b2df5bd3a995c7fdc2678d`.
-- Functional source commits: `0280e97c8fd65d57fa8e347fe7d8ac97407a4785` + lifetime cleanup `84ee048d1e8933ea8eedeaabb0b6c84324fb5768`.
+- `main` 在任务创建后只新增/更新本任务 checkpoint；分支基线之后没有产品源码前进需要重同步。
+- **Working branch**: `fix/detail-episode-range-inertia-build216`.
+- **Tested CI source**: `dc00cac9f35ee4a3b950e4bb030bb324baf90b18`.
+- **Cleanup head**: `bffe649ebf74c4bddced4e14a6738a8b63672675` — only removes the temporary Build216 CI workflow after artifact production; product/runtime source is unchanged from tested source.
 - **PR**: none yet.
 - **Build candidate**: **OnePlayer 0.14.49 / Build216**.
-- **Target artifact**: `OnePlayer-0.14.49-build216-detail-range-inertia`.
+- **Artifact**: `OnePlayer-0.14.49-build216-detail-range-inertia`.
 
 ## Source evidence / implemented fix
 
@@ -38,42 +36,52 @@ Original `Sources/UI/EmbyMediaDetailView.swift`:
 - `upcomingEpisodesSection` owns a `ScrollViewReader` and a separate horizontal episode-card `ScrollView` / `LazyHStack`.
 - range pills invoke `jumpToEpisodeRange(range, proxy:)` through the existing high-priority tap gesture.
 - `jumpToEpisodeRange` previously called `model.selectEpisodeRange(...)`, resolved the range-first target, then asynchronously ran animated `proxy.scrollTo(...)`.
-- there was no reference to the actual underlying horizontal `UIScrollView` and no deceleration cancellation before the programmatic range jump.
-- therefore an in-flight native deceleration remained a competing `contentOffset` owner when the range jump started.
+- there was no reference to the actual underlying horizontal `UIScrollView` and no deceleration cancellation before the programmatic range jump, so in-flight native deceleration remained a competing `contentOffset` owner.
 
 Build216 implementation:
 
 - new `Sources/UI/EmbyDetailEpisodeScrollControl.swift` adds one detail-only `EmbyDetailEpisodeScrollController` and `EmbyDetailEpisodeNativeScrollProbe`.
-- the probe is attached inside the existing episode-card `LazyHStack`, so its nearest ancestor is the existing horizontal native `UIScrollView`; the SwiftUI ScrollView itself is not replaced.
+- the probe attaches inside the existing episode-card `LazyHStack`; the SwiftUI ScrollView itself is not replaced.
 - controller stores only weak `UIView` / `UIScrollView` references and follows the existing project `UIViewRepresentable` + Coordinator attachment pattern.
-- `stopDeceleration()` is synchronous on the main thread and is a no-op unless `scrollView.isDecelerating == true`; when active it executes `scrollView.setContentOffset(scrollView.contentOffset, animated: false)` to freeze at the currently visible native offset.
-- `jumpToEpisodeRange` now calls `episodeScrollController.stopDeceleration()` before reading/updating range selection state. Existing `model.selectEpisodeRange`, target resolution, 0.32 s `ScrollViewReader.scrollTo` animation, selected-ID/title/Play semantics remain unchanged.
-- existing `EpisodeRangeJump` diagnostic adds `stoppedDeceleration=true/false` for target-device attribution; no new periodic logging/state exists.
-- `AppIdentity` is 0.14.49 and changelog `CHANGELOG_v0_14_49_build216.md` is present.
+- `stopDeceleration()` is synchronous on the main thread and no-ops unless `scrollView.isDecelerating == true`; when active it calls `scrollView.setContentOffset(scrollView.contentOffset, animated: false)` to freeze the row at the currently visible offset.
+- `jumpToEpisodeRange` calls `episodeScrollController.stopDeceleration()` before the existing `model.selectEpisodeRange(...)`; target resolution, 0.32 s `ScrollViewReader.scrollTo` animation, selected-ID/title/main-Play semantics remain unchanged.
+- `EpisodeRangeJump` diagnostics include `stoppedDeceleration=true/false` for real-device attribution.
+- no timer/watchdog/retry/debounce/throttle/fallback or second episode-selection owner was added.
 
-## Validation so far
+## Compile correction evidence
 
-Patch application/static run `33061880059` completed successfully on the exact Build216 source line before temporary patch-helper cleanup:
+- First formal Build216 run/job `33062479997 / 98484394549` passed all static/scope contracts but failed at Xcode Release compile; no IPA was produced from that run.
+- Exact new-source review showed `EmbyDetailEpisodeScrollProbeUIView` was declared `private` while it is the return/argument type of `UIViewRepresentable` protocol witnesses.
+- The same pattern was reproduced with the available Swift 6.2.1 compiler, which reports `method must be declared fileprivate because its result uses a private type`; project precedent `AdaptiveHeroScrollProbeUIView` is internal.
+- Compile-only correction commit `dc00cac9f35ee4a3b950e4bb030bb324baf90b18` removes only the `private` access modifier from the probe UIView. Runtime behavior is unchanged.
 
-- `scripts/check_detail_episode_selection_navigation.py`: PASS, including new ordering contract that native deceleration stop occurs before `model.selectEpisodeRange(...)`.
-- `scripts/check_detail_page_performance.py`: PASS.
-- `git diff --check`: PASS.
-- final durable branch diff after helper cleanup is only:
-  - `Sources/Core/AppIdentity.swift`
-  - `Sources/UI/EmbyDetailEpisodeScrollControl.swift`
-  - `Sources/UI/EmbyMediaDetailView.swift`
-  - `docs/changelog/CHANGELOG_v0_14_49_build216.md`
-  - `scripts/check_detail_episode_selection_navigation.py`
+## Successful Build216 CI / IPA
+
+- **Run / job**: `33064051545 / 98489652724` — success.
+- **Tested source**: `dc00cac9f35ee4a3b950e4bb030bb324baf90b18`.
+- Passed:
+  - Build216 exact delta / Frozen scope validation;
+  - `check_detail_episode_selection_navigation.py`;
+  - `check_detail_episode_range_jump.py`;
+  - `check_detail_page_performance.py`;
+  - `check_adaptive_hero_reveal.py`;
+  - `check_season_id_episode_grouping.py`;
+  - `check_player_episode_season_grouping.py`;
+  - `check_series_episode_ordering.py`;
+  - Xcode 16.4 standard MPV Release build;
+  - bundle identity **0.14.49 (216)**;
+  - built MinOS **iOS 15.0**;
+  - IPA archive integrity.
+- **Artifact ID**: `9643031850`.
+- **Artifact digest**: `sha256:9cbccc582be719b2daa10077293da2951f0cbce8016625128de8ef9d85b27f48`.
+- **IPA**: `OnePlayer-0.14.49-build216-detail-range-inertia-unsigned.ipa`.
+- **IPA SHA-256**: `e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075`.
+- **Source ZIP SHA-256**: `98e1b5b52ebe5d8b2e3fbf754d3dfb18d0ea082fd77bcd9e6905b0bcb56e0f6f`.
+- Temporary Build216 CI workflow was removed after successful artifact production; cleanup head is recorded separately and does not alter runtime source.
 
 ## Parallel conflict guard
 
-Current other Active tasks at creation:
-
-- `DEV-home-carousel-drag-smoothness` — owns Home carousel UIKit/state/Hero/Core files; no detail source overlap.
-- `DEV-poster-grid-smoothness` — owns shared poster-image diagnostics/grid paths; no detail source overlap.
-- `DEV-aether-multi-engine-comparison` — playback-engine feasibility; no detail source overlap.
-
-Build215 is occupied by Home carousel. Build216 / 0.14.49 had no repository/index/branch allocation when reserved here.
+Other Active tasks remain isolated from this detail task. Build215 is owned by Home carousel; Build216 / 0.14.49 is uniquely owned here. No Player/Transport/PiP/cache/session or other P0 source was changed.
 
 ## Frozen / do-not-touch
 
@@ -87,14 +95,13 @@ Build215 is occupied by Home carousel. Build216 / 0.14.49 had no repository/inde
 ## Evidence level
 
 - User real-device bug report: **YES** — accepted/current behavior fails when episode-row inertia is active.
-- Source cause identified: **YES** — no native deceleration cancellation existed before `scrollTo`.
+- Source cause identified: **YES**.
 - Code written: **YES**.
-- Narrow static/source contracts: **PASS**.
-- Xcode Release CI passed: **NO — pending**.
-- IPA produced: **NO — pending**.
-- Fix real-device tested: **NO**.
+- CI passed: **YES** — run `33064051545`.
+- IPA produced+verified: **YES** — artifact `9643031850`, IPA SHA above.
+- Fix real-device tested: **NO — pending**.
 - Stable/frozen: **NO**.
 
 ## Next exact action
 
-Run a dedicated Xcode 16.4 standard MPV Release Build216 workflow from the durable source, validating 0.14.49 (216), MinOS 15.0, detail inertia ordering + inherited Build191/Build182/Build178/Build195 contracts and frozen P0 file scope. Package `OnePlayer-0.14.49-build216-detail-range-inertia`, remove the temporary Release helper afterward, then provide the IPA for target-device testing. Real-device acceptance must specifically test repeated fast horizontal swipes followed by range-pill taps during active deceleration.
+Install Build216 on iPhone 15 Pro Max / iOS 17.0. Repeatedly fling the detail episode row horizontally and, while it is visibly decelerating, tap several different range pills. Acceptance requires the row to stop its current inertia immediately and then perform the requested range jump every time; also verify ordinary non-inertia range taps, selected blue frame/summary/main Play target and full episode picker remain unchanged. If accepted, record the real-device result, merge via an isolated PR, promote the durable decision/project docs, and delete this task checkpoint.
