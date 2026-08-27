@@ -2,13 +2,13 @@
 
 ## Status
 
-**Active — Build215 / 0.14.48 is real-device tested. The acquisition-relative start and opaque foreground are both positively confirmed: the user reports the initial drag is now about as fine as EX and the foreground no longer looks blurred/ghosted. However the overall drag still lacks EX's tactile smoothness — described as EX feeling like sliding on smooth glass while OnePlayer still feels like rough paper. The residual cause is unresolved; backdrop-blend timing is only a hypothesis, not a proven root cause.**
+**Active — Build217 / 0.14.50 cadence-diagnostic IPA is CI/IPA verified and awaiting target-device logging. Build215 remains the latest real-device carousel behavior evidence: acquisition-relative start and opaque foreground fixed the coarse start/ghosting, but the overall drag still trails EX in micro-smoothness. Build217 deliberately does not retune motion; it measures delivered/coalesced touch cadence, progress publication, SwiftUI render-probe updates, passive display-frame gaps and nearest Hero/persistent/preload 1400px image callbacks so the residual “smooth glass vs rough paper” gap can be attributed from real-device timing evidence.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
-- Accepted overall baseline remains OnePlayer **0.14.32 / Build199** on `main`.
+- Accepted overall baseline is OnePlayer **0.14.49 / Build216** on `main`; Build217 is an independent diagnostic candidate and does not replace it.
 - Target device: iPhone 15 Pro Max / iOS 17.0.
-- Build206/209/210 belong to the independent poster-scroll diagnostics task. That task currently has a Home-specific image-metric lead inside carousel files, but it must not modify carousel state/Hero/Core without reconciling this task.
+- Build206/209/210/212 belong to the independent poster-scroll diagnostics task. Build212 established a Home-specific 1400px carousel image-presentation correlation; poster Build218 is a separate grid/display candidate and does not modify carousel owner files.
 
 ## Retained input contract
 
@@ -156,7 +156,7 @@ The next evidence-backed direction is:
 ## Build214 / Build215 implementation evidence
 
 - Carousel Build214 / 0.14.47 was rebuilt cleanly from the Build208 durable source and passed CI/IPA verification, but was retired before distribution when independent poster work claimed that identity. Never use the carousel Build214 package for attribution.
-- Current valid carousel identity: **OnePlayer 0.14.48 / Build215**.
+- Current valid carousel behavior identity: **OnePlayer 0.14.48 / Build215**.
 - branch `perf/home-carousel-acquisition-relative-build215`.
 - tested source / CI head **`d22634ece2f29eba2e60de01182bf15d4ba554a7`**; durable cleanup head **`01a13615fc056fd3b13296d98abfaa7a6aa2b46d`**, with temporary workflow deletion only between them.
 - horizontal acquisition establishes the render baseline and does not publish the already accumulated touch-down distance.
@@ -167,7 +167,7 @@ The next evidence-backed direction is:
 - run/job **`33058337107 / 98470624555` — success**; artifact ID **`9640692378`**; digest **`sha256:31a054244bcfbeb39cc5db663aa7580cb4cc742fe88ca998ce9c9ba7a01e2939`**.
 - IPA SHA-256 **`6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`**; source ZIP SHA-256 **`00d2a0aba071dbbce3554d31dba64f0caa70c22b6e067dedeee0bb3b22ebd694`**.
 - independent verification passed for artifact digest, embedded hashes, IPA archive, OnePlayer `0.14.48 (215)`, MinOS 15.0, icons and exact source contracts.
-- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
+- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / partial success / not stable.**
 
 ## 2026-08-27 Build215 second real-device result
 
@@ -191,7 +191,25 @@ Retain from Build215 unless contrary device evidence appears:
 - full-width `pageStep = width` page slots;
 - existing reversal/cancel/settle/wrap contracts.
 
+## Build217 / 0.14.50 cadence diagnostic evidence
+
+Build217 is a diagnostic-only successor to Build215. It preserves the retained carousel behavior and adds observation only:
+
+- branch: `diag/home-carousel-cadence-build217`;
+- tested product source: **`088dcfb0f112d4f2a66371bb98272b5af9f49283`**;
+- durable cleanup head: **`ab65b795b8e99d2eeb61cbfc8740bc18c82c49a4`**; cleanup removed only temporary workflow/patch/trigger helpers after the successful package;
+- run/job: **`33069670314 / 98508381540` — success**;
+- artifact: `OnePlayer-0.14.50-build217-home-carousel-cadence`; ID **`9645320748`**;
+- GitHub artifact digest / independently recalculated artifact ZIP SHA-256: **`6948f8b7796b01d0dbc31c2555fcc5b78687e1e9a161341ceeb3cab1d676409d`**;
+- IPA SHA-256: **`a2cf700b791cc66a60416b0250d501758aec532371dd029272066eaac4722bef`**;
+- source ZIP SHA-256: **`675b04524e9d56b9fc91c99e3ec6419a989493b74f6f633d4e814221bf86668e`**;
+- independent IPA/archive/hash/identity verification passed: `com.embyplayerlab.app`, OnePlayer **0.14.50 (217)**, `MinimumOSVersion=15.0`;
+- exact Build215→217 runtime scope is `AppIdentity`, new `EmbyHomeCarouselCadenceDiagnosticsV3`, small observation hooks in `EmbyHomeCarouselInteractionV3` and `EmbyHomeHeroV3`; `EmbyHomeCarouselStateV3`, `EmbyHomeCoreV3`, shared image infrastructure and all P0/Frozen paths are unchanged;
+- cadence display link is passive and does not request a preferred frame rate; coalesced touches are measured only and never drive movement;
+- one aggregated `HomeCarouselCadence` App-log summary is emitted per horizontal drag; no per-frame logging, interpolation, timer, debounce, throttle, watchdog, retry or fallback was added.
+
+Evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending / diagnostic conclusion pending / not stable.**
 
 ## Next exact action
 
-Treat the remaining issue as a micro-continuity/cadence investigation, not another travel/easing-tuning task. Inspect the exact post-acquisition pipeline from UIKit touch delivery → recognizer callback → `V3HomeCarouselTransitionState` publication → SwiftUI offset/compositing for evidence of irregular publication, transaction behavior, implicit animation, main-thread contention or rendering/coalescing that could produce a sub-frame "rough paper" feel. Use the Build215/EX recordings as reference, but do not claim the backdrop-blend hypothesis as root cause without stronger evidence. No code change is justified solely by the current subjective residual gap.
+Install Build217 on iPhone 15 Pro Max / iOS 17.0, keep App logging enabled, and perform several ordinary left/right drags including slow micro-drags and direction reversals. Then export the App log. Attribute the residual gap from `HomeCarouselCadence` touch/progress/SwiftUI/display/image timing before changing any motion mapping. Do not retune travel/easing/backdrop timing or add smoothing until the target-device log supplies evidence.
