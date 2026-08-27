@@ -59,32 +59,37 @@ private final class EmbyDetailEpisodeScrollProbeUIView: UIView {
 struct EmbyDetailEpisodeNativeScrollProbe: UIViewRepresentable {
     let controller: EmbyDetailEpisodeScrollController
 
+    func makeCoordinator() -> Coordinator { Coordinator(controller: controller) }
+
     func makeUIView(context: Context) -> EmbyDetailEpisodeScrollProbeUIView {
         let view = EmbyDetailEpisodeScrollProbeUIView(frame: .zero)
         view.backgroundColor = .clear
         view.isUserInteractionEnabled = false
-        view.hierarchyDidChange = { [weak controller] probe in controller?.attach(from: probe) }
-        DispatchQueue.main.async { [weak controller, weak view] in
+        view.hierarchyDidChange = { [weak coordinator = context.coordinator] probe in coordinator?.attach(from: probe) }
+        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak view] in
             guard let view else { return }
-            controller?.attach(from: view)
+            coordinator?.attach(from: view)
         }
         return view
     }
 
     func updateUIView(_ uiView: EmbyDetailEpisodeScrollProbeUIView, context: Context) {
-        DispatchQueue.main.async { [weak controller, weak uiView] in
+        DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
             guard let uiView else { return }
-            controller?.attach(from: uiView)
+            coordinator?.attach(from: uiView)
         }
     }
 
-    static func dismantleUIView(_ uiView: EmbyDetailEpisodeScrollProbeUIView, coordinator: Void) {
+    static func dismantleUIView(_ uiView: EmbyDetailEpisodeScrollProbeUIView, coordinator: Coordinator) {
         uiView.hierarchyDidChange = nil
-        controllerDetach(uiView)
+        coordinator.detach(from: uiView)
     }
 
-    private static func controllerDetach(_ uiView: EmbyDetailEpisodeScrollProbeUIView) {
-        // SwiftUI does not pass the representable value into dismantleUIView; the weak scroll reference
-        // naturally expires with the native hierarchy, so no second lifetime owner is introduced here.
+    final class Coordinator {
+        private let controller: EmbyDetailEpisodeScrollController
+
+        init(controller: EmbyDetailEpisodeScrollController) { self.controller = controller }
+        func attach(from probe: UIView) { controller.attach(from: probe) }
+        func detach(from probe: UIView) { controller.detach(from: probe) }
     }
 }
