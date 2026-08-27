@@ -80,6 +80,14 @@ final class PlayerController: ObservableObject {
         #endif
     }
 
+    var aetherPlayerView: UIView? {
+        #if canImport(AetherEngine)
+        return (engine as? AetherPlayerEngine)?.playerView
+        #else
+        return nil
+        #endif
+    }
+
     var avPlayer: AVPlayer? {
         if let engine = engine as? AVPlayerEngine { return engine.player }
         if let engine = engine as? KTVAVPlayerEngine { return engine.player }
@@ -580,6 +588,12 @@ final class PlayerController: ObservableObject {
             #else
             return SuspendedPlayerEngine(kind: .ksAVIO)
             #endif
+        case .aether:
+            #if canImport(AetherEngine)
+            return AetherPlayerEngine(source: source, sharedTransportSession: transportContext?.session)
+            #else
+            return SuspendedPlayerEngine(kind: .aether)
+            #endif
         case .avPlayer:
             return AVPlayerEngine()
         case .mpv:
@@ -718,9 +732,9 @@ final class PlayerController: ObservableObject {
 
     private var snapshotCanCompleteSeekAnchor: Bool {
         #if MDK_LAB
-        return engineKind != .mpv && engineKind != .ksAVIO
+        return engineKind != .mpv && engineKind != .ksAVIO && engineKind != .aether
         #else
-        return engineKind != .mpv
+        return engineKind != .mpv && engineKind != .aether
         #endif
     }
 
@@ -781,7 +795,7 @@ final class PlayerController: ObservableObject {
         case .waitForCurrentRecovery:
             DiagnosticsLogger.shared.playback("EOFRecovery", "state=recovering action=ignore-duplicate position=\(String(format: "%.3f", snapshot.position))")
         case .quarantine:
-            prematureEOFMessage = "该媒体连续触发异常 EOF，MDK 已停止自动恢复以保护 App。可手动切换到 MPV高兼容引擎继续测试。"
+            prematureEOFMessage = "该媒体连续触发异常 EOF，当前实验引擎已停止自动恢复以保护 App。可手动切换到 MPV高兼容引擎继续测试。"
             DiagnosticsLogger.shared.playback("EOFRecovery", "state=quarantined engine=\(engineKind.title) position=\(String(format: "%.3f", snapshot.position)) action=no-rebuild")
         }
     }

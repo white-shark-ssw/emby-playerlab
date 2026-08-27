@@ -243,6 +243,8 @@ private struct PlayerSessionScreen: View {
             Group {
                 if controller.engineKind == .mpv, let layer = controller.mpvDisplayLayer {
                     MPVPlayerSurface(displayLayer: layer, onGeometrySettled: controller.rendererSurfaceDidSettle)
+                } else if controller.engineKind == .aether, let view = controller.aetherPlayerView {
+                    AetherPlayerSurface(playerView: view).id(ObjectIdentifier(view))
                 } else if controller.engineKind == .ksAVIO, let view = controller.ksAVIOView {
                     KSAVIOPlayerSurface(playerView: view).id(ObjectIdentifier(view))
                 } else if let player = controller.avPlayer {

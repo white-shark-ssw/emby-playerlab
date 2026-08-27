@@ -81,7 +81,7 @@ final class PlaybackOrchestrator {
             "stall engine=\(kind.title) count=\(recoveryCount) transportHealthy=\(health.transportHealthy) \(health.reason) waiting=\(snapshot.waitingReason ?? "none") runtimeSwitch=disabled"
         )
 
-        if kind == .resourceLoaderAVPlayer || kind == .transportAVPlayer || kind == .mpv || kind == .ksAVIO {
+        if kind == .resourceLoaderAVPlayer || kind == .transportAVPlayer || kind == .mpv || kind == .ksAVIO || kind == .aether {
             let currentForward = snapshot.bufferedRanges.reduce(0.0) { result, range in
                 guard range.lowerBound <= snapshot.position + 0.25, range.upperBound >= snapshot.position - 0.10 else { return result }
                 return max(result, range.upperBound - snapshot.position)
@@ -103,7 +103,7 @@ final class PlaybackOrchestrator {
         let belowMediaRate = (metrics?.currentDownloadBytesPerSecond ?? 0) > 0 && (metrics?.currentDownloadBytesPerSecond ?? 0) < health.mediaBytesPerSecond * 1.10
         let transportStarved = snapshot.isBuffering || recentFailure || belowMediaRate || !health.transportHealthy
         DiagnosticsLogger.shared.playback("Orchestrator", "prematureEOF engine=\(kind.title) farFromEnd=\(farFromEnd) transportStarved=\(transportStarved) recentFailure=\(recentFailure) failureAge=\(String(format: "%.2f", metrics?.recentNetworkFailureAgeSeconds ?? .infinity)) networkBps=\(Int(metrics?.currentDownloadBytesPerSecond ?? 0)) mediaBps=\(Int(health.mediaBytesPerSecond)) reason=\(reason)")
-        let unifiedKinds: Set<PlayerEngineKind> = [.resourceLoaderAVPlayer, .transportAVPlayer, .mpv, .ksAVIO]
+        let unifiedKinds: Set<PlayerEngineKind> = [.resourceLoaderAVPlayer, .transportAVPlayer, .mpv, .ksAVIO, .aether]
         if farFromEnd && unifiedKinds.contains(kind) {
             let detail = transportStarved ? "当前传输存在饥饿/失败" : "当前传输仍健康，按异常媒体 EOF 处理"
             return .recoverTransport(message: "提前 EOF：\(detail)；保持当前引擎原地恢复，不允许递归重建")
