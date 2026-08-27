@@ -1,0 +1,69 @@
+name: TEMP Build223 Release Log Capture
+
+on:
+  push:
+    branches: [diag/home-carousel-persistent-root-build223]
+    paths: [.github/build223-log-capture-trigger.txt]
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact Build223 source
+        uses: actions/checkout@v4
+        with:
+          ref: e2560d04f33a61e397dcb720004209f1bbc8e0ed
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Capture Release build log
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache MARKETING_VERSION=0.14.56 CURRENT_PROJECT_VERSION=223 IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          echo "xcodebuild_status=$status" | tee build-status.txt
+          exit $status
+
+      - name: Upload Build223 compiler log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build223-release-compiler-log
+          path: |
+            build.log
+            build-status.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Preserve build conclusion
+        if: always()
+        run: |
+          echo "Build outcome: ${{ steps.build.outcome }}"
+          test "${{ steps.build.outcome }}" = "success"
