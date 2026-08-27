@@ -122,6 +122,10 @@ Current carousel diagnostic candidate: **Build221 / 0.14.54** — branch `diag/h
 
 Next action: target-device A/B Build221 with the same cadence log. If drag-time persistent callbacks/50 ms gaps disappear, persistent presentation becomes directly isolated as a causal component; if Hero gaps remain dominant or no improvement occurs, do not retain the isolation. Also check release/settle separately because Build221 intentionally restores persistent transition after release.
 
+### Build222 Home vertical architecture A/B result
+
+Independent Build222 / 0.14.55 tested one narrow lifecycle hypothesis from the accepted Build216/main product baseline: once Home has scrolled away from the top, `autoAdvanceCarouselIfNeeded()` no longer starts a new automatic transition. It intentionally leaves persistent backdrop, preload, Hero and horizontal interaction unchanged and does not stack Build221. CI/IPA passed (`33101409110 / 98619779746`, artifact `9658757261`, tested source `694221315c727ea055ea3b5ef7a9ea03a260fe80`, IPA SHA-256 `8cf6d454bf7eec64207875e9c20a1bbc6b125578f11fb777bfdda4fa6b5c5bfe`, MinOS 15.0). Target-device feedback still perceives Home vertical hitching, so offscreen auto-advance alone is rejected as a sufficient fix. The supplied 30fps recording cannot prove the remaining 120Hz micro-stutter; its clearest zero→jump points coincide with new swipe starts. Next vertical A/B should isolate the root-level always-mounted persistent backdrop only, keeping preload and Build221 separate.
+
 ## Active: Poster-heavy scrolling smoothness
 
 Work: `DEV-poster-grid-smoothness`.

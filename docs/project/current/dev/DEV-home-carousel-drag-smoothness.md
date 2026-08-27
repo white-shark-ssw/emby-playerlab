@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build221 / 0.14.54 is the current CI/IPA-verified carousel diagnostic A/B; target-device testing is pending. Build219 proved the drag-local maximum-refresh request works and raised the delivered-touch → progress → SwiftUI-render → display chain to roughly 98–110 Hz. Its remaining strongest repeated hitch pattern is a 50 ms display gap about 19.6–25.3 ms after a persistent 1400px callback. Build221 keeps all Build215/219 motion and 120 Hz contracts, but during active drag holds the current blurred persistent backdrop at opacity 1 and does not mount the transition-target persistent image; Hero transition remains unchanged.**
+**Active — Build221 / 0.14.54 remains the current horizontal-carousel CI/IPA-verified A/B with target-device testing pending. Independent sibling Build222 / 0.14.55 has now been target-device tested for Home vertical isolation and is not accepted: pausing new automatic carousel transitions whenever Home is scrolled away from the top did not materially remove the user's perceived vertical hitching. Build222 therefore rejects offscreen auto-advance alone as a sufficient Home fix; the next vertical A/B should isolate the always-mounted full-screen persistent backdrop before changing preload or other carousel owners.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
@@ -269,6 +269,26 @@ Build221 makes one diagnostic presentation isolation only:
 
 **Build221 evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending ❌ / diagnostic only / stable ❌.**
 
+## Build222 / 0.14.55 — Home vertical auto-advance isolation real-device result
+
+Build222 is an independent sibling A/B from the accepted Build216/main product baseline; it does **not** stack Build221's horizontal persistent-drag isolation. It changes only the automatic transition gate: `autoAdvanceCarouselIfNeeded()` returns while `abs(homeRawScrollMinY) > 0.5`, so new 6-second auto transitions do not begin after Home has scrolled away from the top. Manual horizontal carousel interaction, Hero rendering, persistent backdrop mounting, preload, page slots, acquisition-relative motion, 120 Hz request and release/settle contracts are unchanged.
+
+- branch: `diag/home-carousel-vertical-idle-build222`
+- tested source: `694221315c727ea055ea3b5ef7a9ea03a260fe80`
+- durable cleanup head: `f2a7221abb737552984e65f906637f36923e0cd3` (temporary workflow + trigger deletion only after packaging)
+- run/job: `33101409110 / 98619779746` — success
+- artifact ID: `9658757261`
+- artifact ZIP SHA-256: `e797e36a53174225eb37cb31d0986fe3b5b2c4b64a137882b3c9354ce3e51d92`
+- IPA SHA-256: `8cf6d454bf7eec64207875e9c20a1bbc6b125578f11fb777bfdda4fa6b5c5bfe`
+- source ZIP SHA-256: `0c1264c20547ac3bef698f0407fd6437d8643abef33ac2201e54818c92f7b3cb`
+- OnePlayer `0.14.55 (222)`, bundle and MinOS 15.0 independently verified.
+
+Target-device feedback: **“好像我还是能感受到卡顿感”**. This is controlling evidence; Build222 is not a successful Home smoothness fix. The supplied recording `RPReplay_Final1787854824.mp4` is 510×1108, 30fps, 272 frames, ~9.07s. Frame tracking shows the clearest near-zero→large-movement transitions around ~2.70s and ~5.20s coincide with a new visible touch indicator / new swipe start, so those two transitions are **not** valid app-hitch samples. Continuous single-swipe segments do not expose the earlier clean one-recorded-frame macro hold/catch-up signature at 30fps, but 30fps cannot resolve the target device's 120Hz micro-stutter and does not override the user's tactile result.
+
+Conclusion: **offscreen auto-advance is not sufficient as the Home root cause.** The remaining architecture candidate is the root-level, always-mounted `persistentCarouselBackdrop`: even away from Hero it keeps a full-screen 1400px image with `scaleEffect(1.12)` + `blur(radius: 30)` behind the moving Home scroll. `carouselPreloadLayer` also remains mounted and requests 1400px artwork for every carousel item, but it should be isolated separately rather than changed in the same A/B.
+
+**Build222 evidence: Code written ✅ / exact scope+protected-path guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / perceived vertical hitching remains ❌ / auto-advance-only isolation rejected as sufficient ✅ / not stable.**
+
 ## Next exact action
 
-Install Build221 on the target device, repeat the same horizontal-drag cadence test with the on-screen FPS meter if convenient, and export App logs. The decisive comparison is whether active-drag `persistent` callbacks and their repeatable 50 ms gaps disappear while Hero callbacks remain. Also note whether the drag itself improves but release/settle gains a new hitch, because Build221 intentionally resumes the existing persistent transition after touch release. Do not promote persistent suppression to a final design until this A/B is measured.
+Keep Build221 as the separate horizontal-drag A/B pending device test. For Home vertical smoothness, do not tune auto-advance further. The next independent sibling A/B should isolate only the always-mounted full-screen persistent backdrop while Home is vertically away from Hero, leaving preload, Hero, horizontal gesture/state ownership and all Build215/219 contracts unchanged. If that materially improves vertical scrolling, persistent blur/composition becomes a causal architecture component; if not, reject it before testing preload separately.
