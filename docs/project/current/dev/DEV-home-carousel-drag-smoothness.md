@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build219 / 0.14.52 is real-device diagnostic tested. The explicit drag-local 120 Hz frame-rate request materially raised the complete delivered-touch → progress-publication → SwiftUI-render → display chain from roughly 50–60 Hz to roughly 98–110 Hz, proving the frame-rate request is effective and directly relevant to the residual tactile smoothness gap. Build215 motion semantics remain retained and unchanged. The remaining major evidence is now episodic 34–50 ms display gaps, frequently aligned within ~3–25 ms of Hero/persistent 1400px image callbacks.**
+**Active — Build221 / 0.14.54 is the current CI/IPA-verified carousel diagnostic A/B; target-device testing is pending. Build219 proved the drag-local maximum-refresh request works and raised the delivered-touch → progress → SwiftUI-render → display chain to roughly 98–110 Hz. Its remaining strongest repeated hitch pattern is a 50 ms display gap about 19.6–25.3 ms after a persistent 1400px callback. Build221 keeps all Build215/219 motion and 120 Hz contracts, but during active drag holds the current blurred persistent backdrop at opacity 1 and does not mount the transition-target persistent image; Hero transition remains unchanged.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
@@ -250,6 +250,25 @@ Remaining episodic hitch evidence is now stronger: Build219 still recorded 13 di
 
 **Build219 evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic tested ✅ / 120 Hz request effectiveness proven ✅ / residual image-presentation hitch lead strengthened / stable ❌.**
 
+## Build221 / 0.14.54 persistent-drag isolation candidate
+
+Source inspection after Build219 established that the transition target is first mounted on the first non-zero post-acquisition render sample. Both target Hero and target persistent use their own `EmbyCachedRemoteImage` instances. With preload/render-pool hits, each loader synchronously adopts the already-decoded 1400px `UIImage`, but the target persistent path then presents it as a full-screen layer with `scaleEffect(1.12)` and `blur(radius: 30)`. Build212 already measured the synchronous callback/contrast work at only ~1–3 ms, so the repeatable later 50 ms gap is more consistent with subsequent presentation/compositing than decode or contrast itself.
+
+Build221 makes one diagnostic presentation isolation only:
+
+- branch `diag/home-carousel-persistent-drag-isolation-build221`;
+- tested source `26fc82771b6778af14974fdac293ece0685fc76d`; durable cleanup head `1d6df7f2490a5ef5968cafb229a46cba93c622db` (temporary CI workflow/trigger deletion only);
+- during `isCarouselDragging`, current persistent stays opacity 1 and transition-target persistent is not mounted;
+- on release, the existing persistent transition path resumes; Hero target/crossfade is unchanged;
+- Build219 exact device-max refresh request remains unchanged; coalesced/predicted touches still do not drive interactive render;
+- Interaction, State, Core, shared image infrastructure and P0/Frozen paths are unchanged;
+- run/job `33090175887 / 98580579889` — success;
+- artifact ID `9654120029`; artifact SHA-256 `f2d18a723ae769c9ad4a3f396919567afe2a07affe8d47610777d6dd5f7029d4`;
+- IPA SHA-256 `d2ee4fb2d40c251399951bc72ba6ad35fbe8ba3bfd72b861274b9b2c38fe0d9c`; source ZIP SHA-256 `aa6b700ab2aec163893c78316f80a09ab8d711797f01380ee3ed3d1e72576e97`;
+- OnePlayer `0.14.54 (221)`, bundle, MinOS 15.0, ProMotion key and source contracts independently verified.
+
+**Build221 evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending ❌ / diagnostic only / stable ❌.**
+
 ## Next exact action
 
-Retain the drag-local maximum-refresh request as an evidence-backed candidate behavior and do not move to coalesced/predicted render authority. Inspect the exact Hero/persistent 1400px image callback → image publication → SwiftUI/presentation path and identify the minimal source-owned work that can explain the repeatable 34–50 ms gaps. Do not defer, suppress or re-order image updates until the real definitions/call sites/state ownership are inspected. Do not retune travel/easing/backdrop or add smoothing/timers.
+Install Build221 on the target device, repeat the same horizontal-drag cadence test with the on-screen FPS meter if convenient, and export App logs. The decisive comparison is whether active-drag `persistent` callbacks and their repeatable 50 ms gaps disappear while Hero callbacks remain. Also note whether the drag itself improves but release/settle gains a new hitch, because Build221 intentionally resumes the existing persistent transition after touch release. Do not promote persistent suppression to a final design until this A/B is measured.
