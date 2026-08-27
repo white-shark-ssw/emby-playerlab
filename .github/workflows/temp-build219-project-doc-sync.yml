@@ -1,0 +1,166 @@
+name: Build219 Project Authority Sync
+
+on:
+  push:
+    branches: [diag/home-carousel-120hz-request-build219]
+    paths:
+      - ".github/build219-project-doc-sync-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Patch Build217 result and Build219 candidate
+        run: |
+          set -euo pipefail
+          git pull --ff-only origin main
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              s = p.read_text()
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly 1 match, got {count}')
+              p.write_text(s.replace(old, new, 1))
+
+          def replace_between(path, start, end, new_body, label):
+              p = Path(path)
+              s = p.read_text()
+              if s.count(start) != 1 or s.count(end) != 1:
+                  raise SystemExit(f'{label}: marker count mismatch')
+              a = s.index(start)
+              b = s.index(end, a)
+              p.write_text(s[:a] + new_body + s[b:])
+
+          # Active checkpoint
+          dev = 'docs/project/current/dev/DEV-home-carousel-drag-smoothness.md'
+          replace_once(dev,
+          '**Active — Build217 / 0.14.50 cadence-diagnostic IPA is CI/IPA verified and awaiting target-device logging. Build215 remains the latest real-device carousel behavior evidence: acquisition-relative start and opaque foreground fixed the coarse start/ghosting, but the overall drag still trails EX in micro-smoothness. Build217 deliberately does not retune motion; it measures delivered/coalesced touch cadence, progress publication, SwiftUI render-probe updates, passive display-frame gaps and nearest Hero/persistent/preload 1400px image callbacks so the residual “smooth glass vs rough paper” gap can be attributed from real-device timing evidence.**',
+          '**Active — Build217 / 0.14.50 target-device cadence logging is complete and strongly indicates a ~60 Hz touch→publish→render/display cadence despite a 120 Hz-capable target device; Build219 / 0.14.52 is the current CI/IPA-verified A/B candidate and requests the device maximum refresh only during an active horizontal drag. Build215 behavior contracts remain retained: acquisition-relative start, opaque foreground and full-width page slots stay unchanged. Build219 still does not use coalesced/predicted touches for render motion.**',
+          'DEV status')
+
+          build217_219 = '''## Build217 / 0.14.50 target-device cadence result
+
+Build217 was installed on iPhone 15 Pro Max / iOS 17.0 and the exported App log `OnePlayer-App-1787833843.log` contains **13** `HomeCarouselCadence` drag summaries.
+
+Key evidence:
+
+- every drag reports `maximum_fps=120`;
+- the diagnostic display link recorded **1603** intervals and all **1603** were `>=12.5 ms`; ordinary continuous-drag records cluster around ~16.7 ms display cadence rather than 8.33 ms;
+- delivered UIKit touch callbacks total **1486** samples. In ordinary continuous drags their average gaps are typically ~16.5–17.4 ms; long/micro holds create larger aggregate averages in several records;
+- the same events expose **5021 coalesced touch samples**, with ordinary-drag spacing commonly ~4.17–5.7 ms. The higher-fidelity touch data therefore exists, but Build217 intentionally does not use it as render authority;
+- distinct `transitionProgress` publications total **1421** and SwiftUI render-probe changes total **1415** (~99.6% correspondence), so there is no evidence that SwiftUI is discarding roughly half of an already-120-Hz position stream;
+- occasional 33–45 ms display gaps still exist and some occur ~10–13 ms after a `persistent` 1400px image callback, consistent with Build212's separate image-presentation lead. Those isolated gaps can explain occasional knocks but not the continuous glass-vs-paper texture by themselves.
+
+Current interpretation: the persistent tactile roughness is now more strongly associated with the approximately 60 Hz delivered-touch/progress/render/display cadence than with another travel/easing/backdrop curve. This is still a diagnostic conclusion, not a stable fix.
+
+**Build217 evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic tested ✅ / cadence lead established ✅ / stable ❌.**
+
+## Build219 / 0.14.52 maximum-refresh A/B candidate
+
+Build219 is deliberately smaller than Build217 and changes no carousel owner/motion mapping:
+
+- branch: `diag/home-carousel-120hz-request-build219`;
+- Build217 durable base: `ab65b795b8e99d2eeb61cbfc8740bc18c82c49a4`;
+- tested source: **`0b894bc37fcd0086aeaf9e1a29de0e85f5b0ee94`**;
+- durable cleanup head: **`a5050075ccceaf46196696bfa3b812293800f340`**; tested-source → cleanup delta removes only the temporary Build219 CI workflow/trigger;
+- runtime delta from Build217 is only `AppIdentity` plus `EmbyHomeCarouselCadenceDiagnosticsV3`;
+- when `UIScreen.main.maximumFramesPerSecond > 60`, the existing drag-local diagnostic `CADisplayLink` requests an exact `CAFrameRateRange` at that device maximum. On the target device this means 120 Hz. A 60 Hz device receives no range request;
+- the log now records `requested_fps` alongside `maximum_fps`;
+- delivered touch remains render authority; coalesced touches remain observation-only; predicted touch remains release-only;
+- Interaction/State/Hero/Core/shared image infrastructure and all P0/Frozen paths are byte-for-byte outside the Build217→219 product delta;
+- run/job: **`33080240879 / 98545151906` — success**;
+- artifact: `OnePlayer-0.14.52-build219-home-carousel-120hz-request`; ID **`9649815558`**;
+- artifact digest / independently recalculated ZIP SHA-256: **`f4303434b3ed1215f122093a02ddc774492c4406b6916876b2e777858a69ca49`**;
+- IPA SHA-256: **`a0b7bad3c563f76e3e560f55da6eec67697a8bf609b70b5a672ee1a0ed1ab85e`**;
+- source ZIP SHA-256: **`85815c74acf37840375e245d15752a40184bf72f3aa76aebbb2091e8b5ec2ec1`**;
+- independent verification passed for artifact/embedded hashes, IPA archive, `com.embyplayerlab.app`, OnePlayer `0.14.52 (219)`, `MinimumOSVersion=15.0`, ProMotion Info.plist key and exact source contracts.
+
+**Build219 evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device A/B pending / stable ❌.**
+
+'''
+          replace_between(dev, '## Build217 / 0.14.50 cadence diagnostic evidence\n', '## Next exact action\n', build217_219, 'DEV Build217/219 evidence')
+          replace_once(dev,
+          'Install Build217 on iPhone 15 Pro Max / iOS 17.0, keep App logging enabled, and perform several ordinary left/right drags including slow micro-drags and direction reversals. Then export the App log. Attribute the residual gap from `HomeCarouselCadence` touch/progress/SwiftUI/display/image timing before changing any motion mapping. Do not retune travel/easing/backdrop timing or add smoothing until the target-device log supplies evidence.',
+          'Install Build219 on iPhone 15 Pro Max / iOS 17.0 and repeat the same ordinary/micro/reversal horizontal drags with App logging enabled. Export the App log and compare `requested_fps`, delivered/coalesced touch gaps, progress/render cadence and display intervals against Build217. If display and delivered-touch cadence both move toward ~8.33 ms, the max-refresh request is the minimal lead. If display becomes ~8.33 ms but delivered/progress remain ~16.7 ms, only then investigate a higher-fidelity visual-input path. If display remains ~16.7 ms despite `requested_fps=120`, investigate system/presentation pacing before touching motion mapping. Do not add smoothing or let coalesced/predicted touch own motion yet.',
+          'DEV next action')
+
+          # Module status
+          module = 'docs/project/MODULE_STATUS.md'
+          old_carousel = '| Home carousel interaction | **Active — Build217 cadence diagnostic CI/IPA verified; target-device log pending** | Build215 remains the latest real-device behavior evidence: acquisition-relative X and opaque foreground fixed the coarse start/ghosting, but residual micro-smoothness still trails EX. Build217 / 0.14.50 preserves that behavior and only measures delivered/coalesced touch cadence, progress publication, SwiftUI render updates, passive display-frame gaps and nearest Hero/persistent/preload 1400px image callbacks. Tested source `088dcfb0f112d4f2a66371bb98272b5af9f49283`; run/job `33069670314 / 98508381540`; artifact `9645320748`; IPA SHA-256 `a2cf700b791cc66a60416b0250d501758aec532371dd029272066eaac4722bef`; MinOS 15.0 independently verified. Keep single UIKit owner, `pageStep = width`, acquisition-relative X, opaque foreground and original 0.28/0.48 release contracts. Build217 is not real-device tested or stable yet. Read `DEV-home-carousel-drag-smoothness`. |'
+          new_carousel = '| Home carousel interaction | **Active — Build217 cadence diagnostic real-device tested; Build219 120Hz-request A/B CI/IPA verified** | Build217 target-device App log captured 13 drags on a device reporting `maximum_fps=120`: 1603/1603 display intervals were ≥12.5 ms and ordinary continuous drags cluster near ~16.7 ms; delivered touch/progress/render likewise cluster near ~60 Hz, while 5021 coalesced samples show substantially finer input exists. 1421 distinct progress publishes vs 1415 SwiftUI render updates rejects “SwiftUI drops half of a 120Hz stream” as the primary explanation. Build219 / 0.14.52 preserves Build215/217 motion and only requests the device maximum frame-rate range on the existing drag-local diagnostic display link; coalesced remains observation-only and predicted remains release-only. Tested source `0b894bc37fcd0086aeaf9e1a29de0e85f5b0ee94`; run/job `33080240879 / 98545151906`; artifact `9649815558`; IPA SHA-256 `a0b7bad3c563f76e3e560f55da6eec67697a8bf609b70b5a672ee1a0ed1ab85e`; MinOS 15.0 independently verified. Real-device A/B pending; not stable. Read `DEV-home-carousel-drag-smoothness`. |'
+          replace_once(module, old_carousel, new_carousel, 'MODULE carousel')
+          replace_once(module,
+          '| Other product modules | Active parallel work | Build216 / 0.14.49 remains the latest accepted overall runtime baseline. Home-carousel Build217 / 0.14.50 is a separate diagnostic CI/IPA-verified line awaiting target-device App-log evidence; poster-scroll Build218 / 0.14.51 is separately CI/IPA verified and awaiting target-device A/B. Poster Build218 does not modify Home carousel owner files. `EmbySharedImageAndNavigation.swift` remains shared infrastructure, so whichever Active task integrates second must resync against then-current `main` and rerun affected validation. |',
+          '| Other product modules | Active parallel work | Build216 / 0.14.49 remains the latest accepted overall runtime baseline. Home-carousel Build219 / 0.14.52 is a separate CI/IPA-verified maximum-refresh diagnostic A/B awaiting target-device logging; Build217 is its real-device diagnostic predecessor. Poster-scroll Build218 remains a separate active line with its own Home/grid evidence and transparency correction. Shared infrastructure changes must be reconciled before integration; neither active candidate replaces Build216. |',
+          'MODULE parallel')
+
+          # Build/test index
+          index = 'docs/project/BUILD_TEST_INDEX.md'
+          p = Path(index)
+          s = p.read_text()
+          if '**Build219 / 0.14.52**' in s:
+              raise SystemExit('BUILD_TEST_INDEX already contains Build219')
+          build216 = '| **Build216 / 0.14.49** | Detail episode-range inertia interruption | **Target-device accepted; stable and merged.** Range-pill taps synchronously stop active native episode-row deceleration at the current offset before the accepted Build191 range-first selection and existing 0.32 s target scroll. Tested source `dc00cac9f35ee4a3b950e4bb030bb324baf90b18`; run/job `33064051545 / 98489652724`; artifact `9643031850`; IPA SHA-256 `e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075`; MinOS 15.0 verified. User accepted on iPhone 15 Pro Max / iOS 17.0 on 2026-08-27; PR #261 merged at `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`. Build182/Build191/Build195/Build178 and P0 playback/transport remain untouched. |'
+          build217 = '| **Build217 / 0.14.50** | Home-carousel cadence diagnostics | **Target-device diagnostic tested; ~60Hz cadence lead established, not a fix.** On 13 logged drags `maximum_fps=120`, yet all 1603 display intervals were ≥12.5 ms and ordinary continuous drags cluster around ~16.7 ms; delivered touch/progress/render similarly cluster near ~60 Hz. Coalesced touch exposes much finer samples (5021 vs 1486 delivered), while 1421 progress changes vs 1415 SwiftUI render changes shows SwiftUI largely follows what it receives. Occasional 33–45 ms gaps still correlate with some 1400px image callbacks but do not explain the continuous rough-paper feel alone. Tested source `088dcfb0f112d4f2a66371bb98272b5af9f49283`; run/job `33069670314 / 98508381540`; artifact `9645320748`; IPA SHA-256 `a2cf700b791cc66a60416b0250d501758aec532371dd029272066eaac4722bef`. Diagnostic tested; not stable. |'
+          build219 = '| **Build219 / 0.14.52** | Home-carousel maximum-refresh request A/B | **CI/IPA verified; target-device A/B pending.** Keeps Build215/217 motion/release contracts and does not let coalesced/predicted touch drive motion. During active horizontal drag only, the existing diagnostic `CADisplayLink` requests an exact range at `UIScreen.main.maximumFramesPerSecond` when >60 (120 Hz on target device) and logs `requested_fps`. Tested source `0b894bc37fcd0086aeaf9e1a29de0e85f5b0ee94`; cleanup head `a5050075ccceaf46196696bfa3b812293800f340`; run/job `33080240879 / 98545151906`; artifact `9649815558`; artifact SHA-256 `f4303434b3ed1215f122093a02ddc774492c4406b6916876b2e777858a69ca49`; IPA SHA-256 `a0b7bad3c563f76e3e560f55da6eec67697a8bf609b70b5a672ee1a0ed1ab85e`; source ZIP SHA-256 `85815c74acf37840375e245d15752a40184bf72f3aa76aebbb2091e8b5ec2ec1`; MinOS 15.0 independently verified. Not stable. |'
+          if s.count(build216) != 1:
+              raise SystemExit(f'BUILD_TEST Build216 anchor count={s.count(build216)}')
+          p.write_text(s.replace(build216, build216 + '\n' + build217 + '\n' + build219, 1))
+
+          # Project state
+          state = 'docs/project/PROJECT_STATE.md'
+          replace_once(state,
+          '_Last updated after Build218 / 0.14.51 poster-grid candidate target-device Home testing. Build216 remains the latest real-device accepted overall runtime baseline for merged product work; Home-carousel Build217 remains an independent diagnostic line, while poster Build218 is CI/IPA verified but not accepted: Home still visibly hitches, grid A/B is pending, and a shared transparent-Logo presentation regression was identified and corrected in source only._',
+          '_Last updated after Build217 / 0.14.50 Home-carousel target-device cadence logging and Build219 / 0.14.52 maximum-refresh A/B CI/IPA verification. Build216 remains the latest real-device accepted overall merged baseline. Home-carousel Build219 and poster-scroll Build218 remain independent Active lines; neither is accepted/stable._',
+          'PROJECT_STATE header')
+          replace_once(state,
+          'Next action: inspect the post-acquisition touch→state→SwiftUI render/compositing cadence for evidence of sub-frame irregularity. Do not retune travel/easing or change backdrop timing solely from the current subjective residual gap; backdrop timing remains an unproven hypothesis.',
+          '''### Build217 cadence result and Build219 current diagnostic candidate
+
+Build217 target-device App logging now supplies the missing cadence evidence. Across 13 horizontal drags the device reported `maximum_fps=120`, but all 1603 observed display intervals were at least 12.5 ms and normal continuous drags sit near ~16.7 ms. Delivered touch/progress/render cadence is similarly near ~60 Hz, while coalesced touch samples are substantially finer. SwiftUI render-probe changes (1415) nearly match distinct progress publications (1421), so the current evidence does not support “SwiftUI drops half of an already-120-Hz position stream” as the main cause. Some isolated 33–45 ms display gaps still align with 1400px image callbacks and remain a secondary hitch source.
+
+Build219 / 0.14.52 performs the smallest discriminating A/B: only the existing drag-local diagnostic `CADisplayLink` requests the target device maximum frame-rate range (120 Hz on iPhone 15 Pro Max), and `requested_fps` is logged. Build215/217 gesture owner, acquisition-relative render, opaque foreground, page slots, release semantics, backdrop mapping, coalesced-touch observation-only rule and all P0/Frozen paths remain unchanged.
+
+Build219 tested source `0b894bc37fcd0086aeaf9e1a29de0e85f5b0ee94`; cleanup head `a5050075ccceaf46196696bfa3b812293800f340`; run/job `33080240879 / 98545151906`; artifact `9649815558`; digest `sha256:f4303434b3ed1215f122093a02ddc774492c4406b6916876b2e777858a69ca49`; IPA SHA-256 `a0b7bad3c563f76e3e560f55da6eec67697a8bf609b70b5a672ee1a0ed1ab85e`; source ZIP SHA-256 `85815c74acf37840375e245d15752a40184bf72f3aa76aebbb2091e8b5ec2ec1`; MinOS 15.0 independently verified. **CI/IPA verified / real-device A/B pending / not stable.**
+
+Next carousel action: install Build219, repeat ordinary/micro/reversal drags with App logging, and distinguish whether requested 120 Hz changes display cadence, delivered-touch cadence, both, or neither before considering any higher-fidelity visual-input path.''',
+          'PROJECT_STATE carousel next action')
+          replace_once(state,
+          'Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel Build215 and poster-scroll remain independent Active lines with separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.',
+          'Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel Build219 and poster-scroll Build218 remain independent Active lines with separate branches/evidence; Build217 is the real-device diagnostic predecessor for Build219. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.',
+          'PROJECT_STATE parallel')
+
+          # Technical decision D012
+          decisions = 'docs/project/TECHNICAL_DECISIONS.md'
+          old_candidate = '''Carousel Build214 / 0.14.47 passed CI/IPA but was retired before distribution due identity collision with parallel poster work. Current carousel candidate is **Build215 / 0.14.48**, tested source `d22634ece2f29eba2e60de01182bf15d4ba554a7`, cleanup head `01a13615fc056fd3b13296d98abfaa7a6aa2b46d`; run/job `33058337107 / 98470624555`; artifact `9640692378`; IPA SHA `6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`; MinOS 15.0 verified. Build215 target-device testing positively confirms two parts of this contract: the acquisition-relative start is now about as fine as EX, and keeping interactive foreground pages opaque removes the previous blurred/ghosted feel. The overall tactile smoothness still trails EX, described by the user as smooth glass vs rough paper. The residual cause is not yet established; a backdrop-blend timing difference seen in 30fps analysis is only a hypothesis. Evidence is **Code written / CI passed / IPA produced+verified / real-device tested / partial success / not stable**.
+
+Retain acquisition-relative X, opaque foreground, page slots and the original release semantics. Do not add another easing/smoothing layer or change the backdrop curve without stronger evidence; investigate the touch→state→SwiftUI render/compositing cadence first.'''
+          new_candidate = '''Carousel Build214 / 0.14.47 passed CI/IPA but was retired before distribution due identity collision with parallel poster work. Build215 / 0.14.48 remains the retained behavior baseline for the current line: target-device testing confirmed the acquisition-relative start is about as fine as EX and opaque interactive foreground removes the previous blurred/ghosted feel, while the overall tactile smoothness still trails EX.
+
+Build217 / 0.14.50 then measured that residual directly. On 13 target-device drags `maximum_fps=120`, yet all 1603 display intervals were ≥12.5 ms and ordinary continuous drags cluster around ~16.7 ms. Delivered touch/progress/render cadence likewise clusters near ~60 Hz; coalesced touch exposes much finer input, while 1421 distinct progress publications vs 1415 SwiftUI render updates show SwiftUI substantially follows the position stream it is given. Occasional 33–45 ms image-adjacent gaps remain a secondary hitch lead, but another easing/backdrop curve is no longer the primary evidence-backed direction.
+
+Build219 / 0.14.52 is therefore a discriminating diagnostic A/B, not a smoothing fix: during active horizontal drag only, the existing diagnostic `CADisplayLink` requests an exact frame-rate range at the device maximum when that maximum is >60; on the target device this is 120 Hz. Delivered touch remains render authority, coalesced touch stays observation-only and predicted touch stays release-only. If target-device logging shows display and delivered-touch cadence both moving toward 8.33 ms, the frame-rate request is the minimal lead; if display reaches 8.33 ms but delivered/progress remain ~16.7 ms, only then is a higher-fidelity visual-input path justified; if display remains ~16.7 ms despite `requested_fps=120`, investigate system/presentation pacing instead. Do not add smoothing/interpolation or change the backdrop curve before this A/B. Build219 is **CI/IPA verified / real-device pending / not stable**.'''
+          replace_once(decisions, old_candidate, new_candidate, 'TECH D012 candidate')
+
+          print('Build217 result + Build219 project authority patches: PASS')
+          PY
+          git diff --check
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md
+          git commit -m "Docs: record Build217 cadence result and Build219 A/B"
+          git push origin HEAD:main
