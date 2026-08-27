@@ -1,0 +1,85 @@
+name: Apply Build216 detail range inertia
+
+on:
+  push:
+    branches: [fix/detail-episode-range-inertia-build216]
+    paths:
+      - ".github/build216-detail-range-inertia-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/detail-episode-range-inertia-build216
+          fetch-depth: 0
+      - name: Apply minimal detail range inertia patch
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          detail_path = Path("Sources/UI/EmbyMediaDetailView.swift")
+          detail = detail_path.read_text()
+
+          old = '''    @State private var heroScrollState = EmbyDetailHeroScrollState()\n    @State private var mediaInfoExpanded = false\n'''
+          new = '''    @State private var heroScrollState = EmbyDetailHeroScrollState()\n    @StateObject private var episodeScrollController = EmbyDetailEpisodeScrollController()\n    @State private var mediaInfoExpanded = false\n'''
+          if detail.count(old) != 1:
+              raise SystemExit("detail state insertion point changed")
+          detail = detail.replace(old, new, 1)
+
+          old = '''                ScrollView(.horizontal, showsIndicators: false) {\n                    LazyHStack(alignment: .top, spacing: 12) {\n                        ForEach(model.selectedSeasonEpisodes) { episode in episodePreviewCard(episode).id(episode.id) }\n                    }\n                    .padding(.horizontal, 20)\n                }\n                .frame(height: 165, alignment: .top)\n'''
+          new = '''                ScrollView(.horizontal, showsIndicators: false) {\n                    LazyHStack(alignment: .top, spacing: 12) {\n                        ForEach(model.selectedSeasonEpisodes) { episode in episodePreviewCard(episode).id(episode.id) }\n                    }\n                    .padding(.horizontal, 20)\n                    .background(EmbyDetailEpisodeNativeScrollProbe(controller: episodeScrollController))\n                }\n                .frame(height: 165, alignment: .top)\n'''
+          if detail.count(old) != 1:
+              raise SystemExit("episode horizontal ScrollView block changed")
+          detail = detail.replace(old, new, 1)
+
+          old = '''    private func jumpToEpisodeRange(_ range: EmbyEpisodeRange, proxy: ScrollViewProxy) {\n        let previousOffset = model.selectedEpisodeRangeOffset\n        DiagnosticsLogger.shared.log("EpisodeRangeJump", "tap fromOffset=\\(previousOffset) toOffset=\\(range.startOffset) title=\\(range.title)")\n        model.selectEpisodeRange(range.startOffset)\n'''
+          new = '''    private func jumpToEpisodeRange(_ range: EmbyEpisodeRange, proxy: ScrollViewProxy) {\n        let stoppedDeceleration = episodeScrollController.stopDeceleration()\n        let previousOffset = model.selectedEpisodeRangeOffset\n        DiagnosticsLogger.shared.log("EpisodeRangeJump", "tap fromOffset=\\(previousOffset) toOffset=\\(range.startOffset) title=\\(range.title) stoppedDeceleration=\\(stoppedDeceleration)")\n        model.selectEpisodeRange(range.startOffset)\n'''
+          if detail.count(old) != 1:
+              raise SystemExit("range jump block changed")
+          detail = detail.replace(old, new, 1)
+          detail_path.write_text(detail)
+
+          Path("Sources/UI/EmbyDetailEpisodeScrollControl.swift").write_text('''import SwiftUI\nimport UIKit\n\nfinal class EmbyDetailEpisodeScrollController: ObservableObject {\n    private weak var probeView: UIView?\n    private weak var scrollView: UIScrollView?\n\n    func attach(from probe: UIView) {\n        precondition(Thread.isMainThread)\n        guard let scrollView = ancestorScrollView(from: probe) else { return }\n        probeView = probe\n        self.scrollView = scrollView\n    }\n\n    func detach(from probe: UIView) {\n        precondition(Thread.isMainThread)\n        guard probeView === probe else { return }\n        probeView = nil\n        scrollView = nil\n    }\n\n    @discardableResult\n    func stopDeceleration() -> Bool {\n        precondition(Thread.isMainThread)\n        guard let scrollView, scrollView.isDecelerating else { return false }\n        scrollView.setContentOffset(scrollView.contentOffset, animated: false)\n        return true\n    }\n\n    private func ancestorScrollView(from probe: UIView) -> UIScrollView? {\n        var current: UIView? = probe\n        while let view = current {\n            if let scrollView = view as? UIScrollView { return scrollView }\n            current = view.superview\n        }\n        return nil\n    }\n}\n\nprivate final class EmbyDetailEpisodeScrollProbeUIView: UIView {\n    var hierarchyDidChange: ((UIView) -> Void)?\n\n    override func didMoveToSuperview() {\n        super.didMoveToSuperview()\n        hierarchyDidChange?(self)\n    }\n\n    override func didMoveToWindow() {\n        super.didMoveToWindow()\n        hierarchyDidChange?(self)\n    }\n\n    override func layoutSubviews() {\n        super.layoutSubviews()\n        hierarchyDidChange?(self)\n    }\n}\n\nstruct EmbyDetailEpisodeNativeScrollProbe: UIViewRepresentable {\n    let controller: EmbyDetailEpisodeScrollController\n\n    func makeUIView(context: Context) -> EmbyDetailEpisodeScrollProbeUIView {\n        let view = EmbyDetailEpisodeScrollProbeUIView(frame: .zero)\n        view.backgroundColor = .clear\n        view.isUserInteractionEnabled = false\n        view.hierarchyDidChange = { [weak controller] probe in controller?.attach(from: probe) }\n        DispatchQueue.main.async { [weak controller, weak view] in\n            guard let view else { return }\n            controller?.attach(from: view)\n        }\n        return view\n    }\n\n    func updateUIView(_ uiView: EmbyDetailEpisodeScrollProbeUIView, context: Context) {\n        DispatchQueue.main.async { [weak controller, weak uiView] in\n            guard let uiView else { return }\n            controller?.attach(from: uiView)\n        }\n    }\n\n    static func dismantleUIView(_ uiView: EmbyDetailEpisodeScrollProbeUIView, coordinator: Void) {\n        uiView.hierarchyDidChange = nil\n        controllerDetach(uiView)\n    }\n\n    private static func controllerDetach(_ uiView: EmbyDetailEpisodeScrollProbeUIView) {\n        // SwiftUI does not pass the representable value into dismantleUIView; the weak scroll reference\n        // naturally expires with the native hierarchy, so no second lifetime owner is introduced here.\n    }\n}\n''')
+
+          check_path = Path("scripts/check_detail_episode_selection_navigation.py")
+          check = check_path.read_text()
+          old = '''detail = (root / "Sources/UI/EmbyMediaDetailView.swift").read_text()\npicker = (root / "Sources/UI/EmbyEpisodePickerView.swift").read_text()\n'''
+          new = '''detail = (root / "Sources/UI/EmbyMediaDetailView.swift").read_text()\nepisode_scroll_control = (root / "Sources/UI/EmbyDetailEpisodeScrollControl.swift").read_text()\npicker = (root / "Sources/UI/EmbyEpisodePickerView.swift").read_text()\n'''
+          if check.count(old) != 1:
+              raise SystemExit("detail checker input block changed")
+          check = check.replace(old, new, 1)
+          old = '''summary = block(detail, "    var selectedEpisodeSelectionSummary: String? {", "    var visiblePeople: [EmbyPerson] {")\n\nrequire('return Button { model.selectEpisode(episode) } label:' in preview, "detail episode card must select only")\n'''
+          new = '''summary = block(detail, "    var selectedEpisodeSelectionSummary: String? {", "    var visiblePeople: [EmbyPerson] {")\nrange_jump = block(detail, "    private func jumpToEpisodeRange(_ range: EmbyEpisodeRange, proxy: ScrollViewProxy) {", "    private func episodePreviewCard(_ episode: LibraryItem) -> some View {")\n\nrequire('return Button { model.selectEpisode(episode) } label:' in preview, "detail episode card must select only")\n'''
+          if check.count(old) != 1:
+              raise SystemExit("detail checker block declarations changed")
+          check = check.replace(old, new, 1)
+          marker = '''require('selectedEpisodeID = nil' not in range_selection, "range jump must not clear the selected episode")\n'''
+          extra = '''require('selectedEpisodeID = nil' not in range_selection, "range jump must not clear the selected episode")\nrequire('@StateObject private var episodeScrollController = EmbyDetailEpisodeScrollController()' in detail, "detail must retain one episode-row native scroll controller")\nrequire('.background(EmbyDetailEpisodeNativeScrollProbe(controller: episodeScrollController))' in detail, "episode row must attach the native scroll probe")\nrequire('episodeScrollController.stopDeceleration()' in range_jump, "range jump must stop native episode-row deceleration")\nrequire(range_jump.index('episodeScrollController.stopDeceleration()') < range_jump.index('model.selectEpisodeRange(range.startOffset)'), "deceleration must stop before range selection executes")\nrequire('guard let scrollView, scrollView.isDecelerating else { return false }' in episode_scroll_control, "native stop must be scoped to actual deceleration")\nrequire('scrollView.setContentOffset(scrollView.contentOffset, animated: false)' in episode_scroll_control, "native stop must freeze at the current horizontal content offset")\n'''
+          if check.count(marker) != 1:
+              raise SystemExit("detail checker range marker changed")
+          check = check.replace(marker, extra, 1)
+          check_path.write_text(check)
+
+          identity_path = Path("Sources/Core/AppIdentity.swift")
+          identity = identity_path.read_text()
+          if identity.count('"0.14.46"') != 2:
+              raise SystemExit("AppIdentity baseline changed")
+          identity_path.write_text(identity.replace('"0.14.46"', '"0.14.49"'))
+
+          Path("docs/changelog/CHANGELOG_v0_14_49_build216.md").write_text('''# OnePlayer 0.14.49 / Build216\n\n- Detail episode-range inertia candidate.\n- When the horizontal episode-card row is still decelerating, a range-pill tap first freezes that native row at its current content offset, then runs the existing range-first selection and animated target scroll.\n- Keeps Build191 selection/title/playback semantics, Build182 detail Hero/cache ownership, Build178 canonical order, Build195 player picker and all P0 playback/transport contracts unchanged.\n- Deployment Target remains iOS 15.0.\n''')
+          PY
+          python3 scripts/check_detail_episode_selection_navigation.py
+          python3 scripts/check_detail_page_performance.py
+          git diff --check
+          git status --short
+          git config user.name "OnePlayer CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add Sources/UI/EmbyMediaDetailView.swift Sources/UI/EmbyDetailEpisodeScrollControl.swift Sources/Core/AppIdentity.swift scripts/check_detail_episode_selection_navigation.py docs/changelog/CHANGELOG_v0_14_49_build216.md
+          git commit -m "Stop detail episode inertia before range jumps"
+          git push origin HEAD:fix/detail-episode-range-inertia-build216
