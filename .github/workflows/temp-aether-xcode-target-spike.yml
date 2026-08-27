@@ -49,7 +49,7 @@ jobs:
               url: https://github.com/mpvkit/MPVKit.git
               exactVersion: 1.0.0
           targets:
-            AetherEngineOnePlayer:
+            AetherEngine:
               type: framework
               platform: iOS
               deploymentTarget: "16.0"
@@ -60,7 +60,6 @@ jobs:
                   product: MPVKit
               settings:
                 base:
-                  PRODUCT_MODULE_NAME: AetherEngine
                   PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.aetherengine
                   SWIFT_VERSION: "6.0"
                   OTHER_SWIFT_FLAGS: "$(inherited) -module-alias Dovi=Libdovi"
@@ -76,7 +75,7 @@ jobs:
               sources:
                 - path: App
               dependencies:
-                - target: AetherEngineOnePlayer
+                - target: AetherEngine
                 - package: MPVKit
                   product: MPVKit
               settings:
