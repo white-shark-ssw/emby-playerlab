@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build212 / 0.14.45 target-device source-aware diagnostics captured. Home and grid now separate into two evidence-backed paths: Home dragging hitches are tied to memory-hit callback-role 1400px carousel image publishes while callback/contrast work itself is only 1–3 ms; grid has 11 real dragging hitches tied to newly visible 378px network display-image publishes. The earlier single cross-page-root-cause assumption is rejected. No runtime fix is claimed yet; Home changes require reconciliation with the active carousel task, while grid needs a minimal display-image publish/render fix candidate.**
+**Active — Build218 / 0.14.51 CI/IPA was verified and has now been target-device tested on Home. The user still feels obvious Home vertical hitching, and the supplied 30fps recording retains the stop-frame → catch-up signature, so Build218 does not solve Home. Grid 3×3 A/B remains unreported and must not be inferred from the Home result. Build218 also exposed a visual regression: the new shared UIKit display surface left `secondarySystemBackground` behind transparent carousel Logo images. Exact source inspection proves the carousel owner file itself was unchanged; the regression came from poster-task shared infrastructure. The poster branch now contains only the minimal shared-surface transparency correction; no carousel owner file is modified. This correction is code-written only and has no new CI/IPA evidence yet.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -203,6 +203,20 @@ The earlier assumption that Home and all 3×3 routes require one universal root 
 
 **Build212 evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device diagnostic tested ✅ / Home callback/contrast as primary cost rejected ✅ / real grid dragging stalls captured ✅ / two-route cause split established ✅ / runtime fix not yet tested / not stable.**
 
+## Build218 / 0.14.51 — target-device result
+
+Exact tested source: **`ccc3a69f3b77c56a730593f072a2c7dfde599073`**. CI run/job **`33066739271 / 98498551491`** succeeded; artifact ID **`9644109849`**; artifact ZIP SHA-256 `16096a2c3a1b4dcb4ed3bcfa8524e3839f9114eb040e7ee419279555c1e71c4e`; IPA SHA-256 `104eb5266c304102c912eaa2b9e95a4f0ae6183b0bf071fd377b3a52ea8d57bc`; source ZIP SHA-256 `41dfb97a0bfd38cb65ed000b3f9fc2679dc7bf471abe7635020895a5f4f12b90`; OnePlayer 0.14.51 (218), MinOS 15.0 independently verified.
+
+Target-device evidence supplied 2026-08-27:
+
+- User report: **Home still has obvious vertical jitter**. This is the highest-priority evidence and Build218 must not be described as a Home fix.
+- Recording `RPReplay_Final1787833032.mp4`: 510×1108, 30fps, 691 frames, ~23.03s. Frame-to-frame crop translation retains clear stop/catch-up examples: around 6.50s movement is ~2.85 recorded px, 6.53s ~0, 6.57s ~11.98px; around 20.13s ~1.14px, 20.17–20.20s ~0, then 20.23s ~9.07px. 30fps remains only a lower-bound observation of the 120Hz device.
+- This test only establishes the Home result. The user did not provide a 3×3 grid A/B result in this turn, so Build218 grid effectiveness remains pending.
+- Screenshot shows a rectangular background behind the carousel movie Logo. Exact source proves `Sources/UI/EmbyHomeHeroV3.swift` is byte-identical between accepted Build216 main and Build218 (`8a2d5ec00cdd2daa3ef116930e388f18791b580b`). The Logo call uses `EmbyCachedRemoteImage(... contentMode: .fit, showsLoadingIndicator: false)` with no callback, so Build218 routed it through the new poster-task UIKit display surface. That surface kept `backgroundColor = .secondarySystemBackground` even after a transparent Logo loaded, unlike the prior SwiftUI path where that background existed only while no image was present. Therefore the white rectangle **is a Build218 shared-image regression**, not a carousel-owner change.
+- Minimal correction now written on poster branch head **`ac8a8cd0b87c4ee544c8817fec13edeea226826b`**: when the UIKit surface has an image, its background becomes `.clear`; when image is nil it keeps `.secondarySystemBackground`. No Home carousel owner source is touched.
+
+**Evidence now: Build218 code/CI/IPA ✅ / Build218 Home target-device tested and still hitches ❌ / Build218 grid A/B pending / Build218 distributed package has a confirmed transparent-Logo regression ❌ / transparency correction code written ✅ / corrected source CI/IPA pending / not stable.**
+
 ## Parallel safety
 
 - Build211 / 0.14.44 identity is owned by the independent Home-carousel task; poster Build212 does not reuse that identity.
@@ -211,10 +225,10 @@ The earlier assumption that Home and all 3×3 routes require one universal root 
 
 ## Next exact action
 
-1. Do not spend another build on callback/contrast timing; Build212 measured it at only 1–3 ms during Home hitches.
-2. Home: hand the 1400px memory/callback image-publish evidence to the active carousel task and inspect visibility/auto-advance/image-consumer ownership before a runtime patch. Poster task must not independently edit carousel owner files.
-3. Grid: inspect the exact display-only image publication/render path (`network`, `display`, 378px) and select the smallest evidence-backed candidate that reduces SwiftUI/main-thread presentation cost without lowering below rendered device pixels or delaying images via throttle/debounce/timer.
-4. Any Home and grid runtime candidates must be separate A/B builds unless an actual shared source change is independently justified.
+1. Do not modify Home carousel owner files from this task. Build218 Home still hitches, while Build212 already established Home as the separate 1400px carousel-image path owned jointly with the active carousel work.
+2. Treat Build218 as not acceptable for distribution because of the transparent-Logo regression, even though the regression is in shared poster-task infrastructure rather than carousel owner code.
+3. Validate the one-line shared-surface transparency correction with the poster source checker and exact diff, then allocate a new unique poster Build only after checking all Active task identities.
+4. The next poster package should preserve the same grid UIKit-display experiment plus the transparency correction; target-device testing must explicitly cover Library 3×3 / Favorites / More / Search / Tag / Person-Actor grids. Home should be checked only for regression, not used to claim the grid candidate failed.
 5. Preserve all P0 playback/transport/cache/session contracts and iOS 15.0 deployment.
 
 ## Do not repeat

@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after OnePlayer 0.14.49 / Build216 detail episode-range inertia target-device acceptance and PR #261 merge. Build216 is the latest real-device accepted overall runtime baseline for merged product work; Home-carousel Build215 and poster-scroll Build212 remain independent Active lines and are not folded into this baseline._
+_Last updated after Build218 / 0.14.51 poster-grid candidate target-device Home testing. Build216 remains the latest real-device accepted overall runtime baseline for merged product work; Home-carousel Build217 remains an independent diagnostic line, while poster Build218 is CI/IPA verified but not accepted: Home still visibly hitches, grid A/B is pending, and a shared transparent-Logo presentation regression was identified and corrected in source only._
 
 ## Current accepted overall baseline
 
@@ -120,16 +120,15 @@ Next action: inspect the post-acquisition touch→state→SwiftUI render/composi
 
 Work: `DEV-poster-grid-smoothness`.
 
-- Build202 and Build204 were target-device rejected; Build206/209/210 progressively established reliable motion attribution.
-- Build212 / 0.14.45 exact source `4f0a89ab026cd2103f66e5854a1f352d34852e45`; run/job `33045869471 / 98429601490`; artifact `9635696107`; IPA SHA-256 `dcdec181dd16e9b3b666882de8347a76671c743ab8392aa27791d40599eec7a1`; MinOS 15.0.
-- target-device log `OnePlayer-App-1787813666.log` contains 5 Home dragging hitches (43.6–73.8 ms), all following `memory/callback/Primary/1400` image publish by 8.3–12.2 ms. Measured callback/contrast durations are only 1.0–3.2 / 1.0–3.0 ms, so contrast analysis is no longer the primary suspect. The stronger Home lead is carousel large-image publish/presentation during vertical scrolling; this overlaps the active carousel task.
-- the same log contains 11 true grid dragging hitches (31.0–37.3 ms), all following `network/display/Primary/378` publish by 0.0–20.1 ms with a newly appeared grid cell 118.8–177.8 ms old. Carousel callback/contrast timestamps are stale and unrelated.
-- therefore the previous universal cross-page-root-cause assumption is rejected. Home and grid should receive separate minimal runtime candidates.
-- Home runtime changes require explicit reconciliation with `DEV-home-carousel-drag-smoothness`; poster work must not independently modify carousel owner files.
-- Grid next step is exact-source inspection of the display-only image publish/render path, preserving 378px rendered-device requirement and forbidding delay/throttle/debounce/timer workarounds.
-- evidence: **Build212 target-device diagnostic tested / Home callback-cost hypothesis rejected / real grid dragging stalls captured / route split established / performance fix not tested / not stable.**
+- Build212 remains the controlling route-split diagnostic: Home dragging hitches correlate with 1400px carousel callback-role image publication, while 11 true grid dragging hitches correlate with newly visible `network/display/Primary/378` publication. Home and grid remain separate runtime paths.
+- Build218 / 0.14.51 exact tested source `ccc3a69f3b77c56a730593f072a2c7dfde599073`; run/job `33066739271 / 98498551491` success; artifact ID `9644109849`; artifact SHA-256 `16096a2c3a1b4dcb4ed3bcfa8524e3839f9114eb040e7ee419279555c1e71c4e`; IPA SHA-256 `104eb5266c304102c912eaa2b9e95a4f0ae6183b0bf071fd377b3a52ea8d57bc`; source ZIP SHA-256 `41dfb97a0bfd38cb65ed000b3f9fc2679dc7bf471abe7635020895a5f4f12b90`; MinOS 15.0.
+- Build218 changed only the pure display-image presentation path: no callback/no spinner images receive the existing loader output through a UIKit `UIImageView` surface so surrounding SwiftUI poster cells do not observe the loader's image publication. Carousel owner files were not modified.
+- 2026-08-27 target-device result: the user still feels **obvious Home vertical jitter**. The supplied 510×1108@30fps recording retains stop/catch-up frames, so Build218 must not be claimed as a Home fix. This turn does not provide a Library/Favorites/Search/Tag/Person 3×3 A/B result; grid effectiveness is still pending.
+- The same target-device screenshot exposed a white rectangle behind a transparent carousel movie Logo. Exact source inspection proves `EmbyHomeHeroV3.swift` is unchanged from Build216, but its Logo call matches Build218's new shared UIKit display path. The new surface retained `secondarySystemBackground` after the image loaded, unlike the old path, so transparent pixels exposed a rectangular background. This is a poster-task shared-image regression, not a carousel-owner edit.
+- Poster branch head `ac8a8cd0b87c4ee544c8817fec13edeea226826b` contains the minimal source correction: loaded images set the shared UIKit surface background to clear; nil-image placeholder state remains `secondarySystemBackground`. No carousel owner source is touched. This corrected head is only **Code written**; no new CI/IPA or target-device evidence exists yet.
+- Current evidence: **Build218 CI/IPA verified / Build218 Home real-device still hitches / Build218 grid A/B pending / Build218 package visual regression confirmed / transparency correction code written / corrected-source CI+IPA pending / not stable**.
 
-Next: reconcile the Home evidence with the carousel task, and independently design the smallest grid display-image publication/render candidate. Keep P0 Player/MPV/PiP/Transport/Cache/Session and iOS 15.0 contracts untouched.
+Next: keep Home runtime ownership with the active carousel task; validate/package the corrected grid UIKit-display candidate under a new unique Build identity, then explicitly A/B the real 3×3 routes. Do not infer grid failure from the Home-only Build218 test.
 
 ## Parallel integration rule
 
