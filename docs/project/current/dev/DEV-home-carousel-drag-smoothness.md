@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build208 / 0.14.41 is now real-device tested. The full-width page-slot correction is retained, but side-by-side 30 fps recordings versus EX show the remaining lack of “丝滑细腻感” comes from drag-acquisition motion mapping and foreground alpha behavior, not from another travel-percentage problem. No new code should be written until this new evidence is used to replace the visual-easing workaround with an acquisition-relative linear motion model.**
+**Active — Build215 / 0.14.48 is the current carousel candidate. Build208 real-device video analysis proved the remaining EX gap was acquisition-origin + foreground-alpha behavior; Build215 implements acquisition-relative 1:1 render motion while preserving touch-down release authority, keeps full-width page slots, and decouples foreground alpha. CI/IPA are verified; real-device A/B is pending.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
@@ -153,8 +153,22 @@ The next evidence-backed direction is:
 4. decouple foreground alpha from backdrop blend; test foreground as stable/near-opaque spatial page content while backdrop crossfade remains independently controlled;
 5. do not change UIKit ownership or P0/Frozen modules.
 
+## Build214 / Build215 implementation evidence
+
+- Carousel Build214 / 0.14.47 was rebuilt cleanly from the Build208 durable source and passed CI/IPA verification, but was retired before distribution when independent poster work claimed that identity. Never use the carousel Build214 package for attribution.
+- Current valid carousel identity: **OnePlayer 0.14.48 / Build215**.
+- branch `perf/home-carousel-acquisition-relative-build215`.
+- tested source / CI head **`d22634ece2f29eba2e60de01182bf15d4ba554a7`**; durable cleanup head **`01a13615fc056fd3b13296d98abfaa7a6aa2b46d`**, with temporary workflow deletion only between them.
+- horizontal acquisition establishes the render baseline and does not publish the already accumulated touch-down distance.
+- post-acquisition render is exactly `currentTranslation - acquisitionTranslation`; no whole-range easing/interpolator.
+- release remains touch-down authoritative with the existing 0.28 commit and 0.48×width predicted-distance gate, including one-sample fast release.
+- foreground transition pages stay opaque; backdrop crossfade remains independent; full-width `pageStep = width` and first↔last modulo ownership remain unchanged.
+- no new state owner/timer/watchdog/retry/debounce/throttle and no P0/Frozen path change.
+- run/job **`33058337107 / 98470624555` — success**; artifact ID **`9640692378`**; digest **`sha256:31a054244bcfbeb39cc5db663aa7580cb4cc742fe88ca998ce9c9ba7a01e2939`**.
+- IPA SHA-256 **`6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`**; source ZIP SHA-256 **`00d2a0aba071dbbce3554d31dba64f0caa70c22b6e067dedeee0bb3b22ebd694`**.
+- independent verification passed for artifact digest, embedded hashes, IPA archive, OnePlayer `0.14.48 (215)`, MinOS 15.0, icons and exact source contracts.
+- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
+
 ## Next exact action
 
-No code change has been made from this recording analysis yet.
-
-If the user approves continuing, inspect the exact Build208 recognizer/callback contract and implement the smallest acquisition-baseline change without altering the single owner or release thresholds. Separately make only the minimum foreground-alpha decoupling needed for an A/B candidate. Do not add interpolation/timers or another progress owner.
+Target-device A/B Build215 against the recorded Build208 and EX reference. Focus on first visible movement, post-acquisition 1:1 feel, foreground solidity, page separation, reversal through the acquisition baseline, cancel/commit including one-sample fast release, and first↔last wrapping. Do not retune easing/travel percentages before this device evidence.

@@ -97,39 +97,22 @@ Source inspection plus screenshots establish:
 
 Build207 evidence is therefore **real-device tested / foreground layout rejected / not stable**. This is not evidence to change the UIKit gesture owner.
 
-### Current carousel candidate: Build208 / 0.14.41
+### Current carousel candidate: Build215 / 0.14.48
 
-- branch: `perf/home-carousel-page-slots-build208`
-- base: Build207 durable cleanup head `7044ca68c7082cd055a7e4ce42dda6f00fe29674`
-- tested source: **`2ad089f0ea8b4b6827257bb3a91a67c2d3748e5f`**
-- durable cleanup head: **`51c366b6840d77c818eae20e1f3f43c0dbd75c72`**
-- tested-source → cleanup-head: temporary Build208 workflow deletion only; product/runtime source unchanged.
-- runtime product delta from Build207: `Sources/Core/AppIdentity.swift` + `Sources/UI/EmbyHomeCarouselStateV3.swift` only.
-- foreground uses full-width page slots: **`pageStep = width`**.
-- outgoing offset = `-direction × visualProgress × pageStep`; incoming offset = `direction × (1 - visualProgress) × pageStep`.
-- outgoing/incoming page-center separation is exactly one Hero width for every progress value.
-- existing `contentWidth = width - 56` stays unchanged, so adjacent foreground content keeps ~56pt constant separation rather than structural overlap.
-- no new HStack/ScrollView/gesture owner is introduced; this is the same two visible foreground pages and state owner with corrected slot spacing.
-- earliest attenuation is `progress * (1 - 0.85 * (1-progress)^6)` after clamping.
-- compared with Build207, approximate actual displacement at raw 1% / 2% / 4% falls from ~0.35% / 0.75% / 1.70% width to ~0.20% / 0.49% / 1.34% width; around 10% raw progress it has essentially caught up.
-- mid/late drag remains near-linear; endpoint/tail derivative remains 1.0.
-- foreground/backdrop opacity continues to use the same visual progress.
-- raw `transitionProgress`, 0.28 commit, 0.48×width predicted release gate, reversal/settle and first↔last modulo ownership remain unchanged.
-- Frozen Player/MPV/PiP/UnifiedTransport/Cache/Emby playback/session paths untouched.
+Build208 is now the real-device video reference rather than the current candidate. A/B versus EX showed a hold-then-jump acquisition and prolonged visual lag from the easing workaround, while EX behaved like a short take-up followed by nearly 1:1 motion and kept foreground substantially more opaque.
 
-Build208 CI / IPA:
+Build215 retains Build198 one-UIKit-owner lifecycle and Build208 full-width `pageStep = width`, but horizontal acquisition now establishes a render baseline and does not publish the already accumulated touch-down distance. Post-acquisition spatial motion is `currentTranslation - acquisitionTranslation`, with no whole-range easing. Release/commit remains touch-down based with the original 0.28 and 0.48×width gates, including one-sample fast release. Foreground transition pages remain opaque while backdrop crossfade is independent. Wrapping, cancellation/settle and P0/Frozen paths are unchanged.
 
-- run/job: **`33004390654` / `98294100402` — success**
-- source/Frozen guard, Release build, app identity, MinOS, IPA/source packaging and upload all passed.
-- artifact: `OnePlayer-0.14.41-build208-home-carousel-page-slots`
-- artifact ID: **`9620046266`**
-- artifact digest / independently downloaded ZIP SHA-256: **`4ace3db785c131b987bfd9e18dc931e1bdeaf9f7528d85b8807214b45774afbb`**
-- IPA SHA-256: **`24f47ac5cd5685f6eea85b1c3a4fad2841d81f6169a90cd0629bea85a2072308`**
-- source ZIP SHA-256: **`807d03947c0d087ddc54f295e63fdabc37ac0ddfbe0e0f03da4477eb750e95ee`**
-- independently verified: artifact digest exact match; IPA/source embedded checksums match; IPA `unzip -t` passed; bundle `com.embyplayerlab.app`; version/build `0.14.41 (208)`; OnePlayer primary/alternate icons; MinOS 15.0; source snapshot confirms full-width page step, 0.85 earliest attenuation and existing `width - 56` content width.
-- evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / not stable.**
+Carousel Build214 / 0.14.47 passed CI/IPA but was retired before distribution because parallel poster work claimed that identity. Build215 is the valid carousel attribution package.
 
-Next action: target-device A/B Build208 against Build207 and EX. First verify adjacent foreground content keeps a visible stable gap through left/right drag, then verify earliest displacement is reduced without introducing a mid/tail catch-up. Also test first↔last wraps, reversal, cancel/commit, vertical Hero scroll, detail tap and auto-advance. Do not alter gesture ownership before that evidence.
+- tested source `d22634ece2f29eba2e60de01182bf15d4ba554a7`; durable cleanup head `01a13615fc056fd3b13296d98abfaa7a6aa2b46d` (workflow deletion only).
+- run/job `33058337107 / 98470624555` — success.
+- artifact ID `9640692378`; digest `sha256:31a054244bcfbeb39cc5db663aa7580cb4cc742fe88ca998ce9c9ba7a01e2939`.
+- IPA SHA-256 `6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`; source ZIP SHA-256 `00d2a0aba071dbbce3554d31dba64f0caa70c22b6e067dedeee0bb3b22ebd694`.
+- independent artifact/IPA/source/identity/MinOS/source-contract verification passed.
+- evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / not stable**.
+
+Next action: target-device A/B Build215 against Build208/EX; do not add another easing/travel-percentage workaround before that evidence.
 
 ## Active: Poster-heavy scrolling smoothness
 
