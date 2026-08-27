@@ -1,0 +1,113 @@
+name: TEMP Build223 Home Persistent Root Isolation Retry
+
+on:
+  push:
+    branches: [diag/home-carousel-persistent-root-build223]
+    paths: [.github/build223-home-persistent-retry-trigger.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  build223:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact tested source
+        uses: actions/checkout@v4
+        with:
+          ref: e2560d04f33a61e397dcb720004209f1bbc8e0ed
+          fetch-depth: 0
+
+      - name: Verify exact Build223 scope and source contracts
+        run: |
+          set -euo pipefail
+          BASE_SHA=da5ad1dc6341481b12b8ae3e8b85cc5e5bb31a05
+          actual="$(git diff --name-only "$BASE_SHA"..HEAD | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCoreV3.swift docs/changelog/CHANGELOG_v0_14_56_build223.md scripts/check_home_vertical_persistent_isolation.py | sort)"
+          printf 'Changed paths:\n%s\n' "$actual"
+          [[ "$actual" == "$expected" ]]
+          python3 scripts/check_home_vertical_persistent_isolation.py
+          if git diff --name-only "$BASE_SHA"..HEAD | grep -E 'Player|Transport|Cache|Session|MPV|PiP|EmbyHomeHeroV3|EmbyHomeCarouselInteractionV3|EmbyHomeCarouselStateV3|EmbyHomeHeroScrollStateV3'; then exit 1; fi
+          test ! -e .github/workflows/temp-build223-home-persistent-root-retry.yml
+          test ! -e .github/build223-home-persistent-retry-trigger.txt
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Generate icons and Xcode project
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+
+      - name: Install KTVHTTPCache
+        run: |
+          set -euo pipefail
+          pod install --repo-update
+
+      - name: Resolve MPVKit
+        run: |
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned Release app
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache MARKETING_VERSION=0.14.56 CURRENT_PROJECT_VERSION=223 IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build
+
+      - name: Validate app identity and MinOS
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version 0.14.56 --build 223 --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" 15.0 17.0 min-os-report.log /dev/null
+
+      - name: Package IPA and exact source
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OnePlayer-0.14.56-build223-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA_NAME="OnePlayer-0.14.56-build223-home-persistent-root-isolation-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME"
+          shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+          cat "$IPA_NAME.sha256"
+          cat "$SOURCE_ZIP.sha256"
+
+      - name: Upload Build223 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.56-build223-home-persistent-root-isolation
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            min-os-report.log
+          if-no-files-found: error
+          retention-days: 30
