@@ -33,7 +33,7 @@ jobs:
           import Libmpv
           @main final class SpikeApp: UIResponder, UIApplicationDelegate {
               func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-                  _ = try? AetherEngine.AetherEngine()
+                  _ = try? AetherEngine()
                   return true
               }
           }
