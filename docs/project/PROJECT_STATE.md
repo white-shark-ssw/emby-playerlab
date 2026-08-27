@@ -98,7 +98,7 @@ Source inspection plus screenshots establish:
 
 Build207 evidence is therefore **real-device tested / foreground layout rejected / not stable**. This is not evidence to change the UIKit gesture owner.
 
-### Current carousel candidate: Build215 / 0.14.48
+### Retained carousel behavior baseline: Build215 / 0.14.48
 
 Build208 is now the real-device video reference rather than the current candidate. A/B versus EX showed a hold-then-jump acquisition and prolonged visual lag from the easing workaround, while EX behaved like a short take-up followed by nearly 1:1 motion and kept foreground substantially more opaque.
 
@@ -114,7 +114,11 @@ Carousel Build214 / 0.14.47 passed CI/IPA but was retired before distribution be
 - real-device result: acquisition-relative start and opaque foreground are positively confirmed; initial drag is now about as fine as EX and foreground blur/ghosting is gone, but overall tactile smoothness still trails EX ("smooth glass" vs "rough paper"). 30fps recording no longer shows the old macro hold/jump; residual micro-continuity/cadence cause remains unresolved and backdrop timing is only a hypothesis.
 - evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device tested / partial success / not stable**.
 
-Next action: inspect the post-acquisition touch→state→SwiftUI render/compositing cadence for evidence of sub-frame irregularity. Do not retune travel/easing or change backdrop timing solely from the current subjective residual gap; backdrop timing remains an unproven hypothesis.
+Build217 then measured the unchanged Build215 interaction at roughly 50–60 Hz delivered/publish/render/display cadence despite `maximum_fps=120`; Build219 isolated the frame-rate request and raised the same chain to roughly 98–110 Hz on the target device. The user's on-screen FPS recording repeatedly reaches 118–120 FPS, proving the request is effective. Remaining discrete 34–50 ms gaps frequently occur within ~3–25 ms of Hero/persistent 1400px image callbacks, so the active carousel investigation now shifts to that image publication/presentation path rather than new motion easing or coalesced-touch authority.
+
+Current carousel diagnostic candidate: **Build219 / 0.14.52** — tested source `0b894bc37fcd0086aeaf9e1a29de0e85f5b0ee94`, cleanup head `a5050075ccceaf46196696bfa3b812293800f340`, run/job `33080240879 / 98545151906`, artifact `9649815558`, IPA SHA-256 `a0b7bad3c563f76e3e560f55da6eec67697a8bf609b70b5a672ee1a0ed1ab85e`, MinOS 15.0. Evidence: **CI/IPA verified + real-device diagnostic tested / 120 Hz request effective / residual root cause not yet fixed / not stable**.
+
+Next action: inspect the real Hero/persistent 1400px image callback → publish → presentation chain and correlate/measure the work producing the repeatable long display gaps. Retain the high-refresh request as an evidence-backed candidate and do not yet move interactive motion to coalesced/predicted touches.
 
 ## Active: Poster-heavy scrolling smoothness
 
@@ -130,4 +134,4 @@ Next: install Build220 on the target device and explicitly A/B Library 3×3, Fav
 
 ## Parallel integration rule
 
-Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel Build215 and poster-scroll remain independent Active lines with separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
+Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel Build219 and poster-scroll Build220 remain independent Active lines with separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.

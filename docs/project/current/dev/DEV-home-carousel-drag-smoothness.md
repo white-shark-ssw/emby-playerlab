@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build217 / 0.14.50 is real-device diagnostic tested. Build215's acquisition-relative start and opaque foreground remain positively confirmed, but Build217 now supplies a stronger explanation for the remaining “smooth glass vs rough paper” gap: the target device supports 120 Hz and the built IPA unlocks >60 Hz, yet the carousel's delivered touch → progress publication → SwiftUI render-update chain runs at roughly 60 Hz during ordinary motion, while coalesced raw touch samples exist at roughly 4–5 ms cadence. Backdrop timing is no longer the primary lead.**
+**Active — Build219 / 0.14.52 is real-device diagnostic tested. The explicit drag-local 120 Hz frame-rate request materially raised the complete delivered-touch → progress-publication → SwiftUI-render → display chain from roughly 50–60 Hz to roughly 98–110 Hz, proving the frame-rate request is effective and directly relevant to the residual tactile smoothness gap. Build215 motion semantics remain retained and unchanged. The remaining major evidence is now episodic 34–50 ms display gaps, frequently aligned within ~3–25 ms of Hero/persistent 1400px image callbacks.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
@@ -220,8 +220,36 @@ Secondary evidence remains:
 - other worst gaps reference image callbacks hundreds or thousands of milliseconds old, so the correlation is not universal;
 - therefore large-image presentation is a plausible **secondary episodic hitch source**, but it does not explain the persistent baseline texture by itself.
 
-Build217 evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic tested ✅ / cadence bottleneck strongly indicated / not stable.**
+Build217 evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic tested ✅ / ~60 Hz baseline established / not stable.**
+
+## Build219 / 0.14.52 120 Hz request target-device result
+
+Build219 preserves Build215/217 motion, ownership, page-slot, foreground-alpha, release and backdrop contracts. Its only runtime experiment beyond identity is the existing drag-local diagnostic `CADisplayLink` requesting the device maximum frame-rate range when `maximumFramesPerSecond > 60`; coalesced and predicted touches still do not drive interactive movement.
+
+- tested source: `0b894bc37fcd0086aeaf9e1a29de0e85f5b0ee94`;
+- durable cleanup head: `a5050075ccceaf46196696bfa3b812293800f340`;
+- run/job: `33080240879 / 98545151906` — success;
+- artifact ID `9649815558`; artifact SHA-256 `f4303434b3ed1215f122093a02ddc774492c4406b6916876b2e777858a69ca49`;
+- IPA SHA-256 `a0b7bad3c563f76e3e560f55da6eec67697a8bf609b70b5a672ee1a0ed1ab85`; source ZIP SHA-256 `85815c74acf37840375e245d15752a40184bf72f3aa76aebbb2091e8b5ec2ec1`;
+- independently verified OnePlayer `0.14.52 (219)`, bundle `com.embyplayerlab.app`, MinOS 15.0 and `CADisableMinimumFrameDurationOnPhone=true`.
+
+Target-device log `OnePlayer-App-1787841410.log` contains 11 horizontal drags totaling ~10.76 s. Every record reports `maximum_fps=120 requested_fps=120`.
+
+Compared with Build217's 13-drag diagnostic capture:
+
+- delivered touch throughput rose from ~53.0 Hz to ~102.6 Hz;
+- distinct progress publication rose from ~50.7 Hz to ~99.4 Hz;
+- SwiftUI render-probe throughput rose from ~50.5 Hz to ~98.2 Hz;
+- display-link throughput rose from ~57.2 Hz to ~109.8 Hz;
+- coalesced-touch throughput remained broadly similar (~179 → ~187 Hz), as expected because Build219 does not change raw touch sampling;
+- Build217 had 1603/1603 display intervals >=12.5 ms; Build219 has 41/1181 (~3.5%), and ordinary moving-drag p95 is now usually 8.34 ms.
+
+The user also supplied a 510×1108@30fps recording with an on-screen FPS meter. It visibly reaches 118–120 FPS repeatedly during drag, while also showing intermittent drops into roughly 60–97 FPS. This independently agrees with the diagnostic log: the high-refresh request works, but runtime cadence is not perfectly stable under all presentation load.
+
+Remaining episodic hitch evidence is now stronger: Build219 still recorded 13 display gaps >=30 ms. Among the 15 recorded worst-gap samples >=25 ms, 11 occurred within 30 ms of the latest Hero/persistent image callback. Multiple drags show a 50 ms gap ~19–25 ms after a persistent 1400px callback; Hero callbacks also precede some ~27–39 ms gaps by ~11 ms. A few large gaps have stale image ages, so image publication is not a universal explanation, but it is now the strongest source-correlated lead for the remaining discrete knocks after the baseline cadence improved.
+
+**Build219 evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic tested ✅ / 120 Hz request effectiveness proven ✅ / residual image-presentation hitch lead strengthened / stable ❌.**
 
 ## Next exact action
 
-Do not retune travel/easing/backdrop. The next minimal experiment should isolate whether the system can actually raise this interaction from ~60 Hz to 120 Hz without changing carousel math: request a 120 Hz `preferredFrameRateRange` only for the existing drag-local diagnostic display link, keep the exact Build215 render/owner contracts unchanged, and measure whether `CADisplayLink` cadence and delivered `UITouch` cadence move from ~16.67 ms toward ~8.33 ms. If only the display link rises while delivered touches remain ~60 Hz, the remaining problem is event-delivery/render-input architecture; if delivered touches also rise, the frame-rate request itself becomes a directly evidenced minimal fix candidate. Do not use coalesced/predicted touches to drive movement until this narrower A/B resolves whether a simple refresh-rate request is sufficient.
+Retain the drag-local maximum-refresh request as an evidence-backed candidate behavior and do not move to coalesced/predicted render authority. Inspect the exact Hero/persistent 1400px image callback → image publication → SwiftUI/presentation path and identify the minimal source-owned work that can explain the repeatable 34–50 ms gaps. Do not defer, suppress or re-order image updates until the real definitions/call sites/state ownership are inspected. Do not retune travel/easing/backdrop or add smoothing/timers.
