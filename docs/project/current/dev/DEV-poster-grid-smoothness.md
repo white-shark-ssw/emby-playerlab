@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build212 / 0.14.45 source-aware diagnostic candidate is CI/IPA verified and awaiting target-device App-log capture. Build210 remains the controlling real-device evidence: four Home dragging hitches landed 6.2–11.0 ms after shared image commit, while the one grid record was only programmatic/micro-motion. Build212 adds memory/disk/network image source, callback/display role, item/type/MaxWidth, synchronous `onImageLoaded` callback duration and Core Image contrast-render duration without changing scroll/image/navigation behavior or active carousel owner files. Performance root cause remains unresolved and no fix is claimed.**
+**Active — Build212 / 0.14.45 target-device source-aware diagnostics captured. Home and grid now separate into two evidence-backed paths: Home dragging hitches are tied to memory-hit callback-role 1400px carousel image publishes while callback/contrast work itself is only 1–3 ms; grid has 11 real dragging hitches tied to newly visible 378px network display-image publishes. The earlier single cross-page-root-cause assumption is rejected. No runtime fix is claimed yet; Home changes require reconciliation with the active carousel task, while grid needs a minimal display-image publish/render fix candidate.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -166,6 +166,43 @@ CI / IPA evidence:
 
 **Build212 evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device diagnostic pending ❌ / performance fix not claimed / not stable.**
 
+## Build212 target-device result — 2026-08-27
+
+Latest App log: `OnePlayer-App-1787813666.log`.
+
+Build212 emitted **18** motion-gated `PosterScrollHitch` records: 6 Home and 12 grid. The useful user-drag samples split cleanly by route.
+
+### Home
+
+- **5 real `phase=dragging` hitches**, frame gaps **43.6–73.8 ms**.
+- All 5 latest image publishes were `image_source=memory`, `image_role=callback`, `image_type=Primary`, `image_max_width=1400`.
+- Image publish age at the hitch was only **8.3–12.2 ms**.
+- The measured synchronous callback duration was only **1.0–3.2 ms**; measured Core Image contrast render was only **1.0–3.0 ms**.
+- Latest ordinary poster-cell appearance was already **7.3–21.9 s** old.
+- The log also shows `HomeCarousel settled` events around the same repeating transition cadence. Some image items produce a hitch before settle and another shortly after settle, consistent with more than one carousel image consumer publishing the same memory-resident 1400px artwork during a transition.
+
+Conclusion: the previous suspicion that `CIContext.render` / `onImageLoaded` synchronous work itself explains the 40–70 ms Home stall is **rejected**. Their measured duration is too small. The stronger Home lead is the carousel's 1400px memory-hit image publication / SwiftUI presentation work while the user is vertically scrolling, including when the Hero is far above the visible scroll position. This is Home-specific and overlaps the independent carousel owner.
+
+### Grid
+
+- **11 real `phase=dragging` hitches**, frame gaps **31.0–37.3 ms**.
+- All 11 latest image publishes were `image_source=network`, `image_role=display`, `image_type=Primary`, `image_max_width=378`.
+- Image publish age at the hitch was **0.0–20.1 ms**.
+- Latest grid-cell appearance was only **118.8–177.8 ms** old.
+- Carousel callback/contrast events were stale by **13.6–39.9 s** and therefore unrelated to these grid stalls.
+- Pagination/load-ahead timing is not the common trigger; the repeated pattern is newly visible grid cells plus display-image publication during active dragging.
+
+Conclusion: Build212 finally proves the user's library/grid hitch during actual dragging and ties it to the display-only poster image publish/render path, not to the Home carousel callback path.
+
+### Architectural consequence
+
+The earlier assumption that Home and all 3×3 routes require one universal root cause is no longer supported. Treat them as two independent runtime fixes:
+
+1. **Home**: reconcile with `DEV-home-carousel-drag-smoothness` before touching carousel owner files; investigate suppressing unnecessary offscreen carousel image presentation work rather than contrast-analysis optimization.
+2. **Grid**: inspect the shared display-only poster publish/render path for the smallest change that avoids 31–37 ms main-thread presentation stalls while preserving exact rendered pixel width, image count, navigation and no throttle/debounce/timer behavior.
+
+**Build212 evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device diagnostic tested ✅ / Home callback/contrast as primary cost rejected ✅ / real grid dragging stalls captured ✅ / two-route cause split established ✅ / runtime fix not yet tested / not stable.**
+
 ## Parallel safety
 
 - Build211 / 0.14.44 identity is owned by the independent Home-carousel task; poster Build212 does not reuse that identity.
@@ -174,11 +211,11 @@ CI / IPA evidence:
 
 ## Next exact action
 
-1. Install Build212 / 0.14.45 on iPhone 15 Pro Max / iOS 17.0 and export the **App log** after reproducing Home vertical scrolling and library/favorites/search/tag/person 3×3 scrolling.
-2. For Home hitches, correlate `image_source`, `image_role`, image item/type/MaxWidth, `callback_duration_ms` and `contrast_duration_ms` with the motion-gated frame gap before changing runtime behavior.
-3. Obtain at least one real `phase=dragging` or `phase=decelerating` grid hitch before changing a shared grid path; the Build210 `phase=moving / delta_y=0.33` record remains insufficient.
-4. Keep poster work out of carousel owner files while Build211 is active; if Build212 proves the synchronous carousel callback/contrast path causal, reconcile the two tasks explicitly before a runtime patch.
-5. Preserve P0 playback/transport/cache/session contracts and iOS 15.0 deployment.
+1. Do not spend another build on callback/contrast timing; Build212 measured it at only 1–3 ms during Home hitches.
+2. Home: hand the 1400px memory/callback image-publish evidence to the active carousel task and inspect visibility/auto-advance/image-consumer ownership before a runtime patch. Poster task must not independently edit carousel owner files.
+3. Grid: inspect the exact display-only image publication/render path (`network`, `display`, 378px) and select the smallest evidence-backed candidate that reduces SwiftUI/main-thread presentation cost without lowering below rendered device pixels or delaying images via throttle/debounce/timer.
+4. Any Home and grid runtime candidates must be separate A/B builds unless an actual shared source change is independently justified.
+5. Preserve all P0 playback/transport/cache/session contracts and iOS 15.0 deployment.
 
 ## Do not repeat
 

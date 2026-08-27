@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after poster-scroll Build212 / 0.14.45 completed exact-source CI/IPA and independent package verification. Build210 remains the latest controlling poster real-device evidence; Build212 is diagnostic-only and awaits target-device App-log capture. Build199 remains the latest real-device accepted overall baseline. Home-carousel and poster-scroll remain independent Active lines; Build211 / 0.14.44 identity belongs to carousel._
+_Last updated after poster-scroll Build212 / 0.14.45 target-device source-aware diagnostics split the remaining Home and grid hitch into two evidence-backed paths. Build199 remains the latest real-device accepted overall baseline. Build211 / 0.14.44 remains owned by the independent carousel line; no Build212 runtime fix is accepted yet._
 
 ## Current accepted overall baseline
 
@@ -131,16 +131,16 @@ Next action: target-device A/B Build208 against Build207 and EX. First verify ad
 
 Work: `DEV-poster-grid-smoothness`.
 
-- Build202 / 0.14.35 and Build204 / 0.14.37 were target-device rejected; visible stop/catch-up remained on Home and library 3×3.
-- Build206 added first hitch timing; Build209 added real-motion gating but had a single-owner Home/grid attribution defect.
-- Build210 / 0.14.43 fixed attribution with independent weak Home/grid scroll observations while retaining one shared `CADisplayLink`. Latest real-device App log produced four Home `phase=dragging` hitches (68.9 / 34.9 / 74.5 / 39.8 ms), all 6.2–11.0 ms after shared image commit. The only grid record was `phase=moving`, `delta_y=0.33`, velocity 0 and therefore is not a proven user-drag grid stall.
-- This 4/4 Home timing correlation is the strongest lead, but Build210 image commit was global and could not identify artwork role/cache source or time the synchronous callback/contrast work; no runtime fix was justified.
-- Build211 / 0.14.44 is owned by the independent Home-carousel task. Poster retired its temporary 211 identity before distribution and uses Build212.
-- Build212 / 0.14.45 exact source **`4f0a89ab026cd2103f66e5854a1f352d34852e45`** retains the Build210 motion diagnostic and adds shared-image publish context (`memory/disk/network`, `display/callback`, item/type/MaxWidth), synchronous `onImageLoaded` callback duration and Core Image contrast-render duration. No scroll physics, image-loading policy, navigation behavior, lazy-container behavior or carousel owner file changed.
-- Build212 run/job **`33045869471 / 98429601490` — success**; artifact ID **`9635696107`**; artifact digest **`eb53a4b88564165b399edfd9085fcc888718cfa62141725d1f24cc539d598615`**; IPA SHA-256 **`dcdec181dd16e9b3b666882de8347a76671c743ab8392aa27791d40599eec7a1`**; source SHA-256 **`9a618698a71ba45074ae915d859afdf9173f312e989e9a646717ed8c6ba60459`**. Independent verification confirms exact digest/checksums, IPA/source integrity, `com.embyplayerlab.app`, OnePlayer **0.14.45 (212)**, icons and `MinimumOSVersion=15.0`.
-- evidence: **Build212 Code written / exact scope+Frozen guard / CI passed / IPA produced+independently verified / target-device diagnostic pending / performance fix not claimed / not stable.**
+- Build202 and Build204 were target-device rejected; Build206/209/210 progressively established reliable motion attribution.
+- Build212 / 0.14.45 exact source `4f0a89ab026cd2103f66e5854a1f352d34852e45`; run/job `33045869471 / 98429601490`; artifact `9635696107`; IPA SHA-256 `dcdec181dd16e9b3b666882de8347a76671c743ab8392aa27791d40599eec7a1`; MinOS 15.0.
+- target-device log `OnePlayer-App-1787813666.log` contains 5 Home dragging hitches (43.6–73.8 ms), all following `memory/callback/Primary/1400` image publish by 8.3–12.2 ms. Measured callback/contrast durations are only 1.0–3.2 / 1.0–3.0 ms, so contrast analysis is no longer the primary suspect. The stronger Home lead is carousel large-image publish/presentation during vertical scrolling; this overlaps the active carousel task.
+- the same log contains 11 true grid dragging hitches (31.0–37.3 ms), all following `network/display/Primary/378` publish by 0.0–20.1 ms with a newly appeared grid cell 118.8–177.8 ms old. Carousel callback/contrast timestamps are stale and unrelated.
+- therefore the previous universal cross-page-root-cause assumption is rejected. Home and grid should receive separate minimal runtime candidates.
+- Home runtime changes require explicit reconciliation with `DEV-home-carousel-drag-smoothness`; poster work must not independently modify carousel owner files.
+- Grid next step is exact-source inspection of the display-only image publish/render path, preserving 378px rendered-device requirement and forbidding delay/throttle/debounce/timer workarounds.
+- evidence: **Build212 target-device diagnostic tested / Home callback-cost hypothesis rejected / real grid dragging stalls captured / route split established / performance fix not tested / not stable.**
 
-Next: install Build212 on the target device, reproduce Home vertical scrolling plus true library/favorites/search/tag/person 3×3 dragging/deceleration, export the App log, and correlate source/role/callback/contrast timing before selecting any runtime patch. Keep the poster task out of active carousel owner files unless the trace proves that owner is causal and the two tasks are explicitly reconciled.
+Next: reconcile the Home evidence with the carousel task, and independently design the smallest grid display-image publication/render candidate. Keep P0 Player/MPV/PiP/Transport/Cache/Session and iOS 15.0 contracts untouched.
 
 ## Parallel integration rule
 
