@@ -23,7 +23,7 @@ struct PlayerSettingsView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("播放器引擎"), footer: Text("MPV高兼容引擎为默认选择；MDK高性能引擎可手动切换。当前设置决定新播放会话使用的引擎。")) {
+                Section(header: Text("播放器引擎"), footer: Text("MPV高兼容引擎保持默认；Aether实验引擎可手动选择进行对比测试。当前设置决定新播放会话使用的引擎。")) {
                     Picker("播放引擎", selection: $enginePreference) {
                         ForEach(PlayerEnginePreference.selectableCases) { preference in Text(preference.title).tag(preference.rawValue) }
                     }
