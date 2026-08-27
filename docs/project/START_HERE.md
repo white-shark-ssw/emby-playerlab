@@ -6,6 +6,12 @@
 
 先读取仓库根目录 `AGENTS.md`，遵守 AI 编码纪律。
 
+然后读取：
+
+`docs/automation/CHATGPT_NOTIFY_RULES.md`
+
+该文件只定义 OnePlayer 项目级 ChatGPT/Bark 完成通知行为，不改变规则/开发路由、功能状态、证据分级或任何播放器运行时合同。
+
 然后读取并以以下文件为当前权威状态：
 
 1. `docs/project/PROJECT_STATE.md`
