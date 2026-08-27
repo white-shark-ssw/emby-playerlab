@@ -1,0 +1,152 @@
+name: Build222 Aether Seek Fix Candidate
+
+on:
+  push:
+    branches: [feat/aether-multi-engine-comparison]
+    paths:
+      - .github/workflows/temp-build222-aether.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate Build222 source contracts
+        run: |
+          set -euo pipefail
+          test "$(git status --porcelain | wc -l | tr -d ' ')" = "0"
+          PRODUCT_SHA="$(git rev-parse HEAD)"
+          echo "PRODUCT_SHA=$PRODUCT_SHA" >> "$GITHUB_ENV"
+          git rev-parse HEAD | tee product-sha.txt
+          grep -R -n "case \.aether\|AetherPlayerEngine\|AetherPlayerSurface\|AetherTransportIOReader" Sources | tee aether-wiring.txt
+          grep -n "case \.aether" Sources/UI/PlayerExperienceState.swift
+          if grep -n "confirmConcretePlaybackByte" Sources/Player/AetherTransportIOReader.swift; then
+            echo "Build222 contract failure: ordinary Aether reads still promote seek authority" >&2
+            exit 1
+          fi
+          grep -n "prioritizeOffset(candidate)" Sources/Player/AetherTransportIOReader.swift
+          grep -n "prioritizeOffset(current)" Sources/Player/AetherTransportIOReader.swift
+          grep -n 'MARKETING_VERSION: "0.14.55"' project.yml
+          grep -n 'CURRENT_PROJECT_VERSION: "222"' project.yml
+          grep -n 'iOS: "16.0"' project.yml
+
+      - name: Select Xcode 26.3
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_26.3.app
+          xcodebuild -version | tee xcode-version.txt
+          xcrun --sdk iphoneos --show-sdk-version | tee -a xcode-version.txt
+          swift --version | tee -a xcode-version.txt
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Generate project and install pods
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update 2>&1 | tee pods-install.log
+
+      - name: Resolve Swift packages
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild -resolvePackageDependencies \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -clonedSourcePackagesDirPath .spm-build222 2>&1 | tee package-resolution.log
+
+      - name: Build Release unsigned app
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build/Build222
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/Build222 \
+            -clonedSourcePackagesDirPath .spm-build222 \
+            IPHONEOS_DEPLOYMENT_TARGET=16.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+
+      - name: Package and validate Build222 IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/Build222/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+          python3 - "$APP_PATH/Info.plist" <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], 'rb') as f: info = plistlib.load(f)
+          expected = {
+              'CFBundleIdentifier': 'com.embyplayerlab.app',
+              'CFBundleShortVersionString': '0.14.55',
+              'CFBundleVersion': '222',
+              'MinimumOSVersion': '16.0',
+          }
+          for key, value in expected.items():
+              actual = str(info.get(key))
+              if actual != value:
+                  raise SystemExit(f"{key}: expected {value}, got {actual}")
+          print('Build222 identity/minOS validation: PASS')
+          PY
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-0.14.55-build222-aether-seekfix-${PRODUCT_SHA::7}-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee ipa-test.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          git archive --format=zip --output "OnePlayer-0.14.55-build222-${PRODUCT_SHA::7}-source.zip" "$PRODUCT_SHA"
+          shasum -a 256 "OnePlayer-0.14.55-build222-${PRODUCT_SHA::7}-source.zip" | tee source.sha256
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          echo "SOURCE_ZIP=OnePlayer-0.14.55-build222-${PRODUCT_SHA::7}-source.zip" >> "$GITHUB_ENV"
+
+      - name: Upload Build222 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.55-build222-aether-seekfix-${{ env.PRODUCT_SHA }}
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            source.sha256
+            product-sha.txt
+            built-info-plist.log
+            ipa-test.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Build222 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build222-aether-seekfix-diagnostics-${{ github.sha }}
+          path: |
+            aether-wiring.txt
+            xcode-version.txt
+            pods-install.log
+            package-resolution.log
+            build.log
+            product-sha.txt
+            built-info-plist.log
+          if-no-files-found: ignore
+          retention-days: 14
