@@ -21,7 +21,17 @@ jobs:
           ref: diag/home-carousel-offscreen-lifecycle-build222
           fetch-depth: 0
 
-      - name: Validate retained Home contracts
+      - name: Probe retained Home checker on accepted base
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          base='8b22d593751d052b47179b68fb0fd3aaa80c9454'
+          git worktree add /tmp/build222-base "$base"
+          cd /tmp/build222-base
+          python3 scripts/check_home_immersive_carousel.py
+
+      - name: Probe retained Home checker on Build222
+        continue-on-error: true
         run: |
           set -euo pipefail
           python3 scripts/check_home_immersive_carousel.py
