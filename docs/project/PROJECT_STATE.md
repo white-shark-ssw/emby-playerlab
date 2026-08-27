@@ -130,6 +130,14 @@ Work: `DEV-poster-grid-smoothness`.
 
 Next: keep Home runtime ownership with the active carousel task; validate/package the corrected grid UIKit-display candidate under a new unique Build identity, then explicitly A/B the real 3×3 routes. Do not infer grid failure from the Home-only Build218 test.
 
+## Active: Aether manual playback-engine comparison
+
+Work: `DEV-aether-multi-engine-comparison`.
+
+Build219 / OnePlayer 0.14.52 is the first normal-App Aether comparison package. Exact source `b1a06cb2b3dc9cf715fc5d49a7b324780aa23981` passed Xcode 26.3 Release CI (`33096553966 / 98602865604`) and produced artifact `9656814369`; IPA SHA-256 `8df11d2db597fd6841a3708976824b21879ee0d47257c1766d1704cc4196d06d`, source ZIP SHA-256 `61148b209d543c233502c8412f9448fffa143a97f5753c25595626c72b3e31e4`, built MinOS 16.0. AetherEngine 6.50.0 is manual-only; MPV remains default/automatic authority. Aether reuses existing UnifiedTransport/Session Cache through exact-byte IOReader demand; NAS relay, a second 115/CDN network stack and time→byte proportional Seek are forbidden. Frozen PiP is not redesigned and Aether currently does not claim PiP/audio-track/subtitle-selection capability.
+
+Current evidence: **Code written / CI passed / IPA produced+verified / real-device not yet tested / not stable**. Build216 remains the latest accepted overall runtime baseline until the user reports Build219 target-device behavior.
+
 ## Parallel integration rule
 
 Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel Build215 and poster-scroll remain independent Active lines with separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.

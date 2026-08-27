@@ -10,6 +10,7 @@
 | Session cache | Frozen core | Shared playback-path cache contract. |
 | MPV fast Seek | Frozen | One native `absolute+keyframes` Seek. No exact correction loop. |
 | MDK | Experimental / manual | Manual backup/experimental engine, not normal automatic authority. |
+| Aether | **Active experimental candidate — Build219 CI/IPA verified; real-device pending** | AetherEngine 6.50.0 is manually selectable in normal OnePlayer; MPV remains default/automatic authority. Build219 / 0.14.52 exact source `b1a06cb2b3dc9cf715fc5d49a7b324780aa23981` passed Xcode 26.3 Release CI (`33096553966 / 98602865604`) and produced artifact `9656814369`; IPA SHA-256 `8df11d2db597fd6841a3708976824b21879ee0d47257c1766d1704cc4196d06d`, MinOS 16.0. Uses existing UnifiedTransport exact-byte IOReader demand and does not add a second 115/CDN network stack. PiP/audio/subtitle capabilities remain conservatively unclaimed. No real-device result yet; not stable. |
 | Player gesture UI | Stable baseline | Immediate left/right double-tap Seek, scrub, volume/brightness HUD, etc. |
 | Native navigation | Frozen principle | System owns push/pop and interactive pop. |
 | PiP | **Frozen at Build173** | Functional enough to leave for now; known renderer cold-return tail remains. |

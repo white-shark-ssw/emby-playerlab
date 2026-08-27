@@ -125,7 +125,19 @@
 
 - Commit `90557148e66e1d074cc2831dcb8023ea22dde7e0` adds only the missing explicit `.aether` capability case.
 - No speculative concurrency refactor or unrelated warning cleanup was included.
-- A fresh Build219 Release run is required; rerunning the old attempt itself is invalid because it would use the old source SHA.
+- The original one-shot materialization workflow was then made rerunnable without touching product source; an initial validation-order mistake was corrected before the successful run.
+
+### Successful Build219 candidate
+
+- Exact tested repository source: `b1a06cb2b3dc9cf715fc5d49a7b324780aa23981`.
+- Workflow run/job: `33096553966 / 98602865604` — **success**.
+- Release compile, package resolution, IPA identity validation and artifact upload all passed.
+- Product artifact: `OnePlayer-0.14.52-build219-aether-b1a06cb2b3dc9cf715fc5d49a7b324780aa23981`; ID `9656814369`; artifact digest `sha256:f2e984c56ebf1b74a7eaf39ff43f08cee2e9a0edaa0ae65d6406d2fefd2fc75a`.
+- IPA: `OnePlayer-0.14.52-build219-aether-b1a06cb-unsigned.ipa`; SHA-256 `8df11d2db597fd6841a3708976824b21879ee0d47257c1766d1704cc4196d06d`.
+- Source ZIP SHA-256: `61148b209d543c233502c8412f9448fffa143a97f5753c25595626c72b3e31e4`.
+- Built identity: `CFBundleIdentifier=com.embyplayerlab.app`, `CFBundleShortVersionString=0.14.52`, `CFBundleVersion=219`, `MinimumOSVersion=16.0`.
+- Local post-download verification reproduced the IPA SHA-256 exactly and `unzip -t` reported no compressed-data errors.
+- Evidence is now **Code written / CI passed / IPA produced+verified / real-device not yet tested / not stable**.
 
 ## Frozen / do-not-touch
 
@@ -162,19 +174,19 @@
 - [x] Aether rendering surface/settings selection committed.
 - [x] First Build219 CI attempt produced actionable Release compiler evidence; dependency resolution passed, App compile failed, no IPA.
 - [x] Missing `.aether` capability switch fixed minimally at `90557148...`.
-- [ ] Product CI passed.
-- [ ] IPA produced.
+- [x] Product CI passed (`33096553966 / 98602865604`).
+- [x] IPA produced and independently verified (artifact `9656814369`).
 - [ ] Real-device comparison completed.
 - [ ] Stable/frozen decision made.
 
 ## Validation state
 
 - **Code written:** Yes — Build219 Aether product integration plus the explicit capability-switch compile fix are committed.
-- **CI passed:** No — first product run `33086503411` failed during App Release compile; retry on fixed source is pending.
-- **IPA produced:** No.
+- **CI passed:** Yes — Build219 run/job `33096553966 / 98602865604` succeeded on exact source `b1a06cb2b3dc9cf715fc5d49a7b324780aa23981`.
+- **IPA produced:** Yes — artifact `9656814369`; IPA SHA-256 `8df11d2db597fd6841a3708976824b21879ee0d47257c1766d1704cc4196d06d`; MinOS 16.0 verified.
 - **Real-device tested:** No.
 - **Stable / frozen:** No.
 
 ## Next exact action
 
-Run a fresh Build219 / 0.14.52 Release workflow from the fixed branch head, preserving Xcode 26.3, Aether 6.50.0, one-FFmpeg wiring and MinOS 16.0. If it fails, fix only the first actual compiler/linker blocker. If it succeeds, validate the packaged IPA identity/MinOS/SHA, record exact run/job/artifact/source evidence, and send the IPA for iPhone 15 Pro Max / iOS 17.0 real-device comparison.
+Install Build219 / 0.14.52 on iPhone 15 Pro Max / iOS 17.0 and compare Aether against the retained MPV authority on startup/first frame, normal and rapid double-tap Seek, scrub Seek, STRM→302→115/CDN Range behavior, cache hit/miss, abnormal short media, background/resume and Emby Resume/Progress. Record only observed device evidence; do not promote Aether to automatic authority from CI/IPA alone.
