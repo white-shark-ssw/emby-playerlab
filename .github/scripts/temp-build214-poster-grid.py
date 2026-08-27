@@ -13,7 +13,7 @@ def replace_exact(path: str, old: str, new: str, expected: int = 1) -> None:
 identity = Path("Sources/Core/AppIdentity.swift")
 text = identity.read_text(encoding="utf-8")
 old_identity = '    static let sourceVersion = "0.14.46"\n    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.14.46"'
-new_identity = '    static let sourceVersion = "0.14.47"\n    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.14.47"'
+new_identity = '    static let sourceVersion = "0.14.49"\n    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.14.49"'
 if text.count(old_identity) != 1:
     raise SystemExit("Build213 AppIdentity anchor mismatch")
 identity.write_text(text.replace(old_identity, new_identity), encoding="utf-8")
@@ -225,14 +225,14 @@ if text.count(home_guard) != 1:
 text = text.replace(home_guard, "")
 checker.write_text(text, encoding="utf-8")
 
-changelog = Path("docs/changelog/CHANGELOG_v0_14_47_build214.md")
+changelog = Path("docs/changelog/CHANGELOG_v0_14_49_build216.md")
 if changelog.exists():
-    raise SystemExit("Build214 changelog already exists")
+    raise SystemExit("Build216 changelog already exists")
 changelog.write_text(
-    '# OnePlayer 0.14.47 / Build214\n\n'
+    '# OnePlayer 0.14.49 / Build216\n\n'
     '## Grid display presentation A/B candidate\n\n'
     '- Based directly on Build212 target-device grid evidence: 11 real dragging hitches landed 0.0–20.1 ms after newly visible 378px network/display poster publication.\n'
-    '- Build214 is rebased onto the accepted Build213 page-cache main baseline; Favorites/Library page persistence remains included and unchanged.\n'
+    '- Build216 is based on the accepted Build213 page-cache main baseline; Favorites/Library page persistence remains included and unchanged. Build214/215 are independently owned by the Home-carousel task and are not included.\n'
     '- The candidate is grid/display-only. It does not carry the old poster Home motion-probe file and does not modify Home carousel owner files.\n'
     '- Pure display images with no loading indicator and no `onImageLoaded` callback keep the existing loader, disk cache, decoded-image pool, request size, diagnostic source tags and immediate delivery, but stop observing loader `objectWillChange` through the surrounding SwiftUI poster cell.\n'
     '- The existing loader publisher feeds a UIKit `UIImageView` surface directly for that display-only path. Callback/loading-indicator paths remain on the existing SwiftUI implementation.\n'
