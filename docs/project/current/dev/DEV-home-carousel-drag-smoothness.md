@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build223 / 0.14.56 code is now written as the next Home vertical diagnostic A/B. It is based on current `main` / accepted Build216 product code and removes only the immersive Home root mount of the always-on full-screen `persistentCarouselBackdrop`. Hero artwork, carousel preload, auto-advance timing, horizontal interaction, navigation and all playback/P0 paths remain unchanged. CI/IPA and target-device testing are still pending. Build221 remains the separate horizontal persistent-drag A/B with target-device testing pending. Build222 vertical offscreen auto-advance isolation was target-device tested and rejected as sufficient.**
+**Active — Build223 / 0.14.56 is now CI/IPA verified as the current Home vertical diagnostic A/B; target-device testing is pending. It is based on current `main` / accepted Build216 product code and removes only the immersive Home root mount of the always-on full-screen `persistentCarouselBackdrop`. Hero artwork, carousel preload, auto-advance timing, horizontal interaction, navigation and all playback/P0 paths remain unchanged. Build221 remains the separate horizontal persistent-drag A/B with target-device testing pending. Build222 vertical offscreen auto-advance isolation was target-device tested and rejected as sufficient.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
@@ -47,21 +47,13 @@ Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-de
 
 ### Build217 / 0.14.50
 
-Cadence diagnostic established that the passive carousel path was effectively around 50–60 Hz even though the target device reported 120 Hz capability. Delivered touch → progress publication → SwiftUI render followed almost one-for-one; coalesced touch data was much denser but was not used as render authority.
+Passive carousel path measured around 50–60 Hz on the 120 Hz target device. Delivered touch → progress publication → SwiftUI render followed almost one-for-one; coalesced touch data was denser but did not drive render.
 
 Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic tested ✅ / ~60 Hz baseline established / stable ❌.
 
 ### Build219 / 0.14.52
 
-Drag-local device-max refresh request raised the same path to roughly:
-
-- delivered touch ~103 Hz;
-- progress publish ~99 Hz;
-- SwiftUI render ~98 Hz;
-- display ~110 Hz;
-- on-screen meter repeatedly reached 118–120 FPS.
-
-This proves the high-refresh request is effective and should not be replaced by another easing/smoothing layer. Remaining discrete 34–50 ms gaps frequently correlated in time with Hero/persistent 1400px image callbacks. Strongest repeated pattern: ~50 ms display gap about 19.6–25.3 ms after persistent callback.
+Drag-local device-max refresh request raised delivered touch / progress / SwiftUI render / display to roughly 103 / 99 / 98 / 110 Hz, and the on-screen meter repeatedly reached 118–120 FPS. Remaining discrete 34–50 ms gaps frequently correlated with Hero/persistent 1400px image callbacks; the strongest repeated pattern was ~50 ms about 19.6–25.3 ms after a persistent callback.
 
 Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic tested ✅ / 120 Hz request effectiveness proven ✅ / stable ❌.
 
@@ -72,10 +64,10 @@ Source inspection established:
 - Hero and persistent use separate `EmbyCachedRemoteImage` instances for the same 1400px backdrop;
 - transition may present current + target Hero and current + target persistent simultaneously;
 - persistent is a full-screen image with `scaleEffect(1.12)` + `blur(radius: 30)`;
-- preload/cache can make decode/data adoption warm, but it does not pre-render the later SwiftUI/CoreAnimation presentation/compositing work;
-- Build212 had already measured the synchronous callback/contrast work itself at only ~1–3 ms, so the repeated later ~50 ms gap is more consistent with presentation/compositing than decode or contrast calculation.
+- preload/cache can make decode/data adoption warm, but it does not pre-render later SwiftUI/CoreAnimation presentation/compositing work;
+- Build212 measured synchronous callback/contrast work itself at only ~1–3 ms, so the repeated later ~50 ms gap is more consistent with presentation/compositing than decode or contrast calculation.
 
-Do not respond to this evidence by adding delayed image publication, debounce/throttle, timers, speculative preload changes or lower image quality without a direct A/B.
+Do not add delayed publication, debounce/throttle, smoothing timers, speculative preload changes or lower image quality without a direct A/B.
 
 ## Build221 / 0.14.54 — horizontal persistent-drag isolation
 
@@ -83,13 +75,11 @@ Do not respond to this evidence by adding delayed image publication, debounce/th
 - tested source: `26fc82771b6778af14974fdac293ece0685fc76d`
 - artifact ID: `9654120029`
 - IPA SHA-256: `d2ee4fb2d40c251399951bc72ba6ad35fbe8ba3bfd72b861274b9b2c38fe0d9c`
-- during active horizontal drag only: keep current persistent opaque and do not mount target persistent;
+- during active horizontal drag only: current persistent stays opaque and target persistent is not mounted;
 - Hero transition and Build219 high-refresh request remain unchanged;
 - normal persistent transition resumes after release.
 
 Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending ❌ / diagnostic only / stable ❌.
-
-Next horizontal action remains target-device A/B if the user wants to continue that lane.
 
 ## Build222 / 0.14.55 — vertical offscreen auto-advance isolation
 
@@ -99,10 +89,9 @@ Independent vertical A/B based on accepted Build216/main product source, not Bui
 - run/job: `33101409110 / 98619779746`
 - artifact ID: `9658757261`
 - IPA SHA-256: `8cf6d454bf7eec64207875e9c20a1bbc6b125578f11fb777bfdda4fa6b5c5bfe`
-- only new runtime behavior: automatic carousel transition may start only while Home is at top/rest (`abs(homeRawScrollMinY) <= 0.5`);
-- persistent backdrop, preload, Hero and manual horizontal interaction were unchanged.
+- only new runtime behavior: automatic carousel transition could start only while Home was at top/rest (`abs(homeRawScrollMinY) <= 0.5`).
 
-Target-device result: user still perceived Home vertical hitching. The candidate is rejected as sufficient. Do not carry this guard into the next vertical diagnostic.
+Target-device result: user still perceived Home vertical hitching. This candidate is rejected as sufficient. Do not carry the top-only guard into later vertical diagnostics.
 
 Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / hypothesis rejected as sufficient / stable ❌.
 
@@ -110,48 +99,46 @@ Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-de
 
 ### Identity
 
-- working branch: `diag/home-carousel-persistent-backdrop-isolation-build223`
-- base: current `main` head `da5ad1dc6341481b12b8ae3e8b85cc5e5bb31a05`
-- product baseline under that head remains Build216 source behavior (`AppIdentity` 0.14.49 before this candidate)
-- Build223 candidate identity is newly allocated; repository search found no existing Build223 checkpoint/branch before creation.
+- branch: `diag/home-carousel-persistent-backdrop-isolation-build223`
+- base: `main` head at branch creation `da5ad1dc6341481b12b8ae3e8b85cc5e5bb31a05`
+- tested source / CI head: `af54d693d91303ea9bd201b5525e24f3e15ad931`
+- temporary workflow/trigger were removed after successful packaging; product source is unchanged by cleanup.
+- run/job: `33110117601 / 98650408622` — success
+- artifact: `OnePlayer-0.14.56-build223-persistent-backdrop-isolation`
+- artifact ID: `9662245993`
+- artifact ZIP SHA-256: `cdc741253866243bf2f2ae111e46807e64a5deefecdc30d46ee6a75f31a0eba1`
+- IPA SHA-256: `a925714dceb138df7808079b5784f3337afe92245bd790c42c290eac82ccd73c`
+- source ZIP SHA-256: `b14860b0a5889b39be17eeac8aeacf0621c6c68784058f463f00eae3057a5432`
+- independently re-opened artifact confirms bundle `com.embyplayerlab.app`, OnePlayer `0.14.56 (223)`, `MinimumOSVersion=15.0` and `CADisableMinimumFrameDurationOnPhone=true`.
 
-### Exact code change
+### Exact runtime change
 
-Runtime scope is intentionally one variable:
+One presentation variable only:
 
 - `Sources/UI/EmbyHomeCoreV3.swift`: immersive Home no longer mounts `persistentCarouselBackdrop(...)` at the root ZStack;
-- `persistentCarouselBackdrop` and `carouselPersistentImage` remain implemented in `EmbyHomeHeroV3.swift`;
-- the 30pt blur path therefore remains available in source but does not participate in this vertical A/B presentation;
+- `persistentCarouselBackdrop` / `carouselPersistentImage` remain implemented in `EmbyHomeHeroV3.swift` and the existing `.blur(radius: 30)` remains in source;
 - `carouselPreloadLayer` remains mounted;
 - Hero artwork remains mounted and unchanged;
-- automatic carousel timing/transition ownership remains Build216 behavior (Build222 top-only guard is not carried over);
-- horizontal gesture/state ownership is unchanged;
-- `AppIdentity` is 0.14.56 for this candidate;
-- no Player/P0/Frozen code is touched.
+- Build222 top-only auto-advance guard is absent; normal Build216 auto-advance behavior remains;
+- horizontal carousel state/gesture ownership is unchanged;
+- no Player/MPV/PiP/Transport/Cache/Session source changed.
 
-Current branch diff against base is limited to:
-
-- `Sources/Core/AppIdentity.swift` (+2/-2)
-- `Sources/UI/EmbyHomeCoreV3.swift` (+1/-2)
-- `docs/changelog/CHANGELOG_v0_14_56_build223.md`
-- this checkpoint update
-
-Static source re-read confirms immersive root still mounts `carouselPreloadLayer` and the root system-background fallback remains; the persistent root mount is absent.
+The packaged exact source was independently re-opened and those assertions were rechecked after CI.
 
 ### Evidence level
 
 - Code written ✅
-- Diff scope reviewed ✅
-- CI passed ❌
-- IPA produced ❌
+- Exact scope/Frozen guard ✅
+- CI passed ✅
+- IPA produced+verified ✅
 - Real-device tested ❌
 - Stable ❌
 
-Push-triggered legacy temporary workflows on the repository currently fail on this branch; those failures are unrelated stale workflow helpers and are not Build223 validation evidence. Do not count them as candidate CI.
+Legacy unrelated `temp-*` workflows may still auto-fail on branch pushes; they are not Build223 evidence. The dedicated run above is the controlling CI result.
 
 ## Parallel/identity note
 
-A separate Aether workstream has produced a user-library artifact whose filename also contains `Build222`, while its current GitHub checkpoint still says no Build is allocated. That historical identity inconsistency must not cause reuse of 222. Build223 is reserved to this carousel diagnostic branch.
+A separate Aether workstream has historical material whose filename also contains `Build222`, while its checkpoint did not allocate that identity. Do not reuse 222. Build223 is reserved to this carousel diagnostic.
 
 ## Rejected directions not to repeat
 
@@ -167,9 +154,10 @@ A separate Aether workstream has produced a user-library artifact whose filename
 
 ## Next exact action
 
-1. Produce a clean Build223 CI/IPA using the standard MPV/Xcode 16.4 build path, not any stale temporary workflow that happens to auto-run on push.
-2. Verify OnePlayer 0.14.56 / Build223 identity, MinOS 15.0 and exact product diff.
-3. Target-device test Home vertical scrolling with carousel enabled. The decisive A/B question is whether removing only the always-mounted blurred persistent backdrop materially changes the tactile hitching.
-4. Also note the expected visual difference below/around Hero caused by the diagnostic removal; visual degradation by itself does not invalidate the performance A/B.
-5. If vertical smoothness materially improves, persistent full-screen presentation becomes a causal component and the next step is to redesign its presentation ownership without removing the visual effect. If smoothness is unchanged, do not keep Build223 behavior; move to the next measured component (preload or Hero presentation) one at a time.
-6. Keep Build221 horizontal test lane separate; do not merge horizontal and vertical experiments before each has direct target-device evidence.
+Install Build223 on iPhone 15 Pro Max / iOS 17.0 and test **Home vertical scrolling with carousel enabled**. The decisive A/B question is whether removing only the always-mounted blurred persistent backdrop materially changes the tactile hitching.
+
+Also note the expected visual change below/around Hero caused by this diagnostic removal; visual degradation alone does not invalidate the performance A/B.
+
+- If vertical smoothness materially improves, persistent full-screen presentation is a causal component; next redesign its presentation ownership while preserving the visual effect.
+- If smoothness is unchanged, do not keep Build223 behavior; isolate the next measured component (preload or Hero presentation) one at a time.
+- Keep Build221 horizontal testing separate; do not combine horizontal and vertical experiments before each has direct target-device evidence.
