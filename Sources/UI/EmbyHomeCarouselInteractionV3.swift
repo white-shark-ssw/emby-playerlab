@@ -72,15 +72,15 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
             guard shouldBeginHorizontal?(translation) == true else { state = .failed; return }
             horizontalAcquisitionTranslation = translation.width
             horizontalAcquisitionSign = translation.width < 0 ? -1 : 1
-            latestPredictedTranslation = predictedTranslation(&or: touch, event: event, view: view, origin: origin)
+            latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
             state = .began
             return
         }
 
         guard axis == .horizontal, state == .began || state == .changed else { return }
-        latestPredictedTranslation = predictedTranslation(for* touch, event: event, view: view, origin: origin)
+        latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
         state = .changed
-        onHorizontalChanged?(renderTranslation(for* translation))
+        onHorizontalChanged?(renderTranslation(for: translation))
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
