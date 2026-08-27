@@ -1,0 +1,141 @@
+name: Sync Build222 Aether Evidence Docs
+
+on:
+  push:
+    branches: [feat/aether-multi-engine-comparison]
+    paths:
+      - .github/workflows/temp-aether-build222-doc-sync.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch Build222 Aether evidence
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          RUN = "33103909150"
+          JOB = "98628547449"
+          SOURCE = "224199f90d12b39367ae7981463aedd70cdbfe2d"
+          FIX = "6f65f6a562c2f4af8a7720b33eb56d4b14b071bd"
+          ARTIFACT = "9659820803"
+          ARTIFACT_DIGEST = "98e3c51177a4803ae0cbefb91d9584a1373b4d6946e2396901e6de475a73252b"
+          IPA_SHA = "a7566dc53a60880096a41ee36bf3eab1dd43f14e2ff4a9b86c1a78372a7af660"
+          SOURCE_SHA = "8def2320dc5190b6f76bbfc6147a2d1f6d89c7c9821446e259f59d418116e923"
+
+          checkpoint = Path("docs/project/current/dev/DEV-aether-multi-engine-comparison.md")
+          text = checkpoint.read_text()
+          text = text.replace("- **Build candidate:** OnePlayer `0.14.52` / Build `219`", "- **Build candidate:** OnePlayer `0.14.55` / Build `222` — reserved after checking main/other Active tasks; global Build219/220/221 were already occupied by parallel candidates")
+          heading = "\n## Frozen / do-not-touch\n"
+          section = f'''
+## Build222 / 0.14.55 — per-read authority churn correction
+
+Build219 real-device evidence proved that ordinary Aether sequential reads were incorrectly promoted through the user-seek authority path. The minimal correction is commit `{FIX}`:
+
+- `AetherTransportIOReader.read()` no longer calls `confirmConcretePlaybackByte(current)` after every successful read;
+- Aether/FFmpeg `IOReader.seek()` still uses the exact byte offset and calls `prioritizeOffset(candidate)`;
+- stall recovery still reprioritizes the reader's exact current byte cursor;
+- no UnifiedTransport core algorithm, MPV fast-Seek path, timer, retry, fallback, watchdog, time→byte estimate or second network owner was added.
+
+Identity guard before allocation found global Build219 already owned by Home-carousel, Build220 by poster-grid and Build221 by Home-carousel, so this Aether follow-up uses unique **OnePlayer 0.14.55 / Build222**.
+
+### Build222 CI / IPA evidence
+
+- Exact tested source: `{SOURCE}`.
+- Runtime fix commit: `{FIX}`.
+- Workflow run/job: `{RUN} / {JOB}` — **success** on Xcode 26.3.
+- Source-contract validation passed: no `confirmConcretePlaybackByte` remains in `AetherTransportIOReader`; exact-byte `prioritizeOffset(candidate)` and recovery `prioritizeOffset(current)` remain present.
+- Release compile, Swift package resolution, IPA identity/MinOS validation and artifact upload passed.
+- Artifact: `OnePlayer-0.14.55-build222-aether-seekfix-{SOURCE}`; ID `{ARTIFACT}`; digest `sha256:{ARTIFACT_DIGEST}`.
+- IPA: `OnePlayer-0.14.55-build222-aether-seekfix-224199f-unsigned.ipa`; SHA-256 `{IPA_SHA}`.
+- Source ZIP SHA-256: `{SOURCE_SHA}`.
+- Built identity: `com.embyplayerlab.app`, `0.14.55 (222)`, `MinimumOSVersion=16.0`.
+- Independent post-download verification reproduced the IPA SHA-256 and `unzip -t` reported no compressed-data errors.
+- Evidence: **Code written / CI passed / IPA produced+verified / Build222 real-device retest pending / not stable**.
+
+Next device test should repeat the Build219 Aether Seek sequence and compare `SeekEvent.landed` latency plus Range task start/cancel/finish counts. The purpose is to separate the remaining intrinsic Aether exact-seek floor from the removed Build219 adapter-induced transport churn.
+'''
+          if "## Build222 / 0.14.55 — per-read authority churn correction" not in text:
+              if heading not in text: raise SystemExit("checkpoint Frozen heading missing")
+              text = text.replace(heading, "\n" + section + heading, 1)
+          text = re.sub(r"- \*\*CI passed:\*\* .*", f"- **CI passed:** Yes — latest Build222 run/job `{RUN} / {JOB}` succeeded on exact source `{SOURCE}`.", text)
+          text = re.sub(r"- \*\*IPA produced:\*\* .*", f"- **IPA produced:** Yes — Build222 artifact `{ARTIFACT}`; IPA SHA-256 `{IPA_SHA}`; MinOS 16.0 verified.", text)
+          text = re.sub(r"- \*\*Real-device tested:\*\* .*", "- **Real-device tested:** Build219 yes — high-latency Seek + per-read transport churn confirmed; Build222 corrective candidate not yet device-tested.", text)
+          next_heading = "\n## Next exact action\n"
+          if next_heading in text:
+              before, _ = text.split(next_heading, 1)
+              text = before + next_heading + "\nInstall Build222 / 0.14.55 on iPhone 15 Pro Max / iOS 17.0 and repeat the same Aether Seek sequence. Compare landed latency/precision and Transport Range task start/cancel/finish behavior against Build219. Do not mark the defect solved until the new device log proves the cancellation storm is gone and quantifies the remaining Aether exact-seek latency.\n"
+          checkpoint.write_text(text)
+
+          module = Path("docs/project/MODULE_STATUS.md")
+          text = module.read_text()
+          new_row = f"| Aether | **Active experimental — Build222 CI/IPA verified; corrective real-device retest pending** | Build219 target-device logging confirmed excellent Seek precision but high latency and exposed a host-bridge defect: every successful Aether sequential read promoted user-seek authority and caused massive UnifiedTransport Range cancellation churn. Build222 / 0.14.55 exact source `{SOURCE}` removes only that per-read authority promotion while preserving exact-byte `IOReader.seek()` reprioritization. Xcode 26.3 run/job `{RUN} / {JOB}` passed; artifact `{ARTIFACT}`; IPA SHA-256 `{IPA_SHA}`; MinOS 16.0. MPV remains default/automatic authority; no PiP/MDK/MPV fast-Seek/UnifiedTransport core redesign. Build222 device retest pending; not stable. |"
+          text, n = re.subn(r"^\| Aether \|.*$", new_row, text, count=1, flags=re.M)
+          if n != 1: raise SystemExit("MODULE_STATUS Aether row missing")
+          module.write_text(text)
+
+          state = Path("docs/project/PROJECT_STATE.md")
+          text = state.read_text()
+          start_marker = "\n## Active: Aether manual playback-engine comparison\n"
+          end_marker = "\n## Parallel integration rule\n"
+          if start_marker in text and end_marker in text:
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              section_state = f'''
+## Active: Aether manual playback-engine comparison
+
+Work: `DEV-aether-multi-engine-comparison`.
+
+Build219 established the first target-device Aether evidence: Seek precision was excellent but landed latency was high, and log/source correlation proved ordinary Aether sequential reads were incorrectly calling `confirmConcretePlaybackByte`, manufacturing user-seek authority and repeatedly cancelling/restarting healthy 115/CDN Range lanes.
+
+Build222 / OnePlayer 0.14.55 is the minimal corrective candidate. Exact runtime fix `{FIX}` removes only the per-read `confirmConcretePlaybackByte` call from `AetherTransportIOReader.read()`; true Aether/FFmpeg byte seek and exact-byte recovery reprioritization remain unchanged. Global Build219/220/221 identities were already occupied by parallel tasks, so Build222 is the unique follow-up identity.
+
+Exact tested source `{SOURCE}` passed Xcode 26.3 Release CI (`{RUN} / {JOB}`), produced artifact `{ARTIFACT}` (`sha256:{ARTIFACT_DIGEST}`), IPA SHA-256 `{IPA_SHA}`, source ZIP SHA-256 `{SOURCE_SHA}`, MinOS 16.0. Independent download verification passed.
+
+Current evidence: **Code written / CI passed / IPA produced+verified / Build219 real-device defect confirmed / Build222 real-device retest pending / not stable**. MPV remains default/automatic authority; STRM→302→115/CDN client-direct, exact-byte authority, Session Cache, Emby reporting and frozen PiP contracts remain protected.
+'''
+              text = text[:start] + section_state + text[end:]
+          state.write_text(text)
+
+          index = Path("docs/project/BUILD_TEST_INDEX.md")
+          text = index.read_text()
+          marker = "\n## Current accepted baseline\n"
+          row = f"| **Build222 / 0.14.55** | Aether per-read seek-authority churn correction | **CI/IPA verified; corrective real-device retest pending; not stable.** Exact runtime fix `{FIX}` removes `confirmConcretePlaybackByte` from ordinary Aether sequential reads while keeping exact-byte `IOReader.seek()` / recovery reprioritization. Exact source `{SOURCE}`; Xcode 26.3 run/job `{RUN} / {JOB}` success; artifact `{ARTIFACT}` (`sha256:{ARTIFACT_DIGEST}`); IPA SHA-256 `{IPA_SHA}`; source ZIP SHA-256 `{SOURCE_SHA}`; MinOS 16.0. Build219 device evidence was accurate Seek with severe adapter-induced Range cancellation churn; Build222 must be device-tested before attributing the remaining latency to Aether itself. |\n"
+          if row not in text:
+              if marker not in text: raise SystemExit("BUILD_TEST_INDEX marker missing")
+              text = text.replace(marker, "\n" + row + marker, 1)
+          index.write_text(text)
+
+          decisions = Path("docs/project/TECHNICAL_DECISIONS.md")
+          text = decisions.read_text()
+          appendix = f'''
+
+### Build222 correction to D019
+
+Build219 target-device evidence rejects using `confirmConcretePlaybackByte` on every Aether sequential read. That helper is a seek-authority promotion path, not a generic read notification; per-read use caused thousands of fake seek/reanchor events and healthy CDN Range cancellations. Build222 removes only that call from ordinary reads. True `IOReader.seek()` remains exact-byte authoritative through `prioritizeOffset`, and stall recovery still uses the reader's exact cursor. No time→byte estimation, retry, timer, fallback or second transport owner is introduced. Build222 source `{SOURCE}` passed CI/IPA but requires target-device retest before the remaining Aether Seek latency can be classified.
+'''
+          if "### Build222 correction to D019" not in text:
+              text += appendix
+          decisions.write_text(text)
+          PY
+          git diff --check
+          git diff -- docs/project/current/dev/DEV-aether-multi-engine-comparison.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/BUILD_TEST_INDEX.md docs/project/TECHNICAL_DECISIONS.md
+
+      - name: Commit Build222 evidence
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project
+          git commit -m "Record Build222 Aether seek-fix evidence"
+          git push origin HEAD:feat/aether-multi-engine-comparison
