@@ -1,0 +1,105 @@
+name: One-shot Sync Build212 Poster Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temp-sync-build212-poster-docs.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Sync Build212 evidence into project authority docs
+        run: |
+          set -euo pipefail
+          remote_poster=$(git ls-remote origin refs/heads/perf/poster-grid-smoothness | awk '{print $1}')
+          test "$remote_poster" = "4f0a89ab026cd2103f66e5854a1f352d34852e45"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          exact_source = "4f0a89ab026cd2103f66e5854a1f352d34852e45"
+          run_job = "33045869471 / 98429601490"
+          artifact_id = "9635696107"
+          artifact_digest = "eb53a4b88564165b399edfd9085fcc888718cfa62141725d1f24cc539d598615"
+          ipa_sha = "dcdec181dd16e9b3b666882de8347a76671c743ab8392aa27791d40599eec7a1"
+          source_sha = "9a618698a71ba45074ae915d859afdf9173f312e989e9a646717ed8c6ba60459"
+
+          dev = Path("docs/project/current/dev/DEV-poster-grid-smoothness.md")
+          s = dev.read_text()
+          old_status = "**Active — Build210 / 0.14.43 target-device App log captured. Multi-owner attribution is validated: Home and grid can coexist (`registered_scrolls=2`) and the grid route is now logged correctly. Four Home dragging hitches (68.9 / 34.9 / 74.5 / 39.8 ms) all occurred 6.2–11.0 ms after the latest shared image commit, making post-image-publish Home work the strongest current lead. The single grid record (70.4 ms) was only `phase=moving`, `delta_y=0.33`, velocity 0 and 855.4 ms after image commit, so it is not yet proof of a user-drag library hitch. Performance root cause remains unresolved and no fix is claimed.**"
+          new_status = "**Active — Build212 / 0.14.45 source-aware diagnostic candidate is CI/IPA verified and awaiting target-device App-log capture. Build210 remains the controlling real-device evidence: four Home dragging hitches landed 6.2–11.0 ms after shared image commit, while the one grid record was only programmatic/micro-motion. Build212 adds memory/disk/network image source, callback/display role, item/type/MaxWidth, synchronous `onImageLoaded` callback duration and Core Image contrast-render duration without changing scroll/image/navigation behavior or active carousel owner files. Performance root cause remains unresolved and no fix is claimed.**"
+          if old_status not in s: raise SystemExit("DEV status anchor missing")
+          s = s.replace(old_status, new_status, 1)
+          if "## Build212 / 0.14.45 — source-aware diagnostic candidate" not in s:
+              marker = "## Parallel safety\n"
+              if marker not in s: raise SystemExit("DEV parallel marker missing")
+              section = f'''## Build212 / 0.14.45 — source-aware diagnostic candidate\n\nBuild212 is a **diagnostic-only** successor to Build210. Build211 / 0.14.44 is owned by the independent Home-carousel task; the poster task retired its temporary 211 identity before distribution and uses the unique Build212 identity.\n\nExact source: **`{exact_source}`**.\n\nExact Build210→Build212 product delta is four files only:\n\n- `Sources/Core/AppIdentity.swift`\n- `Sources/UI/EmbySharedImageAndNavigation.swift`\n- `docs/changelog/CHANGELOG_v0_14_45_build212.md`\n- `scripts/check_poster_grid_smoothness.py`\n\nBuild212 retains Build210's one shared motion-gated poster `CADisplayLink` and multi-owner Home/grid attribution, then adds only source-aware correlation in shared image infrastructure:\n\n- image publish context: Emby item ID, image type, requested `MaxWidth`, `source=memory/disk/network`, and `role=display/callback`;\n- synchronous `onImageLoaded` callback duration measured around the existing callback invocation;\n- synchronous `CIContext.render` duration in `EmbyImageContrastAnalyzer`;\n- existing hitch log keeps route/phase/offset/delta/velocity/cell/image/load-ahead timing and adds the new image/callback/contrast fields;\n- authentication query data is not logged;\n- no timer, debounce, throttle, watchdog, retry, fallback, second display link, image-policy change, scroll-physics change, navigation change or carousel-owner change.\n\nCI / IPA evidence:\n\n- exact-source run/job: **`{run_job}` — success**\n- source checker, exact four-file scope, Frozen/P0 and carousel-owner guard: PASS\n- Xcode 16.4 dependency resolution + Release build: PASS\n- artifact: `OnePlayer-0.14.45-build212-poster-source-aware-diagnostics`\n- artifact ID: **`{artifact_id}`**\n- GitHub artifact digest / independently downloaded artifact ZIP SHA-256: **`{artifact_digest}`**\n- IPA SHA-256: **`{ipa_sha}`**\n- source ZIP SHA-256: **`{source_sha}`**\n- IPA/source ZIP integrity and embedded checksum verification: PASS\n- bundle/version/build: `com.embyplayerlab.app`, OnePlayer **0.14.45 (212)**\n- `MinimumOSVersion=15.0`; MinOS audit PASS\n- source snapshot independently confirms source-aware image fields, callback/contrast timing and the unchanged single poster `CADisplayLink`.\n\n**Build212 evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device diagnostic pending ❌ / performance fix not claimed / not stable.**\n\n'''
+              s = s.replace(marker, section + marker, 1)
+          s = s.replace("- Home-carousel Build208 / 0.14.41 remains an independent Active candidate.\n", "- Build211 / 0.14.44 identity is owned by the independent Home-carousel task; poster Build212 does not reuse that identity.\n", 1)
+          start = s.find("## Next exact action\n")
+          end = s.find("## Do not repeat\n", start)
+          if start < 0 or end < 0: raise SystemExit("DEV next-action anchors missing")
+          next_block = '''## Next exact action\n\n1. Install Build212 / 0.14.45 on iPhone 15 Pro Max / iOS 17.0 and export the **App log** after reproducing Home vertical scrolling and library/favorites/search/tag/person 3×3 scrolling.\n2. For Home hitches, correlate `image_source`, `image_role`, image item/type/MaxWidth, `callback_duration_ms` and `contrast_duration_ms` with the motion-gated frame gap before changing runtime behavior.\n3. Obtain at least one real `phase=dragging` or `phase=decelerating` grid hitch before changing a shared grid path; the Build210 `phase=moving / delta_y=0.33` record remains insufficient.\n4. Keep poster work out of carousel owner files while Build211 is active; if Build212 proves the synchronous carousel callback/contrast path causal, reconcile the two tasks explicitly before a runtime patch.\n5. Preserve P0 playback/transport/cache/session contracts and iOS 15.0 deployment.\n\n'''
+          s = s[:start] + next_block + s[end:]
+          dev.write_text(s)
+
+          module = Path("docs/project/MODULE_STATUS.md")
+          s = module.read_text()
+          lines = s.splitlines()
+          new_row = f"| Poster 3-column / poster-heavy scroll smoothness | **Active — Build212 CI/IPA verified; source-aware target-device diagnostic pending** | Build210 target-device evidence remains controlling: four Home dragging hitches (68.9 / 34.9 / 74.5 / 39.8 ms) occurred 6.2–11.0 ms after shared image commit; the one grid record was only `phase=moving`, `delta_y=0.33`, velocity 0 and is not a proven user-drag grid stall. Build212 / 0.14.45 exact source `{exact_source}` retains the single multi-owner motion-gated `CADisplayLink` and adds only source-aware shared-image diagnostics: item/type/MaxWidth, memory/disk/network source, display/callback role, synchronous `onImageLoaded` callback duration and Core Image contrast-render duration. Run/job `{run_job}` passed; artifact ID `{artifact_id}`; artifact digest `{artifact_digest}`; IPA SHA-256 `{ipa_sha}`; source SHA-256 `{source_sha}`; bundle OnePlayer 0.14.45 (212), MinOS 15.0 independently verified. No performance fix claimed; real-device Build212 log pending; not stable. |"
+          replaced = False
+          for i, line in enumerate(lines):
+              if line.startswith("| Poster 3-column / poster-heavy scroll smoothness |"):
+                  lines[i] = new_row
+                  replaced = True
+              if line.startswith("| Other product modules |"):
+                  lines[i] = line.replace("poster-scroll Build210 / 0.14.43 diagnostics", "poster-scroll Build212 / 0.14.45 diagnostics")
+          if not replaced: raise SystemExit("MODULE poster row missing")
+          module.write_text("\n".join(lines) + "\n")
+
+          index = Path("docs/project/BUILD_TEST_INDEX.md")
+          s = index.read_text()
+          row210 = "| **Build210 / 0.14.43** | Multi-owner poster-scroll diagnostics | **Current poster diagnostic baseline.** Target-device log validates simultaneous Home/grid ownership (`registered_scrolls=2`) and correct grid routing. Four Home dragging hitches all landed 6.2–11.0 ms after image commit; the single grid record was programmatic/micro-motion (`phase=moving`, `delta_y=0.33`) and not yet a user-drag grid stall. Real-device diagnostic tested; no performance fix claimed; not stable. |"
+          if row210 not in s: raise SystemExit("BUILD index Build210 row missing")
+          if "| **Build212 / 0.14.45** |" not in s:
+              rows = row210 + "\n| **Build211 / 0.14.44** | Home-carousel acquisition-relative line | **Owned by the independent carousel task.** Poster briefly prepared this identity but retired it before distribution as soon as the collision was confirmed; never use Build211 for poster attribution. |\n" + f"| **Build212 / 0.14.45** | Source-aware poster-scroll diagnostics | **Current poster diagnostic candidate.** Exact source `{exact_source}` adds image source/role/context plus callback/contrast timing while retaining Build210 motion attribution. Run/job `{run_job}` passed; artifact `{artifact_id}` and IPA/source independently verified; target-device log pending; no performance fix claimed; not stable. |"
+              s = s.replace(row210, rows, 1)
+          if "### Build212 — source-aware poster diagnostic candidate" not in s:
+              detail = f'''\n### Build212 — source-aware poster diagnostic candidate\n\n- identity: **0.14.45 / 212**\n- exact source: **`{exact_source}`**\n- Build211 / 0.14.44 is owned by the independent Home-carousel task; poster Build211 was retired before distribution.\n- exact Build210→212 delta: `AppIdentity.swift`, `EmbySharedImageAndNavigation.swift`, Build212 changelog, poster checker only.\n- retains one shared motion-gated multi-owner poster `CADisplayLink`; no scroll/image/navigation policy change.\n- adds image item/type/MaxWidth, `source=memory/disk/network`, `role=display/callback`, callback duration and Core Image contrast-render duration to hitch correlation.\n- run/job: **`{run_job}` — success**\n- artifact: `OnePlayer-0.14.45-build212-poster-source-aware-diagnostics`; ID **`{artifact_id}`**\n- artifact ZIP SHA-256: **`{artifact_digest}`**\n- IPA SHA-256: **`{ipa_sha}`**\n- source ZIP SHA-256: **`{source_sha}`**\n- independent validation: GitHub digest exact match; embedded checksums match; IPA/source `unzip -t` passed; bundle `com.embyplayerlab.app`; OnePlayer `0.14.45 (212)`; primary/alternate icons present; `MinimumOSVersion=15.0`; MinOS audit PASS; source snapshot contains the expected diagnostic fields.\n- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic pending / performance fix not claimed / not stable.**\n'''
+              s = s.rstrip() + "\n" + detail
+          index.write_text(s)
+
+          state = Path("docs/project/PROJECT_STATE.md")
+          s = state.read_text()
+          first_old = "_Last updated after poster-scroll Build210 / 0.14.43 target-device diagnostics validated multi-owner Home/grid attribution and exposed a strong Home image-publish correlation. Build199 remains the latest real-device accepted overall baseline. Home-carousel Build208 and poster-scroll remain independent Active lines._"
+          first_new = "_Last updated after poster-scroll Build212 / 0.14.45 completed exact-source CI/IPA and independent package verification. Build210 remains the latest controlling poster real-device evidence; Build212 is diagnostic-only and awaits target-device App-log capture. Build199 remains the latest real-device accepted overall baseline. Home-carousel and poster-scroll remain independent Active lines; Build211 / 0.14.44 identity belongs to carousel._"
+          if first_old not in s: raise SystemExit("PROJECT_STATE intro anchor missing")
+          s = s.replace(first_old, first_new, 1)
+          start = s.find("## Active: Poster-heavy scrolling smoothness\n")
+          end = s.find("## Parallel integration rule\n", start)
+          if start < 0 or end < 0: raise SystemExit("PROJECT_STATE poster anchors missing")
+          block = f'''## Active: Poster-heavy scrolling smoothness\n\nWork: `DEV-poster-grid-smoothness`.\n\n- Build202 / 0.14.35 and Build204 / 0.14.37 were target-device rejected; visible stop/catch-up remained on Home and library 3×3.\n- Build206 added first hitch timing; Build209 added real-motion gating but had a single-owner Home/grid attribution defect.\n- Build210 / 0.14.43 fixed attribution with independent weak Home/grid scroll observations while retaining one shared `CADisplayLink`. Latest real-device App log produced four Home `phase=dragging` hitches (68.9 / 34.9 / 74.5 / 39.8 ms), all 6.2–11.0 ms after shared image commit. The only grid record was `phase=moving`, `delta_y=0.33`, velocity 0 and therefore is not a proven user-drag grid stall.\n- This 4/4 Home timing correlation is the strongest lead, but Build210 image commit was global and could not identify artwork role/cache source or time the synchronous callback/contrast work; no runtime fix was justified.\n- Build211 / 0.14.44 is owned by the independent Home-carousel task. Poster retired its temporary 211 identity before distribution and uses Build212.\n- Build212 / 0.14.45 exact source **`{exact_source}`** retains the Build210 motion diagnostic and adds shared-image publish context (`memory/disk/network`, `display/callback`, item/type/MaxWidth), synchronous `onImageLoaded` callback duration and Core Image contrast-render duration. No scroll physics, image-loading policy, navigation behavior, lazy-container behavior or carousel owner file changed.\n- Build212 run/job **`{run_job}` — success**; artifact ID **`{artifact_id}`**; artifact digest **`{artifact_digest}`**; IPA SHA-256 **`{ipa_sha}`**; source SHA-256 **`{source_sha}`**. Independent verification confirms exact digest/checksums, IPA/source integrity, `com.embyplayerlab.app`, OnePlayer **0.14.45 (212)**, icons and `MinimumOSVersion=15.0`.\n- evidence: **Build212 Code written / exact scope+Frozen guard / CI passed / IPA produced+independently verified / target-device diagnostic pending / performance fix not claimed / not stable.**\n\nNext: install Build212 on the target device, reproduce Home vertical scrolling plus true library/favorites/search/tag/person 3×3 dragging/deceleration, export the App log, and correlate source/role/callback/contrast timing before selecting any runtime patch. Keep the poster task out of active carousel owner files unless the trace proves that owner is causal and the two tasks are explicitly reconciled.\n\n'''
+          s = s[:start] + block + s[end:]
+          state.write_text(s)
+          PY
+          git diff --check
+          changed="$(git diff --name-only)"
+          printf '%s\n' "$changed"
+          test "$(printf '%s\n' "$changed" | sed '/^$/d' | wc -l)" -eq 4
+          printf '%s\n' "$changed" | grep -Fx docs/project/current/dev/DEV-poster-grid-smoothness.md >/dev/null
+          printf '%s\n' "$changed" | grep -Fx docs/project/MODULE_STATUS.md >/dev/null
+          printf '%s\n' "$changed" | grep -Fx docs/project/BUILD_TEST_INDEX.md >/dev/null
+          printf '%s\n' "$changed" | grep -Fx docs/project/PROJECT_STATE.md >/dev/null
+          ! printf '%s\n' "$changed" | grep -E '^Sources/|^project.yml$|^Config/' >/dev/null
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/project/current/dev/DEV-poster-grid-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md
+          git commit -m "Record Build212 poster diagnostic evidence"
+          git push origin HEAD:main
