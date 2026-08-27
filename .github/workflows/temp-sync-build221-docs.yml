@@ -1,0 +1,32 @@
+name: Temporary Build221 Project Sync
+
+on:
+  push:
+    branches: [diag/home-carousel-persistent-drag-isolation-build221]
+    paths:
+      - ".github/build221-doc-sync-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Apply exact Build221 docs
+        run: |
+          set -euo pipefail
+          git fetch origin diag/home-carousel-persistent-drag-isolation-build221
+          git show origin/diag/home-carousel-persistent-drag-isolation-build221:scripts/temp_sync_build221_docs.py > /tmp/sync_build221.py
+          python3 /tmp/sync_build221.py
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md
+          git commit -m "Docs: record Build221 carousel diagnostic candidate"
+          git push origin HEAD:main
