@@ -1,12 +1,11 @@
 #if canImport(AetherEngine)
-import AetherEngine
 import SwiftUI
 import UIKit
 
 struct AetherPlayerSurface: UIViewRepresentable {
-    let playerView: AetherPlayerView
+    let playerView: UIView
 
-    func makeUIView(context: Context) -> AetherPlayerView { playerView }
-    func updateUIView(_ uiView: AetherPlayerView, context: Context) {}
+    func makeUIView(context: Context) -> UIView { playerView }
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }
 #endif
