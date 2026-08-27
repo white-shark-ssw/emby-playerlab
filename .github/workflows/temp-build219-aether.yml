@@ -21,10 +21,10 @@ jobs:
       - name: Validate materialized Build219 source
         run: |
           set -euo pipefail
+          test "$(git status --porcelain | wc -l | tr -d ' ')" = "0"
           PRODUCT_SHA="$(git rev-parse HEAD)"
           echo "PRODUCT_SHA=$PRODUCT_SHA" >> "$GITHUB_ENV"
           git rev-parse HEAD | tee product-sha.txt
-          test "$(git status --porcelain | wc -l | tr -d ' ')" = "0"
           grep -R -n "case \.aether\|AetherPlayerEngine\|AetherPlayerSurface\|AetherTransportIOReader" Sources | tee aether-wiring.txt
           grep -n "case \.aether" Sources/UI/PlayerExperienceState.swift
           grep -n 'MARKETING_VERSION: "0.14.52"' project.yml
