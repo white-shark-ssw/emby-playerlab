@@ -58,8 +58,7 @@ struct V3EmbyHomeView: View {
                 let immersive = !model.carouselItems.isEmpty
                 let viewportHeight = geometry.size.height + geometry.safeAreaInsets.top
                 ZStack(alignment: .top) {
-                    if immersive { persistentCarouselBackdrop(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom)) }
-                    else { Color(uiColor: .systemBackground).ignoresSafeArea() }
+                    if !immersive { Color(uiColor: .systemBackground).ignoresSafeArea() }
                     if immersive { carouselPreloadLayer }
 
                     if immersive {
