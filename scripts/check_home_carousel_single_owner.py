@@ -9,7 +9,7 @@ identity = Path('Sources/Core/AppIdentity.swift').read_text()
 info = Path('Config/Info.plist').read_text()
 project = Path('project.yml').read_text()
 
-assert 'static let sourceVersion = "0.14.52"' in identity
+assert 'static let sourceVersion = "0.14.54"' in identity
 assert 'V3HomeCarouselTransitionState' in interaction
 assert '@State var carouselTransitionState = V3HomeCarouselTransitionState()' in core
 assert '@State var transitionProgress' not in core
@@ -82,6 +82,9 @@ assert 'return progress * (1 - 0.85 * earlyWeight)' in state
 assert 'return progress * progress' not in state
 assert 'let next = (index + direction + items.count) % items.count' in state
 assert '.blur(radius: 30)' in hero
+assert 'carouselPersistentImage(item: item, size: size).opacity(isCarouselDragging ? 1 : carouselOpacity(for: item.id))' in hero
+assert 'if !isCarouselDragging, let item = transitionTargetCarouselItem {' in hero
+assert hero.count('carouselPersistentImage(item: item, size: size)') == 2
 assert '<key>CADisableMinimumFrameDurationOnPhone</key>' in info
 assert '<true/>' in info.split('<key>CADisableMinimumFrameDurationOnPhone</key>', 1)[1][:80]
 assert 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' in project
@@ -106,4 +109,4 @@ assert 'withAnimation' not in cadence
 assert 'onHorizontalChanged' not in cadence
 assert 'transitionProgress =' not in cadence
 
-print('Build219 home carousel retained contracts + exact max-refresh diagnostic request passed')
+print('Build221 home carousel retained contracts + persistent-drag isolation diagnostic passed')
