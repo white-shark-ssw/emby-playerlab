@@ -8,8 +8,9 @@ GitHub 仓库：
 
 1. 读取仓库根目录的 `AGENTS.md`。
 2. 读取 `docs/project/START_HERE.md`。
-3. 以 `docs/project/` 中的当前资料作为项目动态权威状态；不要要求用户重新上传或重新解释 v1-v19。
-4. 只有当当前权威资料无法解释某个历史问题时，才读取 `docs/history/chat-exports/v01.md ... v19.md`。
+3. 读取 `docs/automation/CHATGPT_NOTIFY_RULES.md`，遵守项目级完成通知与临时评论隐私规则。
+4. 以 `docs/project/` 中的当前资料作为项目动态权威状态；不要要求用户重新上传或重新解释 v1-v19。
+5. 只有当当前权威资料无法解释某个历史问题时，才读取 `docs/history/chat-exports/v01.md ... v19.md`。
 
 资料冲突时，按以下优先级判断：
 
@@ -115,3 +116,5 @@ Deployment Target 应优先保持 iOS 15.0。
 - `BUILD_TEST_INDEX.md`
 
 不得只在聊天里说明新的项目结论，而不同步维护 GitHub 项目资料。
+
+对于满足 `docs/automation/CHATGPT_NOTIFY_RULES.md` 通知条件的重要任务，必须在本轮所有工作、验证和项目文档同步完成、最终回答已经准备好之后，按该文件触发 `white-shark-ssw/ChatGPT-Notify` PR #1 完成通知，再输出最终回答。通知行为不得改变 OnePlayer 的证据级别，也不得把 Bark Key 或其他 secrets 写进 OnePlayer 仓库。
