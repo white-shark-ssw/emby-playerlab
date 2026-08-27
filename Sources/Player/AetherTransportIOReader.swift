@@ -57,7 +57,6 @@ final class AetherTransportIOReader: IOReader, @unchecked Sendable {
             guard !data.isEmpty else { return current >= contentLength ? 0 : -1 }
             data.copyBytes(to: buffer, count: data.count)
             lock.lock(); offset = min(contentLength, current + Int64(data.count)); lock.unlock()
-            Task { [session] in await session.confirmConcretePlaybackByte(current) }
             return Int32(data.count)
         case .failure(let error):
             DiagnosticsLogger.shared.playback("AetherIO", "read failed offset=\(current) length=\(requested) error=\(error.localizedDescription)")
