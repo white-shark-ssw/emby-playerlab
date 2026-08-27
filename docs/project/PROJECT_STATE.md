@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build220 / 0.14.53 poster-grid target-device testing. Build216 remains the latest real-device accepted overall runtime baseline. Home-carousel remains an independent diagnostic line. Poster Build220 is CI/IPA verified but the intended 3×3 A/B feels basically unchanged and still logs grid long frames, so the UIKit observation-bypass candidate is rejected as a sufficient smoothness fix and remains Active/not stable._
+_Last updated after Build223 / 0.14.56 Home vertical persistent-backdrop isolation CI/IPA verification. Build216 remains the latest real-device accepted overall runtime baseline. Build223 is a diagnostic Home candidate awaiting target-device testing; Build222 offscreen auto-advance isolation was real-device ineffective. Poster Build220 remains real-device ineffective for the intended 3×3 smoothness A/B._
 
 ## Current accepted overall baseline
 
@@ -126,6 +126,10 @@ Next action: target-device A/B Build221 with the same cadence log. If drag-time 
 
 Independent Build222 / 0.14.55 tested one narrow lifecycle hypothesis from the accepted Build216/main product baseline: once Home has scrolled away from the top, `autoAdvanceCarouselIfNeeded()` no longer starts a new automatic transition. It intentionally leaves persistent backdrop, preload, Hero and horizontal interaction unchanged and does not stack Build221. CI/IPA passed (`33101409110 / 98619779746`, artifact `9658757261`, tested source `694221315c727ea055ea3b5ef7a9ea03a260fe80`, IPA SHA-256 `8cf6d454bf7eec64207875e9c20a1bbc6b125578f11fb777bfdda4fa6b5c5bfe`, MinOS 15.0). Target-device feedback still perceives Home vertical hitching, so offscreen auto-advance alone is rejected as a sufficient fix. The supplied 30fps recording cannot prove the remaining 120Hz micro-stutter; its clearest zero→jump points coincide with new swipe starts. Next vertical A/B should isolate the root-level always-mounted persistent backdrop only, keeping preload and Build221 separate.
 
+### Build223 Home vertical persistent-backdrop A/B
+
+Build223 / 0.14.56 is the next independent Home vertical diagnostic from accepted Build216/main behavior, not a stack on Build221 or Build222. Its only runtime presentation change is that immersive Home no longer mounts the always-on full-screen `persistentCarouselBackdrop`; `persistentCarouselBackdrop` / `carouselPersistentImage` and the existing 30pt blur implementation remain in source, `carouselPreloadLayer` stays mounted, Hero artwork is unchanged, normal Build216 auto-advance behavior remains, and horizontal interaction/P0/Frozen paths are untouched. Dedicated Xcode 16.4 run/job `33110117601 / 98650408622` succeeded; tested source `af54d693d91303ea9bd201b5525e24f3e15ad931`; artifact `9662245993`; IPA SHA-256 `a925714dceb138df7808079b5784f3337afe92245bd790c42c290eac82ccd73c`; source ZIP SHA-256 `b14860b0a5889b39be17eeac8aeacf0621c6c68784058f463f00eae3057a5432`; OnePlayer 0.14.56 (223) and MinOS 15.0 were independently re-opened/verified. Evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / diagnostic only / not stable**. Next vertical action is target-device A/B of Home vertical scrolling.
+
 ## Active: Poster-heavy scrolling smoothness
 
 Work: `DEV-poster-grid-smoothness`.
@@ -143,4 +147,4 @@ Next: make the next poster build diagnostic-only. Measure MainActor image-assign
 
 ## Parallel integration rule
 
-Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel Build221 and poster-scroll Build220 remain independent Active lines with separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
+Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel Build223 is the latest CI/IPA-verified vertical diagnostic candidate; Build221 remains a separate horizontal A/B; poster-scroll Build220 remains an independent Active line. These keep separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
