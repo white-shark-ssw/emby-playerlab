@@ -4,11 +4,12 @@ interaction = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift').read_text()
 state = Path('Sources/UI/EmbyHomeCarouselStateV3.swift').read_text()
 core = Path('Sources/UI/EmbyHomeCoreV3.swift').read_text()
 hero = Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()
+cadence = Path('Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift').read_text()
 identity = Path('Sources/Core/AppIdentity.swift').read_text()
 info = Path('Config/Info.plist').read_text()
 project = Path('project.yml').read_text()
 
-assert 'static let sourceVersion = "0.14.48"' in identity
+assert 'static let sourceVersion = "0.14.50"' in identity
 assert 'V3HomeCarouselTransitionState' in interaction
 assert '@State var carouselTransitionState = V3HomeCarouselTransitionState()' in core
 assert '@State var transitionProgress' not in core
@@ -29,6 +30,7 @@ assert 'canBePrevented(by preventingGestureRecognizer:' in interaction
 assert 'UIScrollView' in interaction and 'panGestureRecognizer' in interaction
 
 assert 'event.predictedTouches(for: touch)?.last' in interaction
+assert 'event.coalescedTouches(for: touch)' in cadence
 assert 'coalescedTouches' not in interaction
 assert 'onHorizontalChanged: ((CGSize) -> Void)?' in interaction
 assert 'onHorizontalEnded: ((CGSize, CGSize?) -> Void)?' in interaction
@@ -38,7 +40,13 @@ assert 'translation.width - acquisitionTranslation' in interaction
 assert 'horizontalAcquisitionSign' not in interaction
 assert 'onHorizontalChanged?(translation)' not in interaction
 assert 'if horizontal == 0 {' in interaction
-assert 'if isCarouselDragging { transitionProgress = 0 }' in interaction
+assert '''if horizontal == 0 {
+            if isCarouselDragging {
+                transitionProgress = 0
+                V3HomeCarouselCadenceDiagnostics.shared.recordProgressPublish(transitionProgress)
+            }
+            return
+        }''' in interaction
 assert 'let actualProgress = min(1, max(0, actualDistance / max(1, width)))' in interaction
 assert 'let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48' in interaction
 assert 'transitionProgress >= 0.28' not in interaction
@@ -78,4 +86,21 @@ assert '<key>CADisableMinimumFrameDurationOnPhone</key>' in info
 assert '<true/>' in info.split('<key>CADisableMinimumFrameDurationOnPhone</key>', 1)[1][:80]
 assert 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' in project
 
-print('Build215 home carousel acquisition-relative page-slot contracts passed')
+assert 'V3HomeCarouselCadenceDiagnostics.shared.begin' in interaction
+assert 'V3HomeCarouselCadenceDiagnostics.shared.recordTouch' in interaction
+assert 'V3HomeCarouselCadenceDiagnostics.shared.recordProgressPublish' in interaction
+assert 'V3HomeCarouselCadenceRenderProbe(progress: transitionProgress)' in hero
+for role in ['hero', 'persistent', 'preload']:
+    assert f'recordImageCallback(role: "{role}"' in hero
+assert 'CADisplayLink(target: self' in cadence
+assert 'link.add(to: .main, forMode: .common)' in cadence
+assert 'preferredFramesPerSecond' not in cadence
+assert 'preferredFrameRateRange' not in cadence
+assert 'DiagnosticsLogger.shared.app(' in cadence and '"HomeCarouselCadence"' in cadence
+assert 'Timer.' not in cadence
+assert 'DispatchQueue.main.asyncAfter' not in cadence
+assert 'withAnimation' not in cadence
+assert 'onHorizontalChanged' not in cadence
+assert 'transitionProgress =' not in cadence
+
+print('Build217 home carousel acquisition-relative contracts + cadence diagnostics passed')

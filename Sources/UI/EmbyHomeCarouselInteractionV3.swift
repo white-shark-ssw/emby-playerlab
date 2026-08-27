@@ -44,6 +44,7 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         guard origin == nil, touches.count == 1, let touch = touches.first, let view else {
             if axis == .horizontal, state == .began || state == .changed {
+                V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancelled-new-touch")
                 onHorizontalCancelled?()
                 state = .cancelled
             } else {
@@ -69,12 +70,14 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
             if axis == .vertical { state = .failed; return }
             guard shouldBeginHorizontal?(translation) == true else { state = .failed; return }
             horizontalAcquisitionTranslation = translation.width
+            V3HomeCarouselCadenceDiagnostics.shared.begin(acquisitionTranslation: translation.width, touch: touch, event: event)
             latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
             state = .began
             return
         }
 
         guard axis == .horizontal, state == .began || state == .changed else { return }
+        V3HomeCarouselCadenceDiagnostics.shared.recordTouch(touch, event: event)
         latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
         state = .changed
         onHorizontalChanged?(renderTranslation(for: translation))
@@ -85,6 +88,8 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         let location = touch.location(in: view)
         let translation = CGSize(width: location.x - origin.x, height: location.y - origin.y)
         if axis == .horizontal, state == .began || state == .changed {
+            V3HomeCarouselCadenceDiagnostics.shared.recordTouch(touch, event: event)
+            V3HomeCarouselCadenceDiagnostics.shared.end(reason: "ended")
             onHorizontalEnded?(translation, latestPredictedTranslation)
             state = .ended
         } else if axis == nil {
@@ -97,6 +102,7 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
         if axis == .horizontal, state == .began || state == .changed {
+            V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancelled")
             onHorizontalCancelled?()
             state = .cancelled
         } else {
@@ -201,7 +207,10 @@ extension V3EmbyHomeView {
         suppressCarouselTap()
         guard transitionToID == nil || isCarouselDragging else { return }
         if horizontal == 0 {
-            if isCarouselDragging { transitionProgress = 0 }
+            if isCarouselDragging {
+                transitionProgress = 0
+                V3HomeCarouselCadenceDiagnostics.shared.recordProgressPublish(transitionProgress)
+            }
             return
         }
         let direction = horizontal < 0 ? 1 : -1
@@ -214,6 +223,7 @@ extension V3EmbyHomeView {
             isCarouselDragging = true
         }
         transitionProgress = min(1, max(0, abs(horizontal) / max(1, width)))
+        V3HomeCarouselCadenceDiagnostics.shared.recordProgressPublish(transitionProgress)
     }
 
     func finishNativeCarouselDrag(_ translation: CGSize, predictedTranslation: CGSize?, width: CGFloat) {

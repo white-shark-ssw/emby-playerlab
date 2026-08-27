@@ -38,6 +38,10 @@ extension V3EmbyHomeView {
             carouselPageIndicators
                 .padding(.bottom, 18)
                 .allowsHitTesting(false)
+
+            V3HomeCarouselCadenceRenderProbe(progress: transitionProgress)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
         }
         .frame(width: width, height: baseHeight)
         .overlay {
@@ -88,7 +92,7 @@ extension V3EmbyHomeView {
 
         return ZStack(alignment: .bottom) {
             ZStack(alignment: .top) {
-                EmbyCachedRemoteImage(url: carouselImageURL(item), contentMode: .fill, placeholderSystemImage: "photo", showsLoadingIndicator: false, onImageLoaded: { image in updateCarouselImageMetrics(image, itemID: item.id) })
+                EmbyCachedRemoteImage(url: carouselImageURL(item), contentMode: .fill, placeholderSystemImage: "photo", showsLoadingIndicator: false, onImageLoaded: { image in V3HomeCarouselCadenceDiagnostics.shared.recordImageCallback(role: "hero", itemID: item.id); updateCarouselImageMetrics(image, itemID: item.id) })
                     .frame(width: renderedImageSize.width, height: renderedImageSize.height)
             }
             .frame(width: width, height: backdropVisualHeight, alignment: .top)
@@ -219,7 +223,7 @@ extension V3EmbyHomeView {
     }
 
     func carouselPersistentImage(item: LibraryItem, size: CGSize) -> some View {
-        EmbyCachedRemoteImage(url: carouselImageURL(item), contentMode: .fill, placeholderSystemImage: "photo", showsLoadingIndicator: false, onImageLoaded: { image in updateCarouselImageMetrics(image, itemID: item.id) })
+        EmbyCachedRemoteImage(url: carouselImageURL(item), contentMode: .fill, placeholderSystemImage: "photo", showsLoadingIndicator: false, onImageLoaded: { image in V3HomeCarouselCadenceDiagnostics.shared.recordImageCallback(role: "persistent", itemID: item.id); updateCarouselImageMetrics(image, itemID: item.id) })
             .frame(width: size.width, height: size.height)
             .clipped()
             .scaleEffect(1.12)
@@ -229,7 +233,7 @@ extension V3EmbyHomeView {
     var carouselPreloadLayer: some View {
         ZStack {
             ForEach(model.carouselItems) { item in
-                EmbyCachedRemoteImage(url: carouselImageURL(item), contentMode: .fill, placeholderSystemImage: "photo", showsLoadingIndicator: false, onImageLoaded: { image in updateCarouselImageMetrics(image, itemID: item.id) })
+                EmbyCachedRemoteImage(url: carouselImageURL(item), contentMode: .fill, placeholderSystemImage: "photo", showsLoadingIndicator: false, onImageLoaded: { image in V3HomeCarouselCadenceDiagnostics.shared.recordImageCallback(role: "preload", itemID: item.id); updateCarouselImageMetrics(image, itemID: item.id) })
                     .frame(width: 1, height: 1)
                     .clipped()
             }
