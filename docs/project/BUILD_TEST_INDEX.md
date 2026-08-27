@@ -37,7 +37,7 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build209 / 0.14.42** | Motion-aware poster-scroll diagnostics | Target-device App log proved three Home motion hitches but grid attribution was invalid because Home/grid shared one global observed-scroll owner. Diagnostic tested; not stable. |
 | **Build210 / 0.14.43** | Multi-owner poster-scroll diagnostics | **Current poster diagnostic baseline.** Target-device log validates simultaneous Home/grid ownership (`registered_scrolls=2`) and correct grid routing. Four Home dragging hitches all landed 6.2–11.0 ms after image commit; the single grid record was programmatic/micro-motion (`phase=moving`, `delta_y=0.33`) and not yet a user-drag grid stall. Real-device diagnostic tested; no performance fix claimed; not stable. |
 | **Build211 / 0.14.44** | Home-carousel acquisition-relative line | **Owned by the independent carousel task.** Poster briefly prepared this identity but retired it before distribution as soon as the collision was confirmed; never use Build211 for poster attribution. |
-| **Build212 / 0.14.45** | Source-aware poster-scroll diagnostics | **Current poster diagnostic candidate.** Exact source `4f0a89ab026cd2103f66e5854a1f352d34852e45` adds image source/role/context plus callback/contrast timing while retaining Build210 motion attribution. Run/job `33045869471 / 98429601490` passed; artifact `9635696107` and IPA/source independently verified; target-device log pending; no performance fix claimed; not stable. |
+| **Build212 / 0.14.45** | Source-aware poster-scroll diagnostics | **Target-device diagnostic tested.** Home: 5 real dragging hitches 43.6–73.8 ms, all 8.3–12.2 ms after memory/callback 1400px publish; callback/contrast only 1–3 ms, so those synchronous calculations are rejected as the primary Home cost. Grid: 11 real dragging hitches 31.0–37.3 ms, all 0–20.1 ms after network/display 378px publish and 118.8–177.8 ms after a cell appearance. Home and grid are now treated as separate runtime paths; no fix tested; not stable. |
 
 ## Current accepted baseline
 
@@ -244,3 +244,12 @@ Update this index when a build materially changes architectural understanding, b
 - source ZIP SHA-256: **`9a618698a71ba45074ae915d859afdf9173f312e989e9a646717ed8c6ba60459`**
 - independent validation: GitHub digest exact match; embedded checksums match; IPA/source `unzip -t` passed; bundle `com.embyplayerlab.app`; OnePlayer `0.14.45 (212)`; primary/alternate icons present; `MinimumOSVersion=15.0`; MinOS audit PASS; source snapshot contains the expected diagnostic fields.
 - evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic pending / performance fix not claimed / not stable.**
+
+
+### Build212 target-device source-aware result
+
+- log: `OnePlayer-App-1787813666.log`
+- Home dragging: 5 hitches, 43.6–73.8 ms; `memory/callback/Primary/1400`; image age 8.3–12.2 ms; callback 1.0–3.2 ms; contrast 1.0–3.0 ms; cell age 7.3–21.9 s.
+- Grid dragging: 11 hitches, 31.0–37.3 ms; `network/display/Primary/378`; image age 0.0–20.1 ms; cell age 118.8–177.8 ms.
+- conclusion: Home callback/contrast computation is not large enough to explain the long frame; Home carousel image publish/presentation remains the lead. Grid drag hitch is independently tied to newly visible display-only poster publication. The one-universal-root-cause assumption is rejected.
+- evidence: **real-device diagnostic tested / route split established / no runtime fix tested / not stable.**
