@@ -9,9 +9,8 @@ let package = Package(
     targets: [
         .target(
             name: "AetherEngine",
-            dependencies: [.product(name: "MPVKit", package: "MPVKit")],
+            dependencies: [.product(name: "MPVKit", package: "MPVKit", moduleAliases: ["Libdovi": "Dovi"])],
             path: "Sources/AetherEngine",
-            swiftSettings: [.unsafeFlags(["-module-alias", "Dovi=Libdovi"])],
             linkerSettings: [
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("AVKit"),
