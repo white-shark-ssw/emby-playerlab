@@ -52,7 +52,7 @@
   - `SWIFT_VERSION: 6.0` for that target;
   - depend only on current MPVKit product;
   - `OTHER_SWIFT_FLAGS: $(inherited) -module-alias Dovi=Libdovi`;
-  - do **not** add Aether `FFmpegBuild` / second FFmpeg dependency.
+  - do **not** add Aether `FFmpegBuild` / second FFmpeg dependency。
 - This static-target probe compiled/linked successfully on Xcode 26.3, establishing the narrow one-FFmpeg path.
 
 ### Toolchain
@@ -137,7 +137,43 @@
 - Source ZIP SHA-256: `61148b209d543c233502c8412f9448fffa143a97f5753c25595626c72b3e31e4`.
 - Built identity: `CFBundleIdentifier=com.embyplayerlab.app`, `CFBundleShortVersionString=0.14.52`, `CFBundleVersion=219`, `MinimumOSVersion=16.0`.
 - Local post-download verification reproduced the IPA SHA-256 exactly and `unzip -t` reported no compressed-data errors.
-- Evidence is now **Code written / CI passed / IPA produced+verified / real-device not yet tested / not stable**.
+- Evidence before device testing: **Code written / CI passed / IPA produced+verified / real-device not yet tested / not stable**.
+
+## Build219 real-device result — first Aether comparison
+
+User supplied the Build219 playback log from the target iPhone 15 Pro Max / iOS 17.0. This changes the task state from CI/IPA-only to real-device tested.
+
+### Seek result
+
+- 14 Aether `SeekEvent.landed` completions were recorded; 13 were classified as `bufferHit=true` by the Build219 adapter.
+- Completion latency: minimum **370.9 ms**, median **865.2 ms**, mean **1001.5 ms**, maximum **2261.3 ms**. The 13 buffer-hit seeks still had a median of **915.6 ms**.
+- Precision is excellent: median absolute target→rendered error was about **0.614 ms**, maximum **2.239 ms**.
+- The user's observation is confirmed: Build219 Aether Seek is very precise but repeatedly high-latency. It is not literally one fixed delay; the sample spans ~0.37–2.26 s, but most seeks pay a heavy common path.
+
+### Transport churn identified from log + exact Build219 source
+
+This candidate has a host-bridge defect that confounds any conclusion about Aether's intrinsic Seek floor:
+
+- The log contains **2917 observed** `[Resume] exact-byte authority confirmed` events and **2917 observed** `[SeekTransportTrace] phase=actor-enter ... target=0.000 duration=0.000` events. Diagnostics backpressure separately dropped **4328 + 409** events, so the real event count is higher.
+- During the ~70 s session, observed Transport activity was **5413 Range task starts / 5364 task cancellations / 49 completed sequential tasks**.
+- `AetherTransportIOReader.read()` calls `confirmConcretePlaybackByte(current)` after every successful read; the observed read size is normally 256 KiB.
+- `UnifiedResumeAuthority.confirmConcretePlaybackByte()` calls `prioritizeSeek(position: 0, duration: 0)` and then `prioritizeOffset(offset)`.
+- Ordinary Aether sequential consumption therefore repeatedly creates a fake pending user-seek token; the following exact byte-offset demand reanchors the cache window and cancels/restarts healthy 115/CDN sequential lanes.
+- MPV does not call this on every read: `MPVUnifiedStreamBridge` confirms playback-byte authority only after a sustained post-seek read cluster. The Aether per-read use is not a protected P0 transport contract and should not be retained.
+
+Concrete example: the first +10 s seek requested target 11.800 while Aether already reported a playable range extending to ~73.733 s (`bufferHit=true`). It still took **1132.6 ms**; during that interval Transport repeatedly reanchored/cancelled slot 0, and the seek landed only after a fresh CDN first chunk arrived (~680 ms for that request). Therefore at least part of the high latency is self-inflicted by the Build219 adapter/transport interaction, not evidence that “Aether exact Seek itself always needs ~1 s”.
+
+The best observed landed time is still ~371 ms, so Aether itself may retain a non-trivial exact-seek floor after this transport churn is removed. That must be measured in a clean follow-up build rather than guessed now.
+
+### Other Build219 device evidence
+
+- STRM/redirect transport resolved successfully as HTTP **206**, `redirects=2`, `range=true`, `looksLike115=true`; active media ranges came directly from `cdnfhnfile.115cdn.net`.
+- No playback `error`, `failed`, `stall`, `premature EOF`, media EOF, network read timeout or Aether recovery event appears in this session.
+- Startup: click→transport resolve ready was ~**1037 ms**; Aether `load begin`→`load ready` was ~**106 ms**; timeline was advancing with ~73 s reported forward playable by `17:37:43.712Z`.
+- Playback rate was changed through 3×, 4×, 5×, 6× and 8× without an Aether error/stall record.
+- Emby progress/report calls are not separately exposed by this playback log surface, so this file alone is not evidence to accept or reject Resume/Progress synchronization.
+
+**Evidence after this log:** Code written / CI passed / IPA produced+verified / **real-device tested with Aether Seek-latency + per-read transport-churn defect confirmed** / not stable.
 
 ## Frozen / do-not-touch
 
@@ -176,7 +212,8 @@
 - [x] Missing `.aether` capability switch fixed minimally at `90557148...`.
 - [x] Product CI passed (`33096553966 / 98602865604`).
 - [x] IPA produced and independently verified (artifact `9656814369`).
-- [ ] Real-device comparison completed.
+- [x] First real-device Aether comparison/log analysis completed; high Seek latency + per-read transport reanchor defect confirmed.
+- [ ] Clean post-fix Aether↔MPV comparison completed.
 - [ ] Stable/frozen decision made.
 
 ## Validation state
@@ -184,9 +221,9 @@
 - **Code written:** Yes — Build219 Aether product integration plus the explicit capability-switch compile fix are committed.
 - **CI passed:** Yes — Build219 run/job `33096553966 / 98602865604` succeeded on exact source `b1a06cb2b3dc9cf715fc5d49a7b324780aa23981`.
 - **IPA produced:** Yes — artifact `9656814369`; IPA SHA-256 `8df11d2db597fd6841a3708976824b21879ee0d47257c1766d1704cc4196d06d`; MinOS 16.0 verified.
-- **Real-device tested:** No.
+- **Real-device tested:** Yes — first target-device log confirms very accurate but high-latency Aether Seek and a Build219 per-read transport reanchor/cancellation defect.
 - **Stable / frozen:** No.
 
 ## Next exact action
 
-Install Build219 / 0.14.52 on iPhone 15 Pro Max / iOS 17.0 and compare Aether against the retained MPV authority on startup/first frame, normal and rapid double-tap Seek, scrub Seek, STRM→302→115/CDN Range behavior, cache hit/miss, abnormal short media, background/resume and Emby Resume/Progress. Record only observed device evidence; do not promote Aether to automatic authority from CI/IPA alone.
+Make one minimal Aether-bridge correction: ordinary successful `AetherTransportIOReader.read()` must not call the user-seek authority path on every read. Preserve exact-byte demand and the existing UnifiedTransport ownership; do not add timers/retries/fallbacks or time→byte guessing. Then package a new unique build and repeat the same Aether Seek test to separate the remaining intrinsic Aether exact-seek latency from the Build219 adapter-induced transport churn.
