@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build218 / 0.14.51 CI/IPA was verified and has now been target-device tested on Home. The user still feels obvious Home vertical hitching, and the supplied 30fps recording retains the stop-frame → catch-up signature, so Build218 does not solve Home. Grid 3×3 A/B remains unreported and must not be inferred from the Home result. Build218 also exposed a visual regression: the new shared UIKit display surface left `secondarySystemBackground` behind transparent carousel Logo images. Exact source inspection proves the carousel owner file itself was unchanged; the regression came from poster-task shared infrastructure. The poster branch now contains only the minimal shared-surface transparency correction; no carousel owner file is modified. This correction is code-written only and has no new CI/IPA evidence yet.**
+**Active — Build220 / 0.14.53 is the current poster-grid test candidate. It is synchronized onto the accepted Build216 main runtime baseline, preserves the Build218 grid/display-only UIKit A/B, and adds only the shared transparent-image background correction proven necessary by the Build218 Home screenshot. Exact 7-path scope, poster checker, Xcode 16.4 Release, app identity, MinOS 15.0, IPA/source packaging and independent artifact verification all passed. No Home-carousel owner file changed. Build218 Home vertical hitching remains rejected and is owned separately with the carousel task; Build220 has not yet been target-device tested for its intended 3×3 grid A/B, so no smoothness fix is claimed.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -217,6 +217,29 @@ Target-device evidence supplied 2026-08-27:
 
 **Evidence now: Build218 code/CI/IPA ✅ / Build218 Home target-device tested and still hitches ❌ / Build218 grid A/B pending / Build218 distributed package has a confirmed transparent-Logo regression ❌ / transparency correction code written ✅ / corrected source CI/IPA pending / not stable.**
 
+## Build220 / 0.14.53 — corrected grid UIKit A/B candidate
+
+Build220 is the Build218 grid/display-only UIKit experiment resynchronized onto the accepted Build216 overall runtime baseline, plus the one-line transparent-image presentation correction. Poster Build219 was retired before distribution when the independent carousel task claimed that identity.
+
+- exact tested source: **`6198466a749a54603a67c6c32bc0efcf9d7e2082`**
+- accepted-main comparison base used for exact scope: `6a3f52bd8b91995a01f0c908887ffb375d8ec737`
+- exact product/check delta: seven poster paths only (`AppIdentity`, person poster policy, `EmbyPosterGrid`, shared poster sizing, shared image/diagnostics, Build220 changelog, poster checker)
+- no `EmbyHomeCoreV3.swift`, `EmbyHomeHeroV3.swift`, `EmbyHomeCarouselStateV3.swift`, `EmbyHomeCarouselInteractionV3.swift`, Player or Transport changes
+- shared UIKit display surface preserves `secondarySystemBackground` only while image is nil and switches to `.clear` once an image is present, restoring transparent Logo semantics without modifying carousel owner code
+- run/job: **`33083504023 / 98556783889` — success**
+- artifact: `OnePlayer-0.14.53-build220-poster-grid-uikit-transparent`; ID **`9651230376`**
+- GitHub artifact digest / independently downloaded ZIP SHA-256: **`fc1cd17fe974b6e35b2eda03eb32718ca3fca6fa4034406016385a9aa5c1f729`**
+- IPA SHA-256: **`a73a33866745418663d1dcc35634f5b21b0a73436a91f40ed8a4f6dc6bbcf574`**
+- source ZIP SHA-256: **`7c222973433e8e94608946fc5ffda4e5ec4442a9c6200be4b98e84d680695fad`**
+- artifact ZIP, IPA and source ZIP integrity: PASS; embedded SHA files match independent calculation
+- built identity: `com.embyplayerlab.app`, OnePlayer **0.14.53 (220)**, `MinimumOSVersion=15.0`; primary/alternate icon metadata present
+- exact source snapshot contains the clear-background regression fix and no Build220 temporary workflow
+- one-shot Build220 build helper self-cleaned successfully
+
+**Evidence: Code written ✅ / synchronized exact 7-path scope + checker ✅ / CI passed ✅ / IPA produced + independently verified ✅ / target-device grid A/B pending ❌ / stable or frozen ❌.**
+
+Target-device test must explicitly cover Library 3×3, Favorites, Favorites → More, Search, Tag and Person/Actor grids. Home may be checked only for regression; Build218 already proved this poster candidate does not solve the separate Home hitch path.
+
 ## Parallel safety
 
 - Build211 / 0.14.44 identity is owned by the independent Home-carousel task; poster Build212 does not reuse that identity.
@@ -225,11 +248,11 @@ Target-device evidence supplied 2026-08-27:
 
 ## Next exact action
 
-1. Do not modify Home carousel owner files from this task. Build218 Home still hitches, while Build212 already established Home as the separate 1400px carousel-image path owned jointly with the active carousel work.
-2. Treat Build218 as not acceptable for distribution because of the transparent-Logo regression, even though the regression is in shared poster-task infrastructure rather than carousel owner code.
-3. Validate the one-line shared-surface transparency correction with the poster source checker and exact diff, then allocate a new unique poster Build only after checking all Active task identities.
-4. The next poster package should preserve the same grid UIKit-display experiment plus the transparency correction; target-device testing must explicitly cover Library 3×3 / Favorites / More / Search / Tag / Person-Actor grids. Home should be checked only for regression, not used to claim the grid candidate failed.
-5. Preserve all P0 playback/transport/cache/session contracts and iOS 15.0 deployment.
+1. Install Build220 / 0.14.53 on iPhone 15 Pro Max / iOS 17.0.
+2. A/B the intended 3×3 routes: Library, Favorites, Favorites → More, Search, Tag and Person/Actor results; report obvious improvement / unchanged / worse and any image/navigation regression.
+3. Verify the Build218 transparent-Logo rectangle is gone, but do not modify carousel owner code from this task.
+4. Home vertical hitching remains a separate Home/carousel runtime path; do not use Home-only behavior to infer the grid A/B result.
+5. If Build220 is accepted, resync against then-current main before merge and rerun affected validation if the source changes.
 
 ## Do not repeat
 
