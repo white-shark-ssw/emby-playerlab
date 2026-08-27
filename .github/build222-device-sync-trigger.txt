@@ -1,1 +1,0 @@
-sync Build222 target-device result
