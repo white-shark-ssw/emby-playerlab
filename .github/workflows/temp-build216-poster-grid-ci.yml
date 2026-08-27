@@ -1,4 +1,4 @@
-name: One-shot Build217 Poster Grid IPA
+name: One-shot Build218 Poster Grid IPA
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
           ref: perf/poster-grid-smoothness
           fetch-depth: 0
 
-      - name: Apply exact Build217 compiler fix and finalize source
+      - name: Apply exact Build218 compiler fix and finalize source
         id: source
         run: |
           set -euo pipefail
@@ -51,15 +51,16 @@ jobs:
 
           changelog = Path("docs/changelog/CHANGELOG_v0_14_49_build216.md")
           text = changelog.read_text(encoding="utf-8")
-          text = text.replace("# OnePlayer 0.14.49 / Build216", "# OnePlayer 0.14.50 / Build217")
-          text = text.replace("Build216 is based", "Build217 is based")
-          text += "\n- Build217 compiler correction: the UIKit display surface now explicitly accepts `SwiftUI.ContentMode`, avoiding the `UIView.ContentMode` name shadowing proven by the Build216 Release compiler log. No runtime behavior is added by this correction.\n"
-          Path("docs/changelog/CHANGELOG_v0_14_50_build217.md").write_text(text, encoding="utf-8")
+          text = text.replace("# OnePlayer 0.14.49 / Build216", "# OnePlayer 0.14.51 / Build218")
+          text = text.replace("Build216 is based", "Build218 is based")
+          text += "\n- Build218 compiler correction: the UIKit display surface now explicitly accepts `SwiftUI.ContentMode`, avoiding the `UIView.ContentMode` name shadowing proven by the retired poster Build216 Release compiler log. No runtime behavior is added by this correction.\n"
+          text += "- Poster Build217 identity was retired before distribution after the independent Home-carousel cadence task claimed Build217; Build218 is the next verified-free poster identity.\n"
+          Path("docs/changelog/CHANGELOG_v0_14_51_build218.md").write_text(text, encoding="utf-8")
           changelog.unlink()
           PY
 
-          grep -F 'static let sourceVersion = "0.14.50"' Sources/Core/AppIdentity.swift >/dev/null
-          grep -F '?? "0.14.50"' Sources/Core/AppIdentity.swift >/dev/null
+          grep -F 'static let sourceVersion = "0.14.51"' Sources/Core/AppIdentity.swift >/dev/null
+          grep -F '?? "0.14.51"' Sources/Core/AppIdentity.swift >/dev/null
           grep -F 'func configure(contentMode: SwiftUI.ContentMode, placeholderSystemImage: String)' Sources/UI/EmbySharedImageAndNavigation.swift >/dev/null
           ! grep -F 'func configure(contentMode: ContentMode, placeholderSystemImage: String)' Sources/UI/EmbySharedImageAndNavigation.swift >/dev/null
           python3 scripts/check_poster_grid_smoothness.py
@@ -67,19 +68,20 @@ jobs:
           git diff --check
 
           git rm .github/workflows/temp-build216-poster-grid-ci.yml
-          changed="$(git diff "$BASE" --name-only | sort)"
-          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyPersonMediaView.swift Sources/UI/EmbyPosterGrid.swift Sources/UI/EmbyServerSharedV3.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_14_50_build217.md scripts/check_poster_grid_smoothness.py | sort)"
-          printf 'Build217 final tree paths before commit:\n%s\n' "$changed"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbySharedImageAndNavigation.swift scripts/check_poster_grid_smoothness.py docs/changelog/CHANGELOG_v0_14_51_build218.md
+          git add -u docs/changelog/CHANGELOG_v0_14_49_build216.md .github/workflows/temp-build216-poster-grid-ci.yml
+
+          changed="$(git diff --cached "$BASE" --name-only | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyPersonMediaView.swift Sources/UI/EmbyPosterGrid.swift Sources/UI/EmbyServerSharedV3.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_14_51_build218.md scripts/check_poster_grid_smoothness.py | sort)"
+          printf 'Build218 final tree paths before commit:\n%s\n' "$changed"
           test "$changed" = "$expected"
           test "$(printf '%s\n' "$changed" | sed '/^$/d' | wc -l | tr -d ' ')" = "7"
           ! printf '%s\n' "$changed" | grep -E 'Sources/(Player|Transport|Session|Cache)/|Sources/UI/(EmbyHomeCoreV3|EmbyHomeHeroV3|EmbyHomeCarouselStateV3|EmbyHomeCarouselInteractionV3|Player|MPV|PlayerPiP)' >/dev/null
-          git diff --quiet "$BASE" -- Sources/UI/EmbyPagePersistentCache.swift Sources/UI/EmbyServerBrowseV3.swift project.yml Config/Info.plist
+          git diff --cached --quiet "$BASE" -- Sources/UI/EmbyPagePersistentCache.swift Sources/UI/EmbyServerBrowseV3.swift project.yml Config/Info.plist
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Sources/Core/AppIdentity.swift Sources/UI/EmbySharedImageAndNavigation.swift scripts/check_poster_grid_smoothness.py docs/changelog/CHANGELOG_v0_14_50_build217.md
-          git add -u docs/changelog/CHANGELOG_v0_14_49_build216.md .github/workflows/temp-build216-poster-grid-ci.yml
-          git commit -m "Prepare Build217 poster UIKit display candidate"
+          git commit -m "Prepare Build218 poster UIKit display candidate"
           TEST_SOURCE="$(git rev-parse HEAD)"
           echo "TEST_SOURCE=$TEST_SOURCE" >> "$GITHUB_ENV"
           echo "test_source=$TEST_SOURCE" >> "$GITHUB_OUTPUT"
@@ -132,19 +134,19 @@ jobs:
             -derivedDataPath build/DerivedData \
             -clonedSourcePackagesDirPath .spm-cache \
             IPHONEOS_DEPLOYMENT_TARGET=15.0 \
-            MARKETING_VERSION=0.14.50 \
-            CURRENT_PROJECT_VERSION=217 \
+            MARKETING_VERSION=0.14.51 \
+            CURRENT_PROJECT_VERSION=218 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
             DEVELOPMENT_TEAM='' \
             clean build 2>&1 | tee build.log
 
-      - name: Upload Build217 compile log
+      - name: Upload Build218 compile log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Build217-poster-compile-log
+          name: Build218-poster-compile-log
           path: build.log
           if-no-files-found: warn
           retention-days: 7
@@ -164,7 +166,7 @@ jobs:
           test -n "$APP_PATH" && test -d "$APP_PATH"
           echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
           /usr/bin/plutil -p "$APP_PATH/Info.plist"
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.14.50" --build "217" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.14.51" --build "218" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
 
       - name: Validate MinOS
         if: steps.release.outcome == 'success'
@@ -181,8 +183,8 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "${{ steps.app.outputs.path }}" Payload/
-          IPA_NAME="OnePlayer-0.14.50-build217-poster-grid-uikit-unsigned.ipa"
-          SOURCE_NAME="OnePlayer-0.14.50-build217-source.zip"
+          IPA_NAME="OnePlayer-0.14.51-build218-poster-grid-uikit-unsigned.ipa"
+          SOURCE_NAME="OnePlayer-0.14.51-build218-source.zip"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           git archive --format=zip --output "$SOURCE_NAME" "$TEST_SOURCE"
           /usr/bin/unzip -t "$IPA_NAME"
@@ -192,11 +194,11 @@ jobs:
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
           echo "SOURCE_NAME=$SOURCE_NAME" >> "$GITHUB_ENV"
 
-      - name: Upload Build217 artifact
+      - name: Upload Build218 artifact
         if: steps.release.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.14.50-build217-poster-grid-uikit
+          name: OnePlayer-0.14.51-build218-poster-grid-uikit
           path: |
             ${{ env.IPA_NAME }}
             ${{ env.IPA_NAME }}.sha256
