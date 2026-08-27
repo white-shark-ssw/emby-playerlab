@@ -11,6 +11,7 @@ let package = Package(
             name: "AetherEngine",
             dependencies: [.product(name: "MPVKit", package: "MPVKit")],
             path: "Sources/AetherEngine",
+            swiftSettings: [.unsafeFlags(["-module-alias", "Dovi=Libdovi"])],
             linkerSettings: [
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("AVKit"),
