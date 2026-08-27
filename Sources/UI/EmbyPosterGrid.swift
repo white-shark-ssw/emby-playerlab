@@ -166,19 +166,21 @@ struct EmbyPosterGrid<Content: View>: View {
         return LazyVGrid(columns: columns, alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing) {
             ForEach(items) { item in
                 content(item)
-                    .environment(\.embyPosterGridNavigationState, navigationState)
-                    .environment(\.embyPosterGridCellWidth, cellWidth)
                     .frame(width: cellWidth, alignment: .topLeading)
                     .contentShape(Rectangle())
                     .onAppear {
                         guard let handler = onApproachingEnd, loadAheadIDs.contains(item.id) else { return }
+                        EmbyPosterScrollHitchDiagnostics.shared.loadAheadDidTrigger(itemID: item.id)
                         handler()
                     }
             }
         }
+        .environment(\.embyPosterGridNavigationState, navigationState)
+        .environment(\.embyPosterGridCellWidth, cellWidth)
         .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(GeometryReader { proxy in Color.clear.preference(key: EmbyPosterGridWidthPreferenceKey.self, value: proxy.size.width) })
+        .background(EmbyPosterScrollMotionProbe(route: "grid"))
         .onPreferenceChange(EmbyPosterGridWidthPreferenceKey.self) { width in
             if width > 0 && abs(containerWidth - width) > 0.5 { containerWidth = width }
         }
