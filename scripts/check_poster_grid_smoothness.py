@@ -32,10 +32,10 @@ required_image = [
     "_loader = StateObject(wrappedValue: EmbyCachedImageLoader(initialURL: onImageLoaded == nil ? url : nil))",
     "if let onImageLoaded {\n            imageBody.onReceive(loader.$image.compactMap { $0 })",
     "} else {\n            imageBody\n        }",
-    "loader.load(url, reportsLoadingState: showsLoadingIndicator)",
+    "loader.load(url, reportsLoadingState: showsLoadingIndicator, diagnosticRole: onImageLoaded == nil ? \"display\" : \"callback\")",
     "loader.cancel(reportsLoadingState: showsLoadingIndicator)",
     "if onImageLoaded != nil { reportedImageIdentifier = nil }",
-    "reportedImageIdentifier = identifier\n                onImageLoaded(image)",
+    "let startedAt = CACurrentMediaTime()\n                onImageLoaded(image)",
 ]
 for needle in required_image:
     if needle not in image_source:
@@ -60,7 +60,12 @@ required_diagnostics = [
     r"scroll_route=\(sample.route) phase=\(phase) offset_y=\(offsetText) delta_y=\(deltaText) velocity_y=\(velocityText) registered_scrolls=\(scrollObservations.count) moving_scrolls=\(movingSamples.count)",
     "DiagnosticsLogger.shared.log(\"PosterScrollHitch\"",
     "posterDidAppear(itemID: item.id, route: gridNavigationState == nil ? \"row\" : \"grid\")",
-    "EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()",
+    "EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: \"memory\", role: diagnosticRole)",
+    "EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: \"disk\", role: diagnosticRole)",
+    "EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: \"network\", role: diagnosticRole)",
+    "image_role=\\(lastImageRole)",
+    "callback_duration_ms=\\(callbackDurationText)",
+    "contrast_duration_ms=\\(contrastDurationText)",
     "EmbyPosterScrollHitchDiagnostics.shared.loadAheadDidTrigger(itemID: item.id)",
 ]
 for needle in required_diagnostics:
@@ -80,6 +85,18 @@ if 'EmbyPosterScrollMotionProbe(route: "home")' not in home_source:
     raise SystemExit("Home poster-heavy scroll must register its vertical scroll owner for motion-gated hitch diagnostics")
 if image_source.count("CADisplayLink(target: self") != 1:
     raise SystemExit("poster diagnostics must keep exactly one shared CADisplayLink implementation")
+
+for source_name in ["memory", "disk", "network"]:
+    if f'source: "{source_name}"' not in image_source:
+        raise SystemExit(f"missing image publish source diagnostic: {source_name}")
+if 'role: diagnosticRole' not in image_source or 'diagnosticRole: onImageLoaded == nil ? "display" : "callback"' not in image_source:
+    raise SystemExit("image publish role diagnostics must distinguish callback from display-only paths")
+if 'imageCallbackDidComplete(url:' not in image_source or 'callback_duration_ms=' not in image_source:
+    raise SystemExit("callback duration diagnostic missing")
+if 'contrastDidComplete(durationMS:' not in image_source or 'contrast_duration_ms=' not in image_source:
+    raise SystemExit("contrast duration diagnostic missing")
+if 'api_key' in image_source[image_source.index('private func imageContext'):image_source.index('private func imageContext') + 1200]:
+    raise SystemExit("image diagnostics must not log authentication query data")
 
 pixel_width_contract = "private var posterImageMaxWidth: Int { min(440, max(1, Int(ceil(resolvedWidth * UIScreen.main.scale)))) }"
 if pixel_width_contract not in poster_source:
