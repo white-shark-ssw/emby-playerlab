@@ -1,22 +1,25 @@
 # OnePlayer Project State
 
-_Last updated after poster-scroll Build212 / 0.14.45 target-device source-aware diagnostics split the remaining Home and grid hitch into two evidence-backed paths. Build199 remains the latest real-device accepted overall baseline. Build211 / 0.14.44 remains owned by the independent carousel line; no Build212 runtime fix is accepted yet._
+_Last updated after OnePlayer 0.14.46 / Build213 page-cache target-device acceptance. Build213 is the latest real-device accepted overall runtime baseline for merged product work; Home-carousel Build208 and poster-scroll Build212 remain independent Active experimental/diagnostic lines and are not folded into this baseline._
 
 ## Current accepted overall baseline
 
-- Product: **OnePlayer 0.14.32 / Build199**
-- Canonical branch: `main`
-- Final merge PR: **#256**
-- Final merge commit: `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`
-- Accepted product / dedicated CI source: `2b5f3bef073754371443c6c7a345657dbfa2a09a`
-- Dedicated standard MPV CI run: `32942618979` — success
-- Artifact ID: `9597143667`
-- IPA SHA-256: `8f0f43f62705e5e13ae666cc54d32fd047c596df1d0e9335668b01a25b6eb003`
+- Product: **OnePlayer 0.14.46 / Build213**
+- Canonical branch: `main` after PR #260 integration
+- Final merge PR: **#260**
+- Final merge commit: **pending until PR #260 is merged in this closeout cycle**
+- Accepted/tested product source: `c8c238816c34ba3d8834ac37bdf7b234cd596458`
+- Dedicated standard MPV CI run/job: `33052588518` / `98451457434` — success
+- Artifact: `OnePlayer-0.14.46-build213-page-cache`; ID `9638292306`
+- Artifact digest: `sha256:e65a3ce06d53cc499a84f86a9cd32978824f1de4899bf2afe310727a2566731c`
+- IPA SHA-256: `a8c2d1753db33f41a5b07ce22c4706eb102cf5d905f1aaeee8f54d689b176fc8`
+- Source ZIP SHA-256: `3a59bc8fb8dc55a83abd8adf76841db47640df8944f39920969b06bd55927051`
 - Deployment Target / built MinOS: **iOS 15.0**
 - Target device: **iPhone 15 Pro Max / iOS 17.0**
-- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for accepted Add/Edit Emby requirements / merged to main**
+- Real-device result: **user reported Build213 acceptance on 2026-08-27**
+- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for the accepted Favorites + Library page-persistence milestone / merge pending in this closeout cycle**
 
-Build199 inherits all accepted/frozen player, PiP, transport, cache, episode-ordering, detail-presentation and episode-selection contracts.
+Build213 inherits all accepted/frozen player, PiP, transport, playback-cache, episode-ordering, detail-presentation, episode-selection and Build199 server-management contracts. Its new stable runtime scope is limited to non-playback Favorites + Library page presentation persistence.
 
 ## Frozen / protected contracts
 
@@ -40,6 +43,7 @@ Build199 inherits all accepted/frozen player, PiP, transport, cache, episode-ord
 - **Build191**: select-only detail episode browsing/navigation; merged PR #257.
 - **Build195**: SeasonId-first player grouping + lazy very-large episode row; merged PR #258.
 - **Build199**: Add/Edit Emby modern editor, same-server route selection, cached-first auto-start, local retained password and optional synchronizable Keychain password for iCloud; merged PR #256.
+- **Build213**: Favorites + Library 7-tab disk-backed warm presentation cache; cached-first after relaunch, live refresh remains authoritative, successful accepted state writes through, failed refresh retains old snapshot; target-device accepted through PR #260.
 
 ## Active: Home carousel interaction
 
@@ -144,4 +148,4 @@ Next: reconcile the Home evidence with the carousel task, and independently desi
 
 ## Parallel integration rule
 
-Build199 remains the accepted overall baseline. Home-carousel Build208 and poster-scroll are independent Active lines with separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
+Build213 is the accepted overall runtime baseline after this page-cache closeout. Home-carousel Build208 and poster-scroll remain independent Active lines with separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.

@@ -24,7 +24,7 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build193 / 0.14.26** | Passive native move + SwiftUI release | Real-device rejected; split-owner architecture rejected. |
 | **Build195 / 0.14.28** | Lazy large player episode row | Real-device accepted; merged. |
 | **Build198 / 0.14.31** | Single UIKit carousel lifecycle owner | CI/IPA verified; real-device lifecycle/settle/reversal okay, but minimum drag still too coarse. Single-owner input architecture retained. |
-| **Build199 / 0.14.32** | Add/Edit Emby completion | Dedicated CI/IPA passed; target-device accepted; merged. **Current accepted overall baseline.** |
+| **Build199 / 0.14.32** | Add/Edit Emby completion | Dedicated CI/IPA passed; target-device accepted; merged. Former accepted overall baseline; retained foundation. |
 | **Build200 / 0.14.33** | Fixed-spatial foreground + linear blend | CI/IPA verified; target-device rejected because foreground stopped sliding horizontally. |
 | **Build201 / 0.14.34** | 15% short-travel horizontal slide + linear blend | CI/IPA verified; target-device feedback: **“有点那种感觉了”**. Direction partially positive; not final. |
 | **Build202 / 0.14.35** | Poster-heavy scrolling smoothness | CI/IPA verified, but target-device recording still shows stop/catch-up hitch; rejected for smoothness. |
@@ -38,22 +38,26 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build210 / 0.14.43** | Multi-owner poster-scroll diagnostics | **Current poster diagnostic baseline.** Target-device log validates simultaneous Home/grid ownership (`registered_scrolls=2`) and correct grid routing. Four Home dragging hitches all landed 6.2–11.0 ms after image commit; the single grid record was programmatic/micro-motion (`phase=moving`, `delta_y=0.33`) and not yet a user-drag grid stall. Real-device diagnostic tested; no performance fix claimed; not stable. |
 | **Build211 / 0.14.44** | Home-carousel acquisition-relative line | **Owned by the independent carousel task.** Poster briefly prepared this identity but retired it before distribution as soon as the collision was confirmed; never use Build211 for poster attribution. |
 | **Build212 / 0.14.45** | Source-aware poster-scroll diagnostics | **Target-device diagnostic tested.** Home: 5 real dragging hitches 43.6–73.8 ms, all 8.3–12.2 ms after memory/callback 1400px publish; callback/contrast only 1–3 ms, so those synchronous calculations are rejected as the primary Home cost. Grid: 11 real dragging hitches 31.0–37.3 ms, all 0–20.1 ms after network/display 378px publish and 118.8–177.8 ms after a cell appearance. Home and grid are now treated as separate runtime paths; no fix tested; not stable. |
+| **Build213 / 0.14.46** | Favorites + Library persistent page warm cache | **Target-device accepted.** Favorites and Library 7 tabs restore persisted presentation data immediately after relaunch, then keep live refresh authoritative and write through only accepted fresh state. Pagination frontier is restored; refresh failure retains old snapshots; `sortBy`/selectedTab/scroll/root lifetime remain separate concerns. Dedicated standard MPV CI/IPA passed; first milestone stable and closing through PR #260. |
 
 ## Current accepted baseline
 
-- Product: **OnePlayer 0.14.32 / Build199**
-- canonical branch: `main`
-- final merge PR: `#256`
-- final merge commit: `730faecf30f7cdbfa7bf4670022dd2e1f3a8de9b`
-- tested product source / dedicated CI source: `2b5f3bef073754371443c6c7a345657dbfa2a09a`
-- CI run: `32942618979` — success
-- artifact ID: `9597143667`
-- IPA SHA-256: `8f0f43f62705e5e13ae666cc54d32fd047c596df1d0e9335668b01a25b6eb003`
+- Product: **OnePlayer 0.14.46 / Build213**
+- canonical branch: `main` after PR #260 integration
+- final merge PR: `#260`
+- final merge commit: **pending until PR #260 is merged in this closeout cycle**
+- tested product / dedicated CI source: `c8c238816c34ba3d8834ac37bdf7b234cd596458`
+- CI run/job: `33052588518` / `98451457434` — success
+- artifact: `OnePlayer-0.14.46-build213-page-cache`; ID `9638292306`
+- artifact digest: `sha256:e65a3ce06d53cc499a84f86a9cd32978824f1de4899bf2afe310727a2566731c`
+- IPA SHA-256: `a8c2d1753db33f41a5b07ce22c4706eb102cf5d905f1aaeee8f54d689b176fc8`
+- source ZIP SHA-256: `3a59bc8fb8dc55a83abd8adf76841db47640df8944f39920969b06bd55927051`
 - Deployment Target / built MinOS: iOS 15.0
 - target device: iPhone 15 Pro Max / iOS 17.0
-- evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for accepted Add/Edit Emby requirements / merged to main**
+- target-device result: **accepted by the user on 2026-08-27**
+- evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for the accepted page-cache milestone / merge pending in this closeout cycle**
 
-Build199 inherits the accepted/frozen player, PiP, transport, cache, episode-ordering, detail-presentation and episode-selection contracts. Home-carousel and poster-scroll remain independent Active lines.
+Build213 inherits the accepted/frozen player, PiP, transport, playback-cache, episode-ordering, detail-presentation, episode-selection and Build199 server-management contracts. Home-carousel and poster-scroll remain independent Active lines.
 
 ## Home-carousel evidence
 
@@ -224,6 +228,7 @@ A carousel `0.14.37 / Build204` package was produced briefly, but the poster-scr
 - Build191: select-only detail episode browsing/navigation; merged PR #257.
 - Build195: SeasonId-first player grouping + lazy large episode row; merged PR #258.
 - Build199: Add/Edit Emby modern editor, same-server route selection, cached-first startup, retained password + optional iCloud Keychain sync; merged PR #256.
+- Build213: Favorites + Library 7-tab persistent presentation warm cache; dedicated MPV CI/IPA passed and target-device accepted; PR #260 closeout.
 
 ## Maintenance rule
 
@@ -253,3 +258,23 @@ Update this index when a build materially changes architectural understanding, b
 - Grid dragging: 11 hitches, 31.0–37.3 ms; `network/display/Primary/378`; image age 0.0–20.1 ms; cell age 118.8–177.8 ms.
 - conclusion: Home callback/contrast computation is not large enough to explain the long frame; Home carousel image publish/presentation remains the lead. Grid drag hitch is independently tied to newly visible display-only poster publication. The one-universal-root-cause assumption is rejected.
 - evidence: **real-device diagnostic tested / route split established / no runtime fix tested / not stable.**
+
+### Build213 — Favorites + Library persistent page cache accepted
+
+- identity: **0.14.46 / 213**
+- task: `DEV-page-cache-optimization`; branch `perf/page-cache-optimization`; PR #260.
+- exact tested product source: **`c8c238816c34ba3d8834ac37bdf7b234cd596458`**.
+- product runtime scope: `Sources/Core/AppIdentity.swift`, `Sources/UI/EmbyPagePersistentCache.swift`, `Sources/UI/EmbyServerBrowseV3.swift`; no Player/MPV/PiP/UnifiedTransport/playback Session Cache/Home/shared-poster owner edits.
+- persistent scope: Favorites + Library tabs 内容/建议/预告片/合集/类别/我的收藏/文件夹.
+- lifecycle: restore valid disk presentation snapshot first → render warm content → existing page/tab entry live refresh → accepted fresh state replaces visible owner state → atomically persist that accepted snapshot.
+- failed refresh does not erase a valid visible/disk snapshot.
+- necessary Library pagination frontier (`nextStartIndex` / `hasMore` / restored seen IDs) is restored with cached content.
+- Library `sortBy` is not persisted by page cache; `selectedTab`, scroll restoration, Favorites root-session retention and Search/Genre/Person persistence remain outside this milestone.
+- cache identity is `baseURL + userId + scope (+ library.id)`: safely isolated; a later same-server route change may cause a benign warm-cache miss rather than cross-route data leakage.
+- standard MPV run/job: **`33052588518` / `98451457434` — success**.
+- artifact: `OnePlayer-0.14.46-build213-page-cache`; ID **`9638292306`**; digest **`sha256:e65a3ce06d53cc499a84f86a9cd32978824f1de4899bf2afe310727a2566731c`**.
+- IPA SHA-256: **`a8c2d1753db33f41a5b07ce22c4706eb102cf5d905f1aaeee8f54d689b176fc8`**.
+- source ZIP SHA-256: **`3a59bc8fb8dc55a83abd8adf76841db47640df8944f39920969b06bd55927051`**.
+- built `MinimumOSVersion=15.0`; target device iPhone 15 Pro Max / iOS 17.0.
+- target-device result: **user reported “验收通过” on 2026-08-27**.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced ✅ / real-device accepted ✅ / first milestone stable ✅ / merge pending in this closeout cycle**.

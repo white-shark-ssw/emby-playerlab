@@ -277,7 +277,25 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     private let pageSize = 60
     private var pageStates: [V3LibraryTab: V3LibraryPageState] = [:]
 
-    init(library: LibraryItem, client: EmbyAPIClient) { self.library = library; self.client = client }
+    init(library: LibraryItem, client: EmbyAPIClient) {
+        self.library = library
+        self.client = client
+        guard let snapshot = V3PagePersistentCache.shared.librarySnapshot(client: client, libraryID: library.id) else { return }
+        tabItems = Dictionary(uniqueKeysWithValues: snapshot.tabItems.compactMap { key, items in V3LibraryTab(rawValue: key).map { ($0, items) } })
+        suggestionResumeItems = snapshot.suggestionResumeItems
+        suggestionLatestItems = snapshot.suggestionLatestItems
+        genericSuggestionItems = snapshot.genericSuggestionItems
+        recommendationSections = snapshot.recommendationSections
+        genres = snapshot.genres
+        folderItems = snapshot.folderItems
+        sortBy = snapshot.sortBy
+        loadedTabs = Set(snapshot.loadedTabs.compactMap(V3LibraryTab.init(rawValue:)))
+        for (rawTab, persisted) in snapshot.pageStates {
+            guard let tab = V3LibraryTab(rawValue: rawTab) else { continue }
+            let items = tabItems[tab] ?? []
+            pageStates[tab] = V3LibraryPageState(nextStartIndex: persisted.nextStartIndex, hasMore: persisted.hasMore, isFetching: false, hasLoaded: loadedTabs.contains(tab), seenItemIDs: Set(items.map(\.id)))
+        }
+    }
 
     var hasSuggestionContent: Bool { !suggestionResumeItems.isEmpty || !suggestionLatestItems.isEmpty || !genericSuggestionItems.isEmpty || !recommendationSections.isEmpty }
     var latestSuggestionTitle: String { library.collectionType?.caseInsensitiveCompare("tvshows") == .orderedSame ? "最新剧集" : "最新电影" }
@@ -289,12 +307,12 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     func hasMore(tab: V3LibraryTab) -> Bool { pageStates[tab]?.hasMore ?? false }
 
     func load(tab: V3LibraryTab) async {
-        guard !hasLoaded(tab: tab), !isLoading(tab: tab) else { return }
+        guard !isLoading(tab: tab) else { return }
         switch tab {
         case .items, .trailers, .collections, .favorites: await fetchPage(tab: tab, reset: true)
-        case .suggestions: await loadSuggestions()
-        case .genres: await loadGenres()
-        case .folders: await loadFolders()
+        case .suggestions: await loadSuggestions(force: true)
+        case .genres: await loadGenres(force: true)
+        case .folders: await loadFolders(force: true)
         }
     }
 
@@ -325,6 +343,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             let refreshed = try await client.libraryItem(itemId: itemID)
             replaceEverywhere(refreshed)
             if let seriesID = refreshed.seriesId, seriesID != refreshed.id, let refreshedSeries = try? await client.libraryItem(itemId: seriesID) { replaceEverywhere(refreshedSeries) }
+            persistSnapshot()
         } catch {
             if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Library", "userdata refresh failed item=\(itemID): \(error.localizedDescription)") }
         }
@@ -381,13 +400,15 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
                 state.hasLoaded = true
             }
             pageStates[tab] = state
+            loadedTabs.insert(tab)
+            persistSnapshot()
         } catch {
             if !isEmbyRequestCancellation(error) { errorMessages[tab] = error.localizedDescription }
         }
     }
 
     private func loadSuggestions(force: Bool = false) async {
-        guard force || !loadedTabs.contains(.suggestions) else { return }
+        guard force || !loadedTabs.contains(.suggestions), !loadingTabs.contains(.suggestions) else { return }
         loadingTabs.insert(.suggestions)
         errorMessages[.suggestions] = nil
         defer { loadingTabs.remove(.suggestions); loadedTabs.insert(.suggestions) }
@@ -395,13 +416,16 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         async let resumeTask: [LibraryItem]? = try? client.libraryResumeItems(parentId: library.id, limit: 20, includeItemTypes: suggestionResumeTypes)
         async let latestTask: [LibraryItem]? = try? client.latestItems(parentId: library.id, limit: 20, includeItemTypes: suggestionLatestTypes)
         async let genericTask: [LibraryItem]? = try? client.librarySuggestions(parentId: library.id, limit: 20, includeItemTypes: expectedItemTypes)
-        var recommendations: [EmbyLibraryRecommendationSection] = []
-        if library.collectionType?.caseInsensitiveCompare("movies") == .orderedSame { recommendations = (try? await client.movieRecommendations(parentId: library.id, categoryLimit: 4, itemLimit: 16)) ?? [] }
+        let recommendations: [EmbyLibraryRecommendationSection]?
+        if library.collectionType?.caseInsensitiveCompare("movies") == .orderedSame { recommendations = try? await client.movieRecommendations(parentId: library.id, categoryLimit: 4, itemLimit: 16) }
+        else { recommendations = [] }
         let (resume, latest, generic) = await (resumeTask, latestTask, genericTask)
-        suggestionResumeItems = resume ?? []
-        suggestionLatestItems = latest ?? []
-        genericSuggestionItems = generic ?? []
-        recommendationSections = recommendations
+        var didUpdate = false
+        if let resume { suggestionResumeItems = resume; didUpdate = true }
+        if let latest { suggestionLatestItems = latest; didUpdate = true }
+        if let generic { genericSuggestionItems = generic; didUpdate = true }
+        if let recommendations { recommendationSections = recommendations; didUpdate = true }
+        if didUpdate { loadedTabs.insert(.suggestions); persistSnapshot() }
     }
 
     private var suggestionResumeTypes: [String] {
@@ -426,8 +450,11 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         loadingTabs.insert(.genres)
         errorMessages[.genres] = nil
         defer { loadingTabs.remove(.genres); loadedTabs.insert(.genres) }
-        do { genres = try await client.libraryGenres(parentId: library.id, includeItemTypes: expectedItemTypes) }
-        catch { if !isEmbyRequestCancellation(error) { errorMessages[.genres] = error.localizedDescription } }
+        do {
+            genres = try await client.libraryGenres(parentId: library.id, includeItemTypes: expectedItemTypes)
+            loadedTabs.insert(.genres)
+            persistSnapshot()
+        } catch { if !isEmbyRequestCancellation(error) { errorMessages[.genres] = error.localizedDescription } }
     }
 
     private func loadFolders(force: Bool = false) async {
@@ -435,8 +462,29 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         loadingTabs.insert(.folders)
         errorMessages[.folders] = nil
         defer { loadingTabs.remove(.folders); loadedTabs.insert(.folders) }
-        do { folderItems = try await client.libraryFolderChildren(parentId: library.id) }
-        catch { if !isEmbyRequestCancellation(error) { errorMessages[.folders] = error.localizedDescription } }
+        do {
+            folderItems = try await client.libraryFolderChildren(parentId: library.id)
+            loadedTabs.insert(.folders)
+            persistSnapshot()
+        } catch { if !isEmbyRequestCancellation(error) { errorMessages[.folders] = error.localizedDescription } }
+    }
+
+    private func persistSnapshot() {
+        let persistedItems = Dictionary(uniqueKeysWithValues: tabItems.map { ($0.key.rawValue, $0.value) })
+        let persistedStates = Dictionary(uniqueKeysWithValues: pageStates.map { ($0.key.rawValue, V3PersistedPageState(nextStartIndex: $0.value.nextStartIndex, hasMore: $0.value.hasMore)) })
+        let snapshot = V3LibraryPersistentSnapshot(
+            tabItems: persistedItems,
+            suggestionResumeItems: suggestionResumeItems,
+            suggestionLatestItems: suggestionLatestItems,
+            genericSuggestionItems: genericSuggestionItems,
+            recommendationSections: recommendationSections,
+            genres: genres,
+            folderItems: folderItems,
+            sortBy: sortBy,
+            loadedTabs: Set(loadedTabs.map(\.rawValue)),
+            pageStates: persistedStates
+        )
+        V3PagePersistentCache.shared.storeLibrarySnapshot(snapshot, client: client, libraryID: library.id)
     }
 
     private func replaceEverywhere(_ refreshed: LibraryItem) {
@@ -699,7 +747,7 @@ struct V3EmbyFavoritesView: View {
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             .overlay(alignment: .bottom) { dock }
             .refreshable { await model.load() }
-            .onAppear { if !model.hasLoaded { Task { await model.load() } } }
+            .onAppear { Task { await model.load() } }
             .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
@@ -892,7 +940,12 @@ private final class V3FavoritesViewModel: ObservableObject {
     private let client: EmbyAPIClient
     private(set) var hasLoaded = false
 
-    init(client: EmbyAPIClient) { self.client = client }
+    init(client: EmbyAPIClient) {
+        self.client = client
+        guard let snapshot = V3PagePersistentCache.shared.favoritesSnapshot(client: client) else { return }
+        sections = V3FavoriteSections(movies: snapshot.movies, series: snapshot.series, episodes: snapshot.episodes, people: snapshot.people)
+        hasLoaded = true
+    }
 
     func load() async {
         guard !isLoading else { return }
@@ -907,6 +960,7 @@ private final class V3FavoritesViewModel: ObservableObject {
                 episodes: items.filter { $0.type?.caseInsensitiveCompare("Episode") == .orderedSame },
                 people: items.filter { $0.type?.caseInsensitiveCompare("Person") == .orderedSame }
             )
+            V3PagePersistentCache.shared.storeFavoritesSnapshot(V3FavoritesPersistentSnapshot(movies: sections.movies, series: sections.series, episodes: sections.episodes, people: sections.people), client: client)
         } catch {
             if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription }
         }
