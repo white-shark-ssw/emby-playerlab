@@ -1,0 +1,45 @@
+name: Aether Xcode 26 Product Baseline
+
+on:
+  push:
+    branches: [feat/aether-multi-engine-comparison]
+    paths:
+      - .github/workflows/temp-aether-xcode26-product-baseline.yml
+
+jobs:
+  baseline:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26.3
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_26.3.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+      - name: Generate project and install pods
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+      - name: Resolve packages and build unchanged product
+        run: |
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-aether-baseline 2>&1 | tee resolve.log
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/AetherXcode26Baseline -clonedSourcePackagesDirPath .spm-aether-baseline IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aether-xcode26-product-baseline-${{ github.sha }}
+          path: |
+            resolve.log
+            build.log
+          retention-days: 7
