@@ -1,0 +1,50 @@
+name: One-shot Apply Build213 Poster Display UIKit
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout poster branch
+        uses: actions/checkout@v4
+        with:
+          ref: perf/poster-grid-smoothness
+          fetch-depth: 0
+      - name: Checkout control script
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: _control
+          sparse-checkout: .github/scripts/temp-build213-poster-display-uikit.py
+          sparse-checkout-cone-mode: false
+      - name: Guard exact Build212 source
+        run: test "$(git rev-parse HEAD)" = "4f0a89ab026cd2103f66e5854a1f352d34852e45"
+      - name: Apply minimal display-only UIKit surface
+        run: |
+          sed -i 's/private struct EmbyCachedDisplayRemoteImage/private final class EmbyCachedDisplayImageSurfaceView/' _control/.github/scripts/temp-build213-poster-display-uikit.py
+          python3 _control/.github/scripts/temp-build213-poster-display-uikit.py
+          git add -N docs/changelog/CHANGELOG_v0_14_46_build213.md
+      - name: Run poster source checker
+        run: python3 scripts/check_poster_grid_smoothness.py
+      - name: Check patch formatting
+        run: git diff --check
+      - name: Check exact patch scope
+        run: |
+          git diff --name-only
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = "Sources/Core/AppIdentity.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_14_46_build213.md scripts/check_poster_grid_smoothness.py "
+      - name: Guard Frozen and carousel owners
+        run: |
+          ! git diff --name-only | grep -E 'Sources/(Player|Transport|Cache)/|EmbyHome(Core|Hero|CarouselState|CarouselInteraction)V3\.swift'
+      - name: Commit Build213 candidate
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbySharedImageAndNavigation.swift scripts/check_poster_grid_smoothness.py docs/changelog/CHANGELOG_v0_14_46_build213.md
+          git commit -m "Route display-only posters through UIKit surface"
+          git push origin HEAD:perf/poster-grid-smoothness
