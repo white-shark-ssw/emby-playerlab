@@ -1,6 +1,6 @@
 # OnePlayer ChatGPT Completion Notification Rules
 
-本文件定义 OnePlayer 项目会话的 ChatGPT/Bark 完成通知行为。它只负责“本轮重要工作完成后的通知”，不改变 OnePlayer 源码、Build、CI、IPA、测试、证据分级或任何播放器/Transport/Cache/Emby/PiP 合同。
+本文件定义 OnePlayer 项目会话的 ChatGPT/Bark 最终回答通知行为。它只负责“每轮最终回答准备完成后的通知”，不改变 OnePlayer 源码、Build、CI、IPA、测试、证据分级或任何播放器/Transport/Cache/Emby/PiP 合同。
 
 ## 固定配置
 
@@ -9,7 +9,7 @@
 - Project name: `OnePlayer`
 - Protocol: `BARK_NOTIFY_V1`
 - Bark group: `ChatGPT-Notify`（由通知中心 workflow 强制设置）
-- Default notification policy: important completion only
+- Default notification policy: **every final reply**
 
 Bark Key 只存在通知中心仓库的 GitHub Actions Secret `BARK_KEY`。OnePlayer 项目、项目文档和项目会话都不得索取、保存或输出 Bark Key。
 
@@ -23,25 +23,30 @@ Bark Key 只存在通知中心仓库的 GitHub Actions Secret `BARK_KEY`。OnePl
 
 ## 何时发送
 
-默认只在本轮属于明显需要处理时间的重要任务，并且工作已经真正完成、最终回答已经准备好时发送一次完成通知。
+**每一个准备发送给用户的最终回答都必须发送一次完成通知。**
 
-典型需要通知：
+不再根据以下条件决定是否通知：
 
-- 代码实现或代码修改完成；
-- Bug / 日志 / 崩溃 / 真机证据分析形成完整结论；
-- CI、Build、IPA、PR、workflow 或测试证据分析完成；
-- GitHub 实质性操作完成；
-- 多步骤技术调查或架构分析完成；
-- 用户要求的文件/产物已经生成；
-- 规则 / 文档治理任务形成完整结果。
+- 任务是否“重要”；
+- 是否明显耗时；
+- 是否修改代码；
+- 是否调用 GitHub / CI / IPA；
+- 回答长短；
+- 是否只是普通寒暄、简单事实问答或短澄清。
 
-默认不通知：普通寒暄、简单事实问答、很短澄清、中间进度、尚未完成的部分结果，以及仅告知“正在处理”的消息。
+只要当前内容是本轮面向用户的**最终回答**，就发送通知。
 
-如果用户在当前会话明确要求“每个最终回答都通知”或“本轮不要通知”，用户当前指令优先。
+以下内容不单独发送通知，因为它们不是最终回答：
+
+- commentary / 中间进度说明；
+- 工具调用前后的过程消息；
+- “正在处理”“继续检查”等未完成状态。
+
+每个用户轮次最多发送一次最终回答通知。若用户在当前轮明确要求“本轮不要通知”，该明确当前指令优先。
 
 ## 执行顺序
 
-满足通知条件时必须按以下顺序：
+每轮最终回答必须按以下顺序：
 
 1. 完成本轮所有必要分析、代码、工具调用、验证和项目文档同步。
 2. 形成已经准备发送给用户的最终回答。
@@ -95,8 +100,8 @@ Bark Key 只存在通知中心仓库的 GitHub Actions Secret `BARK_KEY`。OnePl
 - `project` 固定为 `OnePlayer`。
 - 业务项目不需要传 `group`；通知中心会强制使用 `ChatGPT-Notify`。
 - 为兼容旧规则，通知中心可以接受 `group` 字段，但会忽略其值。
-- 每个符合条件的用户轮次最多发送一次完成通知。
-- 不发送“开始处理”“处理中”“即将完成”等通知。
+- 每个用户轮次最多发送一次最终回答通知。
+- 不发送“开始处理”“处理中”“即将完成”等过程通知。
 
 ## GitHub 工具纪律
 
