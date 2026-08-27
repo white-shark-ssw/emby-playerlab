@@ -1,0 +1,187 @@
+name: TEMP Build223 Persistent Backdrop Isolation
+
+on:
+  push:
+    branches: [diag/home-carousel-persistent-backdrop-isolation-build223]
+    paths:
+      - .github/build223-persistent-backdrop-trigger.txt
+
+permissions:
+  contents: read
+
+jobs:
+  build223:
+    runs-on: macos-15
+    timeout-minutes: 150
+    env:
+      BASE_SHA: da5ad1dc6341481b12b8ae3e8b85cc5e5bb31a05
+      VERSION: 0.14.56
+      BUILD: 223
+      ARTIFACT_NAME: OnePlayer-0.14.56-build223-persistent-backdrop-isolation
+
+    steps:
+      - name: Checkout exact feature branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: diag/home-carousel-persistent-backdrop-isolation-build223
+
+      - name: Verify exact task scope and protected contracts
+        run: |
+          set -euo pipefail
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+
+          identity = Path("Sources/Core/AppIdentity.swift").read_text()
+          core = Path("Sources/UI/EmbyHomeCoreV3.swift").read_text()
+          hero = Path("Sources/UI/EmbyHomeHeroV3.swift").read_text()
+          state = Path("Sources/UI/EmbyHomeCarouselStateV3.swift").read_text()
+          project = Path("project.yml").read_text()
+
+          assert 'static let sourceVersion = "0.14.56"' in identity
+          assert 'as? String ?? "0.14.56"' in identity
+          assert 'if immersive { persistentCarouselBackdrop(' not in core
+          assert 'if immersive { carouselPreloadLayer }' in core
+          assert 'func persistentCarouselBackdrop(size: CGSize)' in hero
+          assert 'func carouselPersistentImage(item: LibraryItem, size: CGSize)' in hero
+          assert '.blur(radius: 30)' in hero
+          assert 'guard abs(homeRawScrollMinY) <= 0.5 else { return }' not in state
+          assert 'guard Date().timeIntervalSince(carouselLastSettledAt) >= 6 else { return }' in state
+          assert 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' in project
+          assert 'deploymentTarget: "15.0"' in project
+          print("Build223 persistent-backdrop isolation source contract passed")
+          PY
+          actual="$(git diff --name-only "$BASE_SHA"..HEAD | sort)"
+          expected="$(printf '%s\n' \
+            '.github/build223-persistent-backdrop-trigger.txt' \
+            '.github/workflows/temp-build223-persistent-backdrop-isolation.yml' \
+            'Sources/Core/AppIdentity.swift' \
+            'Sources/UI/EmbyHomeCoreV3.swift' \
+            'docs/changelog/CHANGELOG_v0_14_56_build223.md' \
+            'docs/project/current/dev/DEV-home-carousel-drag-smoothness.md' | sort)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::Unexpected Build223 scope"
+            echo "--- expected ---"
+            printf '%s\n' "$expected"
+            echo "--- actual ---"
+            printf '%s\n' "$actual"
+            exit 1
+          fi
+          if printf '%s\n' "$actual" | grep -E '^(Sources/Player|Sources/Transport|Sources/Cache|Sources/Session)/' >/dev/null; then
+            echo "::error::Build223 touched protected playback/transport/cache/session source"
+            exit 1
+          fi
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Generate icons and Xcode project
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+
+      - name: Install KTVHTTPCache
+        run: |
+          set -euo pipefail
+          pod install --repo-update
+
+      - name: Resolve MPVKit
+        run: |
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned Release app
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build
+
+      - name: Validate app identity and MinOS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
+            echo "::error::Release app not found"
+            exit 1
+          fi
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          python3 scripts/validate_built_app.py "$APP_PATH" \
+            --bundle-id "com.embyplayerlab.app" \
+            --version "$VERSION" \
+            --build "$BUILD" \
+            --display-name "OnePlayer" \
+            --minimum-os "15.0" \
+            --primary-icon "OnePlayerIcon" \
+            --alternate-icon "OnePlayerAltIcon"
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" "15.0" "17.0" min-os-report.log build/DerivedData/Build/Products/Release-iphoneos
+
+      - name: Package IPA and exact source
+        run: |
+          set -euo pipefail
+          TESTED_SHA="$(git rev-parse HEAD)"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-${VERSION}-build${BUILD}-persistent-backdrop-isolation-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME"
+          shasum -a 256 "$IPA_NAME" > "$IPA_NAME.sha256"
+          SOURCE_ZIP="OnePlayer-${VERSION}-build${BUILD}-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          /usr/bin/unzip -t "$SOURCE_ZIP"
+          shasum -a 256 "$SOURCE_ZIP" > "$SOURCE_ZIP.sha256"
+          {
+            echo "tested_sha=$TESTED_SHA"
+            echo "base_sha=$BASE_SHA"
+            echo "version=$VERSION"
+            echo "build=$BUILD"
+            cat "$IPA_NAME.sha256"
+            cat "$SOURCE_ZIP.sha256"
+          } > build223-metadata.txt
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Upload Build223 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            build223-metadata.txt
+            min-os-report.log
+          if-no-files-found: error
+          retention-days: 30
