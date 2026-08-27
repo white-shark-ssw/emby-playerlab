@@ -2,261 +2,219 @@
 
 ## Status
 
-**Active — an initial disk-backed presentation-cache implementation already exists on `perf/page-cache-optimization`, but further product-code progression is intentionally paused while the persistence model is refined. On 2026-08-27 the user accepted the state-classification plan below and asked to record it in this task before making further implementation decisions. This turn updates planning/checkpoint documentation only; no product code, CI, IPA, or runtime evidence changes.**
+**Active — persistence-model reconciliation completed against synchronized source. The first-batch disk warm-cache direction remains valid for Favorites and the Library 7 top tabs. A corrective product commit `45227825a2d1f96da9858c12367d2128c2b5a4f7` stops persisting Library `sortBy` as page-cache state. `selectedTab` restoration, scroll-position restoration, Favorites root-page session retention, Genre/Person warm caches, and Search disk caching are explicitly deferred from the first milestone. Current code still requires post-correction CI and target-device validation; no Build candidate is allocated.**
 
 - **Work ID**: `DEV-page-cache-optimization`
 - **Routing aliases / keywords**: 页面缓存优化 / 持久化页面缓存 / 磁盘页面缓存 / 收藏页面缓存 / 库页面标签缓存 / library page cache / favorites cache
-- **Task**: 优化非播放 UI 页面缓存。当前已实现的首批代码范围是收藏页面，以及库页面顶部 7 个标签页；后续是否扩展到页面现场恢复、类别结果页、人物作品页等，必须按本文件的状态分类和生命周期边界逐项决定，不做统一大 Store 或无差别持久化。
+- **Task**: 优化非播放 UI 页面缓存。第一批只处理收藏主页与 Library Browser 顶部 7 个标签页的内容 warm snapshot / 必要分页恢复；不建立统一巨型页面 Store。
 
-## User intent / current acceptance criteria
-
-### Current implemented first batch
+## User intent / first-milestone acceptance criteria
 
 - 收藏页面；
-- 库页面顶部标签页：内容、建议、预告片、合集、类别、我的收藏、文件夹；
-- App 重启后进入这些页面时，如果已有有效内容快照，应先立即显示上一次成功保存的数据；
-- 页面/标签进入仍执行服务器刷新，不因为存在磁盘缓存而跳过 live refresh；
-- 新数据成功进入现有页面状态 owner 后，再原子覆盖磁盘快照；
-- 刷新失败不得把已有有效快照写成空数据；
-- server/user/page 必须隔离；
-- 不引入 TTL、timer、watchdog、speculative retry、fallback 或第二业务状态 authority。
+- Library 顶部标签页：内容、建议、预告片、合集、类别、我的收藏、文件夹；
+- App 重启后进入这些页面时，有有效磁盘快照则先显示上一次成功展示的数据；
+- 页面/标签进入仍执行 live Emby refresh，磁盘数据不是 fresh authority；
+- fresh 请求成功进入现有 owner 后才覆盖磁盘快照；
+- refresh 失败不得把有效旧快照写空；
+- page content 必须按当前 Emby 用户/页面身份安全隔离；
+- 不引入 TTL、timer、watchdog、speculative retry、fallback 或第二业务 authority；
+- 不触碰 Player / MPV / PiP / UnifiedTransport / playback Session Cache / STRM→302→115/CDN P0 合同。
 
-### Newly accepted planning boundary — 2026-08-27
+## Accepted persistence classification — 2026-08-27
 
-“页面持久化”不能视为一个单一功能。后续所有候选状态先按以下五类归属，再决定保存位置和生命周期：
+页面状态必须先分类，再决定生命周期：
 
-1. **内容展示快照（presentation snapshot）**
-   - 保存“上一次成功展示过什么”，目标是重进页面时避免白屏和强制等待网络。
-   - 允许短暂过期；live Emby/API 数据始终是最终权威。
-   - fresh 请求成功后覆盖快照；请求失败保留旧快照。
-   - 适合磁盘 warm cache，但不能把快照升级为业务 authority。
+1. **Presentation snapshot**：上一次成功展示的数据，可短暂过期；live API 最终权威。适合磁盘 warm cache。
+2. **Browse session state**：当前 tab、分页 frontier / nextStartIndex / hasMore / 已加载 ID，以及可选滚动位置。内容/分页恢复优先于位置恢复。
+3. **Preference**：例如 sortBy。长期用户选择，不属于 page cache，应由独立 Preference owner 管理。
+4. **Transient interaction state**：loading/error/isFetching/generation/sheet/button 等，不持久化。
+5. **Authoritative business state**：Favorite/Played/PlaybackPosition/Session/CDN URL/Transport range 等不得复制出第二套长期 authority；只允许作为展示快照字段存在并由 live owner 更新。
 
-2. **浏览会话状态（browse session state）**
-   - 保存“用户刚才浏览到哪里”，与媒体业务数据分开。
-   - 包括：当前 Library tab、分页 frontier/nextStartIndex、hasMore、必要的已加载 ID 集合，以及可选滚动位置。
-   - 再分两层：
-     - **内容/分页恢复**：关系到恢复后继续分页是否正确；优先级较高。
-     - **位置恢复**：例如滚动到第几屏/哪个海报附近；属于第二阶段 UX，不与内容缓存绑死。
+## Lifecycle decisions after reconciliation
 
-3. **用户偏好（preference）**
-   - 例如排序方式、首页库显示偏好等。
-   - 这是长期用户选择，不属于 cache；应由独立 Preference/UserDefaults owner 管理，直到用户主动更改。
-   - 清页面缓存不得顺带清除用户偏好。
+### First milestone — retained
 
-4. **临时交互状态（transient interaction state）**
-   - loading/error、isFetching、request generation、refresh spinner、sheet/popup 是否打开、按钮按压等。
-   - 默认不持久化，不为恢复它们新增 owner。
+- Favorites 内容磁盘 warm snapshot。
+- Library 7 tabs 内容磁盘 warm snapshot。
+- Library 已加载内容所需分页 frontier / `nextStartIndex` / `hasMore` / restored seen IDs。
+- 每次页面/标签进入继续 fresh refresh。
+- fresh success 后重新持久化；failure 保留旧数据。
 
-5. **权威业务状态（authoritative business state）**
-   - Emby 收藏状态、Played、PlaybackPositionTicks、UnplayedItemCount、播放 Session、CDN/302 最终地址、Transport byte ranges 等。
-   - 绝不能因为页面缓存而复制出第二套长期 authority。
-   - 这些字段可以作为展示快照的一部分出现，但必须继续通过现有 live API / UserData refresh / Session / Transport owner 更新。
+### Explicitly deferred — no product change now
 
-## Lifecycle strategy
+#### Library `selectedTab`
 
-### Server Root 一级页面
+`selectedTab` 是 `V3LibraryBrowserView` 自己的 `@State`，属于 browse-session state，但不是用户本次“重启后立即看到旧内容”要求的必要条件。第一里程碑继续默认 `.items`，不新增磁盘 owner；后续若用户要求“重进库直接回到上次标签”再单独设计。
 
-收藏、搜索、设置属于 `EmbyServerRootViewV3` 的一级页面。这里要严格区分两件事：
+#### Scroll position
 
-- **切底部 Tab 后回来**：首先是内存生命周期/页面是否被销毁的问题，优先考虑让正确的页面/Store 在 server session 内保持，而不是把所有 UI 现场都写磁盘。
-- **App 终止/重启后回来**：如确有立即展示价值，再由 presentation snapshot 提供磁盘 warm start。
+属于第二阶段位置恢复 UX，不是内容缓存正确性的前置条件。本阶段不保存。
 
-因此，一级页面允许“会话内内存保留 + 内容磁盘快照”同时存在，但两者必须服务不同生命周期，不能变成重复业务 owner。
+#### Favorites root session retention
 
-### Navigation 深层页面
+`EmbyServerRootViewV3` 当前只在 `selectedTab == .favorites` 时构造 `V3EmbyFavoritesView`；切走底部 Tab 会释放 Favorites page/model。源码确认这是一个**会话内 View 生命周期问题**，与 App relaunch warm snapshot 是两个问题。
 
-Library Browser、类别结果、人物作品等页面在 Pop 后本来就可以正常销毁 View。如果产品希望重新进入时仍立即恢复之前已加载内容，才考虑磁盘 warm snapshot；不因为 View 被销毁就强制把所有 StateObject 永久化。
+本阶段不修改 Root、不把 Favorites 常驻，也不把 model 提升到新全局 Store：用户当前明确需求是跨 App 重启的内容持久化，而 root retention 会扩 owner/文件范围并可能改变隐藏页面 refresh 生命周期。后续如果用户明确要求底部 Tab 往返保留现场，再单独处理 session-local retention。
 
-### 不建立统一巨型 Store
+#### Search / Genre / Person
 
-- 不把 Favorites、Library、Search、Genre、Person、Detail 全塞进一个全局页面 Store。
-- 优先由现有真实 owner 保存自己的 presentation/browse 状态，必要时共享一个纯序列化/磁盘设施。
-- Home 与 Detail 已有成熟持久化 owner，除非出现新回归证据，本任务不重构它们。
+- Search：默认 session-only，不做跨重启结果磁盘缓存。
+- Genre result / Person media：第二优先级候选，尚未获准进入第一批。
 
-## Scope classification matrix
+## `sortBy` reconciliation
 
-| 页面/状态 | 内容快照 | 分页/内容恢复 | 当前 Tab | 滚动位置 | 偏好 | 当前规划 |
-|---|---|---|---|---|---|---|
-| 首页 | 已有 | 不需要扩展 | 不适用 | 暂不扩 | 已有部分 | **不碰现有 owner** |
-| 收藏主页 | 应保留/完善 | 视真实接口需要 | 不适用 | 第二阶段 | 无 | **第一优先级**；一级页另评估会话内内存保留 |
-| Library 7 tabs | 应保留/完善 | **应做** | **应做候选** | 第二阶段 | sortBy 单独处理 | **第一优先级** |
-| 类别结果页 | 可做 | 若做则一起保存分页 frontier | 不适用 | 第二阶段 | 无 | **第二优先级候选**，尚未批准实现 |
-| 人物作品页 | 可做 | 若做则一起保存分页 frontier | 不适用 | 第二阶段 | 无 | **第二优先级候选**，尚未批准实现 |
-| 搜索页 | 默认不做跨重启磁盘结果缓存 | 会话内即可 | 不适用 | 不优先 | 搜索历史另议 | **待产品决定**；倾向 session-only |
-| 详情页 | Build182 已有 | 现有 owner 足够 | 不扩 | 不扩 | 无 | **Frozen，不动** |
-| Library sortBy | 不适用 | 不适用 | 不适用 | 不适用 | 可独立持久化 | **Preference 问题，不混入 page snapshot** |
+Accepted classification明确：Library `sortBy` 是 Preference，不是 page snapshot。
 
-## Baseline / identity
+Initial implementation曾把 `SortBy` 写入 `Library/Caches/OnePlayer/PagePresentation`。这已在 `45227825a2d1f96da9858c12367d2128c2b5a4f7` 收紧：
 
-- Accepted overall runtime baseline: OnePlayer **0.14.32 / Build199** on `main`.
-- Task creation base: `d3d96c2c18c7a7209293b4fe4a9261fefc2ed2d4`.
-- Working branch: `perf/page-cache-optimization`.
-- PR: none yet.
-- Initial implementation head recorded by the earlier checkpoint: `fdd364f9bad0b0820177b42d69afdbf06200c0fe`.
-- Current branch head before this documentation update: `c70472f78033f89acdfef3d5917bf00ac4f9a31e` (`Merge current main into page cache task`).
-- Because the branch was synchronized with current `main` after the initial implementation review, affected final diff/compile validation must be rechecked before CI/PR claims.
-- Target device: iPhone 15 Pro Max / iOS 17.0.
-- Deployment Target remains iOS 15.0.
+- 磁盘写入不再包含 `SortBy`；
+- 读取历史/开发期 schema-1 快照时忽略旧 `SortBy`，Library owner恢复为现有默认 `DateCreated`；
+- 当前页面内用户排序行为仍由原 `V3LibraryBrowserViewModel.sortBy` 管理；
+- 本任务不顺手新增 UserDefaults 排序偏好。若以后要持久化排序，必须另按 Preference owner 设计。
 
-## Build candidate
-
-- Not allocated yet.
-- Allocate only after the planning boundary is settled, compile/test baseline exists, and uniqueness is rechecked against `BUILD_TEST_INDEX.md` plus all Active checkpoints.
+这里保留 `V3LibraryPersistentSnapshot.sortBy` 作为现有 owner 构造接口的内部值，但磁盘 page cache 已不再保存/恢复用户排序选择。后续如需进一步移除该字段，必须在不扩大 `EmbyServerBrowseV3.swift` 风险的前提下做窄化整理；它不是当前运行时 Preference authority。
 
 ## Exact source findings
 
 ### Library top tabs
 
-`V3LibraryBrowserView` creates one `V3LibraryBrowserViewModel` per library browser presentation and uses `.task(id: selectedTab)` to enter/load each top tab.
+`V3LibraryBrowserView`：
 
-The model's relevant state includes:
+- 一次 Library Browser presentation 创建一个 `V3LibraryBrowserViewModel`；
+- `selectedTab` 是 View-owned `@State`；
+- `.task(id: selectedTab)` 负责每个 tab 进入时调用 `model.load(tab:)`；
+- sort menu 调用 model `changeSort`；
+- current persistent implementation restores content synchronously in ViewModel init before first render。
 
-- `tabItems` for items/trailers/collections/favorites;
-- suggestion resume/latest/generic arrays and recommendation sections;
-- genres;
-- folder items;
-- `loadedTabs` and pagination state;
-- sort state;
-- `selectedTab` is currently View-owned `@State` rather than part of the ViewModel/cache owner.
+`V3LibraryBrowserViewModel` 当前相关 state：
 
-Before this task's initial implementation there was no disk restore path for the tab content. App termination therefore destroyed the content state. The newly accepted classification also identifies `selectedTab` as **browse session state** rather than transient state; whether/how to restore it must be reviewed separately from content snapshot serialization.
+- `tabItems`：items/trailers/collections/favorites；
+- suggestions resume/latest/generic + recommendation sections；
+- `genres`；
+- `folderItems`；
+- `loadedTabs`；
+- paged `pageStates`；
+- in-memory `sortBy`。
+
+Fresh reset fetch 不先清空 cached visible array，因此 warm content 可继续显示到 live result 成功替换。
 
 ### Favorites root
 
-`EmbyServerRootViewV3` conditionally constructs `V3EmbyFavoritesView` only while the Favorites server tab is selected. `V3FavoritesViewModel` previously kept its Movie/Series/Episode/Person sections only in memory. Switching away can recreate the view/model later, and App termination always destroys it.
+`V3FavoritesViewModel.init` 从 page disk snapshot 恢复 Movie/Series/Episode/Person sections。`V3EmbyFavoritesView.onAppear` 每次仍 `load()`，成功后覆盖 snapshot；失败保留旧内容/旧磁盘快照。
 
-This creates two distinct problems that must not be conflated:
+### Server root lifecycle
 
-1. bottom-tab switching destroys session-local page state;
-2. app relaunch loses previous presentation content.
+`EmbyServerRootViewV3`：
 
-The first is primarily a root-page lifecycle/retention question; the second is the disk presentation-snapshot question already addressed by the initial implementation.
+- Home 始终挂载，只切 opacity/hit testing；
+- Favorites/Search/Settings 仍是条件构造；
+- 因而 Favorites bottom-tab 往返可重建 ViewModel；
+- 第一里程碑不改变这个 root 生命周期。
 
-### Search root
+## Persistent cache contract
 
-`V3EmbySearchView` currently owns `searchText` as local `@State`, and `V3SearchViewModel` owns result/pagination state. Because the root only constructs Search while selected, switching away destroys that search session.
+Product files in the first implementation:
 
-Accepted direction: treat search as **session-local browse/interactivity state by default**, not as a required cross-relaunch disk cache. Search history would be a separate preference/product feature if ever requested.
+1. `Sources/UI/EmbyPagePersistentCache.swift`
+2. `Sources/UI/EmbyServerBrowseV3.swift`
 
-### Genre result pages
+Storage:
 
-`V3LibraryGenreGridView` owns a dedicated `V3LibraryGenreGridViewModel` with items, `hasMore`, `hasLoaded` and pagination state. Leaving the page releases that state. This is a second-priority candidate for warm cache only if the product wants re-entry restoration beyond normal navigation lifetime.
+- directory: `Library/Caches/OnePlayer/PagePresentation`
+- schema version: 1
+- JSON + atomic write
+- decode/read failure = no snapshot + `PagePersistentCache` diagnostic log
+- no retry/fallback/timer
+- snapshot includes presentation `LibraryItem` / recommendation metadata and necessary loaded/page state
 
-### Person media pages
+### Identity note / multi-route risk
 
-`EmbyPersonMediaView` owns a dedicated model with paged `items`, `nextStartIndex`, `seenItemIDs`, `hasMore` and `hasLoaded`. It has the same deep-navigation restoration shape as Genre and is a second-priority candidate, not automatically part of the first batch.
+Current cache file key is:
 
-### Existing precedent / explicit exclusions
+`client.baseURL + client.userId + page scope (+ library.id)`
 
-- Home already persists libraries/resume/latest/carousel presentation snapshots keyed by server/user and performs live refresh. Treat it as a precedent, not a target for this task.
-- Build182 detail presentation cache already uses memory + `Library/Caches` warm snapshots and is Frozen. Do not reopen it without new regression evidence.
-- Existing image disk cache is separate presentation infrastructure and is not this task's page-state authority.
+This is **safe against cross-route data leakage**, but Build199 supports multiple URLs for the same Emby Server ID. Therefore a different best route on a later launch can produce a cache miss even though server/user are logically the same.
 
-## Existing implementation on this branch
-
-Product files changed by the initial implementation from the task base:
-
-1. `Sources/UI/EmbyPagePersistentCache.swift` — new page-presentation disk snapshot serializer/store.
-2. `Sources/UI/EmbyServerBrowseV3.swift` — existing Favorites/Library page owners restore/persist accepted content state and keep refresh-on-entry semantics.
-
-### Persistent content-cache contract
-
-- Storage directory: `Library/Caches/OnePlayer/PagePresentation`.
-- Schema version: 1.
-- Key includes `client.baseURL`, `client.userId`, and page scope; library scope additionally includes `library.id`.
-- File names are URL-safe base64 of the identity key, versioned by schema.
-- Writes use `.atomic`.
-- Read/decode failure returns no snapshot and logs under `PagePersistentCache`; it does not mutate server state or trigger retry/fallback.
-
-### Current Library implementation
-
-`V3LibraryBrowserViewModel.init` restores persisted content snapshot synchronously into the same existing owner before first render.
-
-`.task(id: selectedTab)` still drives entry. `load(tab:)` refreshes the selected tab even when restored data is already loaded. Existing visible arrays are not cleared before reset fetch, so cached content remains visible while fresh data is requested.
-
-Successful page fetch/pagination, suggestions updates, genres/folders refresh, and user-data replacement persist the accepted current content snapshot. Network errors retain both visible cached data and the previous disk snapshot.
-
-**Important planning delta:** current code does **not** restore `selectedTab` or scroll position. Under the accepted classification, this is no longer documented as a permanent prohibition. `selectedTab` is a browse-session restoration candidate; scroll position remains a second-stage UX candidate. No code change for either is authorized by this documentation-only turn.
-
-### Current Favorites implementation
-
-`V3FavoritesViewModel.init` restores persisted Movie/Series/Episode/Person sections synchronously.
-
-`V3EmbyFavoritesView.onAppear` invokes `load()`, so restored content is immediately visible while each page entry still refreshes. Only a successful `favoriteBrowseItems` result replaces sections and persists the new snapshot.
-
-**Important planning delta:** disk content restore solves relaunch warm-start, but does not by itself answer whether the root Favorites View/Store should remain alive across bottom-tab switching. That lifecycle question must be evaluated separately to avoid redundant ownership.
+Do **not** solve this by using only `serverName`, because that weakens identity isolation. The accepted Home precedent keys by `session.serverId + user.id`. A route-transparent page-cache key would require plumbing stable Server ID to these page owners/cache calls. Current active Home-carousel rules explicitly forbid casually editing `EmbyHomeCoreV3.swift`, and SessionStore/server-management is already stable at Build199. Therefore this is recorded as a real first-milestone risk to resolve before final acceptance, not patched through a weaker guessed identity or broad owner refactor.
 
 ## Parallel conflict reconciliation
 
 ### `DEV-poster-grid-smoothness`
 
-Exact current overlap was previously inspected. The poster task owns shared image/scroll diagnostic paths such as `EmbySharedImageAndNavigation.swift`; this page-cache implementation does **not** edit those files or image/decode/scroll state. Conceptual Favorites/Library scope overlaps, but exact current file/state ownership is independent enough for the existing patch to remain isolated.
-
-If the poster task advances into `EmbyServerBrowseV3.swift` before this task merges, synchronization must be rechecked before final CI/merge.
+Current page-cache product files do not touch shared poster image/decode/scroll owner `EmbySharedImageAndNavigation.swift`. If poster work later modifies `EmbyServerBrowseV3.swift`, resync before final CI/merge.
 
 ### `DEV-home-carousel-drag-smoothness`
 
-No intended product file overlap. Do not modify `EmbyHomeCoreV3.swift`, carousel state/Hero files, or gesture ownership.
+Do not modify `EmbyHomeCoreV3.swift`, `EmbyHomeCarouselStateV3.swift`, `EmbyHomeHeroV3.swift`, or carousel gesture/state ownership for this task. The Server-ID cache-key issue must not be “fixed” by silently editing the active carousel owner.
 
-## Frozen / protected
+## Baseline / branch / PR identity
 
-Untouched and must remain untouched unless new evidence directly requires otherwise:
+- Accepted overall runtime baseline: **OnePlayer 0.14.32 / Build199**.
+- Task creation base: `d3d96c2c18c7a7209293b4fe4a9261fefc2ed2d4`.
+- Current target/base after synchronization: `main` at `7e7e82ccf548b960567445e848260b71ab8a50b2` when PR #260 was created/synced.
+- Working branch: `perf/page-cache-optimization`.
+- Draft PR: **#260** — `Persist Favorites and library tab page cache`.
+- Initial implementation: `bb18736eac80494d2912cf4032d584c15a1897fc` + `fdd364f9bad0b0820177b42d69afdbf06200c0fe`.
+- Main synchronization commit: `c70472f78033f89acdfef3d5917bf00ac4f9a31e`.
+- Earlier project-doc sync head: `daf5e8dc9dd1513cbb51d9192d8123a28543be40`.
+- Current product correction: **`45227825a2d1f96da9858c12367d2128c2b5a4f7`**.
+- Build/version candidate: **not allocated**.
+- Target device: iPhone 15 Pro Max / iOS 17.0.
+- Deployment Target: keep iOS 15.0.
 
-- Player / MPV / PiP;
-- UnifiedTransport / Range / 206;
-- playback Session cache;
-- Emby playback Resume / Session authority;
-- STRM → 302 → 115/CDN direct path;
-- Home carousel owner files;
-- Build182 Detail cache owner;
-- native Push/Pop ownership.
+## Validation evidence
 
-NAS remains excluded from media-byte relay.
+### `daf5e8d…` pre-reconciliation head
 
-## Validation state
+- `Build KSPlayer Lab IPA` run `33049382287` completed **success** and compiled the full `Sources` tree.
+- This establishes that the first implementation had a real Swift compile-success baseline.
+- `Validate Source` failed before compile because that generic workflow still hard-codes obsolete `0.13.3 / Build69` source-version assertions; do not count it as current-code compile failure or CI success.
+- `Build MDK Lab IPA` failed its separate MDK local-file contract before compiling this product path; not evidence against page-cache Swift code.
 
-- Existing code written: ✅
-- Initial implementation static scope review: ✅ at the earlier implementation checkpoint.
-- Post-`c70472f` synchronization final diff/compile-risk review: ❌ pending.
-- Newly accepted persistence-classification reconciliation: ✅ documented; product-code reconciliation not yet performed.
-- CI passed: ❌ pending.
-- IPA produced: ❌.
-- Real-device tested: ❌.
-- Stable / frozen: ❌.
+### Current head after `45227825…`
 
-## Pending decisions / ordered next work
+Because source changed after the successful KSPlayer run:
 
-1. **Do not immediately open PR/CI.** First review the existing two-file implementation against the accepted five-class model and the `c70472f` synchronized source.
-2. Decide whether the first implementation milestone should additionally restore **Library `selectedTab`** as browse-session state. This is distinct from disk content snapshot and must have one clear owner.
-3. Review whether Favorites bottom-tab switching should be solved by **session-local root-page retention** in addition to the existing relaunch disk snapshot; do not create duplicate content authorities.
-4. Keep scroll-position restoration as a **second-stage UX option**, not a prerequisite for content-cache correctness.
-5. Keep `sortBy` out of page snapshot design; if persistence is desired later, treat it as a separate user Preference decision.
-6. Genre result and Person media pages remain **second-priority candidates**. Do not add them until the user explicitly accepts expanding implementation scope after this planning review.
-7. Search remains **session-only by default**; do not add cross-relaunch search-result disk persistence unless the product requirement changes.
-8. Once the above boundary is settled, perform final diff/source review, then proceed to draft PR/CI if the implementation still matches the accepted scope.
-9. Allocate Build/version only after CI-ready code exists and active-task uniqueness is rechecked.
-10. Eventual target-device validation must separately test:
-   - page/tab switch retention where applicable;
-   - force-quit/relaunch warm content presentation;
-   - fresh server refresh replacing snapshots;
-   - refresh/offline failure retaining valid old presentation data;
-   - pagination continuation correctness if browse frontier is persisted.
+- Code written: ✅
+- Persistence classification reconciled: ✅
+- `sortBy` removed from disk persistence: ✅
+- Prior-head full-source compile success: ✅ (`daf5e8d…` only)
+- Current-head CI passed: ❌ pending
+- Standard MPV IPA produced: ❌
+- Real-device tested: ❌
+- Stable / frozen: ❌
+
+## Current first-milestone decisions
+
+1. Retain Favorites + Library 7-tab disk presentation snapshots.
+2. Retain refresh-on-entry and fresh-success write-through semantics.
+3. Retain necessary pagination frontier/content IDs; do not persist transient request state.
+4. Do **not** add Library selected-tab restoration in first milestone.
+5. Do **not** add scroll restoration in first milestone.
+6. Do **not** change Favorites root lifetime/session retention in first milestone.
+7. Do **not** persist `sortBy` through page cache.
+8. Do **not** expand to Search/Genre/Person yet.
+9. Do **not** weaken server identity to `serverName` merely to make multi-route cache reuse easier.
+10. Resolve or explicitly test the current baseURL-key multi-route cache-miss risk before claiming final first-milestone acceptance.
 
 ## Next exact action
 
-**Documentation/planning checkpoint only:** inspect the synchronized current source and existing implementation against the accepted state-classification/lifecycle model. Do not add more cache state, open CI/IPA, or claim the current implementation is final until this reconciliation is complete.
+1. Review PR #260 diff after `45227825…` and confirm only intended page-cache/documentation scope remains.
+2. Decide the narrowest safe way to make cache identity route-transparent using real `EmbySession.serverId` without editing active Home-carousel owner files or inventing a duplicate server identity. If no narrow safe path exists, keep current safe route-scoped key and make route-change behavior an explicit test/known limitation rather than weakening isolation.
+3. Run current-head compile validation after identity decision.
+4. Recheck active Build reservations, then allocate a unique standard MPV test Build only when code is CI-ready.
+5. Target-device test must separately cover: force-quit/relaunch warm display, fresh refresh replacement, offline/refresh failure retention, Library pagination continuation, and same-server route change behavior.
 
 ## Rejected / do-not-repeat
 
-- Do not treat “页面缓存” as one undifferentiated global persistence problem.
-- Do not revert scoped presentation data to memory-only when cross-relaunch warm content is required.
-- Do not make disk snapshot authoritative fresh data; live Emby/API refresh remains authoritative.
-- Do not clear valid visible/disk data before a fresh request succeeds.
-- Do not persist loading/error/isFetching/generation/sheet/button transient state.
-- Do not put long-term user preferences such as sort order into the page snapshot merely for convenience.
-- Do not treat `selectedTab` as permanently forbidden from restoration; it is now classified as browse-session state and requires an explicit owner decision.
-- Do not treat scroll-position restoration as required for first-stage content correctness.
-- Do not add TTL/timer/watchdog/speculative retry/fallback logic.
-- Do not modify playback Session Cache/Transport for UI presentation caching.
-- Do not reopen Home or frozen Build182 Detail cache merely to “统一缓存”.
-- Do not silently edit poster/shared-image or Home-carousel owner files.
+- Do not treat all page state as one global persistence problem.
+- Do not persist loading/error/isFetching/generation/sheets/buttons.
+- Do not make disk snapshots live business authority.
+- Do not clear valid old data before fresh success.
+- Do not persist Library sort preference inside page cache.
+- Do not add selectedTab/scroll/root-retention merely because they are technically possible.
+- Do not add TTL/timer/watchdog/retry/fallback.
+- Do not use `serverName` alone as server identity.
+- Do not modify playback Session Cache/Transport for this UI problem.
+- Do not reopen Home or Build182 Detail owner for “cache unification”.
+- Do not silently edit poster/shared-image or active Home-carousel owner files.
