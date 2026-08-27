@@ -37,7 +37,7 @@ final class EmbyDetailEpisodeScrollController: ObservableObject {
     }
 }
 
-private final class EmbyDetailEpisodeScrollProbeUIView: UIView {
+final class EmbyDetailEpisodeScrollProbeUIView: UIView {
     var hierarchyDidChange: ((UIView) -> Void)?
 
     override func didMoveToSuperview() {
