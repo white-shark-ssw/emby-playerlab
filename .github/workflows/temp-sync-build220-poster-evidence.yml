@@ -1,0 +1,129 @@
+name: Temp sync Build220 poster evidence
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/temp-sync-build220-poster-evidence.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Sync Build220 CI and IPA evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --ff-only origin main
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          source = '6198466a749a54603a67c6c32bc0efcf9d7e2082'
+          run_job = '33083504023 / 98556783889'
+          artifact = '9651230376'
+          digest = 'fc1cd17fe974b6e35b2eda03eb32718ca3fca6fa4034406016385a9aa5c1f729'
+          ipa = 'a73a33866745418663d1dcc35634f5b21b0a73436a91f40ed8a4f6dc6bbcf574'
+          src = '7c222973433e8e94608946fc5ffda4e5ec4442a9c6200be4b98e84d680695fad'
+
+          task_path = Path('docs/project/current/dev/DEV-poster-grid-smoothness.md')
+          task = task_path.read_text()
+          task = re.sub(
+              r'## Status\n\n\*\*.*?\*\*\n',
+              '## Status\n\n**Active — Build220 / 0.14.53 is the current poster-grid test candidate. It is synchronized onto the accepted Build216 main runtime baseline, preserves the Build218 grid/display-only UIKit A/B, and adds only the shared transparent-image background correction proven necessary by the Build218 Home screenshot. Exact 7-path scope, poster checker, Xcode 16.4 Release, app identity, MinOS 15.0, IPA/source packaging and independent artifact verification all passed. No Home-carousel owner file changed. Build218 Home vertical hitching remains rejected and is owned separately with the carousel task; Build220 has not yet been target-device tested for its intended 3×3 grid A/B, so no smoothness fix is claimed.**\n',
+              task,
+              count=1,
+              flags=re.S,
+          )
+          marker = '## Parallel safety\n'
+          if '## Build220 / 0.14.53 — corrected grid UIKit A/B candidate' not in task:
+              section = f'''## Build220 / 0.14.53 — corrected grid UIKit A/B candidate\n\nBuild220 is the Build218 grid/display-only UIKit experiment resynchronized onto the accepted Build216 overall runtime baseline, plus the one-line transparent-image presentation correction. Poster Build219 was retired before distribution when the independent carousel task claimed that identity.\n\n- exact tested source: **`{source}`**\n- accepted-main comparison base used for exact scope: `6a3f52bd8b91995a01f0c908887ffb375d8ec737`\n- exact product/check delta: seven poster paths only (`AppIdentity`, person poster policy, `EmbyPosterGrid`, shared poster sizing, shared image/diagnostics, Build220 changelog, poster checker)\n- no `EmbyHomeCoreV3.swift`, `EmbyHomeHeroV3.swift`, `EmbyHomeCarouselStateV3.swift`, `EmbyHomeCarouselInteractionV3.swift`, Player or Transport changes\n- shared UIKit display surface preserves `secondarySystemBackground` only while image is nil and switches to `.clear` once an image is present, restoring transparent Logo semantics without modifying carousel owner code\n- run/job: **`{run_job}` — success**\n- artifact: `OnePlayer-0.14.53-build220-poster-grid-uikit-transparent`; ID **`{artifact}`**\n- GitHub artifact digest / independently downloaded ZIP SHA-256: **`{digest}`**\n- IPA SHA-256: **`{ipa}`**\n- source ZIP SHA-256: **`{src}`**\n- artifact ZIP, IPA and source ZIP integrity: PASS; embedded SHA files match independent calculation\n- built identity: `com.embyplayerlab.app`, OnePlayer **0.14.53 (220)**, `MinimumOSVersion=15.0`; primary/alternate icon metadata present\n- exact source snapshot contains the clear-background regression fix and no Build220 temporary workflow\n- one-shot Build220 build helper self-cleaned successfully\n\n**Evidence: Code written ✅ / synchronized exact 7-path scope + checker ✅ / CI passed ✅ / IPA produced + independently verified ✅ / target-device grid A/B pending ❌ / stable or frozen ❌.**\n\nTarget-device test must explicitly cover Library 3×3, Favorites, Favorites → More, Search, Tag and Person/Actor grids. Home may be checked only for regression; Build218 already proved this poster candidate does not solve the separate Home hitch path.\n\n'''
+              if marker not in task:
+                  raise SystemExit('task Parallel safety marker missing')
+              task = task.replace(marker, section + marker, 1)
+          task = re.sub(
+              r'## Next exact action\n.*?\n## Do not repeat',
+              '''## Next exact action\n\n1. Install Build220 / 0.14.53 on iPhone 15 Pro Max / iOS 17.0.\n2. A/B the intended 3×3 routes: Library, Favorites, Favorites → More, Search, Tag and Person/Actor results; report obvious improvement / unchanged / worse and any image/navigation regression.\n3. Verify the Build218 transparent-Logo rectangle is gone, but do not modify carousel owner code from this task.\n4. Home vertical hitching remains a separate Home/carousel runtime path; do not use Home-only behavior to infer the grid A/B result.\n5. If Build220 is accepted, resync against then-current main before merge and rerun affected validation if the source changes.\n\n## Do not repeat''',
+              task,
+              flags=re.S,
+          )
+          task_path.write_text(task)
+
+          module_path = Path('docs/project/MODULE_STATUS.md')
+          module = module_path.read_text()
+          module = re.sub(
+              r'^\| Poster 3-column / poster-heavy scroll smoothness \|.*$',
+              f'| Poster 3-column / poster-heavy scroll smoothness | **Active — Build220 CI/IPA verified; corrected grid A/B pending target-device test** | Build220 / 0.14.53 exact source `{source}` is synchronized onto the accepted Build216 runtime baseline. Exact seven-path scope/checker, run/job `{run_job}`, artifact `{artifact}`, artifact SHA-256 `{digest}`, IPA SHA-256 `{ipa}`, source SHA-256 `{src}`, OnePlayer 0.14.53 (220) and MinOS 15.0 were independently verified. It preserves Build218 display-only UIKit poster presentation and fixes only the poster-task shared surface so loaded transparent images have clear background; no carousel owner source changed. Build218 Home still visibly hitches and remains a separate carousel-owned path. Build220 grid 3×3 A/B is pending and is not stable. |',
+              module,
+              count=1,
+              flags=re.M,
+          )
+          module = module.replace(
+              'poster-scroll Build218 / 0.14.51 remains an independent Active line. Poster Build218 does not modify Home carousel owner files.',
+              'poster-scroll Build220 / 0.14.53 is the independent CI/IPA-verified grid A/B line; target-device grid testing is pending. Build220 does not modify Home carousel owner files.'
+          )
+          module_path.write_text(module)
+
+          build_path = Path('docs/project/BUILD_TEST_INDEX.md')
+          build = build_path.read_text()
+          row = f'| **Build220 / 0.14.53** | Corrected poster grid UIKit display A/B | **CI/IPA verified; target-device 3×3 A/B pending; not stable.** Exact source `{source}` synchronized onto accepted Build216 main; exact seven-path scope/checker passed. Run/job `{run_job}`; artifact `{artifact}`; artifact SHA-256 `{digest}`; IPA SHA-256 `{ipa}`; source ZIP SHA-256 `{src}`; OnePlayer 0.14.53 (220), MinOS 15.0 independently verified. Carries the Build218 display-only UIKit poster experiment plus only the shared transparent-image background correction; no Home-carousel owner source changed. Build218 Home hitch failure remains separate. |\n'
+          if '| **Build220 / 0.14.53** |' not in build:
+              anchor = '| **Build218 / 0.14.51** |'
+              pos = build.find(anchor)
+              if pos == -1:
+                  raise SystemExit('Build218 row missing')
+              end = build.find('\n', pos)
+              build = build[:end+1] + row + build[end+1:]
+          build_path.write_text(build)
+
+          state_path = Path('docs/project/PROJECT_STATE.md')
+          state = state_path.read_text()
+          state = re.sub(
+              r'^_Last updated.*_$',
+              '_Last updated after Build220 / 0.14.53 poster-grid CI/IPA verification. Build216 remains the latest real-device accepted overall runtime baseline. Home-carousel remains an independent diagnostic line; poster Build220 is synchronized onto Build216, CI/IPA verified, fixes the Build218 shared transparent-image regression, and is pending its intended 3×3 target-device A/B. No Home smoothness fix is claimed._',
+              state,
+              count=1,
+              flags=re.M,
+          )
+          poster = f'''## Active: Poster-heavy scrolling smoothness\n\nWork: `DEV-poster-grid-smoothness`.\n\n- Build212 remains the route-split evidence authority: Home hitches correlate with the separate 1400px carousel image path, while 11 real grid dragging hitches correlate with newly visible `network/display/Primary/378` publication. Home and grid are separate runtime paths.\n- Build218 introduced the grid/display-only UIKit image surface. Target-device Home still visibly hitched, so it is not a Home fix; the intended grid A/B was not reported. Build218 also exposed a white rectangle behind transparent carousel Logo images because the shared UIKit surface retained `secondarySystemBackground` after load. Exact source proved the carousel owner file itself was unchanged.\n- Build220 / 0.14.53 exact tested source **`{source}`** is resynchronized onto accepted Build216 main. It preserves the Build218 grid UIKit A/B and adds only the shared-surface semantic correction: image-present state uses clear background; nil-image placeholder state retains `secondarySystemBackground`. No carousel owner file changed.\n- Exact seven-path scope + poster checker PASS; run/job **`{run_job}`** success; artifact ID **`{artifact}`**; artifact SHA-256 `{digest}`; IPA SHA-256 `{ipa}`; source ZIP SHA-256 `{src}`; OnePlayer 0.14.53 (220), MinOS 15.0 independently verified. Exact source snapshot contains no Build220 temporary workflow.\n- Current evidence: **Code written / synchronized scope+checker / CI passed / IPA produced+verified / target-device grid A/B pending / not stable**. Home remains separately owned with the carousel task and must not be inferred from this grid candidate.\n\nNext: install Build220 on the target device and explicitly A/B Library 3×3, Favorites/More, Search, Tag and Person/Actor grids; also confirm the transparent Logo rectangle regression is gone.\n\n## Parallel integration rule'''
+          state = re.sub(
+              r'## Active: Poster-heavy scrolling smoothness\n.*?\n## Parallel integration rule',
+              poster,
+              state,
+              count=1,
+              flags=re.S,
+          )
+          state_path.write_text(state)
+          PY
+          git diff --check
+          git add docs/project/current/dev/DEV-poster-grid-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md
+          git commit -m "Record Build220 poster CI and IPA evidence"
+          git push origin main
+
+  cleanup:
+    needs: sync
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove evidence sync helper
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --ff-only origin main
+          if [[ -f .github/workflows/temp-sync-build220-poster-evidence.yml ]]; then
+            git rm .github/workflows/temp-sync-build220-poster-evidence.yml
+            git commit -m "Remove Build220 poster evidence helper"
+            git push origin main
+          fi
