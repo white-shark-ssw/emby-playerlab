@@ -2,11 +2,11 @@
 
 ## Status
 
-**Active — Build217 / 0.14.50 cadence-diagnostic IPA is CI/IPA verified and awaiting target-device logging. Build215 remains the latest real-device carousel behavior evidence: acquisition-relative start and opaque foreground fixed the coarse start/ghosting, but the overall drag still trails EX in micro-smoothness. Build217 deliberately does not retune motion; it measures delivered/coalesced touch cadence, progress publication, SwiftUI render-probe updates, passive display-frame gaps and nearest Hero/persistent/preload 1400px image callbacks so the residual “smooth glass vs rough paper” gap can be attributed from real-device timing evidence.**
+**Active — Build217 / 0.14.50 is real-device diagnostic tested. Build215's acquisition-relative start and opaque foreground remain positively confirmed, but Build217 now supplies a stronger explanation for the remaining “smooth glass vs rough paper” gap: the target device supports 120 Hz and the built IPA unlocks >60 Hz, yet the carousel's delivered touch → progress publication → SwiftUI render-update chain runs at roughly 60 Hz during ordinary motion, while coalesced raw touch samples exist at roughly 4–5 ms cadence. Backdrop timing is no longer the primary lead.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
-- Accepted overall baseline is OnePlayer **0.14.49 / Build216** on `main`; Build217 is an independent diagnostic candidate and does not replace it.
+- Accepted overall baseline is OnePlayer **0.14.49 / Build216** on `main`; Build217 is an independent diagnostic result and does not replace it.
 - Target device: iPhone 15 Pro Max / iOS 17.0.
 - Build206/209/210/212 belong to the independent poster-scroll diagnostics task. Build212 established a Home-specific 1400px carousel image-presentation correlation; poster Build218 is a separate grid/display candidate and does not modify carousel owner files.
 
@@ -39,7 +39,9 @@ Player / MPV / PiP / Transport / Cache / Emby Session / STRM→302→115/CDN cli
 - Build203: 30% still too short and exposed initial displacement again.
 - Build205: 80% + whole-range `progress²` rejected because start was over-restrained and tail easing felt unnatural.
 - Build207: screenshots proved `0.80 × width` spacing between full-width foreground pages structurally overlapped adjacent content.
-- Build208: changed to full-width page-slot spacing and is the current real-device reference for motion analysis.
+- Build208: changed to full-width page-slot spacing and became the real-device reference for motion analysis.
+- Build215: acquisition-relative foreground X + opaque foreground fixed the coarse start and ghosting, but overall tactile refinement still trailed EX.
+- Build217: target-device cadence log shows the residual issue is upstream timing/granularity, not another travel/easing problem.
 
 ## Build208 identity / evidence
 
@@ -137,26 +139,22 @@ Retain:
 - one UIKit gesture owner;
 - full-width page slots (`pageStep = width`);
 - first↔last modulo neighbor ownership;
+- acquisition-relative foreground X;
+- opaque interactive foreground;
 - current release/commit/settle contracts.
 
 Reject as the primary solution:
 
 - more 15%/30%/80% travel tuning;
-- another whole-range easing formula to hide the first sample;
-- coupling foreground opacity to the same progress curve used to compensate spatial input.
-
-The next evidence-backed direction is:
-
-1. keep the original touch-down translation available for release/commit/predicted-distance semantics;
-2. when horizontal ownership is acquired, establish a **render/acquisition baseline** so interactive page X starts near zero from that point rather than applying the already accumulated touch-down translation;
-3. after acquisition, use essentially **1:1 linear spatial tracking** instead of a long visual easing curve;
-4. decouple foreground alpha from backdrop blend; test foreground as stable/near-opaque spatial page content while backdrop crossfade remains independently controlled;
-5. do not change UIKit ownership or P0/Frozen modules.
+- another whole-range easing formula;
+- re-coupling foreground opacity to backdrop blend;
+- changing backdrop timing based only on subjective feel;
+- speculative smoothing/interpolation/timers.
 
 ## Build214 / Build215 implementation evidence
 
 - Carousel Build214 / 0.14.47 was rebuilt cleanly from the Build208 durable source and passed CI/IPA verification, but was retired before distribution when independent poster work claimed that identity. Never use the carousel Build214 package for attribution.
-- Current valid carousel behavior identity: **OnePlayer 0.14.48 / Build215**.
+- Current valid carousel behavior identity before diagnostics: **OnePlayer 0.14.48 / Build215**.
 - branch `perf/home-carousel-acquisition-relative-build215`.
 - tested source / CI head **`d22634ece2f29eba2e60de01182bf15d4ba554a7`**; durable cleanup head **`01a13615fc056fd3b13296d98abfaa7a6aa2b46d`**, with temporary workflow deletion only between them.
 - horizontal acquisition establishes the render baseline and does not publish the already accumulated touch-down distance.
@@ -180,16 +178,7 @@ Latest target-device feedback after testing the acquisition-relative candidate:
 
 The new 510×1108@30fps recording does not show the old large hold-then-jump foreground failure or a clear stop-one-frame / catch-up-next-frame macro hitch. Early foreground increments are now small and continuous. Therefore Build215 positively validates acquisition-relative render baseline and foreground-alpha decoupling, but it does **not** prove the complete carousel interaction solved.
 
-30fps capture cannot fully resolve the 120Hz device's sub-frame / frame-to-frame tactile cadence. A measured difference in backdrop crossfade timing versus EX exists, but this is currently **only a candidate explanation** for the remaining glass-vs-paper feel. Do not change the backdrop curve merely to complete a patch, and do not add smoothing/interpolation/timers.
-
-Retain from Build215 unless contrary device evidence appears:
-
-- one UIKit interaction owner;
-- acquisition-relative foreground X (`currentTranslation - acquisitionTranslation`);
-- touch-down authority for 0.28 / 0.48 release semantics;
-- foreground opacity held at 1 during interactive transition;
-- full-width `pageStep = width` page slots;
-- existing reversal/cancel/settle/wrap contracts.
+30fps capture cannot fully resolve the 120Hz device's sub-frame / frame-to-frame tactile cadence. A measured difference in backdrop crossfade timing versus EX exists, but this is currently **only a candidate explanation** and is now lower priority than the Build217 cadence evidence.
 
 ## Build217 / 0.14.50 cadence diagnostic evidence
 
@@ -200,16 +189,39 @@ Build217 is a diagnostic-only successor to Build215. It preserves the retained c
 - durable cleanup head: **`ab65b795b8e99d2eeb61cbfc8740bc18c82c49a4`**; cleanup removed only temporary workflow/patch/trigger helpers after the successful package;
 - run/job: **`33069670314 / 98508381540` — success**;
 - artifact: `OnePlayer-0.14.50-build217-home-carousel-cadence`; ID **`9645320748`**;
-- GitHub artifact digest / independently recalculated artifact ZIP SHA-256: **`6948f8b7796b01d0dbc31c2555fcc5b78687e1e9a161341ceeb3cab1d676409d`**;
+- artifact ZIP SHA-256: **`6948f8b7796b01d0dbc31c2555fcc5b78687e1e9a161341ceeb3cab1d676409d`**;
 - IPA SHA-256: **`a2cf700b791cc66a60416b0250d501758aec532371dd029272066eaac4722bef`**;
 - source ZIP SHA-256: **`675b04524e9d56b9fc91c99e3ec6419a989493b74f6f633d4e814221bf86668e`**;
-- independent IPA/archive/hash/identity verification passed: `com.embyplayerlab.app`, OnePlayer **0.14.50 (217)**, `MinimumOSVersion=15.0`;
+- independently verified `com.embyplayerlab.app`, OnePlayer **0.14.50 (217)**, `MinimumOSVersion=15.0`, archive/hash integrity and built `CADisableMinimumFrameDurationOnPhone=true`;
 - exact Build215→217 runtime scope is `AppIdentity`, new `EmbyHomeCarouselCadenceDiagnosticsV3`, small observation hooks in `EmbyHomeCarouselInteractionV3` and `EmbyHomeHeroV3`; `EmbyHomeCarouselStateV3`, `EmbyHomeCoreV3`, shared image infrastructure and all P0/Frozen paths are unchanged;
-- cadence display link is passive and does not request a preferred frame rate; coalesced touches are measured only and never drive movement;
-- one aggregated `HomeCarouselCadence` App-log summary is emitted per horizontal drag; no per-frame logging, interpolation, timer, debounce, throttle, watchdog, retry or fallback was added.
+- cadence display link is passive and does not request a preferred frame rate; coalesced touches are measured only and never drive movement.
 
-Evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending / diagnostic conclusion pending / not stable.**
+### 2026-08-27 target-device App-log result
+
+User exported `OnePlayer-App-1787833843.log` after Build217 horizontal-drag testing. The log contains **13 horizontal drag summaries** totaling ~28.0 s.
+
+Strongest measured result:
+
+- `maximum_fps=120` on every drag;
+- normal moving drags deliver the main `UITouch` callback at about **16.5–19 ms**, with ~**17.3 ms** average across the non-paused samples — roughly 60 Hz rather than 120 Hz;
+- the same `UIEvent` exposes far denser coalesced touch data, usually about **4.17–5.7 ms** between samples; across the full log there are **5021 coalesced samples vs 1486 delivered samples**;
+- `transitionProgress` publication follows delivered-touch cadence almost one-for-one: **1421 distinct publish changes**;
+- the SwiftUI render probe follows those publications almost one-for-one: **1415 render changes**, so only 6 distinct publications fail to produce a distinct probe update;
+- normal publish/render gaps are again around **17–18 ms**; `publish_to_render_max_ms` remains below ~13 ms in every drag, which rejects a large SwiftUI backlog/coalescing loss as the primary explanation;
+- across **1603** passive display-link intervals, **all 1603 are >=12.5 ms**. Moving-path p95 is typically **16.67 ms**, with no observed 8.33 ms cadence despite the device reporting 120 Hz capability;
+- some long pauses intentionally let ProMotion downshift further, so 30–40 ms display gaps in those stationary periods are not treated as pure jank evidence.
+
+Interpretation: the most consistent current bottleneck is **upstream input/publication granularity**. The hardware/UIEvent stream contains high-fidelity samples, but the carousel owner renders only the main delivered touch, so new foreground positions are usually published at ~60 Hz. SwiftUI then reflects nearly all of those publications. This matches the user's “rough paper” description better than another easing or backdrop curve.
+
+Secondary evidence remains:
+
+- occasional **33–45 ms** display gaps exist;
+- in roughly half of the worst-gap samples, the most recent `persistent` 1400px callback is only ~10–13 ms old, consistent with Build212's image-presentation correlation;
+- other worst gaps reference image callbacks hundreds or thousands of milliseconds old, so the correlation is not universal;
+- therefore large-image presentation is a plausible **secondary episodic hitch source**, but it does not explain the persistent baseline texture by itself.
+
+Build217 evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic tested ✅ / cadence bottleneck strongly indicated / not stable.**
 
 ## Next exact action
 
-Install Build217 on iPhone 15 Pro Max / iOS 17.0, keep App logging enabled, and perform several ordinary left/right drags including slow micro-drags and direction reversals. Then export the App log. Attribute the residual gap from `HomeCarouselCadence` touch/progress/SwiftUI/display/image timing before changing any motion mapping. Do not retune travel/easing/backdrop timing or add smoothing until the target-device log supplies evidence.
+Do not retune travel/easing/backdrop. The next minimal experiment should isolate whether the system can actually raise this interaction from ~60 Hz to 120 Hz without changing carousel math: request a 120 Hz `preferredFrameRateRange` only for the existing drag-local diagnostic display link, keep the exact Build215 render/owner contracts unchanged, and measure whether `CADisplayLink` cadence and delivered `UITouch` cadence move from ~16.67 ms toward ~8.33 ms. If only the display link rises while delivered touches remain ~60 Hz, the remaining problem is event-delivery/render-input architecture; if delivered touches also rise, the frame-rate request itself becomes a directly evidenced minimal fix candidate. Do not use coalesced/predicted touches to drive movement until this narrower A/B resolves whether a simple refresh-rate request is sufficient.
