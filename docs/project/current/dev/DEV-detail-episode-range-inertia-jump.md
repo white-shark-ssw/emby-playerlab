@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build216 / OnePlayer 0.14.49 reserved.**
+**Active — Build216 / OnePlayer 0.14.49 implementation complete; static contracts passed; Xcode Release CI/IPA pending.**
 
 - **Work ID**: `DEV-detail-episode-range-inertia-jump`
 - **Routing aliases / keywords**: 详情页选集惯性 / 跳集区间按钮 / 即将播放跳集 / episode range inertia / detail episode jump
@@ -21,24 +21,49 @@
 
 - **Accepted overall baseline**: OnePlayer **0.14.46 / Build213**.
 - **Current main at task creation**: `81ab52793d9fd64ffcef7302c6e0b2d71754ac75`.
+- `main` later advanced to `bab40171b678019c5b672b33b1a1ae159afa65e0` only by registering this task checkpoint; no product source changed after the branch base.
 - Accepted Build191 detail selection/navigation contract remains stable and is inherited.
 - **Working branch**: `fix/detail-episode-range-inertia-build216`.
 - **Branch base**: `main@81ab52793d9fd64ffcef7302c6e0b2d71754ac75`.
+- **Current branch head**: `749fea5cf755fc48c2b2df5bd3a995c7fdc2678d`.
+- Functional source commits: `0280e97c8fd65d57fa8e347fe7d8ac97407a4785` + lifetime cleanup `84ee048d1e8933ea8eedeaabb0b6c84324fb5768`.
 - **PR**: none yet.
 - **Build candidate**: **OnePlayer 0.14.49 / Build216**.
 - **Target artifact**: `OnePlayer-0.14.49-build216-detail-range-inertia`.
 
-## Source evidence
+## Source evidence / implemented fix
 
-Current `Sources/UI/EmbyMediaDetailView.swift`:
+Original `Sources/UI/EmbyMediaDetailView.swift`:
 
 - `upcomingEpisodesSection` owns a `ScrollViewReader` and a separate horizontal episode-card `ScrollView` / `LazyHStack`.
 - range pills invoke `jumpToEpisodeRange(range, proxy:)` through the existing high-priority tap gesture.
-- `jumpToEpisodeRange` currently calls `model.selectEpisodeRange(...)`, resolves the range-first target, then asynchronously runs animated `proxy.scrollTo(...)`.
-- there is no reference to the actual underlying horizontal `UIScrollView` and no deceleration cancellation before the programmatic range jump.
-- therefore an in-flight native deceleration remains a competing `contentOffset` owner when the range jump starts.
+- `jumpToEpisodeRange` previously called `model.selectEpisodeRange(...)`, resolved the range-first target, then asynchronously ran animated `proxy.scrollTo(...)`.
+- there was no reference to the actual underlying horizontal `UIScrollView` and no deceleration cancellation before the programmatic range jump.
+- therefore an in-flight native deceleration remained a competing `contentOffset` owner when the range jump started.
 
-Existing `AdaptiveHeroNativeScrollObserver` proves the project already uses a small iOS-15-compatible `UIViewRepresentable` probe to attach to the nearest native `UIScrollView`; this task should use the same narrow UIKit-bridge principle for the episode row rather than replacing the SwiftUI ScrollView.
+Build216 implementation:
+
+- new `Sources/UI/EmbyDetailEpisodeScrollControl.swift` adds one detail-only `EmbyDetailEpisodeScrollController` and `EmbyDetailEpisodeNativeScrollProbe`.
+- the probe is attached inside the existing episode-card `LazyHStack`, so its nearest ancestor is the existing horizontal native `UIScrollView`; the SwiftUI ScrollView itself is not replaced.
+- controller stores only weak `UIView` / `UIScrollView` references and follows the existing project `UIViewRepresentable` + Coordinator attachment pattern.
+- `stopDeceleration()` is synchronous on the main thread and is a no-op unless `scrollView.isDecelerating == true`; when active it executes `scrollView.setContentOffset(scrollView.contentOffset, animated: false)` to freeze at the currently visible native offset.
+- `jumpToEpisodeRange` now calls `episodeScrollController.stopDeceleration()` before reading/updating range selection state. Existing `model.selectEpisodeRange`, target resolution, 0.32 s `ScrollViewReader.scrollTo` animation, selected-ID/title/Play semantics remain unchanged.
+- existing `EpisodeRangeJump` diagnostic adds `stoppedDeceleration=true/false` for target-device attribution; no new periodic logging/state exists.
+- `AppIdentity` is 0.14.49 and changelog `CHANGELOG_v0_14_49_build216.md` is present.
+
+## Validation so far
+
+Patch application/static run `33061880059` completed successfully on the exact Build216 source line before temporary patch-helper cleanup:
+
+- `scripts/check_detail_episode_selection_navigation.py`: PASS, including new ordering contract that native deceleration stop occurs before `model.selectEpisodeRange(...)`.
+- `scripts/check_detail_page_performance.py`: PASS.
+- `git diff --check`: PASS.
+- final durable branch diff after helper cleanup is only:
+  - `Sources/Core/AppIdentity.swift`
+  - `Sources/UI/EmbyDetailEpisodeScrollControl.swift`
+  - `Sources/UI/EmbyMediaDetailView.swift`
+  - `docs/changelog/CHANGELOG_v0_14_49_build216.md`
+  - `scripts/check_detail_episode_selection_navigation.py`
 
 ## Parallel conflict guard
 
@@ -50,20 +75,10 @@ Current other Active tasks at creation:
 
 Build215 is occupied by Home carousel. Build216 / 0.14.49 had no repository/index/branch allocation when reserved here.
 
-## Intended minimal scope
-
-Expected product/source scope:
-
-- `Sources/UI/EmbyMediaDetailView.swift` — call the episode-row scroll controller before range selection and attach a probe to the existing horizontal episode ScrollView.
-- a small detail-only UIKit bridge/controller file if needed, to hold only a weak reference to that UIScrollView and synchronously stop native deceleration.
-- `Sources/Core/AppIdentity.swift` only when producing Build216.
-- `scripts/check_detail_episode_selection_navigation.py` or one narrow new checker for the inertia-stop ordering contract.
-- Build216 changelog/CI helper only when the candidate is ready.
-
 ## Frozen / do-not-touch
 
 - Build182 `EmbyDetailHeroScrollState` / persistent detail presentation cache semantics.
-- Build191 selected-episode owner and default/range selection semantics except for adding the required pre-jump deceleration stop.
+- Build191 selected-episode owner and default/range selection semantics except for the required pre-jump deceleration stop.
 - Build195 player episode grouping/lazy row.
 - Build178 canonical Emby episode order.
 - Player/MPV/PiP/UnifiedTransport/Range/206/playback cache/Emby Resume/session/STRM→302→115/CDN client-direct.
@@ -71,14 +86,15 @@ Expected product/source scope:
 
 ## Evidence level
 
-- User real-device bug report: **YES** — current behavior fails when episode-row inertia is active.
-- Source cause identified: **YES** — no native deceleration cancellation exists before `scrollTo`.
-- Code written: **NO**.
-- CI passed: **NO**.
-- IPA produced: **NO**.
+- User real-device bug report: **YES** — accepted/current behavior fails when episode-row inertia is active.
+- Source cause identified: **YES** — no native deceleration cancellation existed before `scrollTo`.
+- Code written: **YES**.
+- Narrow static/source contracts: **PASS**.
+- Xcode Release CI passed: **NO — pending**.
+- IPA produced: **NO — pending**.
 - Fix real-device tested: **NO**.
 - Stable/frozen: **NO**.
 
 ## Next exact action
 
-Inspect the smallest iOS-15-safe native episode-scroll control, implement synchronous deceleration cancellation immediately before the existing range-selection/jump path, add a narrow source contract, review exact diff/Frozen boundaries, then build Build216 only after the product patch is complete.
+Run a dedicated Xcode 16.4 standard MPV Release Build216 workflow from the durable source, validating 0.14.49 (216), MinOS 15.0, detail inertia ordering + inherited Build191/Build182/Build178/Build195 contracts and frozen P0 file scope. Package `OnePlayer-0.14.49-build216-detail-range-inertia`, remove the temporary Release helper afterward, then provide the IPA for target-device testing. Real-device acceptance must specifically test repeated fast horizontal swipes followed by range-pill taps during active deceleration.
