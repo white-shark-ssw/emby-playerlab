@@ -21,13 +21,21 @@ jobs:
           ref: diag/home-carousel-offscreen-lifecycle-build222
           fetch-depth: 0
 
-      - name: Validate exact Build222 scope and retained contracts
+      - name: Validate retained Home contracts
+        run: |
+          set -euo pipefail
+          python3 scripts/check_home_immersive_carousel.py
+
+      - name: Validate Build222 offscreen lifecycle contract
+        run: |
+          set -euo pipefail
+          python3 scripts/check_home_carousel_offscreen_lifecycle.py
+
+      - name: Validate exact Build222 scope and Frozen paths
         run: |
           set -euo pipefail
           base='8b22d593751d052b47179b68fb0fd3aaa80c9454'
           git diff --check "$base"...HEAD
-          python3 scripts/check_home_immersive_carousel.py
-          python3 scripts/check_home_carousel_offscreen_lifecycle.py
           python3 - <<'PY'
           import subprocess
           base = '8b22d593751d052b47179b68fb0fd3aaa80c9454'
