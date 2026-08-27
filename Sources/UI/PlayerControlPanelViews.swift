@@ -70,6 +70,7 @@ struct PlayerControlPanelSheet: View {
     let panel: PlayerControlPanel
     let source: ResolvedPlaybackSource
     let currentRate: Double
+    let maxRate: Double
     let onRateSelected: (Double) -> Void
     let trackProvider: () -> [PlayerSelectableTrack]
     let onTrackSelected: (PlayerSelectableTrack) -> Bool
@@ -80,6 +81,7 @@ struct PlayerControlPanelSheet: View {
         panel: PlayerControlPanel,
         source: ResolvedPlaybackSource,
         currentRate: Double,
+        maxRate: Double = 8,
         onRateSelected: @escaping (Double) -> Void,
         trackProvider: @escaping () -> [PlayerSelectableTrack] = { [] },
         onTrackSelected: @escaping (PlayerSelectableTrack) -> Bool = { _ in false }
@@ -87,6 +89,7 @@ struct PlayerControlPanelSheet: View {
         self.panel = panel
         self.source = source
         self.currentRate = currentRate
+        self.maxRate = maxRate
         self.onRateSelected = onRateSelected
         self.trackProvider = trackProvider
         self.onTrackSelected = onTrackSelected
@@ -100,6 +103,7 @@ struct PlayerControlPanelSheet: View {
                 panel: panel,
                 source: source,
                 currentRate: currentRate,
+                maxRate: maxRate,
                 onRateSelected: onRateSelected,
                 onDismiss: dismiss
             )

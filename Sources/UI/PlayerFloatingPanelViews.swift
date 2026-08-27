@@ -6,6 +6,7 @@ struct PlayerFloatingPanelOverlay: View {
     let panel: PlayerControlPanel
     let source: ResolvedPlaybackSource
     let currentRate: Double
+    let maxRate: Double
     let onRateSelected: (Double) -> Void
     let onDismiss: () -> Void
 
@@ -24,7 +25,7 @@ struct PlayerFloatingPanelOverlay: View {
                         .padding(.leading, floatingHorizontalInset(width: geometry.size.width))
                         .padding(.bottom, 40)
                 case .speed:
-                    PlayerSpeedFloatingPanel(currentRate: currentRate, onSelect: { rate in
+                    PlayerSpeedFloatingPanel(currentRate: currentRate, maxRate: maxRate, onSelect: { rate in
                         onRateSelected(rate)
                         onDismiss()
                     })
@@ -118,8 +119,10 @@ private struct PlayerFloatingPanelChrome<Content: View>: View {
 
 private struct PlayerSpeedFloatingPanel: View {
     let currentRate: Double
+    let maxRate: Double
     let onSelect: (Double) -> Void
-    private let rates = [8.0, 6.0, 5.0, 4.0, 3.0, 2.5, 2.0, 1.5, 1.25, 1.0, 0.75, 0.5, 0.15]
+    private static let allRates = [8.0, 6.0, 5.0, 4.0, 3.0, 2.5, 2.0, 1.5, 1.25, 1.0, 0.75, 0.5, 0.15]
+    private var rates: [Double] { Self.allRates.filter { $0 <= maxRate + 0.001 } }
 
     var body: some View {
         PlayerFloatingPanelChrome(width: 250, height: 380) {

@@ -229,6 +229,7 @@ private struct PlayerSessionScreen: View {
                 panel: panel,
                 source: controller.source,
                 currentRate: sessionOverrides.basePlaybackRate,
+                maxRate: controller.maxSupportedPlaybackRate,
                 onRateSelected: applyBasePlaybackRate,
                 trackProvider: { controller.selectableTracks() },
                 onTrackSelected: { controller.selectTrack($0) }

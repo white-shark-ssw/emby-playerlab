@@ -21,6 +21,8 @@ final class AetherPlayerEngine: PlayerEngine {
     private var wantsPlayback = false
     private var seekRequests: [Double: (requestedAt: CFTimeInterval, bufferHit: Bool)] = [:]
 
+    var maxSupportedPlaybackRate: Double { Double(aether?.maxSupportedRate ?? 2) }
+
     init(source: ResolvedPlaybackSource, sharedTransportSession: UnifiedMediaTransportSession?) {
         self.source = source
         self.session = sharedTransportSession
@@ -90,9 +92,14 @@ final class AetherPlayerEngine: PlayerEngine {
         let target = max(0, seconds)
         let current = aether.clock.currentTime
         let bufferHit = target >= current - 0.05 && target <= aether.clock.bufferedPosition + 0.25
+        let toleranceSeconds: Double
+        switch direction {
+        case .forward, .backward: toleranceSeconds = 0.75
+        case .absolute: toleranceSeconds = 0
+        }
         seekRequests[target] = (CACurrentMediaTime(), bufferHit)
-        DiagnosticsLogger.shared.playback("AetherSeek", "request target=\(String(format: "%.3f", target)) direction=\(String(describing: direction)) rendered=\(String(format: "%.3f", aether.clock.sourceTime)) buffered=\(String(format: "%.3f", aether.clock.bufferedPosition))")
-        Task { @MainActor [weak self] in await self?.aether?.seek(to: target) }
+        DiagnosticsLogger.shared.playback("AetherSeek", "request target=\(String(format: "%.3f", target)) direction=\(String(describing: direction)) tolerance=\(String(format: "%.2f", toleranceSeconds)) rendered=\(String(format: "%.3f", aether.clock.sourceTime)) buffered=\(String(format: "%.3f", aether.clock.bufferedPosition))")
+        Task { @MainActor [weak self] in await self?.aether?.seek(to: target, toleranceSeconds: toleranceSeconds) }
     }
 
     func reload(at seconds: Double) { seek(to: seconds, direction: .absolute) }
