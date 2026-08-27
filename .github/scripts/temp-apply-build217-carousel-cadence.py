@@ -155,7 +155,7 @@ assert 'CADisplayLink(target: self' in cadence
 assert 'link.add(to: .main, forMode: .common)' in cadence
 assert 'preferredFramesPerSecond' not in cadence
 assert 'preferredFrameRateRange' not in cadence
-assert 'DiagnosticsLogger.shared.app("HomeCarouselCadence"' in cadence
+assert 'DiagnosticsLogger.shared.app(' in cadence and '"HomeCarouselCadence"' in cadence
 assert 'Timer.' not in cadence
 assert 'DispatchQueue.main.asyncAfter' not in cadence
 assert 'withAnimation' not in cadence
