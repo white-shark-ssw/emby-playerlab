@@ -36,6 +36,8 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build208 / 0.14.41** | Full-width carousel foreground page slots | **Current carousel candidate.** Uses `pageStep = width`, preserving ~56pt content separation with existing `width-56` foreground content; earliest attenuation tightened only for first samples. CI/IPA passed and independently verified; real-device pending. |
 | **Build209 / 0.14.42** | Motion-aware poster-scroll diagnostics | Target-device App log proved three Home motion hitches but grid attribution was invalid because Home/grid shared one global observed-scroll owner. Diagnostic tested; not stable. |
 | **Build210 / 0.14.43** | Multi-owner poster-scroll diagnostics | **Current poster diagnostic baseline.** Target-device log validates simultaneous Home/grid ownership (`registered_scrolls=2`) and correct grid routing. Four Home dragging hitches all landed 6.2–11.0 ms after image commit; the single grid record was programmatic/micro-motion (`phase=moving`, `delta_y=0.33`) and not yet a user-drag grid stall. Real-device diagnostic tested; no performance fix claimed; not stable. |
+| **Build211 / 0.14.44** | Home-carousel acquisition-relative line | **Owned by the independent carousel task.** Poster briefly prepared this identity but retired it before distribution as soon as the collision was confirmed; never use Build211 for poster attribution. |
+| **Build212 / 0.14.45** | Source-aware poster-scroll diagnostics | **Current poster diagnostic candidate.** Exact source `4f0a89ab026cd2103f66e5854a1f352d34852e45` adds image source/role/context plus callback/contrast timing while retaining Build210 motion attribution. Run/job `33045869471 / 98429601490` passed; artifact `9635696107` and IPA/source independently verified; target-device log pending; no performance fix claimed; not stable. |
 
 ## Current accepted baseline
 
@@ -226,3 +228,19 @@ A carousel `0.14.37 / Build204` package was produced briefly, but the poster-scr
 ## Maintenance rule
 
 Update this index when a build materially changes architectural understanding, becomes a real-device reference point, rejects/freezes a direction, or becomes the accepted baseline. Never treat CI success or IPA production as real-device acceptance.
+
+### Build212 — source-aware poster diagnostic candidate
+
+- identity: **0.14.45 / 212**
+- exact source: **`4f0a89ab026cd2103f66e5854a1f352d34852e45`**
+- Build211 / 0.14.44 is owned by the independent Home-carousel task; poster Build211 was retired before distribution.
+- exact Build210→212 delta: `AppIdentity.swift`, `EmbySharedImageAndNavigation.swift`, Build212 changelog, poster checker only.
+- retains one shared motion-gated multi-owner poster `CADisplayLink`; no scroll/image/navigation policy change.
+- adds image item/type/MaxWidth, `source=memory/disk/network`, `role=display/callback`, callback duration and Core Image contrast-render duration to hitch correlation.
+- run/job: **`33045869471 / 98429601490` — success**
+- artifact: `OnePlayer-0.14.45-build212-poster-source-aware-diagnostics`; ID **`9635696107`**
+- artifact ZIP SHA-256: **`eb53a4b88564165b399edfd9085fcc888718cfa62141725d1f24cc539d598615`**
+- IPA SHA-256: **`dcdec181dd16e9b3b666882de8347a76671c743ab8392aa27791d40599eec7a1`**
+- source ZIP SHA-256: **`9a618698a71ba45074ae915d859afdf9173f312e989e9a646717ed8c6ba60459`**
+- independent validation: GitHub digest exact match; embedded checksums match; IPA/source `unzip -t` passed; bundle `com.embyplayerlab.app`; OnePlayer `0.14.45 (212)`; primary/alternate icons present; `MinimumOSVersion=15.0`; MinOS audit PASS; source snapshot contains the expected diagnostic fields.
+- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic pending / performance fix not claimed / not stable.**

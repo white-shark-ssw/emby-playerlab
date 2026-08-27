@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build210 / 0.14.43 target-device App log captured. Multi-owner attribution is validated: Home and grid can coexist (`registered_scrolls=2`) and the grid route is now logged correctly. Four Home dragging hitches (68.9 / 34.9 / 74.5 / 39.8 ms) all occurred 6.2–11.0 ms after the latest shared image commit, making post-image-publish Home work the strongest current lead. The single grid record (70.4 ms) was only `phase=moving`, `delta_y=0.33`, velocity 0 and 855.4 ms after image commit, so it is not yet proof of a user-drag library hitch. Performance root cause remains unresolved and no fix is claimed.**
+**Active — Build212 / 0.14.45 source-aware diagnostic candidate is CI/IPA verified and awaiting target-device App-log capture. Build210 remains the controlling real-device evidence: four Home dragging hitches landed 6.2–11.0 ms after shared image commit, while the one grid record was only programmatic/micro-motion. Build212 adds memory/disk/network image source, callback/display role, item/type/MaxWidth, synchronous `onImageLoaded` callback duration and Core Image contrast-render duration without changing scroll/image/navigation behavior or active carousel owner files. Performance root cause remains unresolved and no fix is claimed.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -127,18 +127,57 @@ The four Home dragging hitches all occurred only **6.2–11.0 ms** after the mos
 
 However, `imageDidCommit` is global and does not identify item/route/cache source, so the 4/4 correlation is not yet enough to change image policy. The one grid record is also not a user-drag sample and has no near-image correlation. Do not claim a cross-page root cause yet.
 
+## Build212 / 0.14.45 — source-aware diagnostic candidate
+
+Build212 is a **diagnostic-only** successor to Build210. Build211 / 0.14.44 is owned by the independent Home-carousel task; the poster task retired its temporary 211 identity before distribution and uses the unique Build212 identity.
+
+Exact source: **`4f0a89ab026cd2103f66e5854a1f352d34852e45`**.
+
+Exact Build210→Build212 product delta is four files only:
+
+- `Sources/Core/AppIdentity.swift`
+- `Sources/UI/EmbySharedImageAndNavigation.swift`
+- `docs/changelog/CHANGELOG_v0_14_45_build212.md`
+- `scripts/check_poster_grid_smoothness.py`
+
+Build212 retains Build210's one shared motion-gated poster `CADisplayLink` and multi-owner Home/grid attribution, then adds only source-aware correlation in shared image infrastructure:
+
+- image publish context: Emby item ID, image type, requested `MaxWidth`, `source=memory/disk/network`, and `role=display/callback`;
+- synchronous `onImageLoaded` callback duration measured around the existing callback invocation;
+- synchronous `CIContext.render` duration in `EmbyImageContrastAnalyzer`;
+- existing hitch log keeps route/phase/offset/delta/velocity/cell/image/load-ahead timing and adds the new image/callback/contrast fields;
+- authentication query data is not logged;
+- no timer, debounce, throttle, watchdog, retry, fallback, second display link, image-policy change, scroll-physics change, navigation change or carousel-owner change.
+
+CI / IPA evidence:
+
+- exact-source run/job: **`33045869471 / 98429601490` — success**
+- source checker, exact four-file scope, Frozen/P0 and carousel-owner guard: PASS
+- Xcode 16.4 dependency resolution + Release build: PASS
+- artifact: `OnePlayer-0.14.45-build212-poster-source-aware-diagnostics`
+- artifact ID: **`9635696107`**
+- GitHub artifact digest / independently downloaded artifact ZIP SHA-256: **`eb53a4b88564165b399edfd9085fcc888718cfa62141725d1f24cc539d598615`**
+- IPA SHA-256: **`dcdec181dd16e9b3b666882de8347a76671c743ab8392aa27791d40599eec7a1`**
+- source ZIP SHA-256: **`9a618698a71ba45074ae915d859afdf9173f312e989e9a646717ed8c6ba60459`**
+- IPA/source ZIP integrity and embedded checksum verification: PASS
+- bundle/version/build: `com.embyplayerlab.app`, OnePlayer **0.14.45 (212)**
+- `MinimumOSVersion=15.0`; MinOS audit PASS
+- source snapshot independently confirms source-aware image fields, callback/contrast timing and the unchanged single poster `CADisplayLink`.
+
+**Build212 evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device diagnostic pending ❌ / performance fix not claimed / not stable.**
+
 ## Parallel safety
 
-- Home-carousel Build208 / 0.14.41 remains an independent Active candidate.
+- Build211 / 0.14.44 identity is owned by the independent Home-carousel task; poster Build212 does not reuse that identity.
 - Build210 does **not** modify `EmbyHomeCoreV3.swift`, `EmbyHomeCarouselInteractionV3.swift`, `EmbyHomeCarouselStateV3.swift` or `EmbyHomeHeroV3.swift`; it reuses Build209's already-present transparent Home/grid probes.
 - `EmbySharedImageAndNavigation.swift` is shared infrastructure. Whichever Active task integrates second must resync to then-current `main` and rerun affected validation; old CI cannot prove combined source.
 
 ## Next exact action
 
-1. Do not change runtime performance behavior from Build210 evidence alone.
-2. For Home, instrument image commits with stable context sufficient to distinguish ordinary poster vs carousel artwork/logo and memory/disk/network publish path, and measure the synchronous carousel image-metric/contrast callback duration without adding timer/debounce/throttle.
-3. Keep the poster task out of `EmbyHomeCarouselStateV3.swift`, `EmbyHomeHeroV3.swift` and `EmbyHomeCoreV3.swift` while Home-carousel Build208 remains Active; if the trace proves that owner is responsible, reconcile the two tasks explicitly before a runtime change.
-4. Obtain at least one real `phase=dragging` or `phase=decelerating` grid hitch on Build210 (or a successor diagnostic build) before changing a shared grid path. The current 70.4 ms `phase=moving / delta_y=0.33` record is insufficient.
+1. Install Build212 / 0.14.45 on iPhone 15 Pro Max / iOS 17.0 and export the **App log** after reproducing Home vertical scrolling and library/favorites/search/tag/person 3×3 scrolling.
+2. For Home hitches, correlate `image_source`, `image_role`, image item/type/MaxWidth, `callback_duration_ms` and `contrast_duration_ms` with the motion-gated frame gap before changing runtime behavior.
+3. Obtain at least one real `phase=dragging` or `phase=decelerating` grid hitch before changing a shared grid path; the Build210 `phase=moving / delta_y=0.33` record remains insufficient.
+4. Keep poster work out of carousel owner files while Build211 is active; if Build212 proves the synchronous carousel callback/contrast path causal, reconcile the two tasks explicitly before a runtime patch.
 5. Preserve P0 playback/transport/cache/session contracts and iOS 15.0 deployment.
 
 ## Do not repeat
