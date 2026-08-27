@@ -7,7 +7,7 @@ _Last updated after OnePlayer 0.14.46 / Build213 page-cache target-device accept
 - Product: **OnePlayer 0.14.46 / Build213**
 - Canonical branch: `main` after PR #260 integration
 - Final merge PR: **#260**
-- Final merge commit: **pending until PR #260 is merged in this closeout cycle**
+- Final merge commit: `2303505ad4403182f5315d33c54f402903c809d2`
 - Accepted/tested product source: `c8c238816c34ba3d8834ac37bdf7b234cd596458`
 - Dedicated standard MPV CI run/job: `33052588518` / `98451457434` — success
 - Artifact: `OnePlayer-0.14.46-build213-page-cache`; ID `9638292306`
@@ -17,7 +17,7 @@ _Last updated after OnePlayer 0.14.46 / Build213 page-cache target-device accept
 - Deployment Target / built MinOS: **iOS 15.0**
 - Target device: **iPhone 15 Pro Max / iOS 17.0**
 - Real-device result: **user reported Build213 acceptance on 2026-08-27**
-- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for the accepted Favorites + Library page-persistence milestone / merge pending in this closeout cycle**
+- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for the accepted Favorites + Library page-persistence milestone / merged to main**
 
 Build213 inherits all accepted/frozen player, PiP, transport, playback-cache, episode-ordering, detail-presentation, episode-selection and Build199 server-management contracts. Its new stable runtime scope is limited to non-playback Favorites + Library page presentation persistence.
 

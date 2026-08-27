@@ -38,14 +38,14 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build210 / 0.14.43** | Multi-owner poster-scroll diagnostics | **Current poster diagnostic baseline.** Target-device log validates simultaneous Home/grid ownership (`registered_scrolls=2`) and correct grid routing. Four Home dragging hitches all landed 6.2–11.0 ms after image commit; the single grid record was programmatic/micro-motion (`phase=moving`, `delta_y=0.33`) and not yet a user-drag grid stall. Real-device diagnostic tested; no performance fix claimed; not stable. |
 | **Build211 / 0.14.44** | Home-carousel acquisition-relative line | **Owned by the independent carousel task.** Poster briefly prepared this identity but retired it before distribution as soon as the collision was confirmed; never use Build211 for poster attribution. |
 | **Build212 / 0.14.45** | Source-aware poster-scroll diagnostics | **Target-device diagnostic tested.** Home: 5 real dragging hitches 43.6–73.8 ms, all 8.3–12.2 ms after memory/callback 1400px publish; callback/contrast only 1–3 ms, so those synchronous calculations are rejected as the primary Home cost. Grid: 11 real dragging hitches 31.0–37.3 ms, all 0–20.1 ms after network/display 378px publish and 118.8–177.8 ms after a cell appearance. Home and grid are now treated as separate runtime paths; no fix tested; not stable. |
-| **Build213 / 0.14.46** | Favorites + Library persistent page warm cache | **Target-device accepted.** Favorites and Library 7 tabs restore persisted presentation data immediately after relaunch, then keep live refresh authoritative and write through only accepted fresh state. Pagination frontier is restored; refresh failure retains old snapshots; `sortBy`/selectedTab/scroll/root lifetime remain separate concerns. Dedicated standard MPV CI/IPA passed; first milestone stable and closing through PR #260. |
+| **Build213 / 0.14.46** | Favorites + Library persistent page warm cache | **Target-device accepted.** Favorites and Library 7 tabs restore persisted presentation data immediately after relaunch, then keep live refresh authoritative and write through only accepted fresh state. Pagination frontier is restored; refresh failure retains old snapshots; `sortBy`/selectedTab/scroll/root lifetime remain separate concerns. Dedicated standard MPV CI/IPA passed; first milestone stable and merged through PR #260 at `2303505ad4403182f5315d33c54f402903c809d2`. |
 
 ## Current accepted baseline
 
 - Product: **OnePlayer 0.14.46 / Build213**
 - canonical branch: `main` after PR #260 integration
 - final merge PR: `#260`
-- final merge commit: **pending until PR #260 is merged in this closeout cycle**
+- final merge commit: `2303505ad4403182f5315d33c54f402903c809d2`
 - tested product / dedicated CI source: `c8c238816c34ba3d8834ac37bdf7b234cd596458`
 - CI run/job: `33052588518` / `98451457434` — success
 - artifact: `OnePlayer-0.14.46-build213-page-cache`; ID `9638292306`
@@ -55,7 +55,7 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 - Deployment Target / built MinOS: iOS 15.0
 - target device: iPhone 15 Pro Max / iOS 17.0
 - target-device result: **accepted by the user on 2026-08-27**
-- evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for the accepted page-cache milestone / merge pending in this closeout cycle**
+- evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for the accepted page-cache milestone / merged to main**
 
 Build213 inherits the accepted/frozen player, PiP, transport, playback-cache, episode-ordering, detail-presentation, episode-selection and Build199 server-management contracts. Home-carousel and poster-scroll remain independent Active lines.
 
@@ -228,7 +228,7 @@ A carousel `0.14.37 / Build204` package was produced briefly, but the poster-scr
 - Build191: select-only detail episode browsing/navigation; merged PR #257.
 - Build195: SeasonId-first player grouping + lazy large episode row; merged PR #258.
 - Build199: Add/Edit Emby modern editor, same-server route selection, cached-first startup, retained password + optional iCloud Keychain sync; merged PR #256.
-- Build213: Favorites + Library 7-tab persistent presentation warm cache; dedicated MPV CI/IPA passed and target-device accepted; PR #260 closeout.
+- Build213: Favorites + Library 7-tab persistent presentation warm cache; dedicated MPV CI/IPA passed and target-device accepted; merged PR #260 at `2303505ad4403182f5315d33c54f402903c809d2`.
 
 ## Maintenance rule
 
@@ -277,4 +277,4 @@ Update this index when a build materially changes architectural understanding, b
 - source ZIP SHA-256: **`3a59bc8fb8dc55a83abd8adf76841db47640df8944f39920969b06bd55927051`**.
 - built `MinimumOSVersion=15.0`; target device iPhone 15 Pro Max / iOS 17.0.
 - target-device result: **user reported “验收通过” on 2026-08-27**.
-- evidence: **Code written ✅ / CI passed ✅ / IPA produced ✅ / real-device accepted ✅ / first milestone stable ✅ / merge pending in this closeout cycle**.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced ✅ / real-device accepted ✅ / first milestone stable ✅ / merged to main ✅**.
