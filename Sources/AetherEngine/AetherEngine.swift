@@ -3846,7 +3846,7 @@ public final class AetherEngine: ObservableObject {
         }
     }
 
-    public func seek(to seconds: Double) async {
+    public func seek(to seconds: Double, toleranceSeconds: Double = 0) async {
         // Guard: a host scrub racing stop() must not flip an idle/error engine to .seeking -> .playing.
         // .ended is terminal too: after end-of-media the host reloads to replay, it does not scrub a parked session.
         switch state {
@@ -3936,7 +3936,7 @@ public final class AetherEngine: ObservableObject {
             // Only currentTime takes the optimistic target; sourceTime stays on the rendered frame (#49).
             nativeClockSeconds = clockTarget
             clock.currentTime = target
-            await nativeHost?.seek(to: clockTarget)
+            await nativeHost?.seek(to: clockTarget, toleranceSeconds: toleranceSeconds)
             guard loadGeneration == loadGen, seekGeneration == seekGen else { return }
             nativeClockSeconds = clockTarget
             clock.currentTime = target
@@ -4030,7 +4030,8 @@ public final class AetherEngine: ObservableObject {
             var reanchored = false
             var postReanchorWaits = 0
             var landed = await nativeHost?.seek(to: clockTarget,
-                                                deadlineSeconds: Self.nativeSeekReconcileBudgetSeconds) ?? true
+                                                deadlineSeconds: Self.nativeSeekReconcileBudgetSeconds,
+                                                toleranceSeconds: toleranceSeconds) ?? true
             deadlineLoop: while !landed {
                 // Deadline expired. Only the surviving (winning) generation reconciles; a superseded seek
                 // returns at the guard below and lets the newer seek own the final state.
@@ -4251,7 +4252,8 @@ public final class AetherEngine: ObservableObject {
                     // prior seek, but this fresh zero-tolerance seek supersedes it and points AVPlayer at
                     // the re-anchored region so it stops waiting on the abandoned old-position segments.
                     landed = await host.seek(to: clockTarget,
-                                             deadlineSeconds: Self.nativeSeekExtensionBudgetSeconds)
+                                             deadlineSeconds: Self.nativeSeekExtensionBudgetSeconds,
+                                             toleranceSeconds: toleranceSeconds)
                     continue deadlineLoop
                 }
                 // Already re-anchored + re-seeked. Keep holding the clock at the target and wait on the

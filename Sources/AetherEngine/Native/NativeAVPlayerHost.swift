@@ -1068,8 +1068,8 @@ final class NativeAVPlayerHost {
 
     /// Resolve only when the seek physically lands (loopback source lands seeks seconds after the call; issue #37).
     /// seekInFlight suppresses the periodic observer across the wait; only the latest seekGeneration clears it.
-    func seek(to seconds: Double) async {
-        _ = await seek(to: seconds, deadlineSeconds: nil)
+    func seek(to seconds: Double, toleranceSeconds: Double = 0) async {
+        _ = await seek(to: seconds, deadlineSeconds: nil, toleranceSeconds: toleranceSeconds)
     }
 
     /// Deadline-bounded seek (#65). Returns `true` if AVPlayer physically landed (or no deadline was set),
@@ -1078,8 +1078,9 @@ final class NativeAVPlayerHost {
     /// latest generation so the periodic observer resumes publishing AVPlayer's real position, letting the
     /// engine reconcile a clock that would otherwise stay latched at an unreachable optimistic target.
     @discardableResult
-    func seek(to seconds: Double, deadlineSeconds: Double?) async -> Bool {
+    func seek(to seconds: Double, deadlineSeconds: Double?, toleranceSeconds: Double = 0) async -> Bool {
         let target = CMTime(seconds: seconds, preferredTimescale: 600)
+        let tolerance = CMTime(seconds: max(0, toleranceSeconds), preferredTimescale: 600)
         seekGeneration &+= 1
         let gen = seekGeneration
         seekInFlight = true
@@ -1096,8 +1097,8 @@ final class NativeAVPlayerHost {
                     cont.resume(returning: false)
                 }
             }
-            // Zero tolerances: unbounded tolerances caused AVPlayer to land on arbitrary sync samples for loopback HLS-fMP4 (openradar 44904505).
-            avPlayer.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            // Exact remains the default. A caller may opt into a finite bounded tolerance for latency-sensitive seeks; never use unbounded tolerances because AVPlayer can land on arbitrary sync samples for loopback HLS-fMP4 (openradar 44904505).
+            avPlayer.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] _ in
                 Task { @MainActor in
                     guard let self else {
                         if resumeGuard.claim() { cont.resume(returning: true) }
