@@ -22,6 +22,7 @@ struct EmbyMediaDetailView: View {
     @State private var heroUsesLightForeground = true
     @State private var heroSourceSize: CGSize?
     @State private var heroScrollState = EmbyDetailHeroScrollState()
+    @StateObject private var episodeScrollController = EmbyDetailEpisodeScrollController()
     @State private var mediaInfoExpanded = false
     @State private var showRawMediaPath = false
 
@@ -437,6 +438,7 @@ struct EmbyMediaDetailView: View {
                         ForEach(model.selectedSeasonEpisodes) { episode in episodePreviewCard(episode).id(episode.id) }
                     }
                     .padding(.horizontal, 20)
+                    .background(EmbyDetailEpisodeNativeScrollProbe(controller: episodeScrollController))
                 }
                 .frame(height: 165, alignment: .top)
             }
@@ -454,8 +456,9 @@ struct EmbyMediaDetailView: View {
     }
 
     private func jumpToEpisodeRange(_ range: EmbyEpisodeRange, proxy: ScrollViewProxy) {
+        let stoppedDeceleration = episodeScrollController.stopDeceleration()
         let previousOffset = model.selectedEpisodeRangeOffset
-        DiagnosticsLogger.shared.log("EpisodeRangeJump", "tap fromOffset=\(previousOffset) toOffset=\(range.startOffset) title=\(range.title)")
+        DiagnosticsLogger.shared.log("EpisodeRangeJump", "tap fromOffset=\(previousOffset) toOffset=\(range.startOffset) title=\(range.title) stoppedDeceleration=\(stoppedDeceleration)")
         model.selectEpisodeRange(range.startOffset)
         guard let target = model.episode(at: range.startOffset) else {
             DiagnosticsLogger.shared.log("EpisodeRangeJump", "target-missing offset=\(range.startOffset)")
