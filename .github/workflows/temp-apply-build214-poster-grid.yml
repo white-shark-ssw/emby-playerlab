@@ -53,9 +53,12 @@ jobs:
           python3 scripts/check_poster_grid_smoothness.py
           python3 -m py_compile scripts/check_poster_grid_smoothness.py
           git diff --check
-          git add -N docs/changelog/CHANGELOG_v0_14_49_build216.md
-          changed="$(git diff --name-only "$PRODUCT_BASE" | sort)"
+          tracked="$(git diff --name-only "$PRODUCT_BASE")"
+          untracked="$(git ls-files --others --exclude-standard | grep -v '^scripts/__pycache__/' || true)"
+          changed="$(printf '%s\n%s\n' "$tracked" "$untracked" | sed '/^$/d' | sort -u)"
           expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyPersonMediaView.swift Sources/UI/EmbyPosterGrid.swift Sources/UI/EmbyServerSharedV3.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_14_49_build216.md scripts/check_poster_grid_smoothness.py | sort)"
+          printf 'Build216 changed paths:\n%s\n' "$changed"
+          printf 'Build216 expected paths:\n%s\n' "$expected"
           test "$changed" = "$expected"
           test "$(printf '%s\n' "$changed" | sed '/^$/d' | wc -l | tr -d ' ')" = "7"
           ! printf '%s\n' "$changed" | grep -E 'Sources/(Player|Transport|Session|Cache)/|Sources/UI/(EmbyHomeCoreV3|EmbyHomeHeroV3|EmbyHomeCarouselStateV3|EmbyHomeCarouselInteractionV3|Player|MPV|PlayerPiP)' >/dev/null
