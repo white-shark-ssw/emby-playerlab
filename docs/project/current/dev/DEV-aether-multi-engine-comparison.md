@@ -2,26 +2,22 @@
 
 - **Status:** Active
 - **Work ID:** `DEV-aether-multi-engine-comparison`
-- **Routing aliases / keywords:** `Aether内核 / Aether引擎 / 多引擎对比 / 播放引擎选择 / MDK开放 / Aether`
-- **Task:** 将 AetherEngine 接入 OnePlayer；在现有“播放设置 → 播放器引擎”选择中开放 Aether，并将当前生产构建隐藏的 MDK 手动引擎重新开放，用于 MPV / Aether / MDK 多引擎真机对比测试。
+- **Routing aliases / keywords:** `Aether内核 / Aether引擎 / Aether接入 / 播放引擎选择 / 多引擎对比 / Aether`
+- **Task:** 先完成 AetherEngine 接入可行性与最小改动路径验证；目标是在正常 OnePlayer App 的现有“播放设置 → 播放器引擎”中人工选择 Aether，与 MPV 做真机对比。**MDK 按用户最新要求暂缓，本阶段不处理。**
 
 ## User intent / acceptance criteria
 
-1. OnePlayer 正常 App 构建可使用 Aether 播放引擎，不创建独立测试 App 作为最终交付。
-2. 继续使用现有 `PlayerEnginePreference` / `PlayerSettingsView` 引擎选择入口；播放设置中至少可人工选择：
-   - MPV 高兼容引擎；
-   - Aether；
-   - MDK 高性能/实验引擎。
-3. 当前选择决定**新播放会话**的引擎；本任务不额外引入播放中热切换需求，除非后续用户明确要求。
-4. MDK 从当前 `MDK_LAB` 隐藏状态提升为正常 App 可手动选择的实验引擎，但不得恢复为自动 fallback / 自动播放权威。
-5. Aether 也先作为**人工选择、实验对比**引擎；在真机证据形成前不得替换 MPV 主力播放路径。
-6. MPV / Aether / MDK 的对比必须尽可能共享 OnePlayer 已有媒体源解析、请求头、Emby Session/Resume、诊断与传输合同；不得为 Aether 或 MDK 复制另一套 115/CDN 网络栈。
-7. STRM → HTTP 302 → 115/CDN 必须保持客户端直连；NAS 绝不能成为媒体字节中转站。
-8. 必须保护当前 P0：左右双击立即 Seek、连续快速双击立即响应、Range/206、Session Cache、Emby Resume/Progress、异常短片/提前 EOF 容错、播放诊断日志。
-9. 严禁重新采用 `targetTime / duration × fileSize` 时间→字节比例猜测。
-10. 对比测试至少记录：首帧、普通 Seek、连续快速双击 Seek、拖动 Seek、已缓存命中/未命中表现、STRM/302/115 Range 行为、异常短片、字幕/音轨、后台/恢复、Emby Resume/Progress，以及各引擎特有错误/卡顿日志。
-11. 目标真机仍为 iPhone 15 Pro Max / iOS 17.0。
-12. OnePlayer Deployment Target 优先继续保持 iOS 15.0。AetherEngine 官方当前最低 iOS 16.0，因此实现前必须先验证依赖集成方式；未经证据证明 iOS 15.0 无法保留，不得直接提高 App Deployment Target。
+1. 当前阶段优先确认 Aether 的真实 iOS / Swift / 依赖限制，以及它能否在不破坏现有 MPV 与 P0 合同的前提下以最小改动接入。
+2. 若进入实现，继续使用现有 `PlayerEnginePreference` / `PlayerSettingsView` 引擎选择入口；至少人工选择 MPV 与 Aether，不另造一套设置状态。
+3. Aether 先作为**人工选择、实验对比**引擎；在真机证据形成前不得替换 MPV 主力播放路径，也不得成为自动 fallback。
+4. 当前选择只决定**新播放会话**使用的引擎；本任务不新增播放中热切换，除非用户后续明确要求。
+5. Aether 必须尽可能复用 OnePlayer 已有媒体源解析、请求头、Emby Session/Resume、诊断与 UnifiedTransport / Session Cache；不得复制一套 115/CDN 网络栈。
+6. STRM → HTTP 302 → 115/CDN 必须保持客户端直连；NAS 绝不能成为媒体字节中转站。
+7. 必须保护当前 P0：左右双击立即 Seek、连续快速双击立即响应、Range/206、Session Cache、Emby Resume/Progress、异常短片/提前 EOF 容错、播放诊断日志。
+8. 严禁重新采用 `targetTime / duration × fileSize` 时间→字节比例猜测。
+9. 目标真机仍为 iPhone 15 Pro Max / iOS 17.0。
+10. OnePlayer Deployment Target 原则上仍优先保持 iOS 15.0；只有在依赖/核心 API 已有具体证据证明无法兼容时才允许讨论提高，并必须先记录低版本方案为何不可行。
+11. **MDK 暂缓：** 本阶段不修改 `MDK_LAB`、MDK 依赖、MDK 引擎可见性或 MDK fallback 逻辑。
 
 ## Baseline
 
@@ -35,54 +31,98 @@
 
 - **Working branch:** `feat/aether-multi-engine-comparison`
 - **PR:** none yet
-- **Head commit:** no product-code commit yet; branch is created from the task-registration baseline and must be rechecked before implementation
+- **Head commit:** `9b46d1d4a1755c229d52dd2ae8dccb4f06b71181` — task registration only; no product-code commit yet
 - **Build candidate:** not allocated
 
 ## Evidence
 
-### Current source facts
+### Current OnePlayer source facts
 
-- `Sources/Player/PlayerEngine.swift`
-  - `PlayerEngineKind` / `PlayerEnginePreference` already own engine identity and persisted selection.
-  - Current `selectableCases` exposes MPV in normal builds and only exposes `.ksAVIO` under `MDK_LAB && canImport(KSPlayer)`.
-  - No Aether engine kind exists yet.
-- `Sources/UI/PlayerSettingsView.swift`
-  - Existing “播放器引擎” Picker already binds to `PlayerEnginePreference.selectableCases`.
-  - Existing semantics explicitly state the setting affects new playback sessions.
-- `Sources/Player/PlayerController.swift`
-  - Owns the active `PlayerEngine`, engine kind, shared `PlaybackTransportContext`, Emby progress reporting, Seek orchestration and diagnostics.
-  - Engine creation is centralized through `PlayerController.makeEngine(...)`.
-- `Sources/UI/PlayerScreen.swift`
-  - Surface selection currently has MPV / `.ksAVIO` / AVPlayer branches; Aether requires a real rendering surface integration rather than only adding an enum case.
-- `Sources/UI/LocalMDKDirectEngine.swift`
-  - A direct `swift_mdk.Player` + `MTKView` PlayerEngine implementation already exists but is compiled only under `MDK_LAB && canImport(swift_mdk)`.
-- `project.mdklab.yml`
-  - Existing MDK lab uses local `MDKLab/SwiftMDKOnePlayer` package and `MDK_LAB` compilation condition.
 - `project.yml`
-  - Normal production target currently depends on MPVKit only; MDK/Aether production dependencies are not yet present.
+  - normal App target is iOS 15.0, Xcode 16.4, `SWIFT_VERSION: 5.0`;
+  - production package currently includes MPVKit 1.0.0, not Aether.
+- `Sources/Player/PlayerEngine.swift`
+  - `PlayerEngineKind` / `PlayerEnginePreference` already own engine identity and persisted selection;
+  - current normal build exposes MPV; no Aether kind exists yet.
+- `Sources/UI/PlayerSettingsView.swift`
+  - existing “播放器引擎” Picker already binds to `PlayerEnginePreference.selectableCases`;
+  - no need为 Aether 新造设置状态或第二套选择 UI。
+- `Sources/Player/PlayerController.swift`
+  - owns active `PlayerEngine`, shared `PlaybackTransportContext`, Emby progress reporting, Seek orchestration and diagnostics;
+  - engine creation is centralized in `PlayerController.makeEngine(...)`;
+  - MPV receives `transportContext?.session`, so shared transport ownership already has明确 precedent。
+- `Sources/Player/MPVUnifiedStreamBridge.swift`
+  - proves `TransportDataSession` can be adapted into a synchronous byte-oriented read/seek source without NAS relay or time→byte guess;
+  - this is the architectural reference for an Aether custom `IOReader`, not code to duplicate blindly.
+- `Sources/UI/PlayerScreen.swift`
+  - current surface dispatch has MPV / `.ksAVIO` / AVPlayer branches; Aether requires one real hosted view branch.
 
-### External Aether fact to verify during implementation
+### Aether current release / platform facts — verified 2026-08-27
 
-- Candidate dependency identified as `superuser404notfound/AetherEngine`.
-- Current public documentation advertises Swift Package integration and an `AetherPlayerView` / `AetherPlayerSurface` host API.
-- Current documented minimum is iOS 16.0 / Swift 6.0 / Xcode 16.0.
-- This is an integration constraint, **not** permission to raise OnePlayer's Deployment Target before compatibility options are tested.
+- Latest upstream release inspected: `superuser404notfound/AetherEngine` **6.49.0**.
+- `AetherEngine` 6.49.0 `Package.swift`:
+  - `swift-tools-version: 6.0`;
+  - minimum iOS **16.0**;
+  - depends on `FFmpegBuild` 2.4.x and `LibDovi` 2.0.x.
+- `FFmpegBuild` current `Package.swift` also declares minimum iOS **16.0**.
+- `LibDovi` current `Package.swift` also declares minimum iOS **16.0**.
+- This is **not only a manifest floor**: `FFmpegBuild/build.sh` actually compiles iOS FFmpeg/dav1d/zimg/zvbi artifacts with `arm64-apple-ios16.0` / deployment `16.0`.
+- Therefore an iOS 15 OnePlayer target cannot safely consume upstream Aether by merely wrapping imports/calls in `@available(iOS 16, *)`; SwiftPM dependency compatibility is checked before runtime availability, and the shipped FFmpeg artifacts themselves have an iOS 16 floor.
+- Keeping OnePlayer iOS 15 while using current upstream Aether would require maintaining forks and rebuilding at least Aether's FFmpeg dependency stack for iOS 15, followed by source/API audit. That is **not a minimal-change integration** and is not currently justified.
+
+### Aether public API fit
+
+- `AetherEngine` is `@MainActor`, exposes `load`, `play`, `pause`, async `seek(to:)`, state/buffering/clock publishers and `stop`.
+- `AetherPlayerView` is a UIKit view; the engine binds to it and internally hosts its active `AVPlayerLayer` / `AVSampleBufferDisplayLayer`.
+- `AetherEngine.IOReader` is public and provides byte `read`, absolute `seek`, `close`, optional `cancel` / `makeIndependentReader`.
+- This API shape maps cleanly to the existing OnePlayer `PlayerEngine` abstraction and allows an Aether adapter to consume `TransportDataSession` instead of creating a second independent 115/CDN transport path.
+- App-layer integration itself is therefore relatively small; the unresolved problem is dependency/link coexistence, not the `PlayerEngine` protocol shape.
+
+### MPVKit / Aether FFmpeg coexistence facts
+
+- OnePlayer pins MPVKit **1.0.0**.
+- MPVKit 1.0.0 ships **FFmpeg n8.1.2** and declares binary targets named `Libavcodec`, `Libavdevice`, `Libavfilter`, `Libavformat`, `Libavutil`, `Libswresample`, `Libswscale`, etc.
+- Aether `FFmpegBuild` current source also builds **FFmpeg n8.1.2**, which is favorable for a possible single-FFmpeg adaptation.
+- However `FFmpegBuild` itself declares targets with overlapping names such as `Libavcodec`, `Libavformat`, `Libavutil`, `Libswresample`, `Libswscale`, `Libavfilter`.
+- SwiftPM requires target/module names to be unique across the package graph. Therefore **directly adding upstream AetherEngine beside current upstream MPVKit is not a clean package-resolution path** even after raising the app target to iOS 16.
+- Aether's own public API documentation additionally warns that its ordinary `avcodec_*` / `avformat_*` / `avutil_*` / `swr_*` symbols can bind to another FFmpeg in the host process; using two independent FFmpeg builds can produce runtime ABI/feature mismatches whose symptoms look like engine bugs.
+- Because MPVKit already brings a full FFmpeg into OnePlayer, the correct feasibility direction is **one FFmpeg in the process**, not two parallel copies.
+- Both projects using n8.1.2 makes a shared-FFmpeg experiment technically plausible, but it is **not yet proven safe**: Aether depends on its own FFmpegBuild configuration/patches and a separate `Dovi` module, while MPVKit has its own FFmpeg configuration and `Libdovi` packaging. Feature/API coverage must be proven by build/link/runtime evidence before adopting this route.
+
+## Current feasibility conclusion
+
+1. **Upstream Aether + current iOS 15 target:** not compatible as a minimal change. The dependency stack and actual FFmpeg artifacts require iOS 16.
+2. **Raise OnePlayer to iOS 16 + directly add upstream Aether beside MPVKit:** still not an evidence-backed safe path because of SwiftPM target-name overlap and dual-FFmpeg symbol ownership.
+3. **Potential narrow path:** make Aether and MPV share a single FFmpeg n8.1.2 dependency through a small dependency-packaging adaptation, then validate compile/link/runtime behavior. This avoids two FFmpeg copies but requires a focused feasibility spike before player code is touched.
+4. Because the user asked for minimum changes and current evidence does not yet prove the single-FFmpeg adaptation, **no product code or Deployment Target change should be made yet**.
 
 ## Files / modules in scope
 
-Expected, subject to real call-site verification before edits:
+Immediate feasibility scope only:
 
-- `project.yml` and dependency configuration required for Aether / production MDK availability
+- `project.yml` — inspect only until dependency coexistence is proven; do not raise deployment target yet
+- MPVKit 1.0.0 package/build metadata
+- AetherEngine 6.49.0 package/public API/build metadata
+- Aether `FFmpegBuild` / `LibDovi` dependency metadata
+- this checkpoint
+
+If dependency feasibility is later proven and user approves implementation, expected minimal app-layer scope becomes:
+
+- `project.yml` / dependency wiring
 - `Sources/Player/PlayerEngine.swift`
+- new Aether `PlayerEngine` adapter
+- new thin Aether `IOReader` backed by existing `TransportDataSession`
 - `Sources/Player/PlayerController.swift`
-- `Sources/Player/PlaybackOrchestrator.swift` only if required by explicit manual engine-kind resolution
-- new Aether `PlayerEngine` adapter and rendering surface files, placed in existing Player/UI module structure
-- existing MDK production adapter path (`Sources/UI/LocalMDKDirectEngine.swift`) or the minimum evidence-backed promotion of the already-tested MDK implementation
-- `Sources/UI/PlayerScreen.swift` rendering-surface dispatch
-- `Sources/UI/PlayerSettingsView.swift` only if labels/footer need adjustment after selectable cases are correct
-- `Sources/Diagnostics/*` only where needed to give equivalent engine comparison evidence
-- related build workflow/project generation files only if required for the new dependencies
-- this checkpoint and permanent `docs/project/` records when implementation/test evidence changes
+- `Sources/UI/PlayerScreen.swift`
+- `Sources/UI/PlayerSettingsView.swift` only if labels/footer need adjustment
+- capability declarations only where required; no PiP redesign
+
+Explicitly deferred:
+
+- `Sources/UI/LocalMDKDirectEngine.swift`
+- `project.mdklab.yml`
+- `MDK_LAB` / MDK package promotion
+- MDK engine selection/fallback behavior
 
 ## State owner / shared dependencies
 
@@ -92,18 +132,18 @@ Expected, subject to real call-site verification before edits:
 - **Transport owner:** existing `PlaybackTransportContext` / UnifiedTransport / Session Cache
 - **Emby session owner:** existing PlayerController + Emby client reporting path
 - **Rendering owner:** engine-specific surface hosted by `PlayerScreen`, without tying Player/Transport/Cache lifecycle to SwiftUI view lifecycle
+- **FFmpeg ownership constraint:** do not knowingly ship two independently-owned FFmpeg stacks in the same OnePlayer process without explicit build/link/runtime proof.
 
 ## Frozen / do-not-touch
-
-This task is allowed to add the minimum engine-integration seams required by the user, but must not casually rewrite Frozen/P0 behavior:
 
 - MPV remains current main playback authority until comparison evidence says otherwise.
 - MPV fast-seek semantics must remain unchanged.
 - UnifiedTransport / Session Cache ownership and client-direct STRM→302→115/CDN contract must remain unchanged.
 - Emby Resume/Progress lifecycle remains shared and engine-independent.
-- PiP Build173 frozen path must not be modified unless Aether/MDK capability wiring demonstrably requires an engine-specific capability declaration; no PiP redesign in this task.
+- PiP Build173 frozen path must not be redesigned in this task.
 - No speculative retry/fallback/timer/watchdog/compatibility shim or unrelated refactor.
 - No time→byte ratio seek mapping.
+- Do not alter MDK in the current Aether-first phase.
 
 ## Parallel conflicts checked against
 
@@ -113,19 +153,26 @@ Checked at task creation against the current Active checkpoints:
 - `DEV-page-cache-optimization` — page-cache/navigation work; Player/MPV/PiP/UnifiedTransport/Range/206/playback Cache are explicitly do-not-touch there.
 - `DEV-poster-grid-smoothness` — poster/grid/image-performance work; playback core is explicitly do-not-touch there.
 
-**Result:** no current source/state-owner conflict that blocks creating this as an independent branch. Recheck before final CI/IPA/merge because `main` may advance while the tasks run in parallel.
+**Result:** no current source/state-owner conflict that blocks the Aether feasibility task. Recheck before final CI/IPA/merge because `main` may advance while tasks run in parallel.
 
 ## Completed
 
 - [x] New independent Work ID selected.
 - [x] Current Active task conflict preflight completed.
-- [x] Current engine preference, settings UI, controller ownership, rendering dispatch, MDK lab adapter and production dependency configuration inspected.
-- [x] Aether candidate repository and current minimum platform requirement identified.
+- [x] Current engine preference, settings UI, controller ownership and rendering dispatch inspected.
+- [x] User narrowed immediate scope to Aether; MDK explicitly deferred.
+- [x] Latest Aether release identified as 6.49.0.
+- [x] Aether / FFmpegBuild / LibDovi iOS floors inspected.
+- [x] Confirmed Aether's FFmpeg artifacts are actually built for iOS 16, not merely declared as iOS 16.
+- [x] Confirmed `@available` cannot make current upstream Aether a valid iOS 15 SwiftPM dependency.
+- [x] MPVKit 1.0.0 FFmpeg packaging inspected; direct package-graph overlap with Aether identified.
+- [x] Confirmed MPVKit and Aether currently both use FFmpeg n8.1.2, leaving a possible single-FFmpeg adaptation to test.
+- [ ] Single-FFmpeg dependency adaptation proven by build/link/runtime evidence.
+- [ ] User decision on accepting a minimum iOS 16 target if the dependency coexistence spike succeeds.
 - [ ] Aether dependency integrated.
 - [ ] Aether PlayerEngine adapter implemented.
 - [ ] Aether rendering surface integrated.
-- [ ] MDK production/manual engine exposed.
-- [ ] MPV / Aether / MDK all visible in playback engine selection.
+- [ ] MPV / Aether both visible in playback engine selection.
 - [ ] CI passed.
 - [ ] IPA produced.
 - [ ] Real-device comparison completed.
@@ -139,41 +186,51 @@ Checked at task creation against the current Active checkpoints:
 - **Real-device tested:** No
 - **Stable / frozen:** No
 
-No implementation claim is made by task creation.
+The compatibility investigation changed no product code and did not raise the App deployment target.
 
 ## Pending
 
-1. Confirm the production-safe Aether dependency integration under the iOS 15.0 deployment policy; specifically determine whether Aether can be isolated/conditionally available without raising the whole App target.
-2. Inspect Aether public APIs at the selected version and map only the required `PlayerEngine` contract: prepare/play/pause/rate/seek/reload/metrics/stop plus render surface/state callbacks.
-3. Inspect the current `makeEngine` switch and rendering/capabilities call sites completely before adding `.aether`.
-4. Determine the minimum promotion path for the existing `LocalMDKDirectEngine` into the normal target without reviving MDK automatic fallback behavior.
-5. Only after the above, make the smallest product-code change on the dedicated branch.
+1. Do **not** add upstream Aether directly to `project.yml` yet.
+2. If the user wants to continue, perform a dependency-only feasibility spike for **one shared FFmpeg n8.1.2** between MPVKit and Aether, without touching Player/Transport behavior.
+3. In that spike, verify:
+   - SwiftPM resolves with no duplicate target/module collision;
+   - Aether compiles against the chosen FFmpeg headers/modules;
+   - required Aether mux/decoder/encoder symbols/features exist;
+   - Dovi packaging can use one implementation without duplicate C symbols;
+   - MPVKit still links and initializes;
+   - Aether initializes and reports the expected FFmpeg runtime version.
+4. Only if that succeeds should the project discuss raising OnePlayer's deployment target from iOS 15.0 to **exactly iOS 16.0** for Aether. No higher floor is currently justified.
+5. Only after dependency coexistence is proven should app-layer Aether integration begin.
 6. Before allocating a Build candidate, recheck `BUILD_TEST_INDEX.md`, all Active checkpoints and existing CI/IPA candidates.
 
 ## Next exact action
 
-On `feat/aether-multi-engine-comparison`, perform an **integration feasibility pass before product-code edits**:
+Await the user's decision whether to proceed with the **dependency-only single-FFmpeg feasibility spike**. If approved:
 
-1. pin/inspect the intended AetherEngine release and its `Package.swift` platform/Swift requirements;
-2. verify whether OnePlayer can keep deployment target iOS 15.0 while making Aether available on iOS 16+ (or document concrete build-system proof that it cannot);
-3. inspect complete `PlayerController.makeEngine`, `PlayerCapabilities`, surface dispatch, and the existing MDK lab package wiring;
-4. write down the minimal file-level patch plan in this checkpoint;
-5. then implement Aether + MDK manual selection without changing automatic/fallback authority.
+1. keep `feat/aether-multi-engine-comparison` as the product branch;
+2. do not change playback behavior or expose Aether in settings yet;
+3. construct the smallest package-level experiment that gives Aether access to one FFmpeg n8.1.2 implementation already compatible with MPVKit, rather than importing Aether's second independent FFmpeg copy;
+4. run package resolution + iOS build/link checks;
+5. record whether MPVKit and Aether can coexist in one App target before touching `PlayerEngine` / `PlayerController`.
 
 ## Rejected / do-not-repeat
 
-- Do not make Aether or MDK an automatic fallback merely because they are now selectable.
+- Do not make Aether an automatic fallback merely because it becomes selectable later.
 - Do not replace MPV as default/main authority before real-device comparison evidence.
-- Do not duplicate UnifiedTransport / 115/CDN fetch logic inside Aether or MDK adapters.
+- Do not duplicate UnifiedTransport / 115/CDN fetch logic inside an Aether adapter.
 - Do not route media bytes through NAS.
-- Do not add speculative recovery timers/watchdogs just to normalize different engine behaviors.
-- Do not raise Deployment Target to iOS 16.0 simply because Aether documents iOS 16.0 minimum; first prove lower-target coexistence is impossible under the project compatibility policy.
-- Do not reuse MDK lab conclusions as proof that production integration is already safe; lab and normal target dependency/lifecycle wiring differ.
+- Do not add speculative recovery timers/watchdogs just to normalize engine behavior.
+- Do not use `@available(iOS 16, *)` as if it solved the package's iOS 16 deployment floor; it does not.
+- Do not lower only Aether/FFmpegBuild `Package.swift` platform declarations to iOS 15; the current FFmpeg binaries themselves are built for iOS 16.
+- Do not raise Deployment Target to iOS 16 merely to get past the first error while leaving the MPVKit/Aether dual-FFmpeg conflict unresolved.
+- Do not add both upstream FFmpeg stacks and hope link order is harmless.
+- Do not modify MDK while the user has explicitly deferred it.
 
 ## Open questions / risks
 
-- AetherEngine currently documents iOS 16.0 minimum, while OnePlayer policy prefers iOS 15.0. This may require conditional availability/isolation or, only after proof, a deployment-target decision.
-- Aether uses its own FFmpeg/VideoToolbox/AVPlayer-backed internals; codec/runtime symbol overlap and packaging behavior with MPVKit/MDK must be verified in the real app target rather than guessed.
-- Existing MDK adapter contains lab-only behavior and historical experiments. Promotion must separate the reusable engine implementation from obsolete lab-only fallback/diagnostic assumptions.
-- Engine capabilities (PiP, system route, picture size, presentation effects) must be declared explicitly per engine; absence of a capability is preferable to faking compatibility.
-- The comparison matrix must distinguish `Code written` / `CI passed` / `IPA produced` / `Real-device tested` / `Stable` at all times.
+- Aether requires iOS 16 in its actual binary dependency stack. If Aether is ultimately accepted, OnePlayer's minimum iOS likely must become 16.0 unless the project takes on a non-minimal dependency rebuild/fork.
+- MPVKit and Aether currently both use FFmpeg n8.1.2, but their configuration/patch sets are different; version equality alone is not proof that one binary set satisfies both engines.
+- Aether also depends on a separate `Dovi` module while MPVKit packages `Libdovi`; one-Dovi ownership must be solved together with one-FFmpeg ownership.
+- Aether's Swift 6 package is being consumed from an app currently configured with `SWIFT_VERSION: 5.0`. Xcode 16.4 satisfies the toolchain floor, but coexistence of language modes should be proven by the same build spike rather than assumed.
+- Engine capabilities (PiP, system route, picture size, presentation effects) must later be declared explicitly; absence of a capability is preferable to faking compatibility.
+- Evidence levels remain separate: dependency resolve/build success will still not equal IPA or real-device playback success.
