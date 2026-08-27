@@ -2,6 +2,26 @@
 
 This file is the repository-wide standing instruction for AI coding agents. It applies to all source changes unless a nearer, more specific instruction file explicitly overrides it.
 
+## 0. Every final reply must trigger ChatGPT-Notify
+
+Every new OnePlayer session must read `docs/automation/CHATGPT_NOTIFY_RULES.md` before doing project work.
+
+**Every user-facing final reply must trigger exactly one completion notification before the final reply is emitted.** Do not filter by task importance, elapsed time, code changes, answer length, question type, CI/IPA activity, or whether the reply is only a greeting / simple fact / short clarification.
+
+Only non-final process messages are excluded: commentary, tool-progress updates, and incomplete “working/checking” messages do not trigger separate notifications.
+
+The notification sequence is mandatory:
+
+1. finish all work, validation, and required project-document updates;
+2. prepare the final answer;
+3. follow `docs/automation/CHATGPT_NOTIFY_RULES.md` to create the `BARK_NOTIFY_V1` top-level comment in `white-shark-ssw/ChatGPT-Notify` PR `#1`;
+4. immediately redact that same comment using the returned comment id;
+5. only then emit the final reply.
+
+Notification failure must not be fabricated as success. Follow the detailed failure/privacy rules in `docs/automation/CHATGPT_NOTIFY_RULES.md`.
+
+Repository-rule changes do not retroactively inject themselves into already-open conversations. An existing conversation that predates this rule must re-read `AGENTS.md` and `docs/automation/CHATGPT_NOTIFY_RULES.md` once before this guarantee can apply to subsequent replies in that conversation.
+
 ## 1. Read and route before changing code
 
 Before editing:
