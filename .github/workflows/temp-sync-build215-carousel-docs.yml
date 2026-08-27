@@ -1,0 +1,216 @@
+name: One-shot Sync Build215 Carousel Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temp-sync-build215-carousel-docs.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Sync latest main and Build215 carousel evidence
+        run: |
+          set -euo pipefail
+          git pull --ff-only origin main
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # Active carousel checkpoint.
+          p = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+          s = p.read_text()
+          s = re.sub(r'\*\*Active — Build208 / 0\.14\.41.*?\*\*', '**Active — Build215 / 0.14.48 is the current carousel candidate. Build208 real-device video analysis proved the remaining EX gap was acquisition-origin + foreground-alpha behavior; Build215 implements acquisition-relative 1:1 render motion while preserving touch-down release authority, keeps full-width page slots, and decouples foreground alpha. CI/IPA are verified; real-device A/B is pending.**', s, count=1, flags=re.S)
+          marker = '## Next exact action'
+          if marker not in s:
+              raise SystemExit('carousel checkpoint next-action marker missing')
+          head = s.split(marker, 1)[0].rstrip()
+          build215 = '''
+
+## Build214 / Build215 implementation evidence
+
+- The first acquisition-relative implementation attempt used carousel Build211, but that identity aged out while parallel work advanced and the unbuilt draft also exposed transfer-corrupted source tokens; it was not distributed as a valid test package.
+- Carousel Build214 / 0.14.47 was rebuilt cleanly from the Build208 durable source and passed CI/IPA verification, but was retired before distribution when the independent poster task claimed the same identity. Never use the carousel Build214 package for attribution.
+- Current valid carousel identity: **OnePlayer 0.14.48 / Build215**.
+- branch: `perf/home-carousel-acquisition-relative-build215`.
+- tested source / CI head: **`d22634ece2f29eba2e60de01182bf15d4ba554a7`**.
+- durable cleanup head: **`01a13615fc056fd3b13296d98abfaa7a6aa2b46d`**; tested-source → cleanup-head delta is temporary Build215 workflow deletion only.
+- acquisition sample establishes `horizontalAcquisitionTranslation` and is not published as rendered movement.
+- post-acquisition render translation is exactly `currentTranslation - acquisitionTranslation`, so spatial tracking is linear relative to acquisition and reversal remains continuous through that baseline.
+- release/commit remains touch-down authoritative: actual release progress is calculated from the original touch-down translation; commit threshold remains 0.28 and predicted-distance gate remains 0.48 × width.
+- a one-sample fast release can still commit from touch-down distance even if no post-acquisition render sample was published.
+- foreground page opacity is held at 1 for the two transition pages; backdrop crossfade remains independent.
+- full-width page-slot geometry remains `pageStep = width`; first↔last modulo neighbor lookup remains unchanged.
+- no new state owner, interpolation, timer, watchdog, debounce, throttle or P0/Frozen path change.
+- run/job: **`33058337107` / `98470624555` — success**.
+- artifact: `OnePlayer-0.14.48-build215-home-carousel-acquisition-relative`; artifact ID **`9640692378`**.
+- artifact digest: **`sha256:31a054244bcfbeb39cc5db663aa7580cb4cc742fe88ca998ce9c9ba7a01e2939`**.
+- IPA SHA-256: **`6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`**.
+- source ZIP SHA-256: **`00d2a0aba071dbbce3554d31dba64f0caa70c22b6e067dedeee0bb3b22ebd694`**.
+- independent validation: artifact digest exact match; embedded IPA/source hashes match; IPA `unzip -t` passed; bundle `com.embyplayerlab.app`; OnePlayer `0.14.48 (215)`; MinOS 15.0; primary/alternate icons present; source snapshot confirms acquisition-relative render, foreground-alpha decoupling and no transfer-corrupted tokens.
+- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
+
+## Next exact action
+
+Target-device A/B Build215 against the recorded Build208 and EX reference. Focus first on the first visible movement and the post-acquisition 1:1 feel, then verify foreground stays visually solid, page-slot separation remains correct, reversal through the acquisition baseline is continuous, small-release cancels, fast one-sample release still commits when the original 0.28/0.48 rules say it should, and first↔last wrapping remains correct. Do not retune easing/travel percentages before this device evidence.
+'''
+          p.write_text(head + build215)
+
+          # Module status: replace only the carousel row; preserve all parallel rows verbatim.
+          p = Path('docs/project/MODULE_STATUS.md')
+          lines = p.read_text().splitlines()
+          replacement = '| Home carousel interaction | **Active — Build215 CI/IPA verified; real-device A/B pending** | Build208 video A/B proved the remaining EX gap was not page-slot spacing but acquisition-origin and foreground-alpha behavior. Build215 / 0.14.48 retains Build198 single UIKit lifecycle ownership and Build208 full-width `pageStep = width`, establishes render baseline at horizontal acquisition, then uses `currentTranslation - acquisitionTranslation` for near-1:1 spatial tracking. Original touch-down distance still owns 0.28 commit / 0.48×width predicted release semantics, including a one-sample fast release. Transition foreground pages remain opaque while backdrop blend is independent. Run/job `33058337107 / 98470624555`, artifact `9640692378`, IPA SHA `6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`; MinOS 15.0 independently verified. Real-device acceptance is pending; not stable. Read `DEV-home-carousel-drag-smoothness`. |'
+          found = False
+          for i, line in enumerate(lines):
+              if line.startswith('| Home carousel interaction |'):
+                  lines[i] = replacement
+                  found = True
+                  break
+          if not found:
+              raise SystemExit('MODULE_STATUS carousel row missing')
+          p.write_text('\n'.join(lines) + '\n')
+
+          # Project state: update only the Home carousel section; leave current accepted baseline and poster section untouched.
+          p = Path('docs/project/PROJECT_STATE.md')
+          s = p.read_text()
+          start = s.find('### Current carousel candidate:')
+          end = s.find('\n## Active: Poster-heavy scrolling smoothness', start)
+          if start < 0 or end < 0:
+              raise SystemExit('PROJECT_STATE carousel candidate bounds missing')
+          block = '''### Current carousel candidate: Build215 / 0.14.48
+
+Build208 is now a real-device-tested reference, not the current candidate. Direct 510×1108@30fps A/B against EX showed OnePlayer holding then jumping at acquisition and continuing to lag through a sixth-power visual mapping, while EX behaved like a short take-up followed by nearly 1:1 tracking. EX foreground also stayed substantially more opaque during drag.
+
+Build215 implements the smallest source-backed correction:
+
+- retains Build198 one-UIKit-owner lifecycle and Build208 full-width `pageStep = width` page slots;
+- horizontal acquisition records a render baseline and does not publish the already accumulated touch-down distance as the first visual movement;
+- post-acquisition foreground spatial motion is `currentTranslation - acquisitionTranslation`, with no whole-range easing/interpolator;
+- release/commit still calculates actual distance from touch-down and retains 0.28 commit + 0.48×width predicted-distance gate, including one-sample fast-release authority;
+- transition foreground pages remain opaque; backdrop crossfade is independent;
+- first↔last modulo neighbor ownership, cancel/settle ownership and P0/Frozen playback/transport/cache/session paths are unchanged.
+
+Build214 carousel was CI/IPA verified but retired before distribution after the independent poster task claimed the same identity. Build215 is the valid carousel attribution package.
+
+Build215 evidence:
+
+- branch `perf/home-carousel-acquisition-relative-build215`;
+- tested source `d22634ece2f29eba2e60de01182bf15d4ba554a7`;
+- durable cleanup head `01a13615fc056fd3b13296d98abfaa7a6aa2b46d`; cleanup deletes only the temporary workflow;
+- run/job `33058337107 / 98470624555` — success;
+- artifact `OnePlayer-0.14.48-build215-home-carousel-acquisition-relative`, ID `9640692378`, digest `sha256:31a054244bcfbeb39cc5db663aa7580cb4cc742fe88ca998ce9c9ba7a01e2939`;
+- IPA SHA-256 `6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`;
+- source ZIP SHA-256 `00d2a0aba071dbbce3554d31dba64f0caa70c22b6e067dedeee0bb3b22ebd694`;
+- independent validation passed for artifact digest, embedded hashes, IPA archive, `0.14.48 (215)`, MinOS 15.0, icons and exact acquisition-relative source contracts;
+- evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / not stable**.
+
+Next action: target-device A/B Build215 against Build208/EX. Do not add another easing/travel-percentage workaround before that evidence.
+'''
+          p.write_text(s[:start] + block + s[end:])
+
+          # Technical decision D012: replace only this decision block.
+          p = Path('docs/project/TECHNICAL_DECISIONS.md')
+          s = p.read_text()
+          start = s.find('## D012 —')
+          end = s.find('\n## D013 —', start)
+          if start < 0 or end < 0:
+              raise SystemExit('D012 bounds missing')
+          d012 = '''## D012 — Home-carousel drag keeps one UIKit owner; full-width page slots use acquisition-relative render motion
+
+Retain the Build198 input architecture and Build208 page-slot correction:
+
+- one UIKit interaction surface owns begin/move/end/cancel;
+- vertical acquisition yields to Home `UIScrollView`; horizontal acquisition owns through end/cancel;
+- 0.5pt axis acquisition remains unchanged;
+- predicted touch is release-only;
+- original touch-down distance remains authority for 0.28 commit and 0.48×width predicted-distance release;
+- high-frequency state remains one `V3HomeCarouselTransitionState`;
+- foreground page centers remain one full `width` apart (`pageStep = width`), preserving the existing ~56pt content separation;
+- first↔last wrap remains `(index + direction + count) % count`;
+- no second SwiftUI drag owner, timer, watchdog, retry, interpolation, debounce or throttle.
+
+Build208 vs EX real-device video rejected the visual-easing workaround as the remaining solution. OnePlayer held then jumped because the recognizer measured from `touchesBegan` and published the already accumulated translation at horizontal acquisition; EX behaved like a short take-up followed by nearly 1:1 motion. EX foreground also remained near opaque while OnePlayer faded foreground with the same mapping used for backdrop/spatial compensation.
+
+Therefore the current evidence-backed render contract is Build215:
+
+1. horizontal acquisition records `horizontalAcquisitionTranslation` and does not publish that acquisition sample as page movement;
+2. subsequent render translation is exactly `currentTranslation - acquisitionTranslation`, giving acquisition-relative linear motion and continuous reversal through the baseline;
+3. release still evaluates the original touch-down translation, so removing the visual take-up does not weaken 0.28/0.48 semantics; a fast release with no post-acquisition render sample can still commit from those original rules;
+4. foreground transition pages remain opaque; backdrop crossfade stays independent;
+5. whole-range easing/travel-percentage tuning is rejected as the primary fix for the first-sample problem.
+
+Identity/evidence:
+
+- carousel Build214 / 0.14.47 passed CI/IPA but was retired before distribution because the independent poster task claimed the same identity;
+- current carousel candidate is **Build215 / OnePlayer 0.14.48** on `perf/home-carousel-acquisition-relative-build215`;
+- tested source `d22634ece2f29eba2e60de01182bf15d4ba554a7`; durable cleanup head `01a13615fc056fd3b13296d98abfaa7a6aa2b46d`, cleanup delta temporary workflow deletion only;
+- run/job `33058337107 / 98470624555` — success; artifact ID `9640692378`; artifact digest `sha256:31a054244bcfbeb39cc5db663aa7580cb4cc742fe88ca998ce9c9ba7a01e2939`;
+- IPA SHA-256 `6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`; source ZIP SHA-256 `00d2a0aba071dbbce3554d31dba64f0caa70c22b6e067dedeee0bb3b22ebd694`; MinOS 15.0 independently verified;
+- evidence is **Code written / CI passed / IPA produced+verified / real-device pending / not stable**.
+
+Do not call Build215 solved until target-device A/B confirms the first visible step, continuous 1:1 feel, foreground solidity, reversal, release and wrapping behavior.
+'''
+          p.write_text(s[:start] + d012 + s[end:])
+
+          # Build/Test index: update Build208 row, add Build215 row, and insert detailed Build215 evidence before poster evidence.
+          p = Path('docs/project/BUILD_TEST_INDEX.md')
+          s = p.read_text()
+          lines = s.splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith('| **Build208 / 0.14.41** |'):
+                  lines[i] = '| **Build208 / 0.14.41** | Full-width carousel foreground page slots | **Real-device video tested; retained layout but rejected as final motion mapping.** `pageStep = width` fixed structural foreground overlap, but A/B versus EX showed hold-then-jump acquisition, prolonged visual lag from sixth-power attenuation, and over-faded foreground. This recording analysis directly motivated Build215. |'
+                  break
+          else:
+              raise SystemExit('BUILD_TEST_INDEX Build208 row missing')
+          if not any(line.startswith('| **Build215 / 0.14.48** |') for line in lines):
+              insert_at = next((i + 1 for i, line in enumerate(lines) if line.startswith('| **Build213 / 0.14.46** |')), None)
+              if insert_at is None:
+                  raise SystemExit('BUILD_TEST_INDEX Build213 row missing')
+              lines.insert(insert_at, '| **Build215 / 0.14.48** | Acquisition-relative Home-carousel render + foreground-alpha decoupling | **Current carousel candidate.** Keeps full-width page slots and single UIKit owner; render starts from horizontal acquisition baseline then tracks `translation - acquisitionTranslation` linearly, while 0.28/0.48 release authority remains touch-down based. Foreground stays opaque; backdrop blend is independent. CI/IPA independently verified; real-device pending. Carousel Build214 was retired due identity collision and is not valid for attribution. |')
+          s = '\n'.join(lines) + '\n'
+          detail = '''
+### Build215 current carousel candidate
+
+- identity: **0.14.48 / Build215**
+- branch: `perf/home-carousel-acquisition-relative-build215`
+- Build208 durable base: `51c366b6840d77c818eae20e1f3f43c0dbd75c72`
+- tested source: **`d22634ece2f29eba2e60de01182bf15d4ba554a7`**
+- durable cleanup head: **`01a13615fc056fd3b13296d98abfaa7a6aa2b46d`**; tested-source → cleanup-head removes only the temporary Build215 workflow.
+- acquisition sample establishes render baseline; post-acquisition render is `currentTranslation - acquisitionTranslation`.
+- release distance remains touch-down based with existing 0.28 commit and 0.48×width predicted gate, including one-sample fast release.
+- foreground transition pages stay opaque; backdrop crossfade remains separate; `pageStep = width` retained.
+- exact scope/Frozen guard passed; no Player/MPV/PiP/Transport/Cache/Session changes.
+- run/job: **`33058337107 / 98470624555` — success**.
+- artifact: `OnePlayer-0.14.48-build215-home-carousel-acquisition-relative`; ID **`9640692378`**; digest **`sha256:31a054244bcfbeb39cc5db663aa7580cb4cc742fe88ca998ce9c9ba7a01e2939`**.
+- IPA SHA-256: **`6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`**.
+- source ZIP SHA-256: **`00d2a0aba071dbbce3554d31dba64f0caa70c22b6e067dedeee0bb3b22ebd694`**.
+- independent validation: artifact digest exact match; embedded hashes match; IPA archive passed; OnePlayer `0.14.48 (215)`; MinOS 15.0; source contracts verified.
+- carousel Build214 / 0.14.47 also passed CI/IPA but was retired before distribution because parallel poster work claimed that identity; never use it for carousel attribution.
+- evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
+
+'''
+          if '### Build215 current carousel candidate' not in s:
+              marker = '## Poster-scroll evidence'
+              if marker not in s:
+                  raise SystemExit('BUILD_TEST_INDEX poster evidence marker missing')
+              s = s.replace(marker, detail + marker, 1)
+          p.write_text(s)
+          PY
+
+          git diff --check
+          git diff --name-only
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/BUILD_TEST_INDEX.md
+          git commit -m "Docs: record Build215 carousel CI and IPA evidence"
+          git pull --rebase origin main
+          git push origin HEAD:main
