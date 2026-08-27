@@ -27,7 +27,6 @@ jobs:
           test ! -e .github/workflows/temp-apply-build213-poster-display-uikit.yml
           test ! -e .github/scripts/temp-build213-poster-display-uikit.py
           test ! -e .github/build213-poster-trigger.txt
-          test "$(git rev-parse perf/poster-grid-smoothness 2>/dev/null || true)" != "" || true
 
       - name: Finalize authoritative Build213 merge evidence
         run: |
@@ -99,7 +98,7 @@ jobs:
           set -euo pipefail
           git diff --check
           git rm .github/workflows/temp-finalize-build213-closeout.yml
-          changed="$(git diff --name-only | sort)"
+          changed="$(git diff HEAD --name-only | sort)"
           expected="$(printf '%s\n' .github/workflows/temp-finalize-build213-closeout.yml docs/project/BUILD_TEST_INDEX.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md | sort)"
           test "$changed" = "$expected"
           grep -F '2303505ad4403182f5315d33c54f402903c809d2' docs/project/PROJECT_STATE.md >/dev/null
