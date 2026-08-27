@@ -1,0 +1,299 @@
+diff --git a/Sources/Core/AppIdentity.swift b/Sources/Core/AppIdentity.swift
+index 4234030..95b2145 100644
+--- a/Sources/Core/AppIdentity.swift
++++ b/Sources/Core/AppIdentity.swift
+@@ -3,8 +3,8 @@ import Foundation
+ 
+ enum AppIdentity {
+     static let clientName = "OnePlayer"
+-    static let sourceVersion = "0.14.43"
+-    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.14.43"
++    static let sourceVersion = "0.14.44"
++    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.14.44"
+     static let ticksPerSecond: Double = 10_000_000
+ 
+     static var deviceName: String {
+diff --git a/Sources/UI/EmbySharedImageAndNavigation.swift b/Sources/UI/EmbySharedImageAndNavigation.swift
+index 84df3de..1b03fa6 100644
+--- a/Sources/UI/EmbySharedImageAndNavigation.swift
++++ b/Sources/UI/EmbySharedImageAndNavigation.swift
+@@ -34,11 +34,32 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
+         let timestamp: CFTimeInterval
+     }
+ 
++    private struct ImageEvent {
++        let itemID: String
++        let imageType: String
++        let maxWidth: String
++        let source: String
++        let role: String
++        let timestamp: CFTimeInterval
++    }
++
++    private struct TimedImageEvent {
++        let itemID: String
++        let imageType: String
++        let maxWidth: String
++        let source: String
++        let durationMS: Double
++        let timestamp: CFTimeInterval
++    }
++
+     private var displayLink: CADisplayLink?
+     private var lastDisplayTimestamp: CFTimeInterval?
+     private var visiblePosterCount = 0
+     private var lastCellAppear: PosterEvent?
+-    private var lastImageCommitAt: CFTimeInterval?
++    private var lastImageCommit: ImageEvent?
++    private var lastImageCallback: TimedImageEvent?
++    private var lastContrastDurationMS: Double?
++    private var lastContrastCompletedAt: CFTimeInterval?
+     private var lastLoadAhead: PosterEvent?
+     private final class ScrollObservation {
+         weak var scrollView: UIScrollView?
+@@ -69,9 +90,23 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
+         if visiblePosterCount == 0 { stopDisplayLink() }
+     }
+ 
+-    func imageDidCommit() {
++    func imageDidCommit(url: URL, source: String, role: String) {
++        precondition(Thread.isMainThread)
++        let context = imageContext(url)
++        lastImageCommit = ImageEvent(itemID: context.itemID, imageType: context.imageType, maxWidth: context.maxWidth, source: source, role: role, timestamp: CACurrentMediaTime())
++    }
++
++    func imageCallbackDidComplete(url: URL?, source: String, durationMS: Double) {
+         precondition(Thread.isMainThread)
+-        lastImageCommitAt = CACurrentMediaTime()
++        guard let url else { return }
++        let context = imageContext(url)
++        lastImageCallback = TimedImageEvent(itemID: context.itemID, imageType: context.imageType, maxWidth: context.maxWidth, source: source, durationMS: durationMS, timestamp: CACurrentMediaTime())
++    }
++
++    func contrastDidComplete(durationMS: Double) {
++        precondition(Thread.isMainThread)
++        lastContrastDurationMS = durationMS
++        lastContrastCompletedAt = CACurrentMediaTime()
+     }
+ 
+     func loadAheadDidTrigger(itemID: String) {
+@@ -140,7 +175,9 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
+         let deltaY = sample.deltaY
+         let now = link.timestamp
+         let cellAge = lastCellAppear.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+-        let imageAge = lastImageCommitAt.map { max(0, (now - $0) * 1000) } ?? -1
++        let imageAge = lastImageCommit.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
++        let callbackAge = lastImageCallback.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
++        let contrastAge = lastContrastCompletedAt.map { max(0, (now - $0) * 1000) } ?? -1
+         let loadAheadAge = lastLoadAhead.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+         let gapText = String(format: "%.1f", gap * 1000)
+         let offsetText = String(format: "%.2f", scrollView.contentOffset.y)
+@@ -148,12 +185,37 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
+         let velocityText = String(format: "%.1f", scrollView.panGestureRecognizer.velocity(in: scrollView).y)
+         let cellAgeText = String(format: "%.1f", cellAge)
+         let imageAgeText = String(format: "%.1f", imageAge)
++        let callbackAgeText = String(format: "%.1f", callbackAge)
++        let callbackDurationText = String(format: "%.1f", lastImageCallback?.durationMS ?? -1)
++        let contrastAgeText = String(format: "%.1f", contrastAge)
++        let contrastDurationText = String(format: "%.1f", lastContrastDurationMS ?? -1)
+         let loadAheadAgeText = String(format: "%.1f", loadAheadAge)
+         let phase = scrollView.isDragging ? "dragging" : (scrollView.isDecelerating ? "decelerating" : "moving")
+         let lastCellID = lastCellAppear?.itemID ?? "none"
+         let lastCellRoute = lastCellAppear?.route ?? "none"
++        let lastImageItemID = lastImageCommit?.itemID ?? "none"
++        let lastImageType = lastImageCommit?.imageType ?? "none"
++        let lastImageMaxWidth = lastImageCommit?.maxWidth ?? "none"
++        let lastImageSource = lastImageCommit?.source ?? "none"
++        let lastImageRole = lastImageCommit?.role ?? "none"
++        let lastCallbackItemID = lastImageCallback?.itemID ?? "none"
++        let lastCallbackImageType = lastImageCallback?.imageType ?? "none"
++        let lastCallbackMaxWidth = lastImageCallback?.maxWidth ?? "none"
++        let lastCallbackSource = lastImageCallback?.source ?? "none"
+         let lastLoadAheadID = lastLoadAhead?.itemID ?? "none"
+-        DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\(gapText) scroll_route=\(sample.route) phase=\(phase) offset_y=\(offsetText) delta_y=\(deltaText) velocity_y=\(velocityText) registered_scrolls=\(scrollObservations.count) moving_scrolls=\(movingSamples.count) visible=\(visiblePosterCount) last_cell=\(lastCellID) cell_route=\(lastCellRoute) cell_age_ms=\(cellAgeText) image_age_ms=\(imageAgeText) load_ahead=\(lastLoadAheadID) load_ahead_age_ms=\(loadAheadAgeText)")
++        DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\(gapText) scroll_route=\(sample.route) phase=\(phase) offset_y=\(offsetText) delta_y=\(deltaText) velocity_y=\(velocityText) registered_scrolls=\(scrollObservations.count) moving_scrolls=\(movingSamples.count) visible=\(visiblePosterCount) last_cell=\(lastCellID) cell_route=\(lastCellRoute) cell_age_ms=\(cellAgeText) image_item=\(lastImageItemID) image_type=\(lastImageType) image_max_width=\(lastImageMaxWidth) image_source=\(lastImageSource) image_role=\(lastImageRole) image_age_ms=\(imageAgeText) callback_item=\(lastCallbackItemID) callback_type=\(lastCallbackImageType) callback_max_width=\(lastCallbackMaxWidth) callback_source=\(lastCallbackSource) callback_age_ms=\(callbackAgeText) callback_duration_ms=\(callbackDurationText) contrast_age_ms=\(contrastAgeText) contrast_duration_ms=\(contrastDurationText) load_ahead=\(lastLoadAheadID) load_ahead_age_ms=\(loadAheadAgeText)")
++    }
++
++    private func imageContext(_ url: URL) -> (itemID: String, imageType: String, maxWidth: String) {
++        let components = url.pathComponents
++        let itemID: String
++        if let itemsIndex = components.firstIndex(of: "Items"), components.indices.contains(itemsIndex + 1) { itemID = components[itemsIndex + 1] }
++        else { itemID = "unknown" }
++        let imageType: String
++        if let imagesIndex = components.firstIndex(of: "Images"), components.indices.contains(imagesIndex + 1) { imageType = components[imagesIndex + 1] }
++        else { imageType = "unknown" }
++        let maxWidth = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name.caseInsensitiveCompare("MaxWidth") == .orderedSame })?.value ?? "none"
++        return (itemID, imageType, maxWidth)
+     }
+ 
+ }
+@@ -240,8 +302,15 @@ struct EmbyPosterScrollMotionProbe: UIViewRepresentable {
+ }
+ 
+ private final class EmbyCachedImageLoader: ObservableObject {
++    struct PublishContext {
++        let url: URL
++        let source: String
++        let role: String
++    }
++
+     @Published var image: UIImage?
+     @Published var isLoading = false
++    private(set) var lastPublishContext: PublishContext?
+     private var currentURL: URL?
+     private var task: Task<Void, Never>?
+ 
+@@ -259,7 +328,7 @@ private final class EmbyCachedImageLoader: ObservableObject {
+         isLoading = value
+     }
+ 
+-    func load(_ url: URL?, reportsLoadingState: Bool) {
++    func load(_ url: URL?, reportsLoadingState: Bool, diagnosticRole: String) {
+         guard currentURL != url || image == nil else { return }
+         currentURL = url
+         task?.cancel()
+@@ -269,8 +338,9 @@ private final class EmbyCachedImageLoader: ObservableObject {
+             return
+         }
+         if let rendered = EmbyDecodedImageRenderPool.shared.image(for: url) {
++            lastPublishContext = PublishContext(url: url, source: "memory", role: diagnosticRole)
+             image = rendered
+-            EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()
++            EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: "memory", role: diagnosticRole)
+             setLoading(false, reportsLoadingState: reportsLoadingState)
+             return
+         }
+@@ -285,10 +355,11 @@ private final class EmbyCachedImageLoader: ObservableObject {
+                         guard !Task.isCancelled else { return }
+                         EmbyDecodedImageRenderPool.shared.store(cachedImage, for: url)
+                         await MainActor.run {
+-                            guard self?.currentURL == url else { return }
+-                            self?.image = cachedImage
+-                            EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()
+-                            self?.setLoading(false, reportsLoadingState: reportsLoadingState)
++                            guard let self, self.currentURL == url else { return }
++                            self.lastPublishContext = PublishContext(url: url, source: "disk", role: diagnosticRole)
++                            self.image = cachedImage
++                            EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: "disk", role: diagnosticRole)
++                            self.setLoading(false, reportsLoadingState: reportsLoadingState)
+                         }
+                         return
+                     }
+@@ -306,10 +377,11 @@ private final class EmbyCachedImageLoader: ObservableObject {
+                 guard !Task.isCancelled, let loaded else { return }
+                 EmbyDecodedImageRenderPool.shared.store(loaded, for: url)
+                 await MainActor.run {
+-                    guard self?.currentURL == url else { return }
+-                    self?.image = loaded
+-                    EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()
+-                    self?.setLoading(false, reportsLoadingState: reportsLoadingState)
++                    guard let self, self.currentURL == url else { return }
++                    self.lastPublishContext = PublishContext(url: url, source: "network", role: diagnosticRole)
++                    self.image = loaded
++                    EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: "network", role: diagnosticRole)
++                    self.setLoading(false, reportsLoadingState: reportsLoadingState)
+                 }
+             } catch {
+                 guard !Task.isCancelled else { return }
+@@ -533,7 +605,11 @@ struct EmbyCachedRemoteImage: View {
+                 let identifier = ObjectIdentifier(image)
+                 guard reportedImageIdentifier != identifier else { return }
+                 reportedImageIdentifier = identifier
++                let startedAt = CACurrentMediaTime()
+                 onImageLoaded(image)
++                let durationMS = (CACurrentMediaTime() - startedAt) * 1000
++                let publishContext = loader.lastPublishContext
++                EmbyPosterScrollHitchDiagnostics.shared.imageCallbackDidComplete(url: publishContext?.url ?? url, source: publishContext?.source ?? "unknown", durationMS: durationMS)
+             }
+         } else {
+             imageBody
+@@ -550,11 +626,11 @@ struct EmbyCachedRemoteImage: View {
+                 if showsLoadingIndicator && loader.isLoading { ProgressView() }
+             }
+         }
+-        .onAppear { loader.load(url, reportsLoadingState: showsLoadingIndicator) }
++        .onAppear { loader.load(url, reportsLoadingState: showsLoadingIndicator, diagnosticRole: onImageLoaded == nil ? "display" : "callback") }
+         .onDisappear { loader.cancel(reportsLoadingState: showsLoadingIndicator) }
+         .onChange(of: url) {
+             if onImageLoaded != nil { reportedImageIdentifier = nil }
+-            loader.load($0, reportsLoadingState: showsLoadingIndicator)
++            loader.load($0, reportsLoadingState: showsLoadingIndicator, diagnosticRole: onImageLoaded == nil ? "display" : "callback")
+         }
+     }
+ }
+@@ -578,7 +654,9 @@ enum EmbyImageContrastAnalyzer {
+         filter.setValue(CIVector(cgRect: sample), forKey: kCIInputExtentKey)
+         guard let output = filter.outputImage else { return true }
+         var pixel = [UInt8](repeating: 0, count: 4)
++        let startedAt = CACurrentMediaTime()
+         context.render(output, toBitmap: &pixel, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
++        if Thread.isMainThread { EmbyPosterScrollHitchDiagnostics.shared.contrastDidComplete(durationMS: (CACurrentMediaTime() - startedAt) * 1000) }
+         let r = CGFloat(pixel[0]) / 255
+         let g = CGFloat(pixel[1]) / 255
+         let b = CGFloat(pixel[2]) / 255
+diff --git a/docs/changelog/CHANGELOG_v0_14_44_build211.md b/docs/changelog/CHANGELOG_v0_14_44_build211.md
+new file mode 100644
+index 0000000..838fa4a
+--- /dev/null
++++ b/docs/changelog/CHANGELOG_v0_14_44_build211.md
+@@ -0,0 +1,10 @@
++# OnePlayer 0.14.44 / Build211
++
++## Poster scroll source-aware diagnostics
++
++- Diagnostic-only successor to Build210; no scrolling, image-loading policy, navigation, carousel interaction, playback, transport, cache, or session behavior change.
++- Keeps the single shared motion-gated poster `CADisplayLink` and multi-owner Home/grid attribution.
++- Adds safe image publish context to hitch records: callback vs display-only role, memory/disk/network source, Emby image type, item ID, and requested MaxWidth. Authentication query data is never logged.
++- Measures synchronous `onImageLoaded` callback duration in the shared image wrapper, allowing Home carousel image-metric work to be timed without editing active carousel owner files.
++- Measures Core Image contrast render duration in the shared contrast analyzer for correlation with verified Home hitches.
++- Deployment Target remains iOS 15.0.
+diff --git a/scripts/check_poster_grid_smoothness.py b/scripts/check_poster_grid_smoothness.py
+index 16f3cfa..17b8203 100644
+--- a/scripts/check_poster_grid_smoothness.py
++++ b/scripts/check_poster_grid_smoothness.py
+@@ -32,10 +32,10 @@ required_image = [
+     "_loader = StateObject(wrappedValue: EmbyCachedImageLoader(initialURL: onImageLoaded == nil ? url : nil))",
+     "if let onImageLoaded {\n            imageBody.onReceive(loader.$image.compactMap { $0 })",
+     "} else {\n            imageBody\n        }",
+-    "loader.load(url, reportsLoadingState: showsLoadingIndicator)",
++    "loader.load(url, reportsLoadingState: showsLoadingIndicator, diagnosticRole: onImageLoaded == nil ? \"display\" : \"callback\")",
+     "loader.cancel(reportsLoadingState: showsLoadingIndicator)",
+     "if onImageLoaded != nil { reportedImageIdentifier = nil }",
+-    "reportedImageIdentifier = identifier\n                onImageLoaded(image)",
++    "let startedAt = CACurrentMediaTime()\n                onImageLoaded(image)",
+ ]
+ for needle in required_image:
+     if needle not in image_source:
+@@ -60,7 +60,12 @@ required_diagnostics = [
+     r"scroll_route=\(sample.route) phase=\(phase) offset_y=\(offsetText) delta_y=\(deltaText) velocity_y=\(velocityText) registered_scrolls=\(scrollObservations.count) moving_scrolls=\(movingSamples.count)",
+     "DiagnosticsLogger.shared.log(\"PosterScrollHitch\"",
+     "posterDidAppear(itemID: item.id, route: gridNavigationState == nil ? \"row\" : \"grid\")",
+-    "EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit()",
++    "EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: \"memory\", role: diagnosticRole)",
++    "EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: \"disk\", role: diagnosticRole)",
++    "EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: \"network\", role: diagnosticRole)",
++    "image_role=\\(lastImageRole)",
++    "callback_duration_ms=\\(callbackDurationText)",
++    "contrast_duration_ms=\\(contrastDurationText)",
+     "EmbyPosterScrollHitchDiagnostics.shared.loadAheadDidTrigger(itemID: item.id)",
+ ]
+ for needle in required_diagnostics:
+@@ -81,6 +86,18 @@ if 'EmbyPosterScrollMotionProbe(route: "home")' not in home_source:
+ if image_source.count("CADisplayLink(target: self") != 1:
+     raise SystemExit("poster diagnostics must keep exactly one shared CADisplayLink implementation")
+ 
++for source_name in ["memory", "disk", "network"]:
++    if f'source: "{source_name}"' not in image_source:
++        raise SystemExit(f"missing image publish source diagnostic: {source_name}")
++if 'role: diagnosticRole' not in image_source or 'diagnosticRole: onImageLoaded == nil ? "display" : "callback"' not in image_source:
++    raise SystemExit("image publish role diagnostics must distinguish callback from display-only paths")
++if 'imageCallbackDidComplete(url:' not in image_source or 'callback_duration_ms=' not in image_source:
++    raise SystemExit("callback duration diagnostic missing")
++if 'contrastDidComplete(durationMS:' not in image_source or 'contrast_duration_ms=' not in image_source:
++    raise SystemExit("contrast duration diagnostic missing")
++if 'api_key' in image_source[image_source.index('private func imageContext'):image_source.index('private func imageContext') + 1200]:
++    raise SystemExit("image diagnostics must not log authentication query data")
++
+ pixel_width_contract = "private var posterImageMaxWidth: Int { min(440, max(1, Int(ceil(resolvedWidth * UIScreen.main.scale)))) }"
+ if pixel_width_contract not in poster_source:
+     raise SystemExit("V3PosterCard must request no more than its rendered device-pixel width")
