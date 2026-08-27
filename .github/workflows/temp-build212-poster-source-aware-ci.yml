@@ -1,4 +1,4 @@
-# one-shot trigger
+# one-shot trigger 2
 name: One-shot Build212 Poster Source-Aware Diagnostics IPA
 
 on:
@@ -27,11 +27,10 @@ jobs:
           test "$(git rev-parse HEAD)" = "4f0a89ab026cd2103f66e5854a1f352d34852e45"
           python3 scripts/check_poster_grid_smoothness.py
           git diff --check 9d8fd6a62e6e7d281d4fae5ab8442754a6362f47..HEAD
-          mapfile -t changed < <(git diff --name-only 9d8fd6a62e6e7d281d4fae5ab8442754a6362f47..HEAD)
-          expected=(Sources/Core/AppIdentity.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_14_45_build212.md scripts/check_poster_grid_smoothness.py)
-          test "${#changed[@]}" -eq "${#expected[@]}"
-          for file in "${expected[@]}"; do printf '%s\n' "${changed[@]}" | grep -Fx "$file" >/dev/null; done
-          ! printf '%s\n' "${changed[@]}" | grep -E 'Player|UnifiedTransport|Session|EmbyHome(Core|Hero|Carousel|Interaction)|EmbyPosterGrid\.swift' >/dev/null
+          changed="$(git diff --name-only 9d8fd6a62e6e7d281d4fae5ab8442754a6362f47..HEAD)"
+          test "$(printf '%s\n' "$changed" | sed '/^$/d' | wc -l | tr -d ' ')" = "4"
+          for file in Sources/Core/AppIdentity.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_14_45_build212.md scripts/check_poster_grid_smoothness.py; do printf '%s\n' "$changed" | grep -Fx "$file" >/dev/null; done
+          ! printf '%s\n' "$changed" | grep -E 'Player|UnifiedTransport|Session|EmbyHome(Core|Hero|Carousel|Interaction)|EmbyPosterGrid\.swift' >/dev/null
           grep -F 'static let sourceVersion = "0.14.45"' Sources/Core/AppIdentity.swift >/dev/null
           grep -F 'image_source=\(lastImageSource)' Sources/UI/EmbySharedImageAndNavigation.swift >/dev/null
           grep -F 'callback_duration_ms=\(callbackDurationText)' Sources/UI/EmbySharedImageAndNavigation.swift >/dev/null
