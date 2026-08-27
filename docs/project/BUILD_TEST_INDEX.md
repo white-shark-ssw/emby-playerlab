@@ -34,7 +34,8 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 | **Build206 / 0.14.39** | Poster-scroll hitch diagnostics | **Owned by the independent poster task.** CI/IPA verified and target-device App-log captured: 17 diagnostic gaps (row 7, grid 10; grid max 118.7 ms), all with `load_ahead=none`; motion-aware correlation is still required. Diagnostic-only; not stable. |
 | **Build207 / 0.14.40** | 80% soft-start / linear-tail carousel mapping | CI/IPA verified; target-device rejected as final. First visible displacement still too large and screenshots exposed structural foreground overlap: full-width foreground pages were only `0.80 × width` apart while EX preserved visible page separation. |
 | **Build208 / 0.14.41** | Full-width carousel foreground page slots | **Current carousel candidate.** Uses `pageStep = width`, preserving ~56pt content separation with existing `width-56` foreground content; earliest attenuation tightened only for first samples. CI/IPA passed and independently verified; real-device pending. |
-| **Build209 / 0.14.42** | Motion-aware poster-scroll diagnostics | **Current poster diagnostic candidate.** Keeps the single shared poster `CADisplayLink`, resolves the real vertical `UIScrollView`, and logs ≥30 ms gaps only when actual `contentOffset.y` changed, adding route/phase/offset/delta/velocity. CI/IPA independently verified; target-device App-log pending. Diagnostic-only; not stable. |
+| **Build209 / 0.14.42** | Motion-aware poster-scroll diagnostics | Target-device App log proved three Home motion hitches but grid attribution was invalid because Home/grid shared one global observed-scroll owner. Diagnostic tested; not stable. |
+| **Build210 / 0.14.43** | Multi-owner poster-scroll diagnostics | **Current poster diagnostic baseline.** Target-device log validates simultaneous Home/grid ownership (`registered_scrolls=2`) and correct grid routing. Four Home dragging hitches all landed 6.2–11.0 ms after image commit; the single grid record was programmatic/micro-motion (`phase=moving`, `delta_y=0.33`) and not yet a user-drag grid stall. Real-device diagnostic tested; no performance fix claimed; not stable. |
 
 ## Current accepted baseline
 
@@ -202,6 +203,15 @@ A carousel `0.14.37 / Build204` package was produced briefly, but the poster-scr
 - independent validation: embedded checksums match; IPA `unzip -t` passed; bundle `com.embyplayerlab.app`; OnePlayer `0.14.42 (209)`; `MinimumOSVersion=15.0`; source snapshot confirms the motion gate, Home/grid probes, exactly one poster `CADisplayLink`, and no retired poster Build208 changelog.
 - target-device App-log capture: **pending**.
 - evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic pending / performance fix not claimed / not stable.**
+
+### Build210 — target-device multi-owner diagnostic result
+
+- exact source `9d8fd6a62e6e7d281d4fae5ab8442754a6362f47`; run/job `33009322419 / 98311176681`; artifact ID `9621956333`; IPA SHA-256 `813811fe0301cd8c942511e3e7786c184a80966960bf029ed3366d6edaa23701`.
+- latest target-device log `OnePlayer-App-1787807430.log` contains five motion-gated hitches: Home 68.9 / 34.9 / 74.5 / 39.8 ms and grid 70.4 ms.
+- all four Home entries are `phase=dragging` and are only 6.2–11.0 ms after the latest shared image commit, while last cell appearance is 6.6–14.3 s old.
+- grid attribution now works: `scroll_route=grid registered_scrolls=2 moving_scrolls=1`. Its only entry is `phase=moving`, `delta_y=0.33`, velocity 0, image age 855.4 ms and cell age 1151.0 ms, so it is not yet a proven user-drag grid hitch.
+- exact source confirms image decode is detached; image commit timestamp follows MainActor `@Published image` assignment. Home carousel image callback then synchronously runs Core Image contrast analysis and may update root Home state. This is the strongest Home lead, but shared image events lack source identity and the active Home-carousel task owns the likely callback/state files.
+- evidence: **real-device diagnostic tested / multi-owner attribution validated / Home image correlation strong but not yet causal / grid user-drag attribution still incomplete / performance root cause unresolved / not stable.**
 
 ## Accepted foundation evidence
 

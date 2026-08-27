@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Home-carousel Build207 target-device screenshots exposed structural foreground overlap and excessive first displacement, and after Build208 / 0.14.41 completed CI/IPA with full-width foreground page slots. Build199 remains the latest real-device accepted overall baseline. Home-carousel Build208 is Active and real-device pending. Poster-scroll remains an independent Active line; Build206 is diagnostic-only and has target-device App-log evidence but incomplete root-cause attribution._
+_Last updated after poster-scroll Build210 / 0.14.43 target-device diagnostics validated multi-owner Home/grid attribution and exposed a strong Home image-publish correlation. Build199 remains the latest real-device accepted overall baseline. Home-carousel Build208 and poster-scroll remain independent Active lines._
 
 ## Current accepted overall baseline
 
@@ -131,17 +131,17 @@ Next action: target-device A/B Build208 against Build207 and EX. First verify ad
 
 Work: `DEV-poster-grid-smoothness`.
 
-### Current poster evidence
+- Build202 / 0.14.35 and Build204 / 0.14.37 were target-device rejected; the visible stop/catch-up hitch remained on Home and library 3×3.
+- Build206 added first hitch timing but lacked motion state. Build209 added motion gating but used one global Home/grid scroll owner, making its zero-grid result invalid.
+- Build210 / 0.14.43 exact source `9d8fd6a62e6e7d281d4fae5ab8442754a6362f47` uses independent weak scroll observations while retaining one shared `CADisplayLink` and the ≥30 ms + real-offset-motion gate. CI/IPA passed and were independently verified; MinOS remains 15.0.
+- latest target-device log `OnePlayer-App-1787807430.log` validates the owner fix: one grid record reports `registered_scrolls=2 moving_scrolls=1`, proving Home and grid can coexist without overwriting attribution.
+- Home produced four `phase=dragging` long frames: **68.9 / 34.9 / 74.5 / 39.8 ms**. Every one was only **6.2–11.0 ms** after the most recent shared image commit while cell age was **6.6–14.3 s**.
+- exact source shows decode already occurs in detached utility tasks; `imageDidCommit()` follows MainActor `@Published image` assignment. Home carousel image callbacks then synchronously perform Core Image contrast analysis and update root Home state. This is the strongest Home-specific lead so far.
+- the only grid record was **70.4 ms**, but `phase=moving`, `delta_y=0.33`, velocity 0, image age 855.4 ms and cell age 1151.0 ms. It is not sufficient evidence of the user's drag-time library hitch.
+- because image commit events are global and do not yet identify ordinary-poster vs carousel image or memory/disk/network publish path, do not change image policy yet. Also do not modify active Home-carousel owner files from the poster task without explicit integration.
+- evidence: **Build210 target-device diagnostic tested / multi-owner attribution validated / Home image correlation strong but not causal / grid user-drag root cause unresolved / performance fix not claimed / not stable.**
 
-- Build202 / 0.14.35: target-device recording confirmed stop/catch-up hitch; rejected for smoothness.
-- Build204 / 0.14.37: canonical poster Build204; target-device still visibly hitches on Home poster-heavy scrolling and library 3×3; warm-cache/no-op-subscriber reductions are not sufficient.
-- Build206 / 0.14.39: diagnostic-only candidate, exact source `351c62694ac25404c2bd4eb36a03314dd58ffed2`; run/job `33000992493` / `98282482225` passed; artifact ID `9618646972`; IPA SHA-256 `ee981133777c316305c4890aaa1a99b8906792783cad1496d880bf786611e18c`; MinOS 15.0.
-- target-device App log contains 17 `PosterScrollHitch` records: row 7 / grid 10; grid max 118.7 ms; all 17 have `load_ahead=none`; 8/10 grid records are >1 s after both latest recorded cell appearance and image commit.
-- Build206 limitation: `CADisplayLink` is active whenever poster cells are visible and logs no actual vertical offset/delta, drag/deceleration state or velocity; captured gaps cannot all be classified as proven user-visible scroll stalls.
-- next poster evidence step is motion-aware/scroll-gated correlation, not an unsupported performance-source change.
-- Build206 evidence: **Code written / CI passed / IPA produced+verified / target-device diagnostic capture / root-cause attribution incomplete / not stable.**
-
-Poster task state remains owned by `DEV-poster-grid-smoothness`; do not infer poster acceptance from carousel work.
+Next: add source-aware image-commit/callback-duration diagnostics in shared infrastructure and obtain a true dragging/decelerating grid hitch before selecting a runtime performance patch.
 
 ## Parallel integration rule
 

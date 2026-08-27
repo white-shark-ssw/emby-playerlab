@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build209 target-device motion-aware App log captured. Home has three verified motion-overlapping long frames; grid attribution is invalid because Build209 has only one global scroll-owner slot. Build210 / 0.14.43 replaces only that diagnostic owner model with multi-owner registration and is CI/IPA independently verified; target-device diagnostic pending. Performance root cause is still unresolved.**
+**Active — Build210 / 0.14.43 target-device App log captured. Multi-owner attribution is validated: Home and grid can coexist (`registered_scrolls=2`) and the grid route is now logged correctly. Four Home dragging hitches (68.9 / 34.9 / 74.5 / 39.8 ms) all occurred 6.2–11.0 ms after the latest shared image commit, making post-image-publish Home work the strongest current lead. The single grid record (70.4 ms) was only `phase=moving`, `delta_y=0.33`, velocity 0 and 855.4 ms after image commit, so it is not yet proof of a user-drag library hitch. Performance root cause remains unresolved and no fix is claimed.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -107,7 +107,25 @@ Build210 CI / IPA evidence:
 - `MinimumOSVersion=15.0`; MinOS audit PASS
 - source snapshot independently confirms multi-owner observations, `registered_scrolls/moving_scrolls`, exactly one poster `CADisplayLink`, no legacy single-owner fields, and complete shared source.
 
-**Build210 evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device diagnostic pending / performance fix not claimed / not stable.**
+**Build210 evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device diagnostic tested ✅ / multi-owner route attribution validated ✅ / Home image-commit correlation strong but not yet causal / user-drag grid root cause unresolved / performance fix not claimed / not stable.**
+
+## Build210 target-device result — 2026-08-27
+
+Latest App log: `OnePlayer-App-1787807430.log`.
+
+Build210 emitted five motion-gated `PosterScrollHitch` records:
+
+- Home: **68.9 ms**, `phase=dragging`, `delta_y=16.00`, `image_age_ms=11.0`, `cell_age_ms=6644.2`.
+- Home: **34.9 ms**, `phase=dragging`, `delta_y=3.00`, `image_age_ms=6.2`, `cell_age_ms=7277.1`.
+- Home: **74.5 ms**, `phase=dragging`, `delta_y=2.33`, `image_age_ms=8.8`, `cell_age_ms=13651.4`.
+- Home: **39.8 ms**, `phase=dragging`, `delta_y=11.00`, `velocity_y=-503.8`, `image_age_ms=9.0`, `cell_age_ms=14291.9`.
+- Grid: **70.4 ms**, `scroll_route=grid`, `phase=moving`, `delta_y=0.33`, `velocity_y=0.0`, `registered_scrolls=2`, `moving_scrolls=1`, `image_age_ms=855.4`, `cell_age_ms=1151.0`.
+
+This validates the Build210 multi-owner diagnostic model: Home and grid owners coexist and only the actually moving owner is selected. Build209's zero-grid result was therefore a diagnostic ownership defect, not proof of a smooth grid.
+
+The four Home dragging hitches all occurred only **6.2–11.0 ms** after the most recent shared image commit while the latest poster cell appearance was already **6.6–14.3 s** old. Exact Build210 source shows decode already occurs in detached utility work; `imageDidCommit()` is timestamped immediately after `@Published image` assignment on MainActor. Home carousel `onImageLoaded` callbacks then synchronously run `updateCarouselImageMetrics`, including `EmbyImageContrastAnalyzer.prefersLightForeground` → `CIAreaAverage` → `CIContext.render`, and may mutate root Home `@State` dictionaries. This is the strongest Home-specific source/device correlation so far.
+
+However, `imageDidCommit` is global and does not identify item/route/cache source, so the 4/4 correlation is not yet enough to change image policy. The one grid record is also not a user-drag sample and has no near-image correlation. Do not claim a cross-page root cause yet.
 
 ## Parallel safety
 
@@ -117,11 +135,11 @@ Build210 CI / IPA evidence:
 
 ## Next exact action
 
-1. Install **OnePlayer 0.14.43 / Build210** on the target device.
-2. Reproduce continuous vertical scrolling on Home and **library 3×3**, with additional favorites/more/search/tag/person routes if convenient.
-3. Export the **App log**. Build210 hitch records must show `scroll_route`, `registered_scrolls`, `moving_scrolls`, phase, delta and velocity.
-4. First verify grid motion is actually attributed as `scroll_route=grid`. Then correlate verified Home/grid long frames against cell/image/load-ahead events.
-5. Do **not** change performance-source behavior until this corrected diagnostic owner model identifies a repeatable correlation or rules out another owner.
+1. Do not change runtime performance behavior from Build210 evidence alone.
+2. For Home, instrument image commits with stable context sufficient to distinguish ordinary poster vs carousel artwork/logo and memory/disk/network publish path, and measure the synchronous carousel image-metric/contrast callback duration without adding timer/debounce/throttle.
+3. Keep the poster task out of `EmbyHomeCarouselStateV3.swift`, `EmbyHomeHeroV3.swift` and `EmbyHomeCoreV3.swift` while Home-carousel Build208 remains Active; if the trace proves that owner is responsible, reconcile the two tasks explicitly before a runtime change.
+4. Obtain at least one real `phase=dragging` or `phase=decelerating` grid hitch on Build210 (or a successor diagnostic build) before changing a shared grid path. The current 70.4 ms `phase=moving / delta_y=0.33` record is insufficient.
+5. Preserve P0 playback/transport/cache/session contracts and iOS 15.0 deployment.
 
 ## Do not repeat
 
