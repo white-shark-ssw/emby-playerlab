@@ -55,7 +55,7 @@ final class V3PagePersistentCache {
                 recommendationSections: try decodeRecommendationSections(root["RecommendationSections"]),
                 genres: try decodeLibraryItems(root["Genres"]),
                 folderItems: try decodeLibraryItems(root["FolderItems"]),
-                sortBy: root["SortBy"] as? String ?? "DateCreated",
+                sortBy: "DateCreated",
                 loadedTabs: Set(root["LoadedTabs"] as? [String] ?? []),
                 pageStates: pageStates
             )
@@ -81,7 +81,6 @@ final class V3PagePersistentCache {
             "RecommendationSections": snapshot.recommendationSections.map(recommendationSectionJSONObject),
             "Genres": snapshot.genres.map(libraryItemJSONObject),
             "FolderItems": snapshot.folderItems.map(libraryItemJSONObject),
-            "SortBy": snapshot.sortBy,
             "LoadedTabs": Array(snapshot.loadedTabs).sorted(),
             "PageStates": pageStatesObject,
         ]
