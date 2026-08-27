@@ -1,0 +1,104 @@
+name: Close Build216 acceptance
+
+on:
+  push:
+    branches: [fix/detail-episode-range-inertia-build216]
+    paths:
+      - ".github/workflows/temp-close-build216-acceptance.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Promote Build216 accepted state
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          merge = 'f5ad126b7b47e9713b1949780a6507fb3f0ca50f'
+          source = 'dc00cac9f35ee4a3b950e4bb030bb324baf90b18'
+          run_job = '33064051545 / 98489652724'
+          artifact_id = '9643031850'
+          artifact_digest = 'sha256:9cbccc582be719b2daa10077293da2951f0cbce8016625128de8ef9d85b27f48'
+          ipa_sha = 'e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075'
+          source_sha = '98e1b5b52ebe5d8b2e3fbf754d3dfb18d0ea082fd77bcd9e6905b0bcb56e0f6f'
+
+          def replace_once(path, old, new):
+              text = path.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected exactly one match for {old[:80]!r}, got {text.count(old)}')
+              path.write_text(text.replace(old, new, 1))
+
+          build = Path('docs/project/BUILD_TEST_INDEX.md')
+          replace_once(build,
+              '| **Build216 / 0.14.49** | Detail episode-range inertia interruption | **CI/IPA verified; real-device pending.** Range-pill taps now synchronously stop active native episode-row deceleration at the current offset before the accepted Build191 range-first selection and existing 0.32 s target scroll. Tested source `dc00cac9f35ee4a3b950e4bb030bb324baf90b18`; run/job `33064051545 / 98489652724`; artifact `9643031850`; IPA SHA-256 `e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075`; MinOS 15.0 verified. Build182/Build191/Build195/Build178 and P0 playback/transport remain untouched. **Not accepted/stable until target-device test.** |',
+              '| **Build216 / 0.14.49** | Detail episode-range inertia interruption | **Target-device accepted; stable and merged.** Range-pill taps synchronously stop active native episode-row deceleration at the current offset before the accepted Build191 range-first selection and existing 0.32 s target scroll. Tested source `dc00cac9f35ee4a3b950e4bb030bb324baf90b18`; run/job `33064051545 / 98489652724`; artifact `9643031850`; IPA SHA-256 `e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075`; MinOS 15.0 verified. User accepted on iPhone 15 Pro Max / iOS 17.0 on 2026-08-27; PR #261 merged at `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`. Build182/Build191/Build195/Build178 and P0 playback/transport remain untouched. |')
+          for old, new in [
+              ('- Product: **OnePlayer 0.14.46 / Build213**', '- Product: **OnePlayer 0.14.49 / Build216**'),
+              ('- canonical branch: `main` after PR #260 integration', '- canonical branch: `main` after PR #261 integration'),
+              ('- final merge PR: `#260`', '- final merge PR: `#261`'),
+              ('- final merge commit: `2303505ad4403182f5315d33c54f402903c809d2`', f'- final merge commit: `{merge}`'),
+              ('- tested product / dedicated CI source: `c8c238816c34ba3d8834ac37bdf7b234cd596458`', f'- tested product / dedicated CI source: `{source}`'),
+              ('- CI run/job: `33052588518` / `98451457434` — success', f'- CI run/job: `{run_job}` — success'),
+              ('- artifact: `OnePlayer-0.14.46-build213-page-cache`; ID `9638292306`', f'- artifact: `OnePlayer-0.14.49-build216-detail-range-inertia`; ID `{artifact_id}`'),
+              ('- artifact digest: `sha256:e65a3ce06d53cc499a84f86a9cd32978824f1de4899bf2afe310727a2566731c`', f'- artifact digest: `{artifact_digest}`'),
+              ('- IPA SHA-256: `a8c2d1753db33f41a5b07ce22c4706eb102cf5d905f1aaeee8f54d689b176fc8`', f'- IPA SHA-256: `{ipa_sha}`'),
+              ('- source ZIP SHA-256: `3a59bc8fb8dc55a83abd8adf76841db47640df8944f39920969b06bd55927051`', f'- source ZIP SHA-256: `{source_sha}`'),
+              ('- evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for the accepted page-cache milestone / merged to main**', '- evidence: **Code written / CI passed / IPA produced / real-device accepted / stable/frozen for the detail episode-range inertia contract / merged to main**'),
+              ('Build213 inherits the accepted/frozen player, PiP, transport, playback-cache, episode-ordering, detail-presentation, episode-selection and Build199 server-management contracts. Home-carousel and poster-scroll remain independent Active lines.', 'Build216 inherits the accepted/frozen player, PiP, transport, playback-cache, episode-ordering, Build182 detail-presentation, Build191 detail-selection, Build195 player-episode and Build199 server-management contracts. Its new stable scope is only interruption of active detail episode-row deceleration before a range jump. Home-carousel and poster-scroll remain independent Active lines.')
+          ]:
+              replace_once(build, old, new)
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          detail_row = '| Detail episode selection navigation | **Stable at Build191 / merged to main** | Build191 / 0.14.24 was accepted on the target device and merged through PR #257 at `f153a36e9da8a208150fe638e0b9df5835df1dc0`. Detail horizontal cards select only; normal Series entry selects explicit initial episode → resumable episode → canonical first episode; quick range buttons select the target-range first episode; the compact summary reuses the exact card title formatter; full-picker playback closes back to the same picker/ScrollView state. Build182 scroll/cache, Build176 source-owned episode-session replacement and Build178 canonical order remain unchanged. |'
+          new_detail_row = detail_row + '\n| Detail episode range inertia interruption | **Frozen at Build216 / merged to main** | Build216 / 0.14.49 was accepted on iPhone 15 Pro Max / iOS 17.0 and merged through PR #261 at `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`. While the detail episode row is actively decelerating, a quick range-pill tap synchronously freezes the existing native horizontal `UIScrollView` at its current offset before the accepted Build191 range-first selection and existing 0.32 s target scroll. No timer/watchdog/retry/debounce/throttle/fallback or second selection owner was added. Build182/Build178/Build191/Build195 and Player/Transport/Cache/Session/PiP remain unchanged; do not reopen without new regression evidence. |'
+          replace_once(module, detail_row, new_detail_row)
+          replace_once(module,
+              '| Other product modules | Active parallel work | Build213 / 0.14.46 is the latest accepted overall runtime baseline after page-cache acceptance. Home-carousel Build208 / 0.14.41 and poster-scroll Build212 / 0.14.45 diagnostics remain separate Active lines. Build210\'s strongest Home lead is inside carousel image-metric callback/state ownership, so poster work must not modify `EmbyHomeCarouselStateV3.swift`, `EmbyHomeHeroV3.swift` or `EmbyHomeCoreV3.swift` without explicitly reconciling the active carousel task; shared-image diagnostics may continue independently. |',
+              '| Other product modules | Active parallel work | Build216 / 0.14.49 is the latest accepted overall runtime baseline after the detail episode-range inertia acceptance. Home-carousel Build215 / 0.14.48 and poster-scroll Build212 / 0.14.45 remain separate Active lines and are not folded into this baseline. Poster work must not modify `EmbyHomeCarouselStateV3.swift`, `EmbyHomeHeroV3.swift` or `EmbyHomeCoreV3.swift` without explicitly reconciling the active carousel task; shared-image diagnostics may continue independently. |')
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          replace_once(state,
+              '_Last updated after OnePlayer 0.14.46 / Build213 page-cache target-device acceptance. Build213 is the latest real-device accepted overall runtime baseline for merged product work; Home-carousel Build208 and poster-scroll Build212 remain independent Active experimental/diagnostic lines and are not folded into this baseline._',
+              '_Last updated after OnePlayer 0.14.49 / Build216 detail episode-range inertia target-device acceptance and PR #261 merge. Build216 is the latest real-device accepted overall runtime baseline for merged product work; Home-carousel Build215 and poster-scroll Build212 remain independent Active lines and are not folded into this baseline._')
+          for old, new in [
+              ('- Product: **OnePlayer 0.14.46 / Build213**', '- Product: **OnePlayer 0.14.49 / Build216**'),
+              ('- Canonical branch: `main` after PR #260 integration', '- Canonical branch: `main` after PR #261 integration'),
+              ('- Final merge PR: **#260**', '- Final merge PR: **#261**'),
+              ('- Final merge commit: `2303505ad4403182f5315d33c54f402903c809d2`', f'- Final merge commit: `{merge}`'),
+              ('- Accepted/tested product source: `c8c238816c34ba3d8834ac37bdf7b234cd596458`', f'- Accepted/tested product source: `{source}`'),
+              ('- Dedicated standard MPV CI run/job: `33052588518` / `98451457434` — success', f'- Dedicated standard MPV CI run/job: `{run_job}` — success'),
+              ('- Artifact: `OnePlayer-0.14.46-build213-page-cache`; ID `9638292306`', f'- Artifact: `OnePlayer-0.14.49-build216-detail-range-inertia`; ID `{artifact_id}`'),
+              ('- Artifact digest: `sha256:e65a3ce06d53cc499a84f86a9cd32978824f1de4899bf2afe310727a2566731c`', f'- Artifact digest: `{artifact_digest}`'),
+              ('- IPA SHA-256: `a8c2d1753db33f41a5b07ce22c4706eb102cf5d905f1aaeee8f54d689b176fc8`', f'- IPA SHA-256: `{ipa_sha}`'),
+              ('- Source ZIP SHA-256: `3a59bc8fb8dc55a83abd8adf76841db47640df8944f39920969b06bd55927051`', f'- Source ZIP SHA-256: `{source_sha}`'),
+              ('- Real-device result: **user reported Build213 acceptance on 2026-08-27**', '- Real-device result: **user reported Build216 acceptance on 2026-08-27**'),
+              ('- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for the accepted Favorites + Library page-persistence milestone / merged to main**', '- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable/frozen for the detail episode-range inertia contract / merged to main**'),
+              ('Build213 inherits all accepted/frozen player, PiP, transport, playback-cache, episode-ordering, detail-presentation, episode-selection and Build199 server-management contracts. Its new stable runtime scope is limited to non-playback Favorites + Library page presentation persistence.', 'Build216 inherits all accepted/frozen player, PiP, transport, playback-cache, episode-ordering, Build182 detail-presentation, Build191 detail-selection, Build195 player-episode and Build199 server-management contracts. Its only new stable runtime scope is stopping active detail episode-row native deceleration before the existing range selection/jump; the Build213 page-persistence milestone remains inherited and unchanged.'),
+              ('- **Build213**: Favorites + Library 7-tab disk-backed warm presentation cache; cached-first after relaunch, live refresh remains authoritative, successful accepted state writes through, failed refresh retains old snapshot; target-device accepted through PR #260.', '- **Build213**: Favorites + Library 7-tab disk-backed warm presentation cache; cached-first after relaunch, live refresh remains authoritative, successful accepted state writes through, failed refresh retains old snapshot; target-device accepted through PR #260.\n- **Build216**: detail range-pill taps synchronously stop active native episode-row deceleration before the existing Build191 range-first selection and 0.32 s target scroll; target-device accepted and merged through PR #261.'),
+              ('Build213 is the accepted overall runtime baseline after this page-cache closeout. Home-carousel Build208 and poster-scroll remain independent Active lines with separate branches/evidence.', 'Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel Build215 and poster-scroll remain independent Active lines with separate branches/evidence.')
+          ]:
+              replace_once(state, old, new)
+
+          decisions = Path('docs/project/TECHNICAL_DECISIONS.md')
+          text = decisions.read_text()
+          if '## D018 — Detail range taps cancel native row deceleration before selection' in text:
+              raise SystemExit('D018 already present')
+          decisions.write_text(text.rstrip() + '''\n\n## D018 — Detail range taps cancel native row deceleration before selection\n\nThe detail horizontal episode row remains SwiftUI-owned for layout/selection, but quick range-pill taps must not compete with an in-flight native `UIScrollView` deceleration. When the existing episode row is actively decelerating, the range action first synchronously freezes that same native scroll view at its current `contentOffset`, then runs the accepted Build191 range-first selection and existing 0.32 s `ScrollViewReader.scrollTo` target animation. Non-decelerating taps are unchanged.\n\nThis is an interaction-ownership fix, not a second episode-selection owner: no timer, watchdog, retry, debounce, throttle, fallback or duplicate range state is allowed. Build182 detail Hero/cache, Build178 canonical order, Build191 detail selection/navigation, Build195 player grouping/lazy row and all Player/MPV/PiP/Transport/Cache/Session contracts remain separate and unchanged. Build216 / OnePlayer 0.14.49 passed dedicated Xcode 16.4 Release CI (`33064051545 / 98489652724`), produced artifact `9643031850` with IPA SHA-256 `e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075` and MinOS 15.0, was accepted on iPhone 15 Pro Max / iOS 17.0 on 2026-08-27, and merged through PR #261 at `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`.\n''')
+          PY
+          git rm docs/project/current/dev/DEV-detail-episode-range-inertia-jump.md
+          git diff --check
+          git diff -- docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/current/dev/DEV-detail-episode-range-inertia-jump.md
+          git config user.name "OnePlayer CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md
+          git commit -m "Close Build216 accepted detail inertia fix"
+          git push origin HEAD:main
