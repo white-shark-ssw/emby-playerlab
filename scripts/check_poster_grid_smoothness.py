@@ -65,6 +65,7 @@ for needle in [
     'loader.cancel(reportsLoadingState: false)',
     'surface.setImage(loader.image)',
     'imageView.contentMode = contentMode == .fill ? .scaleAspectFill : .scaleAspectFit',
+    'backgroundColor = image == nil ? .secondarySystemBackground : .clear',
 ]:
     if needle not in display_fast_path:
         raise SystemExit(f"missing UIKit display-image fast-path contract: {needle}")
