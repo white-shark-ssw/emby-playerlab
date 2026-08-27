@@ -21,10 +21,9 @@
 
 - **Accepted overall baseline**: OnePlayer **0.14.46 / Build213**; Build216 尚未经过真机接受，不替换 accepted baseline。
 - **Branch base**: `main@81ab52793d9fd64ffcef7302c6e0b2d71754ac75`.
-- `main` 在任务创建后只新增/更新本任务 checkpoint；分支基线之后没有产品源码前进需要重同步。
 - **Working branch**: `fix/detail-episode-range-inertia-build216`.
 - **Tested CI source**: `dc00cac9f35ee4a3b950e4bb030bb324baf90b18`.
-- **Cleanup head**: `bffe649ebf74c4bddced4e14a6738a8b63672675` — only removes the temporary Build216 CI workflow after artifact production; product/runtime source is unchanged from tested source.
+- **Current cleanup head**: `f04f09c50b8952596f4f72c7a12e7910938c99e1` — subsequent commits only removed the temporary Build216 Release workflow and added/removed a one-shot docs-index helper; product/runtime source is unchanged from tested source.
 - **PR**: none yet.
 - **Build candidate**: **OnePlayer 0.14.49 / Build216**.
 - **Artifact**: `OnePlayer-0.14.49-build216-detail-range-inertia`.
@@ -59,38 +58,17 @@ Build216 implementation:
 
 - **Run / job**: `33064051545 / 98489652724` — success.
 - **Tested source**: `dc00cac9f35ee4a3b950e4bb030bb324baf90b18`.
-- Passed:
-  - Build216 exact delta / Frozen scope validation;
-  - `check_detail_episode_selection_navigation.py`;
-  - `check_detail_episode_range_jump.py`;
-  - `check_detail_page_performance.py`;
-  - `check_adaptive_hero_reveal.py`;
-  - `check_season_id_episode_grouping.py`;
-  - `check_player_episode_season_grouping.py`;
-  - `check_series_episode_ordering.py`;
-  - Xcode 16.4 standard MPV Release build;
-  - bundle identity **0.14.49 (216)**;
-  - built MinOS **iOS 15.0**;
-  - IPA archive integrity.
+- Passed Build216 exact-delta/Frozen scope, detail selection/range/performance/Hero, SeasonId/player grouping, canonical series ordering, Xcode 16.4 standard MPV Release, bundle identity **0.14.49 (216)**, built MinOS **iOS 15.0**, and IPA archive integrity.
 - **Artifact ID**: `9643031850`.
 - **Artifact digest**: `sha256:9cbccc582be719b2daa10077293da2951f0cbce8016625128de8ef9d85b27f48`.
 - **IPA**: `OnePlayer-0.14.49-build216-detail-range-inertia-unsigned.ipa`.
 - **IPA SHA-256**: `e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075`.
 - **Source ZIP SHA-256**: `98e1b5b52ebe5d8b2e3fbf754d3dfb18d0ea082fd77bcd9e6905b0bcb56e0f6f`.
-- Temporary Build216 CI workflow was removed after successful artifact production; cleanup head is recorded separately and does not alter runtime source.
+- `BUILD_TEST_INDEX.md` now records Build216 as **CI/IPA verified / real-device pending**; accepted baseline remains Build213.
 
-## Parallel conflict guard
+## Parallel conflict guard / frozen boundaries
 
-Other Active tasks remain isolated from this detail task. Build215 is owned by Home carousel; Build216 / 0.14.49 is uniquely owned here. No Player/Transport/PiP/cache/session or other P0 source was changed.
-
-## Frozen / do-not-touch
-
-- Build182 `EmbyDetailHeroScrollState` / persistent detail presentation cache semantics.
-- Build191 selected-episode owner and default/range selection semantics except for the required pre-jump deceleration stop.
-- Build195 player episode grouping/lazy row.
-- Build178 canonical Emby episode order.
-- Player/MPV/PiP/UnifiedTransport/Range/206/playback cache/Emby Resume/session/STRM→302→115/CDN client-direct.
-- native navigation ownership.
+Other Active tasks remain isolated from this detail task. Build215 is owned by Home carousel; Build216 / 0.14.49 is uniquely owned here. Build182 detail Hero/presentation cache, Build191 selected-episode semantics, Build195 player episode grouping/lazy row, Build178 canonical order, native navigation and all Player/MPV/PiP/UnifiedTransport/Range/206/playback-cache/Emby Resume/session/STRM→302→115/CDN client-direct paths remain untouched.
 
 ## Evidence level
 
