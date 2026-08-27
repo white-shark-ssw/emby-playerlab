@@ -63,6 +63,8 @@ jobs:
           xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
 
       - name: Release build
+        id: release
+        continue-on-error: true
         run: |
           set -euo pipefail
           set -o pipefail
@@ -84,7 +86,23 @@ jobs:
             DEVELOPMENT_TEAM='' \
             clean build 2>&1 | tee build.log
 
+      - name: Upload compile log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build216-poster-compile-log
+          path: build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Stop after compile failure
+        if: steps.release.outcome != 'success'
+        run: |
+          grep -nE '(^|: )(error:|fatal error:)' build.log | tail -80 || true
+          exit 1
+
       - name: Locate and validate built app
+        if: steps.release.outcome == 'success'
         id: app
         run: |
           set -euo pipefail
@@ -95,12 +113,14 @@ jobs:
           python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "0.14.49" --build "216" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
 
       - name: Validate MinOS
+        if: steps.release.outcome == 'success'
         run: |
           set -euo pipefail
           chmod +x scripts/check_min_os.sh
           scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" min-os-report.log build.log
 
       - name: Package exact IPA and source
+        if: steps.release.outcome == 'success'
         run: |
           set -euo pipefail
           rm -rf Payload
@@ -118,6 +138,7 @@ jobs:
           echo "SOURCE_NAME=$SOURCE_NAME" >> "$GITHUB_ENV"
 
       - name: Upload Build216 artifact
+        if: steps.release.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: OnePlayer-0.14.49-build216-poster-grid-uikit
