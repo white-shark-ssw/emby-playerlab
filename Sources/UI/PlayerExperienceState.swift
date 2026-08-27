@@ -43,6 +43,15 @@ struct PlayerCapabilities {
                 supportsAudioTrackSelection: false,
                 supportsSubtitleSelection: false
             )
+        case .aether:
+            return PlayerCapabilities(
+                supportsSystemRoutePicker: false,
+                supportsPictureInPicture: false,
+                supportsRotation: true,
+                supportsPictureSize: true,
+                supportsAudioTrackSelection: false,
+                supportsSubtitleSelection: false
+            )
         case .ksAVIO:
             return PlayerCapabilities(
                 supportsSystemRoutePicker: true,
