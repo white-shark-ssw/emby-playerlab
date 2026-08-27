@@ -1,1 +1,1 @@
-Build217 project authority sync
+Build217 project authority sync retry
