@@ -30,6 +30,7 @@ required_image = [
     "if image != nil { image = nil }",
     "_loader = StateObject(wrappedValue: EmbyCachedImageLoader(initialURL: onImageLoaded == nil && showsLoadingIndicator ? url : nil))",
     "private final class EmbyCachedDisplayImageSurfaceView: UIView",
+    "func configure(contentMode: SwiftUI.ContentMode, placeholderSystemImage: String)",
     "private struct EmbyCachedDisplayRemoteImage: View",
     "@State private var loader: EmbyCachedImageLoader",
     "_loader = State(initialValue: EmbyCachedImageLoader(initialURL: url))",
@@ -53,6 +54,8 @@ if "guard let onImageLoaded else { return }" in image_source:
 if image_source.count("imageBody.onReceive(loader.$image.compactMap { $0 })") != 1:
     raise SystemExit("image-loaded publisher must exist only on the real callback path")
 display_fast_path = image_source[image_source.index("private final class EmbyCachedDisplayImageSurfaceView"):image_source.index("struct EmbyCachedRemoteImage")]
+if "func configure(contentMode: ContentMode," in display_fast_path:
+    raise SystemExit("UIKit display surface must explicitly use SwiftUI.ContentMode")
 if "@StateObject" in display_fast_path or ".onReceive(" in display_fast_path:
     raise SystemExit("display-only poster fast path must not observe loader.objectWillChange through SwiftUI")
 if display_fast_path.count("loader.$image.sink") != 1:

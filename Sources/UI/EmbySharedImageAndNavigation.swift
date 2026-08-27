@@ -602,7 +602,7 @@ private final class EmbyCachedDisplayImageSurfaceView: UIView {
 
     required init?(coder: NSCoder) { nil }
 
-    func configure(contentMode: ContentMode, placeholderSystemImage: String) {
+    func configure(contentMode: SwiftUI.ContentMode, placeholderSystemImage: String) {
         imageView.contentMode = contentMode == .fill ? .scaleAspectFill : .scaleAspectFit
         placeholderView.image = UIImage(systemName: placeholderSystemImage, withConfiguration: UIImage.SymbolConfiguration(pointSize: 24, weight: .medium))
         placeholderView.tintColor = UIColor.secondaryLabel.withAlphaComponent(0.62)
