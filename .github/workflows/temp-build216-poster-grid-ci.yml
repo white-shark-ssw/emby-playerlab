@@ -69,7 +69,7 @@ jobs:
 
           git rm .github/workflows/temp-build216-poster-grid-ci.yml
           git add Sources/Core/AppIdentity.swift Sources/UI/EmbySharedImageAndNavigation.swift scripts/check_poster_grid_smoothness.py docs/changelog/CHANGELOG_v0_14_51_build218.md
-          git add -u docs/changelog/CHANGELOG_v0_14_49_build216.md .github/workflows/temp-build216-poster-grid-ci.yml
+          git add -u docs/changelog/CHANGELOG_v0_14_49_build216.md
 
           changed="$(git diff --cached "$BASE" --name-only | sort)"
           expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyPersonMediaView.swift Sources/UI/EmbyPosterGrid.swift Sources/UI/EmbyServerSharedV3.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_14_51_build218.md scripts/check_poster_grid_smoothness.py | sort)"
