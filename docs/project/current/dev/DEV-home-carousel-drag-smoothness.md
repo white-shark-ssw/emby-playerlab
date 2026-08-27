@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build215 / 0.14.48 is the current carousel candidate. Build208 real-device video analysis proved the remaining EX gap was acquisition-origin + foreground-alpha behavior; Build215 implements acquisition-relative 1:1 render motion while preserving touch-down release authority, keeps full-width page slots, and decouples foreground alpha. CI/IPA are verified; real-device A/B is pending.**
+**Active — Build215 / 0.14.48 is real-device tested. The acquisition-relative start and opaque foreground are both positively confirmed: the user reports the initial drag is now about as fine as EX and the foreground no longer looks blurred/ghosted. However the overall drag still lacks EX's tactile smoothness — described as EX feeling like sliding on smooth glass while OnePlayer still feels like rough paper. The residual cause is unresolved; backdrop-blend timing is only a hypothesis, not a proven root cause.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Routing aliases / keywords: 轮播图滑动卡顿 / 轮播图丝滑 / 首页轮播 / carousel drag / carousel smoothness
@@ -169,6 +169,29 @@ The next evidence-backed direction is:
 - independent verification passed for artifact digest, embedded hashes, IPA archive, OnePlayer `0.14.48 (215)`, MinOS 15.0, icons and exact source contracts.
 - evidence: **Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending / not stable.**
 
+## 2026-08-27 Build215 second real-device result
+
+Latest target-device feedback after testing the acquisition-relative candidate:
+
+- **initial drag is now very fine and feels close to EX**;
+- **foreground no longer has the previous blurred / ghosted feel**;
+- despite those two fixes, the overall drag still does **not** have EX's refined tactile smoothness;
+- the user's best qualitative description is: **EX feels like sliding on smooth glass, while OnePlayer still feels like sliding on rough paper**.
+
+The new 510×1108@30fps recording does not show the old large hold-then-jump foreground failure or a clear stop-one-frame / catch-up-next-frame macro hitch. Early foreground increments are now small and continuous. Therefore Build215 positively validates acquisition-relative render baseline and foreground-alpha decoupling, but it does **not** prove the complete carousel interaction solved.
+
+30fps capture cannot fully resolve the 120Hz device's sub-frame / frame-to-frame tactile cadence. A measured difference in backdrop crossfade timing versus EX exists, but this is currently **only a candidate explanation** for the remaining glass-vs-paper feel. Do not change the backdrop curve merely to complete a patch, and do not add smoothing/interpolation/timers.
+
+Retain from Build215 unless contrary device evidence appears:
+
+- one UIKit interaction owner;
+- acquisition-relative foreground X (`currentTranslation - acquisitionTranslation`);
+- touch-down authority for 0.28 / 0.48 release semantics;
+- foreground opacity held at 1 during interactive transition;
+- full-width `pageStep = width` page slots;
+- existing reversal/cancel/settle/wrap contracts.
+
+
 ## Next exact action
 
-Target-device A/B Build215 against the recorded Build208 and EX reference. Focus on first visible movement, post-acquisition 1:1 feel, foreground solidity, page separation, reversal through the acquisition baseline, cancel/commit including one-sample fast release, and first↔last wrapping. Do not retune easing/travel percentages before this device evidence.
+Treat the remaining issue as a micro-continuity/cadence investigation, not another travel/easing-tuning task. Inspect the exact post-acquisition pipeline from UIKit touch delivery → recognizer callback → `V3HomeCarouselTransitionState` publication → SwiftUI offset/compositing for evidence of irregular publication, transaction behavior, implicit animation, main-thread contention or rendering/coalescing that could produce a sub-frame "rough paper" feel. Use the Build215/EX recordings as reference, but do not claim the backdrop-blend hypothesis as root cause without stronger evidence. No code change is justified solely by the current subjective residual gap.
