@@ -23,7 +23,7 @@ jobs:
           set -euo pipefail
           git clone --depth 1 --branch 6.50.0 https://github.com/superuser404notfound/AetherEngine.git vendor/AetherEngine
           test "$(git -C vendor/AetherEngine rev-parse HEAD)" = "546287f2eef7d810b3947070839a85c653f79e46"
-      - name: Create static-library host probe
+      - name: Create iOS 15 host probe
         run: |
           set -euo pipefail
           mkdir -p spike/App
@@ -33,7 +33,7 @@ jobs:
           import Libmpv
           @main final class SpikeApp: UIResponder, UIApplicationDelegate {
               func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-                  _ = try? AetherEngine()
+                  if #available(iOS 16.0, *) { _ = try? AetherEngine() }
                   return true
               }
           }
@@ -42,7 +42,7 @@ jobs:
           name: AetherVendoredTargetSpike
           options:
             deploymentTarget:
-              iOS: "16.0"
+              iOS: "15.0"
             xcodeVersion: "26.3"
           packages:
             MPVKit:
@@ -70,7 +70,7 @@ jobs:
             SpikeApp:
               type: application
               platform: iOS
-              deploymentTarget: "16.0"
+              deploymentTarget: "15.0"
               sources:
                 - path: App
               dependencies:
