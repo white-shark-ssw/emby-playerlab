@@ -117,4 +117,4 @@ Deployment Target 应优先保持 iOS 15.0。
 
 不得只在聊天里说明新的项目结论，而不同步维护 GitHub 项目资料。
 
-对于满足 `docs/automation/CHATGPT_NOTIFY_RULES.md` 通知条件的重要任务，必须在本轮所有工作、验证和项目文档同步完成、最终回答已经准备好之后，按该文件触发 `white-shark-ssw/ChatGPT-Notify` PR #1 完成通知，再输出最终回答。通知行为不得改变 OnePlayer 的证据级别，也不得把 Bark Key 或其他 secrets 写进 OnePlayer 仓库。
+**每一个面向用户的最终回答都必须触发完成通知，不再按任务重要性、耗时、代码修改、回答长度或问答类型过滤。** 必须在本轮所有工作、验证和项目文档同步完成、最终回答已经准备好之后，按 `docs/automation/CHATGPT_NOTIFY_RULES.md` 触发 `white-shark-ssw/ChatGPT-Notify` PR #1 通知，再输出最终回答。中间进度/工具过程不是最终回答，不单独通知；每个用户轮次最多发送一次。通知行为不得改变 OnePlayer 的证据级别，也不得把 Bark Key 或其他 secrets 写进 OnePlayer 仓库。
