@@ -1,25 +1,25 @@
 # OnePlayer Project State
 
-_Last updated after OnePlayer 0.14.46 / Build213 page-cache target-device acceptance. Build213 is the latest real-device accepted overall runtime baseline for merged product work; Home-carousel Build208 and poster-scroll Build212 remain independent Active experimental/diagnostic lines and are not folded into this baseline._
+_Last updated after OnePlayer 0.14.49 / Build216 detail episode-range inertia target-device acceptance and PR #261 merge. Build216 is the latest real-device accepted overall runtime baseline for merged product work; Home-carousel Build215 and poster-scroll Build212 remain independent Active lines and are not folded into this baseline._
 
 ## Current accepted overall baseline
 
-- Product: **OnePlayer 0.14.46 / Build213**
-- Canonical branch: `main` after PR #260 integration
-- Final merge PR: **#260**
-- Final merge commit: `2303505ad4403182f5315d33c54f402903c809d2`
-- Accepted/tested product source: `c8c238816c34ba3d8834ac37bdf7b234cd596458`
-- Dedicated standard MPV CI run/job: `33052588518` / `98451457434` — success
-- Artifact: `OnePlayer-0.14.46-build213-page-cache`; ID `9638292306`
-- Artifact digest: `sha256:e65a3ce06d53cc499a84f86a9cd32978824f1de4899bf2afe310727a2566731c`
-- IPA SHA-256: `a8c2d1753db33f41a5b07ce22c4706eb102cf5d905f1aaeee8f54d689b176fc8`
-- Source ZIP SHA-256: `3a59bc8fb8dc55a83abd8adf76841db47640df8944f39920969b06bd55927051`
+- Product: **OnePlayer 0.14.49 / Build216**
+- Canonical branch: `main` after PR #261 integration
+- Final merge PR: **#261**
+- Final merge commit: `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
+- Accepted/tested product source: `dc00cac9f35ee4a3b950e4bb030bb324baf90b18`
+- Dedicated standard MPV CI run/job: `33064051545 / 98489652724` — success
+- Artifact: `OnePlayer-0.14.49-build216-detail-range-inertia`; ID `9643031850`
+- Artifact digest: `sha256:9cbccc582be719b2daa10077293da2951f0cbce8016625128de8ef9d85b27f48`
+- IPA SHA-256: `e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075`
+- Source ZIP SHA-256: `98e1b5b52ebe5d8b2e3fbf754d3dfb18d0ea082fd77bcd9e6905b0bcb56e0f6f`
 - Deployment Target / built MinOS: **iOS 15.0**
 - Target device: **iPhone 15 Pro Max / iOS 17.0**
-- Real-device result: **user reported Build213 acceptance on 2026-08-27**
-- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable for the accepted Favorites + Library page-persistence milestone / merged to main**
+- Real-device result: **user reported Build216 acceptance on 2026-08-27**
+- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable/frozen for the detail episode-range inertia contract / merged to main**
 
-Build213 inherits all accepted/frozen player, PiP, transport, playback-cache, episode-ordering, detail-presentation, episode-selection and Build199 server-management contracts. Its new stable runtime scope is limited to non-playback Favorites + Library page presentation persistence.
+Build216 inherits all accepted/frozen player, PiP, transport, playback-cache, episode-ordering, Build182 detail-presentation, Build191 detail-selection, Build195 player-episode and Build199 server-management contracts. Its only new stable runtime scope is stopping active detail episode-row native deceleration before the existing range selection/jump; the Build213 page-persistence milestone remains inherited and unchanged.
 
 ## Frozen / protected contracts
 
@@ -44,6 +44,7 @@ Build213 inherits all accepted/frozen player, PiP, transport, playback-cache, ep
 - **Build195**: SeasonId-first player grouping + lazy very-large episode row; merged PR #258.
 - **Build199**: Add/Edit Emby modern editor, same-server route selection, cached-first auto-start, local retained password and optional synchronizable Keychain password for iCloud; merged PR #256.
 - **Build213**: Favorites + Library 7-tab disk-backed warm presentation cache; cached-first after relaunch, live refresh remains authoritative, successful accepted state writes through, failed refresh retains old snapshot; target-device accepted through PR #260.
+- **Build216**: detail range-pill taps synchronously stop active native episode-row deceleration before the existing Build191 range-first selection and 0.32 s target scroll; target-device accepted and merged through PR #261.
 
 ## Active: Home carousel interaction
 
@@ -132,4 +133,4 @@ Next: reconcile the Home evidence with the carousel task, and independently desi
 
 ## Parallel integration rule
 
-Build213 is the accepted overall runtime baseline after this page-cache closeout. Home-carousel Build208 and poster-scroll remain independent Active lines with separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
+Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel Build215 and poster-scroll remain independent Active lines with separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
