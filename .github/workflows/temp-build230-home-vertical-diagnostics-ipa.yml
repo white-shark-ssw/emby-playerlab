@@ -1,0 +1,175 @@
+name: Temp Build230 Home Vertical Diagnostic IPA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/temp-build230-home-vertical-diagnostics-ipa.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact Build230 source
+        uses: actions/checkout@v4
+        with:
+          ref: c3fb4c4c0910bbb18b25959881edc5b0412dd238
+          fetch-depth: 0
+
+      - name: Guard exact source and scope
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "c3fb4c4c0910bbb18b25959881edc5b0412dd238"
+          python3 scripts/check_poster_grid_smoothness.py
+          python3 scripts/check_home_vertical_motion_diagnostics.py
+          python3 -m py_compile scripts/check_poster_grid_smoothness.py scripts/check_home_vertical_motion_diagnostics.py
+          git diff --check f5e3e3eb144578c863b172e3bd3a1aa13e5c2177 HEAD
+          python3 - <<'PY'
+          import subprocess
+          expected = {
+              "Sources/Core/AppIdentity.swift",
+              "Sources/UI/EmbyHomeCarouselStateV3.swift",
+              "Sources/UI/EmbyHomeScrollOffsetObserverV3.swift",
+              "docs/changelog/CHANGELOG_v0_14_63_build230.md",
+              "scripts/check_home_vertical_motion_diagnostics.py",
+          }
+          actual = set(subprocess.check_output([
+              "git", "diff", "--name-only",
+              "f5e3e3eb144578c863b172e3bd3a1aa13e5c2177", "HEAD"
+          ], text=True).splitlines())
+          if actual != expected:
+              raise SystemExit(f"unexpected Build230 scope: {sorted(actual)}")
+          forbidden_prefixes = (
+              "Sources/Playback/", "Sources/Transport/", "Sources/Cache/",
+              "Sources/Session/", "Sources/UI/Player", "Sources/UI/MPV",
+              "Sources/UI/LocalMDK", "Sources/UI/KSAVIO",
+          )
+          bad = sorted(path for path in actual if path.startswith(forbidden_prefixes))
+          if bad:
+              raise SystemExit(f"Build230 touched protected P0 paths: {bad}")
+          print("Build230 exact five-path scope: PASS")
+          PY
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned Release app
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            MARKETING_VERSION=0.14.63 \
+            CURRENT_PROJECT_VERSION=230 \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build | tee build.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py \
+            "$APP_PATH" \
+            --bundle-id "com.embyplayerlab.app" \
+            --version "0.14.63" \
+            --build "230" \
+            --display-name "OnePlayer" \
+            --minimum-os "15.0" \
+            --primary-icon "OnePlayerIcon" \
+            --alternate-icon "OnePlayerAltIcon"
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" "15.0" "17.0" min-os-report.log build.log
+
+      - name: Package exact IPA and source
+        run: |
+          set -euo pipefail
+          APP_PATH="${{ steps.app.outputs.path }}"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-0.14.63-build230-home-vertical-motion-diagnostics-unsigned.ipa"
+          SOURCE_ZIP="OnePlayer-0.14.63-build230-source.zip"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          /usr/bin/unzip -t "$IPA_NAME"
+          /usr/bin/unzip -t "$SOURCE_ZIP"
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          printf '%s\n' "$(git rev-parse HEAD)" > tested-source.txt
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Upload Build230 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.63-build230-home-vertical-motion-diagnostics
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            tested-source.txt
+            min-os-report.log
+          if-no-files-found: error
+          retention-days: 30
+
+  cleanup:
+    if: always()
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Remove temporary workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          if [ -f .github/workflows/temp-build230-home-vertical-diagnostics-ipa.yml ]; then
+            git rm .github/workflows/temp-build230-home-vertical-diagnostics-ipa.yml
+            git commit -m "Remove Build230 diagnostic IPA helper [skip ci]"
+            git push origin HEAD:main
+          fi
