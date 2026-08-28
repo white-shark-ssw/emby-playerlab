@@ -1,1 +1,1 @@
-trigger Build225 carousel Hero drag isolation
+trigger Build225 carousel Hero drag isolation retry 2
