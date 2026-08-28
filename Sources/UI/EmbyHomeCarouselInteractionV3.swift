@@ -286,7 +286,7 @@ extension V3EmbyHomeView {
         if let predictedTranslation, predictedTranslation.width == 0 || predictedTranslation.width * expectedSign > 0 { predictedDistance = abs(predictedTranslation.width) }
         else { predictedDistance = actualDistance }
         let actualProgress = min(1, max(0, actualDistance / max(1, width)))
-        let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48
+        let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.24
         if !isCarouselDragging {
             guard shouldCommit, let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: releaseDirection) else { V3HomeCarouselCadenceDiagnostics.shared.end(reason: "ended-no-transition"); return }
             transitionFromID = currentID
