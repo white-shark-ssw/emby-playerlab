@@ -1,1 +1,1 @@
-trigger Build228 project docs sync
+trigger Build228 project docs sync retry 2
