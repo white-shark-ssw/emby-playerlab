@@ -71,12 +71,12 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
             if axis == .vertical { state = .failed; return }
             guard shouldBeginHorizontal?(translation) == true else { state = .failed; return }
             let acquisitionTranslation = translation.width
-            let coalescedBaselineTranslation = acquisitionRenderBaselineTranslation(for: touch, event: event, view: view, origin: origin, acquisitionTranslation: acquisitionTranslation)
-            horizontalAcquisitionTranslation = coalescedBaselineTranslation ?? acquisitionTranslation
-            V3HomeCarouselCadenceDiagnostics.shared.begin(acquisitionTranslation: acquisitionTranslation, touchDownTimestamp: touchDownTimestamp ?? touch.timestamp, touch: touch, event: event)
+            let acquisitionSample = acquisitionRenderBaselineSample(for: touch, event: event, view: view, origin: origin, acquisitionTranslation: acquisitionTranslation)
+            horizontalAcquisitionTranslation = acquisitionSample.baseline ?? acquisitionTranslation
+            V3HomeCarouselCadenceDiagnostics.shared.begin(acquisitionTranslation: acquisitionTranslation, touchDownTimestamp: touchDownTimestamp ?? touch.timestamp, acquisitionCoalescedCount: acquisitionSample.count, acquisitionPredecessorStatus: acquisitionSample.status, acquisitionPredecessorDelta: acquisitionSample.delta, acquisitionPredecessorAgeMS: acquisitionSample.ageMS, touch: touch, event: event)
             latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
             state = .began
-            if coalescedBaselineTranslation != nil {
+            if acquisitionSample.baseline != nil {
                 let renderedTranslation = renderTranslation(for: translation)
                 V3HomeCarouselCadenceDiagnostics.shared.recordFirstRender(translation: renderedTranslation.width, totalTranslation: translation.width, touchTimestamp: touch.timestamp)
                 onHorizontalChanged?(renderedTranslation)
@@ -143,13 +143,15 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         return CGSize(width: translation.width - acquisitionTranslation, height: 0)
     }
 
-    private func acquisitionRenderBaselineTranslation(for touch: UITouch, event: UIEvent, view: UIView, origin: CGPoint, acquisitionTranslation: CGFloat) -> CGFloat? {
+    private func acquisitionRenderBaselineSample(for touch: UITouch, event: UIEvent, view: UIView, origin: CGPoint, acquisitionTranslation: CGFloat) -> (baseline: CGFloat?, count: Int, status: String, delta: CGFloat?, ageMS: Double?) {
         let samples = (event.coalescedTouches(for: touch) ?? []).sorted { $0.timestamp < $1.timestamp }
-        guard let predecessor = samples.last(where: { $0.timestamp < touch.timestamp - 0.000001 }) else { return nil }
+        guard let predecessor = samples.last(where: { $0.timestamp < touch.timestamp - 0.000001 }) else { return (nil, samples.count, "none", nil, nil) }
         let predecessorTranslation = predecessor.location(in: view).x - origin.x
         let delta = acquisitionTranslation - predecessorTranslation
-        guard delta != 0, delta * acquisitionTranslation > 0 else { return nil }
-        return predecessorTranslation
+        let ageMS = max(0, (touch.timestamp - predecessor.timestamp) * 1000)
+        guard delta != 0 else { return (nil, samples.count, "zero", delta, ageMS) }
+        guard delta * acquisitionTranslation > 0 else { return (nil, samples.count, "direction", delta, ageMS) }
+        return (predecessorTranslation, samples.count, "accepted", delta, ageMS)
     }
 
     private func predictedTranslation(for touch: UITouch, event: UIEvent, view: UIView, origin: CGPoint) -> CGSize? {

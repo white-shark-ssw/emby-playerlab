@@ -52,6 +52,10 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
     private var acquisitionTranslation: CGFloat = 0
     private var touchDownToAcquisitionMS: Double = 0
     private var acquisitionTouchTimestamp: TimeInterval = 0
+    private var acquisitionCoalescedCount = 0
+    private var acquisitionPredecessorStatus = "unknown"
+    private var acquisitionPredecessorDelta: CGFloat?
+    private var acquisitionPredecessorAgeMS: Double?
     private var firstRenderTranslation: CGFloat?
     private var firstRenderTotalTranslation: CGFloat?
     private var acquisitionToFirstRenderMS: Double?
@@ -76,13 +80,17 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
 
     private override init() {}
 
-    func begin(acquisitionTranslation: CGFloat, touchDownTimestamp: TimeInterval, touch: UITouch, event: UIEvent) {
+    func begin(acquisitionTranslation: CGFloat, touchDownTimestamp: TimeInterval, acquisitionCoalescedCount: Int, acquisitionPredecessorStatus: String, acquisitionPredecessorDelta: CGFloat?, acquisitionPredecessorAgeMS: Double?, touch: UITouch, event: UIEvent) {
         precondition(Thread.isMainThread)
         if active { end(reason: "restarted") }
         active = true
         dragStartedAt = CACurrentMediaTime()
         self.acquisitionTranslation = acquisitionTranslation
         acquisitionTouchTimestamp = touch.timestamp
+        self.acquisitionCoalescedCount = acquisitionCoalescedCount
+        self.acquisitionPredecessorStatus = acquisitionPredecessorStatus
+        self.acquisitionPredecessorDelta = acquisitionPredecessorDelta
+        self.acquisitionPredecessorAgeMS = acquisitionPredecessorAgeMS
         touchDownToAcquisitionMS = max(0, (touch.timestamp - touchDownTimestamp) * 1000)
         firstRenderTranslation = nil
         firstRenderTotalTranslation = nil
@@ -177,9 +185,11 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
         let firstRenderX = firstRenderTranslation.map { String(format: "%.2f", $0) } ?? "none"
         let firstTotalX = firstRenderTotalTranslation.map { String(format: "%.2f", $0) } ?? "none"
         let firstDelayMS = acquisitionToFirstRenderMS.map { String(format: "%.2f", $0) } ?? "none"
+        let predecessorDeltaX = acquisitionPredecessorDelta.map { String(format: "%.2f", $0) } ?? "none"
+        let predecessorAgeMS = acquisitionPredecessorAgeMS.map { String(format: "%.2f", $0) } ?? "none"
         DiagnosticsLogger.shared.app(
             "HomeCarouselCadence",
-            "reason=\(reason) duration_ms=\(String(format: "%.1f", durationMS)) maximum_fps=\(maximumFPS) requested_fps=\(requestedFPS) touch_down_to_acquire_ms=\(String(format: "%.2f", touchDownToAcquisitionMS)) acquisition_x=\(String(format: "%.2f", acquisitionTranslation)) acquire_to_first_render_ms=\(firstDelayMS) first_render_x=\(firstRenderX) first_total_x=\(firstTotalX) delivered_samples=\(deliveredTouchStats.sampleCount) delivered_avg_gap_ms=\(String(format: "%.2f", deliveredTouchStats.averageGapMS)) delivered_max_gap_ms=\(String(format: "%.2f", deliveredTouchStats.maxGapMS)) delivered_ge12_5=\(deliveredTouchStats.over12_5MS) delivered_ge20=\(deliveredTouchStats.over20MS) delivered_ge30=\(deliveredTouchStats.over30MS) coalesced_samples=\(coalescedTouchStats.sampleCount) coalesced_avg_gap_ms=\(String(format: "%.2f", coalescedTouchStats.averageGapMS)) coalesced_max_gap_ms=\(String(format: "%.2f", coalescedTouchStats.maxGapMS)) publish_calls=\(progressPublishCalls) publish_changes=\(progressPublishStats.sampleCount) publish_avg_gap_ms=\(String(format: "%.2f", progressPublishStats.averageGapMS)) publish_max_gap_ms=\(String(format: "%.2f", progressPublishStats.maxGapMS)) render_changes=\(renderUpdateStats.sampleCount) render_avg_gap_ms=\(String(format: "%.2f", renderUpdateStats.averageGapMS)) render_max_gap_ms=\(String(format: "%.2f", renderUpdateStats.maxGapMS)) publish_to_render_max_ms=\(String(format: "%.2f", maxPublishToRenderLagMS)) display_intervals=\(displayStats.intervalCount) display_avg_gap_ms=\(String(format: "%.2f", displayStats.averageGapMS)) display_p95_gap_ms=\(String(format: "%.2f", p95DisplayGap)) display_max_gap_ms=\(String(format: "%.2f", displayStats.maxGapMS)) display_ge12_5=\(displayStats.over12_5MS) display_ge20=\(displayStats.over20MS) display_ge30=\(displayStats.over30MS) image_events=\(imageEventsDuringDrag) image_roles=\(roles.isEmpty ? "none" : roles) worst_display=\(worst.isEmpty ? "none" : worst)"
+            "reason=\(reason) duration_ms=\(String(format: "%.1f", durationMS)) maximum_fps=\(maximumFPS) requested_fps=\(requestedFPS) touch_down_to_acquire_ms=\(String(format: "%.2f", touchDownToAcquisitionMS)) acquisition_x=\(String(format: "%.2f", acquisitionTranslation)) acq_coalesced_count=\(acquisitionCoalescedCount) acq_predecessor_status=\(acquisitionPredecessorStatus) acq_predecessor_delta_x=\(predecessorDeltaX) acq_predecessor_age_ms=\(predecessorAgeMS) acquire_to_first_render_ms=\(firstDelayMS) first_render_x=\(firstRenderX) first_total_x=\(firstTotalX) delivered_samples=\(deliveredTouchStats.sampleCount) delivered_avg_gap_ms=\(String(format: "%.2f", deliveredTouchStats.averageGapMS)) delivered_max_gap_ms=\(String(format: "%.2f", deliveredTouchStats.maxGapMS)) delivered_ge12_5=\(deliveredTouchStats.over12_5MS) delivered_ge20=\(deliveredTouchStats.over20MS) delivered_ge30=\(deliveredTouchStats.over30MS) coalesced_samples=\(coalescedTouchStats.sampleCount) coalesced_avg_gap_ms=\(String(format: "%.2f", coalescedTouchStats.averageGapMS)) coalesced_max_gap_ms=\(String(format: "%.2f", coalescedTouchStats.maxGapMS)) publish_calls=\(progressPublishCalls) publish_changes=\(progressPublishStats.sampleCount) publish_avg_gap_ms=\(String(format: "%.2f", progressPublishStats.averageGapMS)) publish_max_gap_ms=\(String(format: "%.2f", progressPublishStats.maxGapMS)) render_changes=\(renderUpdateStats.sampleCount) render_avg_gap_ms=\(String(format: "%.2f", renderUpdateStats.averageGapMS)) render_max_gap_ms=\(String(format: "%.2f", renderUpdateStats.maxGapMS)) publish_to_render_max_ms=\(String(format: "%.2f", maxPublishToRenderLagMS)) display_intervals=\(displayStats.intervalCount) display_avg_gap_ms=\(String(format: "%.2f", displayStats.averageGapMS)) display_p95_gap_ms=\(String(format: "%.2f", p95DisplayGap)) display_max_gap_ms=\(String(format: "%.2f", displayStats.maxGapMS)) display_ge12_5=\(displayStats.over12_5MS) display_ge20=\(displayStats.over20MS) display_ge30=\(displayStats.over30MS) image_events=\(imageEventsDuringDrag) image_roles=\(roles.isEmpty ? "none" : roles) worst_display=\(worst.isEmpty ? "none" : worst)"
         )
     }
 
