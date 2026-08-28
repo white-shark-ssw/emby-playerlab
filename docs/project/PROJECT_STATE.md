@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build228 target-device diagnostics, Build229 off-main Library snapshot CI/IPA verification, and the subsequent Build229-package Home-only vertical capture. Build216 remains the accepted overall runtime baseline. Build229 still awaits its intended Library 3×3 pagination A/B; the Home-only capture adds a separate periodic carousel-settle correlation but does not validate the Library persistence fix._
+_Last updated after the carousel Build228 / 0.14.61 target-device release-tail result, alongside the independent poster Build229 line. Build216 remains the accepted overall runtime baseline. Carousel Build226 residency + carousel Build228 max-refresh-through-settle is the current horizontal foundation; the user accepts the release tail for now, while slow-drag movie-title shimmer and residual refinement versus EX remain open. Parallel carousel/poster work both used Build228/0.14.61, so attribution must include branch/source/artifact._
 
 ## Current accepted overall baseline
 
@@ -147,6 +147,12 @@ Build226 / 0.14.59 keeps current+previous+next clear Heroes resident so both adj
 ### Build227 horizontal foreground physical-pixel A/B
 
 Build227 / 0.14.60 isolates the new title-shimmer finding. It keeps Build226 behavior and rounds only the final foreground page X presentation to the current display physical-pixel grid. No new owner/state/timer/interpolation/offscreen-compositing layer is added. Dedicated Xcode 16.4 run/job `33153825917 / 98791806487` succeeded; tested source `7ac8de30b76192ee3cd9c9382edca74b9ff5e69d`; artifact `9678871748`; IPA SHA-256 `b24d8abcd91f4faa74e06d8485bac3611725c561d9c99144c17def4b8ef26766`; source ZIP SHA-256 `16bc14dd82cae7d2599f23fefaf7b5e4d9c95db6a17dbaa08921e3749f41d278`; OnePlayer 0.14.60 (227) / MinOS 15.0 independently verified. Evidence: **Code written / scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / diagnostic only / not stable**.
+
+### Carousel Build228 release-tail result — accepted for now
+
+Carousel Build228 / 0.14.61 (`perf/home-carousel-release-refresh-build228`) returns to the Build226 visual baseline and extends the already-proven device-max refresh request through interactive settle/cancel. Target-device feedback is **“差不多了，尾巴这里先这样吧”**. Treat this as acceptance of the release-tail subproblem for the current phase: retain max-refresh-through-settle and stop changing the existing 0.22 s commit / 0.18 s cancel easing, duration or velocity mapping unless new regression evidence appears.
+
+This does **not** close the carousel task. Build227 physical-pixel foreground rounding is rejected because movie-title shimmer remained, and slow-drag title shimmer / residual overall refinement versus EX are still open. Build226 three-slot Hero residency remains the evidence-backed presentation foundation. Carousel Build228 evidence: tested source `bdf63c7562fcd1edc1d224872230e988ac462281`, run/job `33156739621 / 98801196041`, artifact `9679963420`, IPA SHA-256 `cda90b62e3cabd3199e1cfbc1b2e1c77b8a84d023a7c7b9c8e2ff66ab9edcf44`, MinOS 15.0. A separate poster task also used Build228/0.14.61; build number alone is not valid attribution.
 
 ## Active: Poster-heavy scrolling smoothness
 

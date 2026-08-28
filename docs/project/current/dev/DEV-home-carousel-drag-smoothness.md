@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build227 / 0.14.60 is the current narrow foreground physical-pixel A/B. Build226 is now horizontally real-device tested and materially positive: overall carousel feel is fairly close to EX and much better than the original, validating three-slot Hero residency as the current presentation direction, but slow dragging exposes visible movie-title text shimmer and the overall feel still has room for refinement. Frame analysis shows the title/metadata/overview move together rather than the title owning a separate geometry jump. Build227 changes only final foreground-page X presentation to the physical-pixel grid while retaining Build226 Hero residency and all input/120Hz/release contracts. Build227 CI/IPA is verified; target-device test pending. Build216 remains the accepted overall runtime baseline.**
+**Active — Build228 / 0.14.61 release-tail behavior is now target-device accepted for now: the user reports the post-release tail is “差不多了，尾巴这里先这样吧”. Keep Build226 three-slot Hero residency and Build228 max-refresh-through-settle as the current carousel foundation, and stop further release-tail easing/duration/velocity tuning unless new regression evidence appears. Build227 physical-pixel foreground rounding is rejected because movie-title shimmer remained. The carousel task stays Active because slow-drag movie-title shimmer and the remaining overall refinement gap versus EX are still open. Build216 remains the accepted overall runtime baseline.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Target device: iPhone 15 Pro Max / iOS 17.0
@@ -19,17 +19,6 @@ The user explicitly clarified that the active goal is **carousel optimization**,
 - Home vertical inertial scrolling may still reveal shared image/compositor pressure, but it is supporting evidence only and cannot pass/fail the carousel interaction task;
 - Build222–224 are therefore closed as a vertical supporting-diagnostic detour and must not drive another vertical-only Build225;
 - resume the existing Build221 horizontal A/B before writing any new carousel patch.
-
-## Supporting Home vertical capture on Build229 package — 2026-08-28
-
-A Build229 package recording/log was supplied while discussing poster-scroll persistence, but the visible route is Home vertical scrolling. This does not change the horizontal carousel acceptance lane. It does add one supporting runtime correlation for the separate vertical-jitter history:
-
-- `OnePlayer-App-1787907572.log` contains five `HomeCarousel settled` records only; no poster-hitch or disk-cache timing records;
-- `RPReplay_Final1787907569.mp4` is 510×1108 at 30 fps for 15.47 s; two `settled` events align by filename time at about +5.214 s and +12.211 s;
-- frame motion shortly after both events contains near-zero/duplicate-frame → catch-up signatures; the second is cleaner around +12.30–12.37 s;
-- because 30 fps recording can itself duplicate samples and there is no matching `PosterScrollHitch`, treat this as correlation only, not measured main-thread frame duration.
-
-Exact Build229 Home source retains the normal main-run-loop carousel timer and `settleCarousel` mutates several Home `@State` values synchronously. A periodic settle-triggered presentation invalidation is therefore plausible for a distinct “sudden twitch” subtype. Build222 remains controlling contrary evidence: blocking new offscreen automatic transitions did **not** remove overall Home vertical hitching. Therefore no new carousel patch is justified from this correlation alone, and Build222 must not simply be repeated.
 
 ## Retained interaction contract
 
@@ -232,24 +221,73 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 
 ## Build227 / 0.14.60 — foreground physical-pixel alignment A/B
 
-Build227 stacks only one diagnostic presentation change on the cleaned Build226 branch. `carouselForegroundOffset(...)` keeps the same acquisition-relative/full-width page math, but the final foreground-page X presentation offset is rounded to the current display's physical-pixel grid using `UIScreen.main.scale`. On the target 3× display this is 1/3pt granularity.
-
-Purpose: isolate whether the slow-drag title shimmer is caused by high-contrast SwiftUI text/shadow presentation at continuously changing subpixel X positions. The entire foreground page remains internally intact; no title-only position owner is introduced. Hero residency, normal Hero/persistent crossfade, one UIKit gesture owner, Build219 exact max-refresh request, 0.28 commit gate, 0.48×width predicted release gate, preload and all P0/Frozen paths are unchanged. No timer, interpolation, retry, watchdog, fallback, drawing-group layer, shared-image-loader change or duplicate state is added.
+Build227 rounded only the final foreground-page X offset to the current display physical-pixel grid while retaining Build226 Hero residency, normal Hero/persistent crossfades, Build215 acquisition-relative movement, Build219 device-max refresh request and the existing release rules.
 
 CI / package evidence:
 
 - branch: `diag/home-carousel-foreground-pixel-align-build227`;
-- exact base: cleaned Build226 head `f9f1ecf6334c14641dbdf780a5b09a118495b8ec`;
 - exact tested source: `7ac8de30b76192ee3cd9c9382edca74b9ff5e69d`;
 - dedicated Xcode 16.4 run/job: `33153825917 / 98791806487` — success;
-- artifact: `OnePlayer-0.14.60-build227-foreground-pixel-align`, ID `9678871748`;
-- artifact SHA-256: `58b232db9cb96d92afb6676bdcb48f1ae4d05eb57949f97d6ebfba338009ef9f`;
+- artifact ID: `9678871748`;
 - IPA SHA-256: `b24d8abcd91f4faa74e06d8485bac3611725c561d9c99144c17def4b8ef26766`;
 - source ZIP SHA-256: `16bc14dd82cae7d2599f23fefaf7b5e4d9c95db6a17dbaa08921e3749f41d278`;
-- independent package reopen confirms bundle `com.embyplayerlab.app`, OnePlayer `0.14.60 (227)`, `MinimumOSVersion=15.0`, runtime Mach-O minOS 15.0, compatibility audit OK and `CADisableMinimumFrameDurationOnPhone=true`;
-- independent source reopen confirms only the foreground X presentation alignment is new on top of Build226 product behavior; Hero residency, normal persistent target crossfade, acquisition-relative motion and 0.28/0.48 release rules remain present.
+- OnePlayer `0.14.60 (227)`, MinOS 15.0 independently verified.
 
-Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / diagnostic only / stable ❌.
+### 2026-08-28 horizontal real-device result
+
+User feedback on iPhone 15 Pro Max / iOS 17.0: **movie-title text still has a visible jitter/shimmer feel**, so physical-pixel X rounding is rejected as a sufficient title-stability fix and must not be carried forward merely for that purpose. The same recording also exposes a second issue: after the finger is released, the automatic commit/cancel tail does not feel as silky as the active drag.
+
+The accompanying Build227 App log shows that active drag still requests 120 fps, but slow/long drags are not uniformly perfect: one 6175.8 ms drag recorded `display_p95_gap_ms=25.01`, 177 display intervals >=12.5 ms and 41 >=20 ms; another 4642.0 ms drag kept p95 at 8.34 ms but still had a 39.58 ms maximum gap. This means the remaining title symptom cannot be reduced to a title-only geometry jump or solved by 1/3pt quantization alone.
+
+More importantly, exact Build227 source inspection identifies a release-tail lifecycle discontinuity: the UIKit recognizer calls `V3HomeCarouselCadenceDiagnostics.shared.end(reason: "ended")` inside `touchesEnded` **before** `finishNativeCarouselDrag(...)` starts the existing 0.22 s commit / 0.18 s cancel animation. `end(...)` immediately invalidates the exact-max `CADisplayLink`, so Build219's proven high-refresh request covers active finger tracking but not the automatic release tail. The old cadence summary also ends at touch release, so it cannot measure the tail the user is now reporting.
+
+Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / horizontal real-device tested ✅ / title pixel-alignment hypothesis rejected as sufficient / release-tail cadence lifecycle issue identified in real source / stable ❌.
+
+## Build228 / 0.14.61 — release-tail max-refresh lifecycle A/B
+
+Build228 returns to the cleaned Build226 presentation baseline; Build227 physical-pixel rounding is intentionally absent. It changes only the lifetime of the already-proven Build219 device-max carousel refresh request:
+
+- horizontal acquisition still starts the same exact-max `CADisplayLink` request;
+- `touchesEnded` / ordinary `touchesCancelled` no longer invalidate that request before release handling;
+- an interactive commit keeps the request until the existing 0.22 s animation reaches `settleCarousel`;
+- an interactive cancel keeps it until the existing 0.18 s cancel completion;
+- horizontal acquisition that ends without any transition releases immediately through explicit no-transition/no-target cleanup;
+- no new timer, interpolation, retry, watchdog, fallback, gesture owner or duplicate state is introduced.
+
+Build226 three-slot Hero residency, normal Hero/persistent crossfades, raw acquisition-relative foreground X, 0.28 commit threshold, 0.48×width predicted-distance gate and the existing 0.22/0.18 easing/durations are unchanged. This isolates refresh-request lifetime before changing release animation math.
+
+CI / package evidence:
+
+- branch: `perf/home-carousel-release-refresh-build228`;
+- exact base: cleaned Build226 head `f9f1ecf6334c14641dbdf780a5b09a118495b8ec`;
+- exact tested source: `bdf63c7562fcd1edc1d224872230e988ac462281`;
+- dedicated Xcode 16.4 run/job: `33156739621 / 98801196041` — success;
+- artifact: `OnePlayer-0.14.61-build228-release-refresh`, ID `9679963420`;
+- artifact SHA-256: `0b3a3a2b4d38f5f0bbff4a406e1523e161f7f6600065b9e5ee9e00cd075938bc`;
+- IPA SHA-256: `cda90b62e3cabd3199e1cfbc1b2e1c77b8a84d023a7c7b9c8e2ff66ab9edcf44`;
+- source ZIP SHA-256: `d91b014486e5fb1c5c9798b2b56bf45f0bad4f9e47f433a9f862c5fa586ecf68`;
+- independent package reopen confirms bundle `com.embyplayerlab.app`, OnePlayer `0.14.61 (228)`, `MinimumOSVersion=15.0` and `CADisableMinimumFrameDurationOnPhone=true`;
+- independent source reopen confirms Build227 pixel rounding is absent, Build226 Hero residency remains, exact max-refresh remains, and the request now ends at interactive settle/cancel completion rather than touch release.
+
+Build228 also makes the existing cadence log cover the automatic tail: successful commits should now end with `reason=settled`, and cancels with `reason=cancelled-settled`, so the next target-device log can directly measure tail display cadence.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / diagnostic candidate / stable ❌.
+
+### 2026-08-28 target-device result — release tail accepted for now
+
+User feedback on iPhone 15 Pro Max / iOS 17.0 after testing the carousel Build228 package: **“差不多了，尾巴这里先这样吧。”** This is acceptance of the release-tail subproblem for the current phase, not acceptance of the entire carousel task.
+
+Controlling conclusion:
+
+- retain Build226 current+previous+next clear-Hero residency as the current presentation foundation;
+- retain Build228's extension of the already-proven device-max refresh request through interactive settle/cancel instead of ending it at `touchesEnded`;
+- do **not** continue tuning the existing 0.22 s commit / 0.18 s cancel duration, easing or release-velocity mapping without new regression evidence;
+- Build227 physical-pixel foreground X rounding remains rejected because the movie-title shimmer was still visible;
+- slow-drag movie-title shimmer and the remaining overall feel gap versus EX remain open, so the Home carousel module is still Active and not Stable/frozen as a whole.
+
+Attribution warning: a parallel poster-scroll task also used the identity `Build228 / 0.14.61`. For this carousel result, use branch `perf/home-carousel-release-refresh-build228`, exact tested source `bdf63c7562fcd1edc1d224872230e988ac462281`, run/job `33156739621 / 98801196041`, artifact `9679963420`, and IPA SHA-256 `cda90b62e3cabd3199e1cfbc1b2e1c77b8a84d023a7c7b9c8e2ff66ab9edcf44`; never attribute by build number alone.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / horizontal real-device tested ✅ / release-tail subproblem accepted-for-now ✅ / whole carousel stable ❌.
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -260,8 +298,9 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 - split native-move + SwiftUI-release ownership;
 - recoupling foreground alpha to backdrop blend;
 - coalesced-touch second visual owner without new evidence;
-- debounce/throttle/timer/interpolator/watchdog/retry smoothing.
+- debounce/throttle/timer/interpolator/watchdog/retry smoothing;
+- Build227 physical-pixel foreground X rounding as a sufficient movie-title shimmer fix.
 
 ## Next exact action
 
-Install Build227 on iPhone 15 Pro Max / iOS 17.0 and compare directly with Build226. First reproduce the second recording: very slow horizontal drag on an item that uses the large white fallback movie title. Judge whether the title edge/shimmer is materially reduced and whether rating/year/type + overview remain visually coherent. Then test overall horizontal feel with slow tracking, quick swipes, rapid reversal and repeated adjacent-page changes. The acceptance gate is two-sided: title stability must improve **without introducing pixel-step/staircase hand feel** or losing Build226's near-EX overall improvement. If title shimmer remains, reject physical-pixel alignment and inspect a precomposed foreground presentation path separately; do not stack another smoothing layer on Build227 before this A/B is tested.
+Keep the Build228 release-tail behavior unchanged for now. The next carousel investigation, when resumed, must focus on the still-visible slow-drag movie-title shimmer / residual active-drag cadence rather than release-tail easing, duration or velocity. Start from the Build226 residency + Build228 release-refresh foundation, do not reintroduce Build227 pixel quantization, and continue using horizontal target-device comparison against EX as the acceptance path.
