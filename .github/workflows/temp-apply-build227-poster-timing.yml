@@ -1,0 +1,430 @@
+name: One-shot Apply Build227 Poster Timing Diagnostics
+
+on:
+  push:
+    branches: ["perf/poster-grid-smoothness"]
+    paths:
+      - ".github/workflows/temp-apply-build227-poster-timing.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact poster branch
+        uses: actions/checkout@v4
+        with:
+          ref: perf/poster-grid-smoothness
+          fetch-depth: 0
+
+      - name: Guard Build220 baseline and one-shot control commit
+        env:
+          OLD_HEAD: 6198466a749a54603a67c6c32bc0efcf9d7e2082
+          WORKFLOW_PATH: .github/workflows/temp-apply-build227-poster-timing.yml
+        run: |
+          set -euo pipefail
+          git fetch origin perf/poster-grid-smoothness
+          test "$(git rev-parse HEAD^)" = "$OLD_HEAD"
+          test "$(git diff --name-only "$OLD_HEAD"..HEAD)" = "$WORKFLOW_PATH"
+          grep -F 'static let sourceVersion = "0.14.53"' Sources/Core/AppIdentity.swift >/dev/null
+          grep -F 'imageCancellable = loader.$image.sink { [weak self] image in self?.surface?.setImage(image) }' Sources/UI/EmbySharedImageAndNavigation.swift >/dev/null
+          grep -F 'private func fetchPage(tab: V3LibraryTab, reset: Bool) async {' Sources/UI/EmbyServerBrowseV3.swift >/dev/null
+
+      - name: Apply measurement-only timing instrumentation
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, got {count}: {old[:120]!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          identity = Path("Sources/Core/AppIdentity.swift")
+          identity_text = identity.read_text(encoding="utf-8")
+          if identity_text.count('0.14.53') != 2:
+              raise SystemExit("unexpected Build220 AppIdentity version count")
+          identity.write_text(identity_text.replace('0.14.53', '0.14.60'), encoding="utf-8")
+
+          image_path = "Sources/UI/EmbySharedImageAndNavigation.swift"
+          replace_once(image_path, '''    private struct TimedImageEvent {
+              let itemID: String
+              let imageType: String
+              let maxWidth: String
+              let source: String
+              let durationMS: Double
+              let timestamp: CFTimeInterval
+          }
+
+          ''', '''    private struct TimedImageEvent {
+              let itemID: String
+              let imageType: String
+              let maxWidth: String
+              let source: String
+              let durationMS: Double
+              let timestamp: CFTimeInterval
+          }
+
+              private struct TimedImagePublishEvent {
+                  let itemID: String
+                  let imageType: String
+                  let maxWidth: String
+                  let source: String
+                  let role: String
+                  let durationMS: Double
+                  let timestamp: CFTimeInterval
+              }
+
+              private struct SurfaceImageEvent {
+                  let itemID: String
+                  let imageType: String
+                  let maxWidth: String
+                  let source: String
+                  let role: String
+                  let publishToSinkMS: Double
+                  let setImageDurationMS: Double
+                  let publishToSurfaceMS: Double
+                  let timestamp: CFTimeInterval
+              }
+
+              private struct PageApplyEvent {
+                  let route: String
+                  let reset: Bool
+                  let startIndex: Int
+                  let receivedCount: Int
+                  let appliedCount: Int
+                  let durationMS: Double
+                  let timestamp: CFTimeInterval
+              }
+
+              private struct PageSnapshotEvent {
+                  let route: String
+                  let durationMS: Double
+                  let timestamp: CFTimeInterval
+              }
+
+          ''')
+          replace_once(image_path, '''    private var lastImageCommit: ImageEvent?
+              private var lastImageCallback: TimedImageEvent?
+              private var lastContrastDurationMS: Double?
+          ''', '''    private var lastImageCommit: ImageEvent?
+              private var lastImagePublish: TimedImagePublishEvent?
+              private var lastImageSurface: SurfaceImageEvent?
+              private var lastImageCallback: TimedImageEvent?
+              private var lastPageApply: PageApplyEvent?
+              private var lastPageSnapshot: PageSnapshotEvent?
+              private var lastContrastDurationMS: Double?
+          ''')
+          replace_once(image_path, '''    func imageDidCommit(url: URL, source: String, role: String) {
+              precondition(Thread.isMainThread)
+              let context = imageContext(url)
+              lastImageCommit = ImageEvent(itemID: context.itemID, imageType: context.imageType, maxWidth: context.maxWidth, source: source, role: role, timestamp: CACurrentMediaTime())
+          }
+
+          ''', '''    func imageDidCommit(url: URL, source: String, role: String) {
+              precondition(Thread.isMainThread)
+              let context = imageContext(url)
+              lastImageCommit = ImageEvent(itemID: context.itemID, imageType: context.imageType, maxWidth: context.maxWidth, source: source, role: role, timestamp: CACurrentMediaTime())
+          }
+
+              func imagePublishDidComplete(url: URL, source: String, role: String, durationMS: Double) {
+                  precondition(Thread.isMainThread)
+                  let context = imageContext(url)
+                  lastImagePublish = TimedImagePublishEvent(itemID: context.itemID, imageType: context.imageType, maxWidth: context.maxWidth, source: source, role: role, durationMS: durationMS, timestamp: CACurrentMediaTime())
+              }
+
+              func imageSurfaceDidAdopt(url: URL?, source: String, role: String, publishStartedAt: CFTimeInterval?, sinkStartedAt: CFTimeInterval, completedAt: CFTimeInterval) {
+                  precondition(Thread.isMainThread)
+                  guard let url, let publishStartedAt else { return }
+                  let context = imageContext(url)
+                  lastImageSurface = SurfaceImageEvent(itemID: context.itemID, imageType: context.imageType, maxWidth: context.maxWidth, source: source, role: role, publishToSinkMS: max(0, (sinkStartedAt - publishStartedAt) * 1000), setImageDurationMS: max(0, (completedAt - sinkStartedAt) * 1000), publishToSurfaceMS: max(0, (completedAt - publishStartedAt) * 1000), timestamp: completedAt)
+              }
+
+              func pageApplyDidComplete(route: String, reset: Bool, startIndex: Int, receivedCount: Int, appliedCount: Int, durationMS: Double) {
+                  precondition(Thread.isMainThread)
+                  lastPageApply = PageApplyEvent(route: route, reset: reset, startIndex: startIndex, receivedCount: receivedCount, appliedCount: appliedCount, durationMS: durationMS, timestamp: CACurrentMediaTime())
+              }
+
+              func pageSnapshotDidComplete(route: String, durationMS: Double) {
+                  precondition(Thread.isMainThread)
+                  lastPageSnapshot = PageSnapshotEvent(route: route, durationMS: durationMS, timestamp: CACurrentMediaTime())
+              }
+
+          ''')
+          replace_once(image_path, '''        let imageAge = lastImageCommit.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+              let callbackAge = lastImageCallback.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+          ''', '''        let imageAge = lastImageCommit.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+              let publishAge = lastImagePublish.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+              let surfaceAge = lastImageSurface.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+              let callbackAge = lastImageCallback.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+              let pageApplyAge = lastPageApply.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+              let pageSnapshotAge = lastPageSnapshot.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+          ''')
+          replace_once(image_path, '''        let imageAgeText = String(format: "%.1f", imageAge)
+              let callbackAgeText = String(format: "%.1f", callbackAge)
+          ''', '''        let imageAgeText = String(format: "%.1f", imageAge)
+              let publishAgeText = String(format: "%.1f", publishAge)
+              let publishDurationText = String(format: "%.1f", lastImagePublish?.durationMS ?? -1)
+              let surfaceAgeText = String(format: "%.1f", surfaceAge)
+              let publishToSinkText = String(format: "%.1f", lastImageSurface?.publishToSinkMS ?? -1)
+              let surfaceSetText = String(format: "%.1f", lastImageSurface?.setImageDurationMS ?? -1)
+              let publishToSurfaceText = String(format: "%.1f", lastImageSurface?.publishToSurfaceMS ?? -1)
+              let callbackAgeText = String(format: "%.1f", callbackAge)
+              let pageApplyAgeText = String(format: "%.1f", pageApplyAge)
+              let pageApplyDurationText = String(format: "%.1f", lastPageApply?.durationMS ?? -1)
+              let pageSnapshotAgeText = String(format: "%.1f", pageSnapshotAge)
+              let pageSnapshotDurationText = String(format: "%.1f", lastPageSnapshot?.durationMS ?? -1)
+          ''')
+          replace_once(image_path, '''        let lastImageRole = lastImageCommit?.role ?? "none"
+              let lastCallbackItemID = lastImageCallback?.itemID ?? "none"
+          ''', '''        let lastImageRole = lastImageCommit?.role ?? "none"
+              let lastPublishItemID = lastImagePublish?.itemID ?? "none"
+              let lastPublishImageType = lastImagePublish?.imageType ?? "none"
+              let lastPublishMaxWidth = lastImagePublish?.maxWidth ?? "none"
+              let lastPublishSource = lastImagePublish?.source ?? "none"
+              let lastPublishRole = lastImagePublish?.role ?? "none"
+              let lastSurfaceItemID = lastImageSurface?.itemID ?? "none"
+              let lastSurfaceImageType = lastImageSurface?.imageType ?? "none"
+              let lastSurfaceMaxWidth = lastImageSurface?.maxWidth ?? "none"
+              let lastSurfaceSource = lastImageSurface?.source ?? "none"
+              let lastSurfaceRole = lastImageSurface?.role ?? "none"
+              let lastCallbackItemID = lastImageCallback?.itemID ?? "none"
+          ''')
+          replace_once(image_path, '''        let lastLoadAheadID = lastLoadAhead?.itemID ?? "none"
+              DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\\(gapText) scroll_route=\\(sample.route) phase=\\(phase) offset_y=\\(offsetText) delta_y=\\(deltaText) velocity_y=\\(velocityText) registered_scrolls=\\(scrollObservations.count) moving_scrolls=\\(movingSamples.count) visible=\\(visiblePosterCount) last_cell=\\(lastCellID) cell_route=\\(lastCellRoute) cell_age_ms=\\(cellAgeText) image_item=\\(lastImageItemID) image_type=\\(lastImageType) image_max_width=\\(lastImageMaxWidth) image_source=\\(lastImageSource) image_role=\\(lastImageRole) image_age_ms=\\(imageAgeText) callback_item=\\(lastCallbackItemID) callback_type=\\(lastCallbackImageType) callback_max_width=\\(lastCallbackMaxWidth) callback_source=\\(lastCallbackSource) callback_age_ms=\\(callbackAgeText) callback_duration_ms=\\(callbackDurationText) contrast_age_ms=\\(contrastAgeText) contrast_duration_ms=\\(contrastDurationText) load_ahead=\\(lastLoadAheadID) load_ahead_age_ms=\\(loadAheadAgeText)")
+          ''', '''        let lastLoadAheadID = lastLoadAhead?.itemID ?? "none"
+              let pageRoute = lastPageApply?.route ?? "none"
+              let pageReset = lastPageApply.map { $0.reset ? "1" : "0" } ?? "none"
+              let pageStartIndex = lastPageApply.map { String($0.startIndex) } ?? "none"
+              let pageReceivedCount = lastPageApply.map { String($0.receivedCount) } ?? "none"
+              let pageAppliedCount = lastPageApply.map { String($0.appliedCount) } ?? "none"
+              let snapshotRoute = lastPageSnapshot?.route ?? "none"
+              DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\\(gapText) scroll_route=\\(sample.route) phase=\\(phase) offset_y=\\(offsetText) delta_y=\\(deltaText) velocity_y=\\(velocityText) registered_scrolls=\\(scrollObservations.count) moving_scrolls=\\(movingSamples.count) visible=\\(visiblePosterCount) last_cell=\\(lastCellID) cell_route=\\(lastCellRoute) cell_age_ms=\\(cellAgeText) image_item=\\(lastImageItemID) image_type=\\(lastImageType) image_max_width=\\(lastImageMaxWidth) image_source=\\(lastImageSource) image_role=\\(lastImageRole) image_age_ms=\\(imageAgeText) publish_item=\\(lastPublishItemID) publish_type=\\(lastPublishImageType) publish_max_width=\\(lastPublishMaxWidth) publish_source=\\(lastPublishSource) publish_role=\\(lastPublishRole) publish_age_ms=\\(publishAgeText) publish_duration_ms=\\(publishDurationText) surface_item=\\(lastSurfaceItemID) surface_type=\\(lastSurfaceImageType) surface_max_width=\\(lastSurfaceMaxWidth) surface_source=\\(lastSurfaceSource) surface_role=\\(lastSurfaceRole) surface_age_ms=\\(surfaceAgeText) publish_to_sink_ms=\\(publishToSinkText) surface_set_ms=\\(surfaceSetText) publish_to_surface_ms=\\(publishToSurfaceText) callback_item=\\(lastCallbackItemID) callback_type=\\(lastCallbackImageType) callback_max_width=\\(lastCallbackMaxWidth) callback_source=\\(lastCallbackSource) callback_age_ms=\\(callbackAgeText) callback_duration_ms=\\(callbackDurationText) contrast_age_ms=\\(contrastAgeText) contrast_duration_ms=\\(contrastDurationText) load_ahead=\\(lastLoadAheadID) load_ahead_age_ms=\\(loadAheadAgeText) page_route=\\(pageRoute) page_reset=\\(pageReset) page_start=\\(pageStartIndex) page_received=\\(pageReceivedCount) page_applied=\\(pageAppliedCount) page_apply_age_ms=\\(pageApplyAgeText) page_apply_duration_ms=\\(pageApplyDurationText) snapshot_route=\\(snapshotRoute) snapshot_age_ms=\\(pageSnapshotAgeText) snapshot_duration_ms=\\(pageSnapshotDurationText)")
+          ''')
+          replace_once(image_path, '''    struct PublishContext {
+              let url: URL
+              let source: String
+              let role: String
+          }
+          ''', '''    struct PublishContext {
+              let url: URL
+              let source: String
+              let role: String
+              let startedAt: CFTimeInterval
+          }
+          ''')
+          replace_once(image_path, '''        if let rendered = EmbyDecodedImageRenderPool.shared.image(for: url) {
+              lastPublishContext = PublishContext(url: url, source: "memory", role: diagnosticRole)
+              image = rendered
+              EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: "memory", role: diagnosticRole)
+          ''', '''        if let rendered = EmbyDecodedImageRenderPool.shared.image(for: url) {
+              let publishStartedAt = CACurrentMediaTime()
+              lastPublishContext = PublishContext(url: url, source: "memory", role: diagnosticRole, startedAt: publishStartedAt)
+              image = rendered
+              let publishDurationMS = (CACurrentMediaTime() - publishStartedAt) * 1000
+              EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: "memory", role: diagnosticRole)
+              EmbyPosterScrollHitchDiagnostics.shared.imagePublishDidComplete(url: url, source: "memory", role: diagnosticRole, durationMS: publishDurationMS)
+          ''')
+          replace_once(image_path, '''                        await MainActor.run {
+                              guard let self, self.currentURL == url else { return }
+                              self.lastPublishContext = PublishContext(url: url, source: "disk", role: diagnosticRole)
+                              self.image = cachedImage
+                              EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: "disk", role: diagnosticRole)
+          ''', '''                        await MainActor.run {
+                              guard let self, self.currentURL == url else { return }
+                              let publishStartedAt = CACurrentMediaTime()
+                              self.lastPublishContext = PublishContext(url: url, source: "disk", role: diagnosticRole, startedAt: publishStartedAt)
+                              self.image = cachedImage
+                              let publishDurationMS = (CACurrentMediaTime() - publishStartedAt) * 1000
+                              EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: "disk", role: diagnosticRole)
+                              EmbyPosterScrollHitchDiagnostics.shared.imagePublishDidComplete(url: url, source: "disk", role: diagnosticRole, durationMS: publishDurationMS)
+          ''')
+          replace_once(image_path, '''                await MainActor.run {
+                      guard let self, self.currentURL == url else { return }
+                      self.lastPublishContext = PublishContext(url: url, source: "network", role: diagnosticRole)
+                      self.image = loaded
+                      EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: "network", role: diagnosticRole)
+          ''', '''                await MainActor.run {
+                      guard let self, self.currentURL == url else { return }
+                      let publishStartedAt = CACurrentMediaTime()
+                      self.lastPublishContext = PublishContext(url: url, source: "network", role: diagnosticRole, startedAt: publishStartedAt)
+                      self.image = loaded
+                      let publishDurationMS = (CACurrentMediaTime() - publishStartedAt) * 1000
+                      EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: "network", role: diagnosticRole)
+                      EmbyPosterScrollHitchDiagnostics.shared.imagePublishDidComplete(url: url, source: "network", role: diagnosticRole, durationMS: publishDurationMS)
+          ''')
+          replace_once(image_path, '''            imageCancellable = loader.$image.sink { [weak self] image in self?.surface?.setImage(image) }
+          ''', '''            imageCancellable = loader.$image.sink { [weak self] image in
+                  guard let self, let surface = self.surface else { return }
+                  let publishContext = self.loader.lastPublishContext
+                  let sinkStartedAt = CACurrentMediaTime()
+                  surface.setImage(image)
+                  let completedAt = CACurrentMediaTime()
+                  guard image != nil else { return }
+                  EmbyPosterScrollHitchDiagnostics.shared.imageSurfaceDidAdopt(url: publishContext?.url, source: publishContext?.source ?? "unknown", role: publishContext?.role ?? "display", publishStartedAt: publishContext?.startedAt, sinkStartedAt: sinkStartedAt, completedAt: completedAt)
+              }
+          ''')
+
+          browse_path = "Sources/UI/EmbyServerBrowseV3.swift"
+          replace_once(browse_path, '''import SwiftUI
+          import Combine
+          import UIKit
+          ''', '''import SwiftUI
+          import Combine
+          import UIKit
+          import QuartzCore
+          ''')
+          replace_once(browse_path, '''    private func fetchPage(tab: V3LibraryTab, reset: Bool) async {
+              guard !loadingTabs.contains(tab) else { return }
+              var state = pageStates[tab] ?? V3LibraryPageState()
+              guard reset || state.hasMore else { return }
+              loadingTabs.insert(tab)
+              errorMessages[tab] = nil
+              let start = reset ? 0 : state.nextStartIndex
+              defer { loadingTabs.remove(tab); loadedTabs.insert(tab) }
+              do {
+                  let query = spec(for: tab)
+                  let page = try await client.libraryHubItemsPage(parentId: library.id, limit: pageSize, startIndex: start, recursive: true, sortBy: sortBy, includeItemTypes: query.types, filters: query.filters)
+                  let allowed = Set(query.types.map { $0.lowercased() })
+                  let filtered = page.items.filter { allowed.isEmpty || allowed.contains($0.type?.lowercased() ?? "") }
+                  if reset {
+                      var seen = Set<String>()
+                      let unique = filtered.filter { seen.insert($0.id).inserted }
+                      tabItems[tab] = unique
+                      state = V3LibraryPageState(nextStartIndex: page.items.count, hasMore: page.totalRecordCount.map { page.items.count < $0 } ?? (page.items.count == pageSize), isFetching: false, hasLoaded: true, seenItemIDs: seen)
+                  } else {
+                      let newItems = filtered.filter { state.seenItemIDs.insert($0.id).inserted }
+                      if !newItems.isEmpty { tabItems[tab, default: []].append(contentsOf: newItems) }
+                      state.nextStartIndex = start + page.items.count
+                      state.hasMore = page.totalRecordCount.map { state.nextStartIndex < $0 } ?? (page.items.count == pageSize)
+                      state.hasLoaded = true
+                  }
+                  pageStates[tab] = state
+                  loadedTabs.insert(tab)
+                  persistSnapshot()
+              } catch {
+                  if !isEmbyRequestCancellation(error) { errorMessages[tab] = error.localizedDescription }
+              }
+          }
+          ''', '''    private func fetchPage(tab: V3LibraryTab, reset: Bool) async {
+              guard !loadingTabs.contains(tab) else { return }
+              var state = pageStates[tab] ?? V3LibraryPageState()
+              guard reset || state.hasMore else { return }
+              loadingTabs.insert(tab)
+              errorMessages[tab] = nil
+              let start = reset ? 0 : state.nextStartIndex
+              defer { loadingTabs.remove(tab); loadedTabs.insert(tab) }
+              do {
+                  let query = spec(for: tab)
+                  let page = try await client.libraryHubItemsPage(parentId: library.id, limit: pageSize, startIndex: start, recursive: true, sortBy: sortBy, includeItemTypes: query.types, filters: query.filters)
+                  let applyStartedAt = CACurrentMediaTime()
+                  let allowed = Set(query.types.map { $0.lowercased() })
+                  let filtered = page.items.filter { allowed.isEmpty || allowed.contains($0.type?.lowercased() ?? "") }
+                  var appliedCount = 0
+                  if reset {
+                      var seen = Set<String>()
+                      let unique = filtered.filter { seen.insert($0.id).inserted }
+                      appliedCount = unique.count
+                      tabItems[tab] = unique
+                      state = V3LibraryPageState(nextStartIndex: page.items.count, hasMore: page.totalRecordCount.map { page.items.count < $0 } ?? (page.items.count == pageSize), isFetching: false, hasLoaded: true, seenItemIDs: seen)
+                  } else {
+                      let newItems = filtered.filter { state.seenItemIDs.insert($0.id).inserted }
+                      appliedCount = newItems.count
+                      if !newItems.isEmpty { tabItems[tab, default: []].append(contentsOf: newItems) }
+                      state.nextStartIndex = start + page.items.count
+                      state.hasMore = page.totalRecordCount.map { state.nextStartIndex < $0 } ?? (page.items.count == pageSize)
+                      state.hasLoaded = true
+                  }
+                  pageStates[tab] = state
+                  loadedTabs.insert(tab)
+                  let diagnosticRoute = "library-\(tab.rawValue)"
+                  EmbyPosterScrollHitchDiagnostics.shared.pageApplyDidComplete(route: diagnosticRoute, reset: reset, startIndex: start, receivedCount: page.items.count, appliedCount: appliedCount, durationMS: (CACurrentMediaTime() - applyStartedAt) * 1000)
+                  let snapshotStartedAt = CACurrentMediaTime()
+                  persistSnapshot()
+                  EmbyPosterScrollHitchDiagnostics.shared.pageSnapshotDidComplete(route: diagnosticRoute, durationMS: (CACurrentMediaTime() - snapshotStartedAt) * 1000)
+              } catch {
+                  if !isEmbyRequestCancellation(error) { errorMessages[tab] = error.localizedDescription }
+              }
+          }
+          ''')
+
+          check_path = "scripts/check_poster_grid_smoothness.py"
+          replace_once(check_path, '''poster_source = Path("Sources/UI/EmbyServerSharedV3.swift").read_text(encoding="utf-8")
+          person_source = Path("Sources/UI/EmbyPersonMediaView.swift").read_text(encoding="utf-8")
+          ''', '''poster_source = Path("Sources/UI/EmbyServerSharedV3.swift").read_text(encoding="utf-8")
+          browse_source = Path("Sources/UI/EmbyServerBrowseV3.swift").read_text(encoding="utf-8")
+          person_source = Path("Sources/UI/EmbyPersonMediaView.swift").read_text(encoding="utf-8")
+          ''')
+          replace_once(check_path, '''if 'api_key' in image_source[image_source.index('private func imageContext'):image_source.index('private func imageContext') + 1200]:
+              raise SystemExit("image diagnostics must not log authentication query data")
+
+          ''', '''if 'api_key' in image_source[image_source.index('private func imageContext'):image_source.index('private func imageContext') + 1200]:
+              raise SystemExit("image diagnostics must not log authentication query data")
+
+          required_timing_diagnostics = [
+              "let startedAt: CFTimeInterval",
+              "imagePublishDidComplete(url:",
+              "imageSurfaceDidAdopt(url:",
+              "publish_duration_ms=\\\\(publishDurationText)",
+              "publish_to_sink_ms=\\\\(publishToSinkText)",
+              "surface_set_ms=\\\\(surfaceSetText)",
+              "publish_to_surface_ms=\\\\(publishToSurfaceText)",
+              "page_apply_duration_ms=\\\\(pageApplyDurationText)",
+              "snapshot_duration_ms=\\\\(pageSnapshotDurationText)",
+          ]
+          for needle in required_timing_diagnostics:
+              if needle not in image_source:
+                  raise SystemExit(f"missing poster timing diagnostic contract: {needle}")
+
+          required_pagination_timing = [
+              "import QuartzCore",
+              "let applyStartedAt = CACurrentMediaTime()",
+              "EmbyPosterScrollHitchDiagnostics.shared.pageApplyDidComplete(route: diagnosticRoute",
+              "let snapshotStartedAt = CACurrentMediaTime()",
+              "persistSnapshot()",
+              "EmbyPosterScrollHitchDiagnostics.shared.pageSnapshotDidComplete(route: diagnosticRoute",
+          ]
+          for needle in required_pagination_timing:
+              if needle not in browse_source:
+                  raise SystemExit(f"missing pagination timing contract: {needle}")
+
+          ''')
+          PY
+
+      - name: Validate source-only Build227 scope
+        env:
+          WORKFLOW_PATH: .github/workflows/temp-apply-build227-poster-timing.yml
+        run: |
+          set -euo pipefail
+          python3 scripts/check_poster_grid_smoothness.py
+          python3 -m py_compile scripts/check_poster_grid_smoothness.py
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' "$WORKFLOW_PATH" Sources/Core/AppIdentity.swift Sources/UI/EmbyServerBrowseV3.swift Sources/UI/EmbySharedImageAndNavigation.swift scripts/check_poster_grid_smoothness.py | sort)"
+          printf 'Build227 one-shot changed paths:\n%s\n' "$changed"
+          test "$changed" = "$expected"
+          ! printf '%s\n' "$changed" | grep -E 'Sources/(Player|Transport|Session|Cache)/|Sources/UI/(EmbyHomeCoreV3|EmbyHomeHeroV3|EmbyHomeCarouselStateV3|EmbyHomeCarouselInteractionV3|Player|MPV|PlayerPiP)' >/dev/null
+          grep -F 'static let sourceVersion = "0.14.60"' Sources/Core/AppIdentity.swift >/dev/null
+          grep -F 'publish_to_sink_ms=' Sources/UI/EmbySharedImageAndNavigation.swift >/dev/null
+          grep -F 'page_apply_duration_ms=' Sources/UI/EmbySharedImageAndNavigation.swift >/dev/null
+          grep -F 'pageSnapshotDidComplete(route: diagnosticRoute' Sources/UI/EmbyServerBrowseV3.swift >/dev/null
+
+      - name: Commit Build227 timing diagnostics and remove one-shot workflow
+        env:
+          WORKFLOW_PATH: .github/workflows/temp-apply-build227-poster-timing.yml
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm "$WORKFLOW_PATH"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyServerBrowseV3.swift Sources/UI/EmbySharedImageAndNavigation.swift scripts/check_poster_grid_smoothness.py
+          git diff --cached --check
+          git commit -m "Add Build227 poster timing diagnostics"
+          git push origin HEAD:perf/poster-grid-smoothness
