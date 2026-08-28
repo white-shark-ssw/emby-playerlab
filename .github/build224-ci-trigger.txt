@@ -1,1 +1,1 @@
-trigger Build224 dedicated Hero artwork isolation CI
+trigger Build224 dedicated Hero artwork isolation CI retry 2
