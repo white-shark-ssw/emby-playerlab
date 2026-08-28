@@ -14,6 +14,7 @@ extension V3EmbyHomeView {
 
             ForEach(model.carouselItems) { item in
                 carouselHeroForeground(item: item, width: width, viewportHeight: viewportHeight)
+                    .compositingGroup()
                     .opacity(carouselForegroundOpacity(for: item.id))
                     .offset(x: carouselForegroundOffset(for: item.id, width: width))
                     .allowsHitTesting(false)
