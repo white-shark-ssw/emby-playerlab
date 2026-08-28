@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build220 / 0.14.53 has now been target-device tested for the intended 3×3 route and is not accepted as a smoothness fix. The user reports the tactile result is “基本一样”. The supplied App log still records a real grid dragging hitch at 33.3 ms and a second 74.1 ms moving hitch. Build220 therefore rejects the hypothesis that bypassing surrounding SwiftUI poster-cell observation of the display-image loader is sufficient. The exact source/CI/IPA evidence remains valid, but the candidate is real-device ineffective and not stable. No Home-carousel owner file changed.**
+**Active — Build228 / 0.14.61 is now target-device diagnostic tested and still visibly hitches, sometimes strongly. Its strongest captured user-drag sample is 55.1 ms; image publish/Combine→UIKit adoption measured 0.0 ms and page apply 0.3 ms, while the synchronous Library persistent snapshot took 39.7 ms and completed about 8 ms before the hitch. Build229 / 0.14.62 therefore moves only Library snapshot JSON conversion/serialization/atomic write off the MainActor onto one serial utility queue while preserving snapshot order/schema/keys and leaving Favorites persistence unchanged. Build229 is exact-source CI/IPA verified but target-device pending; not stable.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -10,6 +10,37 @@
 - **Draft PR**: #259
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
+
+## Build228 real-device result / Build229 candidate — 2026-08-28
+
+Build228 / OnePlayer 0.14.61 exact source `20f0edaf30c3c9161a79f64fd29dbc79c199473e` was tested on iPhone 15 Pro Max / iOS 17.0. User verdict: **“还是会有抖动感，有的时候还很强烈”**. Build228 is diagnostic-only and is rejected as a smoothness fix.
+
+Uploaded App log `OnePlayer-App-1787905589.log` contains a real **55.1 ms** `scroll_route=grid`, `phase=dragging`, `delta_y=6.0` long frame during the `StartIndex=60` pagination window. Build228's new timing separates the nearby synchronous work:
+
+- image publish / synchronous Combine→UIKit adoption: **0.0 ms** for the latest correlated publish;
+- pagination result apply: **0.3 ms**;
+- Library persistent snapshot serialization + atomic write: **39.7 ms**, completing about **8 ms** before the hitch.
+
+The supplied 30 fps screen recording confirms the user's visible/tactile jitter report but its file timestamp does not align with that exact logged 55.1 ms event, so the log — not frame matching — controls attribution.
+
+This is direct evidence that Build213's synchronous Library presentation-snapshot persistence can materially block the current pagination-adjacent scroll path. It is **not** evidence that persistence is the universal historical root cause: Build212 captured the same grid-hitch family before Build213 existed.
+
+Build229 / OnePlayer **0.14.62 (229)** is the minimum evidence-supported candidate. Exact source: **`f5e3e3eb144578c863b172e3bd3a1aa13e5c2177`**. Exact Build228→Build229 delta is five paths only: `AppIdentity`, `EmbyPagePersistentCache`, `EmbyServerBrowseV3`, Build229 changelog and poster checker. The `@MainActor` Library model still captures one immutable snapshot in current state order; only Library snapshot object→JSON conversion, JSON serialization and `.atomic` disk write run on one serial `.utility` queue, and the async caller awaits completion. Favorites persistence, cache schema/identity/content, image policy, Home carousel owner files, Player/MPV/PiP, Transport, playback Cache/Session and all P0 contracts are unchanged.
+
+Build229 CI / IPA evidence:
+
+- exact-source run/job: **`33156266871 / 98799654927` — success**;
+- Xcode 16.4 Release + exact five-path scope/checker: PASS;
+- artifact: `OnePlayer-0.14.62-build229-poster-snapshot-off-main`; ID **`9679803873`**;
+- artifact ZIP SHA-256: `8b301f7644f0dfb7e1fb80dba78069f870123c663ba5b323edc93a1e88f067b2`;
+- IPA SHA-256: `49efcb8766cc9414a3f35e3d8fe75a04eaf6adf2ba86a40f526a5e53c40acd4c`;
+- source ZIP SHA-256: `1de13e01617a575bf5b204e9dd546af443b8a7fdf79003e3eba1399edfb06e5a`;
+- bundle/version/build: `com.embyplayerlab.app`, OnePlayer **0.14.62 (229)**; `MinimumOSVersion=15.0`;
+- artifact/IPA/source integrity independently verified; source snapshot contains no temporary Build229 workflow.
+
+**Build229 evidence: Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable or frozen ❌.**
+
+Next target-device A/B should repeat Library 3×3 scrolling through a real pagination boundary. The key question is whether the severe pagination-adjacent hitch disappears or materially shrinks. Do not claim the remaining non-pagination hitch family solved without new device evidence.
 
 ## Acceptance / protected contracts
 
