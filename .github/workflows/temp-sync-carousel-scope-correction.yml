@@ -1,0 +1,113 @@
+name: TEMP Sync Carousel Scope Correction
+
+on:
+  push:
+    branches: [docs/home-carousel-scope-correction-20260828]
+    paths:
+      - ".github/carousel-scope-correction-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout helper branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch authoritative project docs on main
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          checkpoint = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+          text = checkpoint.read_text()
+          text = re.sub(
+              r'^\*\*Active —.*?\*\*$',
+              '**Active — scope corrected after the 2026-08-28 Build224 target-device report. The user still sees visible jitter during Home vertical inertial scrolling, but this task is specifically about carousel horizontal swipe/drag smoothness. Build222–224 vertical Home scrolling A/Bs are now supporting diagnostics only and must not be used as the acceptance gate for the carousel task. Build224 therefore records a vertical-only real-device result, not a horizontal carousel verdict. The current direct carousel candidate returns to Build221 / 0.14.54, whose horizontal persistent-drag isolation is already CI/IPA verified and still needs target-device horizontal A/B. Build216 remains the accepted overall product baseline.**',
+              text,
+              count=1,
+              flags=re.M,
+          )
+          scope = '''## Scope correction — 2026-08-28\n\nThe user explicitly clarified that the active goal is **carousel optimization**, not general Home vertical scrolling smoothness. This changes the acceptance scope:\n\n- the primary acceptance path is horizontal carousel swipe/drag feel on the target device;\n- evaluate first-move granularity, sustained finger tracking, reversal continuity, backdrop/foreground continuity, release/settle and the subjective gap versus EX;\n- Home vertical inertial scrolling may still reveal shared image/compositor pressure, but it is supporting evidence only and cannot pass/fail the carousel interaction task;\n- Build222–224 are therefore closed as a vertical supporting-diagnostic detour and must not drive another vertical-only Build225;\n- resume the existing Build221 horizontal A/B before writing any new carousel patch.\n\n'''
+          if '## Scope correction — 2026-08-28' not in text:
+              text = text.replace('## Retained interaction contract\n', scope + '## Retained interaction contract\n', 1)
+
+          start = text.index('## Build224 / 0.14.57 — Hero artwork presentation isolation')
+          end = text.index('## Build221 / 0.14.54 — separate horizontal lane')
+          build224 = '''## Build224 / 0.14.57 — Hero artwork presentation isolation\n\n### Identity / CI evidence\n\n- branch: `diag/home-carousel-hero-artwork-isolation-build224`\n- base at branch creation: `2e02e87773c05295f6e3c88a67f3fa4e110edd92`\n- identity: OnePlayer `0.14.57`, Build `224`\n- tested CI head / exact source snapshot: `b6ee3361f183257a2ae01f1336506ab4a4c1a254`\n- dedicated Xcode 16.4 run/job: `33142773132 / 98757057369` — success\n- artifact ID: `9674622017`\n- IPA SHA-256: `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`\n- source ZIP SHA-256: `6537f85e6f644ccc85491ec357040bdac766e2ee63ef98ba1af5ec253d134a86`\n- OnePlayer `0.14.57 (224)`, bundle `com.embyplayerlab.app`, MinOS 15.0 independently verified.\n\n### Exact product diff\n\nAgainst its main base, product source changes are only `Sources/Core/AppIdentity.swift` plus removal of the current/target `carouselHeroArtwork` mounts from `immersiveCarouselHero`. The Hero implementation itself remains in source. Root persistent backdrop, 30pt persistent blur, preload, foreground/logo/text/page indicators, normal auto-advance, horizontal interaction/state ownership and all P0/Frozen paths remain unchanged.\n\n### 2026-08-28 target-device result and scope meaning\n\nUser feedback on iPhone 15 Pro Max / iOS 17.0: **Home vertical inertial scrolling still visibly jitters.** This proves only that removing the clear Hero artwork mount is not sufficient to remove the separate Home vertical hitch. The reported test did **not** evaluate the intended horizontal carousel drag feel, so Build224 must not be described as accepted or rejected for horizontal carousel smoothness.\n\nThe more important scope correction is that general Home vertical scrolling is not the primary goal of `DEV-home-carousel-drag-smoothness`. Build224 closes the vertical-only detour; do not extend it into another vertical-only candidate.\n\nEvidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device vertical-only tested ✅ / horizontal carousel verdict not established ❌ / stable ❌.\n\n'''
+          text = text[:start] + build224 + text[end:]
+
+          next_start = text.index('## Next exact action')
+          next_text = '''## Next exact action\n\nReturn to the carousel itself. Use the already CI/IPA-verified **Build221 / 0.14.54** for target-device horizontal A/B before writing any Build225. Test repeated left/right drags on the carousel, especially:\n\n- first visible movement after acquisition;\n- sustained 1:1 finger tracking / “smooth glass vs rough paper” feel;\n- rapid reversal continuity;\n- whether backdrop presentation still produces perceptible drag-time catches;\n- release/settle separately, because Build221 intentionally restores the normal persistent transition after release.\n\nIf Build221 materially improves horizontal drag, persistent backdrop presentation during active drag is a causal component and the next patch should redesign that horizontal presentation path without removing the normal visual result. If Build221 is essentially unchanged, reject that isolation as sufficient and choose the next horizontal-only variable from the Build219 evidence. Do not use Home vertical inertial scrolling as the acceptance gate for the carousel task.\n'''
+          text = text[:next_start] + next_text
+          checkpoint.write_text(text)
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          lines = module.read_text().splitlines()
+          carousel_row = '| Home carousel interaction | **Active — horizontal carousel smoothness is the acceptance scope; Build221 horizontal A/B is current direct candidate** | 2026-08-28 scope correction: the user clarified that this task is about carousel swipe/drag smoothness, not general Home vertical inertial scrolling. Build224 / 0.14.57 was target-device tested only as a vertical stress probe and vertical jitter remained; that result does not establish a horizontal carousel verdict. Build222–224 are now supporting vertical diagnostics only. Resume Build221 / 0.14.54 (`33090175887 / 98580579889`, artifact `9654120029`, IPA `d2ee4fb2d40c251399951bc72ba6ad35fbe8ba3bfd72b861274b9b2c38fe0d9c`) for direct horizontal A/B. Build216 remains accepted baseline; not stable. |'
+          other_row = '| Other product modules | Active parallel work | Build216 / 0.14.49 remains the latest accepted overall runtime baseline. Home-carousel acceptance is again horizontal drag/swipe behavior: Build221 is the current direct carousel A/B pending target-device test. Build222–224 remain historical/supporting vertical Home diagnostics and must not drive the carousel acceptance decision. Poster-scroll Build220 remains a separate Active line. `EmbySharedImageAndNavigation.swift` remains shared infrastructure, so whichever Active task integrates second must resync against then-current `main` and rerun affected validation. |'
+          for i, line in enumerate(lines):
+              if line.startswith('| Home carousel interaction |'):
+                  lines[i] = carousel_row
+              elif line.startswith('| Other product modules |'):
+                  lines[i] = other_row
+          module.write_text('\n'.join(lines) + '\n')
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          lines = index.read_text().splitlines()
+          row224 = '| **Build224 / 0.14.57** | Home vertical Hero artwork presentation isolation | **Target-device vertical-only diagnostic tested; visible Home inertial-scroll jitter remains; not a horizontal carousel verdict.** The build removed only current/target clear `carouselHeroArtwork` mounts while restoring the accepted persistent background/Dock and retaining preload, persistent blur, foreground, normal auto-advance and horizontal ownership. Run/job `33142773132 / 98757057369`; artifact `9674622017`; IPA SHA-256 `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`; MinOS 15.0. On 2026-08-28 the user still saw Home vertical inertial jitter, but explicitly clarified that the active task is carousel optimization. Therefore Build224 closes the vertical-only detour; it neither accepts nor rejects horizontal carousel drag smoothness. Current direct carousel A/B returns to Build221. Not stable. |'
+          replaced = False
+          for i, line in enumerate(lines):
+              if line.startswith('| **Build224 / 0.14.57**'):
+                  lines[i] = row224
+                  replaced = True
+                  break
+          assert replaced, 'Build224 row not found'
+          index.write_text('\n'.join(lines) + '\n')
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          text = state.read_text()
+          text = re.sub(
+              r'^_Last updated.*_$',
+              '_Last updated after the 2026-08-28 carousel-scope correction. Build216 remains the accepted overall runtime baseline. Build224 was target-device tested only as a Home vertical stress probe and vertical inertial jitter remained, but the user explicitly clarified that `DEV-home-carousel-drag-smoothness` is judged by horizontal carousel interaction, not general Home scrolling. Build222–224 are supporting vertical diagnostics only; Build221 is again the current direct horizontal carousel A/B pending target-device testing._',
+              text,
+              count=1,
+              flags=re.M,
+          )
+          scope_state = '''\n### 2026-08-28 acceptance-scope correction\n\nThe user explicitly corrected the task scope after Build224: **optimize the carousel itself**. Home vertical inertial scrolling can expose shared rendering pressure, but it is not the acceptance criterion for `DEV-home-carousel-drag-smoothness`. Build224 still showed visible vertical jitter after removing Hero clear artwork, but no horizontal carousel verdict was gathered from that test. Therefore Build222–224 are closed as a supporting vertical diagnostic detour. The direct carousel lane resumes at Build221 / 0.14.54, which is already CI/IPA verified and isolates persistent backdrop presentation only during active horizontal drag. No new vertical-only candidate should be created before Build221 is tested horizontally on the target device.\n'''
+          marker = '\n### Retained architecture\n'
+          if '### 2026-08-28 acceptance-scope correction' not in text:
+              text = text.replace(marker, scope_state + marker, 1)
+          text = re.sub(
+              r'### Build224 Home vertical Hero-artwork A/B\n\n.*?(?=\n## Active: Poster-heavy scrolling smoothness)',
+              '''### Build224 Home vertical Hero-artwork A/B\n\nBuild224 / 0.14.57 removed only the clear Hero 1400px artwork mounts while retaining the accepted persistent background/Dock, preload, persistent blur, foreground, auto-advance and horizontal interaction. Dedicated Xcode 16.4 run/job `33142773132 / 98757057369` succeeded; artifact `9674622017`; IPA SHA-256 `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`; MinOS 15.0. Target-device feedback on 2026-08-28 still reports visible **Home vertical inertial-scroll jitter**. This is now recorded as vertical supporting evidence only: the user clarified that the active goal is horizontal carousel swipe/drag smoothness, and this Build224 test did not provide a horizontal verdict. Do not continue the carousel task with another vertical-only A/B.\n''',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          text = text.replace(
+              'Home-carousel Build224 is the latest CI/IPA-verified vertical diagnostic candidate; Build221 remains a separate horizontal A/B;',
+              'Home-carousel acceptance is horizontal drag/swipe behavior; Build221 is the current direct horizontal A/B, while Build222–224 are supporting vertical diagnostics only;'
+          )
+          state.write_text(text)
+
+          decisions = Path('docs/project/TECHNICAL_DECISIONS.md')
+          dtext = decisions.read_text()
+          decision = '''\n## 2026-08-28 — Carousel acceptance is horizontal interaction, not general Home vertical scrolling\n\n- **Decision:** `DEV-home-carousel-drag-smoothness` is accepted/rejected by target-device horizontal carousel swipe/drag behavior. General Home vertical inertial scrolling is supporting diagnostic evidence only.\n- **Reason:** after Build224 still showed visible vertical jitter, the user explicitly clarified that the active goal is optimizing the carousel itself. The previous Build222–224 vertical A/B sequence was useful only as a stress/isolation detour and had begun to replace the actual product acceptance question.\n- **Consequence:** do not create another vertical-only carousel candidate before testing the existing Build221 horizontal A/B. Horizontal evaluation must cover first movement, sustained tracking, reversal, backdrop/foreground continuity and release/settle.\n- **Evidence:** latest user target-device feedback outranks the prior diagnostic plan. Build224 has real-device vertical-only evidence but no horizontal carousel verdict.\n'''
+          if '## 2026-08-28 — Carousel acceptance is horizontal interaction, not general Home vertical scrolling' not in dtext:
+              decisions.write_text(dtext.rstrip() + '\n' + decision)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md
+          git diff --cached --check
+          git commit -m "Docs: correct carousel acceptance scope after Build224 [skip ci]"
+          git push origin main
