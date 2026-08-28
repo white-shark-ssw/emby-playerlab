@@ -28,7 +28,7 @@
 - **Initial materialized Build219 source:** `dc0c30a0f2f1e85d27f80934d82b1ca07246f5ef`
 - **Build219 compile-fix source commit:** `90557148e66e1d074cc2831dcb8023ea22dde7e0`
 - **PR:** none yet
-- **Build candidate:** OnePlayer `0.14.55` / Build `222` — reserved after checking main/other Active tasks; global Build219/220/221 were already occupied by parallel candidates
+- **Build candidate:** OnePlayer `0.14.57` / Build `224` — unique Aether fast-seek candidate; global Build223 was already occupied by the parallel Home task when this package was allocated.
 - **Target device:** iPhone 15 Pro Max / iOS 17.0
 
 ## Proven feasibility evidence
@@ -203,6 +203,36 @@ Identity guard before allocation found global Build219 already owned by Home-car
 
 Next device test should repeat the Build219 Aether Seek sequence and compare `SeekEvent.landed` latency plus Range task start/cancel/finish counts. The purpose is to separate the remaining intrinsic Aether exact-seek floor from the removed Build219 adapter-induced transport churn.
 
+## Build224 / 0.14.57 — bounded Aether fast seek + truthful rate UI
+
+Build224 is a narrow follow-up on top of the Build222 transport correction. Source inspection established that Aether's native AVPlayer host used exact zero-tolerance seek for every programmatic seek, while OnePlayer's existing `bufferHit` diagnostic is forward-range shaped and therefore cannot safely decide the left/right double-tap contract. The app now routes by Seek intent instead of by that diagnostic:
+
+- `.forward` / `.backward` use a finite **±0.75 s** tolerance through Aether's native AVPlayer host;
+- `.absolute` remains exact (`toleranceSeconds = 0`) for scrub/absolute positioning;
+- the vendor API default remains exact, so callers that do not opt in preserve existing behavior;
+- bounded tolerance is passed through Aether's existing seek/reconcile/re-anchor path; no unbounded tolerance, second corrective seek, timer, retry, fallback, watchdog or Transport algorithm change is added;
+- `bufferHit` remains diagnostic only and no longer gates whether fast tolerance is used.
+
+Vendor branch `vendor/aetherengine-oneplayer-6.50.0` commit `7422d45727f3bea9a4aa1b616138448488a394d8` adds only the optional `toleranceSeconds` parameter and finite AVPlayer tolerances. OnePlayer product commit `704643e1887ffcecdf3f46f598aba74b603c8475` wires `.forward/.backward` to 0.75 s and `.absolute` to 0.
+
+The same source review confirmed Aether's public `setRate` clamps video playback to `maxSupportedRate = 2.0` (3.0 for audio-only), while OnePlayer's generic speed panel exposed values through 8×. Build224 therefore queries the active Aether engine's real `maxSupportedRate`, clamps the controller command to that value and filters the speed picker accordingly. MPV/other existing paths retain the 8× list. No Aether core rate limit is raised or bypassed.
+
+### Build224 CI / IPA evidence
+
+- Exact tested repository source: `9e25454361b6f5ac71bb97de6771684a57ceb47d`.
+- App fast-seek/rate patch commit: `704643e1887ffcecdf3f46f598aba74b603c8475`.
+- Aether vendor revision: `7422d45727f3bea9a4aa1b616138448488a394d8`.
+- Xcode 26.3 workflow run/job: `33112527059 / 98658753903` — **success**.
+- Build contract validation, package resolution, Release compile, IPA validation and artifact upload all passed.
+- Product artifact: `OnePlayer-0.14.57-build224-aether-fastseek-9e25454361b6f5ac71bb97de6771684a57ceb47d`; ID `9663285742`; artifact digest `sha256:a97ef293d9c453458ae8c6404d6146a0f501ec444fbf5ed1c6278e957068e073`.
+- IPA: `OnePlayer-0.14.57-build224-aether-fastseek-9e25454-unsigned.ipa`; SHA-256 `85b1f5ae81c10843816d75f97ebf648dc5d5c21932b352bc4ef0b16f605ffae0`.
+- Source ZIP SHA-256: `1716aa08f9e07c973b65a17b8c23b9b2fb1ace783bc751aa6c176a58c466c747`.
+- Built identity: `com.embyplayerlab.app`, `0.14.57 (224)`, `MinimumOSVersion=16.0`.
+- Independent artifact download reproduced the artifact/IPA hashes and `unzip -t` reported no compressed-data errors.
+- Evidence: **Code written / CI passed / IPA produced+verified / Build224 real-device test pending / not stable**.
+
+Build224 does not alter MPV fast Seek, UnifiedTransport/Session Cache algorithms, Emby reporting, PiP, MDK or the STRM→302→115/CDN client-direct path.
+
 ## Frozen / do-not-touch
 
 - MPV remains default/main authority and its fast-seek path is unchanged.
@@ -246,12 +276,12 @@ Next device test should repeat the Build219 Aether Seek sequence and compare `Se
 
 ## Validation state
 
-- **Code written:** Yes — Build219 Aether product integration plus the explicit capability-switch compile fix are committed.
-- **CI passed:** Yes — latest Build222 run/job `33103909150 / 98628547449` succeeded on exact source `224199f90d12b39367ae7981463aedd70cdbfe2d`.
-- **IPA produced:** Yes — Build222 artifact `9659820803`; IPA SHA-256 `a7566dc53a60880096a41ee36bf3eab1dd43f14e2ff4a9b86c1a78372a7af660`; MinOS 16.0 verified.
-- **Real-device tested:** Build219 yes — high-latency Seek + per-read transport churn confirmed; Build222 corrective candidate not yet device-tested.
+- **Code written:** Yes — Build224 bounded Aether seek tolerance and engine-aware rate UI are committed on top of the Build222 transport correction.
+- **CI passed:** Yes — Build224 run/job `33112527059 / 98658753903` succeeded on exact source `9e25454361b6f5ac71bb97de6771684a57ceb47d`.
+- **IPA produced:** Yes — artifact `9663285742`; IPA SHA-256 `85b1f5ae81c10843816d75f97ebf648dc5d5c21932b352bc4ef0b16f605ffae0`; source ZIP SHA-256 `1716aa08f9e07c973b65a17b8c23b9b2fb1ace783bc751aa6c176a58c466c747`; MinOS 16.0 verified.
+- **Real-device tested:** Build219 yes — precise but high-latency Seek and per-read transport churn confirmed. Build224 fast-seek candidate has not yet been device-tested.
 - **Stable / frozen:** No.
 
 ## Next exact action
 
-Install Build222 / 0.14.55 on iPhone 15 Pro Max / iOS 17.0 and repeat the same Aether Seek sequence. Compare landed latency/precision and Transport Range task start/cancel/finish behavior against Build219. Do not mark the defect solved until the new device log proves the cancellation storm is gone and quantifies the remaining Aether exact-seek latency.
+Install Build224 / 0.14.57 on iPhone 15 Pro Max / iOS 17.0. With Aether selected, compare left/right double-tap and rapid repeated double-tap responsiveness against the prior exact-seek behavior, confirm absolute scrub remains acceptably precise, and confirm the speed panel exposes only rates supported by Aether (video ≤2×) while MPV still exposes its existing higher-rate choices. Capture the playback log so `AetherSeek request ... tolerance=0.75` and landed latency can be compared. Do not mark Aether fast Seek solved or stable until target-device evidence confirms it.
