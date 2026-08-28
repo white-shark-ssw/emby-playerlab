@@ -1,0 +1,84 @@
+name: Temp Sync Poster Identity Conflict
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/temp-sync-poster-identity-conflict.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Sync poster checkpoint and project evidence
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if text.count(old) != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, got {text.count(old)}')
+              return text.replace(old, new, 1)
+
+          checkpoint = Path('docs/project/current/dev/DEV-poster-grid-smoothness.md')
+          text = checkpoint.read_text(encoding='utf-8')
+          old_status = '**Active — Build228 / 0.14.61 is now target-device diagnostic tested and still visibly hitches, sometimes strongly. Its strongest captured user-drag sample is 55.1 ms; image publish/Combine→UIKit adoption measured 0.0 ms and page apply 0.3 ms, while the synchronous Library persistent snapshot took 39.7 ms and completed about 8 ms before the hitch. Build229 / 0.14.62 therefore moves only Library snapshot JSON conversion/serialization/atomic write off the MainActor onto one serial utility queue while preserving snapshot order/schema/keys and leaving Favorites persistence unchanged. Build229 is exact-source CI/IPA verified but target-device pending; not stable.**'
+          new_status = '**Active — Build229 / 0.14.62 is now target-device tested and overall Library 3×3 hitching still exists. The latest captured 77.2 ms moving hitch occurred about 7.3 s after page apply/snapshot completion and about 0.77 s after the latest image publish, so Build228’s synchronous snapshot write is not the direct trigger for this sample and moving Library persistence off MainActor is not sufficient to solve the whole hitch family. Poster branch head `deba1534e55bfc73f4d3cf43f2682c854a04cb39` materialized a diagnostic-only 0.14.66 / Build233 commit, but Build233 is already owned by the independent Home carousel task; resume identity guard therefore fails and poster development is paused until this candidate identity is explicitly released/reallocated. Not stable.**'
+          text = replace_once(text, old_status, new_status, 'checkpoint status')
+          anchor = '- **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`\n'
+          section = '''\n## Build229 latest target-device result / candidate identity guard — 2026-08-29\n\nBuild229 / OnePlayer 0.14.62 was exercised again on the target device and the user still reports visible jitter. The latest App-log evidence contains a **77.2 ms** `PosterScrollHitch` on the Library grid. At that hitch, the latest Library page apply and awaited snapshot completion were already about **7.3 s** old, while the latest image publish was about **0.77 s** old. The captured sample is `phase=moving`, `velocity_y=0`, `delta_y=1.33`, so it is a real long-frame/catch-up sample but not pagination-adjacent.\n\nControlling interpretation: Build228’s 39.7 ms synchronous Library snapshot write remains a valid contributor to the earlier severe pagination-adjacent sample, but Build229 proves that removing that main-thread write is **not sufficient** to remove the broader 3×3 hitch family. This 77.2 ms sample does not support direct attribution to page apply, snapshot persistence, or the latest image publication because all three are far outside the hitch window. Pagination-specific improvement from Build229 is still not established by this sample.\n\nResume identity guard on 2026-08-29 also found a hard candidate collision:\n\n- checkpoint branch remains `perf/poster-grid-smoothness`, Draft PR #259;\n- real branch / PR head is `deba1534e55bfc73f4d3cf43f2682c854a04cb39`, commit `Add Build233 poster background-work diagnostics`, directly parented by Build229 exact source `f5e3e3eb144578c863b172e3bd3a1aa13e5c2177`;\n- that head changes poster diagnostics/version/changelog to **0.14.66 / Build233** but has no valid poster CI/IPA attribution;\n- independent Active task `DEV-home-carousel-drag-smoothness` already owns OnePlayer **0.14.66 (233)** and has CI/IPA evidence for that identity;\n- Home also allocated Build234 and Aether currently reserves Build235, so poster must not silently rename itself to another number without a fresh collision check.\n\n**Identity guard result: FAILED.** Do not run/distribute poster Build233, do not call it a poster candidate, and do not modify product source until the user explicitly resolves the candidate collision.\n\n**Evidence:** Build229 Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / overall hitch still present ❌ / pagination-specific improvement unproven / stable ❌. Poster `deba1534...` code exists, but candidate identity is invalid and no poster CI/IPA should be claimed.\n\n**Pending:** explicit user decision to release the invalid poster Build233 identity and allocate a new unique poster candidate after rechecking all Active checkpoints / `BUILD_TEST_INDEX.md`.\n\n**Next exact action:** after explicit resolution, restore a unique poster candidate identity from the current branch evidence, rerun exact-scope/source guards, then build the existing background-work diagnostic instrumentation to a verified IPA. Until then, no product-source edits.\n'''
+          if '## Build229 latest target-device result / candidate identity guard — 2026-08-29' in text:
+              raise SystemExit('checkpoint identity section already exists')
+          text = replace_once(text, anchor, anchor + section, 'checkpoint insert anchor')
+          text = text.replace('**Build229 evidence: Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable or frozen ❌.**', '**Build229 evidence: Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device tested ✅ / overall hitch still present ❌ / pagination-specific improvement unproven / stable or frozen ❌.**')
+          text = text.replace('The intended Build229 Library test remains pending.', 'At this historical point the intended Build229 Library test was still pending; the later 2026-08-29 Library result above supersedes that status.')
+          checkpoint.write_text(text, encoding='utf-8')
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          lines = module.read_text(encoding='utf-8').splitlines()
+          prefix = '| Poster 3-column / poster-heavy scroll smoothness |'
+          idx = [i for i, line in enumerate(lines) if line.startswith(prefix)]
+          if len(idx) != 1:
+              raise SystemExit(f'MODULE_STATUS poster row matches={len(idx)}')
+          lines[idx[0]] = '| Poster 3-column / poster-heavy scroll smoothness | **Active — Build229 target-device still hitches; poster Build233 identity invalid/colliding, development paused at resume guard** | Build229 / 0.14.62 off-main Library persistence is CI/IPA verified and now target-device tested, but overall 3×3 jitter remains. Latest captured 77.2 ms moving hitch is ~7.3 s after page apply/snapshot and ~0.77 s after image publish, so those recorded events are not the direct trigger for that sample. Earlier Build228 39.7 ms synchronous persistence remains a pagination-adjacent contributor only, not the universal cause. Poster branch head `deba1534e55bfc73f4d3cf43f2682c854a04cb39` materialized 0.14.66/233 diagnostics, but Home already owns Build233 with CI/IPA evidence; poster 233 is invalid attribution and no product edits/CI should continue until candidate identity is explicitly reallocated. P0/Frozen paths unchanged; not stable. |'
+          module.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          lines = index.read_text(encoding='utf-8').splitlines()
+          prefix = '| **Build229 / 0.14.62** |'
+          idx = [i for i, line in enumerate(lines) if line.startswith(prefix)]
+          if len(idx) != 1:
+              raise SystemExit(f'BUILD_TEST_INDEX Build229 row matches={len(idx)}')
+          lines[idx[0]] = '| **Build229 / 0.14.62** | Library presentation snapshot persistence off MainActor | **CI/IPA verified and target-device tested; overall Library 3×3 hitching remains; not stable.** Exact source `f5e3e3eb144578c863b172e3bd3a1aa13e5c2177`; run/job `33156266871 / 98799654927`; artifact `9679803873`; IPA SHA-256 `49efcb8766cc9414a3f35e3d8fe75a04eaf6adf2ba86a40f526a5e53c40acd4c`; MinOS 15.0. Latest target-device evidence captures a 77.2 ms Library-grid moving hitch about 7.3 s after page apply/snapshot completion and ~0.77 s after image publish, so off-main persistence is not sufficient to solve the broader hitch family and those events are not direct triggers for this sample. Pagination-specific improvement remains unproven. Poster branch later materialized `deba1534e55bfc73f4d3cf43f2682c854a04cb39` as 0.14.66/Build233 diagnostics, but Home already owns Build233; this poster identity is invalid, has no valid poster CI/IPA attribution, and must be explicitly reallocated before further product work. |'
+          index.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          text = state.read_text(encoding='utf-8')
+          lines = text.splitlines()
+          idx = [i for i, line in enumerate(lines) if line.startswith('_Last updated')]
+          if len(idx) != 1:
+              raise SystemExit(f'PROJECT_STATE last-updated matches={len(idx)}')
+          lines[idx[0]] = '_Last updated after poster Build229 target-device residual-hitch evidence and poster Build233 candidate-identity collision were recorded. Build216 remains the accepted overall runtime baseline; Home carousel Build233 remains its own valid CI/IPA candidate, while poster development is paused at resume identity guard._'
+          text = '\n'.join(lines) + '\n'
+          anchor = 'Work: `DEV-poster-grid-smoothness`.\n'
+          insert = '''\n### 2026-08-29 Build229 residual hitch / poster candidate collision\n\nBuild229 / 0.14.62 is now target-device tested for Library scrolling and overall 3×3 jitter still exists. The latest captured 77.2 ms moving hitch occurs about 7.3 s after page apply/snapshot completion and ~0.77 s after the latest image publish, so the off-main persistence change is not sufficient for the whole hitch family and this sample is not directly attributable to those recorded events. The earlier Build228 39.7 ms synchronous persistence remains a valid pagination-adjacent contributor only.\n\nThe poster branch/PR head is currently `deba1534e55bfc73f4d3cf43f2682c854a04cb39`, which materialized a diagnostic-only 0.14.66/Build233 commit on top of Build229. That candidate identity is invalid because the independent Home task already owns Build233 with CI/IPA evidence; Home also allocated Build234 and Aether reserves Build235. Under the current resume-identity rules, poster product development is paused until the user explicitly releases/reallocates the poster candidate and a fresh collision check passes. No poster Build233 CI/IPA/stability claim is valid.\n'''
+          if '### 2026-08-29 Build229 residual hitch / poster candidate collision' in text:
+              raise SystemExit('PROJECT_STATE poster conflict section already exists')
+          text = replace_once(text, anchor, anchor + insert, 'PROJECT_STATE poster anchor')
+          state.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- docs/project/current/dev/DEV-poster-grid-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/project/current/dev/DEV-poster-grid-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md
+          git commit -m 'Record poster Build229 result and identity guard [skip ci]'
+          git push origin main
