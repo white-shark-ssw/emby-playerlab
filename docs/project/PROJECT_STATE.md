@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build237 target-device testing accepted the persistent white-flash correction but rejected the lowered predicted-total-distance fling gate as sufficient, and Build238 / 0.14.71 reached CI/IPA verification as a measurement-only release-intent candidate. Build216 remains the accepted overall runtime baseline._
+_Last updated after Build238 target-device release diagnostics validated latest-delivered-move velocity as the fling-intent signal and Build239 / 0.14.72 reached CI/IPA verification with a direction-aware 600 pt/s fling gate while preserving the 0.28 slow-drag progress threshold. Build216 remains the accepted overall runtime baseline._
 
 ## Current accepted overall baseline
 
@@ -67,7 +67,7 @@ Retained values/ownership:
 - horizontal acquisition owns the gesture through end/cancel;
 - actual touch drives raw `transitionProgress`; predicted touch is release-only;
 - commit threshold 0.28;
-- predicted-distance release gate 0.48 × width;
+- ordinary slow-drag commit threshold 0.28; Build239 is the current A/B that removes the rejected predicted-total-distance fling gate and tests direction-aware latest-delivered velocity >=600 pt/s for fling intent;
 - existing settle ownership/timing;
 - no second SwiftUI drag/release owner;
 - no interpolation/timer/watchdog/retry/debounce/throttle.
@@ -206,11 +206,15 @@ The user explicitly prefers freezing the materially positive Build236 foundation
 
 Build237 / 0.14.70 is CI/IPA verified. It halves only the predicted-distance fling commit gate from 0.48×width to 0.24×width while keeping the ordinary actual-progress threshold at 0.28, matching the requested short-drag-plus-fling sensitivity A/B. It also corrects a real source-over compositing flaw in `persistentCarouselBackdrop`: complementary opacity on two opaque persistent images can leave only 75% combined coverage at the midpoint and expose the light `systemBackground`; Build237 keeps outgoing persistent fully opaque and fades incoming over it. This is a code/CI/IPA candidate, not yet a real-device fix.
 
-### Carousel Build237 real-device split + Build238 release-intent diagnostics
+### Carousel Build238 velocity evidence → Build239 direction-aware fling A/B
 
-Build237 target-device testing cleanly splits its two changes. The persistent source-over correction is accepted: the user confirms the transition white flash is gone. The lowered predicted-total-distance fling gate is not accepted as sufficient: even at 0.24×width, OnePlayer still feels strongly distance-bound while EX accepts an almost-in-place flick. Therefore stop tuning width fractions. Keep the ordinary 0.28 slow-drag threshold for now and treat fling as a separate release-intent problem.
+Build237's persistent source-over correction remains accepted because the target device confirms the transition white flash is gone. Its lowered 0.24×width predicted-total-distance release gate remains rejected as sufficient.
 
-Build238 / 0.14.71 is CI/IPA verified and intentionally leaves Build237 behavior unchanged. It logs real delivered/coalesced terminal velocity, end velocity, predicted endpoint, predicted extra travel and touch duration so the next target-device session can compare intended quick flicks against short slow drags. Only after those distributions are known should the predicted-total-distance gate be replaced. The Build236/231/226/228 foundation remains frozen-for-current-phase and the Build237 white-flash correction is retained.
+Build238 / 0.14.71 then measured the missing release semantic without changing behavior. The target-device log gives a strong separation on latest delivered move velocity: 19 intended quick flicks are about 1139.8–2239.8 pt/s in magnitude, while 9 short slow drags are about 0–160 pt/s, leaving a wide ~160–1140 pt/s empty interval. Coalesced velocity agrees. Terminal end velocity overlaps materially and predicted extra travel is frequently absent or only ~6–13.3pt for obvious quick flicks, so neither is accepted as the sole fling signal.
+
+Build239 / 0.14.72 is the resulting minimal A/B. It keeps ordinary `actualProgress >= 0.28`, removes the legacy `width * 0.24` predicted-total-distance gate from commit, and adds direction-aware latest delivered move velocity >=600 pt/s. The threshold is deliberately inside the measured empty interval and is a OnePlayer tuning value, not an EX constant. Build237 white-flash presentation, Build236 start-step handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle / release tail are unchanged.
+
+Build239 evidence: tested source `ed4e59c2a0e2fac3979d84dad756299659b15387`; run/job `33208503351 / 98975620229` — success; artifact `9700721145` (`sha256:61c4785bba434247039206198cb35700b47cbc2ead2be1178e914229c3814c5f`); IPA SHA-256 `b11992aa6b4c87df87600ec38143798aece6df231507a6d13357856318f6196d`; source ZIP SHA-256 `55b2977ab1df60bbc154cbd926f2997ca8086f6061394f4c05a4e40028783001`; bundle/version/build and MinOS 15.0 independently reopened/verified. Evidence level is **Code written / CI passed / IPA produced+verified / target-device pending / not stable**.
 
 ## Active: Poster-heavy scrolling smoothness
 

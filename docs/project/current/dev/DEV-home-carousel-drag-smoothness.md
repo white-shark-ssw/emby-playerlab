@@ -2,11 +2,11 @@
 
 ## Status
 
-**Active — Build236 start-step handling + Build231 foreground compositing + Build226 Hero residency + Build228 max-refresh-through-settle/release-tail are frozen-for-current-phase. Build237 persistent source-over correction is now also target-device accepted because the reported white flash is gone. Build237 halving of the predicted-total-distance fling gate to 0.24×width is rejected as sufficient: EX accepts almost-in-place flicks while OnePlayer still feels distance-bound. Build238 / 0.14.71 is the current measurement-only candidate to log real release velocity and predicted extra travel before replacing the distance-based fling gate. Slow-drag commit remains 0.28. Whole carousel remains Active only for fling-intent release behavior; stable ❌.**
+**Active — Build236 start-step handling + Build231 foreground compositing + Build226 Hero residency + Build228 max-refresh-through-settle/release-tail remain frozen-for-current-phase, and Build237 persistent source-over white-flash correction remains target-device accepted. Build238 target-device data strongly separates intended quick flicks from short slow drags on latest delivered move velocity: quick flicks |v| ≈1139.8–2239.8 pt/s versus slow drags ≈0–160 pt/s, while end velocity overlaps and predicted extra travel is often tiny/missing. Build239 / 0.14.72 is now the CI/IPA-verified velocity-fling A/B: ordinary progress commit remains 0.28, the legacy 0.24×width predicted-total-distance gate is removed, and direction-aware latest delivered move velocity >=600 pt/s can commit. Target-device validation pending; stable ❌.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
-- Working branch: `diag/home-carousel-release-intent-build238`
-- Current candidate: OnePlayer `0.14.71 (238)`
+- Working branch: `perf/home-carousel-velocity-fling-build239`
+- Current candidate: OnePlayer `0.14.72 (239)`
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Deployment Target policy: remain iOS 15.0
 - Accepted overall product baseline: OnePlayer 0.14.49 / Build216 on `main`
@@ -606,7 +606,44 @@ No velocity threshold is applied in Build238. This avoids guessing a numeric fli
 - independent package reopen confirms bundle `com.embyplayerlab.app`, OnePlayer `0.14.71 (238)`, `MinimumOSVersion=15.0`;
 - independent source reopen confirms Build237 white-flash correction and unchanged `0.28 / 0.24` release behavior are retained, with only release-intent measurements added.
 
-Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / behavior intentionally unchanged / target-device diagnostic pending ❌ / stable ❌.
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / behavior intentionally unchanged / target-device diagnostic tested ✅ / velocity-intent hypothesis strongly supported ✅ / stable ❌.
+
+### 2026-08-29 Build238 target-device result — latest delivered move velocity cleanly separates intent
+
+User supplied the Build238 App log after performing the requested gesture families on iPhone 15 Pro Max / iOS 17.0. The 28 `HomeCarouselRelease` samples separate strongly:
+
+- first 19 intended quick flicks: `abs(last_move_delivered_velocity_x)` ≈ **1139.8–2239.8 pt/s**;
+- final 9 short slow drags: `abs(last_move_delivered_velocity_x)` ≈ **0–160 pt/s**;
+- measured empty interval: roughly **160–1140 pt/s**;
+- coalesced velocity shows the same separation: quick ≈1199.6–2319.8 pt/s, slow ≈0–80 pt/s;
+- `end_velocity_x` overlaps materially (quick flicks often ~400–480 pt/s; slow releases can also reach ~480 pt/s), so it is not the sole commit signal;
+- `predicted_extra_x` is absent for many quick flicks and, when present, can be only ~6–13.3pt despite clear fling intent, directly explaining why predicted-total-distance gating feels like a distance wall.
+
+Controlling conclusion: the next release A/B should use direction-aware **latest delivered move velocity**, not another page-width distance fraction. The threshold may be chosen only inside the measured empty interval and is a OnePlayer tuning value, not an asserted EX constant.
+
+## Build239 / 0.14.72 — direction-aware velocity fling A/B
+
+Build239 implements the minimum behavior change supported by Build238. Slow/ordinary drag commit remains `actualProgress >= 0.28`. The legacy `max(actualDistance, predictedDistance) >= width * 0.24` path is removed from the commit decision. A release can additionally commit when the latest delivered move velocity is in the already-selected carousel direction and its directional magnitude is at least **600 pt/s**.
+
+`600 pt/s` sits deliberately inside Build238's measured empty interval (~160–1140 pt/s). It is an initial OnePlayer A/B threshold, not an EX-internal parameter. `HomeCarouselRelease` measurement logging remains available and Build239 adds one release-only `HomeCarouselReleaseDecision` line containing progress, raw release velocity, direction-adjusted velocity, velocity-commit and final decision. No timer/interpolation/debounce/throttle/watchdog/retry, no second gesture owner and no release-tail easing/duration change are introduced.
+
+Retained unchanged: Build237 persistent source-over white-flash correction, Build236 post-acquisition real-baseline handling, Build231 foreground `compositingGroup()`, Build226 three-slot Hero residency and Build228 max-refresh-through-settle / accepted 0.22s commit + 0.18s cancel tail. Player / MPV / PiP / Transport / Cache / Emby Session / STRM / 302 / Range paths are untouched.
+
+### CI / IPA evidence
+
+- branch: `perf/home-carousel-velocity-fling-build239`;
+- exact base: cleaned Build238 head `c2fdeb070cdb652eb25a96e8ff39edd6e7f6234f`;
+- exact tested source / CI head: `ed4e59c2a0e2fac3979d84dad756299659b15387`;
+- product-clean head after removing temporary Build239 apply/CI helpers: `57509f1d2693ad8d605cd681778e22080b443747`;
+- dedicated Xcode 16.4 run/job: `33208503351 / 98975620229` — success;
+- artifact: `OnePlayer-0.14.72-build239-velocity-fling`, ID `9700721145`;
+- artifact digest: `sha256:61c4785bba434247039206198cb35700b47cbc2ead2be1178e914229c3814c5f`;
+- IPA SHA-256: `b11992aa6b4c87df87600ec38143798aece6df231507a6d13357856318f6196d`;
+- source ZIP SHA-256: `55b2977ab1df60bbc154cbd926f2997ca8086f6061394f4c05a4e40028783001`;
+- independent artifact reopen confirms source SHA `ed4e59c2a0e2fac3979d84dad756299659b15387`, bundle `com.embyplayerlab.app`, OnePlayer `0.14.72 (239)`, `MinimumOSVersion=15.0`, `CADisableMinimumFrameDurationOnPhone=true`;
+- independent source reopen confirms `shouldCommit = actualProgress >= 0.28 || velocityCommit`, `directionalVelocity >= 600`, the legacy 0.24×width predicted-total-distance gate is absent, and retained Build236/231/226/228 markers remain.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable ❌.
 
 ## Rejected directions not to repeat
 
@@ -623,4 +660,4 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 
 ## Next exact action
 
-Target-device test OnePlayer 0.14.71 / Build238 and export the App log. Perform two clearly labeled gesture families on the same carousel: (A) about 12–15 **almost-in-place quick flicks** that should feel like EX-style commits, and (B) about 8–10 **short slow drags/releases** that should remain cancellations. Build238 intentionally keeps Build237 release behavior, so judge the gestures by intent rather than whether OnePlayer currently commits. Compare `last_move_delivered_velocity_x`, `last_move_coalesced_velocity_x`, `end_velocity_x` and `predicted_extra_x` between the two families. Only if the target-device distributions separate should Build239 replace the predicted-total-distance fling gate with a velocity/fling-intent gate. Do not guess another width fraction and do not reopen the frozen-for-current-phase Build236/231/226/228 foundation or the accepted Build237 white-flash correction without regression evidence.
+Install OnePlayer 0.14.72 / Build239 on iPhone 15 Pro Max / iOS 17.0 and compare directly with EX. Focus only on release intent: (A) repeat about 15 almost-in-place quick flicks in both directions that should commit, and (B) about 10 short slow drags/releases that should cancel unless actual progress itself crosses 0.28. The primary pass criterion is that quick flicks no longer feel blocked by a distance wall while slow drags do not become over-sensitive. If any false commit / false cancel occurs, export the App log and inspect `HomeCarouselRelease` + `HomeCarouselReleaseDecision` before changing the 600 pt/s threshold. Do not reopen Build236/231/226/228, Build237 white-flash presentation or release-tail timing without new regression evidence.
