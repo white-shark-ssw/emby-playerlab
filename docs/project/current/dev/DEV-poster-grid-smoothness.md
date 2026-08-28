@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build228 / 0.14.61 is now target-device diagnostic tested and still visibly hitches, sometimes strongly. Its strongest captured user-drag sample is 55.1 ms; image publish/Combine→UIKit adoption measured 0.0 ms and page apply 0.3 ms, while the synchronous Library persistent snapshot took 39.7 ms and completed about 8 ms before the hitch. Build229 / 0.14.62 therefore moves only Library snapshot JSON conversion/serialization/atomic write off the MainActor onto one serial utility queue while preserving snapshot order/schema/keys and leaving Favorites persistence unchanged. Build229 is exact-source CI/IPA verified but target-device pending; not stable.**
+**Active — Build229 / 0.14.62 is now target-device tested and overall Library 3×3 hitching still exists. The latest captured 77.2 ms moving hitch occurred about 7.3 s after page apply/snapshot completion and about 0.77 s after the latest image publish, so Build228’s synchronous snapshot write is not the direct trigger for this sample and moving Library persistence off MainActor is not sufficient to solve the whole hitch family. Poster branch head `deba1534e55bfc73f4d3cf43f2682c854a04cb39` materialized a diagnostic-only 0.14.66 / Build233 commit, but Build233 is already owned by the independent Home carousel task; resume identity guard therefore fails and poster development is paused until this candidate identity is explicitly released/reallocated. Not stable.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -10,6 +10,28 @@
 - **Draft PR**: #259
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
+
+## Build229 latest target-device result / candidate identity guard — 2026-08-29
+
+Build229 / OnePlayer 0.14.62 was exercised again on the target device and the user still reports visible jitter. The latest App-log evidence contains a **77.2 ms** `PosterScrollHitch` on the Library grid. At that hitch, the latest Library page apply and awaited snapshot completion were already about **7.3 s** old, while the latest image publish was about **0.77 s** old. The captured sample is `phase=moving`, `velocity_y=0`, `delta_y=1.33`, so it is a real long-frame/catch-up sample but not pagination-adjacent.
+
+Controlling interpretation: Build228’s 39.7 ms synchronous Library snapshot write remains a valid contributor to the earlier severe pagination-adjacent sample, but Build229 proves that removing that main-thread write is **not sufficient** to remove the broader 3×3 hitch family. This 77.2 ms sample does not support direct attribution to page apply, snapshot persistence, or the latest image publication because all three are far outside the hitch window. Pagination-specific improvement from Build229 is still not established by this sample.
+
+Resume identity guard on 2026-08-29 also found a hard candidate collision:
+
+- checkpoint branch remains `perf/poster-grid-smoothness`, Draft PR #259;
+- real branch / PR head is `deba1534e55bfc73f4d3cf43f2682c854a04cb39`, commit `Add Build233 poster background-work diagnostics`, directly parented by Build229 exact source `f5e3e3eb144578c863b172e3bd3a1aa13e5c2177`;
+- that head changes poster diagnostics/version/changelog to **0.14.66 / Build233** but has no valid poster CI/IPA attribution;
+- independent Active task `DEV-home-carousel-drag-smoothness` already owns OnePlayer **0.14.66 (233)** and has CI/IPA evidence for that identity;
+- Home also allocated Build234 and Aether currently reserves Build235, so poster must not silently rename itself to another number without a fresh collision check.
+
+**Identity guard result: FAILED.** Do not run/distribute poster Build233, do not call it a poster candidate, and do not modify product source until the user explicitly resolves the candidate collision.
+
+**Evidence:** Build229 Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / overall hitch still present ❌ / pagination-specific improvement unproven / stable ❌. Poster `deba1534...` code exists, but candidate identity is invalid and no poster CI/IPA should be claimed.
+
+**Pending:** explicit user decision to release the invalid poster Build233 identity and allocate a new unique poster candidate after rechecking all Active checkpoints / `BUILD_TEST_INDEX.md`.
+
+**Next exact action:** after explicit resolution, restore a unique poster candidate identity from the current branch evidence, rerun exact-scope/source guards, then build the existing background-work diagnostic instrumentation to a verified IPA. Until then, no product-source edits.
 
 ## Build228 real-device result / Build229 candidate — 2026-08-28
 
@@ -38,13 +60,13 @@ Build229 CI / IPA evidence:
 - bundle/version/build: `com.embyplayerlab.app`, OnePlayer **0.14.62 (229)**; `MinimumOSVersion=15.0`;
 - artifact/IPA/source integrity independently verified; source snapshot contains no temporary Build229 workflow.
 
-**Build229 evidence: Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable or frozen ❌.**
+**Build229 evidence: Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device tested ✅ / overall hitch still present ❌ / pagination-specific improvement unproven / stable or frozen ❌.**
 
 Next target-device A/B should repeat Library 3×3 scrolling through a real pagination boundary. The key question is whether the severe pagination-adjacent hitch disappears or materially shrinks. Do not claim the remaining non-pagination hitch family solved without new device evidence.
 
 ## Build229 Home-only supporting capture — 2026-08-28
 
-The user immediately supplied a second target-device recording/log after Build229, but this capture is **Home vertical scrolling**, not the intended Library 3×3 pagination A/B. It therefore does **not** promote Build229 to target-device-tested for its Library persistence change. The intended Build229 Library test remains pending.
+The user immediately supplied a second target-device recording/log after Build229, but this capture is **Home vertical scrolling**, not the intended Library 3×3 pagination A/B. It therefore does **not** promote Build229 to target-device-tested for its Library persistence change. At this historical point the intended Build229 Library test was still pending; the later 2026-08-29 Library result above supersedes that status.
 
 Uploaded files: `OnePlayer-App-1787907572.log` and `RPReplay_Final1787907569.mp4`. The App log contains only five `HomeCarousel settled` records and no `PosterScrollHitch`, pagination, Library snapshot read/write, or page-apply records. The 15.47 s / 30 fps recording spans approximately 08:59:13.53Z–08:59:29.00Z by filename time. Two carousel settles fall inside that span at approximately +5.214 s (`item=143014`) and +12.211 s (`item=143013`). Frame-motion inspection shows near-zero/duplicate-frame → catch-up patterns shortly after both settle points, with the cleaner second sequence around +12.30–12.37 s. Because the recording itself is only 30 fps and the App log emitted no `PosterScrollHitch`, this is **supporting correlation, not proof of a 60–70 ms app-main-thread stall**.
 
