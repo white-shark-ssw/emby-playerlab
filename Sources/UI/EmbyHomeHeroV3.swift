@@ -44,7 +44,7 @@ extension V3EmbyHomeView {
             V3HomeCarouselInteractionSurface(
                 shouldBeginHorizontal: { translation in shouldBeginNativeCarouselDrag(translation) },
                 onHorizontalChanged: { translation in handleNativeCarouselDrag(translation, width: width) },
-                onHorizontalEnded: { translation, predictedTranslation in finishNativeCarouselDrag(translation, predictedTranslation: predictedTranslation, width: width) },
+                onHorizontalEnded: { translation, releaseVelocityX in finishNativeCarouselDrag(translation, releaseVelocityX: releaseVelocityX, width: width) },
                 onHorizontalCancelled: { cancelNativeCarouselDrag() },
                 onTap: { openCurrentCarouselDetailIfAllowed() }
             )
