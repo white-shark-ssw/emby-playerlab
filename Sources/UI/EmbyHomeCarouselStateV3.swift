@@ -69,6 +69,7 @@ extension V3EmbyHomeView {
         guard isHomeActive, !isCarouselDragging, transitionToID == nil, model.carouselItems.count > 1 else { return }
         guard Date().timeIntervalSince(carouselLastSettledAt) >= 6 else { return }
         guard let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: 1) else { return }
+        V3HomeVerticalMotionDiagnostics.shared.carouselAutoAdvanceDidStart(fromID: currentID, toID: targetID)
         transitionFromID = currentID
         transitionToID = targetID
         transitionProgress = 0
@@ -81,6 +82,7 @@ extension V3EmbyHomeView {
     }
 
     func settleCarousel(on itemID: String) {
+        let diagnosticStartedAt = V3HomeVerticalMotionDiagnostics.shared.carouselSettleDidStart(itemID: itemID)
         currentCarouselItemID = itemID
         transitionFromID = nil
         transitionToID = nil
@@ -88,6 +90,7 @@ extension V3EmbyHomeView {
         transitionDirection = 1
         isCarouselDragging = false
         carouselLastSettledAt = Date()
+        V3HomeVerticalMotionDiagnostics.shared.carouselSettleDidComplete(itemID: itemID, startedAt: diagnosticStartedAt)
         DiagnosticsLogger.shared.log("HomeCarousel", "settled item=\(itemID)")
     }
 
