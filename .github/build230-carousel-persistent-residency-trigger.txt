@@ -1,0 +1,1 @@
+trigger Build230 carousel persistent residency CI
