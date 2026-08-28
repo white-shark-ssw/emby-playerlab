@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build224 / 0.14.57 is now the current Home vertical diagnostic candidate at Code-written stage. It starts from current `main` / accepted Build216 product behavior, so the normal full-screen persistent backdrop and Dock presentation are restored. The only runtime presentation change is that `immersiveCarouselHero` no longer mounts the current/target `carouselHeroArtwork` 1400px clear-image layers. Persistent backdrop, preload, foreground/logo/text, auto-advance, horizontal interaction and all playback/P0 paths remain unchanged. Build223 was target-device tested and rejected as a sufficient vertical fix; its Dock appearance regression must not be retained. Build221 remains the separate horizontal persistent-drag A/B with target-device testing pending.**
+**Active — Build224 / 0.14.57 is CI/IPA verified as the current Home vertical diagnostic candidate and is awaiting target-device testing. It starts from current `main` / accepted Build216 product behavior, so the normal full-screen persistent backdrop and Dock presentation are restored. The only runtime presentation change is that `immersiveCarouselHero` no longer mounts the current/target `carouselHeroArtwork` 1400px clear-image layers. Persistent backdrop, preload, foreground/logo/text, auto-advance, horizontal interaction and all playback/P0 paths remain unchanged. Build223 was target-device tested and rejected as a sufficient vertical fix; its Dock appearance regression is not carried forward. Build221 remains the separate horizontal persistent-drag A/B with target-device testing pending.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Target device: iPhone 15 Pro Max / iOS 17.0
@@ -108,6 +108,15 @@ Therefore Build224 isolates only Hero artwork mounting. Preload remains unchange
 - identity commit: `26e9db24ae6c1c90197ab05e2b48f721cf8752d1`
 - Hero isolation commit: `ac27dd535b241c0c383fda8b4e3362193b9ec709`
 - changelog commit: `6de5dafb17142e8d6fecdaa13d620df3eb00df07`
+- tested CI head / exact source snapshot: `b6ee3361f183257a2ae01f1336506ab4a4c1a254`
+- dedicated Xcode 16.4 run/job: `33142773132 / 98757057369` — success
+- artifact: `OnePlayer-0.14.57-build224-hero-artwork-isolation`; ID `9674622017`
+- artifact digest: `sha256:cc7483a71f7b5cccb1c95c2fe52f4bd7756ea2c4f9f7d7a2ec4deeaf02636471`
+- IPA SHA-256: `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`
+- source ZIP SHA-256: `6537f85e6f644ccc85491ec357040bdac766e2ee63ef98ba1af5ec253d134a86`
+- independently re-opened package confirms OnePlayer `0.14.57 (224)`, bundle `com.embyplayerlab.app`, `MinimumOSVersion=15.0`, and `CADisableMinimumFrameDurationOnPhone=true`.
+- cleanup head after deleting temporary build workflow/trigger: `810e26b7abc3f90dfc0f7cacc64941d69d9a107d`; product source is unchanged by cleanup.
+- the earlier run `33142715378` stopped before compilation only because the temporary checker used Bash `mapfile`, unavailable in macOS Bash 3.2; it is not product CI evidence and was superseded by the successful dedicated run above.
 
 ### Exact product diff
 
@@ -132,8 +141,8 @@ The following remain unchanged from main:
 
 - Code written ✅
 - Exact diff scope reviewed ✅
-- CI passed ❌
-- IPA produced+verified ❌
+- CI passed ✅
+- IPA produced+verified ✅
 - Real-device tested ❌
 - Stable ❌
 
@@ -160,7 +169,7 @@ Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-de
 
 ## Next exact action
 
-Run a dedicated Xcode 16.4 / MPV CI for Build224, verify exact source scope, OnePlayer 0.14.57 (224), MinOS 15.0 and IPA/source hashes. If CI/IPA evidence is clean, test **Home vertical scrolling** on the target device.
+Install the CI/IPA-verified Build224 on iPhone 15 Pro Max / iOS 17.0 and test **Home vertical scrolling**. The build/package identity, exact source scope and MinOS 15.0 are already independently verified; the remaining evidence level is target-device behavior.
 
 For the target-device A/B, visual loss of the clear Hero artwork is expected and diagnostic-only. The decisive question is whether the same vertical jitter materially changes while the normal persistent background and Dock appearance remain restored.
 
