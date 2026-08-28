@@ -1,0 +1,177 @@
+name: Build230 Carousel Persistent Residency IPA
+
+on:
+  push:
+    branches: [perf/home-carousel-persistent-residency-build230]
+    paths:
+      - ".github/build230-carousel-persistent-residency-trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout Build230 branch
+        uses: actions/checkout@v4
+        with:
+          ref: perf/home-carousel-persistent-residency-build230
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply exact Build230 persistent residency patch
+        run: |
+          set -euo pipefail
+          python3 scripts/temp_apply_build230.py
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeHeroV3.swift docs/changelog/CHANGELOG_v0_14_63_build230.md
+          if ! git diff --cached --quiet; then
+            git commit -m "Perf: pre-reside carousel persistent neighbors"
+            git push origin HEAD:perf/home-carousel-persistent-residency-build230
+          fi
+          echo "BUILD230_SOURCE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Validate exact Build230 scope and retained contracts
+        run: |
+          set -euo pipefail
+          base='e957a11325e5d605cec794b89b26ffc36cd96c06'
+          git diff --check "$base"...HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          base = 'e957a11325e5d605cec794b89b26ffc36cd96c06'
+          allowed = {
+              '.github/build230-carousel-persistent-residency-trigger.txt',
+              '.github/workflows/temp-build230-carousel-persistent-residency.yml',
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyHomeHeroV3.swift',
+              'docs/changelog/CHANGELOG_v0_14_63_build230.md',
+              'scripts/temp_apply_build230.py',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', f'{base}...HEAD'], text=True).splitlines())
+          extra = sorted(changed - allowed)
+          if extra: raise SystemExit(f'Unexpected Build230 files: {extra}')
+          required = {'Sources/Core/AppIdentity.swift', 'Sources/UI/EmbyHomeHeroV3.swift', 'docs/changelog/CHANGELOG_v0_14_63_build230.md'}
+          missing = sorted(required - changed)
+          if missing: raise SystemExit(f'Missing Build230 files: {missing}')
+          frozen_prefixes = ('Sources/Player/', 'Sources/Transport/', 'Sources/Cache/', 'Sources/Session/', 'Sources/AVIO/')
+          touched_frozen = sorted(path for path in changed if path.startswith(frozen_prefixes))
+          if touched_frozen: raise SystemExit(f'Build230 touched Frozen/P0 paths: {touched_frozen}')
+          forbidden = {'Sources/UI/EmbyHomeCarouselInteractionV3.swift', 'Sources/UI/EmbyHomeCarouselStateV3.swift', 'Sources/UI/EmbySharedImageAndNavigation.swift', 'Sources/UI/EmbyHomeCoreV3.swift'}
+          touched_forbidden = sorted(changed & forbidden)
+          if touched_forbidden: raise SystemExit(f'Build230 unexpectedly changed retained owners: {touched_forbidden}')
+
+          identity = Path('Sources/Core/AppIdentity.swift').read_text()
+          assert 'sourceVersion = "0.14.63"' in identity
+          hero = Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()
+          assert hero.count('ForEach(carouselHeroResidentItems) { item in') >= 2
+          assert 'carouselPersistentImage(item: item, size: size).opacity(carouselOpacity(for: item.id))' in hero
+          assert '.scaleEffect(1.12)' in hero and '.blur(radius: 30)' in hero
+          assert '.offset(x: carouselForegroundOffset(for: item.id, width: width))' in hero
+          assert 'if let item = transitionTargetCarouselItem {\n                carouselPersistentImage' not in hero
+          state = Path('Sources/UI/EmbyHomeCarouselStateV3.swift').read_text()
+          assert 'var carouselHeroResidentItems: [LibraryItem]' in state
+          assert 'actualProgress >= 0.28' in Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift').read_text()
+          assert 'width * 0.48' in Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift').read_text()
+          assert 'UIScreen.main.scale' not in state
+          assert 'V3HomeCarouselCadenceDiagnostics.shared.end(reason: "settled")' in state
+          assert 'V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancelled-settled")' in state
+          cadence = Path('Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift').read_text()
+          assert 'link.preferredFrameRateRange = CAFrameRateRange(minimum: requested, maximum: requested, preferred: requested)' in cadence
+          print('Build230 persistent-residency scope/contracts: PASS')
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Prepare OnePlayer app icons
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache | tee package-resolution.log
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION=0.14.63 \
+            CURRENT_PROJECT_VERSION=230 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build230.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version 0.14.63 --build 230 --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+
+      - name: Validate MinOS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" 15.0 17.0 build230-min-os.log build230.log
+
+      - name: Package unsigned IPA and source snapshot
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA="OnePlayer-0.14.63-build230-persistent-residency-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA"
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          SOURCE="OnePlayer-0.14.63-build230-source.zip"
+          git archive --format=zip --output "$SOURCE" HEAD
+          shasum -a 256 "$SOURCE" | tee "$SOURCE.sha256"
+          printf '%s\n' "$BUILD230_SOURCE" > build230-source-sha.txt
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          echo "SOURCE=$SOURCE" >> "$GITHUB_ENV"
+
+      - name: Upload Build230 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.63-build230-persistent-residency
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+            ${{ env.SOURCE }}
+            ${{ env.SOURCE }}.sha256
+            build230-source-sha.txt
+            build230.log
+            build230-min-os.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 30
