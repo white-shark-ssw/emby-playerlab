@@ -22,61 +22,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Apply exact Build225 Hero isolation and refresh checkpoint
+      - name: Apply exact Build225 patch
         run: |
           set -euo pipefail
           git fetch origin main
-          git show origin/main:docs/project/current/dev/DEV-home-carousel-drag-smoothness.md > docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          hero = Path('Sources/UI/EmbyHomeHeroV3.swift')
-          text = hero.read_text()
-          old_current = '''            if let item = currentCarouselItem {
-                carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
-                    .opacity(carouselOpacity(for: item.id))
-                    .allowsHitTesting(false)
-            }
-            if let item = transitionTargetCarouselItem {
-                carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
-                    .opacity(carouselOpacity(for: item.id))
-                    .allowsHitTesting(false)
-            }
-'''
-          new_current = '''            if let item = currentCarouselItem {
-                carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
-                    .opacity(isCarouselDragging ? 1 : carouselOpacity(for: item.id))
-                    .allowsHitTesting(false)
-            }
-            if !isCarouselDragging, let item = transitionTargetCarouselItem {
-                carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
-                    .opacity(carouselOpacity(for: item.id))
-                    .allowsHitTesting(false)
-            }
-'''
-          if old_current not in text:
-              raise SystemExit('Build225 expected Hero mount block not found')
-          text = text.replace(old_current, new_current, 1)
-          hero.write_text(text)
-
-          checkpoint = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
-          c = checkpoint.read_text()
-          c = re.sub(
-              r'^\*\*Active —.*?\*\*$',
-              '**Active — Build225 / 0.14.58 is the current horizontal carousel Hero-presentation A/B. It branches from the exact Build219 tested 120Hz carousel source, restores normal persistent current/target presentation, and changes only drag-time Hero mounting: the already-mounted current Hero stays opaque while the target Hero clear 1400px artwork is not mounted until horizontal drag ends. Foreground page travel, acquisition-relative motion, release gates, preload, normal persistent crossfade, device-max refresh request and all P0/Frozen paths remain unchanged. Code written; CI/IPA pending; target-device horizontal test pending. Build221 is real-device rejected as final because overall feel still trails EX and its frozen-persistent strategy introduces a pale/white transition regression.**',
-              c,
-              count=1,
-              flags=re.M,
-          )
-          section = '''## Build225 / 0.14.58 — horizontal target-Hero presentation isolation\n\n- branch: `diag/home-carousel-hero-drag-isolation-build225`\n- exact base: Build219 tested source `0b894bc37fcd0086aeaf9e1a29de0e85f5b0ee94`\n- identity: OnePlayer `0.14.58`, Build `225`\n- Build225 does **not** inherit Build221's persistent freeze; persistent current/target crossfade is the normal Build219 behavior.\n- During active horizontal drag only, the already-mounted current `carouselHeroArtwork` stays opacity 1 and `transitionTargetCarouselItem` Hero artwork is not mounted. When drag ends, normal Hero target mounting/crossfade resumes for release/settle.\n- `carouselHeroArtwork` implementation, image loader, 1400px request, mask/scrim, preload, foreground page motion, acquisition-relative input, 0.28/0.48 release rules and Build219 exact device-max refresh request are unchanged.\n- No Player / MPV / PiP / Transport / Cache / Emby Session / P0/Frozen source changes.\n\nWhy this variable: Build219's residual gaps correlated with both Hero and persistent callbacks. Build221 directly tested the persistent-side drag isolation and did not close the EX hand-feel gap, while also creating a visual mismatch. The remaining direct horizontal suspect is target Hero first presentation. Suppressing only the target Hero mount during active drag avoids unmounting the already-visible current Hero at touch acquisition and isolates newly presented Hero work without changing gesture ownership or motion math.\n\nEvidence: Code written ✅ / exact source scope review pending CI checker / CI pending / IPA pending / real-device pending / stable ❌.\n\n'''
-          marker = '## Rejected directions not to repeat\n'
-          if '## Build225 / 0.14.58 — horizontal target-Hero presentation isolation' not in c:
-              c = c.replace(marker, section + marker, 1)
-          next_start = c.index('## Next exact action')
-          c = c[:next_start] + '''## Next exact action\n\nRun the dedicated Build225 Xcode 16.4 CI/IPA and independently verify package identity/MinOS/source scope. If CI/IPA succeeds, test only horizontal carousel interaction on iPhone 15 Pro Max / iOS 17.0. Compare sustained tracking and the “smooth glass vs rough paper” gap against Build221/EX; also note visual continuity during drag and release/settle separately. Do not use Home vertical inertial scrolling as the acceptance gate.\n'''
-          checkpoint.write_text(c)
-          PY
+          python3 scripts/temp_apply_build225.py
           git diff --check
           python3 scripts/check_home_carousel_single_owner.py
           git config user.name "github-actions[bot]"
@@ -86,7 +36,7 @@ jobs:
           git push origin HEAD:diag/home-carousel-hero-drag-isolation-build225
           echo "BUILD225_SOURCE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Validate exact Build225 scope and retained contracts
+      - name: Validate exact Build225 scope and Frozen contracts
         run: |
           set -euo pipefail
           base='0b894bc37fcd0086aeaf9e1a29de0e85f5b0ee94'
@@ -103,33 +53,22 @@ jobs:
               'Sources/UI/EmbyHomeHeroV3.swift',
               'docs/changelog/CHANGELOG_v0_14_58_build225.md',
               'docs/project/current/dev/DEV-home-carousel-drag-smoothness.md',
+              'scripts/temp_apply_build225.py',
           }
           changed = set(subprocess.check_output(['git', 'diff', '--name-only', f'{base}...HEAD'], text=True).splitlines())
           extra = sorted(changed - allowed)
           if extra:
               raise SystemExit(f'Unexpected Build225 files: {extra}')
-          required = {
-              'Sources/Core/AppIdentity.swift',
-              'Sources/UI/EmbyHomeHeroV3.swift',
-              'docs/changelog/CHANGELOG_v0_14_58_build225.md',
-              'docs/project/current/dev/DEV-home-carousel-drag-smoothness.md',
-          }
-          missing = sorted(required - changed)
-          if missing:
-              raise SystemExit(f'Missing Build225 files: {missing}')
           frozen_prefixes = ('Sources/Player/', 'Sources/Transport/', 'Sources/Cache/', 'Sources/Session/', 'Sources/AVIO/')
           touched_frozen = sorted(path for path in changed if path.startswith(frozen_prefixes))
           if touched_frozen:
               raise SystemExit(f'Build225 touched Frozen/P0 paths: {touched_frozen}')
-
           identity = Path('Sources/Core/AppIdentity.swift').read_text()
           assert 'sourceVersion = "0.14.58"' in identity
           hero = Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()
           assert '.opacity(isCarouselDragging ? 1 : carouselOpacity(for: item.id))' in hero
           assert 'if !isCarouselDragging, let item = transitionTargetCarouselItem {' in hero
-          assert 'carouselPersistentImage(item: item, size: size).opacity(carouselOpacity(for: item.id))' in hero
           assert 'if let item = transitionTargetCarouselItem {\n                carouselPersistentImage(item: item, size: size).opacity(carouselOpacity(for: item.id))' in hero
-          assert 'if !isCarouselDragging, let item = transitionTargetCarouselItem {\n                carouselPersistentImage' not in hero
           cadence = Path('Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift').read_text()
           assert 'link.preferredFrameRateRange = CAFrameRateRange(minimum: requested, maximum: requested, preferred: requested)' in cadence
           interaction = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift').read_text()
