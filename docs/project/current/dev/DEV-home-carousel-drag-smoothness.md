@@ -2,11 +2,11 @@
 
 ## Status
 
-**Active — User explicitly accepts freezing most of the materially positive Build236 carousel foundation rather than over-optimizing the residual 4/53 double-no-predecessor starts. Retain/freeze-for-current-phase: Build236 post-acquisition start-step handling, Build231 foreground `compositingGroup()`, Build226 Hero residency and Build228 max-refresh-through-settle/release-tail behavior. Build237 / 0.14.70 is now CI/IPA verified as the only remaining narrow A/B: predicted-distance fling gate is halved from 0.48×width to 0.24×width while actual-progress threshold stays 0.28, and persistent crossfade keeps outgoing fully opaque while incoming fades over it to prevent `systemBackground` leakage/white flash. Target-device testing is pending; whole carousel remains Active until these two final details are accepted or rejected.**
+**Active — Build236 start-step handling + Build231 foreground compositing + Build226 Hero residency + Build228 max-refresh-through-settle/release-tail are frozen-for-current-phase. Build237 persistent source-over correction is now also target-device accepted because the reported white flash is gone. Build237 halving of the predicted-total-distance fling gate to 0.24×width is rejected as sufficient: EX accepts almost-in-place flicks while OnePlayer still feels distance-bound. Build238 / 0.14.71 is the current measurement-only candidate to log real release velocity and predicted extra travel before replacing the distance-based fling gate. Slow-drag commit remains 0.28. Whole carousel remains Active only for fling-intent release behavior; stable ❌.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
-- Working branch: `perf/home-carousel-fling-whiteflash-build237`
-- Current candidate: OnePlayer `0.14.70 (237)`
+- Working branch: `diag/home-carousel-release-intent-build238`
+- Current candidate: OnePlayer `0.14.71 (238)`
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Deployment Target policy: remain iOS 15.0
 - Accepted overall product baseline: OnePlayer 0.14.49 / Build216 on `main`
@@ -37,7 +37,7 @@ Retain unless new direct device evidence proves otherwise:
 - interactive foreground remains opaque;
 - predicted touch is release-only;
 - commit threshold remains 0.28;
-- predicted-distance release gate remains 0.48 × width;
+- ordinary slow-drag commit threshold remains 0.28; the legacy predicted-total-distance fling gate is no longer a frozen contract and Build237 proved that simply lowering its width fraction is insufficient;
 - no second SwiftUI drag/release owner;
 - no interpolation/timer/watchdog/retry/debounce/throttle smoothing layer.
 
@@ -540,6 +540,19 @@ Title/cadence evidence is also positive but not frozen complete. User reports ti
 
 Evidence: Build236 Code written ✅ / scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / coarse-start probability materially reduced ✅ / title jitter very slight ✅ / residual 4/53 no-predecessor fallback + rare cadence tails remain / stable ❌.
 
+### 2026-08-29 Build237 target-device result — white flash fixed; predicted-total-distance fling gate rejected as sufficient
+
+User target-device feedback on iPhone 15 Pro Max / iOS 17.0: **the transition white flash is gone**, but the carousel still cannot be committed by the very short, almost-in-place fling that EX accepts easily. The user describes OnePlayer as still having a strong resistance/boundary and explicitly questions the distance-based method.
+
+This splits Build237 cleanly:
+
+- **Persistent source-over white-flash correction: accepted.** Keep outgoing persistent fully opaque while incoming fades over it. The user directly confirms the white flash is gone.
+- **Predicted-total-distance gate 0.48×width → 0.24×width: rejected as sufficient.** Halving the distance merely moved the boundary; it did not reproduce EX-style fling intent. Current source still commits by `actualProgress >= 0.28` OR `max(actualDistance, predictedDistance) >= width * 0.24`, where `predictedDistance` is the predicted endpoint measured from touch-down origin. A short, fast fling can therefore still fail if its predicted total displacement does not cross the fixed width fraction.
+
+The next release contract must not be chosen by guessing another width fraction. Preserve the ordinary 0.28 slow-drag progress rule for now, retain the accepted Build237 white-flash correction, and measure release intent from real terminal touch velocity plus predicted **extra** travel before selecting a velocity/fling gate.
+
+Evidence: Build237 Code written ✅ / scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / white-flash fix accepted ✅ / 0.24 predicted-total-distance fling approach insufficient ❌ / stable ❌.
+
 ## Build237 / 0.14.70 — shorter fling gate + persistent white-flash correction
 
 User accepts freezing most Build236 carousel refinement rather than chasing the residual 4/53 double-no-predecessor starts. A new comparison against EX exposes two remaining release/presentation details: EX can commit after a much shorter drag followed by a fling, while OnePlayer's predicted-distance gate is still `0.48 × width`; and OnePlayer shows a brief bright/white flash during carousel switching.
@@ -564,6 +577,37 @@ The release change is equally narrow: only the predicted-distance gate becomes `
 Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable ❌.
 
 
+## Build238 / 0.14.71 — release-intent measurement only
+
+Build238 is measurement-only on top of Build237. It does not change `shouldCommit`, slow-drag progress, predicted-total-distance behavior, Build236 start-step handling, Build231 foreground compositing, Build226 Hero residency, Build228 release-tail/max-refresh lifetime or Build237 persistent source-over white-flash correction.
+
+The custom UIKit recognizer now logs one `HomeCarouselRelease` line at horizontal release with:
+
+- `actual_x` and acquisition-relative `rendered_x`;
+- latest `predicted_x` and the actual translation at the same prediction event (`prediction_base_x`);
+- `predicted_extra_x = predicted_x - prediction_base_x`, which measures forecast extra travel rather than total displacement from touch-down;
+- `last_move_delivered_velocity_x` from consecutive delivered move samples;
+- `last_move_coalesced_velocity_x` from the latest two real coalesced samples in the move UIEvent;
+- `end_velocity_x` from the final delivered end sample relative to the last move;
+- `touch_duration_ms`.
+
+No velocity threshold is applied in Build238. This avoids guessing a numeric fling gate before target-device data separates intended short flicks from short slow drags.
+
+### CI / IPA evidence
+
+- branch: `diag/home-carousel-release-intent-build238`;
+- exact base: cleaned Build237 head `6d9243395f273dec224ba695e14d433405345c11`;
+- exact tested source / CI head: `780283bc722e39564240d996ca3c522bc61c6066`;
+- dedicated Xcode 16.4 run/job: `33204499623 / 98961981208` — success;
+- artifact: `OnePlayer-0.14.71-build238-release-diagnostics`, ID `9699150399`;
+- artifact SHA-256: `59baa8223ba6d652cde77cf7e6af286545b12ef6a762df110bc20d18f6524cf3`;
+- IPA SHA-256: `3539fd2f8c83c56838242a69350c473bd0088a65c273a5a0c0b4f3676878efd4`;
+- source ZIP SHA-256: `fefe660a5f578ed4fd3f2a55abbd73dc9fc4e41a1378467335d46989affefd01`;
+- independent package reopen confirms bundle `com.embyplayerlab.app`, OnePlayer `0.14.71 (238)`, `MinimumOSVersion=15.0`;
+- independent source reopen confirms Build237 white-flash correction and unchanged `0.28 / 0.24` release behavior are retained, with only release-intent measurements added.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / behavior intentionally unchanged / target-device diagnostic pending ❌ / stable ❌.
+
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -579,4 +623,4 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 
 ## Next exact action
 
-Target-device test OnePlayer 0.14.70 / Build237. Keep the Build236 foundation frozen-for-current-phase and judge only two variables: (1) a short drag plus fling should commit naturally at the new 0.24×width predicted-distance gate without making ordinary slow drags too eager; (2) the previously observed bright/white flash during switching should disappear because persistent outgoing coverage no longer drops below full opacity. Also sanity-check that Build236 first-step fineness, Build231 title stability and Build228 release-tail feel did not regress. Do not reopen the residual 4/53 Build236 double-no-predecessor starts without new regression evidence.
+Target-device test OnePlayer 0.14.71 / Build238 and export the App log. Perform two clearly labeled gesture families on the same carousel: (A) about 12–15 **almost-in-place quick flicks** that should feel like EX-style commits, and (B) about 8–10 **short slow drags/releases** that should remain cancellations. Build238 intentionally keeps Build237 release behavior, so judge the gestures by intent rather than whether OnePlayer currently commits. Compare `last_move_delivered_velocity_x`, `last_move_coalesced_velocity_x`, `end_velocity_x` and `predicted_extra_x` between the two families. Only if the target-device distributions separate should Build239 replace the predicted-total-distance fling gate with a velocity/fling-intent gate. Do not guess another width fraction and do not reopen the frozen-for-current-phase Build236/231/226/228 foundation or the accepted Build237 white-flash correction without regression evidence.

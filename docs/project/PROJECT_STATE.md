@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after the user accepted freezing most of the materially positive Build236 carousel foundation and Build237 / 0.14.70 reached CI/IPA verification for the two remaining A/B details: a 50% lower predicted-distance fling gate and a persistent source-over white-flash correction. Build216 remains the accepted overall runtime baseline._
+_Last updated after Build237 target-device testing accepted the persistent white-flash correction but rejected the lowered predicted-total-distance fling gate as sufficient, and Build238 / 0.14.71 reached CI/IPA verification as a measurement-only release-intent candidate. Build216 remains the accepted overall runtime baseline._
 
 ## Current accepted overall baseline
 
@@ -205,6 +205,12 @@ Build236 / 0.14.69 is now target-device positive. The 53-drag App log shows over
 The user explicitly prefers freezing the materially positive Build236 foundation rather than pursuing perfect elimination of the residual 4/53 double-no-predecessor first-step cases. Treat Build236 post-acquisition real-baseline handling, Build231 foreground `compositingGroup()`, Build226 Hero residency and Build228 max-refresh-through-settle/release-tail behavior as frozen-for-current-phase unless new regression evidence appears. The whole carousel remains Active only for two newly identified details.
 
 Build237 / 0.14.70 is CI/IPA verified. It halves only the predicted-distance fling commit gate from 0.48×width to 0.24×width while keeping the ordinary actual-progress threshold at 0.28, matching the requested short-drag-plus-fling sensitivity A/B. It also corrects a real source-over compositing flaw in `persistentCarouselBackdrop`: complementary opacity on two opaque persistent images can leave only 75% combined coverage at the midpoint and expose the light `systemBackground`; Build237 keeps outgoing persistent fully opaque and fades incoming over it. This is a code/CI/IPA candidate, not yet a real-device fix.
+
+### Carousel Build237 real-device split + Build238 release-intent diagnostics
+
+Build237 target-device testing cleanly splits its two changes. The persistent source-over correction is accepted: the user confirms the transition white flash is gone. The lowered predicted-total-distance fling gate is not accepted as sufficient: even at 0.24×width, OnePlayer still feels strongly distance-bound while EX accepts an almost-in-place flick. Therefore stop tuning width fractions. Keep the ordinary 0.28 slow-drag threshold for now and treat fling as a separate release-intent problem.
+
+Build238 / 0.14.71 is CI/IPA verified and intentionally leaves Build237 behavior unchanged. It logs real delivered/coalesced terminal velocity, end velocity, predicted endpoint, predicted extra travel and touch duration so the next target-device session can compare intended quick flicks against short slow drags. Only after those distributions are known should the predicted-total-distance gate be replaced. The Build236/231/226/228 foundation remains frozen-for-current-phase and the Build237 white-flash correction is retained.
 
 ## Active: Poster-heavy scrolling smoothness
 
