@@ -32,7 +32,7 @@ jobs:
           allowed={
             '.github/build239-apply-trigger.txt','.github/build239-carousel-ci-trigger.txt',
             '.github/workflows/temp-apply-build239-velocity-fling.yml','.github/workflows/temp-build239-carousel-velocity-fling.yml',
-            'scripts/temp_apply_build239_velocity_fling.py','Sources/Core/AppIdentity.swift','Sources/UI/EmbyHomeCarouselInteractionV3.swift',
+            'scripts/temp_apply_build239_velocity_fling.py','Sources/Core/AppIdentity.swift','Sources/UI/EmbyHomeCarouselInteractionV3.swift','Sources/UI/EmbyHomeHeroV3.swift',
             'docs/changelog/CHANGELOG_v0_14_72_build239.md'
           }
           extra=sorted(changed-allowed)
@@ -54,6 +54,7 @@ jobs:
           assert 'postAcquisitionRenderBaselineSample' in interaction
           assert 'Timer' not in interaction and 'DispatchQueue.main.asyncAfter' not in interaction
           hero=Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()
+          assert 'onHorizontalEnded: { translation, releaseVelocityX in finishNativeCarouselDrag(translation, releaseVelocityX: releaseVelocityX, width: width) }' in hero
           assert hero.count('.compositingGroup()') == 1
           assert 'ForEach(carouselHeroResidentItems) { item in\n                carouselHeroArtwork' in hero
           assert 'carouselPersistentImage(item: item, size: size)\n            }' in hero
