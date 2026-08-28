@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after the carousel Build228 / 0.14.61 target-device release-tail result, alongside the independent poster Build229 line. Build216 remains the accepted overall runtime baseline. Carousel Build226 residency + carousel Build228 max-refresh-through-settle is the current horizontal foundation; the user accepts the release tail for now, while slow-drag movie-title shimmer and residual refinement versus EX remain open. Parallel carousel/poster work both used Build228/0.14.61, so attribution must include branch/source/artifact._
+_Last updated after carousel Build230 / 0.14.63 persistent-residency CI/IPA verification, alongside the existing poster Build229 line. Build216 remains the accepted overall runtime baseline. Carousel Build226 Hero residency + Build228 release-through-settle remain the positive foundation; Build230 moves adjacent persistent first presentation out of active drag and awaits target-device slow-drag/post-settle A/B._
 
 ## Current accepted overall baseline
 
@@ -153,6 +153,14 @@ Build227 / 0.14.60 isolates the new title-shimmer finding. It keeps Build226 beh
 Carousel Build228 / 0.14.61 (`perf/home-carousel-release-refresh-build228`) returns to the Build226 visual baseline and extends the already-proven device-max refresh request through interactive settle/cancel. Target-device feedback is **“差不多了，尾巴这里先这样吧”**. Treat this as acceptance of the release-tail subproblem for the current phase: retain max-refresh-through-settle and stop changing the existing 0.22 s commit / 0.18 s cancel easing, duration or velocity mapping unless new regression evidence appears.
 
 This does **not** close the carousel task. Build227 physical-pixel foreground rounding is rejected because movie-title shimmer remained, and slow-drag title shimmer / residual overall refinement versus EX are still open. Build226 three-slot Hero residency remains the evidence-backed presentation foundation. Carousel Build228 evidence: tested source `bdf63c7562fcd1edc1d224872230e988ac462281`, run/job `33156739621 / 98801196041`, artifact `9679963420`, IPA SHA-256 `cda90b62e3cabd3199e1cfbc1b2e1c77b8a84d023a7c7b9c8e2ff66ab9edcf44`, MinOS 15.0. A separate poster task also used Build228/0.14.61; build number alone is not valid attribution.
+
+### Carousel Build230 persistent residency — CI/IPA candidate
+
+Build230 / 0.14.63 starts from the cleaned carousel Build228 foundation and reuses the existing current+previous+next resident window for `persistentCarouselBackdrop`. Normal current→target persistent opacity blending is unchanged; unlike Build221, the outgoing background is not frozen. This moves the adjacent target persistent 1400px + `scaleEffect(1.12)` + `blur(radius: 30)` presentation creation out of active finger tracking without adding another residency owner.
+
+This candidate follows the remaining evidence after Build226: Hero first presentation was already moved out of active drag and improved hand feel, while Build227 still showed slow-drag title shimmer/cadence variability and exact source still created target persistent only after a drag transition began. Build230 does not claim the title is itself a persistent-layer bug; it tests whether the visible title shimmer is a high-contrast symptom of remaining whole-page cadence stalls.
+
+CI/package: tested source `6324bb2063bf1631b8b922abc8e11149bd7a86b0`; Xcode 16.4 run/job `33167765310 / 98837170851` success; artifact `9684378135`; IPA SHA-256 `6cea81f8e806ec159d9e811871076c18aa41fceb99b3c621516c490cfc339b4e`; source ZIP SHA-256 `f0955926306e502d34e1835d9b5daffd7499c5bdc15abede9b31744eba9ee4ec`; OnePlayer 0.14.63 (230), MinOS 15.0 independently verified. Real-device pending. Acceptance must include both active-drag improvement and absence of a new post-settle hitch when the resident window rotates a new far neighbor.
 
 ## Active: Poster-heavy scrolling smoothness
 
