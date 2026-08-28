@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after carousel Build230 / 0.14.63 persistent-residency CI/IPA verification, alongside the existing poster Build229 line. Build216 remains the accepted overall runtime baseline. Carousel Build226 Hero residency + Build228 release-through-settle remain the positive foundation; Build230 moves adjacent persistent first presentation out of active drag and awaits target-device slow-drag/post-settle A/B._
+_Last updated after Build230 target-device slow-drag title-shimmer remained and carousel Build231 / 0.14.64 foreground-compositing CI/IPA verification. Build216 remains the accepted overall runtime baseline; Build226 Hero residency + Build228 release-through-settle remain the positive carousel foundation._
 
 ## Current accepted overall baseline
 
@@ -161,6 +161,10 @@ Build230 / 0.14.63 starts from the cleaned carousel Build228 foundation and reus
 This candidate follows the remaining evidence after Build226: Hero first presentation was already moved out of active drag and improved hand feel, while Build227 still showed slow-drag title shimmer/cadence variability and exact source still created target persistent only after a drag transition began. Build230 does not claim the title is itself a persistent-layer bug; it tests whether the visible title shimmer is a high-contrast symptom of remaining whole-page cadence stalls.
 
 CI/package: tested source `6324bb2063bf1631b8b922abc8e11149bd7a86b0`; Xcode 16.4 run/job `33167765310 / 98837170851` success; artifact `9684378135`; IPA SHA-256 `6cea81f8e806ec159d9e811871076c18aa41fceb99b3c621516c490cfc339b4e`; source ZIP SHA-256 `f0955926306e502d34e1835d9b5daffd7499c5bdc15abede9b31744eba9ee4ec`; OnePlayer 0.14.63 (230), MinOS 15.0 independently verified. Real-device pending. Acceptance must include both active-drag improvement and absence of a new post-settle hitch when the resident window rotates a new far neighbor.
+
+### Build230 target-device result → Build231 foreground compositing A/B
+
+Build230 target-device slow-drag feedback reports the movie-title shimmer still remains. Therefore pre-residing persistent neighbors is rejected as a sufficient title-shimmer fix; this report does not establish an overall-feel or post-settle verdict for Build230. Build231 returns to cleaned Build228 and isolates foreground child-layer presentation with one page-level `compositingGroup()` before unchanged opacity/X offset. Build231 exact source `d30092b8354553063c6d96b62a6f2f4387676601`, run/job `33169864030 / 98844082214`, artifact `9685231197`, IPA SHA-256 `b92eb47971c546cfe7044ebdbd94cc27a108f0febead32ec811d55e400df4571`, MinOS 15.0. Real-device pending; not stable.
 
 ## Active: Poster-heavy scrolling smoothness
 
