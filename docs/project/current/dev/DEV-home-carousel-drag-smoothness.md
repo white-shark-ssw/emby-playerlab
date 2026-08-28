@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — scope corrected after the 2026-08-28 Build224 target-device report. The user still sees visible jitter during Home vertical inertial scrolling, but this task is specifically about carousel horizontal swipe/drag smoothness. Build222–224 vertical Home scrolling A/Bs are now supporting diagnostics only and must not be used as the acceptance gate for the carousel task. Build224 therefore records a vertical-only real-device result, not a horizontal carousel verdict. The current direct carousel candidate returns to Build221 / 0.14.54, whose horizontal persistent-drag isolation is already CI/IPA verified and still needs target-device horizontal A/B. Build216 remains the accepted overall product baseline.**
+**Active — Build221 / 0.14.54 has now been target-device tested for the intended horizontal carousel interaction. Initial take-up/first movement feels acceptable, but overall swipe/drag feel still trails EX and the user noticed a brighter pale/white bottom glow during transition. Review of the supplied recording confirms a visible washed/bright intermediate state. Build221 therefore cannot be accepted as the final carousel solution and its drag-time frozen-persistent presentation must not be retained. Build222–224 remain supporting vertical diagnostics only. Build216 remains the accepted overall product baseline. The next direct carousel investigation should isolate the remaining Build219 suspect: Hero clear-image presentation during horizontal drag, without reopening general Home vertical scrolling.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Target device: iPhone 15 Pro Max / iOS 17.0
@@ -134,14 +134,30 @@ The more important scope correction is that general Home vertical scrolling is n
 
 Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device vertical-only tested ✅ / horizontal carousel verdict not established ❌ / stable ❌.
 
-## Build221 / 0.14.54 — separate horizontal lane
+## Build221 / 0.14.54 — horizontal persistent-drag presentation isolation
 
 - tested source `26fc82771b6778af14974fdac293ece0685fc76d`
+- cleanup `1d6df7f2490a5ef5968cafb229a46cba93c622db`
+- run/job `33090175887 / 98580579889` — success
 - artifact `9654120029`
 - IPA SHA-256 `d2ee4fb2d40c251399951bc72ba6ad35fbe8ba3bfd72b861274b9b2c38fe0d9c`
-- during active horizontal drag only, current persistent remains opaque and target persistent is not mounted; Hero transition and high-refresh request remain.
+- MinOS 15.0.
 
-Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device pending ❌ / diagnostic only / stable ❌.
+Exact runtime isolation: during active horizontal drag, the current persistent backdrop stays mounted at opacity 1 and the target persistent backdrop is not mounted. Hero current/target artwork transition, foreground movement, Build219 high-refresh request, release/settle and all P0/Frozen paths remain unchanged; normal persistent transition resumes after release.
+
+### 2026-08-28 target-device result
+
+User feedback on iPhone 15 Pro Max / iOS 17.0:
+
+- **initial take-up / first movement feels okay**;
+- **overall carousel feel still does not match EX**;
+- during switching there appears to be a **brighter pale/white bottom glow**.
+
+The supplied ~30 fps screen recording visibly contains washed/brighter intermediate frames during several horizontal transitions, so the brightness report is not treated as imagination. Exact Build221 source explains a plausible A/B-specific cause: while dragging, the persistent layer is frozen on the outgoing item, but current/target Hero artwork still crossfades above it. In light appearance, `persistentCarouselBackdrop` also keeps its `systemBackground` gradient. The intermediate Hero transparency therefore exposes an outgoing-image persistent/material backing that no longer matches the incoming Hero, making the pale/white lower glow more visible. This is a diagnostic visual regression, not an intended design.
+
+Controlling conclusion: Build221 does **not** provide enough horizontal improvement to accept the frozen-persistent strategy, and it introduces a visible presentation mismatch. Persistent presentation may still contribute to measured gaps, but freezing it during the whole active drag is rejected as the final solution.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / horizontal real-device tested ✅ / initial take-up acceptable / overall still worse than EX / pale-white transition regression observed / stable ❌.
 
 ## Rejected directions not to repeat
 
@@ -157,12 +173,8 @@ Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-de
 
 ## Next exact action
 
-Return to the carousel itself. Use the already CI/IPA-verified **Build221 / 0.14.54** for target-device horizontal A/B before writing any Build225. Test repeated left/right drags on the carousel, especially:
+Do not retain Build221 and do not return to Home vertical A/Bs. The next carousel-only variable should come from the other Build219 residual suspect: **Hero clear-image presentation during active horizontal drag**.
 
-- first visible movement after acquisition;
-- sustained 1:1 finger tracking / “smooth glass vs rough paper” feel;
-- rapid reversal continuity;
-- whether backdrop presentation still produces perceptible drag-time catches;
-- release/settle separately, because Build221 intentionally restores the normal persistent transition after release.
+Before changing code, inspect the current Hero mount/opacity path and preserve the Build215/219 interaction contract. The next A/B should keep normal persistent presentation and isolate only Hero clear-image adoption/presentation during active horizontal drag, so it can answer whether the remaining “rough paper” feel follows Hero work. Do not stack preload, easing, timers, interpolation or another input owner into the same build.
 
-If Build221 materially improves horizontal drag, persistent backdrop presentation during active drag is a causal component and the next patch should redesign that horizontal presentation path without removing the normal visual result. If Build221 is essentially unchanged, reject that isolation as sufficient and choose the next horizontal-only variable from the Build219 evidence. Do not use Home vertical inertial scrolling as the acceptance gate for the carousel task.
+Acceptance remains target-device horizontal feel: first movement, sustained tracking, rapid reversal, visual continuity, and release/settle versus EX.
