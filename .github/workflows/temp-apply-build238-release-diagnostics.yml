@@ -1,0 +1,29 @@
+name: TEMP Apply Build238 Release Diagnostics
+
+on:
+  push:
+    branches: [diag/home-carousel-release-intent-build238]
+    paths: [.github/build238-apply-trigger.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build238 branch
+        uses: actions/checkout@v4
+        with:
+          ref: diag/home-carousel-release-intent-build238
+          fetch-depth: 0
+      - name: Apply exact Build238 diagnostics patch
+        run: python3 scripts/temp_apply_build238_release_diagnostics.py
+      - name: Commit Build238 diagnostics
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselInteractionV3.swift docs/changelog/CHANGELOG_v0_14_71_build238.md
+          git diff --cached --quiet && { echo 'No Build238 patch produced'; exit 1; }
+          git commit -m "Carousel: measure release intent"
+          git push origin HEAD:diag/home-carousel-release-intent-build238
