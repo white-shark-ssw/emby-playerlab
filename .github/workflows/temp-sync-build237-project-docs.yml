@@ -1,0 +1,36 @@
+name: TEMP Sync Build237 Project Docs
+
+on:
+  push:
+    branches: [perf/home-carousel-fling-whiteflash-build237]
+    paths: [.github/build237-docs-sync-trigger.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build237 branch
+        uses: actions/checkout@v4
+        with:
+          ref: perf/home-carousel-fling-whiteflash-build237
+          fetch-depth: 0
+      - name: Update Build237 feature checkpoint
+        run: |
+          python3 scripts/temp_sync_build237_docs.py branch
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          git diff --cached --quiet || git commit -m "Docs: record Build237 CI baseline"
+          git push origin HEAD:perf/home-carousel-fling-whiteflash-build237
+      - name: Sync authoritative project docs to main
+        run: |
+          cp scripts/temp_sync_build237_docs.py /tmp/temp_sync_build237_docs.py
+          git fetch origin main
+          git checkout -B main origin/main
+          python3 /tmp/temp_sync_build237_docs.py main
+          git add docs/project/PROJECT_STATE.md docs/project/MODULE_STATUS.md docs/project/TECHNICAL_DECISIONS.md docs/project/BUILD_TEST_INDEX.md docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          git diff --cached --quiet || git commit -m "Docs: sync Build237 carousel test baseline"
+          git push origin main
