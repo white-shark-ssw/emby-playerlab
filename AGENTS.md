@@ -167,20 +167,23 @@ Before claiming success:
 
 ### Continuous execution to a testable artifact
 
-Once a development task is unambiguous and the required routing, resume-identity, branch/Build collision, source/state-owner, Frozen/P0, and other pre-change checks have passed, **continue autonomously within the current environment's real execution capabilities until a user-testable IPA/Artifact exists and its identity has been verified.**
+Once a development task is unambiguous and all necessary routing, resume-identity, branch/Build collision, source/state-owner, Frozen/P0, evidence, and other pre-change checks have passed, **continue autonomously within the current environment's real execution capabilities until a user-testable Artifact/IPA exists and the applicable version, Build, Candidate, source, and Artifact identities have been verified.**
 
-Do not stop merely because code is written, a source/static check passed, a commit was created, CI was started or passed, packaging is being prepared, or a checkpoint was refreshed, and then wait for the user to say `继续`. Checkpoints preserve recoverability; they are not normal handoff gates.
+Do not stop merely because code is written, a check passed, a commit/push was completed, a PR exists or advanced, CI was started or passed, a checkpoint was refreshed, or packaging is being prepared, and then wait for the user to say `继续`. These are ordinary intermediate states. A checkpoint preserves recoverability; it is not a normal handoff gate.
 
-A development task may stop before artifact handoff only when at least one of these is real and material:
+A development task may stop before Artifact/IPA handoff only when at least one of these is real and material:
 
-- a decision, authorization, credential, test input, or other information must genuinely come from the user;
+- a decision, information, authorization, credential, permission, test input, or real-device operation must genuinely come from the user;
 - the current evidence contains a real conflict or ambiguity that cannot be resolved safely from repository facts;
-- an external blocker such as permissions, unavailable infrastructure, failed required service, or an unresolvable dependency prevents further progress;
+- evidence is insufficient to justify the next code change, select between materially different directions, or claim a testable candidate without guessing;
+- an external blocker such as unavailable CI/infrastructure, a failed required service, or an unresolvable dependency prevents further progress;
 - the current environment genuinely lacks a capability required for the next step.
 
-Otherwise, continue through the applicable implementation, validation, commit/push, CI, IPA/Artifact generation, artifact retrieval/inspection, and identity checks without asking for an intermediate `continue`. Before handing the build to the user, verify the applicable Build/version, branch/PR/head or tested source commit, artifact identity/digest, IPA/package identity, and MinOS. The normal user handoff point is then **real-device testing**.
+When evidence is insufficient, do not manufacture a patch merely to preserve forward motion. Record what is known, what is missing, and the exact evidence or user/runtime action needed next.
 
-This rule does not authorize bypassing evidence, minimal-change, Frozen/P0, compatibility, or parallel-task guards. A generated and identity-verified IPA/Artifact is still only `IPA produced`; it must never be described as `Real-device tested` or `Stable / frozen` until the required user/device evidence exists.
+Otherwise, continue through the applicable implementation, validation, commit/push, PR, CI, Artifact/IPA generation, artifact retrieval/inspection, and identity checks without asking for an intermediate `continue`. Before handing the build to the user, verify the applicable product version, Build number, Candidate identity, branch/PR/head or tested source commit, Artifact identity/digest, IPA/package identity, and MinOS. The normal handoff point is then **Runtime/real-device testing**.
+
+This rule does not authorize bypassing evidence, minimal-change, Frozen/P0, compatibility, or parallel-task guards. A generated and identity-verified Artifact/IPA is still only `IPA produced`; it must never be described as `Real-device tested` or `Stable / frozen` until the required user/runtime evidence exists.
 
 Always distinguish:
 
@@ -196,7 +199,7 @@ Never describe CI success as proof that a runtime bug is solved.
 
 For every important implementation, CI/IPA baseline, real-device result, architectural decision, rejection, freeze, or compatibility change, update the relevant files in `docs/project/` in the same work cycle.
 
-For any multi-step task, create the correct checkpoint early enough to survive an unexpected conversation/context limit. Do not wait until the user predicts the limit or asks for a handoff.
+For any multi-step task, create the correct checkpoint early enough to survive an unexpected conversation/context or execution limit. Do not wait until CI, packaging, a final conclusion, the user predicting a limit, or an explicit handoff request.
 
 - Rules work uses only `docs/project/CURRENT_WORK_RULES.md`.
 - Each development task uses only its own `docs/project/current/dev/<Work-ID>.md`.
@@ -204,8 +207,12 @@ For any multi-step task, create the correct checkpoint early enough to survive a
 - Never overwrite, reset, merge, or repurpose another task's checkpoint because the current task finishes.
 - Never create/activate a checkpoint until session type and concrete task identity are unambiguous.
 
-Create the first checkpoint as soon as the task goal and a usable baseline/working direction are known. Refresh the selected checkpoint at meaningful milestones such as baseline/branch confirmation, first effective patch or rule decision, CI/IPA change, user real-device result, or a material change of direction.
+As soon as the task goal and a usable real baseline/working direction are known, create the first checkpoint. Continuous autonomous execution does **not** permit delaying checkpoint creation until CI, Artifact/IPA production, or the final conclusion.
 
-Do not update checkpoints for every tiny edit. When a development task finishes, move durable conclusions into the long-term project documents and remove only that task's current checkpoint. When a rules task finishes, move durable rules into permanent rule files and reset only `CURRENT_WORK_RULES.md` to Idle.
+Refresh the selected checkpoint only at substantive milestones that have independent continuation value. At minimum, keep the checkpoint sufficiently current to recover the task's branch/head/candidate identity, `Completed`, `Validation state`, `Pending`, and `Next exact action`. Useful refresh points include a confirmed baseline/branch/head/candidate, the first effective patch or rule decision, a material direction/evidence change, CI/Artifact state that changes the next action, or a new user real-device result.
+
+Prefer to piggyback checkpoint updates on GitHub writes that are already necessary for the task when the checkpoint state has materially changed. Do not create a separate GitHub write for every tiny edit, command, check, or micro-step. Pace checkpoints so that an unexpected context/execution cutoff should lose at most one small meaningful milestone rather than the whole implementation-to-CI/packaging span.
+
+When a development task finishes, move durable conclusions into the long-term project documents and remove only that task's current checkpoint. When a rules task finishes, move durable rules into permanent rule files and reset only `CURRENT_WORK_RULES.md` to Idle.
 
 Do not wait for the user to request documentation maintenance or session handoff.
