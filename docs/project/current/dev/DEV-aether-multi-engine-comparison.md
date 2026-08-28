@@ -28,7 +28,7 @@
 - **Initial materialized Build219 source:** `dc0c30a0f2f1e85d27f80934d82b1ca07246f5ef`
 - **Build219 compile-fix source commit:** `90557148e66e1d074cc2831dcb8023ea22dde7e0`
 - **PR:** none yet
-- **Build candidate:** OnePlayer `0.14.57` / Build `224` — unique Aether fast-seek candidate; global Build223 was already occupied by the parallel Home task when this package was allocated.
+- **Build candidate:** OnePlayer `0.14.68` / Build `235` — current unique Aether fast-seek candidate. The earlier Aether `0.14.57 / Build224` package is retired for attribution because current project evidence proves Build224 belongs to the parallel Home task; Home also allocated Build234 before this reallocation.
 - **Target device:** iPhone 15 Pro Max / iOS 17.0
 
 ## Proven feasibility evidence
@@ -203,6 +203,12 @@ Identity guard before allocation found global Build219 already owned by Home-car
 
 Next device test should repeat the Build219 Aether Seek sequence and compare `SeekEvent.landed` latency plus Range task start/cancel/finish counts. The purpose is to separate the remaining intrinsic Aether exact-seek floor from the removed Build219 adapter-induced transport churn.
 
+## Build identity correction — Build224 retired, Build235 reserved
+
+After re-reading the current repository rules and live parallel-task evidence, the previous Aether Build224 identity was found invalid for attribution: `BUILD_TEST_INDEX.md` already assigns Build224 / 0.14.57 to the Home vertical Hero-artwork diagnostic with its own artifact and target-device result. A live Actions check also showed Home had already allocated Build234. The Aether Build224 workflow `33112527059 / 98658753903` did compile and produce an IPA, but that package is now **retired solely because its Build identity collides** and must not be handed out or used for runtime attribution.
+
+The fast-seek/rate implementation itself is unchanged. The same source behavior is reallocated to the first verified free identity: **OnePlayer 0.14.68 / Build235**. This correction changes version/build metadata only; MPV fast Seek, UnifiedTransport/Session Cache, STRM→302→115/CDN, Emby reporting, PiP and MDK remain untouched.
+
 ## Build224 / 0.14.57 — bounded Aether fast seek + truthful rate UI
 
 Build224 is a narrow follow-up on top of the Build222 transport correction. Source inspection established that Aether's native AVPlayer host used exact zero-tolerance seek for every programmatic seek, while OnePlayer's existing `bufferHit` diagnostic is forward-range shaped and therefore cannot safely decide the left/right double-tap contract. The app now routes by Seek intent instead of by that diagnostic:
@@ -276,12 +282,12 @@ Build224 does not alter MPV fast Seek, UnifiedTransport/Session Cache algorithms
 
 ## Validation state
 
-- **Code written:** Yes — Build224 bounded Aether seek tolerance and engine-aware rate UI are committed on top of the Build222 transport correction.
-- **CI passed:** Yes — Build224 run/job `33112527059 / 98658753903` succeeded on exact source `9e25454361b6f5ac71bb97de6771684a57ceb47d`.
-- **IPA produced:** Yes — artifact `9663285742`; IPA SHA-256 `85b1f5ae81c10843816d75f97ebf648dc5d5c21932b352bc4ef0b16f605ffae0`; source ZIP SHA-256 `1716aa08f9e07c973b65a17b8c23b9b2fb1ace783bc751aa6c176a58c466c747`; MinOS 16.0 verified.
-- **Real-device tested:** Build219 yes — precise but high-latency Seek and per-read transport churn confirmed. Build224 fast-seek candidate has not yet been device-tested.
+- **Code written:** Yes — bounded Aether seek tolerance and engine-aware rate UI are committed on top of the Build222 transport correction; Build235 changes candidate identity only.
+- **CI passed:** Build224 compile/IPA run `33112527059 / 98658753903` succeeded but is retired because the Build number collides with Home. Build235 CI is pending.
+- **IPA produced:** Build224 artifact `9663285742` exists but is retired for attribution due Build collision. Build235 IPA is pending.
+- **Real-device tested:** Build219 yes — precise but high-latency Seek and per-read transport churn confirmed. Build235 fast-seek candidate has not yet been device-tested.
 - **Stable / frozen:** No.
 
 ## Next exact action
 
-Install Build224 / 0.14.57 on iPhone 15 Pro Max / iOS 17.0. With Aether selected, compare left/right double-tap and rapid repeated double-tap responsiveness against the prior exact-seek behavior, confirm absolute scrub remains acceptably precise, and confirm the speed panel exposes only rates supported by Aether (video ≤2×) while MPV still exposes its existing higher-rate choices. Capture the playback log so `AetherSeek request ... tolerance=0.75` and landed latency can be compared. Do not mark Aether fast Seek solved or stable until target-device evidence confirms it.
+Build and identity-verify OnePlayer 0.14.68 / Build235 from the unchanged bounded Aether fast-seek/rate implementation. Only after CI/IPA verification hand Build235 to the iPhone 15 Pro Max / iOS 17.0 test: compare left/right and rapid repeated double-tap responsiveness, confirm absolute scrub precision, verify Aether video rate choices stop at 2× while MPV retains higher rates, and capture `AetherSeek request ... tolerance=0.75` plus landed latency. Do not use the retired Aether Build224 package for attribution.
