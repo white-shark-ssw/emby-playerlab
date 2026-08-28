@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build225 / 0.14.58 is CI/IPA verified as the current horizontal target-Hero presentation A/B and awaits target-device horizontal testing. It uses the exact Build219 120Hz carousel line, restores normal persistent current/target crossfade, and changes only drag-time Hero mounting: the already-visible current Hero stays opaque while target Hero clear 1400px artwork is not mounted until drag ends. Build221 is horizontally real-device tested and rejected as final because overall feel still trails EX and the frozen-persistent experiment caused a pale/white transition regression. Build222–224 remain supporting vertical diagnostics only. Build216 remains the accepted overall runtime baseline.**
+**Active — Build226 / 0.14.59 is the current visual-preserving horizontal Hero-residency candidate. Build225 is now horizontally real-device tested and materially positive: deferring target clear-Hero first presentation during active drag made the carousel feel noticeably finer, establishing that presentation as a causal contributor, but Build225 itself remains diagnostic because incoming clear Hero is withheld during drag. Build226 keeps current + previous + next clear Heroes resident so both drag targets are already presented before finger tracking while normal Hero/persistent crossfades are preserved. Build226 CI/IPA is verified; target-device horizontal A/B pending. Build216 remains the accepted overall runtime baseline.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Target device: iPhone 15 Pro Max / iOS 17.0
@@ -184,8 +184,36 @@ CI / package evidence:
 
 The earlier Build225 Action attempts were CI harness/setup failures before compilation (hard-coded Build219 version assertion and then non-idempotent patch helper) and are superseded by the successful dedicated run above; they are not product runtime evidence.
 
-Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / stable ❌.
+### 2026-08-28 horizontal real-device result
 
+User feedback on iPhone 15 Pro Max / iOS 17.0: **“这版本感觉明显细腻了一些。”** This is the first direct horizontal real-device evidence that moving target clear-Hero first presentation out of the active finger-tracking phase materially improves tactile fineness.
+
+Controlling conclusion: target `carouselHeroArtwork` 1400px first presentation during active drag is a **material causal contributor** to the remaining rough-paper feel. This does not prove Hero presentation is the only residual source. Build225 itself remains diagnostic rather than final because it intentionally withholds the incoming clear Hero during active drag and restores it only after release.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / horizontal real-device tested ✅ / materially finer feel ✅ / diagnostic visual compromise / stable ❌.
+
+## Build226 / 0.14.59 — three-slot Hero residency
+
+Build226 is the visual-preserving follow-up to Build225's positive horizontal A/B. Instead of hiding the incoming clear Hero during active drag, it keeps at most three full Hero presentations resident for the settled item: current + previous + next. The residency set is derived from the existing `currentCarouselItemID`; no duplicate stored transition state is added.
+
+Because `currentCarouselItemID` does not rotate until `settleCarousel`, both possible horizontal target Heroes are already mounted throughout touch acquisition, drag and release animation. Drag-time current/target Hero blending therefore returns to normal `carouselOpacity(...)` behavior without creating a new 1400px Hero presentation inside the direct finger-tracking phase. After settle, residency rotates and any newly distant neighbor may mount outside active finger tracking.
+
+Retained unchanged: normal persistent current/target crossfade, `EmbyCachedRemoteImage` shared loader/cache implementation, carousel preload, Build215 acquisition-relative motion, Build219 exact device-max refresh request, full-width page slots, opaque foreground, 0.28 commit threshold, 0.48×width predicted release gate, and all Player / MPV / PiP / Transport / Cache / Session / P0/Frozen paths.
+
+CI / package evidence:
+
+- branch: `perf/home-carousel-hero-residency-build226`;
+- exact base: cleaned Build225 head `b4b8b76f316a675032f49fa7b616b6692427e96e`;
+- exact tested source: `df1c9afce1dc96495dba16aa52e39254f23c7f65`;
+- dedicated Xcode 16.4 run/job: `33151618930 / 98784687139` — success;
+- artifact: `OnePlayer-0.14.59-build226-hero-residency`, ID `9677979449`;
+- artifact SHA-256: `0ac4813d3a7578c52cb419be4402ffa4df14b992bb21ef19823189ba8973af7f`;
+- IPA SHA-256: `881638aec2b31bef6b3b6b08bbd31c978eb5f4454683225ad4a212ccad99fe34`;
+- source ZIP SHA-256: `5342c7af8145fc32e1b131947f7ce05f3ee8f81c0de39179c92c51c958cfe2b0`;
+- independent package reopen confirms bundle `com.embyplayerlab.app`, OnePlayer `0.14.59 (226)`, `MinimumOSVersion=15.0`, runtime Mach-O minOS 15.0, compatibility audit OK and `CADisableMinimumFrameDurationOnPhone=true`;
+- exact diff against the cleaned Build225 base changes product source only in `AppIdentity.swift`, `EmbyHomeHeroV3.swift`, and `EmbyHomeCarouselStateV3.swift`; shared image loader, carousel interaction owner and Home core are untouched.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / stable ❌.
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -200,4 +228,4 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 
 ## Next exact action
 
-Install the CI/IPA-verified Build225 on iPhone 15 Pro Max / iOS 17.0 and test only horizontal carousel interaction. Compare first movement, sustained tracking, rapid reversal and the “smooth glass vs rough paper” gap against Build221/EX. During active drag the outgoing clear Hero is intentionally held while the incoming clear Hero is deferred until release; persistent background transition is normal again. Evaluate drag-time feel and release/settle separately. Do not use Home vertical inertial scrolling as the acceptance gate.
+Install Build226 on iPhone 15 Pro Max / iOS 17.0 and test only horizontal carousel interaction. Compare directly with Build225 and EX: slow sustained tracking, quick left/right swipes, rapid direction reversal, repeated adjacent-page changes, and release/settle. Acceptance question: does Build226 retain Build225's noticeably finer tactile feel **while restoring the incoming clear Hero continuously during drag**? Also note any new hitch immediately after a page settles, because residency rotates one neighbor at settle. Do not use Home vertical inertial scrolling as the acceptance gate.
