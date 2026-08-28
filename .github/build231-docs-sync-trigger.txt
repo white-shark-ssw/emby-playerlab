@@ -1,1 +1,1 @@
-trigger carousel Build231 project docs sync
+retry carousel Build231 project docs sync after helper-path fix
