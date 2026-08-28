@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build221 / 0.14.54 has now been target-device tested for the intended horizontal carousel interaction. Initial take-up/first movement feels acceptable, but overall swipe/drag feel still trails EX and the user noticed a brighter pale/white bottom glow during transition. Review of the supplied recording confirms a visible washed/bright intermediate state. Build221 therefore cannot be accepted as the final carousel solution and its drag-time frozen-persistent presentation must not be retained. Build222–224 remain supporting vertical diagnostics only. Build216 remains the accepted overall product baseline. The next direct carousel investigation should isolate the remaining Build219 suspect: Hero clear-image presentation during horizontal drag, without reopening general Home vertical scrolling.**
+**Active — Build225 / 0.14.58 is CI/IPA verified as the current horizontal target-Hero presentation A/B and awaits target-device horizontal testing. It uses the exact Build219 120Hz carousel line, restores normal persistent current/target crossfade, and changes only drag-time Hero mounting: the already-visible current Hero stays opaque while target Hero clear 1400px artwork is not mounted until drag ends. Build221 is horizontally real-device tested and rejected as final because overall feel still trails EX and the frozen-persistent experiment caused a pale/white transition regression. Build222–224 remain supporting vertical diagnostics only. Build216 remains the accepted overall runtime baseline.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Target device: iPhone 15 Pro Max / iOS 17.0
@@ -159,6 +159,33 @@ Controlling conclusion: Build221 does **not** provide enough horizontal improvem
 
 Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / horizontal real-device tested ✅ / initial take-up acceptable / overall still worse than EX / pale-white transition regression observed / stable ❌.
 
+## Build225 / 0.14.58 — horizontal target-Hero presentation isolation
+
+- branch: `diag/home-carousel-hero-drag-isolation-build225`
+- exact base: Build219 tested source `0b894bc37fcd0086aeaf9e1a29de0e85f5b0ee94`
+- identity: OnePlayer `0.14.58`, Build `225`
+- Build225 does **not** inherit Build221's persistent freeze; persistent current/target crossfade is the normal Build219 behavior.
+- During active horizontal drag only, the already-mounted current `carouselHeroArtwork` stays opacity 1 and `transitionTargetCarouselItem` Hero artwork is not mounted. When drag ends, normal Hero target mounting/crossfade resumes for release/settle.
+- `carouselHeroArtwork` implementation, image loader, 1400px request, mask/scrim, preload, foreground page motion, acquisition-relative input, 0.28/0.48 release rules and Build219 exact device-max refresh request are unchanged.
+- No Player / MPV / PiP / Transport / Cache / Emby Session / P0/Frozen source changes.
+
+Why this variable: Build219's residual gaps correlated with both Hero and persistent callbacks. Build221 directly tested the persistent-side drag isolation and did not close the EX hand-feel gap, while also creating a visual mismatch. The remaining direct horizontal suspect is target Hero first presentation. Suppressing only the target Hero mount during active drag avoids unmounting the already-visible current Hero at touch acquisition and isolates newly presented Hero work without changing gesture ownership or motion math.
+
+CI / package evidence:
+
+- exact tested source: `350fd5d07ae2e77907bcf497deb819dfea6a28b1`;
+- dedicated Xcode 16.4 run/job: `33149313932 / 98777365879` — success;
+- artifact: `OnePlayer-0.14.58-build225-hero-drag-isolation`, ID `9677114082`;
+- artifact SHA-256: `5e6d94602ef2c08ff3611bb8d749c6c9bd69df8a5f5bdeb089677ffa15cf3914`;
+- IPA SHA-256: `221162e47de335b665cad6e0dd48aa82a8e27bb50cadcc24c2c6888d26db000a`;
+- source ZIP SHA-256: `2849308d7a8e8f5c479a17e30ef6645bcf87f5f358065ba8b6dba7608623095e`;
+- independent package reopen confirms bundle `com.embyplayerlab.app`, OnePlayer `0.14.58 (225)`, `MinimumOSVersion=15.0`, `CADisableMinimumFrameDurationOnPhone=true`;
+- independent source reopen confirms target-Hero suppression only during active drag, normal persistent target crossfade retained, Build219 exact max-refresh retained, acquisition-relative render retained, and 0.28/0.48 release gates retained.
+
+The earlier Build225 Action attempts were CI harness/setup failures before compilation (hard-coded Build219 version assertion and then non-idempotent patch helper) and are superseded by the successful dedicated run above; they are not product runtime evidence.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / stable ❌.
+
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -173,8 +200,4 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 
 ## Next exact action
 
-Do not retain Build221 and do not return to Home vertical A/Bs. The next carousel-only variable should come from the other Build219 residual suspect: **Hero clear-image presentation during active horizontal drag**.
-
-Before changing code, inspect the current Hero mount/opacity path and preserve the Build215/219 interaction contract. The next A/B should keep normal persistent presentation and isolate only Hero clear-image adoption/presentation during active horizontal drag, so it can answer whether the remaining “rough paper” feel follows Hero work. Do not stack preload, easing, timers, interpolation or another input owner into the same build.
-
-Acceptance remains target-device horizontal feel: first movement, sustained tracking, rapid reversal, visual continuity, and release/settle versus EX.
+Install the CI/IPA-verified Build225 on iPhone 15 Pro Max / iOS 17.0 and test only horizontal carousel interaction. Compare first movement, sustained tracking, rapid reversal and the “smooth glass vs rough paper” gap against Build221/EX. During active drag the outgoing clear Hero is intentionally held while the incoming clear Hero is deferred until release; persistent background transition is normal again. Evaluate drag-time feel and release/settle separately. Do not use Home vertical inertial scrolling as the acceptance gate.

@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after the 2026-08-28 Build221 horizontal target-device A/B. Build216 remains the accepted overall runtime baseline. Build221 initial carousel take-up feels acceptable but overall hand feel still trails EX, and the supplied recording confirms a pale/white washed intermediate-state regression from the frozen-persistent drag isolation. Build221 is therefore rejected as the final presentation strategy. Build222–224 remain supporting vertical diagnostics only; next carousel work stays horizontal and isolates Hero clear-image presentation._
+_Last updated after Build225 / 0.14.58 horizontal target-Hero A/B CI/IPA verification. Build216 remains the accepted overall runtime baseline. Build221 is horizontally real-device tested and rejected as the final frozen-persistent strategy because overall feel still trails EX and a pale/white transition regression is visible. Build225 restores normal persistent crossfade and defers only target Hero clear-image mounting during active horizontal drag; target-device horizontal testing is pending. Build222–224 remain supporting vertical diagnostics only._
 
 ## Current accepted overall baseline
 
@@ -136,6 +136,10 @@ Build223 / 0.14.56 is the next independent Home vertical diagnostic from accepte
 
 Build224 / 0.14.57 removed only the clear Hero 1400px artwork mounts while retaining the accepted persistent background/Dock, preload, persistent blur, foreground, auto-advance and horizontal interaction. Dedicated Xcode 16.4 run/job `33142773132 / 98757057369` succeeded; artifact `9674622017`; IPA SHA-256 `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`; MinOS 15.0. Target-device feedback on 2026-08-28 still reports visible **Home vertical inertial-scroll jitter**. This is now recorded as vertical supporting evidence only: the user clarified that the active goal is horizontal carousel swipe/drag smoothness, and this Build224 test did not provide a horizontal verdict. Do not continue the carousel task with another vertical-only A/B.
 
+### Build225 horizontal target-Hero A/B
+
+Build225 / 0.14.58 branches from the exact Build219 tested 120Hz carousel source rather than stacking Build221 or the vertical Build222–224 experiments. Normal persistent current/target crossfade is restored. During active horizontal drag the already-visible current Hero remains opaque and target `carouselHeroArtwork` 1400px clear-image mounting is deferred until drag ends; foreground page motion, acquisition-relative input, release gates, preload and exact device-max refresh remain unchanged. Dedicated Xcode 16.4 run/job `33149313932 / 98777365879` succeeded; tested source `350fd5d07ae2e77907bcf497deb819dfea6a28b1`; artifact `9677114082`; artifact SHA-256 `5e6d94602ef2c08ff3611bb8d749c6c9bd69df8a5f5bdeb089677ffa15cf3914`; IPA SHA-256 `221162e47de335b665cad6e0dd48aa82a8e27bb50cadcc24c2c6888d26db000a`; source ZIP SHA-256 `2849308d7a8e8f5c479a17e30ef6645bcf87f5f358065ba8b6dba7608623095e`; OnePlayer 0.14.58 (225) and MinOS 15.0 were independently verified. Evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / diagnostic only / not stable**. Next action is target-device horizontal carousel A/B only.
+
 ## Active: Poster-heavy scrolling smoothness
 
 Work: `DEV-poster-grid-smoothness`.
@@ -153,4 +157,4 @@ Next: make the next poster build diagnostic-only. Measure MainActor image-assign
 
 ## Parallel integration rule
 
-Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel acceptance is horizontal drag/swipe behavior; Build221 horizontal A/B is now real-device tested and rejected as final, so the next direct carousel A/B should isolate Hero presentation; Build222–224 remain supporting vertical diagnostics only; poster-scroll Build220 remains an independent Active line. These keep separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
+Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel acceptance is horizontal drag/swipe behavior; Build225 is the current CI/IPA-verified target-Hero horizontal A/B pending target-device testing; Build221 is real-device rejected as final and Build222–224 remain supporting vertical diagnostics only; poster-scroll Build220 remains an independent Active line. These keep separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
