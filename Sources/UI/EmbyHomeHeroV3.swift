@@ -6,17 +6,6 @@ extension V3EmbyHomeView {
     func immersiveCarouselHero(width: CGFloat, viewportHeight: CGFloat) -> some View {
         let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + homeCarouselDisplayHeightAdjustment(viewportHeight: viewportHeight)
         return ZStack(alignment: .bottom) {
-            if let item = currentCarouselItem {
-                carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
-                    .opacity(carouselOpacity(for: item.id))
-                    .allowsHitTesting(false)
-            }
-            if let item = transitionTargetCarouselItem {
-                carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
-                    .opacity(carouselOpacity(for: item.id))
-                    .allowsHitTesting(false)
-            }
-
             ForEach(model.carouselItems) { item in
                 carouselHeroForeground(item: item, width: width, viewportHeight: viewportHeight)
                     .opacity(carouselForegroundOpacity(for: item.id))
