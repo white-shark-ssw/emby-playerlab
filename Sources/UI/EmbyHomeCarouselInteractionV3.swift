@@ -44,6 +44,11 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
     private var horizontalAcquisitionDirectionTranslation: CGFloat = 0
     private var pendingPostAcquisitionBaseline = false
     private var touchDownTimestamp: TimeInterval?
+    private var latestMoveTranslationX: CGFloat?
+    private var latestMoveTimestamp: TimeInterval?
+    private var latestMoveDeliveredVelocityX: CGFloat?
+    private var latestMoveCoalescedVelocityX: CGFloat?
+    private var latestPredictionBaseTranslationX: CGFloat?
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         guard origin == nil, touches.count == 1, let touch = touches.first, let view else {
@@ -64,6 +69,11 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         horizontalAcquisitionDirectionTranslation = 0
         pendingPostAcquisitionBaseline = false
         touchDownTimestamp = touch.timestamp
+        latestMoveTranslationX = nil
+        latestMoveTimestamp = nil
+        latestMoveDeliveredVelocityX = nil
+        latestMoveCoalescedVelocityX = nil
+        latestPredictionBaseTranslationX = nil
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
@@ -83,7 +93,9 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
             horizontalAcquisitionDirectionTranslation = acquisitionTranslation
             pendingPostAcquisitionBaseline = acquisitionSample.status == "none" && acquisitionSample.count == 1
             V3HomeCarouselCadenceDiagnostics.shared.begin(acquisitionTranslation: acquisitionTranslation, touchDownTimestamp: touchDownTimestamp ?? touch.timestamp, acquisitionCoalescedCount: acquisitionSample.count, acquisitionPredecessorStatus: acquisitionSample.status, acquisitionPredecessorDelta: acquisitionSample.delta, acquisitionPredecessorAgeMS: acquisitionSample.ageMS, touch: touch, event: event)
+            recordReleaseMotionSample(translationX: translation.width, touch: touch, event: event, view: view)
             latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
+            latestPredictionBaseTranslationX = translation.width
             state = .began
             if acquisitionSample.baseline != nil {
                 let renderedTranslation = renderTranslation(for: translation)
@@ -95,7 +107,9 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
 
         guard axis == .horizontal, state == .began || state == .changed else { return }
         V3HomeCarouselCadenceDiagnostics.shared.recordTouch(touch, event: event)
+        recordReleaseMotionSample(translationX: translation.width, touch: touch, event: event, view: view)
         latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
+        latestPredictionBaseTranslationX = translation.width
         if pendingPostAcquisitionBaseline {
             let postAcquisitionSample = postAcquisitionRenderBaselineSample(for: touch, event: event, view: view, origin: origin)
             if let baseline = postAcquisitionSample.baseline { horizontalAcquisitionTranslation = baseline }
@@ -114,6 +128,8 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         let translation = CGSize(width: location.x - origin.x, height: location.y - origin.y)
         if axis == .horizontal, state == .began || state == .changed {
             V3HomeCarouselCadenceDiagnostics.shared.recordTouch(touch, event: event)
+            let endVelocityX = deliveredEndVelocityX(translationX: translation.width, touchTimestamp: touch.timestamp)
+            logReleaseIntent(translation: translation, touch: touch, endVelocityX: endVelocityX)
             onHorizontalEnded?(translation, latestPredictedTranslation)
             state = .ended
         } else if axis == nil {
@@ -154,6 +170,46 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         horizontalAcquisitionDirectionTranslation = 0
         pendingPostAcquisitionBaseline = false
         touchDownTimestamp = nil
+        latestMoveTranslationX = nil
+        latestMoveTimestamp = nil
+        latestMoveDeliveredVelocityX = nil
+        latestMoveCoalescedVelocityX = nil
+        latestPredictionBaseTranslationX = nil
+    }
+
+    private func recordReleaseMotionSample(translationX: CGFloat, touch: UITouch, event: UIEvent, view: UIView) {
+        if let previousX = latestMoveTranslationX, let previousTimestamp = latestMoveTimestamp {
+            let deltaTime = touch.timestamp - previousTimestamp
+            if deltaTime > 0.000001 { latestMoveDeliveredVelocityX = (translationX - previousX) / deltaTime }
+        }
+        latestMoveCoalescedVelocityX = coalescedVelocityX(for: touch, event: event, view: view) ?? latestMoveCoalescedVelocityX
+        latestMoveTranslationX = translationX
+        latestMoveTimestamp = touch.timestamp
+    }
+
+    private func coalescedVelocityX(for touch: UITouch, event: UIEvent, view: UIView) -> CGFloat? {
+        let samples = (event.coalescedTouches(for: touch) ?? []).sorted { $0.timestamp < $1.timestamp }
+        guard samples.count >= 2 else { return nil }
+        let current = samples[samples.count - 1]
+        guard let previous = samples[..<(samples.count - 1)].last(where: { current.timestamp - $0.timestamp > 0.000001 }) else { return nil }
+        return (current.location(in: view).x - previous.location(in: view).x) / (current.timestamp - previous.timestamp)
+    }
+
+    private func deliveredEndVelocityX(translationX: CGFloat, touchTimestamp: TimeInterval) -> CGFloat? {
+        guard let previousX = latestMoveTranslationX, let previousTimestamp = latestMoveTimestamp else { return nil }
+        let deltaTime = touchTimestamp - previousTimestamp
+        guard deltaTime > 0.000001 else { return nil }
+        return (translationX - previousX) / deltaTime
+    }
+
+    private func logReleaseIntent(translation: CGSize, touch: UITouch, endVelocityX: CGFloat?) {
+        let predictedX = latestPredictedTranslation?.width
+        let predictionBaseX = latestPredictionBaseTranslationX
+        let predictedExtraX: CGFloat? = if let predictedX, let predictionBaseX { predictedX - predictionBaseX } else { nil }
+        let renderedX = renderTranslation(for: translation).width
+        let durationMS = max(0, (touch.timestamp - (touchDownTimestamp ?? touch.timestamp)) * 1000)
+        func value(_ value: CGFloat?) -> String { value.map { String(format: "%.2f", $0) } ?? "none" }
+        DiagnosticsLogger.shared.app("HomeCarouselRelease", "actual_x=\(String(format: "%.2f", translation.width)) rendered_x=\(String(format: "%.2f", renderedX)) predicted_x=\(value(predictedX)) prediction_base_x=\(value(predictionBaseX)) predicted_extra_x=\(value(predictedExtraX)) last_move_delivered_velocity_x=\(value(latestMoveDeliveredVelocityX)) last_move_coalesced_velocity_x=\(value(latestMoveCoalescedVelocityX)) end_velocity_x=\(value(endVelocityX)) touch_duration_ms=\(String(format: "%.2f", durationMS))")
     }
 
     private func renderTranslation(for translation: CGSize) -> CGSize {
