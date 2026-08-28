@@ -28,7 +28,6 @@ jobs:
           git fetch origin main
           python3 scripts/temp_apply_build225.py
           git diff --check
-          python3 scripts/check_home_carousel_single_owner.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Sources/UI/EmbyHomeHeroV3.swift docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
@@ -41,7 +40,6 @@ jobs:
           set -euo pipefail
           base='0b894bc37fcd0086aeaf9e1a29de0e85f5b0ee94'
           git diff --check "$base"...HEAD
-          python3 scripts/check_home_carousel_single_owner.py
           python3 - <<'PY'
           from pathlib import Path
           import subprocess
@@ -76,6 +74,7 @@ jobs:
           assert 'return CGSize(width: translation.width - acquisitionTranslation, height: 0)' in interaction
           assert 'actualProgress >= 0.28' in interaction
           assert 'width * 0.48' in interaction
+          assert 'DragGesture(' not in interaction
           print('Build225 target-Hero drag isolation scope/contracts: PASS')
           PY
 
