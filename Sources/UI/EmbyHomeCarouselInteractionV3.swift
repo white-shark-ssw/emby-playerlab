@@ -40,6 +40,7 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
     private var axis: V3HomeCarouselTouchAxis?
     private var latestPredictedTranslation: CGSize?
     private var horizontalAcquisitionTranslation: CGFloat?
+    private var touchDownTimestamp: TimeInterval?
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         guard origin == nil, touches.count == 1, let touch = touches.first, let view else {
@@ -56,6 +57,7 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         axis = nil
         latestPredictedTranslation = nil
         horizontalAcquisitionTranslation = nil
+        touchDownTimestamp = touch.timestamp
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
@@ -69,7 +71,7 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
             if axis == .vertical { state = .failed; return }
             guard shouldBeginHorizontal?(translation) == true else { state = .failed; return }
             horizontalAcquisitionTranslation = translation.width
-            V3HomeCarouselCadenceDiagnostics.shared.begin(acquisitionTranslation: translation.width, touch: touch, event: event)
+            V3HomeCarouselCadenceDiagnostics.shared.begin(acquisitionTranslation: translation.width, touchDownTimestamp: touchDownTimestamp ?? touch.timestamp, touch: touch, event: event)
             latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
             state = .began
             return
@@ -78,8 +80,10 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         guard axis == .horizontal, state == .began || state == .changed else { return }
         V3HomeCarouselCadenceDiagnostics.shared.recordTouch(touch, event: event)
         latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
+        let renderedTranslation = renderTranslation(for: translation)
+        V3HomeCarouselCadenceDiagnostics.shared.recordFirstRender(translation: renderedTranslation.width, totalTranslation: translation.width, touchTimestamp: touch.timestamp)
         state = .changed
-        onHorizontalChanged?(renderTranslation(for: translation))
+        onHorizontalChanged?(renderedTranslation)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
@@ -124,6 +128,7 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         axis = nil
         latestPredictedTranslation = nil
         horizontalAcquisitionTranslation = nil
+        touchDownTimestamp = nil
     }
 
     private func renderTranslation(for translation: CGSize) -> CGSize {
