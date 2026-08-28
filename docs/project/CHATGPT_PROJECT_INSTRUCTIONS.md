@@ -87,11 +87,13 @@ Deployment Target 应优先保持 iOS 15.0。
 
 代码格式方面：能自然写在一行的短语句、函数调用和表达式不要人为拆成多行。
 
-**开发任务一旦明确并通过全部必要前置检查，AI 必须在当前执行能力允许范围内自主连续推进到可测试 IPA/Artifact 已生成并完成身份核验，再交给用户进行真机测试。** 不得因为代码已经写完、检查通过、已经 commit/push、CI 已启动或通过、正在准备出包、刷新了 checkpoint 等中间状态停下来等待用户回复“继续”。checkpoint 的作用是保证会话可恢复，不是正常停工或交接门槛。
+**开发任务一旦明确并通过必要前置检查，除非遇到必须由用户决策、提供信息/权限/实机操作、真实冲突、证据不足、外部阻塞，或当前环境确实缺少下一步所需执行能力，否则 AI 不得因代码完成、检查通过、commit/push、PR、CI、checkpoint、准备出包等普通中间状态停下来等待“继续”。** 应在当前执行能力允许范围内自主连续推进至可测试 Artifact/IPA 已生成，并完成适用的产品版本、Build、Candidate、branch/PR/head 或 tested source、Artifact/digest、IPA/package 与 MinOS 身份核验后，再交给用户进行 Runtime/实机测试。
 
-只有以下情况允许在 IPA/Artifact 交付前停止并要求用户介入：确实需要用户做决定、授权、提供凭据/测试输入/其他信息；出现无法仅凭仓库事实安全消解的真实冲突或歧义；权限、CI/基础设施、必要外部服务或依赖形成真实外部阻塞；或者当前环境确实不具备下一步所需执行能力。除此之外，应继续完成适用的实现、检查、提交/推送、CI、IPA/Artifact 生成、Artifact 获取/检查和身份核验，不得把任何中间 checkpoint 当作等待“继续”的理由。
+“证据不足”是合法停点，但不能被滥用成普通中间停点：只有当前证据确实不足以证明下一项代码修改、无法安全选择 materially different 的方向，或无法在不猜测的情况下形成可测试 Candidate 时才允许停止。此时必须记录已知事实、缺失证据以及下一项准确需要的用户/Runtime 操作，而不是为了连续推进强行制造补丁。
 
-交给用户真机测试前，应按任务实际情况核对 Build/version、branch/PR/head 或 tested source commit、artifact identity/digest、IPA/package identity 与 MinOS。该规则不允许绕过最小修改、Frozen/P0、兼容性、并行任务冲突或证据分级；已生成且身份核验完成的 IPA/Artifact 仍然只属于 `IPA produced`，不得描述成 `Real-device tested` 或 `Stable / frozen`。
+自主连续开发不得把 checkpoint 延迟到 CI、出包或最终结论之后。任务目标和可用真实基线/工作方向明确后，应尽早建立对应 checkpoint；之后只在具有独立续接价值的实质里程碑滚动记录 branch/head/candidate、`Completed`、`Validation state`、`Pending` 与 `Next exact action`。优先在本来就需要的 GitHub 写节点顺带更新已发生实质变化的 checkpoint，避免为每个微小编辑、检查或命令额外制造 GitHub 写；checkpoint 节奏应使会话突然达到上下文/执行上限时，最多只丢失一个小的有效里程碑，而不是整段实现→CI→出包进度。
+
+该连续执行规则不允许绕过最小修改、Frozen/P0、兼容性、并行任务冲突、证据分级或 checkpoint 生存性规则；已生成且身份核验完成的 Artifact/IPA 仍然只属于 `IPA produced`，不得描述成 `Real-device tested` 或 `Stable / frozen`。
 
 必须始终严格区分以下证据级别：
 
