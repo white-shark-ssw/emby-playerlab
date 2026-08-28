@@ -8,9 +8,9 @@ p.write_text(text)
 
 p = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift')
 text = p.read_text()
-old_type = '((CGSize, CGSize?) -> Void)'
+old_type = '(CGSize, CGSize?) -> Void'
 if text.count(old_type) != 4: raise SystemExit(f'unexpected onHorizontalEnded type count: {text.count(old_type)}')
-text = text.replace(old_type, '((CGSize, CGFloat?) -> Void)')
+text = text.replace(old_type, '(CGSize, CGFloat?) -> Void')
 old_call = '            onHorizontalEnded?(translation, latestPredictedTranslation)'
 if text.count(old_call) != 1: raise SystemExit('touchesEnded call anchor mismatch')
 text = text.replace(old_call, '            onHorizontalEnded?(translation, latestMoveDeliveredVelocityX)', 1)
