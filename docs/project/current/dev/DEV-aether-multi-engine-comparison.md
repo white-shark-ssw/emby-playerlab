@@ -3,234 +3,291 @@
 - **Status:** Active
 - **Work ID:** `DEV-aether-multi-engine-comparison`
 - **Routing aliases / keywords:** `Aether内核 / Aether引擎 / Aether接入 / 播放引擎选择 / 多引擎对比 / Aether`
-- **Task:** 先完成 AetherEngine 接入可行性与最小改动路径验证；目标是在正常 OnePlayer App 的现有“播放设置 → 播放器引擎”中人工选择 Aether，与 MPV 做真机对比。**MDK 按用户最新要求暂缓，本阶段不处理。**
+- **Task:** 将 AetherEngine 接入正常 OnePlayer App，并继续使用现有“播放设置 → 播放器引擎”入口人工选择 Aether，与 MPV 做真机对比。**MDK 按用户最新要求暂缓，本阶段不处理。**
 
-## User intent / acceptance criteria
+## Acceptance criteria
 
-1. 当前阶段优先确认 Aether 的真实 iOS / Swift / 依赖限制，以及它能否在不破坏现有 MPV 与 P0 合同的前提下以最小改动接入。
-2. 若进入实现，继续使用现有 `PlayerEnginePreference` / `PlayerSettingsView` 引擎选择入口；至少人工选择 MPV 与 Aether，不另造一套设置状态。
-3. Aether 先作为**人工选择、实验对比**引擎；在真机证据形成前不得替换 MPV 主力播放路径，也不得成为自动 fallback。
-4. 当前选择只决定**新播放会话**使用的引擎；本任务不新增播放中热切换，除非用户后续明确要求。
-5. Aether 必须尽可能复用 OnePlayer 已有媒体源解析、请求头、Emby Session/Resume、诊断与 UnifiedTransport / Session Cache；不得复制一套 115/CDN 网络栈。
-6. STRM → HTTP 302 → 115/CDN 必须保持客户端直连；NAS 绝不能成为媒体字节中转站。
-7. 必须保护当前 P0：左右双击立即 Seek、连续快速双击立即响应、Range/206、Session Cache、Emby Resume/Progress、异常短片/提前 EOF 容错、播放诊断日志。
-8. 严禁重新采用 `targetTime / duration × fileSize` 时间→字节比例猜测。
-9. 目标真机仍为 iPhone 15 Pro Max / iOS 17.0。
-10. OnePlayer Deployment Target 原则上仍优先保持 iOS 15.0；只有在依赖/核心 API 已有具体证据证明无法兼容时才允许讨论提高，并必须先记录低版本方案为何不可行。
-11. **MDK 暂缓：** 本阶段不修改 `MDK_LAB`、MDK 依赖、MDK 引擎可见性或 MDK fallback 逻辑。
+1. Aether 只作为人工选择的实验引擎；MPV 继续是默认/自动播放权威，Aether 不进入 automatic fallback。
+2. 继续使用 `PlayerEnginePreference` + `PlayerPreferenceKeys.enginePreference`；设置只影响新播放会话，不新增热切换状态。
+3. Aether 复用现有 `PlaybackTransportContext` / UnifiedTransport / Session Cache / Emby Session/Resume/Progress，不复制 115/CDN 网络栈。
+4. STRM → HTTP 302 → 115/CDN 必须继续客户端直连，NAS 不得中转媒体字节。
+5. 保护 P0：左右双击立即 Seek、连续快速双击立即响应、Range/206、Session Cache、Emby Resume/Progress、异常短片/提前 EOF、播放诊断日志、MPV 主力路径。
+6. Aether transport 只接受 FFmpeg/Aether `IOReader.seek` 给出的真实 byte offset；禁止 `targetTime / duration × fileSize`。
+7. 目标真机：iPhone 15 Pro Max / iOS 17.0。
+8. 因 Aether 6.50.0 模块本身要求 iOS 16，Aether 产品 candidate 的 Deployment Target 允许从 15.0 **精确提高到 16.0**；没有证据支持更高版本。
+9. Aether 6.50.0 当前源码需要比 Xcode 16.4 / iOS 18.5 SDK 更新的 API；本任务产品构建工具链采用已验证可构建当前 OnePlayer 的 **Xcode 26.3**。
+10. MDK 本阶段不修改。
 
-## Baseline
+## Baseline / identity
 
 - **Base branch:** `main`
 - **Base commit at task creation:** `7e7e82ccf548b960567445e848260b71ab8a50b2`
-- **Main accepted product baseline:** OnePlayer 0.14.32 / Build199（以当前 `PROJECT_STATE.md` 为准；并行 UI 任务可拥有更高独立 Build candidate，但不自动改变本任务产品基线）
-- **Target device:** iPhone 15 Pro Max / iOS 17.0
-- **Deployment target policy:** prefer iOS 15.0; never above iOS 17.0
-
-## Working branch / PR / head commit
-
+- **Latest main synced before product integration:** `fa90fc31ecf15edd8d9bfbbdb576a949338d6d65`
 - **Working branch:** `feat/aether-multi-engine-comparison`
+- **Pre-product merge head:** `b70e9c1c4e7b7f77da97e10bc55e9dc598bdc29b`
+- **Initial materialized Build219 source:** `dc0c30a0f2f1e85d27f80934d82b1ca07246f5ef`
+- **Build219 compile-fix source commit:** `90557148e66e1d074cc2831dcb8023ea22dde7e0`
 - **PR:** none yet
-- **Head commit:** `9b46d1d4a1755c229d52dd2ae8dccb4f06b71181` — task registration only; no product-code commit yet
-- **Build candidate:** not allocated
+- **Build candidate:** OnePlayer `0.14.68` / Build `235` — current unique Aether fast-seek candidate. The earlier Aether `0.14.57 / Build224` package is retired for attribution because current project evidence proves Build224 belongs to the parallel Home task; Home also allocated Build234 before this reallocation.
+- **Target device:** iPhone 15 Pro Max / iOS 17.0
 
-## Evidence
+## Proven feasibility evidence
 
-### Current OnePlayer source facts
+### Aether release / platform
 
-- `project.yml`
-  - normal App target is iOS 15.0, Xcode 16.4, `SWIFT_VERSION: 5.0`;
-  - production package currently includes MPVKit 1.0.0, not Aether.
-- `Sources/Player/PlayerEngine.swift`
-  - `PlayerEngineKind` / `PlayerEnginePreference` already own engine identity and persisted selection;
-  - current normal build exposes MPV; no Aether kind exists yet.
-- `Sources/UI/PlayerSettingsView.swift`
-  - existing “播放器引擎” Picker already binds to `PlayerEnginePreference.selectableCases`;
-  - no need为 Aether 新造设置状态或第二套选择 UI。
-- `Sources/Player/PlayerController.swift`
-  - owns active `PlayerEngine`, shared `PlaybackTransportContext`, Emby progress reporting, Seek orchestration and diagnostics;
-  - engine creation is centralized in `PlayerController.makeEngine(...)`;
-  - MPV receives `transportContext?.session`, so shared transport ownership already has明确 precedent。
-- `Sources/Player/MPVUnifiedStreamBridge.swift`
-  - proves `TransportDataSession` can be adapted into a synchronous byte-oriented read/seek source without NAS relay or time→byte guess;
-  - this is the architectural reference for an Aether custom `IOReader`, not code to duplicate blindly.
-- `Sources/UI/PlayerScreen.swift`
-  - current surface dispatch has MPV / `.ksAVIO` / AVPlayer branches; Aether requires one real hosted view branch.
+- Exact upstream: `superuser404notfound/AetherEngine` **6.50.0**, commit `546287f2eef7d810b3947070839a85c653f79e46`.
+- `Package.swift` is Swift tools 6.0 and declares iOS 16.0 minimum.
+- Direct iOS 15 host import probe failed with: `compiling for iOS 15.0, but module 'AetherEngine' has a minimum deployment target of iOS 16.0`.
+- `if #available(iOS 16, *)` therefore cannot retain an iOS 15 App target while statically importing Aether.
+- An iOS16-only runtime bridge was considered but rejected: it adds a dynamic compatibility boundary/loader shim to Player core solely to preserve iOS15 and is not a minimal integration.
+- Raising only manifest declarations is also rejected because upstream Aether/FFmpeg artifacts and source use the newer floor/API surface.
 
-### Aether current release / platform facts — verified 2026-08-27
+### Single-FFmpeg coexistence
 
-- Latest upstream release inspected: `superuser404notfound/AetherEngine` **6.49.0**.
-- `AetherEngine` 6.49.0 `Package.swift`:
-  - `swift-tools-version: 6.0`;
-  - minimum iOS **16.0**;
-  - depends on `FFmpegBuild` 2.4.x and `LibDovi` 2.0.x.
-- `FFmpegBuild` current `Package.swift` also declares minimum iOS **16.0**.
-- `LibDovi` current `Package.swift` also declares minimum iOS **16.0**.
-- This is **not only a manifest floor**: `FFmpegBuild/build.sh` actually compiles iOS FFmpeg/dav1d/zimg/zvbi artifacts with `arm64-apple-ios16.0` / deployment `16.0`.
-- Therefore an iOS 15 OnePlayer target cannot safely consume upstream Aether by merely wrapping imports/calls in `@available(iOS 16, *)`; SwiftPM dependency compatibility is checked before runtime availability, and the shipped FFmpeg artifacts themselves have an iOS 16 floor.
-- Keeping OnePlayer iOS 15 while using current upstream Aether would require maintaining forks and rebuilding at least Aether's FFmpeg dependency stack for iOS 15, followed by source/API audit. That is **not a minimal-change integration** and is not currently justified.
+- OnePlayer pins MPVKit 1.0.0, which already supplies FFmpeg n8.1.2 modules and Libdovi.
+- Direct upstream Aether SwiftPM would add another FFmpeg stack with overlapping module/symbol ownership; rejected.
+- Successful Xcode 26.3 feasibility shape:
+  - clone exact Aether 6.50.0 source;
+  - compile `Sources/AetherEngine` as an XcodeGen `library.static` target named/module `AetherEngine`;
+  - `SWIFT_VERSION: 6.0` for that target;
+  - depend only on current MPVKit product;
+  - `OTHER_SWIFT_FLAGS: $(inherited) -module-alias Dovi=Libdovi`;
+  - do **not** add Aether `FFmpegBuild` / second FFmpeg dependency。
+- This static-target probe compiled/linked successfully on Xcode 26.3, establishing the narrow one-FFmpeg path.
 
-### Aether public API fit
+### Toolchain
 
-- `AetherEngine` is `@MainActor`, exposes `load`, `play`, `pause`, async `seek(to:)`, state/buffering/clock publishers and `stop`.
-- `AetherPlayerView` is a UIKit view; the engine binds to it and internally hosts its active `AVPlayerLayer` / `AVSampleBufferDisplayLayer`.
-- `AetherEngine.IOReader` is public and provides byte `read`, absolute `seek`, `close`, optional `cancel` / `makeIndependentReader`.
-- This API shape maps cleanly to the existing OnePlayer `PlayerEngine` abstraction and allows an Aether adapter to consume `TransportDataSession` instead of creating a second independent 115/CDN transport path.
-- App-layer integration itself is therefore relatively small; the unresolved problem is dependency/link coexistence, not the `PlayerEngine` protocol shape.
+- The same Aether 6.50.0 static-target shape failed under Xcode 16.4 because upstream source uses API/SDK surfaces unavailable in that toolchain, including `AVSampleBufferDisplayLayer.preferredDynamicRange`, `VTRegisterSupplementalVideoDecoderIfAvailable` availability differences, and newer strict-concurrency AVFoundation behavior.
+- Maintaining local source patches just to stay on Xcode16.4 is rejected as an unnecessary Aether fork burden.
+- Unchanged current OnePlayer Release product was separately built on Xcode 26.3 while still targeting iOS15; workflow run `33070636640` succeeded. Therefore the toolchain upgrade itself does not require Player behavior changes.
 
-### MPVKit / Aether FFmpeg coexistence facts
+## Verified Aether host API
 
-- OnePlayer pins MPVKit **1.0.0**.
-- MPVKit 1.0.0 ships **FFmpeg n8.1.2** and declares binary targets named `Libavcodec`, `Libavdevice`, `Libavfilter`, `Libavformat`, `Libavutil`, `Libswresample`, `Libswscale`, etc.
-- Aether `FFmpegBuild` current source also builds **FFmpeg n8.1.2**, which is favorable for a possible single-FFmpeg adaptation.
-- However `FFmpegBuild` itself declares targets with overlapping names such as `Libavcodec`, `Libavformat`, `Libavutil`, `Libswresample`, `Libswscale`, `Libavfilter`.
-- SwiftPM requires target/module names to be unique across the package graph. Therefore **directly adding upstream AetherEngine beside current upstream MPVKit is not a clean package-resolution path** even after raising the app target to iOS 16.
-- Aether's own public API documentation additionally warns that its ordinary `avcodec_*` / `avformat_*` / `avutil_*` / `swr_*` symbols can bind to another FFmpeg in the host process; using two independent FFmpeg builds can produce runtime ABI/feature mismatches whose symptoms look like engine bugs.
-- Because MPVKit already brings a full FFmpeg into OnePlayer, the correct feasibility direction is **one FFmpeg in the process**, not two parallel copies.
-- Both projects using n8.1.2 makes a shared-FFmpeg experiment technically plausible, but it is **not yet proven safe**: Aether depends on its own FFmpegBuild configuration/patches and a separate `Dovi` module, while MPVKit has its own FFmpeg configuration and `Libdovi` packaging. Feature/API coverage must be proven by build/link/runtime evidence before adopting this route.
+- `AetherEngine` is `@MainActor`.
+- Lifecycle/control: `init()`, async `load(source:startPosition:options:...)`, `play()`, `pause()`, async `seek(to:)`, `setRate(_:)`, `reloadAtCurrentPosition()`, `stop(...)`.
+- Rendering: `bind(view:)` / `unbind(view:)` with UIKit `AetherPlayerView`; engine holds the bound view weakly.
+- State: `state`, `playbackPhase`, `isBuffering`, `isSeeking`, `seekEvents`, `clock.currentTime`, `duration`, `hasFirstFrameReadyForDisplay`.
+- Custom source: `MediaSource.custom(IOReader, formatHint:)`.
+- `IOReader` runs `read`/`seek` on Aether demux threads and uses exact byte `SEEK_SET/CUR/END` plus `AVSEEK_SIZE=65536`.
 
-## Current feasibility conclusion
+## Current OnePlayer ownership / call sites
 
-1. **Upstream Aether + current iOS 15 target:** not compatible as a minimal change. The dependency stack and actual FFmpeg artifacts require iOS 16.
-2. **Raise OnePlayer to iOS 16 + directly add upstream Aether beside MPVKit:** still not an evidence-backed safe path because of SwiftPM target-name overlap and dual-FFmpeg symbol ownership.
-3. **Potential narrow path:** make Aether and MPV share a single FFmpeg n8.1.2 dependency through a small dependency-packaging adaptation, then validate compile/link/runtime behavior. This avoids two FFmpeg copies but requires a focused feasibility spike before player code is touched.
-4. Because the user asked for minimum changes and current evidence does not yet prove the single-FFmpeg adaptation, **no product code or Deployment Target change should be made yet**.
+- **Engine preference owner:** `PlayerEnginePreference` + `PlayerPreferenceKeys.enginePreference`.
+- **Active engine / Emby reporting / seek owner:** `PlayerController`.
+- **Engine factory:** `PlayerController.makeEngine(...)`.
+- **Transport owner:** one existing `PlaybackTransportContext`; Aether receives its `session` exactly like MPV.
+- **Rendering owner:** `PlayerScreen` hosts an engine-owned view; SwiftUI does not own Aether engine/session lifecycle。
+- **Recovery owner:** `PlaybackOrchestrator`.
+- Existing `MediaTransportSession.recoverStall(position:duration:)` contains an old time→byte approximation；**Aether does not call it**。Aether recovery reprioritizes its reader's last real byte cursor through `prioritizeOffset`.
+- `PlaybackOrchestrator` classifies `.aether` as a UnifiedTransport-backed kind so premature EOF/stall handling does not fall into non-Unified reload behavior。
 
-## Files / modules in scope
+## Implemented Build219 product patch
 
-Immediate feasibility scope only:
+1. **Dependency/build wiring**
+   - exact Aether 6.50.0 source is pinned for the product candidate;
+   - static `AetherEngine` target uses current MPVKit FFmpeg + `Dovi=Libdovi` without a second FFmpeg stack;
+   - App Deployment Target is 16.0 for this candidate;
+   - dedicated Build219 workflow uses Xcode 26.3.
+2. **Engine identity** — `Sources/Player/PlayerEngine.swift`
+   - `.aether` kind/preference added;
+   - existing settings Picker exposes Aether when `canImport(AetherEngine)`;
+   - automatic remains MPV.
+3. **Transport bridge** — `Sources/Player/AetherTransportIOReader.swift`
+   - synchronous demux-thread read is backed by the existing Transport session;
+   - exact byte cursor; `seek` reprioritizes exact offsets;
+   - no time→byte approximation.
+4. **Engine adapter** — `Sources/Player/AetherPlayerEngine.swift`
+   - engine owns `AetherEngine`, `AetherPlayerView`, IO reader/load task and state subscriptions;
+   - control/state/seek completion maps into existing `PlayerEngine`/`PlayerSnapshot` contracts;
+   - stall recovery reprioritizes the reader's last real byte cursor only;
+   - no Aether-specific retry/watchdog/fallback.
+5. **Controller/surface**
+   - explicit `.aether` factory branch and controller view accessor added;
+   - `Sources/UI/AetherPlayerSurface.swift` is a thin host only; lifecycle remains controller/engine-owned.
+6. **Capabilities/settings/orchestration**
+   - `.aether` is in UnifiedTransport-backed orchestration sets;
+   - `PlayerExperienceState` now has an explicit conservative Aether capability case: no system route picker, PiP, audio-track or subtitle-selection claim; rotation and generic outer picture-size layout remain available;
+   - frozen PiP implementation is unchanged.
 
-- `project.yml` — inspect only until dependency coexistence is proven; do not raise deployment target yet
-- MPVKit 1.0.0 package/build metadata
-- AetherEngine 6.49.0 package/public API/build metadata
-- Aether `FFmpegBuild` / `LibDovi` dependency metadata
-- this checkpoint
+## Build219 CI evidence
 
-If dependency feasibility is later proven and user approves implementation, expected minimal app-layer scope becomes:
+### Attempt 1 — failed before IPA
 
-- `project.yml` / dependency wiring
-- `Sources/Player/PlayerEngine.swift`
-- new Aether `PlayerEngine` adapter
-- new thin Aether `IOReader` backed by existing `TransportDataSession`
-- `Sources/Player/PlayerController.swift`
-- `Sources/UI/PlayerScreen.swift`
-- `Sources/UI/PlayerSettingsView.swift` only if labels/footer need adjustment
-- capability declarations only where required; no PiP redesign
+- Workflow run: `33086503411`
+- App Release job: `98567466674`
+- Source entering the build line: materialized product candidate `dc0c30a0f2f1e85d27f80934d82b1ca07246f5ef`.
+- Swift package resolution completed successfully; Aether/MPVKit dependency graph was therefore not the blocker.
+- First real Release compiler error: exhaustive `PlayerEngineKind` switch in `Sources/UI/PlayerExperienceState.swift` did not include `.aether`.
+- No IPA artifact was produced; only diagnostics existed.
+- Aether actor-isolation diagnostics in that log were warnings/notes under the Swift 5 host and are not treated as the first blocker.
 
-Explicitly deferred:
+### Compile fix
 
-- `Sources/UI/LocalMDKDirectEngine.swift`
-- `project.mdklab.yml`
-- `MDK_LAB` / MDK package promotion
-- MDK engine selection/fallback behavior
+- Commit `90557148e66e1d074cc2831dcb8023ea22dde7e0` adds only the missing explicit `.aether` capability case.
+- No speculative concurrency refactor or unrelated warning cleanup was included.
+- The original one-shot materialization workflow was then made rerunnable without touching product source; an initial validation-order mistake was corrected before the successful run.
 
-## State owner / shared dependencies
+### Successful Build219 candidate
 
-- **Engine preference owner:** `PlayerEnginePreference` + `PlayerPreferenceKeys.enginePreference`
-- **Active playback owner:** `PlayerController`
-- **Playback session/orchestration owner:** existing `PlaybackOrchestrator` / controller flow; no duplicate engine-selection state
-- **Transport owner:** existing `PlaybackTransportContext` / UnifiedTransport / Session Cache
-- **Emby session owner:** existing PlayerController + Emby client reporting path
-- **Rendering owner:** engine-specific surface hosted by `PlayerScreen`, without tying Player/Transport/Cache lifecycle to SwiftUI view lifecycle
-- **FFmpeg ownership constraint:** do not knowingly ship two independently-owned FFmpeg stacks in the same OnePlayer process without explicit build/link/runtime proof.
+- Exact tested repository source: `b1a06cb2b3dc9cf715fc5d49a7b324780aa23981`.
+- Workflow run/job: `33096553966 / 98602865604` — **success**.
+- Release compile, package resolution, IPA identity validation and artifact upload all passed.
+- Product artifact: `OnePlayer-0.14.52-build219-aether-b1a06cb2b3dc9cf715fc5d49a7b324780aa23981`; ID `9656814369`; artifact digest `sha256:f2e984c56ebf1b74a7eaf39ff43f08cee2e9a0edaa0ae65d6406d2fefd2fc75a`.
+- IPA: `OnePlayer-0.14.52-build219-aether-b1a06cb-unsigned.ipa`; SHA-256 `8df11d2db597fd6841a3708976824b21879ee0d47257c1766d1704cc4196d06d`.
+- Source ZIP SHA-256: `61148b209d543c233502c8412f9448fffa143a97f5753c25595626c72b3e31e4`.
+- Built identity: `CFBundleIdentifier=com.embyplayerlab.app`, `CFBundleShortVersionString=0.14.52`, `CFBundleVersion=219`, `MinimumOSVersion=16.0`.
+- Local post-download verification reproduced the IPA SHA-256 exactly and `unzip -t` reported no compressed-data errors.
+- Evidence before device testing: **Code written / CI passed / IPA produced+verified / real-device not yet tested / not stable**.
+
+## Build219 real-device result — first Aether comparison
+
+User supplied the Build219 playback log from the target iPhone 15 Pro Max / iOS 17.0. This changes the task state from CI/IPA-only to real-device tested.
+
+### Seek result
+
+- 14 Aether `SeekEvent.landed` completions were recorded; 13 were classified as `bufferHit=true` by the Build219 adapter.
+- Completion latency: minimum **370.9 ms**, median **865.2 ms**, mean **1001.5 ms**, maximum **2261.3 ms**. The 13 buffer-hit seeks still had a median of **915.6 ms**.
+- Precision is excellent: median absolute target→rendered error was about **0.614 ms**, maximum **2.239 ms**.
+- The user's observation is confirmed: Build219 Aether Seek is very precise but repeatedly high-latency. It is not literally one fixed delay; the sample spans ~0.37–2.26 s, but most seeks pay a heavy common path.
+
+### Transport churn identified from log + exact Build219 source
+
+This candidate has a host-bridge defect that confounds any conclusion about Aether's intrinsic Seek floor:
+
+- The log contains **2917 observed** `[Resume] exact-byte authority confirmed` events and **2917 observed** `[SeekTransportTrace] phase=actor-enter ... target=0.000 duration=0.000` events. Diagnostics backpressure separately dropped **4328 + 409** events, so the real event count is higher.
+- During the ~70 s session, observed Transport activity was **5413 Range task starts / 5364 task cancellations / 49 completed sequential tasks**.
+- `AetherTransportIOReader.read()` calls `confirmConcretePlaybackByte(current)` after every successful read; the observed read size is normally 256 KiB.
+- `UnifiedResumeAuthority.confirmConcretePlaybackByte()` calls `prioritizeSeek(position: 0, duration: 0)` and then `prioritizeOffset(offset)`.
+- Ordinary Aether sequential consumption therefore repeatedly creates a fake pending user-seek token; the following exact byte-offset demand reanchors the cache window and cancels/restarts healthy 115/CDN sequential lanes.
+- MPV does not call this on every read: `MPVUnifiedStreamBridge` confirms playback-byte authority only after a sustained post-seek read cluster. The Aether per-read use is not a protected P0 transport contract and should not be retained.
+
+Concrete example: the first +10 s seek requested target 11.800 while Aether already reported a playable range extending to ~73.733 s (`bufferHit=true`). It still took **1132.6 ms**; during that interval Transport repeatedly reanchored/cancelled slot 0, and the seek landed only after a fresh CDN first chunk arrived (~680 ms for that request). Therefore at least part of the high latency is self-inflicted by the Build219 adapter/transport interaction, not evidence that “Aether exact Seek itself always needs ~1 s”.
+
+The best observed landed time is still ~371 ms, so Aether itself may retain a non-trivial exact-seek floor after this transport churn is removed. That must be measured in a clean follow-up build rather than guessed now.
+
+### Other Build219 device evidence
+
+- STRM/redirect transport resolved successfully as HTTP **206**, `redirects=2`, `range=true`, `looksLike115=true`; active media ranges came directly from `cdnfhnfile.115cdn.net`.
+- No playback `error`, `failed`, `stall`, `premature EOF`, media EOF, network read timeout or Aether recovery event appears in this session.
+- Startup: click→transport resolve ready was ~**1037 ms**; Aether `load begin`→`load ready` was ~**106 ms**; timeline was advancing with ~73 s reported forward playable by `17:37:43.712Z`.
+- Playback rate was changed through 3×, 4×, 5×, 6× and 8× without an Aether error/stall record.
+- Emby progress/report calls are not separately exposed by this playback log surface, so this file alone is not evidence to accept or reject Resume/Progress synchronization.
+
+**Evidence after this log:** Code written / CI passed / IPA produced+verified / **real-device tested with Aether Seek-latency + per-read transport-churn defect confirmed** / not stable.
+
+
+## Build222 / 0.14.55 — per-read authority churn correction
+
+Build219 real-device evidence proved that ordinary Aether sequential reads were incorrectly promoted through the user-seek authority path. The minimal correction is commit `6f65f6a562c2f4af8a7720b33eb56d4b14b071bd`:
+
+- `AetherTransportIOReader.read()` no longer calls `confirmConcretePlaybackByte(current)` after every successful read;
+- Aether/FFmpeg `IOReader.seek()` still uses the exact byte offset and calls `prioritizeOffset(candidate)`;
+- stall recovery still reprioritizes the reader's exact current byte cursor;
+- no UnifiedTransport core algorithm, MPV fast-Seek path, timer, retry, fallback, watchdog, time→byte estimate or second network owner was added.
+
+Identity guard before allocation found global Build219 already owned by Home-carousel, Build220 by poster-grid and Build221 by Home-carousel, so this Aether follow-up uses unique **OnePlayer 0.14.55 / Build222**.
+
+### Build222 CI / IPA evidence
+
+- Exact tested source: `224199f90d12b39367ae7981463aedd70cdbfe2d`.
+- Runtime fix commit: `6f65f6a562c2f4af8a7720b33eb56d4b14b071bd`.
+- Workflow run/job: `33103909150 / 98628547449` — **success** on Xcode 26.3.
+- Source-contract validation passed: no `confirmConcretePlaybackByte` remains in `AetherTransportIOReader`; exact-byte `prioritizeOffset(candidate)` and recovery `prioritizeOffset(current)` remain present.
+- Release compile, Swift package resolution, IPA identity/MinOS validation and artifact upload passed.
+- Artifact: `OnePlayer-0.14.55-build222-aether-seekfix-224199f90d12b39367ae7981463aedd70cdbfe2d`; ID `9659820803`; digest `sha256:98e3c51177a4803ae0cbefb91d9584a1373b4d6946e2396901e6de475a73252b`.
+- IPA: `OnePlayer-0.14.55-build222-aether-seekfix-224199f-unsigned.ipa`; SHA-256 `a7566dc53a60880096a41ee36bf3eab1dd43f14e2ff4a9b86c1a78372a7af660`.
+- Source ZIP SHA-256: `8def2320dc5190b6f76bbfc6147a2d1f6d89c7c9821446e259f59d418116e923`.
+- Built identity: `com.embyplayerlab.app`, `0.14.55 (222)`, `MinimumOSVersion=16.0`.
+- Independent post-download verification reproduced the IPA SHA-256 and `unzip -t` reported no compressed-data errors.
+- Evidence: **Code written / CI passed / IPA produced+verified / Build222 real-device retest pending / not stable**.
+
+Next device test should repeat the Build219 Aether Seek sequence and compare `SeekEvent.landed` latency plus Range task start/cancel/finish counts. The purpose is to separate the remaining intrinsic Aether exact-seek floor from the removed Build219 adapter-induced transport churn.
+
+## Build identity correction — Build224 retired, Build235 reserved
+
+After re-reading the current repository rules and live parallel-task evidence, the previous Aether Build224 identity was found invalid for attribution: `BUILD_TEST_INDEX.md` already assigns Build224 / 0.14.57 to the Home vertical Hero-artwork diagnostic with its own artifact and target-device result. A live Actions check also showed Home had already allocated Build234. The Aether Build224 workflow `33112527059 / 98658753903` did compile and produce an IPA, but that package is now **retired solely because its Build identity collides** and must not be handed out or used for runtime attribution.
+
+The fast-seek/rate implementation itself is unchanged. The same source behavior is reallocated to the first verified free identity: **OnePlayer 0.14.68 / Build235**. This correction changes version/build metadata only; MPV fast Seek, UnifiedTransport/Session Cache, STRM→302→115/CDN, Emby reporting, PiP and MDK remain untouched.
+
+## Build224 / 0.14.57 — bounded Aether fast seek + truthful rate UI
+
+Build224 is a narrow follow-up on top of the Build222 transport correction. Source inspection established that Aether's native AVPlayer host used exact zero-tolerance seek for every programmatic seek, while OnePlayer's existing `bufferHit` diagnostic is forward-range shaped and therefore cannot safely decide the left/right double-tap contract. The app now routes by Seek intent instead of by that diagnostic:
+
+- `.forward` / `.backward` use a finite **±0.75 s** tolerance through Aether's native AVPlayer host;
+- `.absolute` remains exact (`toleranceSeconds = 0`) for scrub/absolute positioning;
+- the vendor API default remains exact, so callers that do not opt in preserve existing behavior;
+- bounded tolerance is passed through Aether's existing seek/reconcile/re-anchor path; no unbounded tolerance, second corrective seek, timer, retry, fallback, watchdog or Transport algorithm change is added;
+- `bufferHit` remains diagnostic only and no longer gates whether fast tolerance is used.
+
+Vendor branch `vendor/aetherengine-oneplayer-6.50.0` commit `7422d45727f3bea9a4aa1b616138448488a394d8` adds only the optional `toleranceSeconds` parameter and finite AVPlayer tolerances. OnePlayer product commit `704643e1887ffcecdf3f46f598aba74b603c8475` wires `.forward/.backward` to 0.75 s and `.absolute` to 0.
+
+The same source review confirmed Aether's public `setRate` clamps video playback to `maxSupportedRate = 2.0` (3.0 for audio-only), while OnePlayer's generic speed panel exposed values through 8×. Build224 therefore queries the active Aether engine's real `maxSupportedRate`, clamps the controller command to that value and filters the speed picker accordingly. MPV/other existing paths retain the 8× list. No Aether core rate limit is raised or bypassed.
+
+### Build224 CI / IPA evidence
+
+- Exact tested repository source: `9e25454361b6f5ac71bb97de6771684a57ceb47d`.
+- App fast-seek/rate patch commit: `704643e1887ffcecdf3f46f598aba74b603c8475`.
+- Aether vendor revision: `7422d45727f3bea9a4aa1b616138448488a394d8`.
+- Xcode 26.3 workflow run/job: `33112527059 / 98658753903` — **success**.
+- Build contract validation, package resolution, Release compile, IPA validation and artifact upload all passed.
+- Product artifact: `OnePlayer-0.14.57-build224-aether-fastseek-9e25454361b6f5ac71bb97de6771684a57ceb47d`; ID `9663285742`; artifact digest `sha256:a97ef293d9c453458ae8c6404d6146a0f501ec444fbf5ed1c6278e957068e073`.
+- IPA: `OnePlayer-0.14.57-build224-aether-fastseek-9e25454-unsigned.ipa`; SHA-256 `85b1f5ae81c10843816d75f97ebf648dc5d5c21932b352bc4ef0b16f605ffae0`.
+- Source ZIP SHA-256: `1716aa08f9e07c973b65a17b8c23b9b2fb1ace783bc751aa6c176a58c466c747`.
+- Built identity: `com.embyplayerlab.app`, `0.14.57 (224)`, `MinimumOSVersion=16.0`.
+- Independent artifact download reproduced the artifact/IPA hashes and `unzip -t` reported no compressed-data errors.
+- Evidence: **Code written / CI passed / IPA produced+verified / Build224 real-device test pending / not stable**.
+
+Build224 does not alter MPV fast Seek, UnifiedTransport/Session Cache algorithms, Emby reporting, PiP, MDK or the STRM→302→115/CDN client-direct path.
 
 ## Frozen / do-not-touch
 
-- MPV remains current main playback authority until comparison evidence says otherwise.
-- MPV fast-seek semantics must remain unchanged.
-- UnifiedTransport / Session Cache ownership and client-direct STRM→302→115/CDN contract must remain unchanged.
-- Emby Resume/Progress lifecycle remains shared and engine-independent.
-- PiP Build173 frozen path must not be redesigned in this task.
-- No speculative retry/fallback/timer/watchdog/compatibility shim or unrelated refactor.
+- MPV remains default/main authority and its fast-seek path is unchanged.
+- No Aether automatic fallback.
+- UnifiedTransport / Session Cache / client-direct STRM→302→115/CDN ownership remains unchanged.
+- Emby Resume/Progress remains controller-owned and engine-independent.
+- PiP Build173 frozen architecture is not redesigned.
+- No speculative retry/fallback/timer/watchdog/compatibility shim/unrelated refactor.
 - No time→byte ratio seek mapping.
-- Do not alter MDK in the current Aether-first phase.
+- No MDK changes in this phase.
 
-## Parallel conflicts checked against
+## Parallel conflict guard
 
-Checked at task creation against the current Active checkpoints:
-
-- `DEV-home-carousel-drag-smoothness` — independent Home carousel/UI work; Player core is explicitly out of scope there.
-- `DEV-page-cache-optimization` — page-cache/navigation work; Player/MPV/PiP/UnifiedTransport/Range/206/playback Cache are explicitly do-not-touch there.
-- `DEV-poster-grid-smoothness` — poster/grid/image-performance work; playback core is explicitly do-not-touch there.
-
-**Result:** no current source/state-owner conflict that blocks the Aether feasibility task. Recheck before final CI/IPA/merge because `main` may advance while tasks run in parallel.
+- Rechecked before product integration after syncing `main`.
+- Main changes since the previous sync were project documentation and Home/poster UI task checkpoint updates; no Player/Transport source ownership conflict was introduced.
+- Home carousel / page cache / poster-grid tasks continue to exclude Player/MPV/Transport core from their scope.
 
 ## Completed
 
-- [x] New independent Work ID selected.
-- [x] Current Active task conflict preflight completed.
-- [x] Current engine preference, settings UI, controller ownership and rendering dispatch inspected.
-- [x] User narrowed immediate scope to Aether; MDK explicitly deferred.
-- [x] Latest Aether release identified as 6.49.0.
-- [x] Aether / FFmpegBuild / LibDovi iOS floors inspected.
-- [x] Confirmed Aether's FFmpeg artifacts are actually built for iOS 16, not merely declared as iOS 16.
-- [x] Confirmed `@available` cannot make current upstream Aether a valid iOS 15 SwiftPM dependency.
-- [x] MPVKit 1.0.0 FFmpeg packaging inspected; direct package-graph overlap with Aether identified.
-- [x] Confirmed MPVKit and Aether currently both use FFmpeg n8.1.2, leaving a possible single-FFmpeg adaptation to test.
-- [ ] Single-FFmpeg dependency adaptation proven by build/link/runtime evidence.
-- [ ] User decision on accepting a minimum iOS 16 target if the dependency coexistence spike succeeds.
-- [ ] Aether dependency integrated.
-- [ ] Aether PlayerEngine adapter implemented.
-- [ ] Aether rendering surface integrated.
-- [ ] MPV / Aether both visible in playback engine selection.
-- [ ] CI passed.
-- [ ] IPA produced.
-- [ ] Real-device comparison completed.
+- [x] Work ID / independent branch created.
+- [x] Player ownership/settings/surface/transport definitions inspected.
+- [x] MDK deferred by current user scope.
+- [x] Aether 6.50.0 exact tag/commit inspected.
+- [x] iOS15 direct-import incompatibility proven.
+- [x] Non-minimal runtime bridge/fork routes rejected.
+- [x] Single-FFmpeg static Aether target proven on Xcode26.3.
+- [x] Xcode16.4 incompatibility proven from actual compile errors.
+- [x] Unchanged OnePlayer Release baseline passed on Xcode26.3 (`33070636640`).
+- [x] Branch resynced to latest main before product code (`b70e9c1...`).
+- [x] Aether load/control/view/IO/seek-event APIs verified from source/docs.
+- [x] Aether dependency/product source wiring committed.
+- [x] Aether `PlayerEngine` adapter committed.
+- [x] Aether rendering surface/settings selection committed.
+- [x] First Build219 CI attempt produced actionable Release compiler evidence; dependency resolution passed, App compile failed, no IPA.
+- [x] Missing `.aether` capability switch fixed minimally at `90557148...`.
+- [x] Product CI passed (`33096553966 / 98602865604`).
+- [x] IPA produced and independently verified (artifact `9656814369`).
+- [x] First real-device Aether comparison/log analysis completed; high Seek latency + per-read transport reanchor defect confirmed.
+- [ ] Clean post-fix Aether↔MPV comparison completed.
 - [ ] Stable/frozen decision made.
 
 ## Validation state
 
-- **Code written:** No
-- **CI passed:** No
-- **IPA produced:** No
-- **Real-device tested:** No
-- **Stable / frozen:** No
-
-The compatibility investigation changed no product code and did not raise the App deployment target.
-
-## Pending
-
-1. Do **not** add upstream Aether directly to `project.yml` yet.
-2. If the user wants to continue, perform a dependency-only feasibility spike for **one shared FFmpeg n8.1.2** between MPVKit and Aether, without touching Player/Transport behavior.
-3. In that spike, verify:
-   - SwiftPM resolves with no duplicate target/module collision;
-   - Aether compiles against the chosen FFmpeg headers/modules;
-   - required Aether mux/decoder/encoder symbols/features exist;
-   - Dovi packaging can use one implementation without duplicate C symbols;
-   - MPVKit still links and initializes;
-   - Aether initializes and reports the expected FFmpeg runtime version.
-4. Only if that succeeds should the project discuss raising OnePlayer's deployment target from iOS 15.0 to **exactly iOS 16.0** for Aether. No higher floor is currently justified.
-5. Only after dependency coexistence is proven should app-layer Aether integration begin.
-6. Before allocating a Build candidate, recheck `BUILD_TEST_INDEX.md`, all Active checkpoints and existing CI/IPA candidates.
+- **Code written:** Yes — bounded Aether seek tolerance and engine-aware rate UI are committed on top of the Build222 transport correction; Build235 changes candidate identity only.
+- **CI passed:** Build224 compile/IPA run `33112527059 / 98658753903` succeeded but is retired because the Build number collides with Home. Build235 CI is pending.
+- **IPA produced:** Build224 artifact `9663285742` exists but is retired for attribution due Build collision. Build235 IPA is pending.
+- **Real-device tested:** Build219 yes — precise but high-latency Seek and per-read transport churn confirmed. Build235 fast-seek candidate has not yet been device-tested.
+- **Stable / frozen:** No.
 
 ## Next exact action
 
-Await the user's decision whether to proceed with the **dependency-only single-FFmpeg feasibility spike**. If approved:
-
-1. keep `feat/aether-multi-engine-comparison` as the product branch;
-2. do not change playback behavior or expose Aether in settings yet;
-3. construct the smallest package-level experiment that gives Aether access to one FFmpeg n8.1.2 implementation already compatible with MPVKit, rather than importing Aether's second independent FFmpeg copy;
-4. run package resolution + iOS build/link checks;
-5. record whether MPVKit and Aether can coexist in one App target before touching `PlayerEngine` / `PlayerController`.
-
-## Rejected / do-not-repeat
-
-- Do not make Aether an automatic fallback merely because it becomes selectable later.
-- Do not replace MPV as default/main authority before real-device comparison evidence.
-- Do not duplicate UnifiedTransport / 115/CDN fetch logic inside an Aether adapter.
-- Do not route media bytes through NAS.
-- Do not add speculative recovery timers/watchdogs just to normalize engine behavior.
-- Do not use `@available(iOS 16, *)` as if it solved the package's iOS 16 deployment floor; it does not.
-- Do not lower only Aether/FFmpegBuild `Package.swift` platform declarations to iOS 15; the current FFmpeg binaries themselves are built for iOS 16.
-- Do not raise Deployment Target to iOS 16 merely to get past the first error while leaving the MPVKit/Aether dual-FFmpeg conflict unresolved.
-- Do not add both upstream FFmpeg stacks and hope link order is harmless.
-- Do not modify MDK while the user has explicitly deferred it.
-
-## Open questions / risks
-
-- Aether requires iOS 16 in its actual binary dependency stack. If Aether is ultimately accepted, OnePlayer's minimum iOS likely must become 16.0 unless the project takes on a non-minimal dependency rebuild/fork.
-- MPVKit and Aether currently both use FFmpeg n8.1.2, but their configuration/patch sets are different; version equality alone is not proof that one binary set satisfies both engines.
-- Aether also depends on a separate `Dovi` module while MPVKit packages `Libdovi`; one-Dovi ownership must be solved together with one-FFmpeg ownership.
-- Aether's Swift 6 package is being consumed from an app currently configured with `SWIFT_VERSION: 5.0`. Xcode 16.4 satisfies the toolchain floor, but coexistence of language modes should be proven by the same build spike rather than assumed.
-- Engine capabilities (PiP, system route, picture size, presentation effects) must later be declared explicitly; absence of a capability is preferable to faking compatibility.
-- Evidence levels remain separate: dependency resolve/build success will still not equal IPA or real-device playback success.
+Build and identity-verify OnePlayer 0.14.68 / Build235 from the unchanged bounded Aether fast-seek/rate implementation. Only after CI/IPA verification hand Build235 to the iPhone 15 Pro Max / iOS 17.0 test: compare left/right and rapid repeated double-tap responsiveness, confirm absolute scrub precision, verify Aether video rate choices stop at 2× while MPV retains higher rates, and capture `AetherSeek request ... tolerance=0.75` plus landed latency. Do not use the retired Aether Build224 package for attribution.
