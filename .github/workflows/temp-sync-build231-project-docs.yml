@@ -37,9 +37,10 @@ jobs:
       - name: Sync authoritative Build231 docs to main
         run: |
           set -euo pipefail
+          cp scripts/temp_sync_build231_docs.py /tmp/temp_sync_build231_docs.py
           git fetch origin main diag/home-carousel-foreground-compositing-build231
           git checkout -B main origin/main
-          python3 scripts/temp_sync_build231_docs.py main
+          python3 /tmp/temp_sync_build231_docs.py main
           git diff --check
           git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md
           if ! git diff --cached --quiet; then
