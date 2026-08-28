@@ -18,15 +18,15 @@
 - **Task**：细化“开发任务自主连续推进至可测试 Artifact/IPA”规则，并把 checkpoint 时机/写入频率纳入同一执行合同。
 - **User intent / acceptance criteria**：任务明确且通过必要前置检查后，不因普通中间状态等待“继续”；只有用户决策/信息/权限/实机操作、真实冲突、证据不足、外部阻塞或当前环境能力不足才允许提前停；Artifact/IPA 交付前完成版本、Build、Candidate、源码与 Artifact 身份核验；checkpoint 必须尽早建立并仅在具有独立续接价值的实质里程碑滚动更新，优先顺带已有 GitHub 写节点，避免微步骤写放大。
 - **Baseline**：规则修改从 `main@fd9c320d28bdf2388d9cae8d9a38bff7a57e15f5` 开始；并行功能开发允许继续推进 main，本任务不修改其源码/checkpoint。
-- **Evidence / reason**：用户明确要求替换上一轮规则文本并补充 checkpoint 生存性要求。
-- **Files in scope**：`AGENTS.md`、`docs/project/CHATGPT_PROJECT_INSTRUCTIONS.md`、`docs/project/DOCUMENTATION_POLICY.md`、`.github/copilot-instructions.md`、本 checkpoint。
-- **Do-not-touch**：任何 App 源码、功能开发 checkpoint、Build233 或其他 Active 开发任务状态。
-- **Completed**：`AGENTS.md` 已加入用户决策/信息/权限/实机操作、真实冲突、证据不足、外部阻塞/环境能力不足停点，并把 commit/push、PR、CI、checkpoint、准备出包定义为普通中间状态；交付点改为可测试 Artifact/IPA 完成 version/Build/Candidate/source/Artifact/package/MinOS 身份核验后进入 Runtime/实机测试。`CHATGPT_PROJECT_INSTRUCTIONS.md`、`DOCUMENTATION_POLICY.md`、Copilot Instructions 已同步；checkpoint 规则已明确尽早建立、实质里程碑滚动、优先顺带已有 GitHub 写节点和“最多丢失一个小的有效里程碑”的目标节奏。
-- **Validation state**：Permanent rules written; final repository/diff verification pending。
-- **Pending**：核验当前 main、四个永久规则文件实际文本与净 diff；确认没有功能源码/checkpoint 被本规则任务修改；恢复本 checkpoint 为 Idle。
-- **Next exact action**：读取当前 main 和修改后的关键规则片段，比较本任务基线与当前 head 的文件范围并区分并行开发变化；若规则范围正确，恢复 Rules checkpoint 为 Idle。
+- **Evidence / reason**：用户明确要求替换上一轮规则文本并补充 checkpoint 生存性要求；最终核验发现 development checkpoint 的专用规范还位于 `docs/project/current/dev/README.md`，应同步避免模板与顶层规则脱节。
+- **Files in scope**：`AGENTS.md`、`docs/project/CHATGPT_PROJECT_INSTRUCTIONS.md`、`docs/project/DOCUMENTATION_POLICY.md`、`docs/project/current/dev/README.md`、`.github/copilot-instructions.md`、本 checkpoint。
+- **Do-not-touch**：任何 App 源码、功能开发 checkpoint 实例、Build233 或其他 Active 开发任务状态。
+- **Completed**：`AGENTS.md`、ChatGPT Project Instructions、Documentation Policy、Copilot Instructions 已完成新连续执行/停点/checkpoint 节奏规则同步；已核验 `AGENTS.md` 最终文本。发现并确认 development checkpoint 模板文件需要补充同一 cadence 合同。
+- **Validation state**：Permanent top-level rules written; dev checkpoint template sync pending; final repository/diff verification pending。
+- **Pending**：更新 `docs/project/current/dev/README.md` 的 checkpoint timing/cadence；核验当前 main、永久规则文件与净 diff；确认没有功能源码/checkpoint 实例被本规则任务修改；恢复本 checkpoint 为 Idle。
+- **Next exact action**：在 dev checkpoint template 中加入“目标/基线明确即早建、实质里程碑滚动、顺带必要 GitHub 写、最多丢一个小有效里程碑、checkpoint 非停工门槛”，随后做最终 diff 核验。
 - **Rejected / do-not-repeat**：不得把 checkpoint 当停工门槛；不得为了每个微小步骤单独制造 GitHub 写；不得把连续推进理解为可以在证据不足时强行改代码或强行出包；不得为了减少 GitHub 写而跨越多个独立续接里程碑不更新 checkpoint。
-- **Open questions / risks**：并行开发会话可能继续推进 main，最终核验必须识别并行提交，不能把其源码变化归因于本规则任务。
+- **Open questions / risks**：并行开发会话可能继续推进 main，最终核验必须识别并行提交，不能把其源码/工作流变化归因于本规则任务。
 
 ## Permanent rule sources
 
