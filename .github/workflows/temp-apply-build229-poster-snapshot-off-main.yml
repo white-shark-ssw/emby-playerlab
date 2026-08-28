@@ -1,0 +1,233 @@
+name: Temp Apply Build229 Poster Snapshot Off Main
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/temp-apply-build229-poster-snapshot-off-main.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Checkout exact poster branch
+        run: |
+          git fetch origin perf/poster-grid-smoothness
+          git checkout perf/poster-grid-smoothness
+          test "$(git rev-parse HEAD)" = "20f0edaf30c3c9161a79f64fd29dbc79c199473e"
+      - name: Apply Build229 source patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          app = Path('Sources/Core/AppIdentity.swift')
+          s = app.read_text()
+          assert 'static let sourceVersion = "0.14.61"' in s
+          assert '?? "0.14.61"' in s
+          s = s.replace('static let sourceVersion = "0.14.61"', 'static let sourceVersion = "0.14.62"')
+          s = s.replace('?? "0.14.61"', '?? "0.14.62"')
+          app.write_text(s)
+
+          cache = Path('Sources/UI/EmbyPagePersistentCache.swift')
+          s = cache.read_text()
+          old = '''    private let fileManager = FileManager.default
+              private let schemaVersion = 1
+          '''
+          new = '''    private let fileManager = FileManager.default
+              private let writeQueue = DispatchQueue(label: "OnePlayer.PagePersistentCache.Write", qos: .utility)
+              private let schemaVersion = 1
+          '''
+          assert old in s
+          s = s.replace(old, new, 1)
+          old = '''    func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) {
+              var tabItemsObject: [String: Any] = [:]
+              for (key, items) in snapshot.tabItems { tabItemsObject[key] = items.map(libraryItemJSONObject) }
+
+              var pageStatesObject: [String: Any] = [:]
+              for (key, state) in snapshot.pageStates { pageStatesObject[key] = ["NextStartIndex": state.nextStartIndex, "HasMore": state.hasMore] }
+
+              let root: [String: Any] = [
+                  "SchemaVersion": schemaVersion,
+                  "TabItems": tabItemsObject,
+                  "SuggestionResumeItems": snapshot.suggestionResumeItems.map(libraryItemJSONObject),
+                  "SuggestionLatestItems": snapshot.suggestionLatestItems.map(libraryItemJSONObject),
+                  "GenericSuggestionItems": snapshot.genericSuggestionItems.map(libraryItemJSONObject),
+                  "RecommendationSections": snapshot.recommendationSections.map(recommendationSectionJSONObject),
+                  "Genres": snapshot.genres.map(libraryItemJSONObject),
+                  "FolderItems": snapshot.folderItems.map(libraryItemJSONObject),
+                  "LoadedTabs": Array(snapshot.loadedTabs).sorted(),
+                  "PageStates": pageStatesObject,
+              ]
+              store(root, scope: "library|\\(libraryID)", client: client)
+          }
+          '''
+          new = '''    func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) async {
+              guard let url = cacheFileURL(scope: "library|\\(libraryID)", client: client) else { return }
+              await withCheckedContinuation { continuation in
+                  writeQueue.async {
+                      var tabItemsObject: [String: Any] = [:]
+                      for (key, items) in snapshot.tabItems { tabItemsObject[key] = items.map(self.libraryItemJSONObject) }
+
+                      var pageStatesObject: [String: Any] = [:]
+                      for (key, state) in snapshot.pageStates { pageStatesObject[key] = ["NextStartIndex": state.nextStartIndex, "HasMore": state.hasMore] }
+
+                      let root: [String: Any] = [
+                          "SchemaVersion": self.schemaVersion,
+                          "TabItems": tabItemsObject,
+                          "SuggestionResumeItems": snapshot.suggestionResumeItems.map(self.libraryItemJSONObject),
+                          "SuggestionLatestItems": snapshot.suggestionLatestItems.map(self.libraryItemJSONObject),
+                          "GenericSuggestionItems": snapshot.genericSuggestionItems.map(self.libraryItemJSONObject),
+                          "RecommendationSections": snapshot.recommendationSections.map(self.recommendationSectionJSONObject),
+                          "Genres": snapshot.genres.map(self.libraryItemJSONObject),
+                          "FolderItems": snapshot.folderItems.map(self.libraryItemJSONObject),
+                          "LoadedTabs": Array(snapshot.loadedTabs).sorted(),
+                          "PageStates": pageStatesObject,
+                      ]
+                      self.store(root, url: url)
+                      continuation.resume()
+                  }
+              }
+          }
+          '''
+          assert old in s
+          s = s.replace(old, new, 1)
+          old = '''    private func store(_ root: [String: Any], scope: String, client: EmbyAPIClient) {
+              guard let url = cacheFileURL(scope: scope, client: client) else { return }
+              do {
+                  let data = try JSONSerialization.data(withJSONObject: root)
+                  try data.write(to: url, options: .atomic)
+              } catch {
+                  DiagnosticsLogger.shared.log("PagePersistentCache", "disk write failed: \\(error.localizedDescription)")
+              }
+          }
+          '''
+          new = '''    private func store(_ root: [String: Any], scope: String, client: EmbyAPIClient) {
+              guard let url = cacheFileURL(scope: scope, client: client) else { return }
+              store(root, url: url)
+          }
+
+              private func store(_ root: [String: Any], url: URL) {
+              do {
+                  let data = try JSONSerialization.data(withJSONObject: root)
+                  try data.write(to: url, options: .atomic)
+              } catch {
+                  DiagnosticsLogger.shared.log("PagePersistentCache", "disk write failed: \\(error.localizedDescription)")
+              }
+          }
+          '''
+          assert old in s
+          s = s.replace(old, new, 1)
+          cache.write_text(s)
+
+          browse = Path('Sources/UI/EmbyServerBrowseV3.swift')
+          s = browse.read_text()
+          assert s.count('persistSnapshot()') == 6
+          s = s.replace('            persistSnapshot()\n', '            await persistSnapshot()\n')
+          s = s.replace('        if didUpdate { loadedTabs.insert(.suggestions); persistSnapshot() }', '        if didUpdate { loadedTabs.insert(.suggestions); await persistSnapshot() }')
+          s = s.replace('    private func persistSnapshot() {\n', '    private func persistSnapshot() async {\n', 1)
+          s = s.replace('        V3PagePersistentCache.shared.storeLibrarySnapshot(snapshot, client: client, libraryID: library.id)\n', '        await V3PagePersistentCache.shared.storeLibrarySnapshot(snapshot, client: client, libraryID: library.id)\n', 1)
+          assert s.count('await persistSnapshot()') == 5
+          assert 'private func persistSnapshot() async' in s
+          browse.write_text(s)
+
+          checker = Path('scripts/check_poster_grid_smoothness.py')
+          s = checker.read_text()
+          assert 'cache_source = Path("Sources/UI/EmbyPagePersistentCache.swift")' not in s
+          s = s.replace('person_source = Path("Sources/UI/EmbyPersonMediaView.swift").read_text(encoding="utf-8")\n', 'person_source = Path("Sources/UI/EmbyPersonMediaView.swift").read_text(encoding="utf-8")\ncache_source = Path("Sources/UI/EmbyPagePersistentCache.swift").read_text(encoding="utf-8")\n', 1)
+          s = s.replace('''    "let snapshotStartedAt = CACurrentMediaTime()",
+              "EmbyPosterScrollHitchDiagnostics.shared.pageSnapshotDidComplete(route: diagnosticRoute",
+          ]
+          ''', '''    "let snapshotStartedAt = CACurrentMediaTime()",
+              "await persistSnapshot()",
+              "private func persistSnapshot() async",
+              "await V3PagePersistentCache.shared.storeLibrarySnapshot(snapshot, client: client, libraryID: library.id)",
+              "EmbyPosterScrollHitchDiagnostics.shared.pageSnapshotDidComplete(route: diagnosticRoute",
+          ]
+          ''', 1)
+          marker = 'print("poster grid smoothness source contract: PASS")\n'
+          assert marker in s
+          block = '''required_persistent_cache_off_main = [
+              'private let writeQueue = DispatchQueue(label: "OnePlayer.PagePersistentCache.Write", qos: .utility)',
+              'func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) async',
+              'await withCheckedContinuation { continuation in',
+              'writeQueue.async {',
+              'self.store(root, url: url)',
+          ]
+          for needle in required_persistent_cache_off_main:
+              if needle not in cache_source:
+                  raise SystemExit(f"missing off-main library snapshot persistence contract: {needle}")
+
+          if 'func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) {' in cache_source:
+              raise SystemExit("synchronous library snapshot persistence reintroduced")
+
+          '''
+          s = s.replace(marker, block + marker, 1)
+          checker.write_text(s)
+
+          changelog = Path('docs/changelog/CHANGELOG_v0_14_62_build229.md')
+          assert not changelog.exists()
+          changelog.write_text('''# OnePlayer 0.14.62 / Build229
+
+          ## Poster grid pagination snapshot off-main candidate
+
+          - Target-device Build228 log captured a real 55.1 ms `grid / phase=dragging` long frame after `StartIndex=60`.
+          - The same sample measured image publish / Combine→UIKit adoption at 0.0 ms and pagination apply at 0.3 ms, while synchronous page snapshot persistence took 39.7 ms and completed about 8 ms before the hitch.
+          - Build229 keeps the accepted Build213 persistent-page cache semantics but changes only Library snapshot serialization + atomic disk write execution: the `@MainActor` library model still captures the immutable snapshot in state order, then awaits a serial utility queue for JSON conversion and disk write.
+          - The serial queue preserves write ordering; no timer, retry, fallback, debounce, throttle, watchdog, duplicate state or new cache is added.
+          - Favorites persistence is unchanged because the controlling hitch evidence is the Library pagination path.
+          - Poster image policy, Home carousel owner files, Player / MPV / PiP, UnifiedTransport, playback Cache / Session and STRM→302→115/CDN client-direct contracts are unchanged.
+          - Deployment Target remains iOS 15.0.
+          ''')
+          PY
+      - name: Validate source contract and exact scope
+        run: |
+          python3 scripts/check_poster_grid_smoothness.py
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+          paths = set(subprocess.check_output(['git','diff','--name-only'], text=True).splitlines())
+          expected = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyPagePersistentCache.swift',
+              'Sources/UI/EmbyServerBrowseV3.swift',
+              'scripts/check_poster_grid_smoothness.py',
+              'docs/changelog/CHANGELOG_v0_14_62_build229.md',
+          }
+          if paths != expected:
+              raise SystemExit(f'unexpected Build229 scope: {sorted(paths)}')
+          forbidden = ['Sources/Player/', 'Sources/Transport/', 'Sources/Cache/', 'EmbyHomeCoreV3.swift', 'EmbyHomeHeroV3.swift', 'EmbyHomeCarouselStateV3.swift', 'EmbyHomeCarouselInteractionV3.swift']
+          if any(any(token in path for token in forbidden) for path in paths):
+              raise SystemExit(f'forbidden Build229 path: {sorted(paths)}')
+          PY
+      - name: Commit Build229 candidate
+        run: |
+          git config user.name white-shark-ssw
+          git config user.email houstools@gmail.com
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyPagePersistentCache.swift Sources/UI/EmbyServerBrowseV3.swift scripts/check_poster_grid_smoothness.py docs/changelog/CHANGELOG_v0_14_62_build229.md
+          git commit -m "Move library snapshot persistence off main thread"
+          git push origin HEAD:perf/poster-grid-smoothness
+
+  cleanup:
+    if: always()
+    needs: apply
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Remove one-shot helper
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git pull --ff-only origin main
+          git rm -f .github/workflows/temp-apply-build229-poster-snapshot-off-main.yml
+          git commit -m "Remove Build229 poster snapshot helper"
+          git push origin main
