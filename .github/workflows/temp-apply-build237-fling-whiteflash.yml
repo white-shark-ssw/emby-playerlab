@@ -1,0 +1,29 @@
+name: TEMP Apply Build237 Fling WhiteFlash
+
+on:
+  push:
+    branches: [perf/home-carousel-fling-whiteflash-build237]
+    paths: [.github/build237-apply-trigger.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build237 branch
+        uses: actions/checkout@v4
+        with:
+          ref: perf/home-carousel-fling-whiteflash-build237
+          fetch-depth: 0
+      - name: Apply exact Build237 patch
+        run: python3 scripts/temp_apply_build237_fling_whiteflash.py
+      - name: Commit product patch and checkpoint
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselInteractionV3.swift Sources/UI/EmbyHomeHeroV3.swift docs/changelog/CHANGELOG_v0_14_70_build237.md docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          git diff --cached --quiet && { echo 'No Build237 patch produced'; exit 1; }
+          git commit -m "Carousel: shorten fling gate and remove white flash"
+          git push origin HEAD:perf/home-carousel-fling-whiteflash-build237
