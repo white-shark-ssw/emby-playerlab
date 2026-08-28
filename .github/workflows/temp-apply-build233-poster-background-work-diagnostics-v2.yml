@@ -90,7 +90,8 @@ jobs:
           echo "BUILD233_SOURCE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Summary
-        run: echo "Build233 source: ${BUILD233_SOURCE:-unknown}"
+        run: |
+          echo "Build233 source: ${BUILD233_SOURCE:-unknown}"
 
   cleanup:
     needs: apply
