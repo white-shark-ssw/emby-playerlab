@@ -1,0 +1,193 @@
+name: TEMP Build224 Hero Artwork Isolation
+
+on:
+  push:
+    branches: [diag/home-carousel-hero-artwork-isolation-build224]
+    paths:
+      - ".github/build224-ci-trigger.txt"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build224-hero-artwork-isolation
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Build224 exact diagnostic scope
+        run: |
+          set -euo pipefail
+          BASE="2e02e87773c05295f6e3c88a67f3fa4e110edd92"
+          git diff --check "$BASE"...HEAD
+          mapfile -t PRODUCT_FILES < <(git diff --name-only "$BASE"...HEAD | grep '^Sources/' || true)
+          printf 'Product files:\n%s\n' "${PRODUCT_FILES[*]:-}"
+          [[ "${#PRODUCT_FILES[@]}" -eq 2 ]]
+          [[ " ${PRODUCT_FILES[*]} " == *" Sources/Core/AppIdentity.swift "* ]]
+          [[ " ${PRODUCT_FILES[*]} " == *" Sources/UI/EmbyHomeHeroV3.swift "* ]]
+          python3 - <<'PY'
+          from pathlib import Path
+
+          identity = Path('Sources/Core/AppIdentity.swift').read_text()
+          core = Path('Sources/UI/EmbyHomeCoreV3.swift').read_text()
+          hero = Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()
+          state = Path('Sources/UI/EmbyHomeCarouselStateV3.swift').read_text()
+
+          assert 'static let sourceVersion = "0.14.57"' in identity
+          assert '?? "0.14.57"' in identity
+          assert 'persistentCarouselBackdrop(size:' in core
+          assert 'if immersive { carouselPreloadLayer }' in core
+          assert 'if immersive { persistentCarouselBackdrop(size:' in core
+          assert '.blur(radius: 30)' in hero
+          assert 'func carouselHeroArtwork(item:' in hero
+          head = hero.split('    func carouselHeroArtwork(item:', 1)[0]
+          assert 'carouselHeroArtwork(item:' not in head
+          assert 'carouselHeroForeground(item:' in head
+          assert 'carouselPageIndicators' in head
+          assert 'abs(homeRawScrollMinY) <= 0.5' not in state
+          print('Build224 source contracts: PASS')
+          PY
+
+      - name: Export exact source snapshot
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OnePlayer-0.14.57-build224-hero-artwork-isolation-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Generate icons and Xcode project
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          grep -F 'iOS: "15.0"' project.yml
+          grep -F 'deploymentTarget: "15.0"' project.yml
+          grep -F 'PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app' project.yml
+          xcodegen generate
+
+      - name: Install KTVHTTPCache 3.1.0
+        run: |
+          set -euo pipefail
+          pod install --repo-update
+
+      - name: Restore Swift package cache
+        uses: actions/cache@v4
+        with:
+          path: .spm-cache
+          key: ${{ runner.os }}-build224-mpvkit-1.0.0-ktv-3.1.0-${{ hashFiles('project.yml', 'Podfile') }}
+
+      - name: Resolve MPVKit
+        run: |
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache | tee package-resolution.log
+
+      - name: Build unsigned Release app
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION=0.14.57 \
+            CURRENT_PROJECT_VERSION=224 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build | tee build.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          [[ -n "$APP_PATH" && -d "$APP_PATH" ]]
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py \
+            "$APP_PATH" \
+            --bundle-id "com.embyplayerlab.app" \
+            --version "0.14.57" \
+            --build "224" \
+            --display-name "OnePlayer" \
+            --minimum-os "15.0" \
+            --primary-icon "OnePlayerIcon" \
+            --alternate-icon "OnePlayerAltIcon"
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+
+      - name: Validate minimum OS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" min-os-report.log build.log
+
+      - name: Package and verify Build224 IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA_NAME="OnePlayer-0.14.57-build224-hero-artwork-isolation-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME"
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Re-open packaged identity
+        run: |
+          set -euo pipefail
+          rm -rf verify-ipa
+          mkdir verify-ipa
+          /usr/bin/unzip -q "$IPA_NAME" -d verify-ipa
+          INFO="$(find verify-ipa/Payload -maxdepth 2 -name Info.plist -print -quit)"
+          [[ -n "$INFO" ]]
+          /usr/bin/plutil -extract CFBundleShortVersionString raw "$INFO" | grep -Fx '0.14.57'
+          /usr/bin/plutil -extract CFBundleVersion raw "$INFO" | grep -Fx '224'
+          /usr/bin/plutil -extract MinimumOSVersion raw "$INFO" | grep -Fx '15.0'
+          /usr/bin/plutil -extract CFBundleIdentifier raw "$INFO" | grep -Fx 'com.embyplayerlab.app'
+
+      - name: Upload Build224 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.57-build224-hero-artwork-isolation
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            build.log
+            package-resolution.log
+            built-info-plist.log
+            min-os-report.log
+          if-no-files-found: error
+          retention-days: 30
