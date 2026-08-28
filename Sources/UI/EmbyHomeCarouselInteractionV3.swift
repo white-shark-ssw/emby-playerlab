@@ -40,6 +40,9 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
     private var axis: V3HomeCarouselTouchAxis?
     private var latestPredictedTranslation: CGSize?
     private var horizontalAcquisitionTranslation: CGFloat?
+    private var horizontalAcquisitionTouchTimestamp: TimeInterval?
+    private var horizontalAcquisitionDirectionTranslation: CGFloat = 0
+    private var pendingPostAcquisitionBaseline = false
     private var touchDownTimestamp: TimeInterval?
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
@@ -57,6 +60,9 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         axis = nil
         latestPredictedTranslation = nil
         horizontalAcquisitionTranslation = nil
+        horizontalAcquisitionTouchTimestamp = nil
+        horizontalAcquisitionDirectionTranslation = 0
+        pendingPostAcquisitionBaseline = false
         touchDownTimestamp = touch.timestamp
     }
 
@@ -73,6 +79,9 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
             let acquisitionTranslation = translation.width
             let acquisitionSample = acquisitionRenderBaselineSample(for: touch, event: event, view: view, origin: origin, acquisitionTranslation: acquisitionTranslation)
             horizontalAcquisitionTranslation = acquisitionSample.baseline ?? acquisitionTranslation
+            horizontalAcquisitionTouchTimestamp = touch.timestamp
+            horizontalAcquisitionDirectionTranslation = acquisitionTranslation
+            pendingPostAcquisitionBaseline = acquisitionSample.status == "none" && acquisitionSample.count == 1
             V3HomeCarouselCadenceDiagnostics.shared.begin(acquisitionTranslation: acquisitionTranslation, touchDownTimestamp: touchDownTimestamp ?? touch.timestamp, acquisitionCoalescedCount: acquisitionSample.count, acquisitionPredecessorStatus: acquisitionSample.status, acquisitionPredecessorDelta: acquisitionSample.delta, acquisitionPredecessorAgeMS: acquisitionSample.ageMS, touch: touch, event: event)
             latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
             state = .began
@@ -87,6 +96,12 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         guard axis == .horizontal, state == .began || state == .changed else { return }
         V3HomeCarouselCadenceDiagnostics.shared.recordTouch(touch, event: event)
         latestPredictedTranslation = predictedTranslation(for: touch, event: event, view: view, origin: origin)
+        if pendingPostAcquisitionBaseline {
+            let postAcquisitionSample = postAcquisitionRenderBaselineSample(for: touch, event: event, view: view, origin: origin)
+            if let baseline = postAcquisitionSample.baseline { horizontalAcquisitionTranslation = baseline }
+            V3HomeCarouselCadenceDiagnostics.shared.recordPostAcquisitionSample(count: postAcquisitionSample.count, status: postAcquisitionSample.status, delta: postAcquisitionSample.delta, ageMS: postAcquisitionSample.ageMS)
+            pendingPostAcquisitionBaseline = false
+        }
         let renderedTranslation = renderTranslation(for: translation)
         V3HomeCarouselCadenceDiagnostics.shared.recordFirstRender(translation: renderedTranslation.width, totalTranslation: translation.width, touchTimestamp: touch.timestamp)
         state = .changed
@@ -135,6 +150,9 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         axis = nil
         latestPredictedTranslation = nil
         horizontalAcquisitionTranslation = nil
+        horizontalAcquisitionTouchTimestamp = nil
+        horizontalAcquisitionDirectionTranslation = 0
+        pendingPostAcquisitionBaseline = false
         touchDownTimestamp = nil
     }
 
@@ -151,6 +169,19 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         let ageMS = max(0, (touch.timestamp - predecessor.timestamp) * 1000)
         guard delta != 0 else { return (nil, samples.count, "zero", delta, ageMS) }
         guard delta * acquisitionTranslation > 0 else { return (nil, samples.count, "direction", delta, ageMS) }
+        return (predecessorTranslation, samples.count, "accepted", delta, ageMS)
+    }
+
+    private func postAcquisitionRenderBaselineSample(for touch: UITouch, event: UIEvent, view: UIView, origin: CGPoint) -> (baseline: CGFloat?, count: Int, status: String, delta: CGFloat?, ageMS: Double?) {
+        let samples = (event.coalescedTouches(for: touch) ?? []).sorted { $0.timestamp < $1.timestamp }
+        guard let acquisitionTimestamp = horizontalAcquisitionTouchTimestamp else { return (nil, samples.count, "missing-acquisition", nil, nil) }
+        guard let predecessor = samples.last(where: { $0.timestamp > acquisitionTimestamp + 0.000001 && $0.timestamp < touch.timestamp - 0.000001 }) else { return (nil, samples.count, "none", nil, nil) }
+        let predecessorTranslation = predecessor.location(in: view).x - origin.x
+        let currentTranslation = touch.location(in: view).x - origin.x
+        let delta = currentTranslation - predecessorTranslation
+        let ageMS = max(0, (touch.timestamp - predecessor.timestamp) * 1000)
+        guard delta != 0 else { return (nil, samples.count, "zero", delta, ageMS) }
+        guard delta * horizontalAcquisitionDirectionTranslation > 0 else { return (nil, samples.count, "direction", delta, ageMS) }
         return (predecessorTranslation, samples.count, "accepted", delta, ageMS)
     }
 
