@@ -1,0 +1,168 @@
+name: Build233 Carousel Acquisition First Frame IPA
+
+on:
+  push:
+    branches: [perf/home-carousel-acquisition-first-frame-build233]
+    paths:
+      - ".github/build233-carousel-acquisition-trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout Build233 branch
+        uses: actions/checkout@v4
+        with:
+          ref: perf/home-carousel-acquisition-first-frame-build233
+          fetch-depth: 0
+
+      - name: Validate exact Build233 scope and retained contracts
+        run: |
+          set -euo pipefail
+          base='d4db105b9412cbb3d66a9b351f9ba49d2b1bb742'
+          git diff --check "$base"...HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          base = 'd4db105b9412cbb3d66a9b351f9ba49d2b1bb742'
+          allowed = {
+              '.github/build233-carousel-acquisition-trigger.txt',
+              '.github/workflows/temp-build233-carousel-acquisition-first-frame.yml',
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyHomeCarouselInteractionV3.swift',
+              'docs/changelog/CHANGELOG_v0_14_66_build233.md',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', f'{base}...HEAD'], text=True).splitlines())
+          extra = sorted(changed - allowed)
+          if extra: raise SystemExit(f'Unexpected Build233 files: {extra}')
+          required = {'Sources/Core/AppIdentity.swift', 'Sources/UI/EmbyHomeCarouselInteractionV3.swift', 'docs/changelog/CHANGELOG_v0_14_66_build233.md'}
+          missing = sorted(required - changed)
+          if missing: raise SystemExit(f'Missing Build233 files: {missing}')
+          frozen_prefixes = ('Sources/Player/', 'Sources/Transport/', 'Sources/Cache/', 'Sources/Session/', 'Sources/AVIO/')
+          touched_frozen = sorted(path for path in changed if path.startswith(frozen_prefixes))
+          if touched_frozen: raise SystemExit(f'Build233 touched Frozen/P0 paths: {touched_frozen}')
+
+          identity = Path('Sources/Core/AppIdentity.swift').read_text()
+          assert 'sourceVersion = "0.14.66"' in identity
+          interaction = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift').read_text()
+          assert interaction.count('event.coalescedTouches(for: touch)') == 1
+          assert 'acquisitionRenderBaselineTranslation(for: touch, event: event, view: view, origin: origin, acquisitionTranslation: acquisitionTranslation)' in interaction
+          assert 'horizontalAcquisitionTranslation = coalescedBaselineTranslation ?? acquisitionTranslation' in interaction
+          assert 'if coalescedBaselineTranslation != nil {' in interaction
+          assert 'V3HomeCarouselCadenceDiagnostics.shared.recordFirstRender(translation: renderedTranslation.width, totalTranslation: translation.width, touchTimestamp: touch.timestamp)' in interaction
+          assert 'onHorizontalChanged?(renderedTranslation)' in interaction
+          assert 'delta * acquisitionTranslation > 0' in interaction
+          assert 'return CGSize(width: translation.width - acquisitionTranslation, height: 0)' in interaction
+          assert 'actualProgress >= 0.28' in interaction
+          assert 'width * 0.48' in interaction
+          assert 'V3HomeCarouselCadenceDiagnostics.shared.end(reason: "ended")' not in interaction
+          assert 'Timer' not in interaction and 'DispatchQueue.main.asyncAfter' not in interaction
+
+          cadence = Path('Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift').read_text()
+          for token in ('touch_down_to_acquire_ms=', 'acquire_to_first_render_ms=', 'first_render_x=', 'first_total_x='):
+              assert token in cadence
+          assert 'link.preferredFrameRateRange = CAFrameRateRange(minimum: requested, maximum: requested, preferred: requested)' in cadence
+          hero = Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()
+          assert hero.count('.compositingGroup()') == 1
+          assert 'ForEach(carouselHeroResidentItems) { item in\n                carouselHeroArtwork' in hero
+          assert 'if let item = currentCarouselItem {\n                carouselPersistentImage(item: item, size: size).opacity(carouselOpacity(for: item.id))' in hero
+          assert 'if let item = transitionTargetCarouselItem {' in hero
+          state = Path('Sources/UI/EmbyHomeCarouselStateV3.swift').read_text()
+          assert 'V3HomeCarouselCadenceDiagnostics.shared.end(reason: "settled")' in state
+          assert 'V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancelled-settled")' in state
+          assert 'UIScreen.main.scale' not in state
+          print('Build233 scope/contracts: PASS')
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Prepare OnePlayer app icons
+        run: python3 scripts/generate_oneplayer_icons.py
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache | tee package-resolution.log
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION=0.14.66 \
+            CURRENT_PROJECT_VERSION=233 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build233.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version 0.14.66 --build 233 --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+
+      - name: Validate MinOS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" 15.0 17.0 build233-min-os.log build233.log
+
+      - name: Package unsigned IPA and source snapshot
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA="OnePlayer-0.14.66-build233-acquisition-first-frame-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA"
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          SOURCE="OnePlayer-0.14.66-build233-source.zip"
+          git archive --format=zip --output "$SOURCE" HEAD
+          shasum -a 256 "$SOURCE" | tee "$SOURCE.sha256"
+          git rev-parse HEAD | tee build233-source-sha.txt
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          echo "SOURCE=$SOURCE" >> "$GITHUB_ENV"
+
+      - name: Upload Build233 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.66-build233-acquisition-first-frame
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+            ${{ env.SOURCE }}
+            ${{ env.SOURCE }}.sha256
+            build233-source-sha.txt
+            build233.log
+            build233-min-os.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 30
