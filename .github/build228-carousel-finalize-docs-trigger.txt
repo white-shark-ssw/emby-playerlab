@@ -1,1 +1,0 @@
-finalize carousel Build228 target-device release-tail acceptance
