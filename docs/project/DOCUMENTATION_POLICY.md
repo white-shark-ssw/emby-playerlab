@@ -44,7 +44,7 @@
 
 ### 直接使用功能名称续接
 
-每个 Active 功能 checkpoint 应维护 `Routing aliases / keywords`，包括用户日常可能直接说出的短功能名。
+每个 Active 功能 checkpoint 应维护 `Routing aliases / keywords`，包括用户日常可能会直接说出的短功能名。
 
 用户直接输入“详情页优化”“选集功能”等名称时，按以下顺序选择已有任务：
 
@@ -176,6 +176,8 @@ Git 最终能否自动合并，不代表架构状态所有权适合并行修改�
 6. 其他足以影响新会话 `Next exact action` 的重要节点。
 
 优先在本来就需要的 GitHub 写节点顺带更新已经发生实质变化的 checkpoint；不要为了每个微小编辑、命令、静态检查或普通过程状态额外制造 GitHub 写。checkpoint 也不能因为“减少 GitHub 写”而跨过多个独立有效里程碑不更新。目标节奏是：会话突然达到上下文/执行上限时，最多只丢失一个小的有效里程碑，而不是整段实现→CI→出包进度。
+
+对于 blob → tree → commit → ref 等**非原子 GitHub 写链**，不要把链中的每个操作当成独立 checkpoint。只有当一组步骤已经产生可复用的持久身份（例如 blob/tree/commit SHA、可确认的 branch head、Build/Candidate 或 Artifact ID），且该状态使 `Next exact action` 实质改变时，才将这一组部分完成状态批量写入一次 checkpoint。禁止为 blob、tree、commit、ref 等微小操作分别写 checkpoint；同时也不得在已经形成可复用持久身份并进入新的独立续接阶段后长期不记录。最近一次 GitHub checkpoint 必须足以让任何新会话从其记录的身份和 `Next exact action` 直接续接。
 
 checkpoint 是恢复机制，不是普通停工门槛。开发任务在通过必要前置检查后，除非遇到必须由用户决策、提供信息/权限/实机操作、真实冲突、证据不足、外部阻塞或当前环境能力不足，否则不得因为 checkpoint 已刷新、代码完成、commit/push、PR、CI 或准备出包而等待用户回复“继续”；应按 `AGENTS.md` 连续推进到完成可测试 Artifact/IPA 身份核验，再交给用户做 Runtime/实机测试。
 
