@@ -1,0 +1,182 @@
+name: Build231 Carousel Foreground Compositing IPA
+
+on:
+  push:
+    branches: [diag/home-carousel-foreground-compositing-build231]
+    paths:
+      - ".github/build231-carousel-foreground-compositing-trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout Build231 branch
+        uses: actions/checkout@v4
+        with:
+          ref: diag/home-carousel-foreground-compositing-build231
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply exact Build231 foreground compositing patch
+        run: |
+          set -euo pipefail
+          python3 scripts/temp_apply_build231.py
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeHeroV3.swift docs/changelog/CHANGELOG_v0_14_64_build231.md
+          if ! git diff --cached --quiet; then
+            git commit -m "Perf: isolate carousel foreground compositing"
+            git push origin HEAD:diag/home-carousel-foreground-compositing-build231
+          fi
+          echo "BUILD231_SOURCE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Validate exact Build231 scope and retained contracts
+        run: |
+          set -euo pipefail
+          base='e957a11325e5d605cec794b89b26ffc36cd96c06'
+          git diff --check "$base"...HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          base = 'e957a11325e5d605cec794b89b26ffc36cd96c06'
+          allowed = {
+              '.github/build231-carousel-foreground-compositing-trigger.txt',
+              '.github/workflows/temp-build231-carousel-foreground-compositing.yml',
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyHomeHeroV3.swift',
+              'docs/changelog/CHANGELOG_v0_14_64_build231.md',
+              'scripts/temp_apply_build231.py',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', f'{base}...HEAD'], text=True).splitlines())
+          extra = sorted(changed - allowed)
+          if extra: raise SystemExit(f'Unexpected Build231 files: {extra}')
+          required = {'Sources/Core/AppIdentity.swift', 'Sources/UI/EmbyHomeHeroV3.swift', 'docs/changelog/CHANGELOG_v0_14_64_build231.md'}
+          missing = sorted(required - changed)
+          if missing: raise SystemExit(f'Missing Build231 files: {missing}')
+          frozen_prefixes = ('Sources/Player/', 'Sources/Transport/', 'Sources/Cache/', 'Sources/Session/', 'Sources/AVIO/')
+          touched_frozen = sorted(path for path in changed if path.startswith(frozen_prefixes))
+          if touched_frozen: raise SystemExit(f'Build231 touched Frozen/P0 paths: {touched_frozen}')
+
+          identity = Path('Sources/Core/AppIdentity.swift').read_text()
+          assert 'sourceVersion = "0.14.64"' in identity
+          hero = Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()
+          assert hero.count('.compositingGroup()') == 1
+          expected = 'carouselHeroForeground(item: item, width: width, viewportHeight: viewportHeight)\n                    .compositingGroup()\n                    .opacity(carouselForegroundOpacity(for: item.id))\n                    .offset(x: carouselForegroundOffset(for: item.id, width: width))'
+          assert expected in hero
+          assert 'ForEach(carouselHeroResidentItems) { item in\n                carouselHeroArtwork' in hero
+          assert 'if let item = currentCarouselItem {\n                carouselPersistentImage(item: item, size: size).opacity(carouselOpacity(for: item.id))' in hero
+          assert 'if let item = transitionTargetCarouselItem {' in hero
+          assert 'ForEach(carouselHeroResidentItems) { item in\n                carouselPersistentImage' not in hero
+          state = Path('Sources/UI/EmbyHomeCarouselStateV3.swift').read_text()
+          assert 'var carouselHeroResidentItems: [LibraryItem]' in state
+          assert 'V3HomeCarouselCadenceDiagnostics.shared.end(reason: "settled")' in state
+          assert 'V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancelled-settled")' in state
+          assert 'UIScreen.main.scale' not in state
+          interaction = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift').read_text()
+          assert 'horizontalAcquisitionTranslation = translation.width' in interaction
+          assert 'return CGSize(width: translation.width - acquisitionTranslation, height: 0)' in interaction
+          assert 'actualProgress >= 0.28' in interaction
+          assert 'width * 0.48' in interaction
+          assert 'V3HomeCarouselCadenceDiagnostics.shared.end(reason: "ended")' not in interaction
+          cadence = Path('Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift').read_text()
+          assert 'link.preferredFrameRateRange = CAFrameRateRange(minimum: requested, maximum: requested, preferred: requested)' in cadence
+          shared = Path('Sources/UI/EmbySharedImageAndNavigation.swift').read_text()
+          assert 'final class EmbyDecodedImageRenderPool' in shared
+          print('Build231 foreground compositing scope/contracts: PASS')
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Prepare OnePlayer app icons
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache | tee package-resolution.log
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION=0.14.64 \
+            CURRENT_PROJECT_VERSION=231 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build231.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version 0.14.64 --build 231 --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+
+      - name: Validate MinOS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" 15.0 17.0 build231-min-os.log build231.log
+
+      - name: Package unsigned IPA and source snapshot
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA="OnePlayer-0.14.64-build231-foreground-compositing-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA"
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          SOURCE="OnePlayer-0.14.64-build231-source.zip"
+          git archive --format=zip --output "$SOURCE" HEAD
+          shasum -a 256 "$SOURCE" | tee "$SOURCE.sha256"
+          printf '%s\n' "$BUILD231_SOURCE" > build231-source-sha.txt
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          echo "SOURCE=$SOURCE" >> "$GITHUB_ENV"
+
+      - name: Upload Build231 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.64-build231-foreground-compositing
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+            ${{ env.SOURCE }}
+            ${{ env.SOURCE }}.sha256
+            build231-source-sha.txt
+            build231.log
+            build231-min-os.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 30
