@@ -2,11 +2,11 @@
 
 ## Status
 
-**Active — Build232 / 0.14.65 target-device diagnostics now establish a reproducible dwell-sensitive first-visible-step split: the user reports immediate touch-and-drag has a high probability of the older coarse first step while touch/hold then drag is almost always fine, and the uploaded log records 34 drags split cleanly into 20 small first steps (0.33–2.33pt) and 14 large first steps (8.00–13.67pt), with no samples in between and a median acquisition→first-render interval of 8.34ms. Build231 foreground `compositingGroup()` remains materially positive because the prior test made title text clearly steadier without blur, but it is no longer treated as a complete fix because title jitter reappeared in this Build232 session. Build233 / 0.14.66 is the current single-variable acquisition-first-frame A/B: on the acquisition UIEvent only, use the immediately preceding same-direction coalesced real touch as the render baseline and publish the current delivered touch immediately; subsequent interactive rendering remains delivered-touch owned. Build226 Hero residency + Build228 max-refresh-through-settle remain retained. Build216 remains the accepted overall runtime baseline.**
+**Active — Build234 / 0.14.67 target-device diagnostics now explain the remaining Build233 coarse-start fallback: 31 drags contain only `accepted` and `none` predecessor states. All 11 `none` cases have `acq_coalesced_count=1`, so the acquisition UIEvent contains only the current delivered touch and there is literally no earlier same-event real sample to use; none of the 31 cases were rejected by `direction` or `zero`. Those 11 fallback starts remain coarse (median first step 9.0pt; >=5pt 9/11), while 20 accepted same-event starts are much finer (median 3.0pt; >=5pt 4/20) with predecessor age almost always 4.17ms. This proves the Build233 same-event predecessor direction is valid when a predecessor exists, and proves the dominant residual failure is predecessor unavailability on the acquisition event, not the same-direction guard. Build231 foreground `compositingGroup()` remains materially beneficial; this Build234 capture is also cadence-clean (25/31 display p95 ≈8.34ms), consistent with the earlier report that title text is less jittery, but title stability is not frozen complete. Build226 Hero residency + Build228 max-refresh-through-settle remain retained. Build216 remains the accepted overall runtime baseline.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
-- Working branch: `perf/home-carousel-acquisition-first-frame-build233`
-- Current candidate: OnePlayer `0.14.66 (233)`
+- Working branch: `diag/home-carousel-acquisition-coalesced-diagnostics-build234`
+- Current candidate: OnePlayer `0.14.67 (234)`
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Deployment Target policy: remain iOS 15.0
 - Accepted overall product baseline: OnePlayer 0.14.49 / Build216 on `main`
@@ -432,6 +432,71 @@ CI / package evidence:
 - independent source reopen confirms Build231 `compositingGroup()`, Build226 Hero residency, Build228 settle/cancel refresh lifetime, 0.28/0.48 release rules and the one-event acquisition predecessor logic are present.
 
 Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / A/B only / stable ❌.
+### 2026-08-28 Build233 target-device result — acquisition-local path helps, but fallback remains coarse
+
+User feedback on iPhone 15 Pro Max / iOS 17.0: **the large first-step symptom still occurs at roughly half-or-more subjective frequency, while movie-title text seems less jittery in this build.** The uploaded Build233 App log `OnePlayer-App-1787932695.log` contains 67 `HomeCarouselCadence` drags and gives a more precise split:
+
+- overall `|first_render_x| >= 2.5pt`: **32/67 (47.8%)**;
+- overall `|first_render_x| >= 5pt`: **28/67 (41.8%)**;
+- overall `|first_render_x| >= 8pt`: **15/67 (22.4%)**;
+- 42/67 drags used the Build233 acquisition-local same-event path (`acquire_to_first_render_ms≈0`): median first step **2.0pt**, `>=5pt` **12/42 (28.6%)**, `>=8pt` **2/42**;
+- 25/67 drags fell back to the prior next-delivered-move path: median first step **8.33pt**, `>=5pt` **16/25 (64%)**, `>=8pt` **13/25**.
+
+Controlling conclusion: Build233 proves that using a real acquisition-local predecessor can materially reduce first-step coarseness **when that path is available**, but it does not solve the start-step problem because roughly 37% of recorded starts still fall back and some accepted predecessor deltas are themselves large. Build233 is therefore not accepted as the final acquisition contract.
+
+The current Build233 logger cannot tell whether fallback happened because no predecessor existed, because a predecessor had zero delta, or because the same-direction guard rejected it. It also does not record predecessor age/delta for accepted cases. Therefore changing/removing the guard, choosing a different coalesced sample, or imposing an artificial step cap would be speculative. Measure those facts first.
+
+Title/cadence evidence remains separate. The user reports the text looks less jittery. This session has 42/67 drags with display p95 ≈8.34ms and 18/67 at ≈16.67ms, a cleaner distribution than the prior Build232 session. This supports the observed improvement but does not timestamp-match a particular visible title event, so do not claim complete title stability or a one-to-one cadence cause. Retain Build231 foreground `compositingGroup()` as beneficial, not fully sufficient.
+
+Evidence: Build233 Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / acquisition-local path partially positive ✅ / overall start-step fix insufficient ❌ / title subjectively improved but not frozen / stable ❌.
+
+## Build234 / 0.14.67 — acquisition coalesced-decision diagnostics
+
+Build234 is measurement-only on top of Build233. It does **not** change which coalesced predecessor Build233 accepts, when the acquisition event publishes, the fallback path, post-acquisition delivered-touch ownership, Hero/persistent presentation, foreground compositing, release timing/thresholds, or refresh-rate lifetime.
+
+The existing acquisition helper now reports to `HomeCarouselCadence`:
+
+- `acq_coalesced_count`: number of real coalesced samples available on the acquisition UIEvent;
+- `acq_predecessor_status`: `accepted`, `none`, `zero`, or `direction`;
+- `acq_predecessor_delta_x`: current delivered acquisition X minus the immediately preceding real coalesced sample X when one exists;
+- `acq_predecessor_age_ms`: predecessor timestamp age relative to the current delivered acquisition touch.
+
+These fields directly answer why Build233 produced 25/67 fallback starts and why a subset of the 42 accepted same-event starts still had a >=5pt first step. No timer, interpolation, step cap, easing, debounce/throttle, retry/watchdog, predicted-touch render authority, or second state owner is added.
+
+CI / package evidence:
+
+- branch: `diag/home-carousel-acquisition-coalesced-diagnostics-build234`;
+- exact base: cleaned Build233 branch head `4f2dd8832c66e10d8d48e95fcf757d40f9efb80c`;
+- exact tested source: `528168da7c6b6df26bf1a907439becdb5cc4c980`;
+- cleanup head after temporary build/apply CI removal: `f07a46b52e96cd1d363293c046d9d614047c7e47`;
+- dedicated Xcode 16.4 run/job: `33189068688 / 98909569541` — success;
+- artifact: `OnePlayer-0.14.67-build234-acquisition-diagnostics`, ID `9693038983`;
+- artifact SHA-256: `d819f7a7ccd02bbc73f8201861c6b4a77b4627832d50e16de3f1e42f524786e8`;
+- IPA SHA-256: `ddd8b884dd5095a3eb72e47b8a2726ac9bf32e9dc7000aafe9aeef596296a59c`;
+- source ZIP SHA-256: `4c2ca8e92eae8449f6aa9e52228b78418c79924e35a5821c978a4046a71d58fb`;
+- independent package reopen confirms OnePlayer `0.14.67 (234)`, bundle `com.embyplayerlab.app`, `MinimumOSVersion=15.0`, and `CADisableMinimumFrameDurationOnPhone=true`;
+- independent source reopen confirms Build233 acquisition behavior retained, Build231 `compositingGroup()`, Build226 Hero residency, Build228 settle/cancel refresh lifetime and 0.28/0.48 release rules retained.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / behavior unchanged by design / target-device diagnostic pending ❌ / stable ❌.
+### 2026-08-28 Build234 target-device result — acquisition-event predecessor absence proven
+
+The uploaded Build234 App log `OnePlayer-App-1787935463.log` contains **31** `HomeCarouselCadence` drags. The new acquisition-decision fields provide a decisive split:
+
+- predecessor status is only **`accepted` 20/31** or **`none` 11/31**; there are **zero `direction`** and **zero `zero`** rejections;
+- every `none` case has **`acq_coalesced_count=1`**, meaning the acquisition UIEvent exposes only the current delivered touch and no earlier same-event real sample exists;
+- those 11 `none` / fallback starts have median `|first_render_x|` **9.0pt**, with **9/11 >=5pt** and **7/11 >=8pt**; median acquisition→first-render delay is **8.34ms**;
+- the 20 `accepted` starts have median first step **3.0pt**, with **4/20 >=5pt** and **1/20 >=8pt**; acquisition→first-render is **0ms**;
+- accepted predecessor age is **4.17ms in 19/20** cases and 8.34ms once, so accepted large starts are primarily large real predecessor deltas, not stale tens-of-milliseconds samples;
+- acquisition-event coalesced counts for accepted starts are 2–5 samples (15/20 have 3), versus exactly 1 sample for every `none` case.
+
+Controlling conclusion: Build234 disproves the hypothesis that Build233 fallback is mainly caused by the same-direction guard. The dominant residual failure is **same-event predecessor unavailability**: when UIKit gives only one acquisition-event sample, Build233 has no real earlier sample available and falls back to the next delivered event, recreating the coarse first step. Therefore do **not** remove the direction guard and do not add a synthetic step cap/interpolation. The next behavior A/B, if implemented, should stay within the same single UIKit owner and use only real touch samples to address the one-sample acquisition case.
+
+A directly evidence-backed candidate is to extend the already-proven acquisition-local idea by at most one event: only when acquisition had `status=none` / one sample, inspect the **first post-acquisition UIEvent** for a real immediately preceding coalesced sample and, if present and direction-compatible, use that real predecessor as the one-time render baseline while publishing that event's delivered touch. If that first post-acquisition event also has no predecessor, preserve the existing fallback rather than inventing motion. This exact next-event availability is not yet measured, so treat such a change as an A/B rather than a frozen contract.
+
+Cadence/title evidence remains supporting, not causal proof. This Build234 session has **25/31** drags with display p95 around **8.34ms** and only 6/31 above that, consistent with the prior subjective report that title text looks steadier. Build231 `compositingGroup()` remains retained as beneficial but not complete/frozen.
+
+Evidence: Build234 Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device diagnostic tested ✅ / same-event predecessor absence proven ✅ / behavior fix not yet tested ❌ / stable ❌.
+
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -447,4 +512,4 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 
 ## Next exact action
 
-Install Build233 on iPhone 15 Pro Max / iOS 17.0. Primary A/B: repeat at least 8–10 “touch and immediately begin a slow horizontal drag” starts, then at least 5 “touch/hold briefly, then slow drag” starts. Judge the **first visible step** first, not overall release tail. Export the App log afterwards and compare `acquire_to_first_render_ms` + `first_render_x` against Build232: the acquisition-local path should commonly move the first render onto the acquisition event (`≈0ms`) with a short real coalesced-to-delivered delta. Also note whether immediate starts still show the old 8–14pt visible jump. Keep Build231 `compositingGroup()` enabled and separately report whether title jitter appears; do not mix another title-rasterization change into Build233. If immediate starts become consistently fine without harming vertical yield/reversal/normal drag, retain this acquisition-local predecessor direction. If large first steps remain or vertical ownership regresses, reject it and return to Build232/231 acquisition semantics before further work. After the start-step verdict, resume residual title/cadence investigation using the Build232 evidence that compositing is beneficial but not sufficient.
+Build234 has answered its diagnostic question. Do not change/remove the same-direction guard: no recorded fallback was caused by `direction` or `zero`; all 11 fallback cases were `status=none` with exactly one acquisition-event sample. Before the next carousel behavior build, perform the normal resume identity/build-collision guard. **Build235 is already reserved by the parallel Aether task on current `main`, so the carousel must not use Build235.** If a new carousel candidate is justified and the next free number remains available after re-check, use the next unreserved identity (currently Build236 is not found in project records, but verify again at allocation time). The narrow behavior A/B should preserve Build233/234 single-owner semantics and all retained Build226/228/231 contracts. For `status=none` only, inspect the first post-acquisition UIEvent for a real immediately preceding same-direction coalesced touch; if such a real predecessor exists, use it as a one-time render baseline and publish that event's delivered touch, then return to normal delivered-touch ownership. If no predecessor exists there either, keep the existing fallback. Add diagnostics sufficient to distinguish acquisition-event vs first-post-acquisition recovery. Do not add interpolation, timer, synthetic step cap, easing, predicted-touch render authority, or a second owner.

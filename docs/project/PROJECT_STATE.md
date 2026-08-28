@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after carousel Build232 / 0.14.65 target-device first-step diagnostics and Build233 / 0.14.66 acquisition-first-frame CI/IPA verification. Build216 remains the accepted overall runtime baseline; Build226 Hero residency + Build228 release-through-settle + Build231 foreground compositing remain the positive carousel foundation, with Build231 now classified as beneficial but not a complete title-jitter fix._
+_Last updated after carousel Build234 / 0.14.67 target-device acquisition coalesced-decision diagnostics. Build234 proves the dominant remaining coarse-start fallback occurs when the acquisition UIEvent has only one sample and therefore no same-event real predecessor. Build216 remains the accepted overall runtime baseline; Build226 Hero residency + Build228 release-through-settle + Build231 foreground compositing remain the positive carousel foundation._
 
 ## Current accepted overall baseline
 
@@ -179,6 +179,16 @@ Build232 target-device testing confirms the newly noticed first-step inconsisten
 Build231 foreground compositing remains materially positive but is downgraded from “complete title fix”: Build232 retained the same render path and title jitter reappeared. The Build232 session also contains residual cadence degradation (16/34 display p95 ≈16.67ms; 5/34 render average ≥20ms), so residual frame delivery remains an open title-shimmer contributor.
 
 Build233 / 0.14.66 uses one acquisition-local predecessor sample only: if the same acquisition UIEvent contains an immediately preceding coalesced touch continuing in the selected horizontal direction, that real sample becomes the render baseline and the current delivered touch publishes immediately. Subsequent render ownership stays on delivered touch. Exact tested source `4912234b579a2b8eeba7d5e7f5c6159248953efe`, run/job `33177534304 / 98869934770`, artifact `9688349642`, IPA SHA-256 `717ee926877e9867272f78790e06b3181b4e0f17d7d71d9494ca0540184a019b`, MinOS 15.0. Real-device pending; not stable.
+
+### Build233 partial first-frame improvement → Build234 coalesced-decision diagnostics
+
+Build233 target-device evidence is mixed but useful. In 67 drags, the acquisition-local same-event predecessor path fired 42 times and materially reduced first-step size (median 2.0pt, >=5pt 28.6%), while 25 fallback starts retained a median 8.33pt first step and >=5pt rate of 64%. Overall 28/67 starts were >=5pt and the user still perceives roughly half-or-more starts as coarse, so Build233 is not the final acquisition contract. The user also reports title text seems less jittery; 42/67 display p95 samples are ~8.34ms versus 18/67 at ~16.67ms, supporting but not proving a cadence-related improvement.
+
+Build234 / 0.14.67 changes no behavior. It records the acquisition UIEvent coalesced sample count, predecessor accept/reject status, predecessor delta X and predecessor age so the 25 fallback starts and remaining large accepted starts can be attributed before another input change. Exact tested source `528168da7c6b6df26bf1a907439becdb5cc4c980`, run/job `33189068688 / 98909569541`, artifact `9693038983`, IPA SHA-256 `ddd8b884dd5095a3eb72e47b8a2726ac9bf32e9dc7000aafe9aeef596296a59c`, MinOS 15.0. Target-device diagnostic pending; not stable.
+
+### Build234 target-device diagnosis — one-sample acquisition events own the residual coarse fallback
+
+Build234 target-device log contains 31 drags. Exactly 20 acquisition events report `accepted` and 11 report `none`; there are no `direction` or `zero` rejections. Every `none` event has `acq_coalesced_count=1`, proving UIKit exposed only the current delivered touch and no earlier same-event real sample. Those 11 fallback starts are coarse (median first step 9.0pt; >=5pt 9/11), while accepted same-event starts are materially finer (median 3.0pt; >=5pt 4/20). Accepted predecessor age is almost always 4.17ms. Therefore do not remove the same-direction guard or add synthetic interpolation/step caps. The next carousel behavior A/B should target the one-sample acquisition case using only real touch samples and preserve the single UIKit owner. Build235 is reserved by parallel Aether work and cannot be reused for carousel.
 
 ## Active: Poster-heavy scrolling smoothness
 
