@@ -17,13 +17,13 @@ jobs:
         with:
           ref: perf/home-carousel-velocity-fling-build239
           fetch-depth: 0
-      - name: Apply exact Build239 velocity fling patch
+      - name: Apply Build239 compile-only Hero call fix
         run: python3 scripts/temp_apply_build239_velocity_fling.py
-      - name: Commit Build239 product patch
+      - name: Commit Build239 compile-only fix
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselInteractionV3.swift docs/changelog/CHANGELOG_v0_14_72_build239.md
-          git diff --cached --quiet && { echo 'No Build239 patch produced'; exit 1; }
-          git commit -m "Carousel: use release velocity for fling commit"
+          git add Sources/UI/EmbyHomeHeroV3.swift
+          git diff --cached --quiet && { echo 'No Build239 compile fix produced'; exit 1; }
+          git commit -m "Carousel: align Hero release velocity call"
           git push origin HEAD:perf/home-carousel-velocity-fling-build239
