@@ -1,0 +1,197 @@
+name: Temp Build228 Poster Timing IPA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/temp-build228-poster-timing-ipa.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout control ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout exact Build228 source and validate scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          TESTED_SOURCE=20f0edaf30c3c9161a79f64fd29dbc79c199473e
+          BUILD220_SOURCE=6198466a749a54603a67c6c32bc0efcf9d7e2082
+          git fetch origin main perf/poster-grid-smoothness
+          test "$(git rev-parse origin/perf/poster-grid-smoothness)" = "$TESTED_SOURCE"
+          if git branch -r | grep -Ei '/[^ ]*build228'; then
+            echo 'Build228 branch identity collision detected' >&2
+            exit 1
+          fi
+          git checkout --detach "$TESTED_SOURCE"
+          test "$(git rev-parse HEAD)" = "$TESTED_SOURCE"
+          python3 scripts/check_poster_grid_smoothness.py
+          git diff --check "$BUILD220_SOURCE" HEAD
+          actual="$(git diff --name-only "$BUILD220_SOURCE" HEAD | sort)"
+          expected="$(printf '%s\n' \
+            Sources/Core/AppIdentity.swift \
+            Sources/UI/EmbyServerBrowseV3.swift \
+            Sources/UI/EmbySharedImageAndNavigation.swift \
+            docs/changelog/CHANGELOG_v0_14_61_build228.md \
+            scripts/check_poster_grid_smoothness.py | sort)"
+          printf 'Build228 exact diff from Build220:\n%s\n' "$actual"
+          test "$actual" = "$expected"
+          grep -F 'static let sourceVersion = "0.14.61"' Sources/Core/AppIdentity.swift
+          grep -F 'DiagnosticsLogger.shared.log("PosterScrollTiming"' Sources/UI/EmbySharedImageAndNavigation.swift
+          grep -F 'publish_to_sink_ms=' Sources/UI/EmbySharedImageAndNavigation.swift
+          grep -F 'page_apply_duration_ms=' Sources/UI/EmbySharedImageAndNavigation.swift
+          grep -F 'pageSnapshotDidComplete(route: diagnosticRoute' Sources/UI/EmbyServerBrowseV3.swift
+          for forbidden in Sources/UI/EmbyHomeCoreV3.swift Sources/UI/EmbyHomeHeroV3.swift Sources/UI/EmbyHomeCarouselStateV3.swift Sources/UI/EmbyHomeCarouselInteractionV3.swift Sources/Player Sources/Transport Sources/Session Sources/Cache; do
+            if printf '%s\n' "$actual" | grep -F "$forbidden"; then exit 1; fi
+          done
+          echo "TESTED_SOURCE=$TESTED_SOURCE" >> "$GITHUB_ENV"
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Prepare app icons and Xcode project
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          grep -F 'iOS: "15.0"' project.yml
+          grep -F 'deploymentTarget: "15.0"' project.yml
+          grep -F 'PRODUCT_BUNDLE_IDENTIFIER: com.embyplayerlab.app' project.yml
+          xcodegen generate
+
+      - name: Install CocoaPods
+        run: |
+          set -euo pipefail
+          pod install --repo-update
+
+      - name: Resolve Swift packages
+        run: |
+          set -euo pipefail
+          rm -rf .spm-cache
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Release build 0.14.61 (228)
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            MARKETING_VERSION=0.14.61 \
+            CURRENT_PROJECT_VERSION=228 \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+
+      - name: Locate and validate app identity
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+          python3 scripts/validate_built_app.py \
+            "$APP_PATH" \
+            --bundle-id "com.embyplayerlab.app" \
+            --version "0.14.61" \
+            --build "228" \
+            --display-name "OnePlayer" \
+            --minimum-os "15.0" \
+            --primary-icon "OnePlayerIcon" \
+            --alternate-icon "OnePlayerAltIcon"
+
+      - name: Validate runtime MinOS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" "15.0" "17.0" min-os-report.log build.log
+
+      - name: Package IPA and exact source
+        run: |
+          set -euo pipefail
+          rm -rf Payload artifact-out
+          mkdir Payload artifact-out
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA_NAME="OnePlayer-0.14.61-build228-poster-timing-diagnostics-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME"
+          SOURCE_ZIP="OnePlayer-0.14.61-build228-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          /usr/bin/unzip -t "$SOURCE_ZIP"
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          cp "$IPA_NAME" "$IPA_NAME.sha256" "$SOURCE_ZIP" "$SOURCE_ZIP.sha256" artifact-out/
+          printf '%s\n' "$TESTED_SOURCE" > artifact-out/tested-source.txt
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Upload Build228 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.61-build228-poster-timing-diagnostics
+          path: artifact-out/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Build evidence summary
+        if: always()
+        run: |
+          {
+            echo "tested_source=$TESTED_SOURCE"
+            echo "version=0.14.61"
+            echo "build=228"
+            echo "status=${{ job.status }}"
+            if [[ -f build.log ]]; then grep -F '** BUILD SUCCEEDED **' build.log | tail -1 || true; fi
+          } | tee build228-evidence.txt
+
+  cleanup:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove one-shot Build228 workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --ff-only origin main
+          if [[ -f .github/workflows/temp-build228-poster-timing-ipa.yml ]]; then
+            git rm .github/workflows/temp-build228-poster-timing-ipa.yml
+            git commit -m "Remove Build228 poster timing IPA helper"
+            git push origin main
+          fi
