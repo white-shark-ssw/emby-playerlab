@@ -194,10 +194,7 @@ extension V3EmbyHomeView {
 
     func persistentCarouselBackdrop(size: CGSize) -> some View {
         ZStack {
-            if let item = currentCarouselItem {
-                carouselPersistentImage(item: item, size: size).opacity(carouselOpacity(for: item.id))
-            }
-            if let item = transitionTargetCarouselItem {
+            ForEach(carouselHeroResidentItems) { item in
                 carouselPersistentImage(item: item, size: size).opacity(carouselOpacity(for: item.id))
             }
 
