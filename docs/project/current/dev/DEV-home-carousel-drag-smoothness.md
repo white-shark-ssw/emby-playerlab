@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build228 / 0.14.61 is the current horizontal release-tail max-refresh A/B. Build227 is now target-device tested and rejected as a title-shimmer fix: physical-pixel foreground X rounding did not remove the movie-title jitter. The same Build227 recording reveals a separate release-tail smoothness issue, and exact source inspection proves the proven device-max refresh request was invalidated at `touchesEnded` before the existing 0.22s/0.18s automatic settle/cancel animation. Build228 returns to the cleaned Build226 presentation baseline and changes only that refresh-request lifetime through settle/cancel. Build228 CI/IPA is verified; target-device test pending. Build216 remains the accepted overall runtime baseline.**
+**Active — Build228 / 0.14.61 release-tail behavior is now target-device accepted for now: the user reports the post-release tail is “差不多了，尾巴这里先这样吧”. Keep Build226 three-slot Hero residency and Build228 max-refresh-through-settle as the current carousel foundation, and stop further release-tail easing/duration/velocity tuning unless new regression evidence appears. Build227 physical-pixel foreground rounding is rejected because movie-title shimmer remained. The carousel task stays Active because slow-drag movie-title shimmer and the remaining overall refinement gap versus EX are still open. Build216 remains the accepted overall runtime baseline.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Target device: iPhone 15 Pro Max / iOS 17.0
@@ -272,6 +272,22 @@ CI / package evidence:
 Build228 also makes the existing cadence log cover the automatic tail: successful commits should now end with `reason=settled`, and cancels with `reason=cancelled-settled`, so the next target-device log can directly measure tail display cadence.
 
 Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / diagnostic candidate / stable ❌.
+
+### 2026-08-28 target-device result — release tail accepted for now
+
+User feedback on iPhone 15 Pro Max / iOS 17.0 after testing the carousel Build228 package: **“差不多了，尾巴这里先这样吧。”** This is acceptance of the release-tail subproblem for the current phase, not acceptance of the entire carousel task.
+
+Controlling conclusion:
+
+- retain Build226 current+previous+next clear-Hero residency as the current presentation foundation;
+- retain Build228's extension of the already-proven device-max refresh request through interactive settle/cancel instead of ending it at `touchesEnded`;
+- do **not** continue tuning the existing 0.22 s commit / 0.18 s cancel duration, easing or release-velocity mapping without new regression evidence;
+- Build227 physical-pixel foreground X rounding remains rejected because the movie-title shimmer was still visible;
+- slow-drag movie-title shimmer and the remaining overall feel gap versus EX remain open, so the Home carousel module is still Active and not Stable/frozen as a whole.
+
+Attribution warning: a parallel poster-scroll task also used the identity `Build228 / 0.14.61`. For this carousel result, use branch `perf/home-carousel-release-refresh-build228`, exact tested source `bdf63c7562fcd1edc1d224872230e988ac462281`, run/job `33156739621 / 98801196041`, artifact `9679963420`, and IPA SHA-256 `cda90b62e3cabd3199e1cfbc1b2e1c77b8a84d023a7c7b9c8e2ff66ab9edcf44`; never attribute by build number alone.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / horizontal real-device tested ✅ / release-tail subproblem accepted-for-now ✅ / whole carousel stable ❌.
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -287,4 +303,4 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 
 ## Next exact action
 
-Install Build228 on iPhone 15 Pro Max / iOS 17.0 and compare directly with Build226/227. Primary acceptance is the **finger-release automatic tail**: test short committed swipes, longer committed drags, partial drags that cancel back, and rapid repeated adjacent-page transitions. Judge whether the moment after finger release now keeps the same fine cadence as active drag. Export the App log after the test; Build228 cadence summaries should end at `reason=settled` / `reason=cancelled-settled` and now include the release animation itself. Do not expect Build228 to directly fix the already-confirmed title shimmer because foreground text presentation during active drag is unchanged. If release tail improves materially, retain the extended high-refresh lifecycle and then return to the remaining title/cadence issue separately. If it does not, keep Build226 residency but inspect release velocity continuity / fixed-duration easing next; do not stack an easing change before this refresh-lifetime A/B is tested.
+Keep the Build228 release-tail behavior unchanged for now. The next carousel investigation, when resumed, must focus on the still-visible slow-drag movie-title shimmer / residual active-drag cadence rather than release-tail easing, duration or velocity. Start from the Build226 residency + Build228 release-refresh foundation, do not reintroduce Build227 pixel quantization, and continue using horizontal target-device comparison against EX as the acceptance path.
