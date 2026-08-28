@@ -2,13 +2,23 @@
 
 ## Status
 
-**Active — Build224 / 0.14.57 is CI/IPA verified as the current Home vertical diagnostic candidate and is awaiting target-device testing. It starts from current `main` / accepted Build216 product behavior, so the normal full-screen persistent backdrop and Dock presentation are restored. The only runtime presentation change is that `immersiveCarouselHero` no longer mounts the current/target `carouselHeroArtwork` 1400px clear-image layers. Persistent backdrop, preload, foreground/logo/text, auto-advance, horizontal interaction and all playback/P0 paths remain unchanged. Build223 was target-device tested and rejected as a sufficient vertical fix; its Dock appearance regression is not carried forward. Build221 remains the separate horizontal persistent-drag A/B with target-device testing pending.**
+**Active — scope corrected after the 2026-08-28 Build224 target-device report. The user still sees visible jitter during Home vertical inertial scrolling, but this task is specifically about carousel horizontal swipe/drag smoothness. Build222–224 vertical Home scrolling A/Bs are now supporting diagnostics only and must not be used as the acceptance gate for the carousel task. Build224 therefore records a vertical-only real-device result, not a horizontal carousel verdict. The current direct carousel candidate returns to Build221 / 0.14.54, whose horizontal persistent-drag isolation is already CI/IPA verified and still needs target-device horizontal A/B. Build216 remains the accepted overall product baseline.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Deployment Target policy: remain iOS 15.0
 - Accepted overall product baseline: OnePlayer 0.14.49 / Build216 on `main`
 - Historical continuation source: user-supplied `轮播图优化v2.md`
+
+## Scope correction — 2026-08-28
+
+The user explicitly clarified that the active goal is **carousel optimization**, not general Home vertical scrolling smoothness. This changes the acceptance scope:
+
+- the primary acceptance path is horizontal carousel swipe/drag feel on the target device;
+- evaluate first-move granularity, sustained finger tracking, reversal continuity, backdrop/foreground continuity, release/settle and the subjective gap versus EX;
+- Home vertical inertial scrolling may still reveal shared image/compositor pressure, but it is supporting evidence only and cannot pass/fail the carousel interaction task;
+- Build222–224 are therefore closed as a vertical supporting-diagnostic detour and must not drive another vertical-only Build225;
+- resume the existing Build221 horizontal A/B before writing any new carousel patch.
 
 ## Retained interaction contract
 
@@ -100,51 +110,29 @@ Therefore Build224 isolates only Hero artwork mounting. Preload remains unchange
 
 ## Build224 / 0.14.57 — Hero artwork presentation isolation
 
-### Identity / base
+### Identity / CI evidence
 
 - branch: `diag/home-carousel-hero-artwork-isolation-build224`
-- base: current `main` head at branch creation `2e02e87773c05295f6e3c88a67f3fa4e110edd92`
+- base at branch creation: `2e02e87773c05295f6e3c88a67f3fa4e110edd92`
 - identity: OnePlayer `0.14.57`, Build `224`
-- identity commit: `26e9db24ae6c1c90197ab05e2b48f721cf8752d1`
-- Hero isolation commit: `ac27dd535b241c0c383fda8b4e3362193b9ec709`
-- changelog commit: `6de5dafb17142e8d6fecdaa13d620df3eb00df07`
 - tested CI head / exact source snapshot: `b6ee3361f183257a2ae01f1336506ab4a4c1a254`
 - dedicated Xcode 16.4 run/job: `33142773132 / 98757057369` — success
-- artifact: `OnePlayer-0.14.57-build224-hero-artwork-isolation`; ID `9674622017`
-- artifact digest: `sha256:cc7483a71f7b5cccb1c95c2fe52f4bd7756ea2c4f9f7d7a2ec4deeaf02636471`
+- artifact ID: `9674622017`
 - IPA SHA-256: `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`
 - source ZIP SHA-256: `6537f85e6f644ccc85491ec357040bdac766e2ee63ef98ba1af5ec253d134a86`
-- independently re-opened package confirms OnePlayer `0.14.57 (224)`, bundle `com.embyplayerlab.app`, `MinimumOSVersion=15.0`, and `CADisableMinimumFrameDurationOnPhone=true`.
-- cleanup head after deleting temporary build workflow/trigger: `810e26b7abc3f90dfc0f7cacc64941d69d9a107d`; product source is unchanged by cleanup.
-- the earlier run `33142715378` stopped before compilation only because the temporary checker used Bash `mapfile`, unavailable in macOS Bash 3.2; it is not product CI evidence and was superseded by the successful dedicated run above.
+- OnePlayer `0.14.57 (224)`, bundle `com.embyplayerlab.app`, MinOS 15.0 independently verified.
 
 ### Exact product diff
 
-Against the branch base, product source changes are only:
+Against its main base, product source changes are only `Sources/Core/AppIdentity.swift` plus removal of the current/target `carouselHeroArtwork` mounts from `immersiveCarouselHero`. The Hero implementation itself remains in source. Root persistent backdrop, 30pt persistent blur, preload, foreground/logo/text/page indicators, normal auto-advance, horizontal interaction/state ownership and all P0/Frozen paths remain unchanged.
 
-- `Sources/Core/AppIdentity.swift`: 0.14.49 → 0.14.57 identity;
-- `Sources/UI/EmbyHomeHeroV3.swift`: removes only the 11 lines that mount current/target `carouselHeroArtwork` inside `immersiveCarouselHero`.
+### 2026-08-28 target-device result and scope meaning
 
-`carouselHeroArtwork(...)` itself remains fully implemented in source. No image-loader implementation, cache, metrics calculation or state owner is changed.
+User feedback on iPhone 15 Pro Max / iOS 17.0: **Home vertical inertial scrolling still visibly jitters.** This proves only that removing the clear Hero artwork mount is not sufficient to remove the separate Home vertical hitch. The reported test did **not** evaluate the intended horizontal carousel drag feel, so Build224 must not be described as accepted or rejected for horizontal carousel smoothness.
 
-The following remain unchanged from main:
+The more important scope correction is that general Home vertical scrolling is not the primary goal of `DEV-home-carousel-drag-smoothness`. Build224 closes the vertical-only detour; do not extend it into another vertical-only candidate.
 
-- root `persistentCarouselBackdrop` mount, so the accepted Home background/Dock material backing is restored;
-- `carouselPersistentImage` and its 30pt blur;
-- `carouselPreloadLayer`;
-- `carouselHeroForeground`, Logo/title/rating/overview and page indicators;
-- normal Build216 auto-advance timing;
-- horizontal carousel interaction/state ownership;
-- Player/MPV/PiP/Transport/Cache/Emby Session and other P0/Frozen paths.
-
-### Evidence level
-
-- Code written ✅
-- Exact diff scope reviewed ✅
-- CI passed ✅
-- IPA produced+verified ✅
-- Real-device tested ❌
-- Stable ❌
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device vertical-only tested ✅ / horizontal carousel verdict not established ❌ / stable ❌.
 
 ## Build221 / 0.14.54 — separate horizontal lane
 
@@ -169,10 +157,12 @@ Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-de
 
 ## Next exact action
 
-Install the CI/IPA-verified Build224 on iPhone 15 Pro Max / iOS 17.0 and test **Home vertical scrolling**. The build/package identity, exact source scope and MinOS 15.0 are already independently verified; the remaining evidence level is target-device behavior.
+Return to the carousel itself. Use the already CI/IPA-verified **Build221 / 0.14.54** for target-device horizontal A/B before writing any Build225. Test repeated left/right drags on the carousel, especially:
 
-For the target-device A/B, visual loss of the clear Hero artwork is expected and diagnostic-only. The decisive question is whether the same vertical jitter materially changes while the normal persistent background and Dock appearance remain restored.
+- first visible movement after acquisition;
+- sustained 1:1 finger tracking / “smooth glass vs rough paper” feel;
+- rapid reversal continuity;
+- whether backdrop presentation still produces perceptible drag-time catches;
+- release/settle separately, because Build221 intentionally restores the normal persistent transition after release.
 
-- If vertical smoothness materially improves, Hero clear-image presentation is a causal component and the next step is to redesign that presentation path without losing the artwork.
-- If vertical smoothness is essentially unchanged, reject Hero mounting as a sufficient explanation and move to the next independently supported component; do not stack preload changes into Build224.
-- Keep Build221 horizontal testing separate.
+If Build221 materially improves horizontal drag, persistent backdrop presentation during active drag is a causal component and the next patch should redesign that horizontal presentation path without removing the normal visual result. If Build221 is essentially unchanged, reject that isolation as sufficient and choose the next horizontal-only variable from the Build219 evidence. Do not use Home vertical inertial scrolling as the acceptance gate for the carousel task.

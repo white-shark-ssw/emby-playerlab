@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build224 / 0.14.57 Home Hero-artwork isolation CI/IPA verification. Build216 remains the latest real-device accepted overall runtime baseline. Build224 restores the normal persistent background/Dock presentation and removes only the clear Hero 1400px artwork mounts for a single-variable vertical A/B; target-device testing is pending. Build223 persistent-backdrop removal was real-device ineffective and its Dock appearance regression is rejected. Build221 remains the separate horizontal A/B pending target-device testing._
+_Last updated after the 2026-08-28 carousel-scope correction. Build216 remains the accepted overall runtime baseline. Build224 was target-device tested only as a Home vertical stress probe and vertical inertial jitter remained, but the user explicitly clarified that `DEV-home-carousel-drag-smoothness` is judged by horizontal carousel interaction, not general Home scrolling. Build222–224 are supporting vertical diagnostics only; Build221 is again the current direct horizontal carousel A/B pending target-device testing._
 
 ## Current accepted overall baseline
 
@@ -49,6 +49,10 @@ Build216 inherits all accepted/frozen player, PiP, transport, playback-cache, ep
 ## Active: Home carousel interaction
 
 Work: `DEV-home-carousel-drag-smoothness`.
+
+### 2026-08-28 acceptance-scope correction
+
+The user explicitly corrected the task scope after Build224: **optimize the carousel itself**. Home vertical inertial scrolling can expose shared rendering pressure, but it is not the acceptance criterion for `DEV-home-carousel-drag-smoothness`. Build224 still showed visible vertical jitter after removing Hero clear artwork, but no horizontal carousel verdict was gathered from that test. Therefore Build222–224 are closed as a supporting vertical diagnostic detour. The direct carousel lane resumes at Build221 / 0.14.54, which is already CI/IPA verified and isolates persistent backdrop presentation only during active horizontal drag. No new vertical-only candidate should be created before Build221 is tested horizontally on the target device.
 
 ### Retained architecture
 
@@ -132,7 +136,7 @@ Build223 / 0.14.56 is the next independent Home vertical diagnostic from accepte
 
 ### Build224 Home vertical Hero-artwork A/B
 
-Build224 / 0.14.57 is the next independent vertical diagnostic from current main/accepted Build216 presentation. It restores the full-screen `persistentCarouselBackdrop` and therefore the normal `.ultraThinMaterial` Dock backing that Build223 disturbed. Its only runtime presentation difference is that `immersiveCarouselHero` does not mount current/target `carouselHeroArtwork` 1400px clear-image surfaces. The Hero artwork implementation remains in source; `carouselPreloadLayer`, persistent 30pt blur, foreground/logo/text/page indicators, normal auto-advance, horizontal carousel interaction and P0/Frozen paths are unchanged. This ordering is evidence-backed: Build219 tagged `hero`, `persistent`, and `preload` callbacks separately; 11 of 15 worst >=25 ms gaps were within 30 ms of Hero/persistent callbacks, and Build223 has now directly rejected persistent removal as sufficient. Dedicated Xcode 16.4 run/job `33142773132 / 98757057369` succeeded; tested CI head `b6ee3361f183257a2ae01f1336506ab4a4c1a254`; artifact `9674622017`; artifact digest `sha256:cc7483a71f7b5cccb1c95c2fe52f4bd7756ea2c4f9f7d7a2ec4deeaf02636471`; IPA SHA-256 `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`; source ZIP SHA-256 `6537f85e6f644ccc85491ec357040bdac766e2ee63ef98ba1af5ec253d134a86`; OnePlayer 0.14.57 (224) and MinOS 15.0 were independently re-opened/verified. Evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / diagnostic only / not stable**. Next vertical action is target-device Home scrolling A/B; expected loss of the clear Hero artwork is diagnostic-only.
+Build224 / 0.14.57 removed only the clear Hero 1400px artwork mounts while retaining the accepted persistent background/Dock, preload, persistent blur, foreground, auto-advance and horizontal interaction. Dedicated Xcode 16.4 run/job `33142773132 / 98757057369` succeeded; artifact `9674622017`; IPA SHA-256 `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`; MinOS 15.0. Target-device feedback on 2026-08-28 still reports visible **Home vertical inertial-scroll jitter**. This is now recorded as vertical supporting evidence only: the user clarified that the active goal is horizontal carousel swipe/drag smoothness, and this Build224 test did not provide a horizontal verdict. Do not continue the carousel task with another vertical-only A/B.
 
 ## Active: Poster-heavy scrolling smoothness
 
@@ -151,4 +155,4 @@ Next: make the next poster build diagnostic-only. Measure MainActor image-assign
 
 ## Parallel integration rule
 
-Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel Build224 is the latest CI/IPA-verified vertical diagnostic candidate; Build221 remains a separate horizontal A/B; poster-scroll Build220 remains an independent Active line. These keep separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
+Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Home-carousel acceptance is horizontal drag/swipe behavior; Build221 is the current direct horizontal A/B, while Build222–224 are supporting vertical diagnostics only; poster-scroll Build220 remains an independent Active line. These keep separate branches/evidence. If a candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
