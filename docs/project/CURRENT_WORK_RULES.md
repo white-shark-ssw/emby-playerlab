@@ -13,9 +13,20 @@
 
 ## Status
 
-**Idle**
+**Active**
 
-当前没有正在进行中的规则维护任务。
+- **Task**：细化自主连续开发 checkpoint 规则，增加非原子 GitHub 写链的批量 checkpoint 判定。
+- **User intent / acceptance criteria**：开发任务通过必要前置检查后继续自主推进到可测试 Artifact/IPA 身份核验；checkpoint 尽早建立且只记录独立续接价值里程碑；blob → tree → commit → ref 等非原子 GitHub 写链只在产生可复用持久身份且 `Next exact action` 实质改变时批量记录一次，禁止按微操作逐条写 checkpoint。
+- **Baseline**：`main@762eb3fc5041cd088034794eb49582bdafc9ab93`；现有连续执行/checkpoint 规则已存在于 `AGENTS.md`、`CHATGPT_PROJECT_INSTRUCTIONS.md`、`DOCUMENTATION_POLICY.md`、`current/dev/README.md`、Copilot instructions。
+- **Evidence / reason**：用户明确要求上一版规则增加非原子 GitHub 写链的 checkpoint 批处理约束，以兼顾突然中断恢复能力和执行效率。
+- **Files in scope**：`AGENTS.md`、`docs/project/CHATGPT_PROJECT_INSTRUCTIONS.md`、`docs/project/DOCUMENTATION_POLICY.md`、`docs/project/current/dev/README.md`、`.github/copilot-instructions.md`、本 Rules checkpoint。
+- **Do-not-touch**：App 源码、Build233/其他功能任务 checkpoint、Frozen/P0 模块、功能 branch/PR/CI/IPA。
+- **Completed**：已确认最新 main、会话路由、通知规则、MODULE_STATUS 与现有连续执行/checkpoint 条款；已建立本次 Rules checkpoint。
+- **Validation state**：Rule refinement in progress; no App/runtime change.
+- **Pending**：同步永久规则文件；核验最终 diff/主线身份；恢复 Rules checkpoint 为 Idle。
+- **Next exact action**：将非原子 GitHub 写链批量 checkpoint 判定同步到永久规则入口，并保持现有 Artifact/IPA/Runtime 交付和证据边界不变。
+- **Rejected / do-not-repeat**：不得为 blob/tree/commit/ref 每个微操作单独写 checkpoint；不得把 checkpoint 推迟到 CI/出包/最终结论；不得因普通中间状态等待用户“继续”。
+- **Open questions / risks**：并行开发可能继续推进 `main`；最终核验需区分本规则会话净变更与并行功能会话变更。
 
 ## Permanent rule sources
 
