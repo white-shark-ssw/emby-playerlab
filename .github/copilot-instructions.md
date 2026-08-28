@@ -14,6 +14,7 @@ Key rules:
 - preserve iOS 15.0 Deployment Target unless a verified dependency/API requirement forces a change; never exceed iOS 17.0;
 - never make the NAS relay media bytes;
 - never restore time→byte proportional seek guessing;
+- once a development task is unambiguous and required pre-checks pass, continue autonomously through the available implementation/validation/commit/CI/IPA path until a user-testable IPA/Artifact is produced and its Build/source/artifact/package/MinOS identity is verified; do not stop at code completion, checks, commits, CI, packaging preparation, or checkpoints waiting for `继续` unless a real user decision/information need, conflict, external blocker, or missing execution capability prevents further progress;
 - never claim CI/IPA success equals real-device success;
 - update `docs/project/` after material development or test conclusions.
 
