@@ -52,12 +52,44 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
         let timestamp: CFTimeInterval
     }
 
+    private struct TimedImagePublishEvent {
+        let image: ImageEvent
+        let durationMS: Double
+    }
+
+    private struct SurfaceImageEvent {
+        let image: ImageEvent
+        let publishToSinkMS: Double
+        let setImageDurationMS: Double
+        let publishToSurfaceMS: Double
+    }
+
+    private struct PageApplyEvent {
+        let route: String
+        let reset: Bool
+        let startIndex: Int
+        let receivedCount: Int
+        let appliedCount: Int
+        let durationMS: Double
+        let timestamp: CFTimeInterval
+    }
+
+    private struct PageSnapshotEvent {
+        let route: String
+        let durationMS: Double
+        let timestamp: CFTimeInterval
+    }
+
     private var displayLink: CADisplayLink?
     private var lastDisplayTimestamp: CFTimeInterval?
     private var visiblePosterCount = 0
     private var lastCellAppear: PosterEvent?
     private var lastImageCommit: ImageEvent?
+    private var lastImagePublish: TimedImagePublishEvent?
+    private var lastImageSurface: SurfaceImageEvent?
     private var lastImageCallback: TimedImageEvent?
+    private var lastPageApply: PageApplyEvent?
+    private var lastPageSnapshot: PageSnapshotEvent?
     private var lastContrastDurationMS: Double?
     private var lastContrastCompletedAt: CFTimeInterval?
     private var lastLoadAhead: PosterEvent?
@@ -94,6 +126,31 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
         precondition(Thread.isMainThread)
         let context = imageContext(url)
         lastImageCommit = ImageEvent(itemID: context.itemID, imageType: context.imageType, maxWidth: context.maxWidth, source: source, role: role, timestamp: CACurrentMediaTime())
+    }
+
+    func imagePublishDidComplete(url: URL, source: String, role: String, durationMS: Double) {
+        precondition(Thread.isMainThread)
+        let context = imageContext(url)
+        let image = ImageEvent(itemID: context.itemID, imageType: context.imageType, maxWidth: context.maxWidth, source: source, role: role, timestamp: CACurrentMediaTime())
+        lastImagePublish = TimedImagePublishEvent(image: image, durationMS: durationMS)
+    }
+
+    func imageSurfaceDidAdopt(url: URL?, source: String, role: String, publishStartedAt: CFTimeInterval?, sinkStartedAt: CFTimeInterval, completedAt: CFTimeInterval) {
+        precondition(Thread.isMainThread)
+        guard let url, let publishStartedAt else { return }
+        let context = imageContext(url)
+        let image = ImageEvent(itemID: context.itemID, imageType: context.imageType, maxWidth: context.maxWidth, source: source, role: role, timestamp: completedAt)
+        lastImageSurface = SurfaceImageEvent(image: image, publishToSinkMS: max(0, (sinkStartedAt - publishStartedAt) * 1000), setImageDurationMS: max(0, (completedAt - sinkStartedAt) * 1000), publishToSurfaceMS: max(0, (completedAt - publishStartedAt) * 1000))
+    }
+
+    func pageApplyDidComplete(route: String, reset: Bool, startIndex: Int, receivedCount: Int, appliedCount: Int, durationMS: Double) {
+        precondition(Thread.isMainThread)
+        lastPageApply = PageApplyEvent(route: route, reset: reset, startIndex: startIndex, receivedCount: receivedCount, appliedCount: appliedCount, durationMS: durationMS, timestamp: CACurrentMediaTime())
+    }
+
+    func pageSnapshotDidComplete(route: String, durationMS: Double) {
+        precondition(Thread.isMainThread)
+        lastPageSnapshot = PageSnapshotEvent(route: route, durationMS: durationMS, timestamp: CACurrentMediaTime())
     }
 
     func imageCallbackDidComplete(url: URL?, source: String, durationMS: Double) {
@@ -204,6 +261,37 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
         let lastCallbackSource = lastImageCallback?.source ?? "none"
         let lastLoadAheadID = lastLoadAhead?.itemID ?? "none"
         DiagnosticsLogger.shared.log("PosterScrollHitch", "frame_gap_ms=\(gapText) scroll_route=\(sample.route) phase=\(phase) offset_y=\(offsetText) delta_y=\(deltaText) velocity_y=\(velocityText) registered_scrolls=\(scrollObservations.count) moving_scrolls=\(movingSamples.count) visible=\(visiblePosterCount) last_cell=\(lastCellID) cell_route=\(lastCellRoute) cell_age_ms=\(cellAgeText) image_item=\(lastImageItemID) image_type=\(lastImageType) image_max_width=\(lastImageMaxWidth) image_source=\(lastImageSource) image_role=\(lastImageRole) image_age_ms=\(imageAgeText) callback_item=\(lastCallbackItemID) callback_type=\(lastCallbackImageType) callback_max_width=\(lastCallbackMaxWidth) callback_source=\(lastCallbackSource) callback_age_ms=\(callbackAgeText) callback_duration_ms=\(callbackDurationText) contrast_age_ms=\(contrastAgeText) contrast_duration_ms=\(contrastDurationText) load_ahead=\(lastLoadAheadID) load_ahead_age_ms=\(loadAheadAgeText)")
+        DiagnosticsLogger.shared.log("PosterScrollTiming", timingSummary(now: now))
+    }
+
+    private func timingSummary(now: CFTimeInterval) -> String {
+        let publish = lastImagePublish
+        let surface = lastImageSurface
+        let pageApply = lastPageApply
+        let pageSnapshot = lastPageSnapshot
+        let publishAgeText = String(format: "%.1f", publish.map { max(0, (now - $0.image.timestamp) * 1000) } ?? -1)
+        let publishDurationText = String(format: "%.1f", publish?.durationMS ?? -1)
+        let surfaceAgeText = String(format: "%.1f", surface.map { max(0, (now - $0.image.timestamp) * 1000) } ?? -1)
+        let publishToSinkText = String(format: "%.1f", surface?.publishToSinkMS ?? -1)
+        let surfaceSetText = String(format: "%.1f", surface?.setImageDurationMS ?? -1)
+        let publishToSurfaceText = String(format: "%.1f", surface?.publishToSurfaceMS ?? -1)
+        let pageApplyAgeText = String(format: "%.1f", pageApply.map { max(0, (now - $0.timestamp) * 1000) } ?? -1)
+        let pageApplyDurationText = String(format: "%.1f", pageApply?.durationMS ?? -1)
+        let pageSnapshotAgeText = String(format: "%.1f", pageSnapshot.map { max(0, (now - $0.timestamp) * 1000) } ?? -1)
+        let pageSnapshotDurationText = String(format: "%.1f", pageSnapshot?.durationMS ?? -1)
+        let publishItem = publish?.image.itemID ?? "none"
+        let publishSource = publish?.image.source ?? "none"
+        let publishRole = publish?.image.role ?? "none"
+        let surfaceItem = surface?.image.itemID ?? "none"
+        let surfaceSource = surface?.image.source ?? "none"
+        let surfaceRole = surface?.image.role ?? "none"
+        let pageRoute = pageApply?.route ?? "none"
+        let pageReset = pageApply.map { $0.reset ? "1" : "0" } ?? "none"
+        let pageStart = pageApply.map { String($0.startIndex) } ?? "none"
+        let pageReceived = pageApply.map { String($0.receivedCount) } ?? "none"
+        let pageApplied = pageApply.map { String($0.appliedCount) } ?? "none"
+        let snapshotRoute = pageSnapshot?.route ?? "none"
+        return "publish_item=\(publishItem) publish_source=\(publishSource) publish_role=\(publishRole) publish_age_ms=\(publishAgeText) publish_duration_ms=\(publishDurationText) surface_item=\(surfaceItem) surface_source=\(surfaceSource) surface_role=\(surfaceRole) surface_age_ms=\(surfaceAgeText) publish_to_sink_ms=\(publishToSinkText) surface_set_ms=\(surfaceSetText) publish_to_surface_ms=\(publishToSurfaceText) page_route=\(pageRoute) page_reset=\(pageReset) page_start=\(pageStart) page_received=\(pageReceived) page_applied=\(pageApplied) page_apply_age_ms=\(pageApplyAgeText) page_apply_duration_ms=\(pageApplyDurationText) snapshot_route=\(snapshotRoute) snapshot_age_ms=\(pageSnapshotAgeText) snapshot_duration_ms=\(pageSnapshotDurationText)"
     }
 
     private func imageContext(_ url: URL) -> (itemID: String, imageType: String, maxWidth: String) {
@@ -306,6 +394,7 @@ private final class EmbyCachedImageLoader: ObservableObject {
         let url: URL
         let source: String
         let role: String
+        let startedAt: CFTimeInterval
     }
 
     @Published var image: UIImage?
@@ -338,9 +427,12 @@ private final class EmbyCachedImageLoader: ObservableObject {
             return
         }
         if let rendered = EmbyDecodedImageRenderPool.shared.image(for: url) {
-            lastPublishContext = PublishContext(url: url, source: "memory", role: diagnosticRole)
+            let publishStartedAt = CACurrentMediaTime()
+            lastPublishContext = PublishContext(url: url, source: "memory", role: diagnosticRole, startedAt: publishStartedAt)
             image = rendered
+            let publishDurationMS = (CACurrentMediaTime() - publishStartedAt) * 1000
             EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: "memory", role: diagnosticRole)
+            EmbyPosterScrollHitchDiagnostics.shared.imagePublishDidComplete(url: url, source: "memory", role: diagnosticRole, durationMS: publishDurationMS)
             setLoading(false, reportsLoadingState: reportsLoadingState)
             return
         }
@@ -356,9 +448,12 @@ private final class EmbyCachedImageLoader: ObservableObject {
                         EmbyDecodedImageRenderPool.shared.store(cachedImage, for: url)
                         await MainActor.run {
                             guard let self, self.currentURL == url else { return }
-                            self.lastPublishContext = PublishContext(url: url, source: "disk", role: diagnosticRole)
+                            let publishStartedAt = CACurrentMediaTime()
+                            self.lastPublishContext = PublishContext(url: url, source: "disk", role: diagnosticRole, startedAt: publishStartedAt)
                             self.image = cachedImage
+                            let publishDurationMS = (CACurrentMediaTime() - publishStartedAt) * 1000
                             EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: "disk", role: diagnosticRole)
+                            EmbyPosterScrollHitchDiagnostics.shared.imagePublishDidComplete(url: url, source: "disk", role: diagnosticRole, durationMS: publishDurationMS)
                             self.setLoading(false, reportsLoadingState: reportsLoadingState)
                         }
                         return
@@ -378,9 +473,12 @@ private final class EmbyCachedImageLoader: ObservableObject {
                 EmbyDecodedImageRenderPool.shared.store(loaded, for: url)
                 await MainActor.run {
                     guard let self, self.currentURL == url else { return }
-                    self.lastPublishContext = PublishContext(url: url, source: "network", role: diagnosticRole)
+                    let publishStartedAt = CACurrentMediaTime()
+                    self.lastPublishContext = PublishContext(url: url, source: "network", role: diagnosticRole, startedAt: publishStartedAt)
                     self.image = loaded
+                    let publishDurationMS = (CACurrentMediaTime() - publishStartedAt) * 1000
                     EmbyPosterScrollHitchDiagnostics.shared.imageDidCommit(url: url, source: "network", role: diagnosticRole)
+                    EmbyPosterScrollHitchDiagnostics.shared.imagePublishDidComplete(url: url, source: "network", role: diagnosticRole, durationMS: publishDurationMS)
                     self.setLoading(false, reportsLoadingState: reportsLoadingState)
                 }
             } catch {
@@ -642,7 +740,15 @@ private struct EmbyCachedDisplayImageSurface: UIViewRepresentable {
 
         init(loader: EmbyCachedImageLoader) {
             self.loader = loader
-            imageCancellable = loader.$image.sink { [weak self] image in self?.surface?.setImage(image) }
+            imageCancellable = loader.$image.sink { [weak self] image in
+                guard let self, let surface = self.surface else { return }
+                let publishContext = self.loader.lastPublishContext
+                let sinkStartedAt = CACurrentMediaTime()
+                surface.setImage(image)
+                let completedAt = CACurrentMediaTime()
+                guard image != nil else { return }
+                EmbyPosterScrollHitchDiagnostics.shared.imageSurfaceDidAdopt(url: publishContext?.url, source: publishContext?.source ?? "unknown", role: publishContext?.role ?? "display", publishStartedAt: publishContext?.startedAt, sinkStartedAt: sinkStartedAt, completedAt: completedAt)
+            }
         }
 
         func attach(_ surface: EmbyCachedDisplayImageSurfaceView) {

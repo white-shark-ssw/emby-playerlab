@@ -4,6 +4,7 @@ from pathlib import Path
 grid_source = Path("Sources/UI/EmbyPosterGrid.swift").read_text(encoding="utf-8")
 image_source = Path("Sources/UI/EmbySharedImageAndNavigation.swift").read_text(encoding="utf-8")
 poster_source = Path("Sources/UI/EmbyServerSharedV3.swift").read_text(encoding="utf-8")
+browse_source = Path("Sources/UI/EmbyServerBrowseV3.swift").read_text(encoding="utf-8")
 person_source = Path("Sources/UI/EmbyPersonMediaView.swift").read_text(encoding="utf-8")
 
 required_grid = [
@@ -127,5 +128,31 @@ if "guard width == nil else { return 440 }" in poster_source:
 person_image_contract = "contentMode: .fill, showsLoadingIndicator: false)"
 if person_image_contract not in person_source:
     raise SystemExit("person result poster grid must use the non-animated loading-state path")
+
+required_timing_diagnostics = [
+    "imagePublishDidComplete(url:",
+    "imageSurfaceDidAdopt(url:",
+    "DiagnosticsLogger.shared.log(\"PosterScrollTiming\"",
+    "publish_duration_ms=",
+    "publish_to_sink_ms=",
+    "surface_set_ms=",
+    "publish_to_surface_ms=",
+    "page_apply_duration_ms=",
+    "snapshot_duration_ms=",
+]
+for needle in required_timing_diagnostics:
+    if needle not in image_source:
+        raise SystemExit(f"missing poster timing diagnostic contract: {needle}")
+
+required_pagination_timing = [
+    "import QuartzCore",
+    "let applyStartedAt = CACurrentMediaTime()",
+    "EmbyPosterScrollHitchDiagnostics.shared.pageApplyDidComplete(route: diagnosticRoute",
+    "let snapshotStartedAt = CACurrentMediaTime()",
+    "EmbyPosterScrollHitchDiagnostics.shared.pageSnapshotDidComplete(route: diagnosticRoute",
+]
+for needle in required_pagination_timing:
+    if needle not in browse_source:
+        raise SystemExit(f"missing pagination timing contract: {needle}")
 
 print("poster grid smoothness source contract: PASS")

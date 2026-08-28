@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import UIKit
+import QuartzCore
 
 private enum V3LibraryTab: String, CaseIterable, Identifiable {
     case items
@@ -385,15 +386,19 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         do {
             let query = spec(for: tab)
             let page = try await client.libraryHubItemsPage(parentId: library.id, limit: pageSize, startIndex: start, recursive: true, sortBy: sortBy, includeItemTypes: query.types, filters: query.filters)
+            let applyStartedAt = CACurrentMediaTime()
             let allowed = Set(query.types.map { $0.lowercased() })
             let filtered = page.items.filter { allowed.isEmpty || allowed.contains($0.type?.lowercased() ?? "") }
+            var appliedCount = 0
             if reset {
                 var seen = Set<String>()
                 let unique = filtered.filter { seen.insert($0.id).inserted }
+                appliedCount = unique.count
                 tabItems[tab] = unique
                 state = V3LibraryPageState(nextStartIndex: page.items.count, hasMore: page.totalRecordCount.map { page.items.count < $0 } ?? (page.items.count == pageSize), isFetching: false, hasLoaded: true, seenItemIDs: seen)
             } else {
                 let newItems = filtered.filter { state.seenItemIDs.insert($0.id).inserted }
+                appliedCount = newItems.count
                 if !newItems.isEmpty { tabItems[tab, default: []].append(contentsOf: newItems) }
                 state.nextStartIndex = start + page.items.count
                 state.hasMore = page.totalRecordCount.map { state.nextStartIndex < $0 } ?? (page.items.count == pageSize)
@@ -401,7 +406,11 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             }
             pageStates[tab] = state
             loadedTabs.insert(tab)
+            let diagnosticRoute = "library-\(tab.rawValue)"
+            EmbyPosterScrollHitchDiagnostics.shared.pageApplyDidComplete(route: diagnosticRoute, reset: reset, startIndex: start, receivedCount: page.items.count, appliedCount: appliedCount, durationMS: (CACurrentMediaTime() - applyStartedAt) * 1000)
+            let snapshotStartedAt = CACurrentMediaTime()
             persistSnapshot()
+            EmbyPosterScrollHitchDiagnostics.shared.pageSnapshotDidComplete(route: diagnosticRoute, durationMS: (CACurrentMediaTime() - snapshotStartedAt) * 1000)
         } catch {
             if !isEmbyRequestCancellation(error) { errorMessages[tab] = error.localizedDescription }
         }
