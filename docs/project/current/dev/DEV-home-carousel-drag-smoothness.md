@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build226 / 0.14.59 is the current visual-preserving horizontal Hero-residency candidate. Build225 is now horizontally real-device tested and materially positive: deferring target clear-Hero first presentation during active drag made the carousel feel noticeably finer, establishing that presentation as a causal contributor, but Build225 itself remains diagnostic because incoming clear Hero is withheld during drag. Build226 keeps current + previous + next clear Heroes resident so both drag targets are already presented before finger tracking while normal Hero/persistent crossfades are preserved. Build226 CI/IPA is verified; target-device horizontal A/B pending. Build216 remains the accepted overall runtime baseline.**
+**Active — Build228 / 0.14.61 is the current horizontal release-tail max-refresh A/B. Build227 is now target-device tested and rejected as a title-shimmer fix: physical-pixel foreground X rounding did not remove the movie-title jitter. The same Build227 recording reveals a separate release-tail smoothness issue, and exact source inspection proves the proven device-max refresh request was invalidated at `touchesEnded` before the existing 0.22s/0.18s automatic settle/cancel animation. Build228 returns to the cleaned Build226 presentation baseline and changes only that refresh-request lifetime through settle/cancel. Build228 CI/IPA is verified; target-device test pending. Build216 remains the accepted overall runtime baseline.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Target device: iPhone 15 Pro Max / iOS 17.0
@@ -194,26 +194,84 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 
 ## Build226 / 0.14.59 — three-slot Hero residency
 
-Build226 is the visual-preserving follow-up to Build225's positive horizontal A/B. Instead of hiding the incoming clear Hero during active drag, it keeps at most three full Hero presentations resident for the settled item: current + previous + next. The residency set is derived from the existing `currentCarouselItemID`; no duplicate stored transition state is added.
-
-Because `currentCarouselItemID` does not rotate until `settleCarousel`, both possible horizontal target Heroes are already mounted throughout touch acquisition, drag and release animation. Drag-time current/target Hero blending therefore returns to normal `carouselOpacity(...)` behavior without creating a new 1400px Hero presentation inside the direct finger-tracking phase. After settle, residency rotates and any newly distant neighbor may mount outside active finger tracking.
-
-Retained unchanged: normal persistent current/target crossfade, `EmbyCachedRemoteImage` shared loader/cache implementation, carousel preload, Build215 acquisition-relative motion, Build219 exact device-max refresh request, full-width page slots, opaque foreground, 0.28 commit threshold, 0.48×width predicted release gate, and all Player / MPV / PiP / Transport / Cache / Session / P0/Frozen paths.
+Build226 is the visual-preserving follow-up to Build225's positive target-Hero isolation. It keeps at most three clear Hero presentations resident for the settled item: current + previous + next, derived from the existing `currentCarouselItemID`. Both possible horizontal targets are therefore already mounted before active finger tracking, while normal Hero and persistent crossfades remain intact.
 
 CI / package evidence:
 
 - branch: `perf/home-carousel-hero-residency-build226`;
-- exact base: cleaned Build225 head `b4b8b76f316a675032f49fa7b616b6692427e96e`;
 - exact tested source: `df1c9afce1dc96495dba16aa52e39254f23c7f65`;
 - dedicated Xcode 16.4 run/job: `33151618930 / 98784687139` — success;
-- artifact: `OnePlayer-0.14.59-build226-hero-residency`, ID `9677979449`;
-- artifact SHA-256: `0ac4813d3a7578c52cb419be4402ffa4df14b992bb21ef19823189ba8973af7f`;
+- artifact ID: `9677979449`;
 - IPA SHA-256: `881638aec2b31bef6b3b6b08bbd31c978eb5f4454683225ad4a212ccad99fe34`;
 - source ZIP SHA-256: `5342c7af8145fc32e1b131947f7ce05f3ee8f81c0de39179c92c51c958cfe2b0`;
-- independent package reopen confirms bundle `com.embyplayerlab.app`, OnePlayer `0.14.59 (226)`, `MinimumOSVersion=15.0`, runtime Mach-O minOS 15.0, compatibility audit OK and `CADisableMinimumFrameDurationOnPhone=true`;
-- exact diff against the cleaned Build225 base changes product source only in `AppIdentity.swift`, `EmbyHomeHeroV3.swift`, and `EmbyHomeCarouselStateV3.swift`; shared image loader, carousel interaction owner and Home core are untouched.
+- OnePlayer `0.14.59 (226)`, MinOS 15.0 independently verified.
 
-Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / stable ❌.
+### 2026-08-28 horizontal real-device result
+
+User feedback on iPhone 15 Pro Max / iOS 17.0 after testing Build226:
+
+- the first recording shows the **overall carousel is now fairly close to EX**;
+- hand feel is **much better than the original OnePlayer carousel**, confirming the Hero-residency direction is correct;
+- the user still feels there is room for further refinement, so Build226 is not yet stable/frozen;
+- a second slow-drag recording exposes a separate visible issue: the large white movie-title text appears to shimmer/jitter while moving horizontally.
+
+Both supplied recordings are `510×1108 @ 30 fps`. They are useful for visual/presentation evidence but cannot by themselves prove 120 Hz cadence parity. Frame-by-frame inspection of the slow-drag recording shows the title, rating/year/type row and overview translate together as one foreground page with stable relative geometry. The most visible instability is the high-contrast title glyph edge/clarity changing during slow horizontal movement, which supports a foreground text rasterization/compositing hypothesis rather than a title-only state or layout jump. This is not yet proof that physical-pixel alignment is the final fix.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / horizontal real-device tested ✅ / overall materially positive and fairly close to EX ✅ / residual slow-drag title shimmer observed / stable ❌.
+
+## Build227 / 0.14.60 — foreground physical-pixel alignment A/B
+
+Build227 rounded only the final foreground-page X offset to the current display physical-pixel grid while retaining Build226 Hero residency, normal Hero/persistent crossfades, Build215 acquisition-relative movement, Build219 device-max refresh request and the existing release rules.
+
+CI / package evidence:
+
+- branch: `diag/home-carousel-foreground-pixel-align-build227`;
+- exact tested source: `7ac8de30b76192ee3cd9c9382edca74b9ff5e69d`;
+- dedicated Xcode 16.4 run/job: `33153825917 / 98791806487` — success;
+- artifact ID: `9678871748`;
+- IPA SHA-256: `b24d8abcd91f4faa74e06d8485bac3611725c561d9c99144c17def4b8ef26766`;
+- source ZIP SHA-256: `16bc14dd82cae7d2599f23fefaf7b5e4d9c95db6a17dbaa08921e3749f41d278`;
+- OnePlayer `0.14.60 (227)`, MinOS 15.0 independently verified.
+
+### 2026-08-28 horizontal real-device result
+
+User feedback on iPhone 15 Pro Max / iOS 17.0: **movie-title text still has a visible jitter/shimmer feel**, so physical-pixel X rounding is rejected as a sufficient title-stability fix and must not be carried forward merely for that purpose. The same recording also exposes a second issue: after the finger is released, the automatic commit/cancel tail does not feel as silky as the active drag.
+
+The accompanying Build227 App log shows that active drag still requests 120 fps, but slow/long drags are not uniformly perfect: one 6175.8 ms drag recorded `display_p95_gap_ms=25.01`, 177 display intervals >=12.5 ms and 41 >=20 ms; another 4642.0 ms drag kept p95 at 8.34 ms but still had a 39.58 ms maximum gap. This means the remaining title symptom cannot be reduced to a title-only geometry jump or solved by 1/3pt quantization alone.
+
+More importantly, exact Build227 source inspection identifies a release-tail lifecycle discontinuity: the UIKit recognizer calls `V3HomeCarouselCadenceDiagnostics.shared.end(reason: "ended")` inside `touchesEnded` **before** `finishNativeCarouselDrag(...)` starts the existing 0.22 s commit / 0.18 s cancel animation. `end(...)` immediately invalidates the exact-max `CADisplayLink`, so Build219's proven high-refresh request covers active finger tracking but not the automatic release tail. The old cadence summary also ends at touch release, so it cannot measure the tail the user is now reporting.
+
+Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / horizontal real-device tested ✅ / title pixel-alignment hypothesis rejected as sufficient / release-tail cadence lifecycle issue identified in real source / stable ❌.
+
+## Build228 / 0.14.61 — release-tail max-refresh lifecycle A/B
+
+Build228 returns to the cleaned Build226 presentation baseline; Build227 physical-pixel rounding is intentionally absent. It changes only the lifetime of the already-proven Build219 device-max carousel refresh request:
+
+- horizontal acquisition still starts the same exact-max `CADisplayLink` request;
+- `touchesEnded` / ordinary `touchesCancelled` no longer invalidate that request before release handling;
+- an interactive commit keeps the request until the existing 0.22 s animation reaches `settleCarousel`;
+- an interactive cancel keeps it until the existing 0.18 s cancel completion;
+- horizontal acquisition that ends without any transition releases immediately through explicit no-transition/no-target cleanup;
+- no new timer, interpolation, retry, watchdog, fallback, gesture owner or duplicate state is introduced.
+
+Build226 three-slot Hero residency, normal Hero/persistent crossfades, raw acquisition-relative foreground X, 0.28 commit threshold, 0.48×width predicted-distance gate and the existing 0.22/0.18 easing/durations are unchanged. This isolates refresh-request lifetime before changing release animation math.
+
+CI / package evidence:
+
+- branch: `perf/home-carousel-release-refresh-build228`;
+- exact base: cleaned Build226 head `f9f1ecf6334c14641dbdf780a5b09a118495b8ec`;
+- exact tested source: `bdf63c7562fcd1edc1d224872230e988ac462281`;
+- dedicated Xcode 16.4 run/job: `33156739621 / 98801196041` — success;
+- artifact: `OnePlayer-0.14.61-build228-release-refresh`, ID `9679963420`;
+- artifact SHA-256: `0b3a3a2b4d38f5f0bbff4a406e1523e161f7f6600065b9e5ee9e00cd075938bc`;
+- IPA SHA-256: `cda90b62e3cabd3199e1cfbc1b2e1c77b8a84d023a7c7b9c8e2ff66ab9edcf44`;
+- source ZIP SHA-256: `d91b014486e5fb1c5c9798b2b56bf45f0bad4f9e47f433a9f862c5fa586ecf68`;
+- independent package reopen confirms bundle `com.embyplayerlab.app`, OnePlayer `0.14.61 (228)`, `MinimumOSVersion=15.0` and `CADisableMinimumFrameDurationOnPhone=true`;
+- independent source reopen confirms Build227 pixel rounding is absent, Build226 Hero residency remains, exact max-refresh remains, and the request now ends at interactive settle/cancel completion rather than touch release.
+
+Build228 also makes the existing cadence log cover the automatic tail: successful commits should now end with `reason=settled`, and cancels with `reason=cancelled-settled`, so the next target-device log can directly measure tail display cadence.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / diagnostic candidate / stable ❌.
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -224,8 +282,9 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 - split native-move + SwiftUI-release ownership;
 - recoupling foreground alpha to backdrop blend;
 - coalesced-touch second visual owner without new evidence;
-- debounce/throttle/timer/interpolator/watchdog/retry smoothing.
+- debounce/throttle/timer/interpolator/watchdog/retry smoothing;
+- Build227 physical-pixel foreground X rounding as a sufficient movie-title shimmer fix.
 
 ## Next exact action
 
-Install Build226 on iPhone 15 Pro Max / iOS 17.0 and test only horizontal carousel interaction. Compare directly with Build225 and EX: slow sustained tracking, quick left/right swipes, rapid direction reversal, repeated adjacent-page changes, and release/settle. Acceptance question: does Build226 retain Build225's noticeably finer tactile feel **while restoring the incoming clear Hero continuously during drag**? Also note any new hitch immediately after a page settles, because residency rotates one neighbor at settle. Do not use Home vertical inertial scrolling as the acceptance gate.
+Install Build228 on iPhone 15 Pro Max / iOS 17.0 and compare directly with Build226/227. Primary acceptance is the **finger-release automatic tail**: test short committed swipes, longer committed drags, partial drags that cancel back, and rapid repeated adjacent-page transitions. Judge whether the moment after finger release now keeps the same fine cadence as active drag. Export the App log after the test; Build228 cadence summaries should end at `reason=settled` / `reason=cancelled-settled` and now include the release animation itself. Do not expect Build228 to directly fix the already-confirmed title shimmer because foreground text presentation during active drag is unchanged. If release tail improves materially, retain the extended high-refresh lifecycle and then return to the remaining title/cadence issue separately. If it does not, keep Build226 residency but inspect release velocity continuity / fixed-duration easing next; do not stack an easing change before this refresh-lifetime A/B is tested.
