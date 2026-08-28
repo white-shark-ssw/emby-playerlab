@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build226 / 0.14.59 positive horizontal real-device recordings and Build227 / 0.14.60 foreground physical-pixel A/B CI/IPA verification. Build216 remains the accepted overall runtime baseline. Build226 is now fairly close to EX and much better than the original carousel, validating three-slot Hero residency, but slow-drag movie-title shimmer and residual refinement remain. Build227 isolates foreground subpixel presentation and awaits target-device testing._
+_Last updated after Build228 target-device diagnostics, Build229 off-main Library snapshot CI/IPA verification, and the subsequent Build229-package Home-only vertical capture. Build216 remains the accepted overall runtime baseline. Build229 still awaits its intended Library 3×3 pagination A/B; the Home-only capture adds a separate periodic carousel-settle correlation but does not validate the Library persistence fix._
 
 ## Current accepted overall baseline
 
@@ -155,6 +155,12 @@ Build227 / 0.14.60 isolates the new title-shimmer finding. It keeps Build226 beh
 Build228 / 0.14.61 is now target-device diagnostic tested and **not** accepted as a smoothness fix; the user reports continued jitter and at times strong jitter. `OnePlayer-App-1787905589.log` captures a 55.1 ms real grid dragging long frame in the `StartIndex=60` pagination window. New Build228 instrumentation reports 0.0 ms latest image publish/Combine→UIKit adoption, 0.3 ms page apply, and 39.7 ms synchronous Library persistent-snapshot serialization/write ending ~8 ms before that hitch. This isolates Build213 Library persistence as a direct current severe-hitch contributor candidate, while Build212 remains the guardrail that it cannot explain the entire historical grid-hitch family.
 
 Build229 / 0.14.62 exact source `f5e3e3eb144578c863b172e3bd3a1aa13e5c2177` makes one evidence-supported runtime change: Library snapshot state is still captured on the `@MainActor`, then its JSON conversion/serialization/atomic write is awaited on one serial utility queue. Snapshot identity/schema/content/order are retained; Favorites persistence is unchanged. Exact Build228→229 scope is five paths only. Dedicated Xcode 16.4 run/job `33156266871 / 98799654927` succeeded; artifact `9679803873`; IPA SHA-256 `49efcb8766cc9414a3f35e3d8fe75a04eaf6adf2ba86a40f526a5e53c40acd4c`; source ZIP SHA-256 `1de13e01617a575bf5b204e9dd546af443b8a7fdf79003e3eba1399edfb06e5a`; MinOS 15.0 independently verified. **Evidence: Code written / exact scope+checker / CI passed / IPA produced+verified / target-device pending / not stable.**
+
+### Build229 package Home-only supporting capture
+
+The immediate follow-up recording/log after Build229 does **not** exercise the intended Library 3×3 route. It is Home vertical scrolling, and its log contains only `HomeCarousel settled` events with no Library snapshot/pagination timing. Therefore Build229 remains target-device pending for its actual off-main persistence hypothesis.
+
+The Home recording is 30 fps / 15.47 s. By filename timing, carousel settles land at approximately +5.214 s and +12.211 s, while frame motion shortly afterward shows near-zero/duplicate-frame → catch-up signatures. The roughly 7 s repetition matches the normal auto-advance/settle cadence in exact Build229 Home source. This is a plausible correlation for a periodic “sudden twitch” subtype, but it is not measured main-thread hitch proof because no `PosterScrollHitch` was emitted and 30 fps capture can duplicate frames. Build222 already proved that blocking new offscreen auto-advance does not remove overall Home vertical jitter, so no repeat of that patch is justified.
 
 Work: `DEV-poster-grid-smoothness`.
 

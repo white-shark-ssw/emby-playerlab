@@ -20,6 +20,17 @@ The user explicitly clarified that the active goal is **carousel optimization**,
 - Build222–224 are therefore closed as a vertical supporting-diagnostic detour and must not drive another vertical-only Build225;
 - resume the existing Build221 horizontal A/B before writing any new carousel patch.
 
+## Supporting Home vertical capture on Build229 package — 2026-08-28
+
+A Build229 package recording/log was supplied while discussing poster-scroll persistence, but the visible route is Home vertical scrolling. This does not change the horizontal carousel acceptance lane. It does add one supporting runtime correlation for the separate vertical-jitter history:
+
+- `OnePlayer-App-1787907572.log` contains five `HomeCarousel settled` records only; no poster-hitch or disk-cache timing records;
+- `RPReplay_Final1787907569.mp4` is 510×1108 at 30 fps for 15.47 s; two `settled` events align by filename time at about +5.214 s and +12.211 s;
+- frame motion shortly after both events contains near-zero/duplicate-frame → catch-up signatures; the second is cleaner around +12.30–12.37 s;
+- because 30 fps recording can itself duplicate samples and there is no matching `PosterScrollHitch`, treat this as correlation only, not measured main-thread frame duration.
+
+Exact Build229 Home source retains the normal main-run-loop carousel timer and `settleCarousel` mutates several Home `@State` values synchronously. A periodic settle-triggered presentation invalidation is therefore plausible for a distinct “sudden twitch” subtype. Build222 remains controlling contrary evidence: blocking new offscreen automatic transitions did **not** remove overall Home vertical hitching. Therefore no new carousel patch is justified from this correlation alone, and Build222 must not simply be repeated.
+
 ## Retained interaction contract
 
 Build198 remains the input foundation:

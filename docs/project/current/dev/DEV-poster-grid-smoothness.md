@@ -42,6 +42,16 @@ Build229 CI / IPA evidence:
 
 Next target-device A/B should repeat Library 3×3 scrolling through a real pagination boundary. The key question is whether the severe pagination-adjacent hitch disappears or materially shrinks. Do not claim the remaining non-pagination hitch family solved without new device evidence.
 
+## Build229 Home-only supporting capture — 2026-08-28
+
+The user immediately supplied a second target-device recording/log after Build229, but this capture is **Home vertical scrolling**, not the intended Library 3×3 pagination A/B. It therefore does **not** promote Build229 to target-device-tested for its Library persistence change. The intended Build229 Library test remains pending.
+
+Uploaded files: `OnePlayer-App-1787907572.log` and `RPReplay_Final1787907569.mp4`. The App log contains only five `HomeCarousel settled` records and no `PosterScrollHitch`, pagination, Library snapshot read/write, or page-apply records. The 15.47 s / 30 fps recording spans approximately 08:59:13.53Z–08:59:29.00Z by filename time. Two carousel settles fall inside that span at approximately +5.214 s (`item=143014`) and +12.211 s (`item=143013`). Frame-motion inspection shows near-zero/duplicate-frame → catch-up patterns shortly after both settle points, with the cleaner second sequence around +12.30–12.37 s. Because the recording itself is only 30 fps and the App log emitted no `PosterScrollHitch`, this is **supporting correlation, not proof of a 60–70 ms app-main-thread stall**.
+
+Exact Build229 source keeps the normal Home carousel timer on `.main`; `autoAdvanceCarouselIfNeeded()` starts a 0.62 s transition and schedules `settleCarousel` after 0.63 s. `settleCarousel` synchronously mutates `currentCarouselItemID`, transition IDs/progress/direction, drag state and `carouselLastSettledAt`, then logs `HomeCarousel settled`. Those state changes can invalidate Home presentation, so the approximately 7 s recurring settle cadence is a plausible contributor to a periodic “sudden twitch” subtype. However Build222 already blocked new automatic carousel transitions after Home left the top and the user still perceived Home vertical hitching, so offscreen auto-advance/settle is already rejected as the **sole or sufficient** explanation for Home vertical jitter. Do not repeat Build222 as a blind fix.
+
+Current interpretation: Build228's 39.7 ms synchronous Library write remains a valid contributor to the severe **Library pagination-adjacent** sample, while this new Home-only capture points to a separate periodic Home presentation/state-update correlation. The two paths must remain separate until route-specific device evidence proves otherwise.
+
 ## Acceptance / protected contracts
 
 - Home, library 3×3, favorites/more, search, tag and person/actor poster-heavy vertical scrolling must not show the visible “停一帧 → 下一帧追位” hitch.
