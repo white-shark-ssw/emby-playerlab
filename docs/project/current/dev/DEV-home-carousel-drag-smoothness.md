@@ -2,11 +2,11 @@
 
 ## Status
 
-**Active — Build234 / 0.14.67 target-device diagnostics now explain the remaining Build233 coarse-start fallback: 31 drags contain only `accepted` and `none` predecessor states. All 11 `none` cases have `acq_coalesced_count=1`, so the acquisition UIEvent contains only the current delivered touch and there is literally no earlier same-event real sample to use; none of the 31 cases were rejected by `direction` or `zero`. Those 11 fallback starts remain coarse (median first step 9.0pt; >=5pt 9/11), while 20 accepted same-event starts are much finer (median 3.0pt; >=5pt 4/20) with predecessor age almost always 4.17ms. This proves the Build233 same-event predecessor direction is valid when a predecessor exists, and proves the dominant residual failure is predecessor unavailability on the acquisition event, not the same-direction guard. Build231 foreground `compositingGroup()` remains materially beneficial; this Build234 capture is also cadence-clean (25/31 display p95 ≈8.34ms), consistent with the earlier report that title text is less jittery, but title stability is not frozen complete. Build226 Hero residency + Build228 max-refresh-through-settle remain retained. Build216 remains the accepted overall runtime baseline.**
+**Active — Build234 target-device diagnostics prove the dominant residual coarse-start fallback is acquisition-event predecessor absence: all 11 fallback cases had `acq_predecessor_status=none` with `acq_coalesced_count=1`, while accepted acquisition-local predecessors were much finer. Build236 / 0.14.69 is now CI/IPA verified as the narrow follow-up: only those one-sample acquisition cases inspect the first post-acquisition UIEvent for a real direction-compatible predecessor after acquisition, use it once as the render baseline while publishing the current delivered touch, then immediately return to ordinary delivered-touch ownership. Build231 foreground `compositingGroup()`, Build226 Hero residency, Build228 max-refresh-through-settle and 0.28/0.48 release semantics remain retained. Build235 remains reserved by Aether. Build236 target-device testing is pending; Build216 remains the accepted overall runtime baseline.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
-- Working branch: `diag/home-carousel-acquisition-coalesced-diagnostics-build234`
-- Current candidate: OnePlayer `0.14.67 (234)`
+- Working branch: `perf/home-carousel-post-acquisition-baseline-build236`
+- Current candidate: OnePlayer `0.14.69 (236)`
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Deployment Target policy: remain iOS 15.0
 - Accepted overall product baseline: OnePlayer 0.14.49 / Build216 on `main`
@@ -497,6 +497,31 @@ Cadence/title evidence remains supporting, not causal proof. This Build234 sessi
 
 Evidence: Build234 Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device diagnostic tested ✅ / same-event predecessor absence proven ✅ / behavior fix not yet tested ❌ / stable ❌.
 
+## Build236 / 0.14.69 — first post-acquisition real-predecessor A/B
+
+Build234 target-device evidence records 31 drags with 20 `accepted` acquisition events and 11 `none` events. Every `none` event has `acq_coalesced_count=1`, with zero `direction` and zero `zero` rejections; those fallback starts have median first visible step 9.0pt and >=5pt in 9/11 cases. This directly justifies extending the one-time real-coalesced-baseline rule by at most one UIEvent only for those one-sample acquisition cases.
+
+Build236 preserves Build233 acquisition-event behavior. If acquisition already has an accepted predecessor, nothing changes. If acquisition is exactly `none` with count 1, the first post-acquisition `touchesMoved` checks only real coalesced samples whose timestamp is after the acquisition touch and before the current delivered touch. The immediately preceding direction-compatible real sample may become the render baseline once; the visual publication is still the current delivered touch. If no such sample exists, the old fallback is preserved. The pending path is cleared after that first post-acquisition event. No timer, interpolation, numeric step cap, easing, debounce/throttle, predicted render authority or second owner is introduced.
+
+Build235 / 0.14.68 is reserved by the independent Aether task. Build236 / 0.14.69 is the unique carousel candidate after branch/active-checkpoint collision checks.
+
+Evidence: code patch prepared on `perf/home-carousel-post-acquisition-baseline-build236`; CI/IPA pending at this checkpoint; real-device pending; stable ❌.
+
+### CI / IPA evidence
+
+- branch: `perf/home-carousel-post-acquisition-baseline-build236`;
+- exact base: cleaned Build234 head `b0acb9e6db610341468f039076b77c1910765ad3`;
+- exact tested source: `7811f34104daaea8734e72404bcb2fadb6fa37f7`;
+- dedicated Xcode 16.4 run/job: `33193485825 / 98924631982` — success;
+- artifact: `OnePlayer-0.14.69-build236-post-acquisition-baseline`, ID `9694861946`;
+- artifact SHA-256: `3a45d3400ac396fbc47a38ec6974e8983d90e9a949c0ce37bf68f8e9d7051bd0`;
+- IPA SHA-256: `8e248cb5834be4bcc261e3e1b63db3c334b805a4245aab56c74a5fe5951cd4c5`;
+- source ZIP SHA-256: `256fa108bd8823e9f699036d8e85009b763e5b0bd11e5d357c8c352e0360f454`;
+- independent package reopen confirms bundle `com.embyplayerlab.app`, OnePlayer `0.14.69 (236)`, `MinimumOSVersion=15.0`, and `CADisableMinimumFrameDurationOnPhone=true`;
+- independent source reopen confirms Build236 pending path only for acquisition `none/count=1`, one first-post-acquisition real predecessor check, Build231 foreground `compositingGroup()`, Build226 Hero residency, Build228 settle/cancel max-refresh lifetime, unchanged 0.28/0.48 release rules, and no Build227 pixel rounding / Build230 persistent residency.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable ❌.
+
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -512,4 +537,4 @@ Evidence: Build234 Code written ✅ / exact scope+Frozen guard ✅ / CI passed �
 
 ## Next exact action
 
-Build234 has answered its diagnostic question. Do not change/remove the same-direction guard: no recorded fallback was caused by `direction` or `zero`; all 11 fallback cases were `status=none` with exactly one acquisition-event sample. Before the next carousel behavior build, perform the normal resume identity/build-collision guard. **Build235 is already reserved by the parallel Aether task on current `main`, so the carousel must not use Build235.** If a new carousel candidate is justified and the next free number remains available after re-check, use the next unreserved identity (currently Build236 is not found in project records, but verify again at allocation time). The narrow behavior A/B should preserve Build233/234 single-owner semantics and all retained Build226/228/231 contracts. For `status=none` only, inspect the first post-acquisition UIEvent for a real immediately preceding same-direction coalesced touch; if such a real predecessor exists, use it as a one-time render baseline and publish that event's delivered touch, then return to normal delivered-touch ownership. If no predecessor exists there either, keep the existing fallback. Add diagnostics sufficient to distinguish acquisition-event vs first-post-acquisition recovery. Do not add interpolation, timer, synthetic step cap, easing, predicted-touch render authority, or a second owner.
+Install Build236 / 0.14.69 on iPhone 15 Pro Max / iOS 17.0. Emphasize repeated immediate touch-and-drag starts (at least 12–15), plus several hold-before-drag comparisons, and export the App log immediately afterwards. Compare three groups: acquisition `accepted` (`post_acq_predecessor_status=not-needed`), acquisition `none/count=1 -> post_acq accepted`, and acquisition `none/count=1 -> post_acq none/direction/zero`. The main acceptance signal is whether the second group materially converges toward the already-fine acquisition-accepted first-step distribution without introducing reversal discontinuity, title regression, release-tail regression or other visual mismatch. If the first post-acquisition event still has no usable real predecessor, do not add synthetic interpolation or a hard step cap; inspect that evidence before another behavior change.

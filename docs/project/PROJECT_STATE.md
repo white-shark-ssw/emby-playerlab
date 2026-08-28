@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after poster Build229 target-device residual-hitch evidence and poster Build233 candidate-identity collision were recorded. Build216 remains the accepted overall runtime baseline; Home carousel Build233 remains its own valid CI/IPA candidate, while poster development is paused at resume identity guard._
+_Last updated after Home-carousel Build234 target-device acquisition diagnosis and Build236 / 0.14.69 post-acquisition real-predecessor A/B CI/IPA verification. Build216 remains the accepted overall runtime baseline; Build226 Hero residency + Build228 release-through-settle + Build231 foreground compositing remain retained._
 
 ## Current accepted overall baseline
 
@@ -189,6 +189,12 @@ Build234 / 0.14.67 changes no behavior. It records the acquisition UIEvent coale
 ### Build234 target-device diagnosis — one-sample acquisition events own the residual coarse fallback
 
 Build234 target-device log contains 31 drags. Exactly 20 acquisition events report `accepted` and 11 report `none`; there are no `direction` or `zero` rejections. Every `none` event has `acq_coalesced_count=1`, proving UIKit exposed only the current delivered touch and no earlier same-event real sample. Those 11 fallback starts are coarse (median first step 9.0pt; >=5pt 9/11), while accepted same-event starts are materially finer (median 3.0pt; >=5pt 4/20). Accepted predecessor age is almost always 4.17ms. Therefore do not remove the same-direction guard or add synthetic interpolation/step caps. The next carousel behavior A/B should target the one-sample acquisition case using only real touch samples and preserve the single UIKit owner. Build235 is reserved by parallel Aether work and cannot be reused for carousel.
+
+### Build234 diagnosis → Build236 first post-acquisition real-predecessor A/B
+
+Build234 target-device diagnostics close the remaining Build233 fallback ambiguity: all 11 coarse fallback starts are acquisition `none` with `acq_coalesced_count=1`, while there are zero `direction` and zero `zero` rejections. Those one-sample acquisition events have no earlier same-event real touch available, and the old next-delivered fallback remains coarse.
+
+Build236 / 0.14.69 is the minimum behavior A/B authorized by that evidence. Acquisition events that already have an accepted predecessor are unchanged. Only `none/count=1` cases inspect the first post-acquisition UIEvent for the last real coalesced predecessor whose timestamp is after acquisition and before the current delivered touch; a direction-compatible predecessor may become the render baseline once, and the current delivered touch remains the publication event. The pending path is cleared immediately after that UIEvent. No synthetic interpolation, hard step cap, timer, easing or second render owner is added. Exact tested source `7811f34104daaea8734e72404bcb2fadb6fa37f7`; run/job `33193485825 / 98924631982`; artifact `9694861946`; IPA SHA-256 `8e248cb5834be4bcc261e3e1b63db3c334b805a4245aab56c74a5fe5951cd4c5`; MinOS 15.0. Target-device pending; not stable.
 
 ## Active: Poster-heavy scrolling smoothness
 
