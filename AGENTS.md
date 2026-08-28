@@ -165,6 +165,23 @@ Before claiming success:
 4. Do not spend GitHub Actions builds on every tiny intermediate edit when static/source validation is sufficient.
 5. Run the necessary final CI/IPA workflow when the task reaches a testable baseline.
 
+### Continuous execution to a testable artifact
+
+Once a development task is unambiguous and the required routing, resume-identity, branch/Build collision, source/state-owner, Frozen/P0, and other pre-change checks have passed, **continue autonomously within the current environment's real execution capabilities until a user-testable IPA/Artifact exists and its identity has been verified.**
+
+Do not stop merely because code is written, a source/static check passed, a commit was created, CI was started or passed, packaging is being prepared, or a checkpoint was refreshed, and then wait for the user to say `继续`. Checkpoints preserve recoverability; they are not normal handoff gates.
+
+A development task may stop before artifact handoff only when at least one of these is real and material:
+
+- a decision, authorization, credential, test input, or other information must genuinely come from the user;
+- the current evidence contains a real conflict or ambiguity that cannot be resolved safely from repository facts;
+- an external blocker such as permissions, unavailable infrastructure, failed required service, or an unresolvable dependency prevents further progress;
+- the current environment genuinely lacks a capability required for the next step.
+
+Otherwise, continue through the applicable implementation, validation, commit/push, CI, IPA/Artifact generation, artifact retrieval/inspection, and identity checks without asking for an intermediate `continue`. Before handing the build to the user, verify the applicable Build/version, branch/PR/head or tested source commit, artifact identity/digest, IPA/package identity, and MinOS. The normal user handoff point is then **real-device testing**.
+
+This rule does not authorize bypassing evidence, minimal-change, Frozen/P0, compatibility, or parallel-task guards. A generated and identity-verified IPA/Artifact is still only `IPA produced`; it must never be described as `Real-device tested` or `Stable / frozen` until the required user/device evidence exists.
+
 Always distinguish:
 
 - Code written
