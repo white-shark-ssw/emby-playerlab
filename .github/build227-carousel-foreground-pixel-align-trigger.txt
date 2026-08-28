@@ -1,1 +1,0 @@
-trigger Build227 carousel foreground physical-pixel alignment
