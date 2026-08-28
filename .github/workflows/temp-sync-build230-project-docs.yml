@@ -1,0 +1,49 @@
+name: TEMP Sync Build230 Carousel Docs
+
+on:
+  push:
+    branches: [perf/home-carousel-persistent-residency-build230]
+    paths:
+      - ".github/build230-docs-sync-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build230 branch
+        uses: actions/checkout@v4
+        with:
+          ref: perf/home-carousel-persistent-residency-build230
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Update Build230 feature checkpoint
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          python3 scripts/temp_sync_build230_docs.py branch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "Docs: record carousel Build230 candidate [skip ci]"
+            git push origin HEAD:perf/home-carousel-persistent-residency-build230
+          fi
+
+      - name: Sync authoritative Build230 docs to main
+        run: |
+          set -euo pipefail
+          git fetch origin main perf/home-carousel-persistent-residency-build230
+          git checkout -B main origin/main
+          git show origin/perf/home-carousel-persistent-residency-build230:scripts/temp_sync_build230_docs.py > /tmp/temp_sync_build230_docs.py
+          python3 /tmp/temp_sync_build230_docs.py main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md
+          git diff --cached --check
+          git commit -m "Docs: sync carousel Build230 baseline [skip ci]"
+          git push origin main
