@@ -87,6 +87,12 @@ Deployment Target 应优先保持 iOS 15.0。
 
 代码格式方面：能自然写在一行的短语句、函数调用和表达式不要人为拆成多行。
 
+**开发任务一旦明确并通过全部必要前置检查，AI 必须在当前执行能力允许范围内自主连续推进到可测试 IPA/Artifact 已生成并完成身份核验，再交给用户进行真机测试。** 不得因为代码已经写完、检查通过、已经 commit/push、CI 已启动或通过、正在准备出包、刷新了 checkpoint 等中间状态停下来等待用户回复“继续”。checkpoint 的作用是保证会话可恢复，不是正常停工或交接门槛。
+
+只有以下情况允许在 IPA/Artifact 交付前停止并要求用户介入：确实需要用户做决定、授权、提供凭据/测试输入/其他信息；出现无法仅凭仓库事实安全消解的真实冲突或歧义；权限、CI/基础设施、必要外部服务或依赖形成真实外部阻塞；或者当前环境确实不具备下一步所需执行能力。除此之外，应继续完成适用的实现、检查、提交/推送、CI、IPA/Artifact 生成、Artifact 获取/检查和身份核验，不得把任何中间 checkpoint 当作等待“继续”的理由。
+
+交给用户真机测试前，应按任务实际情况核对 Build/version、branch/PR/head 或 tested source commit、artifact identity/digest、IPA/package identity 与 MinOS。该规则不允许绕过最小修改、Frozen/P0、兼容性、并行任务冲突或证据分级；已生成且身份核验完成的 IPA/Artifact 仍然只属于 `IPA produced`，不得描述成 `Real-device tested` 或 `Stable / frozen`。
+
 必须始终严格区分以下证据级别：
 
 1. Code written
