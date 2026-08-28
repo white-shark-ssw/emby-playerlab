@@ -107,7 +107,7 @@ final class V3HomeVerticalMotionDiagnostics: NSObject {
 
         let now = link.timestamp
         let autoAgeMS = lastAutoAdvanceAt.map { max(0, (now - $0) * 1000) } ?? -1
-        let settleAgeMS = lastSettle.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
+        let settleAgeMS = self.lastSettle.map { max(0, (now - $0.timestamp) * 1000) } ?? -1
         let phase = scrollView.isDragging ? "dragging" : (scrollView.isDecelerating ? "decelerating" : "moving")
         let gapText = String(format: "%.1f", gap * 1000)
         let offsetText = String(format: "%.2f", offsetY)
@@ -119,8 +119,9 @@ final class V3HomeVerticalMotionDiagnostics: NSObject {
         let insetDeltaText = String(format: "%.1f", insetDelta)
         let autoAgeText = String(format: "%.1f", autoAgeMS)
         let settleAgeText = String(format: "%.1f", settleAgeMS)
-        let settleDurationText = String(format: "%.1f", lastSettle?.durationMS ?? -1)
-        let settleItemID = lastSettle?.itemID ?? "none"
+        let settleDurationMS: Double = self.lastSettle?.durationMS ?? -1.0
+        let settleDurationText = String(format: "%.1f", settleDurationMS)
+        let settleItemID = self.lastSettle?.itemID ?? "none"
         DiagnosticsLogger.shared.log("HomeVerticalHitch", "gap_ms=\(gapText) phase=\(phase) offset_y=\(offsetText) delta_y=\(deltaText) velocity_y=\(velocityText) content_h=\(contentHeightText) content_delta_h=\(contentDeltaText) inset_top=\(insetText) inset_delta_top=\(insetDeltaText) auto_target=\(lastAutoAdvanceTargetID ?? \"none\") auto_age_ms=\(autoAgeText) settle_item=\(settleItemID) settle_age_ms=\(settleAgeText) settle_duration_ms=\(settleDurationText)")
     }
 
