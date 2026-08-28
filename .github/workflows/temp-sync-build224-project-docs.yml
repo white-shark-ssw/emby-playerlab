@@ -1,0 +1,110 @@
+name: TEMP Sync Build224 Project Docs
+
+on:
+  push:
+    branches: [diag/home-carousel-hero-artwork-isolation-build224]
+    paths:
+      - ".github/build224-docs-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build224 branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update Build224 branch checkpoint
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+          text = path.read_text()
+          text = text.replace(
+              '**Active — Build224 / 0.14.57 is now the current Home vertical diagnostic candidate at Code-written stage. It starts from current `main` / accepted Build216 product behavior, so the normal full-screen persistent backdrop and Dock presentation are restored. The only runtime presentation change is that `immersiveCarouselHero` no longer mounts the current/target `carouselHeroArtwork` 1400px clear-image layers. Persistent backdrop, preload, foreground/logo/text, auto-advance, horizontal interaction and all playback/P0 paths remain unchanged. Build223 was target-device tested and rejected as a sufficient vertical fix; its Dock appearance regression must not be retained. Build221 remains the separate horizontal persistent-drag A/B with target-device testing pending.**',
+              '**Active — Build224 / 0.14.57 is CI/IPA verified as the current Home vertical diagnostic candidate and is awaiting target-device testing. It starts from current `main` / accepted Build216 product behavior, so the normal full-screen persistent backdrop and Dock presentation are restored. The only runtime presentation change is that `immersiveCarouselHero` no longer mounts the current/target `carouselHeroArtwork` 1400px clear-image layers. Persistent backdrop, preload, foreground/logo/text, auto-advance, horizontal interaction and all playback/P0 paths remain unchanged. Build223 was target-device tested and rejected as a sufficient vertical fix; its Dock appearance regression is not carried forward. Build221 remains the separate horizontal persistent-drag A/B with target-device testing pending.**'
+          )
+          anchor = '- changelog commit: `6de5dafb17142e8d6fecdaa13d620df3eb00df07`\n'
+          ci = '''- tested CI head / exact source snapshot: `b6ee3361f183257a2ae01f1336506ab4a4c1a254`\n- dedicated Xcode 16.4 run/job: `33142773132 / 98757057369` — success\n- artifact: `OnePlayer-0.14.57-build224-hero-artwork-isolation`; ID `9674622017`\n- artifact digest: `sha256:cc7483a71f7b5cccb1c95c2fe52f4bd7756ea2c4f9f7d7a2ec4deeaf02636471`\n- IPA SHA-256: `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`\n- source ZIP SHA-256: `6537f85e6f644ccc85491ec357040bdac766e2ee63ef98ba1af5ec253d134a86`\n- independently re-opened package confirms OnePlayer `0.14.57 (224)`, bundle `com.embyplayerlab.app`, `MinimumOSVersion=15.0`, and `CADisableMinimumFrameDurationOnPhone=true`.\n- cleanup head after deleting temporary build workflow/trigger: `810e26b7abc3f90dfc0f7cacc64941d69d9a107d`; product source is unchanged by cleanup.\n- the earlier run `33142715378` stopped before compilation only because the temporary checker used Bash `mapfile`, unavailable in macOS Bash 3.2; it is not product CI evidence and was superseded by the successful dedicated run above.\n'''
+          if 'dedicated Xcode 16.4 run/job: `33142773132 / 98757057369`' not in text:
+              text = text.replace(anchor, anchor + ci)
+          text = text.replace(
+              '- CI passed ❌\n- IPA produced+verified ❌\n- Real-device tested ❌',
+              '- CI passed ✅\n- IPA produced+verified ✅\n- Real-device tested ❌'
+          )
+          text = text.replace(
+              'Run a dedicated Xcode 16.4 / MPV CI for Build224, verify exact source scope, OnePlayer 0.14.57 (224), MinOS 15.0 and IPA/source hashes. If CI/IPA evidence is clean, test **Home vertical scrolling** on the target device.',
+              'Install the CI/IPA-verified Build224 on iPhone 15 Pro Max / iOS 17.0 and test **Home vertical scrolling**. The build/package identity, exact source scope and MinOS 15.0 are already independently verified; the remaining evidence level is target-device behavior.'
+          )
+          path.write_text(text)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          if ! git diff --cached --quiet; then
+            git commit -m "Docs: record Build224 CI IPA evidence [skip ci]"
+            git push origin HEAD:diag/home-carousel-hero-artwork-isolation-build224
+          fi
+          cp docs/project/current/dev/DEV-home-carousel-drag-smoothness.md /tmp/build224-checkpoint.md
+
+      - name: Sync Build224 durable state to main
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          cp /tmp/build224-checkpoint.md docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          lines = module.read_text().splitlines()
+          new_row = '| Home carousel interaction | **Active — Build224 Hero-artwork vertical A/B CI/IPA verified; target-device pending; Build221 horizontal A/B still pending** | Build223 / 0.14.56 was target-device tested and still showed obvious Home vertical jitter, rejecting full-screen persistent-backdrop removal as a sufficient fix; its gray/translucent Dock was an unintended material-backing regression and is not carried forward. Build224 / 0.14.57 restores the accepted Build216 persistent background/Dock presentation and isolates only the clear 1400px Hero artwork mount: persistent backdrop, preload, foreground/logo/text, normal auto-advance, horizontal interaction and all P0/Frozen paths remain unchanged. Dedicated run/job `33142773132 / 98757057369` succeeded; artifact `9674622017`; IPA SHA-256 `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`; MinOS 15.0 independently verified. Target-device vertical A/B pending; not stable. Build221 remains separate. |'
+          found = False
+          for i, line in enumerate(lines):
+              if line.startswith('| Home carousel interaction |'):
+                  lines[i] = new_row
+                  found = True
+                  break
+          assert found, 'MODULE_STATUS Home carousel row not found'
+          module.write_text('\n'.join(lines) + '\n')
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          lines = index.read_text().splitlines()
+          row224 = '| **Build224 / 0.14.57** | Home vertical Hero artwork presentation isolation | **CI/IPA verified; target-device A/B pending; diagnostic only, not stable.** Starts from current main/accepted Build216 presentation, so full-screen persistent backdrop and normal Dock backing are restored. Only current/target `carouselHeroArtwork` 1400px clear-image mounts are absent; the Hero implementation remains in source, while persistent blur, preload, foreground/logo/text, normal auto-advance, horizontal interaction and P0/Frozen paths stay unchanged. Tested CI head `b6ee3361f183257a2ae01f1336506ab4a4c1a254`; run/job `33142773132 / 98757057369`; artifact `9674622017`; artifact digest `sha256:cc7483a71f7b5cccb1c95c2fe52f4bd7756ea2c4f9f7d7a2ec4deeaf02636471`; IPA SHA-256 `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`; source ZIP SHA-256 `6537f85e6f644ccc85491ec357040bdac766e2ee63ef98ba1af5ec253d134a86`; MinOS 15.0. |'
+          if not any(line.startswith('| **Build224 / 0.14.57**') for line in lines):
+              pos = next(i for i, line in enumerate(lines) if line.startswith('| **Build223 / 0.14.56**'))
+              lines.insert(pos + 1, row224)
+          index.write_text('\n'.join(lines) + '\n')
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          text = state.read_text()
+          text = re.sub(
+              r'^_Last updated.*_$',
+              '_Last updated after Build224 / 0.14.57 Home Hero-artwork isolation CI/IPA verification. Build216 remains the latest real-device accepted overall runtime baseline. Build224 restores the normal persistent background/Dock presentation and removes only the clear Hero 1400px artwork mounts for a single-variable vertical A/B; target-device testing is pending. Build223 persistent-backdrop removal was real-device ineffective and its Dock appearance regression is rejected. Build221 remains the separate horizontal A/B pending target-device testing._',
+              text,
+              count=1,
+              flags=re.M
+          )
+          block = '''\n### Build224 Home vertical Hero-artwork A/B\n\nBuild224 / 0.14.57 is the next independent vertical diagnostic from current main/accepted Build216 presentation. It restores the full-screen `persistentCarouselBackdrop` and therefore the normal `.ultraThinMaterial` Dock backing that Build223 disturbed. Its only runtime presentation difference is that `immersiveCarouselHero` does not mount current/target `carouselHeroArtwork` 1400px clear-image surfaces. The Hero artwork implementation remains in source; `carouselPreloadLayer`, persistent 30pt blur, foreground/logo/text/page indicators, normal auto-advance, horizontal carousel interaction and P0/Frozen paths are unchanged. This ordering is evidence-backed: Build219 tagged `hero`, `persistent`, and `preload` callbacks separately; 11 of 15 worst >=25 ms gaps were within 30 ms of Hero/persistent callbacks, and Build223 has now directly rejected persistent removal as sufficient. Dedicated Xcode 16.4 run/job `33142773132 / 98757057369` succeeded; tested CI head `b6ee3361f183257a2ae01f1336506ab4a4c1a254`; artifact `9674622017`; artifact digest `sha256:cc7483a71f7b5cccb1c95c2fe52f4bd7756ea2c4f9f7d7a2ec4deeaf02636471`; IPA SHA-256 `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`; source ZIP SHA-256 `6537f85e6f644ccc85491ec357040bdac766e2ee63ef98ba1af5ec253d134a86`; OnePlayer 0.14.57 (224) and MinOS 15.0 were independently re-opened/verified. Evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / diagnostic only / not stable**. Next vertical action is target-device Home scrolling A/B; expected loss of the clear Hero artwork is diagnostic-only.\n'''
+          if '### Build224 Home vertical Hero-artwork A/B' not in text:
+              marker = '\n## Active: Poster-heavy scrolling smoothness\n'
+              assert marker in text, 'PROJECT_STATE poster marker not found'
+              text = text.replace(marker, block + marker, 1)
+          text = text.replace(
+              'Home-carousel Build223 is the latest CI/IPA-verified vertical diagnostic candidate; Build221 remains a separate horizontal A/B;',
+              'Home-carousel Build224 is the latest CI/IPA-verified vertical diagnostic candidate; Build221 remains a separate horizontal A/B;'
+          )
+          state.write_text(text)
+          PY
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md
+          git diff --cached --check
+          git commit -m "Docs: sync Build224 CI IPA baseline [skip ci]"
+          git push origin main
