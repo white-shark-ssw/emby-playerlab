@@ -8,10 +8,10 @@ extension V3EmbyHomeView {
         return ZStack(alignment: .bottom) {
             if let item = currentCarouselItem {
                 carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
-                    .opacity(carouselOpacity(for: item.id))
+                    .opacity(isCarouselDragging ? 1 : carouselOpacity(for: item.id))
                     .allowsHitTesting(false)
             }
-            if let item = transitionTargetCarouselItem {
+            if !isCarouselDragging, let item = transitionTargetCarouselItem {
                 carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
                     .opacity(carouselOpacity(for: item.id))
                     .allowsHitTesting(false)
