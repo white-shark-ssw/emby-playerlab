@@ -2,9 +2,11 @@
 
 ## Status
 
-**Active — Build228 / 0.14.61 release-tail behavior is now target-device accepted for now: the user reports the post-release tail is “差不多了，尾巴这里先这样吧”. Keep Build226 three-slot Hero residency and Build228 max-refresh-through-settle as the current carousel foundation, and stop further release-tail easing/duration/velocity tuning unless new regression evidence appears. Build227 physical-pixel foreground rounding is rejected because movie-title shimmer remained. The carousel task stays Active because slow-drag movie-title shimmer and the remaining overall refinement gap versus EX are still open. Build216 remains the accepted overall runtime baseline.**
+**Active — Build231 / 0.14.64 is the current horizontal foreground-compositing A/B. Build230 target-device slow-drag testing reports the movie-title shimmer is still present, so persistent three-slot residency is rejected as a sufficient title-shimmer fix; no controlling verdict was reported for Build230 overall feel or post-settle behavior. Build231 returns to the cleaned Build228 foundation and adds only one foreground-page `compositingGroup()` before opacity/X offset. Build226 Hero residency and Build228 max-refresh-through-settle remain the accepted-for-now foundation; Build227 pixel rounding remains rejected. Build231 CI/IPA is verified; target-device slow-drag/title-shimmer and overall-feel A/B pending. Build216 remains the accepted overall runtime baseline.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
+- Working branch: `diag/home-carousel-foreground-compositing-build231`
+- Current candidate: OnePlayer `0.14.64 (231)`
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Deployment Target policy: remain iOS 15.0
 - Accepted overall product baseline: OnePlayer 0.14.49 / Build216 on `main`
@@ -288,6 +290,68 @@ Controlling conclusion:
 Attribution warning: a parallel poster-scroll task also used the identity `Build228 / 0.14.61`. For this carousel result, use branch `perf/home-carousel-release-refresh-build228`, exact tested source `bdf63c7562fcd1edc1d224872230e988ac462281`, run/job `33156739621 / 98801196041`, artifact `9679963420`, and IPA SHA-256 `cda90b62e3cabd3199e1cfbc1b2e1c77b8a84d023a7c7b9c8e2ff66ab9edcf44`; never attribute by build number alone.
 
 Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / horizontal real-device tested ✅ / release-tail subproblem accepted-for-now ✅ / whole carousel stable ❌.
+
+## Build230 / 0.14.63 — persistent three-slot residency A/B
+
+Build230 starts from the cleaned carousel Build228 foundation and changes one presentation-lifecycle variable: the full-screen persistent backdrop now reuses the already-derived settled current + previous + next residency window instead of mounting only current plus a newly-created `transitionTargetCarouselItem` during active drag.
+
+Why this variable is evidence-backed:
+
+- Build219's residual 34–50 ms gaps repeatedly correlated with both Hero and persistent 1400px presentation callbacks;
+- Build225/226 moved target Hero first presentation out of active finger tracking and produced a large real-device hand-feel improvement;
+- Build227 still showed slow-drag title shimmer / cadence variability, while exact source still mounted the target persistent only after `transitionToID` appeared;
+- `carouselPersistentImage` remains a full-screen 1400px presentation with `scaleEffect(1.12)` and `blur(radius: 30)`, so target persistent first presentation is the remaining directly evidenced heavyweight mount in the drag path.
+
+Exact runtime change: `persistentCarouselBackdrop(size:)` now iterates `carouselHeroResidentItems` and applies the unchanged `carouselOpacity(for:)` to each persistent image. This keeps normal outgoing→incoming backdrop crossfade and does **not** repeat Build221's frozen-outgoing-backdrop visual mismatch. No new residency state is added; the existing derived current/previous/next window is reused.
+
+Retained contracts: Build226 Hero residency, raw acquisition-relative foreground X, normal foreground opacity, Build228 max-refresh-through-settle, existing 0.22s/0.18s release tail, 0.28 commit threshold, 0.48×width predicted-distance gate, preload, shared `EmbyCachedRemoteImage`, and all P0/Frozen playback/transport/session paths are unchanged. Build227 physical-pixel rounding remains absent.
+
+CI / package evidence:
+
+- branch: `perf/home-carousel-persistent-residency-build230`;
+- exact base: cleaned carousel Build228 head `e957a11325e5d605cec794b89b26ffc36cd96c06`;
+- exact tested source: `6324bb2063bf1631b8b922abc8e11149bd7a86b0`;
+- dedicated Xcode 16.4 run/job: `33167765310 / 98837170851` — success;
+- artifact: `OnePlayer-0.14.63-build230-persistent-residency`, ID `9684378135`;
+- artifact SHA-256: `7b822dc1e1555705e0a794ea57214da666b6f320813b01b61aacb058f95f1378`;
+- IPA SHA-256: `6cea81f8e806ec159d9e811871076c18aa41fceb99b3c621516c490cfc339b4e`;
+- source ZIP SHA-256: `f0955926306e502d34e1835d9b5daffd7499c5bdc15abede9b31744eba9ee4ec`;
+- independent package reopen confirms OnePlayer `0.14.63 (230)`, bundle `com.embyplayerlab.app`, `MinimumOSVersion=15.0`, `CADisableMinimumFrameDurationOnPhone=true`, and IPA/source checksum integrity;
+- independent source reopen confirms two uses of the same three-slot residency window (Hero + persistent), normal persistent opacity crossfade, blur30 retained, Build228 release-through-settle retained, 0.28/0.48 release rules retained, and Build227 pixel rounding absent.
+
+Important target-device risk to watch: after a committed settle, the current/previous/next window rotates and a new far-neighbor persistent presentation becomes resident outside direct finger tracking. If Build230 merely moves a visible hitch to immediately after settle, or the extra resident blurred layers increase compositor/memory pressure, reject this implementation even if active drag improves.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / diagnostic candidate / stable ❌.
+### 2026-08-28 Build230 target-device result — title shimmer unchanged
+
+User feedback on iPhone 15 Pro Max / iOS 17.0: **“慢拖文字还是会有抖动”**. This directly rejects persistent three-slot residency as a sufficient fix for the known slow-drag movie-title shimmer. It does not prove persistent presentation has zero cost, and the user did not provide a controlling Build230 verdict for overall hand feel or post-settle behavior in this report. Do not carry Build230 persistent residency forward merely as the title fix.
+
+This result narrows the next investigation back to foreground presentation/compositing. Build226 frame inspection already showed title, metadata and overview translating as one page with stable relative geometry; Build227 rejected physical-pixel X quantization; Build230 now shows moving target persistent first presentation out of active drag still leaves the title shimmer.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / horizontal real-device title-shimmer A/B tested ✅ / title fix rejected as sufficient / whole Build230 overall-feel verdict incomplete / stable ❌.
+
+## Build231 / 0.14.64 — foreground page compositing A/B
+
+Build231 returns to the cleaned carousel Build228 foundation and intentionally does **not** carry Build230 persistent residency or Build227 physical-pixel rounding. Its only runtime presentation change is one SwiftUI `compositingGroup()` boundary on each existing carousel foreground page **before** the unchanged opacity and X offset modifiers.
+
+Purpose: test whether the visible slow-drag title shimmer is caused by foreground child-layer compositing/presentation while the entire page is translated, rather than by title geometry, pixel-grid alignment or target persistent first-mount timing. No second gesture/state owner, timer, interpolation, drawingGroup/Metal rasterization path, retry, watchdog or smoothing layer is added.
+
+Retained contracts: Build226 current+previous+next clear-Hero residency, original current+target persistent crossfade/mount behavior, Build228 device-max refresh through settle/cancel, acquisition-relative foreground X, opaque interactive foreground, 0.28 commit threshold, 0.48×width predicted-distance gate, existing 0.22/0.18 release timing, preload/shared image loader, and all Frozen/P0 playback/transport/session paths. Build227 pixel rounding is absent.
+
+CI / package evidence:
+
+- branch: `diag/home-carousel-foreground-compositing-build231`;
+- exact base: cleaned carousel Build228 head `e957a11325e5d605cec794b89b26ffc36cd96c06`;
+- exact tested source: `d30092b8354553063c6d96b62a6f2f4387676601`;
+- dedicated Xcode 16.4 run/job: `33169864030 / 98844082214` — success;
+- artifact: `OnePlayer-0.14.64-build231-foreground-compositing`, ID `9685231197`;
+- artifact SHA-256: `6f5c3eed03c170c57cbba315ffc636dbe0ebb829a903fdec7fe5844c92634d74`;
+- IPA SHA-256: `b92eb47971c546cfe7044ebdbd94cc27a108f0febead32ec811d55e400df4571`;
+- source ZIP SHA-256: `847b1cd13c87b61f0e418a250b4bc6e79f75f970187875a701d9830c5b452f07`;
+- independent package reopen confirms OnePlayer `0.14.64 (231)`, bundle `com.embyplayerlab.app`, `MinimumOSVersion=15.0`, `CADisableMinimumFrameDurationOnPhone=true`, and checksum integrity;
+- independent source reopen confirms exactly one foreground `.compositingGroup()` before opacity/X offset, Build226 Hero residency retained, original Build228 persistent current+target behavior retained, Build228 release-through-settle retained, and Build227 pixel rounding absent.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / diagnostic candidate / stable ❌.
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -303,4 +367,4 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 
 ## Next exact action
 
-Keep the Build228 release-tail behavior unchanged for now. The next carousel investigation, when resumed, must focus on the still-visible slow-drag movie-title shimmer / residual active-drag cadence rather than release-tail easing, duration or velocity. Start from the Build226 residency + Build228 release-refresh foundation, do not reintroduce Build227 pixel quantization, and continue using horizontal target-device comparison against EX as the acceptance path.
+Install Build231 on iPhone 15 Pro Max / iOS 17.0. Reproduce the same very-slow horizontal drag on a fallback-title item and compare directly against carousel Build228/Build230 and EX. Primary question: does the large white movie-title shimmer materially decrease without introducing blur, flattening, color/shadow changes or a new hand-feel regression? Also watch rating/year/type and overview because the whole foreground page now shares one compositing boundary. Then test normal-speed drag, rapid reversal and release tail to confirm Build226/228 gains are retained. If title shimmer is essentially unchanged, reject `compositingGroup()` as sufficient and inspect a stronger but still single-variable foreground raster/presentation A/B next; do not stack `drawingGroup`, UIKit text replacement, easing or timers before this result.
