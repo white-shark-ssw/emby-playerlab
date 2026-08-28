@@ -1,0 +1,100 @@
+name: TEMP Sync Build221 Horizontal Result
+
+on:
+  push:
+    branches: [docs/build221-horizontal-result-20260828]
+    paths:
+      - ".github/build221-horizontal-result-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout helper branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync Build221 target-device result to main
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          checkpoint = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+          text = checkpoint.read_text()
+          text = re.sub(
+              r'^\*\*Active —.*?\*\*$',
+              '**Active — Build221 / 0.14.54 has now been target-device tested for the intended horizontal carousel interaction. Initial take-up/first movement feels acceptable, but overall swipe/drag feel still trails EX and the user noticed a brighter pale/white bottom glow during transition. Review of the supplied recording confirms a visible washed/bright intermediate state. Build221 therefore cannot be accepted as the final carousel solution and its drag-time frozen-persistent presentation must not be retained. Build222–224 remain supporting vertical diagnostics only. Build216 remains the accepted overall product baseline. The next direct carousel investigation should isolate the remaining Build219 suspect: Hero clear-image presentation during horizontal drag, without reopening general Home vertical scrolling.**',
+              text,
+              count=1,
+              flags=re.M,
+          )
+
+          start = text.index('## Build221 / 0.14.54 — separate horizontal lane')
+          end = text.index('## Rejected directions not to repeat')
+          build221 = '''## Build221 / 0.14.54 — horizontal persistent-drag presentation isolation\n\n- tested source `26fc82771b6778af14974fdac293ece0685fc76d`\n- cleanup `1d6df7f2490a5ef5968cafb229a46cba93c622db`\n- run/job `33090175887 / 98580579889` — success\n- artifact `9654120029`\n- IPA SHA-256 `d2ee4fb2d40c251399951bc72ba6ad35fbe8ba3bfd72b861274b9b2c38fe0d9c`\n- MinOS 15.0.\n\nExact runtime isolation: during active horizontal drag, the current persistent backdrop stays mounted at opacity 1 and the target persistent backdrop is not mounted. Hero current/target artwork transition, foreground movement, Build219 high-refresh request, release/settle and all P0/Frozen paths remain unchanged; normal persistent transition resumes after release.\n\n### 2026-08-28 target-device result\n\nUser feedback on iPhone 15 Pro Max / iOS 17.0:\n\n- **initial take-up / first movement feels okay**;\n- **overall carousel feel still does not match EX**;\n- during switching there appears to be a **brighter pale/white bottom glow**.\n\nThe supplied ~30 fps screen recording visibly contains washed/brighter intermediate frames during several horizontal transitions, so the brightness report is not treated as imagination. Exact Build221 source explains a plausible A/B-specific cause: while dragging, the persistent layer is frozen on the outgoing item, but current/target Hero artwork still crossfades above it. In light appearance, `persistentCarouselBackdrop` also keeps its `systemBackground` gradient. The intermediate Hero transparency therefore exposes an outgoing-image persistent/material backing that no longer matches the incoming Hero, making the pale/white lower glow more visible. This is a diagnostic visual regression, not an intended design.\n\nControlling conclusion: Build221 does **not** provide enough horizontal improvement to accept the frozen-persistent strategy, and it introduces a visible presentation mismatch. Persistent presentation may still contribute to measured gaps, but freezing it during the whole active drag is rejected as the final solution.\n\nEvidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / horizontal real-device tested ✅ / initial take-up acceptable / overall still worse than EX / pale-white transition regression observed / stable ❌.\n\n'''
+          text = text[:start] + build221 + text[end:]
+
+          next_start = text.index('## Next exact action')
+          next_text = '''## Next exact action\n\nDo not retain Build221 and do not return to Home vertical A/Bs. The next carousel-only variable should come from the other Build219 residual suspect: **Hero clear-image presentation during active horizontal drag**.\n\nBefore changing code, inspect the current Hero mount/opacity path and preserve the Build215/219 interaction contract. The next A/B should keep normal persistent presentation and isolate only Hero clear-image adoption/presentation during active horizontal drag, so it can answer whether the remaining “rough paper” feel follows Hero work. Do not stack preload, easing, timers, interpolation or another input owner into the same build.\n\nAcceptance remains target-device horizontal feel: first movement, sustained tracking, rapid reversal, visual continuity, and release/settle versus EX.\n'''
+          text = text[:next_start] + next_text
+          checkpoint.write_text(text)
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          lines = module.read_text().splitlines()
+          carousel_row = '| Home carousel interaction | **Active — Build221 horizontal A/B target-device tested; frozen-persistent strategy rejected as final; next isolate Hero during horizontal drag** | 2026-08-28 target-device feedback: Build221 initial take-up feels acceptable, but overall horizontal carousel feel still trails EX. The supplied recording also visibly shows a pale/white washed intermediate state during switching. Build221 freezes the outgoing persistent backdrop during active drag while Hero still crossfades, creating an A/B-specific presentation mismatch; this visual behavior must not be retained. Build221 evidence is now Code/CI/IPA/real-device, but not stable. Build222–224 remain vertical supporting diagnostics only. Build216 remains accepted baseline. |'
+          other_row = '| Other product modules | Active parallel work | Build216 / 0.14.49 remains the latest accepted overall runtime baseline. Home-carousel Build221 has now been horizontally real-device tested: initial take-up is acceptable but overall feel still trails EX and the frozen-persistent A/B introduces a pale/white transition regression, so it is not accepted. Next carousel work stays horizontal and isolates Hero presentation only. Build222–224 remain historical/supporting vertical diagnostics. Poster-scroll Build220 remains a separate Active line. `EmbySharedImageAndNavigation.swift` remains shared infrastructure, so whichever Active task integrates second must resync against then-current `main` and rerun affected validation. |'
+          for i, line in enumerate(lines):
+              if line.startswith('| Home carousel interaction |'):
+                  lines[i] = carousel_row
+              elif line.startswith('| Other product modules |'):
+                  lines[i] = other_row
+          module.write_text('\n'.join(lines) + '\n')
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          lines = index.read_text().splitlines()
+          row221 = '| **Build221 / 0.14.54** | Home-carousel persistent-drag presentation isolation | **Target-device horizontal A/B tested; initial take-up acceptable, overall feel still worse than EX; pale/white transition regression; rejected as final, not stable.** During active drag only, outgoing persistent stays opacity 1 and target persistent is not mounted; Hero transition and Build219 high-refresh path remain. User reports first movement feels okay but overall hand feel still trails EX. Supplied recording visibly shows washed/brighter intermediate states; source inspection shows Hero continues crossfading over a frozen outgoing persistent plus the existing `systemBackground` gradient, so the mismatch is a plausible A/B-specific visual cause. Tested source `26fc82771b6778af14974fdac293ece0685fc76d`; cleanup `1d6df7f2490a5ef5968cafb229a46cba93c622db`; run/job `33090175887 / 98580579889`; artifact `9654120029`; IPA SHA-256 `d2ee4fb2d40c251399951bc72ba6ad35fbe8ba3bfd72b861274b9b2c38fe0d9c`; MinOS 15.0. Next horizontal A/B should isolate Hero clear-image presentation, not continue vertical Home testing. |'
+          replaced = False
+          for i, line in enumerate(lines):
+              if line.startswith('| **Build221 / 0.14.54**'):
+                  lines[i] = row221
+                  replaced = True
+                  break
+          assert replaced, 'Build221 row not found'
+          index.write_text('\n'.join(lines) + '\n')
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          text = state.read_text()
+          text = re.sub(
+              r'^_Last updated.*_$',
+              '_Last updated after the 2026-08-28 Build221 horizontal target-device A/B. Build216 remains the accepted overall runtime baseline. Build221 initial carousel take-up feels acceptable but overall hand feel still trails EX, and the supplied recording confirms a pale/white washed intermediate-state regression from the frozen-persistent drag isolation. Build221 is therefore rejected as the final presentation strategy. Build222–224 remain supporting vertical diagnostics only; next carousel work stays horizontal and isolates Hero clear-image presentation._',
+              text,
+              count=1,
+              flags=re.M,
+          )
+          text = re.sub(
+              r'Current carousel diagnostic candidate: \*\*Build221 / 0\.14\.54\*\*.*?Next action: target-device A/B Build221 with the same cadence log\. If drag-time persistent callbacks/50 ms gaps disappear, persistent presentation becomes directly isolated as a causal component; if Hero gaps remain dominant or no improvement occurs, do not retain the isolation\. Also check release/settle separately because Build221 intentionally restores persistent transition after release\.',
+              '''Build221 / 0.14.54 is now target-device tested for the intended horizontal interaction. It kept Build219 high refresh and Build215 motion semantics while freezing the outgoing persistent backdrop during active drag. The user reports acceptable initial take-up but overall hand feel still trailing EX, and the supplied recording visibly shows pale/white washed intermediate frames. Because Hero current/target artwork still crossfades while persistent is frozen, the A/B creates a mismatched backing during transition; this visual regression must not be retained. Build221 therefore rejects the whole-drag frozen-persistent strategy as a sufficient/final solution. Next horizontal diagnostic should isolate Hero clear-image presentation while restoring normal persistent behavior; do not continue vertical Home A/Bs.''',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          text = text.replace(
+              'Home-carousel acceptance is horizontal drag/swipe behavior; Build221 is the current direct horizontal A/B, while Build222–224 are supporting vertical diagnostics only;',
+              'Home-carousel acceptance is horizontal drag/swipe behavior; Build221 horizontal A/B is now real-device tested and rejected as final, so the next direct carousel A/B should isolate Hero presentation; Build222–224 remain supporting vertical diagnostics only;'
+          )
+          state.write_text(text)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md
+          git diff --cached --check
+          git commit -m "Docs: record Build221 horizontal real-device result [skip ci]"
+          git push origin main
