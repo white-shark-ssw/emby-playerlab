@@ -2,11 +2,11 @@
 
 ## Status
 
-**Active — Build231 / 0.14.64 is the current horizontal foreground-compositing A/B. Build230 target-device slow-drag testing reports the movie-title shimmer is still present, so persistent three-slot residency is rejected as a sufficient title-shimmer fix; no controlling verdict was reported for Build230 overall feel or post-settle behavior. Build231 returns to the cleaned Build228 foundation and adds only one foreground-page `compositingGroup()` before opacity/X offset. Build226 Hero residency and Build228 max-refresh-through-settle remain the accepted-for-now foundation; Build227 pixel rounding remains rejected. Build231 CI/IPA is verified; target-device slow-drag/title-shimmer and overall-feel A/B pending. Build216 remains the accepted overall runtime baseline.**
+**Active — Build231 / 0.14.64 foreground compositing is now positively target-device validated for title stability: the user reports the slow-drag movie-title text is clearly steadier and not blurred, so the single page-level `compositingGroup()` is retained as the current foreground presentation direction. A new start-step consistency symptom is now under measurement: touching and waiting briefly before dragging yields a much shorter first visible step, while touching and immediately dragging often feels like the older coarse first step. Build232 / 0.14.65 retains Build231 behavior unchanged and adds measurement only for touch-down → acquisition and acquisition → first rendered move. Build226 Hero residency + Build228 max-refresh-through-settle remain retained; Build227 pixel rounding and Build230 persistent residency remain rejected as title fixes. Build216 remains the accepted overall runtime baseline.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
-- Working branch: `diag/home-carousel-foreground-compositing-build231`
-- Current candidate: OnePlayer `0.14.64 (231)`
+- Working branch: `diag/home-carousel-start-step-diagnostics-build232`
+- Current candidate: OnePlayer `0.14.65 (232)`
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Deployment Target policy: remain iOS 15.0
 - Accepted overall product baseline: OnePlayer 0.14.49 / Build216 on `main`
@@ -352,6 +352,45 @@ CI / package evidence:
 - independent source reopen confirms exactly one foreground `.compositingGroup()` before opacity/X offset, Build226 Hero residency retained, original Build228 persistent current+target behavior retained, Build228 release-through-settle retained, and Build227 pixel rounding absent.
 
 Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / diagnostic candidate / stable ❌.
+### 2026-08-28 Build231 target-device result — foreground compositing validated
+
+User feedback on iPhone 15 Pro Max / iOS 17.0: **“这次文字明显稳下来了，也不糊”**. This directly validates the Build231 page-level `compositingGroup()` as an effective fix for the known slow-drag movie-title shimmer, without the blur regression that would make the approach unacceptable.
+
+The result is narrow but strong: Build231 changed only the foreground compositing boundary on top of the cleaned Build228 foundation, so the prior title shimmer was materially caused by foreground child-layer compositing/presentation rather than title geometry, physical-pixel X rounding, or persistent-neighbor first-mount timing. Retain the Build231 compositing boundary unless new target-device regression evidence overturns it.
+
+The same target-device session exposed a **new/previously-unconfirmed start-step consistency symptom**: if the finger touches the carousel and waits briefly before moving, the first visible drag step is very short; if the finger touches and immediately moves, the first visible step often feels as coarse as older builds. The user explicitly notes uncertainty about whether this existed before Build231. Therefore do not attribute it to Build231 or change acquisition behavior without measurement.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / horizontal target-device title-shimmer tested ✅ / foreground compositing materially positive ✅ / no blur regression ✅ / whole carousel stable ❌.
+
+## Build232 / 0.14.65 — start-step timing/translation diagnostics
+
+Build232 starts from the cleaned Build231 branch head and intentionally changes **no carousel behavior**. It keeps the now-positive Build231 foreground `compositingGroup()`, Build226 Hero residency, original current+target persistent behavior, Build228 exact-max refresh through settle/cancel, acquisition-relative render X, 0.28 commit threshold, 0.48×width predicted-distance gate, and existing release timing.
+
+The only runtime delta is measurement inside the existing UIKit recognizer / cadence logger. `HomeCarouselCadence` now records:
+
+- `touch_down_to_acquire_ms`: touch-down timestamp → the delivered move that wins horizontal axis acquisition;
+- `acquisition_x`: existing touch-down-relative X at acquisition;
+- `acquire_to_first_render_ms`: acquisition delivered touch → first later delivered move that can publish visible render motion;
+- `first_render_x`: first acquisition-relative visible X passed to the existing drag owner;
+- `first_total_x`: first touch-down-relative delivered X corresponding to that visible move.
+
+No coalesced/predicted sample is promoted to visual authority; no timer, interpolation, smoothing, threshold/easing change or second state owner is added. This diagnostic is specifically meant to compare “touch then immediately drag” against “touch, wait briefly, then drag” before deciding whether the acquisition baseline/sample ownership needs a behavioral change.
+
+CI / package evidence:
+
+- branch: `diag/home-carousel-start-step-diagnostics-build232`;
+- exact base: cleaned Build231 head `40a2e26fa16becb6830b400a030e4882300788d4`;
+- exact tested source: `de11d7483075daf7463faaa5519432478463a271`;
+- cleanup head after temporary CI removal: `01cbe7162b6e4d8882f987204fc585a2eed01284`;
+- dedicated Xcode 16.4 run/job: `33174155718 / 98858347691` — success;
+- artifact: `OnePlayer-0.14.65-build232-start-step-diagnostics`, ID `9686946353`;
+- artifact SHA-256: `4f5286e4d49967d4af9f400b6ec32fe557319f55b15a08bd98f091892e7e86f1`;
+- IPA SHA-256: `0366bffeda255f799621c0b0ffeb2780ef1adaa44c9d7b9f01ce14f0fe84b528`;
+- source ZIP SHA-256: `9cc292766910f9c5c58b65c22c8ea4fcd2f53bc6e36428cb5c4bc2a12580c3ae`;
+- independent package reopen confirms OnePlayer `0.14.65 (232)`, bundle `com.embyplayerlab.app`, `MinimumOSVersion=15.0`, and `CADisableMinimumFrameDurationOnPhone=true`;
+- independent source reopen confirms Build231 `compositingGroup()` retained, diagnostic fields present, acquisition-relative X / 0.28 / 0.48 retained, and Build228 `settled` / `cancelled-settled` refresh lifetime retained.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / behavior unchanged by design / target-device diagnostic pending ❌ / stable ❌.
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -367,4 +406,4 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 
 ## Next exact action
 
-Install Build231 on iPhone 15 Pro Max / iOS 17.0. Reproduce the same very-slow horizontal drag on a fallback-title item and compare directly against carousel Build228/Build230 and EX. Primary question: does the large white movie-title shimmer materially decrease without introducing blur, flattening, color/shadow changes or a new hand-feel regression? Also watch rating/year/type and overview because the whole foreground page now shares one compositing boundary. Then test normal-speed drag, rapid reversal and release tail to confirm Build226/228 gains are retained. If title shimmer is essentially unchanged, reject `compositingGroup()` as sufficient and inspect a stronger but still single-variable foreground raster/presentation A/B next; do not stack `drawingGroup`, UIKit text replacement, easing or timers before this result.
+Install Build232 on iPhone 15 Pro Max / iOS 17.0 and perform two clearly separated start patterns on the same carousel item/direction: (A) touch and begin a slow horizontal drag immediately, repeated at least 5 times; (B) touch, hold approximately 0.5–1.0 s without moving, then begin a similarly slow horizontal drag, repeated at least 5 times. Keep the first movement deliberately slow rather than flicking. Export the App log immediately afterwards. Compare `touch_down_to_acquire_ms`, `acquisition_x`, `acquire_to_first_render_ms`, `first_render_x`, and `first_total_x` between A and B. Build232 is measurement-only; do not judge it as a fix. If immediate starts consistently show a materially larger `first_render_x`, inspect delivered/coalesced sampling around acquisition and design one single-owner baseline refinement without changing release authority. If the logged first-render X is similar but the perceived step differs, move the investigation to render/display timing instead of changing input math. Keep Build231 foreground compositing regardless unless a new visual regression appears.

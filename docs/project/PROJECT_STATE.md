@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build230 target-device slow-drag title-shimmer remained and carousel Build231 / 0.14.64 foreground-compositing CI/IPA verification. Build216 remains the accepted overall runtime baseline; Build226 Hero residency + Build228 release-through-settle remain the positive carousel foundation._
+_Last updated after carousel Build231 / 0.14.64 target-device foreground-compositing success and Build232 / 0.14.65 start-step diagnostic CI/IPA verification. Build216 remains the accepted overall runtime baseline; Build226 Hero residency + Build228 release-through-settle + Build231 foreground compositing are the current positive carousel foundation._
 
 ## Current accepted overall baseline
 
@@ -165,6 +165,12 @@ CI/package: tested source `6324bb2063bf1631b8b922abc8e11149bd7a86b0`; Xcode 16.4
 ### Build230 target-device result → Build231 foreground compositing A/B
 
 Build230 target-device slow-drag feedback reports the movie-title shimmer still remains. Therefore pre-residing persistent neighbors is rejected as a sufficient title-shimmer fix; this report does not establish an overall-feel or post-settle verdict for Build230. Build231 returns to cleaned Build228 and isolates foreground child-layer presentation with one page-level `compositingGroup()` before unchanged opacity/X offset. Build231 exact source `d30092b8354553063c6d96b62a6f2f4387676601`, run/job `33169864030 / 98844082214`, artifact `9685231197`, IPA SHA-256 `b92eb47971c546cfe7044ebdbd94cc27a108f0febead32ec811d55e400df4571`, MinOS 15.0. Real-device pending; not stable.
+
+### Build231 target-device success → Build232 start-step diagnostics
+
+Build231 target-device slow-drag testing reports the movie-title text is clearly steadier and not blurred. Therefore the page-level foreground `compositingGroup()` is retained as the current evidence-backed title-stability direction. The same session exposed a newly noticed but not yet historically attributed start-step difference: wait-before-drag feels very fine, while immediate touch-and-drag can begin with a coarser visible step. Exact recognizer source acquires horizontal ownership on the first delivered move crossing 0.5pt, stores that delivered translation as the render baseline, returns without publishing, then first publishes on the next delivered move. Existing cadence logging does not record the first acquisition-relative step, so a behavior change is not yet justified.
+
+Build232 / 0.14.65 is measurement-only on top of cleaned Build231. It records touch-down→acquisition time/X and acquisition→first-render time/X while retaining all current motion/release/render contracts. Exact tested source `de11d7483075daf7463faaa5519432478463a271`, run/job `33174155718 / 98858347691`, artifact `9686946353`, IPA SHA-256 `0366bffeda255f799621c0b0ffeb2780ef1adaa44c9d7b9f01ce14f0fe84b528`, MinOS 15.0. Target-device diagnostic pending; not stable.
 
 ## Active: Poster-heavy scrolling smoothness
 
