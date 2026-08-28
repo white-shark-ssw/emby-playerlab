@@ -1,1 +1,0 @@
-trigger Build239 project docs sync
