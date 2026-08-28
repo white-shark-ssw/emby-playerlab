@@ -1,0 +1,195 @@
+name: Build226 Carousel Hero Residency IPA
+
+on:
+  push:
+    branches: [perf/home-carousel-hero-residency-build226]
+    paths:
+      - ".github/build226-carousel-hero-residency-trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout Build226 branch
+        uses: actions/checkout@v4
+        with:
+          ref: perf/home-carousel-hero-residency-build226
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply exact Build226 Hero residency patch
+        run: |
+          set -euo pipefail
+          python3 scripts/temp_apply_build226.py
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/UI/EmbyHomeHeroV3.swift Sources/UI/EmbyHomeCarouselStateV3.swift
+          if ! git diff --cached --quiet; then
+            git commit -m "Perf: keep neighbor Hero presentations resident"
+            git push origin HEAD:perf/home-carousel-hero-residency-build226
+          fi
+          echo "BUILD226_SOURCE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Validate exact Build226 scope and retained contracts
+        run: |
+          set -euo pipefail
+          base='b4b8b76f316a675032f49fa7b616b6692427e96e'
+          git diff --check "$base"...HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          base = 'b4b8b76f316a675032f49fa7b616b6692427e96e'
+          allowed = {
+              '.github/build226-carousel-hero-residency-trigger.txt',
+              '.github/workflows/temp-build226-carousel-hero-residency.yml',
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyHomeHeroV3.swift',
+              'Sources/UI/EmbyHomeCarouselStateV3.swift',
+              'docs/changelog/CHANGELOG_v0_14_59_build226.md',
+              'scripts/temp_apply_build226.py',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', f'{base}...HEAD'], text=True).splitlines())
+          extra = sorted(changed - allowed)
+          if extra:
+              raise SystemExit(f'Unexpected Build226 files: {extra}')
+          required = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyHomeHeroV3.swift',
+              'Sources/UI/EmbyHomeCarouselStateV3.swift',
+              'docs/changelog/CHANGELOG_v0_14_59_build226.md',
+          }
+          missing = sorted(required - changed)
+          if missing:
+              raise SystemExit(f'Missing Build226 files: {missing}')
+          frozen_prefixes = ('Sources/Player/', 'Sources/Transport/', 'Sources/Cache/', 'Sources/Session/', 'Sources/AVIO/')
+          touched_frozen = sorted(path for path in changed if path.startswith(frozen_prefixes))
+          if touched_frozen:
+              raise SystemExit(f'Build226 touched Frozen/P0 paths: {touched_frozen}')
+          forbidden = {
+              'Sources/UI/EmbySharedImageAndNavigation.swift',
+              'Sources/UI/EmbyHomeCarouselInteractionV3.swift',
+              'Sources/UI/EmbyHomeCoreV3.swift',
+          }
+          touched_forbidden = sorted(changed & forbidden)
+          if touched_forbidden:
+              raise SystemExit(f'Build226 unexpectedly changed retained/shared owners: {touched_forbidden}')
+
+          identity = Path('Sources/Core/AppIdentity.swift').read_text()
+          assert 'sourceVersion = "0.14.59"' in identity
+          hero = Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()
+          assert 'ForEach(carouselHeroResidentItems) { item in' in hero
+          assert '.opacity(carouselOpacity(for: item.id))' in hero
+          assert 'if !isCarouselDragging, let item = transitionTargetCarouselItem {' not in hero
+          assert 'if let item = transitionTargetCarouselItem {\n                carouselPersistentImage(item: item, size: size).opacity(carouselOpacity(for: item.id))' in hero
+          state = Path('Sources/UI/EmbyHomeCarouselStateV3.swift').read_text()
+          assert 'var carouselHeroResidentItems: [LibraryItem]' in state
+          assert 'neighborCarouselItemID(from: currentID, direction: -1)' in state
+          assert 'neighborCarouselItemID(from: currentID, direction: 1)' in state
+          assert '!ids.contains(previousID)' in state
+          assert '!ids.contains(nextID)' in state
+          assert 'return Array(pool.prefix(6))' in Path('Sources/UI/EmbyHomeModelV3.swift').read_text()
+          cadence = Path('Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift').read_text()
+          assert 'link.preferredFrameRateRange = CAFrameRateRange(minimum: requested, maximum: requested, preferred: requested)' in cadence
+          interaction = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift').read_text()
+          assert 'horizontalAcquisitionTranslation = translation.width' in interaction
+          assert 'return CGSize(width: translation.width - acquisitionTranslation, height: 0)' in interaction
+          assert 'actualProgress >= 0.28' in interaction
+          assert 'width * 0.48' in interaction
+          print('Build226 three-slot Hero residency scope/contracts: PASS')
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Prepare OnePlayer app icons
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache | tee package-resolution.log
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION=0.14.59 \
+            CURRENT_PROJECT_VERSION=226 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build226.log
+
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version 0.14.59 --build 226 --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+
+      - name: Validate MinOS
+        run: |
+          set -euo pipefail
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" 15.0 17.0 build226-min-os.log build226.log
+
+      - name: Package unsigned IPA and source snapshot
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA="OnePlayer-0.14.59-build226-hero-residency-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA"
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          SOURCE="OnePlayer-0.14.59-build226-source.zip"
+          git archive --format=zip --output "$SOURCE" HEAD
+          shasum -a 256 "$SOURCE" | tee "$SOURCE.sha256"
+          printf '%s\n' "$BUILD226_SOURCE" > build226-source-sha.txt
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          echo "SOURCE=$SOURCE" >> "$GITHUB_ENV"
+
+      - name: Upload Build226 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.59-build226-hero-residency
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+            ${{ env.SOURCE }}
+            ${{ env.SOURCE }}.sha256
+            build226-source-sha.txt
+            build226.log
+            build226-min-os.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 30
