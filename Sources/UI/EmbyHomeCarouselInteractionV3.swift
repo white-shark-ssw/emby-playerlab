@@ -44,7 +44,6 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         guard origin == nil, touches.count == 1, let touch = touches.first, let view else {
             if axis == .horizontal, state == .began || state == .changed {
-                V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancelled-new-touch")
                 onHorizontalCancelled?()
                 state = .cancelled
             } else {
@@ -89,7 +88,6 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         let translation = CGSize(width: location.x - origin.x, height: location.y - origin.y)
         if axis == .horizontal, state == .began || state == .changed {
             V3HomeCarouselCadenceDiagnostics.shared.recordTouch(touch, event: event)
-            V3HomeCarouselCadenceDiagnostics.shared.end(reason: "ended")
             onHorizontalEnded?(translation, latestPredictedTranslation)
             state = .ended
         } else if axis == nil {
@@ -102,7 +100,6 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
         if axis == .horizontal, state == .began || state == .changed {
-            V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancelled")
             onHorizontalCancelled?()
             state = .cancelled
         } else {
@@ -237,7 +234,7 @@ extension V3EmbyHomeView {
         let actualProgress = min(1, max(0, actualDistance / max(1, width)))
         let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48
         if !isCarouselDragging {
-            guard shouldCommit, let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: releaseDirection) else { return }
+            guard shouldCommit, let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: releaseDirection) else { V3HomeCarouselCadenceDiagnostics.shared.end(reason: "ended-no-transition"); return }
             transitionFromID = currentID
             transitionToID = targetID
             transitionProgress = 0
@@ -245,14 +242,14 @@ extension V3EmbyHomeView {
             completeInteractiveTransition(to: targetID)
             return
         }
-        guard let targetID = transitionToID else { return }
+        guard let targetID = transitionToID else { V3HomeCarouselCadenceDiagnostics.shared.end(reason: "ended-no-target"); return }
         isCarouselDragging = false
         if shouldCommit { completeInteractiveTransition(to: targetID) }
         else { cancelInteractiveTransition() }
     }
 
     func cancelNativeCarouselDrag() {
-        guard isCarouselDragging else { return }
+        guard isCarouselDragging else { V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancelled-no-transition"); return }
         isCarouselDragging = false
         cancelInteractiveTransition()
     }

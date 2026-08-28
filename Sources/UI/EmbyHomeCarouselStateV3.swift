@@ -62,6 +62,7 @@ extension V3EmbyHomeView {
             transitionToID = nil
             transitionDirection = 1
             carouselLastSettledAt = Date()
+            V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancelled-settled")
         }
     }
 
@@ -89,6 +90,7 @@ extension V3EmbyHomeView {
         isCarouselDragging = false
         carouselLastSettledAt = Date()
         DiagnosticsLogger.shared.log("HomeCarousel", "settled item=\(itemID)")
+        V3HomeCarouselCadenceDiagnostics.shared.end(reason: "settled")
     }
 
     func synchronizeCarouselItems() {
