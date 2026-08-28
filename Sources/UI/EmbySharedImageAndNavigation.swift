@@ -93,6 +93,14 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
     private var lastContrastDurationMS: Double?
     private var lastContrastCompletedAt: CFTimeInterval?
     private var lastLoadAhead: PosterEvent?
+    private let backgroundImageWorkLock = NSLock()
+    private var activeImageDiskReadCount = 0
+    private var activeImageDecodeCount = 0
+    private var activeImageNetworkCount = 0
+    private var activeImageDiskWriteCount = 0
+    private var lastBackgroundImageWorkStage = "none"
+    private var lastBackgroundImageWorkDurationMS: Double = -1
+    private var lastBackgroundImageWorkCompletedAt: CFTimeInterval?
     private final class ScrollObservation {
         weak var scrollView: UIScrollView?
         var route: String
@@ -169,6 +177,34 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
     func loadAheadDidTrigger(itemID: String) {
         precondition(Thread.isMainThread)
         lastLoadAhead = PosterEvent(itemID: itemID, route: "grid-load-ahead", timestamp: CACurrentMediaTime())
+    }
+
+    func imageBackgroundWorkDidBegin(stage: String) {
+        backgroundImageWorkLock.lock()
+        defer { backgroundImageWorkLock.unlock() }
+        switch stage {
+        case "disk_read": activeImageDiskReadCount += 1
+        case "decode": activeImageDecodeCount += 1
+        case "network": activeImageNetworkCount += 1
+        case "disk_write": activeImageDiskWriteCount += 1
+        default: break
+        }
+    }
+
+    func imageBackgroundWorkDidComplete(stage: String, durationMS: Double) {
+        let completedAt = CACurrentMediaTime()
+        backgroundImageWorkLock.lock()
+        defer { backgroundImageWorkLock.unlock() }
+        switch stage {
+        case "disk_read": activeImageDiskReadCount = max(0, activeImageDiskReadCount - 1)
+        case "decode": activeImageDecodeCount = max(0, activeImageDecodeCount - 1)
+        case "network": activeImageNetworkCount = max(0, activeImageNetworkCount - 1)
+        case "disk_write": activeImageDiskWriteCount = max(0, activeImageDiskWriteCount - 1)
+        default: return
+        }
+        lastBackgroundImageWorkStage = stage
+        lastBackgroundImageWorkDurationMS = durationMS
+        lastBackgroundImageWorkCompletedAt = completedAt
     }
 
     func observeVerticalScrollView(_ scrollView: UIScrollView, ownerID: UUID, route: String) {
@@ -291,7 +327,21 @@ final class EmbyPosterScrollHitchDiagnostics: NSObject {
         let pageReceived = pageApply.map { String($0.receivedCount) } ?? "none"
         let pageApplied = pageApply.map { String($0.appliedCount) } ?? "none"
         let snapshotRoute = pageSnapshot?.route ?? "none"
-        return "publish_item=\(publishItem) publish_source=\(publishSource) publish_role=\(publishRole) publish_age_ms=\(publishAgeText) publish_duration_ms=\(publishDurationText) surface_item=\(surfaceItem) surface_source=\(surfaceSource) surface_role=\(surfaceRole) surface_age_ms=\(surfaceAgeText) publish_to_sink_ms=\(publishToSinkText) surface_set_ms=\(surfaceSetText) publish_to_surface_ms=\(publishToSurfaceText) page_route=\(pageRoute) page_reset=\(pageReset) page_start=\(pageStart) page_received=\(pageReceived) page_applied=\(pageApplied) page_apply_age_ms=\(pageApplyAgeText) page_apply_duration_ms=\(pageApplyDurationText) snapshot_route=\(snapshotRoute) snapshot_age_ms=\(pageSnapshotAgeText) snapshot_duration_ms=\(pageSnapshotDurationText)"
+        return "publish_item=\(publishItem) publish_source=\(publishSource) publish_role=\(publishRole) publish_age_ms=\(publishAgeText) publish_duration_ms=\(publishDurationText) surface_item=\(surfaceItem) surface_source=\(surfaceSource) surface_role=\(surfaceRole) surface_age_ms=\(surfaceAgeText) publish_to_sink_ms=\(publishToSinkText) surface_set_ms=\(surfaceSetText) publish_to_surface_ms=\(publishToSurfaceText) page_route=\(pageRoute) page_reset=\(pageReset) page_start=\(pageStart) page_received=\(pageReceived) page_applied=\(pageApplied) page_apply_age_ms=\(pageApplyAgeText) page_apply_duration_ms=\(pageApplyDurationText) snapshot_route=\(snapshotRoute) snapshot_age_ms=\(pageSnapshotAgeText) snapshot_duration_ms=\(pageSnapshotDurationText) \(backgroundImageWorkSummary(now: now))"
+    }
+
+    private func backgroundImageWorkSummary(now: CFTimeInterval) -> String {
+        backgroundImageWorkLock.lock()
+        let diskRead = activeImageDiskReadCount
+        let decode = activeImageDecodeCount
+        let network = activeImageNetworkCount
+        let diskWrite = activeImageDiskWriteCount
+        let lastStage = lastBackgroundImageWorkStage
+        let lastDurationMS = lastBackgroundImageWorkDurationMS
+        let lastCompletedAt = lastBackgroundImageWorkCompletedAt
+        backgroundImageWorkLock.unlock()
+        let lastAgeMS = lastCompletedAt.map { max(0, (now - $0) * 1000) } ?? -1
+        return "image_bg_disk_read_active=\(diskRead) image_bg_decode_active=\(decode) image_bg_network_active=\(network) image_bg_disk_write_active=\(diskWrite) image_bg_last_stage=\(lastStage) image_bg_last_age_ms=\(String(format: "%.1f", lastAgeMS)) image_bg_last_duration_ms=\(String(format: "%.1f", lastDurationMS))"
     }
 
     private func imageContext(_ url: URL) -> (itemID: String, imageType: String, maxWidth: String) {
@@ -440,9 +490,15 @@ private final class EmbyCachedImageLoader: ObservableObject {
         setLoading(true, reportsLoadingState: reportsLoadingState)
         task = Task { [weak self] in
             do {
+                let diskReadStartedAt = CACurrentMediaTime()
+                EmbyPosterScrollHitchDiagnostics.shared.imageBackgroundWorkDidBegin(stage: "disk_read")
                 var data = await EmbyImageDiskCache.shared.data(for: url)
+                EmbyPosterScrollHitchDiagnostics.shared.imageBackgroundWorkDidComplete(stage: "disk_read", durationMS: (CACurrentMediaTime() - diskReadStartedAt) * 1000)
                 if let cachedData = data {
+                    let decodeStartedAt = CACurrentMediaTime()
+                    EmbyPosterScrollHitchDiagnostics.shared.imageBackgroundWorkDidBegin(stage: "decode")
                     let cachedImage = await Task.detached(priority: .utility) { EmbyImageDecoder.decode(data: cachedData, url: url) }.value
+                    EmbyPosterScrollHitchDiagnostics.shared.imageBackgroundWorkDidComplete(stage: "decode", durationMS: (CACurrentMediaTime() - decodeStartedAt) * 1000)
                     if let cachedImage {
                         guard !Task.isCancelled else { return }
                         EmbyDecodedImageRenderPool.shared.store(cachedImage, for: url)
@@ -463,12 +519,27 @@ private final class EmbyCachedImageLoader: ObservableObject {
                 }
 
                 if data == nil {
-                    let response = try await URLSession.shared.data(from: url)
+                    let networkStartedAt = CACurrentMediaTime()
+                    EmbyPosterScrollHitchDiagnostics.shared.imageBackgroundWorkDidBegin(stage: "network")
+                    let response: (Data, URLResponse)
+                    do {
+                        response = try await URLSession.shared.data(from: url)
+                    } catch {
+                        EmbyPosterScrollHitchDiagnostics.shared.imageBackgroundWorkDidComplete(stage: "network", durationMS: (CACurrentMediaTime() - networkStartedAt) * 1000)
+                        throw error
+                    }
+                    EmbyPosterScrollHitchDiagnostics.shared.imageBackgroundWorkDidComplete(stage: "network", durationMS: (CACurrentMediaTime() - networkStartedAt) * 1000)
                     data = response.0
+                    let diskWriteStartedAt = CACurrentMediaTime()
+                    EmbyPosterScrollHitchDiagnostics.shared.imageBackgroundWorkDidBegin(stage: "disk_write")
                     await EmbyImageDiskCache.shared.store(response.0, for: url)
+                    EmbyPosterScrollHitchDiagnostics.shared.imageBackgroundWorkDidComplete(stage: "disk_write", durationMS: (CACurrentMediaTime() - diskWriteStartedAt) * 1000)
                 }
                 guard !Task.isCancelled, let data else { return }
+                let decodeStartedAt = CACurrentMediaTime()
+                EmbyPosterScrollHitchDiagnostics.shared.imageBackgroundWorkDidBegin(stage: "decode")
                 let loaded = await Task.detached(priority: .utility) { EmbyImageDecoder.decode(data: data, url: url) }.value
+                EmbyPosterScrollHitchDiagnostics.shared.imageBackgroundWorkDidComplete(stage: "decode", durationMS: (CACurrentMediaTime() - decodeStartedAt) * 1000)
                 guard !Task.isCancelled, let loaded else { return }
                 EmbyDecodedImageRenderPool.shared.store(loaded, for: url)
                 await MainActor.run {

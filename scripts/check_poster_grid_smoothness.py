@@ -173,4 +173,30 @@ for needle in required_persistent_cache_off_main:
 if 'func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) {' in cache_source:
     raise SystemExit("synchronous library snapshot persistence reintroduced")
 
+required_background_image_diagnostics = [
+    'func imageBackgroundWorkDidBegin(stage: String)',
+    'func imageBackgroundWorkDidComplete(stage: String, durationMS: Double)',
+    'image_bg_disk_read_active=',
+    'image_bg_decode_active=',
+    'image_bg_network_active=',
+    'image_bg_disk_write_active=',
+    'image_bg_last_stage=',
+    'imageBackgroundWorkDidBegin(stage: "disk_read")',
+    'imageBackgroundWorkDidBegin(stage: "decode")',
+    'imageBackgroundWorkDidBegin(stage: "network")',
+    'imageBackgroundWorkDidBegin(stage: "disk_write")',
+]
+for needle in required_background_image_diagnostics:
+    if needle not in image_source:
+        raise SystemExit(f"missing background image diagnostic contract: {needle}")
+
+if image_source.count('imageBackgroundWorkDidBegin(stage: "disk_read")') != 1:
+    raise SystemExit("disk-read background diagnostic must have exactly one begin site")
+if image_source.count('imageBackgroundWorkDidBegin(stage: "decode")') != 2:
+    raise SystemExit("decode background diagnostic must cover disk and network decode sites exactly once each")
+if image_source.count('imageBackgroundWorkDidBegin(stage: "network")') != 1:
+    raise SystemExit("network background diagnostic must have exactly one begin site")
+if image_source.count('imageBackgroundWorkDidBegin(stage: "disk_write")') != 1:
+    raise SystemExit("image-cache write background diagnostic must have exactly one begin site")
+
 print("poster grid smoothness source contract: PASS")
