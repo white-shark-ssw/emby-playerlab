@@ -1,0 +1,68 @@
+name: Reallocate Aether Candidate to Build235
+
+on:
+  push:
+    branches: [feat/aether-multi-engine-comparison]
+    paths:
+      - .github/workflows/temp-aether-build235-reallocate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  reallocate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reallocate candidate identity only
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          project = Path('project.yml')
+          text = project.read_text()
+          if text.count('MARKETING_VERSION: "0.14.57"') != 2 or text.count('CURRENT_PROJECT_VERSION: "224"') != 2:
+              raise SystemExit('project.yml: unexpected Build224 identity shape')
+          text = text.replace('MARKETING_VERSION: "0.14.57"', 'MARKETING_VERSION: "0.14.68"')
+          text = text.replace('CURRENT_PROJECT_VERSION: "224"', 'CURRENT_PROJECT_VERSION: "235"')
+          project.write_text(text)
+
+          checkpoint = Path('docs/project/current/dev/DEV-aether-multi-engine-comparison.md')
+          text = checkpoint.read_text()
+          old = '- **Build candidate:** OnePlayer `0.14.57` / Build `224` — unique Aether fast-seek candidate; global Build223 was already occupied by the parallel Home task when this package was allocated.'
+          new = '- **Build candidate:** OnePlayer `0.14.68` / Build `235` — current unique Aether fast-seek candidate. The earlier Aether `0.14.57 / Build224` package is retired for attribution because current project evidence proves Build224 belongs to the parallel Home task; Home also allocated Build234 before this reallocation.'
+          if text.count(old) != 1:
+              raise SystemExit('checkpoint: expected one old candidate identity')
+          text = text.replace(old, new, 1)
+          marker = '## Build224 / 0.14.57 — bounded Aether fast seek + truthful rate UI\n'
+          note = '''## Build identity correction — Build224 retired, Build235 reserved\n\nAfter re-reading the current repository rules and live parallel-task evidence, the previous Aether Build224 identity was found invalid for attribution: `BUILD_TEST_INDEX.md` already assigns Build224 / 0.14.57 to the Home vertical Hero-artwork diagnostic with its own artifact and target-device result. A live Actions check also showed Home had already allocated Build234. The Aether Build224 workflow `33112527059 / 98658753903` did compile and produce an IPA, but that package is now **retired solely because its Build identity collides** and must not be handed out or used for runtime attribution.\n\nThe fast-seek/rate implementation itself is unchanged. The same source behavior is reallocated to the first verified free identity: **OnePlayer 0.14.68 / Build235**. This correction changes version/build metadata only; MPV fast Seek, UnifiedTransport/Session Cache, STRM→302→115/CDN, Emby reporting, PiP and MDK remain untouched.\n\n'''
+          if text.count(marker) != 1:
+              raise SystemExit('checkpoint: Build224 section marker mismatch')
+          text = text.replace(marker, note + marker, 1)
+          text = text.replace('- **Code written:** Yes — Build224 bounded Aether seek tolerance and engine-aware rate UI are committed on top of the Build222 transport correction.', '- **Code written:** Yes — bounded Aether seek tolerance and engine-aware rate UI are committed on top of the Build222 transport correction; Build235 changes candidate identity only.')
+          text = text.replace('- **CI passed:** Yes — Build224 run/job `33112527059 / 98658753903` succeeded on exact source `9e25454361b6f5ac71bb97de6771684a57ceb47d`.', '- **CI passed:** Build224 compile/IPA run `33112527059 / 98658753903` succeeded but is retired because the Build number collides with Home. Build235 CI is pending.')
+          text = text.replace('- **IPA produced:** Yes — artifact `9663285742`; IPA SHA-256 `85b1f5ae81c10843816d75f97ebf648dc5d5c21932b352bc4ef0b16f605ffae0`; source ZIP SHA-256 `1716aa08f9e07c973b65a17b8c23b9b2fb1ace783bc751aa6c176a58c466c747`; MinOS 16.0 verified.', '- **IPA produced:** Build224 artifact `9663285742` exists but is retired for attribution due Build collision. Build235 IPA is pending.')
+          text = text.replace('- **Real-device tested:** Build219 yes — precise but high-latency Seek and per-read transport churn confirmed. Build224 fast-seek candidate has not yet been device-tested.', '- **Real-device tested:** Build219 yes — precise but high-latency Seek and per-read transport churn confirmed. Build235 fast-seek candidate has not yet been device-tested.')
+          old_next = 'Install Build224 / 0.14.57 on iPhone 15 Pro Max / iOS 17.0. With Aether selected, compare left/right double-tap and rapid repeated double-tap responsiveness against the prior exact-seek behavior, confirm absolute scrub remains acceptably precise, and confirm the speed panel exposes only rates supported by Aether (video ≤2×) while MPV still exposes its existing higher-rate choices. Capture the playback log so `AetherSeek request ... tolerance=0.75` and landed latency can be compared. Do not mark Aether fast Seek solved or stable until target-device evidence confirms it.'
+          new_next = 'Build and identity-verify OnePlayer 0.14.68 / Build235 from the unchanged bounded Aether fast-seek/rate implementation. Only after CI/IPA verification hand Build235 to the iPhone 15 Pro Max / iOS 17.0 test: compare left/right and rapid repeated double-tap responsiveness, confirm absolute scrub precision, verify Aether video rate choices stop at 2× while MPV retains higher rates, and capture `AetherSeek request ... tolerance=0.75` plus landed latency. Do not use the retired Aether Build224 package for attribution.'
+          if text.count(old_next) != 1:
+              raise SystemExit('checkpoint: next action mismatch')
+          text = text.replace(old_next, new_next, 1)
+          checkpoint.write_text(text)
+          PY
+          git diff --check
+          grep -n 'MARKETING_VERSION: "0.14.68"' project.yml
+          grep -n 'CURRENT_PROJECT_VERSION: "235"' project.yml
+          grep -n 'Build candidate.*235' docs/project/current/dev/DEV-aether-multi-engine-comparison.md
+          grep -n 'Build identity correction' docs/project/current/dev/DEV-aether-multi-engine-comparison.md
+      - name: Commit reallocation
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add project.yml docs/project/current/dev/DEV-aether-multi-engine-comparison.md
+          git commit -m "Reallocate Aether candidate to Build235"
+          git push origin HEAD:feat/aether-multi-engine-comparison
