@@ -1,1 +1,0 @@
-trigger Build233 carousel project docs sync
