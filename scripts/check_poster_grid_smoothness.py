@@ -6,6 +6,7 @@ image_source = Path("Sources/UI/EmbySharedImageAndNavigation.swift").read_text(e
 poster_source = Path("Sources/UI/EmbyServerSharedV3.swift").read_text(encoding="utf-8")
 browse_source = Path("Sources/UI/EmbyServerBrowseV3.swift").read_text(encoding="utf-8")
 person_source = Path("Sources/UI/EmbyPersonMediaView.swift").read_text(encoding="utf-8")
+cache_source = Path("Sources/UI/EmbyPagePersistentCache.swift").read_text(encoding="utf-8")
 
 required_grid = [
     "return LazyVGrid(columns: columns, alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing)",
@@ -149,10 +150,27 @@ required_pagination_timing = [
     "let applyStartedAt = CACurrentMediaTime()",
     "EmbyPosterScrollHitchDiagnostics.shared.pageApplyDidComplete(route: diagnosticRoute",
     "let snapshotStartedAt = CACurrentMediaTime()",
+    "await persistSnapshot()",
+    "private func persistSnapshot() async",
+    "await V3PagePersistentCache.shared.storeLibrarySnapshot(snapshot, client: client, libraryID: library.id)",
     "EmbyPosterScrollHitchDiagnostics.shared.pageSnapshotDidComplete(route: diagnosticRoute",
 ]
 for needle in required_pagination_timing:
     if needle not in browse_source:
         raise SystemExit(f"missing pagination timing contract: {needle}")
+
+required_persistent_cache_off_main = [
+    'private let writeQueue = DispatchQueue(label: "OnePlayer.PagePersistentCache.Write", qos: .utility)',
+    'func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) async',
+    'await withCheckedContinuation { continuation in',
+    'writeQueue.async {',
+    'self.store(root, url: url)',
+]
+for needle in required_persistent_cache_off_main:
+    if needle not in cache_source:
+        raise SystemExit(f"missing off-main library snapshot persistence contract: {needle}")
+
+if 'func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) {' in cache_source:
+    raise SystemExit("synchronous library snapshot persistence reintroduced")
 
 print("poster grid smoothness source contract: PASS")

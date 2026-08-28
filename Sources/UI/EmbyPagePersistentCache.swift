@@ -29,6 +29,7 @@ final class V3PagePersistentCache {
     static let shared = V3PagePersistentCache()
 
     private let fileManager = FileManager.default
+    private let writeQueue = DispatchQueue(label: "OnePlayer.PagePersistentCache.Write", qos: .utility)
     private let schemaVersion = 1
 
     private init() {}
@@ -65,26 +66,32 @@ final class V3PagePersistentCache {
         }
     }
 
-    func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) {
-        var tabItemsObject: [String: Any] = [:]
-        for (key, items) in snapshot.tabItems { tabItemsObject[key] = items.map(libraryItemJSONObject) }
+    func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) async {
+        guard let url = cacheFileURL(scope: "library|\(libraryID)", client: client) else { return }
+        await withCheckedContinuation { continuation in
+            writeQueue.async {
+                var tabItemsObject: [String: Any] = [:]
+                for (key, items) in snapshot.tabItems { tabItemsObject[key] = items.map(self.libraryItemJSONObject) }
 
-        var pageStatesObject: [String: Any] = [:]
-        for (key, state) in snapshot.pageStates { pageStatesObject[key] = ["NextStartIndex": state.nextStartIndex, "HasMore": state.hasMore] }
+                var pageStatesObject: [String: Any] = [:]
+                for (key, state) in snapshot.pageStates { pageStatesObject[key] = ["NextStartIndex": state.nextStartIndex, "HasMore": state.hasMore] }
 
-        let root: [String: Any] = [
-            "SchemaVersion": schemaVersion,
-            "TabItems": tabItemsObject,
-            "SuggestionResumeItems": snapshot.suggestionResumeItems.map(libraryItemJSONObject),
-            "SuggestionLatestItems": snapshot.suggestionLatestItems.map(libraryItemJSONObject),
-            "GenericSuggestionItems": snapshot.genericSuggestionItems.map(libraryItemJSONObject),
-            "RecommendationSections": snapshot.recommendationSections.map(recommendationSectionJSONObject),
-            "Genres": snapshot.genres.map(libraryItemJSONObject),
-            "FolderItems": snapshot.folderItems.map(libraryItemJSONObject),
-            "LoadedTabs": Array(snapshot.loadedTabs).sorted(),
-            "PageStates": pageStatesObject,
-        ]
-        store(root, scope: "library|\(libraryID)", client: client)
+                let root: [String: Any] = [
+                    "SchemaVersion": self.schemaVersion,
+                    "TabItems": tabItemsObject,
+                    "SuggestionResumeItems": snapshot.suggestionResumeItems.map(self.libraryItemJSONObject),
+                    "SuggestionLatestItems": snapshot.suggestionLatestItems.map(self.libraryItemJSONObject),
+                    "GenericSuggestionItems": snapshot.genericSuggestionItems.map(self.libraryItemJSONObject),
+                    "RecommendationSections": snapshot.recommendationSections.map(self.recommendationSectionJSONObject),
+                    "Genres": snapshot.genres.map(self.libraryItemJSONObject),
+                    "FolderItems": snapshot.folderItems.map(self.libraryItemJSONObject),
+                    "LoadedTabs": Array(snapshot.loadedTabs).sorted(),
+                    "PageStates": pageStatesObject,
+                ]
+                self.store(root, url: url)
+                continuation.resume()
+            }
+        }
     }
 
     func favoritesSnapshot(client: EmbyAPIClient) -> V3FavoritesPersistentSnapshot? {
@@ -126,6 +133,10 @@ final class V3PagePersistentCache {
 
     private func store(_ root: [String: Any], scope: String, client: EmbyAPIClient) {
         guard let url = cacheFileURL(scope: scope, client: client) else { return }
+        store(root, url: url)
+    }
+
+    private func store(_ root: [String: Any], url: URL) {
         do {
             let data = try JSONSerialization.data(withJSONObject: root)
             try data.write(to: url, options: .atomic)
