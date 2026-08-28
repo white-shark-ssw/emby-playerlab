@@ -190,9 +190,12 @@ extension V3EmbyHomeView {
         let direction = CGFloat(transitionDirection)
         let visualProgress = min(1, max(0, transitionProgress))
         let pageStep = width
-        if itemID == fromID { return -direction * visualProgress * pageStep }
-        if itemID == toID { return direction * (1 - visualProgress) * pageStep }
-        return 0
+        let rawOffset: CGFloat
+        if itemID == fromID { rawOffset = -direction * visualProgress * pageStep }
+        else if itemID == toID { rawOffset = direction * (1 - visualProgress) * pageStep }
+        else { return 0 }
+        let displayScale = max(1, UIScreen.main.scale)
+        return (rawOffset * displayScale).rounded() / displayScale
     }
 
     func neighborCarouselItemID(from itemID: String, direction: Int) -> String? {
