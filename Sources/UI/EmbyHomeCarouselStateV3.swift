@@ -202,6 +202,14 @@ extension V3EmbyHomeView {
         return items[next].id
     }
 
+    var carouselHeroResidentItems: [LibraryItem] {
+        guard let currentID = currentCarouselItemID else { return [] }
+        var ids = [currentID]
+        if let previousID = neighborCarouselItemID(from: currentID, direction: -1), !ids.contains(previousID) { ids.append(previousID) }
+        if let nextID = neighborCarouselItemID(from: currentID, direction: 1), !ids.contains(nextID) { ids.append(nextID) }
+        return ids.compactMap { id in model.carouselItems.first { $0.id == id } }
+    }
+
     func carouselImageURL(_ item: LibraryItem) -> URL? {
         client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: 1400, tag: item.preferredPrimaryImageTag)
     }
