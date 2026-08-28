@@ -14,7 +14,8 @@ Key rules:
 - preserve iOS 15.0 Deployment Target unless a verified dependency/API requirement forces a change; never exceed iOS 17.0;
 - never make the NAS relay media bytes;
 - never restore time→byte proportional seek guessing;
-- once a development task is unambiguous and required pre-checks pass, continue autonomously through the available implementation/validation/commit/CI/IPA path until a user-testable IPA/Artifact is produced and its Build/source/artifact/package/MinOS identity is verified; do not stop at code completion, checks, commits, CI, packaging preparation, or checkpoints waiting for `继续` unless a real user decision/information need, conflict, external blocker, or missing execution capability prevents further progress;
+- once a development task is unambiguous and required pre-checks pass, continue autonomously through the available implementation/validation/commit/push/PR/CI/Artifact/IPA path until a user-testable Artifact/IPA is produced and its version, Build, Candidate, source, Artifact/package and MinOS identity is verified; do not stop at ordinary intermediate states waiting for `继续` unless a user decision/information/permission/real-device action, real conflict, insufficient evidence, external blocker, or missing execution capability genuinely prevents further progress;
+- create the task checkpoint as soon as the goal and usable real baseline are known; do not delay it until CI/packaging/final conclusions. Refresh only at substantive independently resumable milestones, keeping branch/head/candidate, Completed, Validation state, Pending and Next exact action current; prefer piggybacking on already-needed GitHub writes and avoid a separate write for every micro-step;
 - never claim CI/IPA success equals real-device success;
 - update `docs/project/` after material development or test conclusions.
 
