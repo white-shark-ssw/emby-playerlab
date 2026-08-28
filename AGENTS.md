@@ -118,7 +118,7 @@ Unrelated development must not regress:
 - Range / 206;
 - session cache;
 - Emby progress / Resume sync;
-- abnormal short-media / premature EOF tolerance;
+- abnormal short-media / premature-EOF tolerance;
 - playback diagnostics;
 - MPV main playback path.
 
@@ -212,6 +212,8 @@ As soon as the task goal and a usable real baseline/working direction are known,
 Refresh the selected checkpoint only at substantive milestones that have independent continuation value. At minimum, keep the checkpoint sufficiently current to recover the task's branch/head/candidate identity, `Completed`, `Validation state`, `Pending`, and `Next exact action`. Useful refresh points include a confirmed baseline/branch/head/candidate, the first effective patch or rule decision, a material direction/evidence change, CI/Artifact state that changes the next action, or a new user real-device result.
 
 Prefer to piggyback checkpoint updates on GitHub writes that are already necessary for the task when the checkpoint state has materially changed. Do not create a separate GitHub write for every tiny edit, command, check, or micro-step. Pace checkpoints so that an unexpected context/execution cutoff should lose at most one small meaningful milestone rather than the whole implementation-to-CI/packaging span.
+
+For non-atomic GitHub write chains such as blob → tree → commit → ref, do not checkpoint each individual write. Treat the chain as one potential resumable group: only after a set of steps has produced reusable persistent identity such as blob/tree/commit SHA, a confirmed branch head, Build/Candidate, or Artifact ID **and** that durable state materially changes `Next exact action` should the group's partial completion be batched into one checkpoint update. Do not write one checkpoint per blob/tree/commit/ref operation, and do not leave an already reusable durable identity unrecorded across multiple independently resumable stages. Any new session should be able to continue directly from the latest GitHub checkpoint's recorded identities and `Next exact action` without relying on transient state from the prior conversation.
 
 When a development task finishes, move durable conclusions into the long-term project documents and remove only that task's current checkpoint. When a rules task finishes, move durable rules into permanent rule files and reset only `CURRENT_WORK_RULES.md` to Idle.
 
