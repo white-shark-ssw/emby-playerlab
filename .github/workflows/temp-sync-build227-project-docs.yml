@@ -1,0 +1,47 @@
+name: TEMP Sync Build227 Project Docs
+
+on:
+  push:
+    branches: [diag/home-carousel-foreground-pixel-align-build227]
+    paths:
+      - ".github/build227-docs-sync-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build227 branch
+        uses: actions/checkout@v4
+        with:
+          ref: diag/home-carousel-foreground-pixel-align-build227
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Update feature checkpoint
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          python3 scripts/temp_sync_build227_docs.py branch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          git diff --cached --check
+          git commit -m "Docs: record Build226 device result and Build227 evidence [skip ci]"
+          git push origin HEAD:diag/home-carousel-foreground-pixel-align-build227
+
+      - name: Sync authoritative docs to main
+        run: |
+          set -euo pipefail
+          git fetch origin main diag/home-carousel-foreground-pixel-align-build227
+          git checkout -B main origin/main
+          git show origin/diag/home-carousel-foreground-pixel-align-build227:scripts/temp_sync_build227_docs.py > /tmp/temp_sync_build227_docs.py
+          python3 /tmp/temp_sync_build227_docs.py main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md
+          git diff --cached --check
+          git commit -m "Docs: sync Build226 result and Build227 baseline [skip ci]"
+          git push origin main
