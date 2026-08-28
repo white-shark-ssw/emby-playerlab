@@ -1,1 +1,0 @@
-trigger carousel scope correction docs sync
