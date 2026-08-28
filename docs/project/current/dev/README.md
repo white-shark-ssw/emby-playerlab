@@ -165,6 +165,25 @@ Build 编号只表示测试基线身份，不改变“CI passed / IPA produced /
 - **Rejected / do-not-repeat**
 - **Open questions / risks**
 
+## Checkpoint timing and cadence
+
+checkpoint 必须在任务目标和可用真实基线/工作方向明确后尽早建立，不能等到代码全部完成、CI、Artifact/IPA 出包或最终结论后才补写。
+
+之后只在具有**独立续接价值**的实质里程碑滚动刷新。至少应让下一会话能直接恢复：
+
+- 当前 branch / head / PR / 已分配 candidate；
+- `Completed`；
+- `Validation state`；
+- `Pending`；
+- `Next exact action`；
+- materially important 的 rejected/do-not-repeat 与风险。
+
+典型需要刷新 checkpoint 的节点包括：真实 baseline/branch/head/candidate 已确认、第一版有效 patch 完成、方向或证据发生实质变化、CI/Artifact 状态改变下一动作、用户提供新的 Runtime/真机结果。
+
+优先在本来就需要的 GitHub 写节点顺带更新已经发生实质变化的 checkpoint，不要为了每个微小编辑、命令、检查或普通过程状态额外制造 GitHub 写；但也不得为了减少 GitHub 写而跨过多个独立有效里程碑不记录。节奏目标是让会话突然达到上下文/执行上限时，最多只丢失一个小的有效里程碑，而不是整段实现→CI→出包进度。
+
+checkpoint 是恢复机制，不是普通停工门槛。任务明确且必要前置检查通过后，除非确实需要用户决策、信息/权限/实机操作，出现真实冲突、证据不足、外部阻塞，或当前环境缺少下一步能力，否则不得因为代码完成、检查通过、commit/push、PR、CI、checkpoint 或准备出包而等待用户回复“继续”。应按 `AGENTS.md` 在当前执行能力允许范围内连续推进到可测试 Artifact/IPA 完成版本、Build、Candidate、源码与 Artifact/package 身份核验后，再交给用户做 Runtime/实机测试。
+
 ## Completion
 
 任务完成后：
