@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Home-carousel Build234 target-device acquisition diagnosis and Build236 / 0.14.69 post-acquisition real-predecessor A/B CI/IPA verification. Build216 remains the accepted overall runtime baseline; Build226 Hero residency + Build228 release-through-settle + Build231 foreground compositing remain retained._
+_Last updated after carousel Build236 / 0.14.69 target-device testing materially reduced coarse starts and made title jitter very slight. Build216 remains the accepted overall runtime baseline; Build226 Hero residency + Build228 release-through-settle + Build231 foreground compositing + Build236 post-acquisition real-baseline handling are the current positive carousel foundation._
 
 ## Current accepted overall baseline
 
@@ -195,6 +195,10 @@ Build234 target-device log contains 31 drags. Exactly 20 acquisition events repo
 Build234 target-device diagnostics close the remaining Build233 fallback ambiguity: all 11 coarse fallback starts are acquisition `none` with `acq_coalesced_count=1`, while there are zero `direction` and zero `zero` rejections. Those one-sample acquisition events have no earlier same-event real touch available, and the old next-delivered fallback remains coarse.
 
 Build236 / 0.14.69 is the minimum behavior A/B authorized by that evidence. Acquisition events that already have an accepted predecessor are unchanged. Only `none/count=1` cases inspect the first post-acquisition UIEvent for the last real coalesced predecessor whose timestamp is after acquisition and before the current delivered touch; a direction-compatible predecessor may become the render baseline once, and the current delivered touch remains the publication event. The pending path is cleared immediately after that UIEvent. No synthetic interpolation, hard step cap, timer, easing or second render owner is added. Exact tested source `7811f34104daaea8734e72404bcb2fadb6fa37f7`; run/job `33193485825 / 98924631982`; artifact `9694861946`; IPA SHA-256 `8e248cb5834be4bcc261e3e1b63db3c334b805a4245aab56c74a5fe5951cd4c5`; MinOS 15.0. Target-device pending; not stable.
+
+### Carousel Build236 target-device result — coarse-start probability materially reduced
+
+Build236 / 0.14.69 is now target-device positive. The 53-drag App log shows overall >=5pt first steps at 10/53 (18.9%) and >=8pt at 3/53 (5.7%). The key Build236 path worked in 16/20 acquisition-event `none` starts: a real predecessor appeared on the first post-acquisition UIEvent, yielding median first step 2.0pt and zero >=5pt starts. Four starts still had no predecessor on that first post event and remain coarse (median 7.84pt; >=5pt 4/4), so the remaining avoidable family is now very narrow. User also reports title jitter is very slight; display p95 is ~8.34ms in 44/53 drags. Do not add artificial step caps or synthetic interpolation; if continuing, first measure whether the second post-acquisition event exposes a real predecessor for the residual 4/53 family. Build236 is target-device positive but not stable.
 
 ## Active: Poster-heavy scrolling smoothness
 

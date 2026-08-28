@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build234 target-device diagnostics prove the dominant residual coarse-start fallback is acquisition-event predecessor absence: all 11 fallback cases had `acq_predecessor_status=none` with `acq_coalesced_count=1`, while accepted acquisition-local predecessors were much finer. Build236 / 0.14.69 is now CI/IPA verified as the narrow follow-up: only those one-sample acquisition cases inspect the first post-acquisition UIEvent for a real direction-compatible predecessor after acquisition, use it once as the render baseline while publishing the current delivered touch, then immediately return to ordinary delivered-touch ownership. Build231 foreground `compositingGroup()`, Build226 Hero residency, Build228 max-refresh-through-settle and 0.28/0.48 release semantics remain retained. Build235 remains reserved by Aether. Build236 target-device testing is pending; Build216 remains the accepted overall runtime baseline.**
+**Active — Build236 / 0.14.69 target-device testing is materially positive: coarse first-step probability is clearly lower and title jitter is now very slight. In 53 drags, overall first step >=5pt is 10/53 (18.9%) and >=8pt is 3/53 (5.7%). Of the 20 acquisition-event `none` cases, Build236 finds a real predecessor on the first post-acquisition UIEvent in 16/20; those 16 have median first step 2.0pt and zero >=5pt starts. The remaining 4/20 still expose only one sample on that first post event and remain coarse (median 7.84pt; >=5pt 4/4). Build231 foreground `compositingGroup()`, Build226 Hero residency and Build228 max-refresh-through-settle remain retained. Build235 remains reserved by Aether. Build216 remains the accepted overall runtime baseline; Build236 is target-device positive but not yet stable.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Working branch: `perf/home-carousel-post-acquisition-baseline-build236`
@@ -522,6 +522,24 @@ Evidence: code patch prepared on `perf/home-carousel-post-acquisition-baseline-b
 
 Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable ❌.
 
+### 2026-08-29 Build236 target-device result — post-acquisition real baseline materially reduces coarse starts
+
+User feedback on iPhone 15 Pro Max / iOS 17.0: **“感觉大步长几率是有明显下降，而且标题文字抖动也非常轻微了。”** The uploaded Build236 App log `OnePlayer-App-1787938053.log` contains 53 `HomeCarouselCadence` drags and confirms the first-step improvement:
+
+- overall `|first_render_x| >= 2.5pt`: **11/53 (20.8%)**;
+- overall `|first_render_x| >= 5pt`: **10/53 (18.9%)**;
+- overall `|first_render_x| >= 8pt`: **3/53 (5.7%)**;
+- 28 acquisition-event `accepted` starts: median first step **1.67pt**; `>=5pt` **6/28**; `>=8pt` **1/28**;
+- 20 acquisition-event `none` starts entered Build236's one-time post-acquisition path; **16/20** found a real predecessor on the first post-acquisition UIEvent and then had median first step **2.0pt**, `>=5pt` **0/16**, `>=8pt` **0/16**;
+- the remaining **4/20** still had only one sample on the first post-acquisition event (`post_acq_predecessor_status=none`); these remain coarse with median first step **7.84pt**, `>=5pt` **4/4**, `>=8pt` **2/4**;
+- 4 acquisition `direction` cases and 1 `zero` case were not a practical coarse-start source in this capture: all five first steps stayed below 2.5pt.
+
+This confirms Build236's exact mechanism is effective: when Build234's one-sample acquisition event can obtain one real direction-compatible predecessor on the immediately following UIEvent, the old coarse fallback is removed without synthetic interpolation or a step cap. The residual avoidable coarse-start family is now narrowly the **4/53 cases where both acquisition and the first post-acquisition event expose no predecessor**. Separately, six `>=5pt` acquisition-accepted starts are real 4.17ms predecessor deltas of roughly 5.33–11pt; do not hide those real finger velocities with an artificial first-step cap.
+
+Title/cadence evidence is also positive but not frozen complete. User reports title jitter is now very slight. Display p95 is ≈8.34ms in **44/53** drags, ≈16.67ms in 7/53, with one 10.09ms and one 14.05ms sample. Rare long-tail display gaps still exist (max 50.01ms) and this capture still records one persistent image callback per drag, so residual cadence work remains possible; however Build230 already proved persistent residency alone is not a sufficient title fix, so do not reopen that strategy without new targeted evidence.
+
+Evidence: Build236 Code written ✅ / scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / coarse-start probability materially reduced ✅ / title jitter very slight ✅ / residual 4/53 no-predecessor fallback + rare cadence tails remain / stable ❌.
+
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -537,4 +555,4 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 
 ## Next exact action
 
-Install Build236 / 0.14.69 on iPhone 15 Pro Max / iOS 17.0. Emphasize repeated immediate touch-and-drag starts (at least 12–15), plus several hold-before-drag comparisons, and export the App log immediately afterwards. Compare three groups: acquisition `accepted` (`post_acq_predecessor_status=not-needed`), acquisition `none/count=1 -> post_acq accepted`, and acquisition `none/count=1 -> post_acq none/direction/zero`. The main acceptance signal is whether the second group materially converges toward the already-fine acquisition-accepted first-step distribution without introducing reversal discontinuity, title regression, release-tail regression or other visual mismatch. If the first post-acquisition event still has no usable real predecessor, do not add synthetic interpolation or a hard step cap; inspect that evidence before another behavior change.
+Retain Build236 as the current carousel control candidate and do not add a numeric first-step cap, synthetic interpolation or extra easing. If development continues, first measure the **second** post-acquisition UIEvent only for the residual `acq=none` + `post_acq=none` family (4/53 in this capture) before changing behavior again; the current log does not prove that a usable real predecessor exists on that second event. Keep Build231 foreground `compositingGroup()`, Build226 Hero residency and Build228 release-tail contract intact. Treat six >=5pt acquisition-accepted starts with 4.17ms real predecessor deltas of ~5.33–11pt as real finger motion, not sampling failure, unless new EX A/B evidence proves otherwise. Continue to watch title cadence, but do not resurrect Build230 persistent residency merely because rare persistent-adjacent long tails remain.
