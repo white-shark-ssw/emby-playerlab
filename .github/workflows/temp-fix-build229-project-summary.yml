@@ -1,0 +1,47 @@
+name: Temp Fix Build229 Project Summary
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/temp-fix-build229-project-summary.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Align current summaries
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('docs/project/MODULE_STATUS.md')
+          lines = p.read_text().splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith('| Favorites / library page persistent presentation cache |'):
+                  lines[i] = '| Favorites / library page persistent presentation cache | **Stable Build213 semantics; Library write scheduling under active Build229 device candidate** | Build213 cached-first presentation semantics, route-scoped identity, accepted-state write-through and atomic file replacement remain the authority. Build228 device timing found the Library-side synchronous JSON/atomic write can consume 39.7 ms beside a severe pagination hitch, so Build229 moves only Library serialization/write execution to one serial utility queue while preserving schema/content/order; Favorites persistence is unchanged. Build229 is CI/IPA verified but target-device pending, so the scheduling change is not stable yet. |'
+              if line.startswith('| Other product modules |'):
+                  lines[i] = '| Other product modules | Active parallel work | Build216 / 0.14.49 remains the latest accepted overall runtime baseline. Home-carousel Build226 is materially positive and Build227 remains its CI/IPA-verified title-shimmer A/B pending target-device test. Poster-scroll Build228 is target-device diagnostic tested and still hitches; Build229 / 0.14.62 is the current CI/IPA-verified Library snapshot off-main candidate pending target-device A/B. Home and poster ownership remain separate; Player/Transport/Cache/Session/P0 contracts are unchanged. |'
+          p.write_text('\n'.join(lines) + '\n')
+          p = Path('docs/project/PROJECT_STATE.md')
+          lines = p.read_text().splitlines()
+          assert lines[1].startswith('_Last updated')
+          lines[1] = '_Last updated after Build228 target-device diagnostics isolated a 39.7 ms synchronous Library snapshot beside a 55.1 ms grid dragging hitch, and Build229 / 0.14.62 moved only Library snapshot serialization/atomic write to a serial utility queue with exact-source CI/IPA verification. Build216 remains the accepted overall runtime baseline; Build229 target-device A/B is pending._'
+          p.write_text('\n'.join(lines) + '\n')
+          PY
+          git diff --check
+      - name: Commit and self-delete
+        run: |
+          set -euo pipefail
+          git config user.name white-shark-ssw
+          git config user.email houstools@gmail.com
+          git rm .github/workflows/temp-fix-build229-project-summary.yml
+          git add docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md
+          git commit -m "Align Build229 project summaries"
+          git push origin HEAD:main
