@@ -182,6 +182,8 @@ checkpoint 必须在任务目标和可用真实基线/工作方向明确后尽�
 
 优先在本来就需要的 GitHub 写节点顺带更新已经发生实质变化的 checkpoint，不要为了每个微小编辑、命令、检查或普通过程状态额外制造 GitHub 写；但也不得为了减少 GitHub 写而跨过多个独立有效里程碑不记录。节奏目标是让会话突然达到上下文/执行上限时，最多只丢失一个小的有效里程碑，而不是整段实现→CI→出包进度。
 
+对于 blob → tree → commit → ref 等**非原子 GitHub 写链**，链中的每个微小操作都不单独构成 checkpoint 里程碑。只有当一组步骤已经产生可复用的持久身份（例如 blob/tree/commit SHA、可确认的 branch head、Build/Candidate 或 Artifact ID），并且该持久状态使 `Next exact action` 发生实质变化时，才把这一组部分完成状态批量写入一次 checkpoint。不得为 blob、tree、commit、ref 的每一步分别写 checkpoint；也不得在已经形成可复用持久身份并跨入新的独立续接阶段后长期不记录。任何新会话都应能够从最近一次 GitHub checkpoint 中记录的身份与 `Next exact action` 直接续接，而不依赖前一会话的临时过程状态。
+
 checkpoint 是恢复机制，不是普通停工门槛。任务明确且必要前置检查通过后，除非确实需要用户决策、信息/权限/实机操作，出现真实冲突、证据不足、外部阻塞，或当前环境缺少下一步能力，否则不得因为代码完成、检查通过、commit/push、PR、CI、checkpoint 或准备出包而等待用户回复“继续”。应按 `AGENTS.md` 在当前执行能力允许范围内连续推进到可测试 Artifact/IPA 完成版本、Build、Candidate、源码与 Artifact/package 身份核验后，再交给用户做 Runtime/实机测试。
 
 ## Completion
