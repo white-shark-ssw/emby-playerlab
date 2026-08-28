@@ -29,11 +29,12 @@ jobs:
           set -euo pipefail
           BASE="2e02e87773c05295f6e3c88a67f3fa4e110edd92"
           git diff --check "$BASE"...HEAD
-          mapfile -t PRODUCT_FILES < <(git diff --name-only "$BASE"...HEAD | grep '^Sources/' || true)
-          printf 'Product files:\n%s\n' "${PRODUCT_FILES[*]:-}"
-          [[ "${#PRODUCT_FILES[@]}" -eq 2 ]]
-          [[ " ${PRODUCT_FILES[*]} " == *" Sources/Core/AppIdentity.swift "* ]]
-          [[ " ${PRODUCT_FILES[*]} " == *" Sources/UI/EmbyHomeHeroV3.swift "* ]]
+          PRODUCT_FILES="$(git diff --name-only "$BASE"...HEAD | grep '^Sources/' || true)"
+          printf 'Product files:\n%s\n' "$PRODUCT_FILES"
+          PRODUCT_COUNT="$(printf '%s\n' "$PRODUCT_FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
+          [[ "$PRODUCT_COUNT" -eq 2 ]]
+          printf '%s\n' "$PRODUCT_FILES" | grep -Fx 'Sources/Core/AppIdentity.swift'
+          printf '%s\n' "$PRODUCT_FILES" | grep -Fx 'Sources/UI/EmbyHomeHeroV3.swift'
           python3 - <<'PY'
           from pathlib import Path
 
