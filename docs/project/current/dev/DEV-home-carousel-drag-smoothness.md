@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build223 / 0.14.56 has now been target-device tested and is rejected as a sufficient Home vertical-smoothness fix. The user still feels obvious vertical jitter after removing only the always-mounted full-screen `persistentCarouselBackdrop`. The same diagnostic also exposes an unintended Dock appearance regression: the Dock source is unchanged, but its `.ultraThinMaterial` no longer has the full-screen persistent backdrop behind it, so the bottom bar becomes a visibly gray/translucent strip. Build223 behavior must not be retained. Build221 remains the separate horizontal persistent-drag A/B with target-device testing pending.**
+**Active — Build224 / 0.14.57 is CI/IPA verified as the current Home vertical diagnostic candidate and is awaiting target-device testing. It starts from current `main` / accepted Build216 product behavior, so the normal full-screen persistent backdrop and Dock presentation are restored. The only runtime presentation change is that `immersiveCarouselHero` no longer mounts the current/target `carouselHeroArtwork` 1400px clear-image layers. Persistent backdrop, preload, foreground/logo/text, auto-advance, horizontal interaction and all playback/P0 paths remain unchanged. Build223 was target-device tested and rejected as a sufficient vertical fix; its Dock appearance regression is not carried forward. Build221 remains the separate horizontal persistent-drag A/B with target-device testing pending.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Target device: iPhone 15 Pro Max / iOS 17.0
@@ -49,6 +49,8 @@ Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-de
 
 Drag-local device-max refresh request raised delivered touch / progress / SwiftUI render / display to roughly 103 / 99 / 98 / 110 Hz, with the on-screen meter repeatedly reaching 118–120 FPS. Remaining discrete 34–50 ms gaps frequently correlated with Hero/persistent 1400px image callbacks; strongest repeatable persistent pattern was ~50 ms about 19.6–25.3 ms after callback.
 
+The actual Build219 tested source explicitly tagged image callbacks as three separate roles: `hero`, `persistent`, and `preload`. In the recorded 15 worst-gap samples at or above 25 ms, 11 occurred within 30 ms of the latest **Hero/persistent** callback. Repeated samples included persistent callback → 19.6–25.3 ms → 50 ms display gap, plus Hero callback → ~10.9–11.2 ms → ~26.7–39.2 ms gap. The controlling evidence therefore points more strongly to Hero/persistent presentation than to preload.
+
 Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device diagnostic tested ✅ / 120 Hz request effectiveness proven ✅ / stable ❌.
 
 ### Build222 / 0.14.55
@@ -67,36 +69,82 @@ Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-de
 ### Build / package identity
 
 - branch: `diag/home-carousel-persistent-backdrop-isolation-build223`
-- base: `da5ad1dc6341481b12b8ae3e8b85cc5e5bb31a05`
 - tested source / CI head: `af54d693d91303ea9bd201b5525e24f3e15ad931`
 - run/job: `33110117601 / 98650408622` — success
 - artifact ID: `9662245993`
-- artifact ZIP SHA-256: `cdc741253866243bf2f2ae111e46807e64a5deefecdc30d46ee6a75f31a0eba1`
 - IPA SHA-256: `a925714dceb138df7808079b5784f3337afe92245bd790c42c290eac82ccd73c`
-- source ZIP SHA-256: `b14860b0a5889b39be17eeac8aeacf0621c6c68784058f463f00eae3057a5432`
 - independently verified OnePlayer `0.14.56 (223)`, bundle `com.embyplayerlab.app`, MinOS 15.0.
 
-### Exact runtime change
+### Exact runtime change and real-device result
 
-Only `Sources/UI/EmbyHomeCoreV3.swift` presentation mounting changed: immersive Home stopped mounting `persistentCarouselBackdrop(...)` at the root ZStack. `carouselPreloadLayer`, Hero artwork, normal Build216 auto-advance, horizontal interaction and all P0/Frozen paths remained unchanged. `persistentCarouselBackdrop` / `carouselPersistentImage` and `.blur(radius: 30)` remained implemented in source.
+Only `Sources/UI/EmbyHomeCoreV3.swift` presentation mounting changed: immersive Home stopped mounting `persistentCarouselBackdrop(...)` at the root ZStack. `carouselPreloadLayer`, Hero artwork, normal Build216 auto-advance, horizontal interaction and all P0/Frozen paths remained unchanged.
 
-### 2026-08-28 target-device result
+2026-08-28 target-device result on iPhone 15 Pro Max / iOS 17.0:
 
-User test on iPhone 15 Pro Max / iOS 17.0:
+- **Home vertical scrolling still had obvious perceptible jitter.**
+- Removing the always-mounted full-screen persistent backdrop therefore does **not** materially solve the vertical hitch family and is rejected as a sufficient fix.
+- The bottom Dock also changed appearance. Dock source was unchanged; its `.ultraThinMaterial` lost the full-screen backdrop behind it and became a gray/translucent strip. This is an unintended diagnostic visual regression, not a Dock redesign, and must not be carried forward.
 
-- **Home vertical scrolling still has obvious perceptible jitter.**
-- Therefore removing the always-mounted full-screen persistent backdrop does **not** materially solve the vertical hitch family and is rejected as a sufficient fix.
-- User also reported the bottom Dock changed appearance in this build and supplied a screenshot.
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / vertical hypothesis rejected as sufficient / unintended Dock visual regression / stable ❌.
 
-Source re-check for the Dock:
+## Why Build224 isolates Hero before preload
 
-- Build223 product diff contains only `Sources/Core/AppIdentity.swift` and `Sources/UI/EmbyHomeCoreV3.swift`; `EmbyServerRootViewV3.swift` is unchanged.
-- Home Dock still uses `.ultraThinMaterial` whenever `selectedTab == .home && homeCarouselActive`.
-- In the accepted baseline, `persistentCarouselBackdrop(...).ignoresSafeArea()` sat behind the whole immersive Home, including the Dock region.
-- Build223 removed that layer while leaving the material Dock unchanged; therefore the material samples a different backing surface and appears as the gray/translucent strip seen on device.
-- This is an unintended diagnostic visual side effect, **not** an intentional Dock redesign, and must not be carried forward.
+The next variable is not arbitrary:
 
-Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / vertical hypothesis rejected as sufficient / unintended Dock visual regression observed / stable ❌.
+1. Build219 distinguished `hero`, `persistent`, and `preload` callback roles in the actual tested source.
+2. The strongest recorded long-gap correlation was specifically Hero/persistent, not preload.
+3. Build223 has now directly tested removal of the persistent presentation and did not materially improve vertical smoothness.
+4. The remaining evidence-backed presentation component in that pair is the Hero clear 1400px image surface.
+
+Therefore Build224 isolates only Hero artwork mounting. Preload remains unchanged so this A/B does not mix two hypotheses.
+
+## Build224 / 0.14.57 — Hero artwork presentation isolation
+
+### Identity / base
+
+- branch: `diag/home-carousel-hero-artwork-isolation-build224`
+- base: current `main` head at branch creation `2e02e87773c05295f6e3c88a67f3fa4e110edd92`
+- identity: OnePlayer `0.14.57`, Build `224`
+- identity commit: `26e9db24ae6c1c90197ab05e2b48f721cf8752d1`
+- Hero isolation commit: `ac27dd535b241c0c383fda8b4e3362193b9ec709`
+- changelog commit: `6de5dafb17142e8d6fecdaa13d620df3eb00df07`
+- tested CI head / exact source snapshot: `b6ee3361f183257a2ae01f1336506ab4a4c1a254`
+- dedicated Xcode 16.4 run/job: `33142773132 / 98757057369` — success
+- artifact: `OnePlayer-0.14.57-build224-hero-artwork-isolation`; ID `9674622017`
+- artifact digest: `sha256:cc7483a71f7b5cccb1c95c2fe52f4bd7756ea2c4f9f7d7a2ec4deeaf02636471`
+- IPA SHA-256: `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`
+- source ZIP SHA-256: `6537f85e6f644ccc85491ec357040bdac766e2ee63ef98ba1af5ec253d134a86`
+- independently re-opened package confirms OnePlayer `0.14.57 (224)`, bundle `com.embyplayerlab.app`, `MinimumOSVersion=15.0`, and `CADisableMinimumFrameDurationOnPhone=true`.
+- cleanup head after deleting temporary build workflow/trigger: `810e26b7abc3f90dfc0f7cacc64941d69d9a107d`; product source is unchanged by cleanup.
+- the earlier run `33142715378` stopped before compilation only because the temporary checker used Bash `mapfile`, unavailable in macOS Bash 3.2; it is not product CI evidence and was superseded by the successful dedicated run above.
+
+### Exact product diff
+
+Against the branch base, product source changes are only:
+
+- `Sources/Core/AppIdentity.swift`: 0.14.49 → 0.14.57 identity;
+- `Sources/UI/EmbyHomeHeroV3.swift`: removes only the 11 lines that mount current/target `carouselHeroArtwork` inside `immersiveCarouselHero`.
+
+`carouselHeroArtwork(...)` itself remains fully implemented in source. No image-loader implementation, cache, metrics calculation or state owner is changed.
+
+The following remain unchanged from main:
+
+- root `persistentCarouselBackdrop` mount, so the accepted Home background/Dock material backing is restored;
+- `carouselPersistentImage` and its 30pt blur;
+- `carouselPreloadLayer`;
+- `carouselHeroForeground`, Logo/title/rating/overview and page indicators;
+- normal Build216 auto-advance timing;
+- horizontal carousel interaction/state ownership;
+- Player/MPV/PiP/Transport/Cache/Emby Session and other P0/Frozen paths.
+
+### Evidence level
+
+- Code written ✅
+- Exact diff scope reviewed ✅
+- CI passed ✅
+- IPA produced+verified ✅
+- Real-device tested ❌
+- Stable ❌
 
 ## Build221 / 0.14.54 — separate horizontal lane
 
@@ -121,6 +169,10 @@ Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-de
 
 ## Next exact action
 
-Do **not** build the next candidate on top of Build223 visual behavior. Start from the accepted Build216/main presentation contract so the normal persistent background and Dock appearance are restored, then isolate exactly one remaining carousel-owned presentation component.
+Install the CI/IPA-verified Build224 on iPhone 15 Pro Max / iOS 17.0 and test **Home vertical scrolling**. The build/package identity, exact source scope and MinOS 15.0 are already independently verified; the remaining evidence level is target-device behavior.
 
-Before choosing the next code change, re-read the existing Build219 callback/gap evidence and current loader mount points to decide between Hero presentation and preload as the next single-variable A/B. Do not change both in one build. Keep Build221 horizontal testing separate.
+For the target-device A/B, visual loss of the clear Hero artwork is expected and diagnostic-only. The decisive question is whether the same vertical jitter materially changes while the normal persistent background and Dock appearance remain restored.
+
+- If vertical smoothness materially improves, Hero clear-image presentation is a causal component and the next step is to redesign that presentation path without losing the artwork.
+- If vertical smoothness is essentially unchanged, reject Hero mounting as a sufficient explanation and move to the next independently supported component; do not stack preload changes into Build224.
+- Keep Build221 horizontal testing separate.
