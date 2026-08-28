@@ -26,9 +26,12 @@ new = '''            if let item = currentCarouselItem {
                     .allowsHitTesting(false)
             }
 '''
-if old not in text:
-    raise SystemExit("Build225 expected Hero mount block not found")
-hero.write_text(text.replace(old, new, 1))
+if new in text:
+    pass
+elif old in text:
+    hero.write_text(text.replace(old, new, 1))
+else:
+    raise SystemExit("Build225 Hero mount block is neither baseline nor expected isolation")
 
 checkpoint = Path("docs/project/current/dev/DEV-home-carousel-drag-smoothness.md")
 current = subprocess.check_output(["git", "show", "origin/main:docs/project/current/dev/DEV-home-carousel-drag-smoothness.md"], text=True)
