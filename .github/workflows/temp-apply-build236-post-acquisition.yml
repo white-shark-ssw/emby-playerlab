@@ -1,0 +1,50 @@
+name: TEMP Apply Build236 Post Acquisition Baseline
+
+on:
+  push:
+    branches: [perf/home-carousel-post-acquisition-baseline-build236]
+    paths:
+      - ".github/build236-apply-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/home-carousel-post-acquisition-baseline-build236
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Apply Build236 product patch and checkpoint
+        run: |
+          set -euo pipefail
+          python3 scripts/temp_apply_build236_post_acquisition.py
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          identity = Path('Sources/Core/AppIdentity.swift').read_text()
+          interaction = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift').read_text()
+          cadence = Path('Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift').read_text()
+          checkpoint = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md').read_text()
+          assert 'sourceVersion = "0.14.69"' in identity
+          assert 'pendingPostAcquisitionBaseline = acquisitionSample.status == "none" && acquisitionSample.count == 1' in interaction
+          assert 'postAcquisitionRenderBaselineSample' in interaction
+          assert '$0.timestamp > acquisitionTimestamp + 0.000001' in interaction
+          assert 'if let baseline = postAcquisitionSample.baseline { horizontalAcquisitionTranslation = baseline }' in interaction
+          assert 'pendingPostAcquisitionBaseline = false' in interaction
+          assert interaction.count('event.coalescedTouches(for: touch)') == 2
+          assert 'Timer' not in interaction and 'DispatchQueue.main.asyncAfter' not in interaction
+          for token in ('post_acq_coalesced_count=', 'post_acq_predecessor_status=', 'post_acq_predecessor_delta_x=', 'post_acq_predecessor_age_ms='):
+              assert token in cadence
+          assert 'OnePlayer `0.14.69 (236)`' in checkpoint
+          assert 'perf/home-carousel-post-acquisition-baseline-build236' in checkpoint
+          print('Build236 patch static validation: PASS')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselInteractionV3.swift Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift docs/changelog/CHANGELOG_v0_14_69_build236.md docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          git commit -m "Carousel: test first post-acquisition real baseline"
+          git push origin HEAD:perf/home-carousel-post-acquisition-baseline-build236
