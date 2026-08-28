@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after carousel Build231 / 0.14.64 target-device foreground-compositing success and Build232 / 0.14.65 start-step diagnostic CI/IPA verification. Build216 remains the accepted overall runtime baseline; Build226 Hero residency + Build228 release-through-settle + Build231 foreground compositing are the current positive carousel foundation._
+_Last updated after carousel Build232 / 0.14.65 target-device first-step diagnostics and Build233 / 0.14.66 acquisition-first-frame CI/IPA verification. Build216 remains the accepted overall runtime baseline; Build226 Hero residency + Build228 release-through-settle + Build231 foreground compositing remain the positive carousel foundation, with Build231 now classified as beneficial but not a complete title-jitter fix._
 
 ## Current accepted overall baseline
 
@@ -171,6 +171,14 @@ Build230 target-device slow-drag feedback reports the movie-title shimmer still 
 Build231 target-device slow-drag testing reports the movie-title text is clearly steadier and not blurred. Therefore the page-level foreground `compositingGroup()` is retained as the current evidence-backed title-stability direction. The same session exposed a newly noticed but not yet historically attributed start-step difference: wait-before-drag feels very fine, while immediate touch-and-drag can begin with a coarser visible step. Exact recognizer source acquires horizontal ownership on the first delivered move crossing 0.5pt, stores that delivered translation as the render baseline, returns without publishing, then first publishes on the next delivered move. Existing cadence logging does not record the first acquisition-relative step, so a behavior change is not yet justified.
 
 Build232 / 0.14.65 is measurement-only on top of cleaned Build231. It records touch-down→acquisition time/X and acquisition→first-render time/X while retaining all current motion/release/render contracts. Exact tested source `de11d7483075daf7463faaa5519432478463a271`, run/job `33174155718 / 98858347691`, artifact `9686946353`, IPA SHA-256 `0366bffeda255f799621c0b0ffeb2780ef1adaa44c9d7b9f01ce14f0fe84b528`, MinOS 15.0. Target-device diagnostic pending; not stable.
+
+### Build232 first-step evidence → Build233 acquisition-local first frame
+
+Build232 target-device testing confirms the newly noticed first-step inconsistency. The user reports immediate touch-and-drag frequently starts with the old coarse step, while touch/hold then drag is almost always fine. `OnePlayer-App-1787924071.log` records 34 drags with a clean two-population split: 20 first steps 0.33–2.33pt and 14 first steps 8.00–13.67pt, with median acquisition→first-render 8.34ms and no samples in the middle. This supports changing the acquisition-frame sample usage rather than release/easing.
+
+Build231 foreground compositing remains materially positive but is downgraded from “complete title fix”: Build232 retained the same render path and title jitter reappeared. The Build232 session also contains residual cadence degradation (16/34 display p95 ≈16.67ms; 5/34 render average ≥20ms), so residual frame delivery remains an open title-shimmer contributor.
+
+Build233 / 0.14.66 uses one acquisition-local predecessor sample only: if the same acquisition UIEvent contains an immediately preceding coalesced touch continuing in the selected horizontal direction, that real sample becomes the render baseline and the current delivered touch publishes immediately. Subsequent render ownership stays on delivered touch. Exact tested source `4912234b579a2b8eeba7d5e7f5c6159248953efe`, run/job `33177534304 / 98869934770`, artifact `9688349642`, IPA SHA-256 `717ee926877e9867272f78790e06b3181b4e0f17d7d71d9494ca0540184a019b`, MinOS 15.0. Real-device pending; not stable.
 
 ## Active: Poster-heavy scrolling smoothness
 
