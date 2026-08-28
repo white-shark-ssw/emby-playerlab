@@ -2,11 +2,11 @@
 
 ## Status
 
-**Active — Build236 / 0.14.69 target-device testing is materially positive: coarse first-step probability is clearly lower and title jitter is now very slight. In 53 drags, overall first step >=5pt is 10/53 (18.9%) and >=8pt is 3/53 (5.7%). Of the 20 acquisition-event `none` cases, Build236 finds a real predecessor on the first post-acquisition UIEvent in 16/20; those 16 have median first step 2.0pt and zero >=5pt starts. The remaining 4/20 still expose only one sample on that first post event and remain coarse (median 7.84pt; >=5pt 4/4). Build231 foreground `compositingGroup()`, Build226 Hero residency and Build228 max-refresh-through-settle remain retained. Build235 remains reserved by Aether. Build216 remains the accepted overall runtime baseline; Build236 is target-device positive but not yet stable.**
+**Active — User explicitly accepts freezing most of the materially positive Build236 carousel foundation rather than over-optimizing the residual 4/53 double-no-predecessor starts. Retain/freeze-for-current-phase: Build236 post-acquisition start-step handling, Build231 foreground `compositingGroup()`, Build226 Hero residency and Build228 max-refresh-through-settle/release-tail behavior. Build237 / 0.14.70 is now CI/IPA verified as the only remaining narrow A/B: predicted-distance fling gate is halved from 0.48×width to 0.24×width while actual-progress threshold stays 0.28, and persistent crossfade keeps outgoing fully opaque while incoming fades over it to prevent `systemBackground` leakage/white flash. Target-device testing is pending; whole carousel remains Active until these two final details are accepted or rejected.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
-- Working branch: `perf/home-carousel-post-acquisition-baseline-build236`
-- Current candidate: OnePlayer `0.14.69 (236)`
+- Working branch: `perf/home-carousel-fling-whiteflash-build237`
+- Current candidate: OnePlayer `0.14.70 (237)`
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Deployment Target policy: remain iOS 15.0
 - Accepted overall product baseline: OnePlayer 0.14.49 / Build216 on `main`
@@ -540,6 +540,30 @@ Title/cadence evidence is also positive but not frozen complete. User reports ti
 
 Evidence: Build236 Code written ✅ / scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / coarse-start probability materially reduced ✅ / title jitter very slight ✅ / residual 4/53 no-predecessor fallback + rare cadence tails remain / stable ❌.
 
+## Build237 / 0.14.70 — shorter fling gate + persistent white-flash correction
+
+User accepts freezing most Build236 carousel refinement rather than chasing the residual 4/53 double-no-predecessor starts. A new comparison against EX exposes two remaining release/presentation details: EX can commit after a much shorter drag followed by a fling, while OnePlayer's predicted-distance gate is still `0.48 × width`; and OnePlayer shows a brief bright/white flash during carousel switching.
+
+Exact source evidence for the flash: `persistentCarouselBackdrop` places two opaque images above a `systemBackground` root but applies complementary opacities (`1-blend` and `blend`) to the two separate source-over layers. At midpoint, two 0.5-opacity opaque layers cover only 75% in source-over composition, so the underlying light system background can leak through. The existing light/dark scrim and system-background gradient predate Build236 and are not removed. Build237 keeps the outgoing persistent image fully opaque and fades only the incoming persistent image from 0→1 using the unchanged backdrop blend progress, which yields the intended visual color interpolation without exposing the root background.
+
+The release change is equally narrow: only the predicted-distance gate becomes `0.24 × width`; actual-progress commit remains `0.28`. No velocity owner, timer, interpolation, extra easing or synthetic fling logic is added. Build236 start-step handling, Build231 foreground `compositingGroup()`, Build226 Hero residency, Build228 max-refresh-through-settle and all P0/Frozen paths remain unchanged.
+
+### CI / IPA evidence
+
+- branch: `perf/home-carousel-fling-whiteflash-build237`;
+- exact base: cleaned Build236 head `f85333b58980af26af5f28ca842277f22a289347`;
+- exact tested source / CI head: `185df6a9e53387b095f35a60fa5d01b44f5af3db`;
+- dedicated Xcode 16.4 run/job: `33202505078 / 98955194172` — success;
+- artifact: `OnePlayer-0.14.70-build237-fling-whiteflash`, ID `9698408945`;
+- artifact SHA-256: `6c9eb827653eab83d4eb146f602e742d0b124bd8697cb964d7164c188b72b7cd`;
+- IPA SHA-256: `aadc7d05d72d059eadfd166647127acdab0685cc259458795b562b4f1bbb28d9`;
+- source ZIP SHA-256: `022cfe9fab14aba0f902b413ecf903e5e8c807e6be90a82dfd8c6b094c7d75a7`;
+- independent package reopen confirms bundle `com.embyplayerlab.app`, OnePlayer `0.14.70 (237)`, `MinimumOSVersion=15.0`, `CADisableMinimumFrameDurationOnPhone=true`;
+- independent source reopen confirms the only runtime deltas from Build236 are the predicted-distance gate `0.48×width → 0.24×width` and the persistent source-over crossfade correction; Build236 post-acquisition baseline, Build231 foreground `compositingGroup()`, Build226 Hero residency, Build228 0.22/0.18 release tail and exact-max refresh remain.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable ❌.
+
+
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -555,4 +579,4 @@ Evidence: Build236 Code written ✅ / scope+Frozen guard ✅ / CI passed ✅ / I
 
 ## Next exact action
 
-Retain Build236 as the current carousel control candidate and do not add a numeric first-step cap, synthetic interpolation or extra easing. If development continues, first measure the **second** post-acquisition UIEvent only for the residual `acq=none` + `post_acq=none` family (4/53 in this capture) before changing behavior again; the current log does not prove that a usable real predecessor exists on that second event. Keep Build231 foreground `compositingGroup()`, Build226 Hero residency and Build228 release-tail contract intact. Treat six >=5pt acquisition-accepted starts with 4.17ms real predecessor deltas of ~5.33–11pt as real finger motion, not sampling failure, unless new EX A/B evidence proves otherwise. Continue to watch title cadence, but do not resurrect Build230 persistent residency merely because rare persistent-adjacent long tails remain.
+Target-device test OnePlayer 0.14.70 / Build237. Keep the Build236 foundation frozen-for-current-phase and judge only two variables: (1) a short drag plus fling should commit naturally at the new 0.24×width predicted-distance gate without making ordinary slow drags too eager; (2) the previously observed bright/white flash during switching should disappear because persistent outgoing coverage no longer drops below full opacity. Also sanity-check that Build236 first-step fineness, Build231 title stability and Build228 release-tail feel did not regress. Do not reopen the residual 4/53 Build236 double-no-predecessor starts without new regression evidence.

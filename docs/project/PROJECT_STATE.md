@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after carousel Build236 / 0.14.69 target-device testing materially reduced coarse starts and made title jitter very slight. Build216 remains the accepted overall runtime baseline; Build226 Hero residency + Build228 release-through-settle + Build231 foreground compositing + Build236 post-acquisition real-baseline handling are the current positive carousel foundation._
+_Last updated after the user accepted freezing most of the materially positive Build236 carousel foundation and Build237 / 0.14.70 reached CI/IPA verification for the two remaining A/B details: a 50% lower predicted-distance fling gate and a persistent source-over white-flash correction. Build216 remains the accepted overall runtime baseline._
 
 ## Current accepted overall baseline
 
@@ -199,6 +199,12 @@ Build236 / 0.14.69 is the minimum behavior A/B authorized by that evidence. Acqu
 ### Carousel Build236 target-device result — coarse-start probability materially reduced
 
 Build236 / 0.14.69 is now target-device positive. The 53-drag App log shows overall >=5pt first steps at 10/53 (18.9%) and >=8pt at 3/53 (5.7%). The key Build236 path worked in 16/20 acquisition-event `none` starts: a real predecessor appeared on the first post-acquisition UIEvent, yielding median first step 2.0pt and zero >=5pt starts. Four starts still had no predecessor on that first post event and remain coarse (median 7.84pt; >=5pt 4/4), so the remaining avoidable family is now very narrow. User also reports title jitter is very slight; display p95 is ~8.34ms in 44/53 drags. Do not add artificial step caps or synthetic interpolation; if continuing, first measure whether the second post-acquisition event exposes a real predecessor for the residual 4/53 family. Build236 is target-device positive but not stable.
+
+### Carousel Build236 partial freeze + Build237 final-detail A/B
+
+The user explicitly prefers freezing the materially positive Build236 foundation rather than pursuing perfect elimination of the residual 4/53 double-no-predecessor first-step cases. Treat Build236 post-acquisition real-baseline handling, Build231 foreground `compositingGroup()`, Build226 Hero residency and Build228 max-refresh-through-settle/release-tail behavior as frozen-for-current-phase unless new regression evidence appears. The whole carousel remains Active only for two newly identified details.
+
+Build237 / 0.14.70 is CI/IPA verified. It halves only the predicted-distance fling commit gate from 0.48×width to 0.24×width while keeping the ordinary actual-progress threshold at 0.28, matching the requested short-drag-plus-fling sensitivity A/B. It also corrects a real source-over compositing flaw in `persistentCarouselBackdrop`: complementary opacity on two opaque persistent images can leave only 75% combined coverage at the midpoint and expose the light `systemBackground`; Build237 keeps outgoing persistent fully opaque and fades incoming over it. This is a code/CI/IPA candidate, not yet a real-device fix.
 
 ## Active: Poster-heavy scrolling smoothness
 
