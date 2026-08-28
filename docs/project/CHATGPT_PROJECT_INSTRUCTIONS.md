@@ -93,6 +93,8 @@ Deployment Target 应优先保持 iOS 15.0。
 
 自主连续开发不得把 checkpoint 延迟到 CI、出包或最终结论之后。任务目标和可用真实基线/工作方向明确后，应尽早建立对应 checkpoint；之后只在具有独立续接价值的实质里程碑滚动记录 branch/head/candidate、`Completed`、`Validation state`、`Pending` 与 `Next exact action`。优先在本来就需要的 GitHub 写节点顺带更新已发生实质变化的 checkpoint，避免为每个微小编辑、检查或命令额外制造 GitHub 写；checkpoint 节奏应使会话突然达到上下文/执行上限时，最多只丢失一个小的有效里程碑，而不是整段实现→CI→出包进度。
 
+对于 blob → tree → commit → ref 等非原子 GitHub 写链，不得为每个微小操作分别写 checkpoint。只有当一组步骤已经产生可复用持久身份（例如 blob/tree/commit SHA、可确认的 branch head、Build/Candidate 或 Artifact ID），且该状态使 `Next exact action` 实质改变时，才把这一组部分完成状态批量写入一次 checkpoint。任何新会话都应能直接依据最近 GitHub checkpoint 记录的持久身份与 `Next exact action` 续接，而不依赖上一会话尚未落盘的临时过程状态。
+
 该连续执行规则不允许绕过最小修改、Frozen/P0、兼容性、并行任务冲突、证据分级或 checkpoint 生存性规则；已生成且身份核验完成的 Artifact/IPA 仍然只属于 `IPA produced`，不得描述成 `Real-device tested` 或 `Stable / frozen`。
 
 必须始终严格区分以下证据级别：
