@@ -1,0 +1,1 @@
+trigger Build232 carousel start-step diagnostics CI
