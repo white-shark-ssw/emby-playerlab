@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build234 / 0.14.67 target-device diagnostics prove the dominant residual coarse-start case is acquisition-event predecessor absence (`acq_coalesced_count=1`), not direction/zero rejection. Build236 / 0.14.69 is now the current single-variable behavior A/B: only for those one-sample acquisition cases, inspect the first post-acquisition UIEvent for a real direction-compatible predecessor after acquisition, use it once as the render baseline while publishing the current delivered touch, then immediately return to ordinary delivered-touch ownership. Build231 foreground `compositingGroup()`, Build226 Hero residency, Build228 max-refresh-through-settle and existing 0.28/0.48 release semantics remain retained. Build235 is reserved by Aether and is not reused. Build216 remains the accepted overall runtime baseline.**
+**Active — Build234 target-device diagnostics prove the dominant residual coarse-start fallback is acquisition-event predecessor absence: all 11 fallback cases had `acq_predecessor_status=none` with `acq_coalesced_count=1`, while accepted acquisition-local predecessors were much finer. Build236 / 0.14.69 is now CI/IPA verified as the narrow follow-up: only those one-sample acquisition cases inspect the first post-acquisition UIEvent for a real direction-compatible predecessor after acquisition, use it once as the render baseline while publishing the current delivered touch, then immediately return to ordinary delivered-touch ownership. Build231 foreground `compositingGroup()`, Build226 Hero residency, Build228 max-refresh-through-settle and 0.28/0.48 release semantics remain retained. Build235 remains reserved by Aether. Build236 target-device testing is pending; Build216 remains the accepted overall runtime baseline.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Working branch: `perf/home-carousel-post-acquisition-baseline-build236`
@@ -507,6 +507,21 @@ Build235 / 0.14.68 is reserved by the independent Aether task. Build236 / 0.14.6
 
 Evidence: code patch prepared on `perf/home-carousel-post-acquisition-baseline-build236`; CI/IPA pending at this checkpoint; real-device pending; stable ❌.
 
+### CI / IPA evidence
+
+- branch: `perf/home-carousel-post-acquisition-baseline-build236`;
+- exact base: cleaned Build234 head `b0acb9e6db610341468f039076b77c1910765ad3`;
+- exact tested source: `7811f34104daaea8734e72404bcb2fadb6fa37f7`;
+- dedicated Xcode 16.4 run/job: `33193485825 / 98924631982` — success;
+- artifact: `OnePlayer-0.14.69-build236-post-acquisition-baseline`, ID `9694861946`;
+- artifact SHA-256: `3a45d3400ac396fbc47a38ec6974e8983d90e9a949c0ce37bf68f8e9d7051bd0`;
+- IPA SHA-256: `8e248cb5834be4bcc261e3e1b63db3c334b805a4245aab56c74a5fe5951cd4c5`;
+- source ZIP SHA-256: `256fa108bd8823e9f699036d8e85009b763e5b0bd11e5d357c8c352e0360f454`;
+- independent package reopen confirms bundle `com.embyplayerlab.app`, OnePlayer `0.14.69 (236)`, `MinimumOSVersion=15.0`, and `CADisableMinimumFrameDurationOnPhone=true`;
+- independent source reopen confirms Build236 pending path only for acquisition `none/count=1`, one first-post-acquisition real predecessor check, Build231 foreground `compositingGroup()`, Build226 Hero residency, Build228 settle/cancel max-refresh lifetime, unchanged 0.28/0.48 release rules, and no Build227 pixel rounding / Build230 persistent residency.
+
+Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable ❌.
+
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -522,4 +537,4 @@ Evidence: code patch prepared on `perf/home-carousel-post-acquisition-baseline-b
 
 ## Next exact action
 
-Run exact-scope/Frozen validation and Xcode 16.4 Release CI for Build236 / 0.14.69. If CI/IPA succeeds and package identity is independently verified, test repeated immediate touch-and-drag starts on iPhone 15 Pro Max / iOS 17.0 and export the App log. Compare acquisition `accepted` starts with acquisition `none` starts split by `post_acq_predecessor_status`; the key acceptance signal is whether `none -> post_acq accepted` first visible steps materially converge toward the already-fine acquisition-accepted group without harming hold-before-drag, reversal, title compositing or release tail.
+Install Build236 / 0.14.69 on iPhone 15 Pro Max / iOS 17.0. Emphasize repeated immediate touch-and-drag starts (at least 12–15), plus several hold-before-drag comparisons, and export the App log immediately afterwards. Compare three groups: acquisition `accepted` (`post_acq_predecessor_status=not-needed`), acquisition `none/count=1 -> post_acq accepted`, and acquisition `none/count=1 -> post_acq none/direction/zero`. The main acceptance signal is whether the second group materially converges toward the already-fine acquisition-accepted first-step distribution without introducing reversal discontinuity, title regression, release-tail regression or other visual mismatch. If the first post-acquisition event still has no usable real predecessor, do not add synthetic interpolation or a hard step cap; inspect that evidence before another behavior change.
