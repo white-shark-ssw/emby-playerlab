@@ -1,1 +1,0 @@
-trigger Build228 carousel release-tail max-refresh CI
