@@ -31,7 +31,7 @@ private enum V3HomeCarouselTouchAxis {
 private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
     var shouldBeginHorizontal: ((CGSize) -> Bool)?
     var onHorizontalChanged: ((CGSize) -> Void)?
-    var onHorizontalEnded: ((CGSize, CGSize?) -> Void)?
+    var onHorizontalEnded: ((CGSize, CGFloat?) -> Void)?
     var onHorizontalCancelled: (() -> Void)?
     var onTap: (() -> Void)?
 
@@ -130,7 +130,7 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
             V3HomeCarouselCadenceDiagnostics.shared.recordTouch(touch, event: event)
             let endVelocityX = deliveredEndVelocityX(translationX: translation.width, touchTimestamp: touch.timestamp)
             logReleaseIntent(translation: translation, touch: touch, endVelocityX: endVelocityX)
-            onHorizontalEnded?(translation, latestPredictedTranslation)
+            onHorizontalEnded?(translation, latestMoveDeliveredVelocityX)
             state = .ended
         } else if axis == nil {
             onTap?()
@@ -251,7 +251,7 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
 struct V3HomeCarouselInteractionSurface: UIViewRepresentable {
     let shouldBeginHorizontal: (CGSize) -> Bool
     let onHorizontalChanged: (CGSize) -> Void
-    let onHorizontalEnded: (CGSize, CGSize?) -> Void
+    let onHorizontalEnded: (CGSize, CGFloat?) -> Void
     let onHorizontalCancelled: () -> Void
     let onTap: () -> Void
 
@@ -287,11 +287,11 @@ struct V3HomeCarouselInteractionSurface: UIViewRepresentable {
     final class Coordinator {
         var shouldBeginHorizontal: (CGSize) -> Bool
         var onHorizontalChanged: (CGSize) -> Void
-        var onHorizontalEnded: (CGSize, CGSize?) -> Void
+        var onHorizontalEnded: (CGSize, CGFloat?) -> Void
         var onHorizontalCancelled: () -> Void
         var onTap: () -> Void
 
-        init(shouldBeginHorizontal: @escaping (CGSize) -> Bool, onHorizontalChanged: @escaping (CGSize) -> Void, onHorizontalEnded: @escaping (CGSize, CGSize?) -> Void, onHorizontalCancelled: @escaping () -> Void, onTap: @escaping () -> Void) {
+        init(shouldBeginHorizontal: @escaping (CGSize) -> Bool, onHorizontalChanged: @escaping (CGSize) -> Void, onHorizontalEnded: @escaping (CGSize, CGFloat?) -> Void, onHorizontalCancelled: @escaping () -> Void, onTap: @escaping () -> Void) {
             self.shouldBeginHorizontal = shouldBeginHorizontal
             self.onHorizontalChanged = onHorizontalChanged
             self.onHorizontalEnded = onHorizontalEnded
@@ -333,16 +333,17 @@ extension V3EmbyHomeView {
         V3HomeCarouselCadenceDiagnostics.shared.recordProgressPublish(transitionProgress)
     }
 
-    func finishNativeCarouselDrag(_ translation: CGSize, predictedTranslation: CGSize?, width: CGFloat) {
+    func finishNativeCarouselDrag(_ translation: CGSize, releaseVelocityX: CGFloat?, width: CGFloat) {
         suppressCarouselTap()
         let actualDistance = abs(translation.width)
         let releaseDirection = isCarouselDragging ? transitionDirection : (translation.width < 0 ? 1 : -1)
         let expectedSign: CGFloat = releaseDirection > 0 ? -1 : 1
-        let predictedDistance: CGFloat
-        if let predictedTranslation, predictedTranslation.width == 0 || predictedTranslation.width * expectedSign > 0 { predictedDistance = abs(predictedTranslation.width) }
-        else { predictedDistance = actualDistance }
         let actualProgress = min(1, max(0, actualDistance / max(1, width)))
-        let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.24
+        let releaseVelocity = releaseVelocityX ?? 0
+        let directionalVelocity = releaseVelocity * expectedSign
+        let velocityCommit = directionalVelocity >= 600
+        let shouldCommit = actualProgress >= 0.28 || velocityCommit
+        DiagnosticsLogger.shared.app("HomeCarouselReleaseDecision", "actual_progress=\(String(format: "%.3f", actualProgress)) release_velocity_x=\(String(format: "%.2f", releaseVelocity)) directional_velocity=\(String(format: "%.2f", directionalVelocity)) velocity_commit=\(velocityCommit) should_commit=\(shouldCommit)")
         if !isCarouselDragging {
             guard shouldCommit, let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: releaseDirection) else { V3HomeCarouselCadenceDiagnostics.shared.end(reason: "ended-no-transition"); return }
             transitionFromID = currentID
