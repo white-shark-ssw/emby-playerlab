@@ -47,7 +47,8 @@ jobs:
           git diff --check
           python3 - <<'PY'
           import subprocess
-          changed=set(subprocess.check_output(['git','diff','--name-only'], text=True).splitlines())
+          status=subprocess.check_output(['git','status','--porcelain'], text=True).splitlines()
+          changed={line[3:] for line in status}
           expected={'Sources/Core/AppIdentity.swift','Sources/UI/EmbyHomeCarouselInteractionV3.swift','docs/changelog/CHANGELOG_v0_14_74_build241.md'}
           if changed != expected:
               raise SystemExit(f'Unexpected materialization diff: {sorted(changed)}')
