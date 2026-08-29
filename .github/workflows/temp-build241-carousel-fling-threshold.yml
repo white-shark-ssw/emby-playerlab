@@ -1,0 +1,133 @@
+name: Build241 Carousel Fling Threshold IPA
+
+on:
+  push:
+    branches: [tune/home-carousel-fling-threshold-build241]
+    paths: [.github/build241-carousel-ci-trigger.txt]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout Build241 branch
+        uses: actions/checkout@v4
+        with:
+          ref: tune/home-carousel-fling-threshold-build241
+          fetch-depth: 0
+      - name: Validate exact Build241 scope and retained contracts
+        run: |
+          set -euo pipefail
+          base='ed4e59c2a0e2fac3979d84dad756299659b15387'
+          git diff --check "$base"...HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          base='ed4e59c2a0e2fac3979d84dad756299659b15387'
+          changed=set(subprocess.check_output(['git','diff','--name-only',f'{base}...HEAD'],text=True).splitlines())
+          allowed={
+            '.github/build241-apply-trigger.txt','.github/build241-checkpoint-trigger.txt','.github/build241-carousel-ci-trigger.txt',
+            '.github/workflows/temp-apply-build241-carousel-fling-threshold.yml','.github/workflows/temp-sync-build241-carousel-checkpoint.yml','.github/workflows/temp-build241-carousel-fling-threshold.yml',
+            'Sources/Core/AppIdentity.swift','Sources/UI/EmbyHomeCarouselInteractionV3.swift','docs/changelog/CHANGELOG_v0_14_74_build241.md'
+          }
+          extra=sorted(changed-allowed)
+          if extra: raise SystemExit(f'Unexpected Build241 files: {extra}')
+          frozen_prefixes=('Sources/Player/','Sources/Transport/','Sources/Cache/','Sources/Session/','Sources/AVIO/')
+          touched=sorted(p for p in changed if p.startswith(frozen_prefixes))
+          if touched: raise SystemExit(f'Build241 touched Frozen/P0 paths: {touched}')
+          identity=Path('Sources/Core/AppIdentity.swift').read_text()
+          assert 'sourceVersion = "0.14.74"' in identity
+          interaction=Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift').read_text()
+          assert 'func finishNativeCarouselDrag(_ translation: CGSize, releaseVelocityX: CGFloat?, width: CGFloat)' in interaction
+          assert interaction.count('let velocityCommit = directionalVelocity >= 500') == 1
+          assert 'let velocityCommit = directionalVelocity >= 600' not in interaction
+          assert 'let shouldCommit = actualProgress >= 0.28 || velocityCommit' in interaction
+          assert 'width * 0.24' not in interaction
+          assert 'max(actualDistance, predictedDistance)' not in interaction
+          assert 'onHorizontalEnded?(translation, latestMoveDeliveredVelocityX)' in interaction
+          assert 'HomeCarouselReleaseDecision' in interaction
+          assert 'HomeCarouselReleaseHandoff' not in interaction and 'beginReleaseHandoff' not in interaction
+          assert 'pendingPostAcquisitionBaseline = acquisitionSample.status == "none" && acquisitionSample.count == 1' in interaction
+          assert 'postAcquisitionRenderBaselineSample' in interaction
+          assert 'Timer' not in interaction and 'DispatchQueue.main.asyncAfter' not in interaction
+          hero=Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()
+          assert 'onHorizontalEnded: { translation, releaseVelocityX in finishNativeCarouselDrag(translation, releaseVelocityX: releaseVelocityX, width: width) }' in hero
+          assert hero.count('.compositingGroup()') == 1
+          assert 'ForEach(carouselHeroResidentItems) { item in\n                carouselHeroArtwork' in hero
+          assert 'carouselPersistentImage(item: item, size: size)\n            }' in hero
+          assert 'carouselPersistentImage(item: item, size: size).opacity(Double(carouselBackdropBlendProgress(transitionProgress)))' in hero
+          assert 'carouselPersistentImage(item: item, size: size).opacity(carouselOpacity(for: item.id))' not in hero
+          state=Path('Sources/UI/EmbyHomeCarouselStateV3.swift').read_text()
+          assert 'withAnimation(.easeOut(duration: 0.22))' in state
+          assert 'withAnimation(.easeOut(duration: 0.18))' in state
+          assert 'V3HomeCarouselCadenceDiagnostics.shared.end(reason: "settled")' in state
+          assert 'V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancelled-settled")' in state
+          print('Build241 scope/contracts: PASS')
+          PY
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+      - name: Prepare OnePlayer app icons
+        run: python3 scripts/generate_oneplayer_icons.py
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache | tee package-resolution.log
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.14.74 CURRENT_PROJECT_VERSION=241 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build241.log
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version 0.14.74 --build 241 --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+      - name: Validate MinOS
+        run: |
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" 15.0 17.0 build241-min-os.log build241.log
+      - name: Package unsigned IPA and source snapshot
+        run: |
+          set -euo pipefail
+          rm -rf Payload && mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA="OnePlayer-0.14.74-build241-fling-threshold-500-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA"
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          SOURCE="OnePlayer-0.14.74-build241-source.zip"
+          git archive --format=zip --output "$SOURCE" HEAD
+          shasum -a 256 "$SOURCE" | tee "$SOURCE.sha256"
+          git rev-parse HEAD | tee build241-source-sha.txt
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          echo "SOURCE=$SOURCE" >> "$GITHUB_ENV"
+      - name: Upload Build241 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.74-build241-fling-threshold-500
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+            ${{ env.SOURCE }}
+            ${{ env.SOURCE }}.sha256
+            build241-source-sha.txt
+            build241.log
+            build241-min-os.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 30
