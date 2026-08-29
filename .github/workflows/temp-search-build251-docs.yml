@@ -1,0 +1,67 @@
+name: Temp Search Build251 Docs
+
+on:
+  push:
+    branches: ["feat/search-page-optimization"]
+    paths:
+      - ".github/search-build251-docs-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/search-page-optimization
+          fetch-depth: 0
+      - name: Sync Build251 project evidence
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          checkpoint = Path('docs/project/current/dev/DEV-search-page-optimization.md')
+          text = checkpoint.read_text()
+          text = text.replace('Build251 global-Suggestions correction code written, CI/IPA pending', 'Build251 global-Suggestions correction CI/IPA verified, target-device pending')
+          text = text.replace('- Built/target MinOS: iOS 15.0', '- Build251 identity: **OnePlayer 0.14.84 / Build251**\n- Build251 run/job: `33264608646 / 99132347141` — success\n- Build251 artifact: `OnePlayer-0.14.84-Build251-Search`, ID `9718288974`, digest `sha256:da474aaa24a3d8ff65e41ed990b861ba377f6a92938670bfe89a9625d8cc4470`\n- Build251 IPA SHA-256: `4923368ddca5bca9e3d9db83234b19547b12673feb22af50fd3e3279b08cc750`\n- Built/target MinOS: iOS 15.0')
+          text = text.replace('Current Build251 evidence: **Code written ✅ / CI passed ❌ pending / IPA produced ❌ pending / real-device tested ❌ / stable/frozen ❌**.', 'Build251 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ❌ / stable/frozen ❌**.')
+          text = text.replace('Compile/package Build251 from exact runtime source, then target-device test first-paint time against the official Emby web Search behavior.', 'Target-device test Build251 first-paint time against the official Emby web Search behavior. The intended request contract is now one global Suggestions call rather than per-library traversal.')
+          checkpoint.write_text(text)
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          text = module.read_text()
+          lines = text.splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith('| Search page / recommendations |'):
+                  lines[i] = '| Search page / recommendations | **Active — Build250 target-device rejected; Build251 CI/IPA verified, target-device pending** | Build248 Dock/keyboard behavior remains target-device accepted. Build250 / 0.14.83 still spun indefinitely. The user demonstrated official Emby Web Search on the same server immediately shows built-in `更多推荐`, which exposed the remaining scope mismatch: OnePlayer was traversing `UserViews` and calling `/Users/{userId}/Suggestions` per `ParentId`. Build251 / 0.14.84 exact runtime source `cc1806d7f606581e138579b44d94e16dc9ff7135` calls the same Suggestions endpoint once at user-global scope with no `ParentId`, `IncludeItemTypes=Movie,Series`, `Limit=9`; startup/image caches remain unchanged. Run/job `33264608646 / 99132347141` passed; artifact `9718288974`; IPA SHA-256 `4923368ddca5bca9e3d9db83234b19547b12673feb22af50fd3e3279b08cc750`; MinOS 15.0 verified. Not target-device tested or stable yet. |'
+              if line.startswith('| Other product modules |'):
+                  lines[i] = line.replace('Search Build250', 'Search Build251')
+          module.write_text('\n'.join(lines) + '\n')
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          current = state.read_text()
+          marker = '## Search Build250 rejection → Build251 global Suggestions candidate — 2026-08-30'
+          if marker not in current:
+              current += f'''\n\n{marker}\n\nBuild250 / 0.14.83 is target-device rejected for recommendation first paint: the Search page still remained on the spinner. The user then compared the same server in official Emby Web, where entering Search immediately produced built-in `更多推荐` with normal movie/series content. This evidence supersedes the per-library traversal direction.\n\nSource inspection showed OnePlayer already used Emby's `/Users/{{userId}}/Suggestions`, but added `ParentId` and serially traversed `UserViews`. Build251 exact runtime source `cc1806d7f606581e138579b44d94e16dc9ff7135` changes only this scope: one user-global Suggestions request, no `ParentId`, `IncludeItemTypes=Movie,Series`, `Limit=9`. Existing Movie/Series whitelist, startup warm, image disk cache, decoded-image cache, accepted Dock behavior and all Player/Transport/P0 contracts remain unchanged.\n\nBuild251 / 0.14.84 run/job `33264608646 / 99132347141` passed Xcode 16.4 Release build/package. Artifact `9718288974`, digest `sha256:da474aaa24a3d8ff65e41ed990b861ba377f6a92938670bfe89a9625d8cc4470`; IPA SHA-256 `4923368ddca5bca9e3d9db83234b19547b12673feb22af50fd3e3279b08cc750`; bundle `com.embyplayerlab.app`; MinOS 15.0; IPA integrity passed. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable**.\n'''
+              state.write_text(current)
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          current = index.read_text()
+          marker = '### Build251 / 0.14.84 — Search user-global Suggestions candidate'
+          if marker not in current:
+              current += f'''\n\n{marker}\n\n- Build250 target-device: Dock/keyboard remains accepted; recommendation first paint rejected because Search still spins.\n- comparative evidence: official Emby Web Search on the same server immediately shows built-in `更多推荐`.\n- exact runtime source: `cc1806d7f606581e138579b44d94e16dc9ff7135`.\n- change: replace `UserViews` + per-library `ParentId` Suggestions traversal with one user-global `/Users/{{userId}}/Suggestions` request using `IncludeItemTypes=Movie,Series`, `Limit=9`; no fallback traversal.\n- run/job: `33264608646 / 99132347141` — success.\n- artifact: `OnePlayer-0.14.84-Build251-Search`; ID `9718288974`; digest `sha256:da474aaa24a3d8ff65e41ed990b861ba377f6a92938670bfe89a9625d8cc4470`.\n- IPA SHA-256: `4923368ddca5bca9e3d9db83234b19547b12673feb22af50fd3e3279b08cc750`.\n- package: `com.embyplayerlab.app`, `0.14.84 (251)`, `MinimumOSVersion=15.0`, IPA integrity passed.\n- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**\n'''
+              index.write_text(current)
+
+          changelog = Path('docs/changelog/CHANGELOG_v0_14_84_build251.md')
+          if not changelog.exists():
+              changelog.write_text('''# OnePlayer 0.14.84 / Build251\n\n- Search `推荐观看` now uses one user-global Emby `/Users/{userId}/Suggestions` request instead of traversing every library with `ParentId`.\n- Request remains restricted to `IncludeItemTypes=Movie,Series` and `Limit=9`.\n- Preserve Build248-accepted Search Dock/keyboard behavior, startup warm, persistent image cache and decoded-image cache.\n- No Player, Transport, playback Session Cache, PiP, Resume/progress, credentials, shared poster-grid or Deployment Target changes.\n\nEvidence: Xcode 16.4 Release CI passed and IPA produced/verified; target-device validation pending.\n''')
+          PY
+          git diff --check
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add docs/project/current/dev/DEV-search-page-optimization.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/BUILD_TEST_INDEX.md docs/changelog/CHANGELOG_v0_14_84_build251.md
+          git commit -m "Document Search Build251 candidate evidence"
+          git push origin HEAD:feat/search-page-optimization
