@@ -6,7 +6,8 @@
 - Working branch: `feat/search-page-optimization`
 - Base branch: `main`
 - Base/head at task creation: `c6d0f4b9c8eb75906e48cec111f7228bbdae78d3`
-- PR: not created yet
+- Current product head: `cf8be3562687ed65a8cf63c62ad3dda3150d3cde`
+- Draft PR: #264
 - Build / version candidate: not allocated yet
 
 ## User requirement / target-device evidence
@@ -23,46 +24,53 @@
 
 ## Preflight / real source ownership
 
-- Current search implementation is `V3EmbySearchView` + `V3SearchViewModel` inside `Sources/UI/EmbyServerBrowseV3.swift`; it is current-server-only and overlays the shared Dock inside a keyboard-avoiding hierarchy.
+- Previous search implementation is `V3EmbySearchView` + `V3SearchViewModel` inside `Sources/UI/EmbyServerBrowseV3.swift`; it is current-server-only and remains untouched because poster PR #259 owns that file.
 - Root tab owner is `Sources/UI/EmbyServerRootViewV3.swift`; Search is mounted there and this is the correct place to control keyboard safe-area behavior for the server-root geometry.
-- Added-server authority remains `SessionStore.sessions`; per-server client authority remains `SessionStore.clientForBestRoute(for:)`. Do not duplicate server configuration/token/route state.
-- Existing Emby APIs already provide `searchItemsPage`, `userViews`, `librarySuggestions`, and `movieRecommendations`; no guessed API is required for the first implementation.
-- Existing 3-column surface is `EmbyPosterGrid`; existing detail navigation/card contracts are `EmbyPosterDetailLink` + `V3PosterCard`.
+- Added-server authority remains `SessionStore.sessions`; per-server client authority remains `SessionStore.clientForBestRoute(for:)`. No duplicate server/token/route state was introduced.
+- Existing APIs used by the implementation are the real `searchItemsPage`, `userViews`, and `librarySuggestions` definitions.
+- Existing 3-column/detail contracts are reused through `EmbyPosterGrid`, `EmbyPosterDetailLink`, and `V3PosterCard`.
+
+## Implemented scope
+
+At `cf8be356...`:
+
+- new isolated `Sources/UI/EmbySearchExperienceV3.swift` owns Search-only UI state and persistence;
+- `Sources/UI/EmbyServerRootViewV3.swift` now mounts `V3EmbyGlobalSearchView` and ignores keyboard safe-area only while Search is selected so the shared Dock remains at the physical bottom/behind the keyboard;
+- native gear `Menu` exposes global-search, recommendation, and per-server check states;
+- global-search defaults enabled and initial server selection defaults to all restored servers, then persists via `UserDefaults`;
+- search history is deduplicated, ordered newest-first, persisted via `UserDefaults`, shown as quick chips, and cleared only after a native destructive alert;
+- empty history omits the whole history section;
+- landing recommendations use Emby `userViews` + per-library `librarySuggestions`, deduplicate items, and render at most 9 items in the shared 3-column grid;
+- search results use the selected server set, preserve `SessionStore` route ownership, show one horizontal poster row per server, and provide `更多` to a paginated shared 3-column grid;
+- no retry/debounce/timer/watchdog/fallback or duplicate server/session state was added.
 
 ## Parallel-work conflict guard
 
 - Active poster PR #259 currently modifies `EmbyServerBrowseV3.swift`, `EmbyPosterGrid.swift`, `EmbyServerSharedV3.swift` and related poster/image files.
-- Therefore this task must **not modify** `EmbyServerBrowseV3.swift`, `EmbyPosterGrid.swift`, or `EmbyServerSharedV3.swift` while that task is Active. Implement the new Search experience in a new source file and switch only the Search mounting point in `EmbyServerRootViewV3.swift`.
-- Reusing the existing public/internal `EmbyPosterGrid`, `V3PosterCard`, and `EmbyPosterDetailLink` APIs is allowed, but they are a shared dependency; re-check PR #259 / `main` before final CI/merge and rerun validation if their source changes materially.
+- Search implementation intentionally does **not modify** those files. PR #264 changed paths are currently only `Sources/UI/EmbySearchExperienceV3.swift` and `Sources/UI/EmbyServerRootViewV3.swift`.
+- Reusing `EmbyPosterGrid`, `V3PosterCard`, and `EmbyPosterDetailLink` is a shared dependency; re-check poster PR #259 / `main` before final candidate build or merge if that task advances materially.
 - Aether work is Player/engine scoped and does not currently overlap Search UI state ownership.
 
 ## Frozen / do-not-touch
 
-Do not modify Player/MPV/PiP, UnifiedTransport, playback Session Cache, STRM/302/115 client-direct media path, Emby Resume/progress, server credential storage, or Deployment Target. Search UI must remain iOS 15.0 compatible.
-
-## Completed
-
-- New task explicitly authorized by user.
-- New isolated branch created from current `main`.
-- Current search/root/session/API/poster definitions and call sites inspected.
-- Parallel poster PR changed-file overlap inspected; implementation boundary chosen to avoid shared-file writes.
+No Player/MPV/PiP, UnifiedTransport, playback Session Cache, STRM/302/115 client-direct media path, Emby Resume/progress, server credential storage, or Deployment Target changes. Deployment Target remains iOS 15.0.
 
 ## Validation state
 
-- Code written: no
-- CI passed: no
+- Code written: yes — `cf8be3562687ed65a8cf63c62ad3dda3150d3cde`
+- Draft PR: #264
+- CI passed: pending PR validation
 - IPA produced: no
 - Real-device tested: user requirement/current-vs-competitor evidence only; new implementation not tested
 - Stable/frozen: no
 
 ## Pending
 
-- Implement isolated replacement Search experience + root keyboard-safe-area correction.
-- Add focused source checks for required Search contracts.
-- Allocate unique Build/version candidate only after collision check.
-- Create PR, run standard MPV CI/IPA workflow, verify Artifact/IPA identity and MinOS 15.0.
+- Wait for PR #264 `Validate Source` Xcode 16.4 compile result; inspect compiler logs if it fails.
+- Re-check active candidate allocations and reserve a unique Build/version.
+- Materialize candidate identity/changelog, run dedicated Release/IPA validation, verify Artifact/IPA identity and MinOS 15.0.
 - Hand IPA to user for iPhone 15 Pro Max / iOS 17.0 testing.
 
 ## Next exact action
 
-Write `Sources/UI/EmbySearchExperienceV3.swift` on `feat/search-page-optimization` and minimally switch `EmbyServerRootViewV3.swift` to it, without touching poster PR #259 files.
+Inspect PR #264 validation run for exact head `cf8be356...`; fix only compiler/source issues proven by that run before allocating the test-build identity.
