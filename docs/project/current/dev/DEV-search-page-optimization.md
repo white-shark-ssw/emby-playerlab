@@ -1,6 +1,6 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build253 initial 9 recommendations target-device accepted; Build254 incremental +6 candidate CI/IPA verified, target-device pending
+- Status: Active — Build254 incremental loading target-device works but container twitches during append; Build255 layout-owner correction implementation/CI in progress
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
@@ -93,3 +93,9 @@ Xcode 16.4 Release run/job `33268846116 / 99143580223` passed source validation,
 ## Next exact action
 
 Target-device test Build254. Verify the accepted first 9 remain fast/correct, reaching the last visible recommendation appends 6 new non-duplicate Movie/Series items, repeated downward scrolling continues in +6 batches without container twitch, earlier posters remain resident/cached, and the accepted Dock/keyboard behavior is unchanged.
+
+## Build254 target-device result → Build255 container stability correction — 2026-08-30
+
+Build254 / OnePlayer 0.14.87 is now target-device tested on iPhone 15 Pro Max / iOS 17.0. The user reports only one remaining issue: incremental recommendation loading works, but the Search recommendation container visibly twitches when the +6 append occurs. The accepted first 9 Movie/Series semantics, continued loading, duplicate exclusion and Build248 Dock/keyboard behavior otherwise remain accepted for this test. Build254 is therefore rejected as the final incremental-loading candidate and is not stable.
+
+Source inspection shows Search landing uniquely wraps the dynamically growing recommendation grid in an outer `LazyVStack`, while the established paginated poster page in `V3LibraryBrowserView.pagedPosterTab` uses a normal `VStack` around `EmbyPosterGrid` as pages append. Build255 reserves OnePlayer 0.14.88 / Build255 and changes only this Search landing layout owner from `LazyVStack` to `VStack`. The inner `EmbyPosterGrid` remains lazy, the accepted last-card +6 trigger remains unchanged, and there is no new timer, debounce, retry, fallback, watchdog, spinner, cache or shared poster-grid modification.

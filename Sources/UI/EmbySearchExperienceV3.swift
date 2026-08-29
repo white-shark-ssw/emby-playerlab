@@ -396,7 +396,7 @@ struct V3EmbyGlobalSearchView: View {
 
     private var searchLanding: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 24) {
                 if !model.history.isEmpty { searchHistorySection }
                 if model.recommendationsEnabled && (model.isLoadingRecommendations || !model.recommendationItems.isEmpty) { recommendationsSection }
             }
