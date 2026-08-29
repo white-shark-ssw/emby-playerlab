@@ -1,0 +1,125 @@
+name: Build242 Home Carousel Home Performance A/B IPA
+
+on:
+  push:
+    branches: [diag/home-carousel-home-perf-ab-build242]
+    paths: [.github/build242-carousel-ci-trigger.txt]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout Build242 branch
+        uses: actions/checkout@v4
+        with:
+          ref: diag/home-carousel-home-perf-ab-build242
+          fetch-depth: 0
+      - name: Validate exact Build242 scope and diagnostic isolation
+        run: |
+          set -euo pipefail
+          base='997a93a5f2c3c6544908ad112df5e714d2538e65'
+          git diff --check "$base"...HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          base='997a93a5f2c3c6544908ad112df5e714d2538e65'
+          changed=set(subprocess.check_output(['git','diff','--name-only',f'{base}...HEAD'],text=True).splitlines())
+          allowed={
+            '.github/build242-apply-trigger.txt','.github/build242-carousel-ci-trigger.txt',
+            '.github/workflows/temp-apply-build242-home-carousel-home-perf-ab.yml','.github/workflows/temp-build242-home-carousel-home-perf-ab.yml',
+            'Sources/Core/AppIdentity.swift','Sources/UI/EmbyHomeCoreV3.swift','docs/changelog/CHANGELOG_v0_14_75_build242.md'
+          }
+          extra=sorted(changed-allowed)
+          if extra: raise SystemExit(f'Unexpected Build242 files: {extra}')
+          frozen_prefixes=('Sources/Player/','Sources/Transport/','Sources/Cache/','Sources/Session/','Sources/AVIO/')
+          touched=sorted(p for p in changed if p.startswith(frozen_prefixes))
+          if touched: raise SystemExit(f'Build242 touched Frozen/P0 paths: {touched}')
+          identity=Path('Sources/Core/AppIdentity.swift').read_text()
+          assert 'sourceVersion = "0.14.75"' in identity
+          core=Path('Sources/UI/EmbyHomeCoreV3.swift').read_text()
+          assert 'private let homeCarouselPerformanceIsolationEnabled = true' in core
+          assert 'if immersive && !homeCarouselPerformanceIsolationEnabled {' in core
+          assert 'if immersive && !homeCarouselPerformanceIsolationEnabled { carouselPreloadLayer }' in core
+          assert 'Color.clear.frame(height: homeCarouselPerformanceIsolationHeroHeight(width: width, viewportHeight: viewportHeight))' in core
+          assert 'guard immersive, isHomeActive, !homeCarouselPerformanceIsolationEnabled else { return }' in core
+          assert '.onReceive(carouselTimer) { _ in if !homeCarouselPerformanceIsolationEnabled { autoAdvanceCarouselIfNeeded() } }' in core
+          interaction=Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift').read_text()
+          assert interaction.count('let velocityCommit = directionalVelocity >= 500') == 1
+          assert 'let velocityCommit = directionalVelocity >= 600' not in interaction
+          assert 'let shouldCommit = actualProgress >= 0.28 || velocityCommit' in interaction
+          assert 'HomeCarouselReleaseHandoff' not in interaction and 'beginReleaseHandoff' not in interaction
+          hero=Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()
+          assert hero.count('.compositingGroup()') == 1
+          state=Path('Sources/UI/EmbyHomeCarouselStateV3.swift').read_text()
+          assert 'withAnimation(.easeOut(duration: 0.22))' in state
+          assert 'withAnimation(.easeOut(duration: 0.18))' in state
+          print('Build242 diagnostic scope/contracts: PASS')
+          PY
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+      - name: Prepare OnePlayer app icons
+        run: python3 scripts/generate_oneplayer_icons.py
+      - name: Generate project and install dependencies
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache | tee package-resolution.log
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.14.75 CURRENT_PROJECT_VERSION=242 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build242.log
+      - name: Locate and validate app
+        id: app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "path=$APP_PATH" >> "$GITHUB_OUTPUT"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version 0.14.75 --build 242 --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+      - name: Validate MinOS
+        run: |
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "${{ steps.app.outputs.path }}" 15.0 17.0 build242-min-os.log build242.log
+      - name: Package unsigned IPA and source snapshot
+        run: |
+          set -euo pipefail
+          rm -rf Payload && mkdir Payload
+          cp -R "${{ steps.app.outputs.path }}" Payload/
+          IPA="OnePlayer-0.14.75-build242-home-carousel-home-perf-ab-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA"
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          SOURCE="OnePlayer-0.14.75-build242-source.zip"
+          git archive --format=zip --output "$SOURCE" HEAD
+          shasum -a 256 "$SOURCE" | tee "$SOURCE.sha256"
+          git rev-parse HEAD | tee build242-source-sha.txt
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          echo "SOURCE=$SOURCE" >> "$GITHUB_ENV"
+      - name: Upload Build242 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.75-build242-home-carousel-home-perf-ab
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+            ${{ env.SOURCE }}
+            ${{ env.SOURCE }}.sha256
+            build242-source-sha.txt
+            build242.log
+            build242-min-os.log
+            package-resolution.log
+          if-no-files-found: error
+          retention-days: 30
