@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build240 / 0.14.73 produced a verified measurement-only IPA for the narrowly reopened Home-carousel release-handoff momentum question. Build239 accepted interaction/presentation contracts and matched late ease-out remain frozen; Build240 changes diagnostics only and now awaits target-device App-log evidence. Build216 remains the accepted merged overall runtime baseline._
+_Last updated after Build241 / 0.14.74 produced an independently verified IPA from the user-selected Build239 Home-carousel baseline. Build240 release-handoff diagnostics are no longer the active direction; Build241 only lowers the direction-aware fling trigger from 600 to 500 pt/s. Build216 remains the accepted merged overall runtime baseline._
 
 ## Current accepted overall baseline
 
@@ -49,6 +49,13 @@ Build216 inherits all accepted/frozen player, PiP, transport, playback-cache, ep
 ## Active: Home carousel interaction
 
 Work: `DEV-home-carousel-drag-smoothness`.
+
+### Current candidate — Build241 / 0.14.74
+
+On 2026-08-29 the user explicitly chose Build239 as the behavior baseline rather than continuing Build240 momentum-handoff diagnostics, and requested only a slightly easier fling trigger. Build241 therefore starts from exact Build239 tested source and changes one runtime decision: direction-aware latest-delivered fling velocity `>=600 pt/s` becomes `>=500 pt/s`. The ordinary 0.28 progress commit and accepted Build239 presentation/settle contracts remain unchanged. Build238 device logs previously separated intended quick flicks (~1139.8–2239.8 pt/s) from short slow drags (~0–160 pt/s), so 500 is a narrow A/B with a large observed margin rather than an arbitrary broad sensitivity change.
+
+Verified identity: tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`; run/job `33247149430 / 99086484795` success; artifact `9713225510`, digest `sha256:3ea36257c97b4a7947bb46e9aa1e0a5d2dcbd1a96ddf1977d58e0cada180525f`; IPA SHA-256 `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`; source ZIP SHA-256 `b1e37c1c79f08552ad9de6819838cbca1b5b95cd4cc8a95c5b3ebf08a73ab664`; OnePlayer `0.14.74 (241)`, bundle `com.embyplayerlab.app`, MinOS 15.0 independently reopened. Evidence: **Code written / CI passed / IPA produced+verified / real-device pending / not stable**.
+
 
 ### 2026-08-28 acceptance-scope correction
 

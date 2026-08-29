@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — user explicitly chose the real-device-tested Build239 interaction/presentation behavior as the controlling baseline and closed the Build240 release-handoff diagnostic direction for now. Build241 / 0.14.74 is the next narrow A/B from exact Build239 source: lower only the direction-aware latest-delivered fling trigger from 600 to 500 pt/s so intentional short flicks require slightly less force. The 0.28 slow-drag threshold, Build239 0.22s/0.18s settle behavior, Build237 white-flash correction, Build236 acquisition handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle remain unchanged. Product candidate is materialized; dedicated CI/IPA is pending.**
+**Active — Build241 / 0.14.74 is now the verified test candidate from the exact Build239 behavior baseline. Per the user’s latest decision, Build240 release-handoff momentum diagnostics are no longer the active direction. Build241 lowers only the direction-aware latest-delivered fling trigger from 600 to 500 pt/s so intentional short flicks require slightly less force. The 0.28 slow-drag threshold, Build239 0.22s/0.18s settle behavior, Build237 white-flash correction, Build236 acquisition handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle remain unchanged. CI and IPA/package identity are verified; target-device acceptance is pending.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Working branch: `tune/home-carousel-fling-threshold-build241`
@@ -717,8 +717,20 @@ Materialized source identity:
 
 Why 500 pt/s is a narrow evidence-backed A/B: Build238 target-device logs separated intended quick flicks at roughly 1139.8–2239.8 pt/s from short slow drags at roughly 0–160 pt/s. Moving 600 → 500 reduces required flick force while retaining a large observed margin above ordinary slow drags. This threshold is not stable/frozen until target-device testing.
 
-Evidence level now: **Code written ✅ / dedicated CI pending / IPA pending / real-device pending / stable ❌.**
+Evidence level now: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / stable ❌.**
+
+Build241 verified identity:
+
+- exact tested repository source / CI head: `997a93a5f2c3c6544908ad112df5e714d2538e65`
+- product behavior commit: `8bb59c06913630169f1df649cc38f5d9af202546`
+- run/job: `33247149430 / 99086484795` — success
+- artifact: `OnePlayer-0.14.74-build241-fling-threshold-500`, ID `9713225510`, digest `sha256:3ea36257c97b4a7947bb46e9aa1e0a5d2dcbd1a96ddf1977d58e0cada180525f`
+- IPA SHA-256: `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`
+- source ZIP SHA-256: `b1e37c1c79f08552ad9de6819838cbca1b5b95cd4cc8a95c5b3ebf08a73ab664`
+- package independently reopened: `com.embyplayerlab.app`, OnePlayer `0.14.74 (241)`, `MinimumOSVersion=15.0`
+- source snapshot independently reopened: one `directionalVelocity >= 500` gate; no 600 gate; no Build240 handoff diagnostics; 0.28 progress gate, 0.22s/0.18s settle timing and one page-level `compositingGroup()` retained.
+
 
 ## Next exact action
 
-Run exact-scope Build241 CI/IPA from the materialized candidate. After package identity verification, test on iPhone 15 Pro Max / iOS 17.0 whether short intentional flicks switch more easily without making ordinary slow drags below the retained 0.28 progress threshold commit accidentally. Do not change settle timing/curve or add momentum/spring/interpolation behavior in this candidate.
+Install/test Build241 on iPhone 15 Pro Max / iOS 17.0. Compare it directly with Build239 for two things: (1) short intentional flicks should switch with slightly less force; (2) ordinary slow drags below the retained 0.28 progress threshold should not begin committing accidentally. If both are acceptable, Build241 can replace Build239 as the fling-threshold sub-contract. Do not reopen Build240 momentum modeling, retune the accepted settle tail, or add spring/interpolation behavior unless new device evidence requires it.
