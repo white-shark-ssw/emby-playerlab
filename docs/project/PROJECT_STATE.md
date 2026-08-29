@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build239 / 0.14.72 target-device testing accepted direction-aware 600 pt/s velocity fling behavior, while a new EX reference confirmed a visibly decelerating transition tail that does not yet justify changing OnePlayer's existing 0.22s/0.18s ease-out curve without matched evidence. Build216 remains the accepted overall runtime baseline._
+_Last updated after a matched Build239-vs-EX 30fps comparison confirmed OnePlayer already has a materially similar ease-out settle tail. Home-carousel interaction/presentation is frozen-for-current-phase at Build239 / 0.14.72; Build216 remains the accepted merged overall runtime baseline._
 
 ## Current accepted overall baseline
 
@@ -221,6 +221,12 @@ Build239 evidence: tested source `ed4e59c2a0e2fac3979d84dad756299659b15387`; run
 Build239 / 0.14.72 is now target-device accepted for release intent: the user reports no issue with the direction-aware latest-delivered velocity gate at 600 pt/s, while the ordinary 0.28 slow-drag commit remains. Keep the rejected predicted-total-distance width gate removed. The Build236/231/226/228 foundation and Build237 white-flash correction remain frozen-for-current-phase.
 
 A new EX screen recording (5.0s, 510×1108, 30fps) shows a clearly decelerating final transition segment over roughly 0.15–0.25s and no obvious rebound. Current Build239 already has `.easeOut(duration: 0.22)` commit and `.easeOut(duration: 0.18)` cancel. Treat the clip as reference evidence only; do not guess a stronger/longer curve without a matched OnePlayer capture or direct regression evidence.
+
+### Home carousel Build239 frozen-for-current-phase after matched tail comparison
+
+Build239 / 0.14.72 is the current feature freeze point for Home carousel interaction/presentation. Target-device release intent is accepted with 0.28 slow-drag commit plus direction-aware latest-delivered velocity >=600 pt/s; the predicted-total-distance wall remains removed. Build237 white-flash correction, Build236 first-post-acquisition real baseline, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle/release tail are retained.
+
+The matched OnePlayer 30fps recording shows materially similar normalized late settle decay to EX (representative OnePlayer ~100→47→11→0 vs EX ~100→43→11→0; second sample OnePlayer ~100→42→6→0 vs EX ~100→49→17→0). This removes the remaining evidence basis for another tail-tuning build. Reopen only for a new target-device regression. This is a feature freeze point, not a replacement for the merged overall Build216 baseline.
 
 ## Active: Poster-heavy scrolling smoothness
 

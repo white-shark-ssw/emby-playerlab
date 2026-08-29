@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build239 / 0.14.72 velocity-fling behavior is now target-device accepted: the user reports no issue after replacing the rejected predicted-total-distance wall with direction-aware latest-delivered velocity >=600 pt/s while retaining the 0.28 slow-drag rule. Freeze Build239 fling intent together with the already frozen-for-current-phase Build236/231/226/228 foundation and accepted Build237 white-flash correction. A new EX-only 5.0s / 510×1108 / 30fps reference recording shows a visibly decelerating ease-out tail over roughly the last 0.15–0.25s of several transitions, without obvious rebound. Build239 already uses `.easeOut(duration: 0.22)` for commit and `.easeOut(duration: 0.18)` for cancel, so the EX recording alone does not justify changing duration/curve. Whole carousel remains Active only for optional matched tail-curve comparison; stable ❌.**
+**Frozen-for-current-phase at Build239 / 0.14.72 — target-device velocity-fling behavior is accepted, the Build237 white-flash correction remains accepted, and a matched OnePlayer vs EX 30fps comparison shows the existing Build239 commit ease-out tail is already materially aligned with EX. Keep 0.28 slow-drag commit, direction-aware latest-delivered velocity >=600 pt/s, Build236 real-sample start handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle / 0.22s commit + 0.18s cancel tail. No further carousel tuning is justified without a new real-device regression. Whole-product accepted baseline remains Build216 on main; Build239 is a feature freeze point, not yet a merged overall product baseline.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Working branch: `perf/home-carousel-velocity-fling-build239`
@@ -653,6 +653,14 @@ The user then supplied EX reference recording `RPReplay_Final1787973831.mp4` (5.
 
 Evidence: Build239 Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device velocity-fling tested and accepted ✅ / whole-carousel stable/frozen ❌.
 
+### 2026-08-29 matched OnePlayer vs EX tail comparison — no tail change justified
+
+User supplied OnePlayer recording `RPReplay_Final1787975158.mp4` (5.23s, 510×1108, 30fps) after the earlier EX reference. Tracking incoming foreground/title position over final settle frames gives materially similar normalized remaining-distance curves: representative sample **OnePlayer 100% → 47% → 11% → 0** versus **EX 100% → 43% → 11% → 0**; second sample **OnePlayer 100% → 42% → 6% → 0** versus **EX 100% → 49% → 17% → 0**. At 30fps this cannot identify an exact cubic timing function, but it directly disproves the idea that OnePlayer lacks an ease-out tail.
+
+Build239 already uses `.easeOut(duration: 0.22)` for commit and `.easeOut(duration: 0.18)` for cancel. Together with the user's Build239 verdict “没问题了”, this closes the optional tail-comparison question for the current phase. Do not change duration/curve merely to chase a subjective EX difference; reopen only for a new target-device regression.
+
+Evidence: Build239 Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device release intent accepted ✅ / matched OnePlayer-vs-EX tail comparison completed ✅ / feature frozen-for-current-phase ✅ / merged overall product baseline ❌.
+
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -668,4 +676,4 @@ Evidence: Build239 Code written ✅ / exact scope+Frozen guard ✅ / CI passed �
 
 ## Next exact action
 
-Keep Build239 release intent frozen-for-current-phase; do not tune the 600 pt/s velocity threshold or restore a width-distance gate without new regression evidence. The EX reference confirms a visible ease-out tail, but Build239 already uses 0.22s/0.18s `.easeOut`. If tail matching is pursued, first compare a matched OnePlayer recording using the same short-flick gesture against the supplied EX clip; only then isolate duration versus timing-curve strength. Do not modify Build236/231/226/228, Build237 white-flash presentation, or the accepted Build239 velocity gate merely from the EX-only clip.
+No further Home-carousel tuning is planned. Keep Build239 as the frozen-for-current-phase feature baseline and reopen only for a new real-device regression. Do not tune the 600 pt/s threshold, 0.28 slow-drag threshold, 0.22s/0.18s ease-out tail, Build236 start-step path, Build231 compositing, Build226 Hero residency or Build237 white-flash correction without new evidence.

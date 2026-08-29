@@ -123,6 +123,8 @@ Build239 target-device testing accepts the velocity-intent release contract for 
 
 A subsequent EX-only 30fps reference clip visibly decelerates into settle over roughly the final 0.15–0.25s, without obvious rebound. OnePlayer Build239 already uses `.easeOut(duration: 0.22)` for commit and `.easeOut(duration: 0.18)` for cancel. Therefore this reference does not by itself authorize another release-tail tuning build; compare a matched OnePlayer capture first if tail matching is reopened.
 
+Matched OnePlayer-vs-EX 30fps tail evidence closes the remaining carousel release-tail comparison for the current phase. Build239's existing `.easeOut(duration: 0.22)` commit tail produces materially similar normalized late-frame settle decay to EX, while cancel remains `.easeOut(duration: 0.18)`. Do not change release duration/curve, 600 pt/s fling threshold, 0.28 slow-drag threshold, Build236 start-step handling, Build231 foreground compositing, Build226 Hero residency or Build237 persistent white-flash correction without a new target-device regression. Home carousel is frozen-for-current-phase at Build239 / 0.14.72; this does not change the merged overall product baseline from Build216.
+
 ## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only
 
 High-frequency native detail scroll offset stays in the Hero-scoped owner, not root detail state. Persistent warm detail cache is presentation-only: safe display metadata may be cached, but PlaybackInfo, MediaSource, PlaySession, ResolvedPlaybackSource and temporary 115/CDN URLs remain live/session-owned. Build182 was real-device accepted/frozen; Build184 visual hierarchy was accepted and merged through PR #255.
