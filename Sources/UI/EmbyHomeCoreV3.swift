@@ -29,6 +29,7 @@ struct V3EmbyHomeView: View {
     @State var isHomeRefreshing = false
     @State var isHomeActive = false
     private let carouselTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let homeCarouselPerformanceIsolationEnabled = true
 
     init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, onCarouselActiveChanged: @escaping (Bool) -> Void, dock: AnyView) {
         self.session = session
@@ -53,14 +54,14 @@ struct V3EmbyHomeView: View {
                 let immersive = !model.carouselItems.isEmpty
                 let viewportHeight = geometry.size.height + geometry.safeAreaInsets.top
                 ZStack(alignment: .top) {
-                    if immersive {
+                    if immersive && !homeCarouselPerformanceIsolationEnabled {
                         V3HomeCarouselTransitionScope(state: carouselTransitionState) {
                             persistentCarouselBackdrop(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom))
                         }
                     } else {
                         Color(uiColor: .systemBackground).ignoresSafeArea()
                     }
-                    if immersive { carouselPreloadLayer }
+                    if immersive && !homeCarouselPerformanceIsolationEnabled { carouselPreloadLayer }
 
                     if immersive {
                         homeScroll(width: geometry.size.width, viewportHeight: viewportHeight, immersive: true)
@@ -83,9 +84,12 @@ struct V3EmbyHomeView: View {
                 }
                 .onAppear {
                     isHomeActive = true
-                    synchronizeCarouselItems()
-                    carouselLastSettledAt = Date()
-                    onCarouselActiveChanged(immersive)
+                    if homeCarouselPerformanceIsolationEnabled {
+                        onCarouselActiveChanged(immersive)
+                    } else {
+                        synchronizeCarouselItems()
+                        carouselLastSettledAt = Date()
+                    }
                     Task {
                         if !model.hasLoaded { await model.refresh() }
                         else { await model.refreshResumeIfNeeded() }
@@ -95,8 +99,8 @@ struct V3EmbyHomeView: View {
                     guard let source = notification.object as? EmbyAPIClient, source === client, let itemID = notification.userInfo?[EmbyUserDataChange.itemIDKey] as? String else { return }
                     model.markResumeDirty(itemID)
                 }
-                .onReceive(carouselTimer) { _ in autoAdvanceCarouselIfNeeded() }
-                .onChange(of: model.carouselItems.map(\.id)) { _ in synchronizeCarouselItems() }
+                .onReceive(carouselTimer) { _ in if !homeCarouselPerformanceIsolationEnabled { autoAdvanceCarouselIfNeeded() } }
+                .onChange(of: model.carouselItems.map(\.id)) { _ in if !homeCarouselPerformanceIsolationEnabled { synchronizeCarouselItems() } }
                 .onDisappear {
                     isHomeActive = false
                     isCarouselDragging = false
@@ -129,9 +133,13 @@ struct V3EmbyHomeView: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     Group {
                         if immersive {
-                            V3HomeHeroScrollScope(state: heroScrollState) {
-                                V3HomeCarouselTransitionScope(state: carouselTransitionState) {
-                                    immersiveCarouselHero(width: width, viewportHeight: viewportHeight)
+                            if homeCarouselPerformanceIsolationEnabled {
+                                Color.clear.frame(height: homeCarouselPerformanceIsolationHeroHeight(width: width, viewportHeight: viewportHeight))
+                            } else {
+                                V3HomeHeroScrollScope(state: heroScrollState) {
+                                    V3HomeCarouselTransitionScope(state: carouselTransitionState) {
+                                        immersiveCarouselHero(width: width, viewportHeight: viewportHeight)
+                                    }
                                 }
                             }
                         }
@@ -178,7 +186,7 @@ struct V3EmbyHomeView: View {
                 .background(
                     ZStack {
                         V3HomeScrollOffsetObserver { value in
-                            guard immersive, isHomeActive else { return }
+                            guard immersive, isHomeActive, !homeCarouselPerformanceIsolationEnabled else { return }
                             let clampedValue = max(-heroTrackingLimit, value)
                             heroScrollState.update(clampedValue)
                         }
@@ -198,6 +206,17 @@ struct V3EmbyHomeView: View {
             .onChange(of: refreshToken) { _ in Task { await refreshHome() } }
             .onChange(of: scrollToTopToken) { _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("v3-home-top", anchor: .top) } }
         }
+    }
+
+    private func homeCarouselPerformanceIsolationHeroHeight(width: CGFloat, viewportHeight: CGFloat) -> CGFloat {
+        let value = CGFloat(min(1, max(0, carouselDisplayRange)))
+        let adjustment: CGFloat
+        if value >= 0.30 {
+            adjustment = min(132, viewportHeight * 0.16) * ((value - 0.30) / 0.70)
+        } else {
+            adjustment = -min(52, viewportHeight * 0.06) * ((0.30 - value) / 0.30)
+        }
+        return AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + adjustment
     }
 
     @MainActor
