@@ -1,6 +1,6 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build254 incremental loading target-device works but container twitches during append; Build255 layout-owner correction implementation/CI in progress
+- Status: Active — Build254 target-device rejected for append twitch; Build255 CI/IPA verified, target-device validation pending
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
@@ -29,6 +29,11 @@
 - Build254 run/job: `33268846116 / 99143580223` — success
 - Build254 artifact: `OnePlayer-0.14.87-Build254-Search`, ID `9719501314`, digest `sha256:3acf642efefccc6b6ea440e6e383bfb2b6cb80a449ca52d89efc39a909d2dc3f`
 - Build254 IPA SHA-256: `7714f225b55a4c93e96aa35951820d43e6be33fa911e14ff378755ac23884130`
+- Build255 exact product source: `99af35f86229ca5fb0cf9699fb41ef1bf5c754d2`
+- Build255 identity: **OnePlayer 0.14.88 / Build255**
+- Build255 run/job: `33270048487 / 99146794862` — success
+- Build255 artifact: `OnePlayer-0.14.88-Build255-Search`, ID `9719867060`, digest `sha256:a39fcdd34b8016f35ac8e952740879cc0e43e2373437a7e3bd2e8d02d1de1a1f`
+- Build255 IPA SHA-256: `2dbc76a146d4716eee0965c6861823e0df5592324812584fe261a30afb98019e`
 - Built/target MinOS: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 
@@ -99,3 +104,13 @@ Target-device test Build254. Verify the accepted first 9 remain fast/correct, re
 Build254 / OnePlayer 0.14.87 is now target-device tested on iPhone 15 Pro Max / iOS 17.0. The user reports only one remaining issue: incremental recommendation loading works, but the Search recommendation container visibly twitches when the +6 append occurs. The accepted first 9 Movie/Series semantics, continued loading, duplicate exclusion and Build248 Dock/keyboard behavior otherwise remain accepted for this test. Build254 is therefore rejected as the final incremental-loading candidate and is not stable.
 
 Source inspection shows Search landing uniquely wraps the dynamically growing recommendation grid in an outer `LazyVStack`, while the established paginated poster page in `V3LibraryBrowserView.pagedPosterTab` uses a normal `VStack` around `EmbyPosterGrid` as pages append. Build255 reserves OnePlayer 0.14.88 / Build255 and changes only this Search landing layout owner from `LazyVStack` to `VStack`. The inner `EmbyPosterGrid` remains lazy, the accepted last-card +6 trigger remains unchanged, and there is no new timer, debounce, retry, fallback, watchdog, spinner, cache or shared poster-grid modification.
+
+## Build255 CI / IPA evidence — 2026-08-30
+
+Exact product source `99af35f86229ca5fb0cf9699fb41ef1bf5c754d2` changes only the Search landing section owner from outer `LazyVStack` to `VStack`. The dynamically growing poster collection remains the existing inner `EmbyPosterGrid`/`LazyVGrid`; the Build254 last-card +6 trigger, `ExcludeItemIds` duplicate exclusion, accepted Movie/Series recommendation request, image caches/pins and Build248 Dock/keyboard behavior are unchanged. No shared poster-grid, Player, MPV, Transport, playback Session Cache, Resume/progress, PiP or Deployment Target code changed.
+
+Dedicated Xcode 16.4 Release run/job `33270048487 / 99146794862` passed source validation, MPVKit resolution, Release build, identity verification, IPA packaging/integrity and artifact upload. Artifact `9719867060`, digest `sha256:a39fcdd34b8016f35ac8e952740879cc0e43e2373437a7e3bd2e8d02d1de1a1f`; independently verified IPA SHA-256 `2dbc76a146d4716eee0965c6861823e0df5592324812584fe261a30afb98019e`; bundle `com.embyplayerlab.app`; version `0.14.88 (255)`; `MinimumOSVersion=15.0`. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / Build255 target-device tested ❌ / stable/frozen ❌**.
+
+## Next exact action
+
+Target-device test Build255 on iPhone 15 Pro Max / iOS 17.0. Repeatedly scroll through the initial 9 recommendations into successive +6 appends and verify the visible Search container/viewport no longer twitches or jumps while load-more still continues and displayed IDs remain non-duplicate.
