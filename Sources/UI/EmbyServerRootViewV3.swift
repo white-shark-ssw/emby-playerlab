@@ -38,7 +38,7 @@ struct EmbyServerRootViewV3: View {
                             .accessibilityHidden(selectedTab != .home)
 
                         if selectedTab == .favorites { V3EmbyFavoritesView(client: client, onClose: close, dock: dock) }
-                        if selectedTab == .search { V3EmbySearchView(client: client, onClose: close, dock: dock) }
+                        if selectedTab == .search { V3EmbyGlobalSearchView(currentSession: session, currentClient: client, onClose: close, dock: dock) }
                         if selectedTab == .settings { OnePlayerServerSettingsView(session: session, onClose: close, dock: dock) }
                     }
                     .environment(\.serverDockContent, dock)
@@ -52,6 +52,7 @@ struct EmbyServerRootViewV3: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .ignoresSafeArea(.keyboard, edges: selectedTab == .search ? .bottom : [])
         .task { await resolveClient() }
     }
 
