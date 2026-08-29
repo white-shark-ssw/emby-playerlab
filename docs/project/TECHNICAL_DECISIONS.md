@@ -212,3 +212,9 @@ Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B,
 - Incremental Search recommendation batches do **not** use `StartIndex` against random sorting. The next small batch uses `ExcludeItemIds` for every recommendation already displayed and appends only new IDs.
 - Initial batch remains 9; incremental batch is 6. A single in-flight state prevents duplicate simultaneous load-more requests. There is no timer/debounce/retry/fallback/watchdog or load-more spinner.
 - Existing Search image persistence/decoded-image ownership remains authoritative; no second cache is introduced.
+
+## Search dynamic poster growth keeps a non-lazy section owner — Build255
+
+- Search landing must not add an outer `LazyVStack` around its dynamically growing `EmbyPosterGrid`. The poster grid itself remains the lazy owner.
+- Build254 target-device evidence showed visible container twitch when +6 recommendations appended with nested lazy ownership.
+- Build255 follows the established paginated poster-page pattern: normal outer `VStack` + inner lazy `EmbyPosterGrid`. This is a layout-ownership correction only; no timer, scroll-offset compensation, retry/fallback, second cache or shared grid fork is introduced.

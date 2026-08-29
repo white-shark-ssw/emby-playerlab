@@ -387,3 +387,14 @@ Update this index when a build materially changes architectural understanding, b
 - IPA SHA-256: `7714f225b55a4c93e96aa35951820d43e6be33fa911e14ff378755ac23884130`.
 - package: `com.embyplayerlab.app`, `0.14.87 (254)`, `MinimumOSVersion=15.0`, IPA integrity passed.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / incremental load-more target-device pending / not stable.**
+
+### Build255 / 0.14.88 — Search append-layout stability candidate
+
+- Build254 target-device result: incremental +6 recommendation loading works, but the Search recommendation container visibly twitches during append; Build254 rejected as final and not stable.
+- exact Build255 product source: `99af35f86229ca5fb0cf9699fb41ef1bf5c754d2`.
+- runtime delta from Build254: Search landing outer `LazyVStack` → `VStack` only; inner `EmbyPosterGrid` remains lazy and the +6/`ExcludeItemIds` logic is unchanged.
+- run/job: `33270048487 / 99146794862` — success.
+- artifact: `OnePlayer-0.14.88-Build255-Search`, ID `9719867060`, digest `sha256:a39fcdd34b8016f35ac8e952740879cc0e43e2373437a7e3bd2e8d02d1de1a1f`.
+- IPA SHA-256: `2dbc76a146d4716eee0965c6861823e0df5592324812584fe261a30afb98019e`.
+- package: `com.embyplayerlab.app`, `0.14.88 (255)`, `MinimumOSVersion=15.0`, IPA integrity passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / Build255 target-device pending / not stable.**
