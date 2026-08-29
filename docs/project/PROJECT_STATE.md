@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build242 / 0.14.75 produced an independently verified diagnostic IPA isolating the carousel whole-stack contribution to Home performance. Build241 / 0.14.74 remains the normal carousel behavior candidate with the accepted-for-testing 500 pt/s fling gate; Build242 is diagnostic-only. Build216 remains the accepted merged overall runtime baseline._
+_Last updated after Home-carousel completion: Build241 / OnePlayer 0.14.74 is the user-accepted final carousel behavior and is now frozen. Its five exact runtime files were cleanly integrated onto current `main` through PR #262; Build242 / 0.14.75 remains diagnostic-only and is explicitly excluded as a product or inheritance baseline. Build216 remains the accepted packaged overall runtime identity._
 
 ## Current accepted overall baseline
 
@@ -46,210 +46,19 @@ Build216 inherits all accepted/frozen player, PiP, transport, playback-cache, ep
 - **Build213**: Favorites + Library 7-tab disk-backed warm presentation cache; cached-first after relaunch, live refresh remains authoritative, successful accepted state writes through, failed refresh retains old snapshot; target-device accepted through PR #260.
 - **Build216**: detail range-pill taps synchronously stop active native episode-row deceleration before the existing Build191 range-first selection and 0.32 s target scroll; target-device accepted and merged through PR #261.
 
-## Active: Home carousel interaction
+## Completed / frozen: Home carousel interaction — Build241 / 0.14.74
 
-Work: `DEV-home-carousel-drag-smoothness`.
+Work `DEV-home-carousel-drag-smoothness` is complete. The controlling product/runtime result is **Build241 / OnePlayer 0.14.74**, explicitly selected by the user as the final carousel version after target-device testing on iPhone 15 Pro Max / iOS 17.0.
 
-### Current candidate — Build241 / 0.14.74
+Final Build241 behavior retains the evidence-backed single UIKit interaction owner, acquisition handling, full-width page slots, three-slot Hero residency, page-level foreground `compositingGroup()`, exact device-max refresh through settle, persistent white-flash correction, ordinary progress commit `>=0.28`, direction-aware latest-delivered fling commit `>=500 pt/s`, commit `.easeOut(duration: 0.22)` and cancel `.easeOut(duration: 0.18)`. No debounce accumulation, second SwiftUI gesture owner, interpolation, timer/watchdog/retry smoothing, or Build240 release-handoff diagnostic is part of the final contract.
 
-On 2026-08-29 the user explicitly chose Build239 as the behavior baseline rather than continuing Build240 momentum-handoff diagnostics, and requested only a slightly easier fling trigger. Build241 therefore starts from exact Build239 tested source and changes one runtime decision: direction-aware latest-delivered fling velocity `>=600 pt/s` becomes `>=500 pt/s`. The ordinary 0.28 progress commit and accepted Build239 presentation/settle contracts remain unchanged. Build238 device logs previously separated intended quick flicks (~1139.8–2239.8 pt/s) from short slow drags (~0–160 pt/s), so 500 is a narrow A/B with a large observed margin rather than an arbitrary broad sensitivity change.
+Build241 exact tested source: `997a93a5f2c3c6544908ad112df5e714d2538e65`; run/job `33247149430 / 99086484795`; artifact `9713225510`; artifact digest `sha256:3ea36257c97b4a7947bb46e9aa1e0a5d2dcbd1a96ddf1977d58e0cada180525f`; IPA SHA-256 `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`; source ZIP SHA-256 `b1e37c1c79f08552ad9de6819838cbca1b5b95cd4cc8a95c5b3ebf08a73ab664`; built MinOS 15.0. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested and user accepted ✅ / carousel stable-frozen ✅**.
 
-Verified identity: tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`; run/job `33247149430 / 99086484795` success; artifact `9713225510`, digest `sha256:3ea36257c97b4a7947bb46e9aa1e0a5d2dcbd1a96ddf1977d58e0cada180525f`; IPA SHA-256 `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`; source ZIP SHA-256 `b1e37c1c79f08552ad9de6819838cbca1b5b95cd4cc8a95c5b3ebf08a73ab664`; OnePlayer `0.14.74 (241)`, bundle `com.embyplayerlab.app`, MinOS 15.0 independently reopened. Evidence: **Code written / CI passed / IPA produced+verified / real-device pending / not stable**.
+The historical Build241 development branch was not merged wholesale because it had diverged from current `main` and contained unrelated temporary workflows/history. Instead, PR #262 integrated only the five exact Build241 runtime blobs (`EmbyHomeCarouselCadenceDiagnosticsV3.swift`, `EmbyHomeCarouselInteractionV3.swift`, `EmbyHomeCarouselStateV3.swift`, `EmbyHomeCoreV3.swift`, `EmbyHomeHeroV3.swift`) onto current `main`. PR #262 merged at `75d9f53d0984ee7f32e7e3fa02cd9bf8794b56e3`. Independent integration compile run/job `33248884259 / 99090990039` verified those exact blob identities, Release compilation for generic iOS, and MinOS 15.0. This integration CI is not a new real-device build; Build241 remains the real-device acceptance authority.
 
+**Build242 / OnePlayer 0.14.75 is not a final version.** It was an intentionally altered diagnostic package that disabled the carousel presentation/runtime stack for Home-performance attribution and, per the user's final correction, the test modifications made it unsuitable/broken as normal carousel product behavior. Never inherit product behavior from Build242 and never call it stable/final. Its only durable diagnostic conclusion is that the user perceived little/no Home vertical-scroll difference versus Build241, so the whole carousel stack is not demonstrated to be a major Home-wide performance bottleneck. Normal settings behavior also returns `carouselItems == []` when the carousel is disabled, preventing the expensive persistent backdrop/Hero/preload/interaction presentation stack from mounting.
 
-### Home performance diagnostic — Build242 / 0.14.75
-
-Build242 is an exact-Build241-source diagnostic A/B for whole-Home attribution. It keeps immersive Home selection, carousel data presence, the Hero vertical footprint, Home rows and the same vertical ScrollView structure, but removes the carousel presentation/runtime load: persistent blurred backdrop, carousel Hero rendering/interaction, preload, auto-advance and carousel-owned Hero scroll updates. Exact source `3bf163d2c443520c0f22bba9b49902928fa36ca8`; run/job `33247895006 / 99088437546`; artifact `9713463258`, digest `sha256:40fbfb22bcb6461dd358cf72b6fd57fea934ca71acfd478978ffb29b0ebb119f`; IPA SHA-256 `9c08ed8965e5e9e99bf4a17768cc8d124209c3b42e9e48d8d78fba720415e5d4`; source ZIP SHA-256 `6baaec3cb1bacb14842316baa0b2e4615477f1769ed46f4f7f64bb7287a46d52`; MinOS 15.0. Evidence: **Code written / CI passed / IPA produced+verified / target-device A/B pending / diagnostic only / not stable**.
-
-### 2026-08-28 acceptance-scope correction
-
-The user explicitly corrected the task scope after Build224: **optimize the carousel itself**. Home vertical inertial scrolling can expose shared rendering pressure, but it is not the acceptance criterion for `DEV-home-carousel-drag-smoothness`. Build224 still showed visible vertical jitter after removing Hero clear artwork, but no horizontal carousel verdict was gathered from that test. Therefore Build222–224 are closed as a supporting vertical diagnostic detour. The direct carousel lane resumes at Build221 / 0.14.54, which is already CI/IPA verified and isolates persistent backdrop presentation only during active horizontal drag. No new vertical-only candidate should be created before Build221 is tested horizontally on the target device.
-
-### Retained architecture
-
-Build198 remains the input foundation:
-
-`one UIKit interaction surface → one begin/move/end/cancel owner → one V3HomeCarouselTransitionState → SwiftUI render`
-
-Retained values/ownership:
-
-- 0.5pt axis acquisition;
-- vertical acquisition yields to Home `UIScrollView`;
-- horizontal acquisition owns the gesture through end/cancel;
-- actual touch drives raw `transitionProgress`; predicted touch is release-only;
-- commit threshold 0.28;
-- ordinary slow-drag commit threshold 0.28; Build239 is the current A/B that removes the rejected predicted-total-distance fling gate and tests direction-aware latest-delivered velocity >=600 pt/s for fling intent;
-- existing settle ownership/timing;
-- no second SwiftUI drag/release owner;
-- no interpolation/timer/watchdog/retry/debounce/throttle.
-
-### Real-device history controlling the current direction
-
-- Build198: lifecycle/settle/reversal became acceptable, but minimum/subtle movement remained too coarse versus EX.
-- Build200: fully fixed foreground was rejected because foreground horizontal motion disappeared.
-- Build201 / 0.14.34: 15% travel received partially positive **“有点那种感觉了”** feedback but total travel was too short.
-- Build203 / 0.14.36: 30% travel was still too short and raw-linear mapping exposed coarse first displacement again.
-- Build205 / 0.14.38: 80% + whole-range `progress²` was rejected because the start was over-restrained and the tail felt unnaturally eased.
-- Build207 / 0.14.40: early-only soft-start/linear-tail mapping removed the whole-range easing problem, but target-device screenshots showed first displacement still too long and, more importantly, adjacent foreground content structurally overlapping while EX showed a clear gap.
-
-### Build207 structural-layout conclusion
-
-Build207 evidence:
-
-- branch: `perf/home-carousel-soft-start-linear-tail-build207`
-- tested source: `06936503a6c382d1d39d3cdd52f23bfe2058901e`
-- durable cleanup head: `7044ca68c7082cd055a7e4ce42dda6f00fe29674`
-- run/job: `33000526138` / `98280846494` — success
-- artifact ID: `9618484884`
-- IPA SHA-256: `bbd7c9c22c2a79a89f41e0d94db16023cf7cd2a720ffeb3c4f31cb9066a15a21`
-
-Source inspection plus screenshots establish:
-
-- every `carouselHeroForeground` is already a full Hero-width page;
-- Build207 offset math kept outgoing/incoming page centers only `0.80 × width` apart;
-- therefore those full-width page frames overlap by 20% throughout drag, which explains the visible Logo/title/rating/overview overlap;
-- existing foreground content width is `width - 56`;
-- if page centers are exactly one `width` apart, content edges keep ~56pt separation, matching the user's “one screen-width frame per item” model and the EX comparison more closely.
-
-Build207 evidence is therefore **real-device tested / foreground layout rejected / not stable**. This is not evidence to change the UIKit gesture owner.
-
-### Retained carousel behavior baseline: Build215 / 0.14.48
-
-Build208 is now the real-device video reference rather than the current candidate. A/B versus EX showed a hold-then-jump acquisition and prolonged visual lag from the easing workaround, while EX behaved like a short take-up followed by nearly 1:1 motion and kept foreground substantially more opaque.
-
-Build215 retains Build198 one-UIKit-owner lifecycle and Build208 full-width `pageStep = width`, but horizontal acquisition now establishes a render baseline and does not publish the already accumulated touch-down distance. Post-acquisition spatial motion is `currentTranslation - acquisitionTranslation`, with no whole-range easing. Release/commit remains touch-down based with the original 0.28 and 0.48×width gates, including one-sample fast release. Foreground transition pages remain opaque while backdrop crossfade is independent. Wrapping, cancellation/settle and P0/Frozen paths are unchanged.
-
-Carousel Build214 / 0.14.47 passed CI/IPA but was retired before distribution because parallel poster work claimed that identity. Build215 is the valid carousel attribution package.
-
-- tested source `d22634ece2f29eba2e60de01182bf15d4ba554a7`; durable cleanup head `01a13615fc056fd3b13296d98abfaa7a6aa2b46d` (workflow deletion only).
-- run/job `33058337107 / 98470624555` — success.
-- artifact ID `9640692378`; digest `sha256:31a054244bcfbeb39cc5db663aa7580cb4cc742fe88ca998ce9c9ba7a01e2939`.
-- IPA SHA-256 `6551a5e9e8a28a66bd4f105118387e8fc9378b72bd47778897f013b411c06c97`; source ZIP SHA-256 `00d2a0aba071dbbce3554d31dba64f0caa70c22b6e067dedeee0bb3b22ebd694`.
-- independent artifact/IPA/source/identity/MinOS/source-contract verification passed.
-- real-device result: acquisition-relative start and opaque foreground are positively confirmed; initial drag is now about as fine as EX and foreground blur/ghosting is gone, but overall tactile smoothness still trails EX ("smooth glass" vs "rough paper"). 30fps recording no longer shows the old macro hold/jump; residual micro-continuity/cadence cause remains unresolved and backdrop timing is only a hypothesis.
-- evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device tested / partial success / not stable**.
-
-Build217 then measured the unchanged Build215 interaction at roughly 50–60 Hz delivered/publish/render/display cadence despite `maximum_fps=120`; Build219 isolated the frame-rate request and raised the same chain to roughly 98–110 Hz on the target device. The user's on-screen FPS recording repeatedly reaches 118–120 FPS, proving the request is effective. Remaining discrete 34–50 ms gaps frequently occur within ~3–25 ms of Hero/persistent 1400px image callbacks, so the active carousel investigation now shifts to that image publication/presentation path rather than new motion easing or coalesced-touch authority.
-
-Build219 remains the controlling real-device diagnostic evidence: the 120 Hz request is effective, and its strongest repeatable residual pattern is a 50 ms display gap ~19.6–25.3 ms after target persistent 1400px callbacks. Source inspection shows those callbacks occur after an already-decoded image is adopted by a newly mounted full-screen persistent SwiftUI image that also carries `scaleEffect(1.12)` and `blur(radius: 30)`; Build212 already ruled out the synchronous callback/contrast calculation itself as a 50 ms cost.
-
-Build221 / 0.14.54 is now target-device tested for the intended horizontal interaction. It kept Build219 high refresh and Build215 motion semantics while freezing the outgoing persistent backdrop during active drag. The user reports acceptable initial take-up but overall hand feel still trailing EX, and the supplied recording visibly shows pale/white washed intermediate frames. Because Hero current/target artwork still crossfades while persistent is frozen, the A/B creates a mismatched backing during transition; this visual regression must not be retained. Build221 therefore rejects the whole-drag frozen-persistent strategy as a sufficient/final solution. Next horizontal diagnostic should isolate Hero clear-image presentation while restoring normal persistent behavior; do not continue vertical Home A/Bs.
-
-### Build222 Home vertical architecture A/B result
-
-Independent Build222 / 0.14.55 tested one narrow lifecycle hypothesis from the accepted Build216/main product baseline: once Home has scrolled away from the top, `autoAdvanceCarouselIfNeeded()` no longer starts a new automatic transition. It intentionally leaves persistent backdrop, preload, Hero and horizontal interaction unchanged and does not stack Build221. CI/IPA passed (`33101409110 / 98619779746`, artifact `9658757261`, tested source `694221315c727ea055ea3b5ef7a9ea03a260fe80`, IPA SHA-256 `8cf6d454bf7eec64207875e9c20a1bbc6b125578f11fb777bfdda4fa6b5c5bfe`, MinOS 15.0). Target-device feedback still perceives Home vertical hitching, so offscreen auto-advance alone is rejected as a sufficient fix. The supplied 30fps recording cannot prove the remaining 120Hz micro-stutter; its clearest zero→jump points coincide with new swipe starts. Next vertical A/B should isolate the root-level always-mounted persistent backdrop only, keeping preload and Build221 separate.
-
-### Build223 Home vertical persistent-backdrop A/B
-
-Build223 / 0.14.56 is the next independent Home vertical diagnostic from accepted Build216/main behavior, not a stack on Build221 or Build222. Its only runtime presentation change is that immersive Home no longer mounts the always-on full-screen `persistentCarouselBackdrop`; `persistentCarouselBackdrop` / `carouselPersistentImage` and the existing 30pt blur implementation remain in source, `carouselPreloadLayer` stays mounted, Hero artwork is unchanged, normal Build216 auto-advance behavior remains, and horizontal interaction/P0/Frozen paths are untouched. Dedicated Xcode 16.4 run/job `33110117601 / 98650408622` succeeded; tested source `af54d693d91303ea9bd201b5525e24f3e15ad931`; artifact `9662245993`; IPA SHA-256 `a925714dceb138df7808079b5784f3337afe92245bd790c42c290eac82ccd73c`; source ZIP SHA-256 `b14860b0a5889b39be17eeac8aeacf0621c6c68784058f463f00eae3057a5432`; OnePlayer 0.14.56 (223) and MinOS 15.0 were independently re-opened/verified. Target-device result on iPhone 15 Pro Max / iOS 17.0: **obvious Home vertical jitter remains**, so persistent full-screen removal is rejected as a sufficient fix. The unchanged Home Dock still uses `.ultraThinMaterial`; removing the full-screen backdrop changed the surface behind that material and produced the reported gray/translucent Dock strip. This is an unintended Build223 diagnostic visual regression, not an intentional Dock redesign, and must not be carried forward. Evidence: **Code written / exact scope+Frozen guard / CI passed / IPA produced+verified / real-device tested / hypothesis rejected as sufficient / Dock visual regression observed / not stable**. Next vertical candidate must restore the accepted Build216 background/Dock presentation and isolate one remaining carousel-owned presentation component at a time.
-
-### Build224 Home vertical Hero-artwork A/B
-
-Build224 / 0.14.57 removed only the clear Hero 1400px artwork mounts while retaining the accepted persistent background/Dock, preload, persistent blur, foreground, auto-advance and horizontal interaction. Dedicated Xcode 16.4 run/job `33142773132 / 98757057369` succeeded; artifact `9674622017`; IPA SHA-256 `5b8c973cb5d34cf843f2649bda72f6a3f48ab5766c023b9c3e587f9eb4d9c845`; MinOS 15.0. Target-device feedback on 2026-08-28 still reports visible **Home vertical inertial-scroll jitter**. This is now recorded as vertical supporting evidence only: the user clarified that the active goal is horizontal carousel swipe/drag smoothness, and this Build224 test did not provide a horizontal verdict. Do not continue the carousel task with another vertical-only A/B.
-
-### Build225 horizontal target-Hero A/B — positive real-device diagnostic
-
-Build225 / 0.14.58 established that deferring target clear-Hero first presentation out of active drag makes the carousel noticeably finer. This remains direct evidence that active-drag target-Hero first presentation was a material contributor, but Build225 itself is diagnostic because incoming clear Hero is withheld until release.
-
-### Build226 horizontal three-slot Hero residency — materially positive real-device direction
-
-Build226 / 0.14.59 keeps current+previous+next clear Heroes resident so both adjacent targets are already presented before finger tracking while normal Hero and persistent crossfades are restored. The user now reports the overall carousel is **fairly close to EX and much better than the original OnePlayer carousel**, validating residency as the current presentation direction. The user still wants further refinement, and the supplied slow-drag recording exposes visible large white movie-title shimmer. Both recordings are 510×1108@30fps; they support visual findings but do not independently prove 120Hz parity. Frame inspection shows title, metadata and overview moving as one foreground page rather than a title-only geometry jump. Build226 is real-device materially positive but not stable/frozen.
-
-### Build227 horizontal foreground physical-pixel A/B
-
-Build227 / 0.14.60 isolates the new title-shimmer finding. It keeps Build226 behavior and rounds only the final foreground page X presentation to the current display physical-pixel grid. No new owner/state/timer/interpolation/offscreen-compositing layer is added. Dedicated Xcode 16.4 run/job `33153825917 / 98791806487` succeeded; tested source `7ac8de30b76192ee3cd9c9382edca74b9ff5e69d`; artifact `9678871748`; IPA SHA-256 `b24d8abcd91f4faa74e06d8485bac3611725c561d9c99144c17def4b8ef26766`; source ZIP SHA-256 `16bc14dd82cae7d2599f23fefaf7b5e4d9c95db6a17dbaa08921e3749f41d278`; OnePlayer 0.14.60 (227) / MinOS 15.0 independently verified. Evidence: **Code written / scope+Frozen guard / CI passed / IPA produced+verified / real-device pending / diagnostic only / not stable**.
-
-### Carousel Build228 release-tail result — accepted for now
-
-Carousel Build228 / 0.14.61 (`perf/home-carousel-release-refresh-build228`) returns to the Build226 visual baseline and extends the already-proven device-max refresh request through interactive settle/cancel. Target-device feedback is **“差不多了，尾巴这里先这样吧”**. Treat this as acceptance of the release-tail subproblem for the current phase: retain max-refresh-through-settle and stop changing the existing 0.22 s commit / 0.18 s cancel easing, duration or velocity mapping unless new regression evidence appears.
-
-This does **not** close the carousel task. Build227 physical-pixel foreground rounding is rejected because movie-title shimmer remained, and slow-drag title shimmer / residual overall refinement versus EX are still open. Build226 three-slot Hero residency remains the evidence-backed presentation foundation. Carousel Build228 evidence: tested source `bdf63c7562fcd1edc1d224872230e988ac462281`, run/job `33156739621 / 98801196041`, artifact `9679963420`, IPA SHA-256 `cda90b62e3cabd3199e1cfbc1b2e1c77b8a84d023a7c7b9c8e2ff66ab9edcf44`, MinOS 15.0. A separate poster task also used Build228/0.14.61; build number alone is not valid attribution.
-
-### Carousel Build230 persistent residency — CI/IPA candidate
-
-Build230 / 0.14.63 starts from the cleaned carousel Build228 foundation and reuses the existing current+previous+next resident window for `persistentCarouselBackdrop`. Normal current→target persistent opacity blending is unchanged; unlike Build221, the outgoing background is not frozen. This moves the adjacent target persistent 1400px + `scaleEffect(1.12)` + `blur(radius: 30)` presentation creation out of active finger tracking without adding another residency owner.
-
-This candidate follows the remaining evidence after Build226: Hero first presentation was already moved out of active drag and improved hand feel, while Build227 still showed slow-drag title shimmer/cadence variability and exact source still created target persistent only after a drag transition began. Build230 does not claim the title is itself a persistent-layer bug; it tests whether the visible title shimmer is a high-contrast symptom of remaining whole-page cadence stalls.
-
-CI/package: tested source `6324bb2063bf1631b8b922abc8e11149bd7a86b0`; Xcode 16.4 run/job `33167765310 / 98837170851` success; artifact `9684378135`; IPA SHA-256 `6cea81f8e806ec159d9e811871076c18aa41fceb99b3c621516c490cfc339b4e`; source ZIP SHA-256 `f0955926306e502d34e1835d9b5daffd7499c5bdc15abede9b31744eba9ee4ec`; OnePlayer 0.14.63 (230), MinOS 15.0 independently verified. Real-device pending. Acceptance must include both active-drag improvement and absence of a new post-settle hitch when the resident window rotates a new far neighbor.
-
-### Build230 target-device result → Build231 foreground compositing A/B
-
-Build230 target-device slow-drag feedback reports the movie-title shimmer still remains. Therefore pre-residing persistent neighbors is rejected as a sufficient title-shimmer fix; this report does not establish an overall-feel or post-settle verdict for Build230. Build231 returns to cleaned Build228 and isolates foreground child-layer presentation with one page-level `compositingGroup()` before unchanged opacity/X offset. Build231 exact source `d30092b8354553063c6d96b62a6f2f4387676601`, run/job `33169864030 / 98844082214`, artifact `9685231197`, IPA SHA-256 `b92eb47971c546cfe7044ebdbd94cc27a108f0febead32ec811d55e400df4571`, MinOS 15.0. Real-device pending; not stable.
-
-### Build231 target-device success → Build232 start-step diagnostics
-
-Build231 target-device slow-drag testing reports the movie-title text is clearly steadier and not blurred. Therefore the page-level foreground `compositingGroup()` is retained as the current evidence-backed title-stability direction. The same session exposed a newly noticed but not yet historically attributed start-step difference: wait-before-drag feels very fine, while immediate touch-and-drag can begin with a coarser visible step. Exact recognizer source acquires horizontal ownership on the first delivered move crossing 0.5pt, stores that delivered translation as the render baseline, returns without publishing, then first publishes on the next delivered move. Existing cadence logging does not record the first acquisition-relative step, so a behavior change is not yet justified.
-
-Build232 / 0.14.65 is measurement-only on top of cleaned Build231. It records touch-down→acquisition time/X and acquisition→first-render time/X while retaining all current motion/release/render contracts. Exact tested source `de11d7483075daf7463faaa5519432478463a271`, run/job `33174155718 / 98858347691`, artifact `9686946353`, IPA SHA-256 `0366bffeda255f799621c0b0ffeb2780ef1adaa44c9d7b9f01ce14f0fe84b528`, MinOS 15.0. Target-device diagnostic pending; not stable.
-
-### Build232 first-step evidence → Build233 acquisition-local first frame
-
-Build232 target-device testing confirms the newly noticed first-step inconsistency. The user reports immediate touch-and-drag frequently starts with the old coarse step, while touch/hold then drag is almost always fine. `OnePlayer-App-1787924071.log` records 34 drags with a clean two-population split: 20 first steps 0.33–2.33pt and 14 first steps 8.00–13.67pt, with median acquisition→first-render 8.34ms and no samples in the middle. This supports changing the acquisition-frame sample usage rather than release/easing.
-
-Build231 foreground compositing remains materially positive but is downgraded from “complete title fix”: Build232 retained the same render path and title jitter reappeared. The Build232 session also contains residual cadence degradation (16/34 display p95 ≈16.67ms; 5/34 render average ≥20ms), so residual frame delivery remains an open title-shimmer contributor.
-
-Build233 / 0.14.66 uses one acquisition-local predecessor sample only: if the same acquisition UIEvent contains an immediately preceding coalesced touch continuing in the selected horizontal direction, that real sample becomes the render baseline and the current delivered touch publishes immediately. Subsequent render ownership stays on delivered touch. Exact tested source `4912234b579a2b8eeba7d5e7f5c6159248953efe`, run/job `33177534304 / 98869934770`, artifact `9688349642`, IPA SHA-256 `717ee926877e9867272f78790e06b3181b4e0f17d7d71d9494ca0540184a019b`, MinOS 15.0. Real-device pending; not stable.
-
-### Build233 partial first-frame improvement → Build234 coalesced-decision diagnostics
-
-Build233 target-device evidence is mixed but useful. In 67 drags, the acquisition-local same-event predecessor path fired 42 times and materially reduced first-step size (median 2.0pt, >=5pt 28.6%), while 25 fallback starts retained a median 8.33pt first step and >=5pt rate of 64%. Overall 28/67 starts were >=5pt and the user still perceives roughly half-or-more starts as coarse, so Build233 is not the final acquisition contract. The user also reports title text seems less jittery; 42/67 display p95 samples are ~8.34ms versus 18/67 at ~16.67ms, supporting but not proving a cadence-related improvement.
-
-Build234 / 0.14.67 changes no behavior. It records the acquisition UIEvent coalesced sample count, predecessor accept/reject status, predecessor delta X and predecessor age so the 25 fallback starts and remaining large accepted starts can be attributed before another input change. Exact tested source `528168da7c6b6df26bf1a907439becdb5cc4c980`, run/job `33189068688 / 98909569541`, artifact `9693038983`, IPA SHA-256 `ddd8b884dd5095a3eb72e47b8a2726ac9bf32e9dc7000aafe9aeef596296a59c`, MinOS 15.0. Target-device diagnostic pending; not stable.
-
-### Build234 target-device diagnosis — one-sample acquisition events own the residual coarse fallback
-
-Build234 target-device log contains 31 drags. Exactly 20 acquisition events report `accepted` and 11 report `none`; there are no `direction` or `zero` rejections. Every `none` event has `acq_coalesced_count=1`, proving UIKit exposed only the current delivered touch and no earlier same-event real sample. Those 11 fallback starts are coarse (median first step 9.0pt; >=5pt 9/11), while accepted same-event starts are materially finer (median 3.0pt; >=5pt 4/20). Accepted predecessor age is almost always 4.17ms. Therefore do not remove the same-direction guard or add synthetic interpolation/step caps. The next carousel behavior A/B should target the one-sample acquisition case using only real touch samples and preserve the single UIKit owner. Build235 is reserved by parallel Aether work and cannot be reused for carousel.
-
-### Build234 diagnosis → Build236 first post-acquisition real-predecessor A/B
-
-Build234 target-device diagnostics close the remaining Build233 fallback ambiguity: all 11 coarse fallback starts are acquisition `none` with `acq_coalesced_count=1`, while there are zero `direction` and zero `zero` rejections. Those one-sample acquisition events have no earlier same-event real touch available, and the old next-delivered fallback remains coarse.
-
-Build236 / 0.14.69 is the minimum behavior A/B authorized by that evidence. Acquisition events that already have an accepted predecessor are unchanged. Only `none/count=1` cases inspect the first post-acquisition UIEvent for the last real coalesced predecessor whose timestamp is after acquisition and before the current delivered touch; a direction-compatible predecessor may become the render baseline once, and the current delivered touch remains the publication event. The pending path is cleared immediately after that UIEvent. No synthetic interpolation, hard step cap, timer, easing or second render owner is added. Exact tested source `7811f34104daaea8734e72404bcb2fadb6fa37f7`; run/job `33193485825 / 98924631982`; artifact `9694861946`; IPA SHA-256 `8e248cb5834be4bcc261e3e1b63db3c334b805a4245aab56c74a5fe5951cd4c5`; MinOS 15.0. Target-device pending; not stable.
-
-### Carousel Build236 target-device result — coarse-start probability materially reduced
-
-Build236 / 0.14.69 is now target-device positive. The 53-drag App log shows overall >=5pt first steps at 10/53 (18.9%) and >=8pt at 3/53 (5.7%). The key Build236 path worked in 16/20 acquisition-event `none` starts: a real predecessor appeared on the first post-acquisition UIEvent, yielding median first step 2.0pt and zero >=5pt starts. Four starts still had no predecessor on that first post event and remain coarse (median 7.84pt; >=5pt 4/4), so the remaining avoidable family is now very narrow. User also reports title jitter is very slight; display p95 is ~8.34ms in 44/53 drags. Do not add artificial step caps or synthetic interpolation; if continuing, first measure whether the second post-acquisition event exposes a real predecessor for the residual 4/53 family. Build236 is target-device positive but not stable.
-
-### Carousel Build236 partial freeze + Build237 final-detail A/B
-
-The user explicitly prefers freezing the materially positive Build236 foundation rather than pursuing perfect elimination of the residual 4/53 double-no-predecessor first-step cases. Treat Build236 post-acquisition real-baseline handling, Build231 foreground `compositingGroup()`, Build226 Hero residency and Build228 max-refresh-through-settle/release-tail behavior as frozen-for-current-phase unless new regression evidence appears. The whole carousel remains Active only for two newly identified details.
-
-Build237 / 0.14.70 is CI/IPA verified. It halves only the predicted-distance fling commit gate from 0.48×width to 0.24×width while keeping the ordinary actual-progress threshold at 0.28, matching the requested short-drag-plus-fling sensitivity A/B. It also corrects a real source-over compositing flaw in `persistentCarouselBackdrop`: complementary opacity on two opaque persistent images can leave only 75% combined coverage at the midpoint and expose the light `systemBackground`; Build237 keeps outgoing persistent fully opaque and fades incoming over it. This is a code/CI/IPA candidate, not yet a real-device fix.
-
-### Carousel Build238 velocity evidence → Build239 direction-aware fling A/B
-
-Build237's persistent source-over correction remains accepted because the target device confirms the transition white flash is gone. Its lowered 0.24×width predicted-total-distance release gate remains rejected as sufficient.
-
-Build238 / 0.14.71 then measured the missing release semantic without changing behavior. The target-device log gives a strong separation on latest delivered move velocity: 19 intended quick flicks are about 1139.8–2239.8 pt/s in magnitude, while 9 short slow drags are about 0–160 pt/s, leaving a wide ~160–1140 pt/s empty interval. Coalesced velocity agrees. Terminal end velocity overlaps materially and predicted extra travel is frequently absent or only ~6–13.3pt for obvious quick flicks, so neither is accepted as the sole fling signal.
-
-Build239 / 0.14.72 is the resulting minimal A/B. It keeps ordinary `actualProgress >= 0.28`, removes the legacy `width * 0.24` predicted-total-distance gate from commit, and adds direction-aware latest delivered move velocity >=600 pt/s. The threshold is deliberately inside the measured empty interval and is a OnePlayer tuning value, not an EX constant. Build237 white-flash presentation, Build236 start-step handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle / release tail are unchanged.
-
-Build239 evidence: tested source `ed4e59c2a0e2fac3979d84dad756299659b15387`; run/job `33208503351 / 98975620229` — success; artifact `9700721145` (`sha256:61c4785bba434247039206198cb35700b47cbc2ead2be1178e914229c3814c5f`); IPA SHA-256 `b11992aa6b4c87df87600ec38143798aece6df231507a6d13357856318f6196d`; source ZIP SHA-256 `55b2977ab1df60bbc154cbd926f2997ca8086f6061394f4c05a4e40028783001`; bundle/version/build and MinOS 15.0 independently reopened/verified. Evidence level is **Code written / CI passed / IPA produced+verified / target-device pending / not stable**.
-
-### Carousel Build239 target-device acceptance + EX tail reference
-
-Build239 / 0.14.72 is now target-device accepted for release intent: the user reports no issue with the direction-aware latest-delivered velocity gate at 600 pt/s, while the ordinary 0.28 slow-drag commit remains. Keep the rejected predicted-total-distance width gate removed. The Build236/231/226/228 foundation and Build237 white-flash correction remain frozen-for-current-phase.
-
-A new EX screen recording (5.0s, 510×1108, 30fps) shows a clearly decelerating final transition segment over roughly 0.15–0.25s and no obvious rebound. Current Build239 already has `.easeOut(duration: 0.22)` commit and `.easeOut(duration: 0.18)` cancel. Treat the clip as reference evidence only; do not guess a stronger/longer curve without a matched OnePlayer capture or direct regression evidence.
-
-### Home carousel Build239 frozen-for-current-phase after matched tail comparison
-
-Build239 / 0.14.72 is the current feature freeze point for Home carousel interaction/presentation. Target-device release intent is accepted with 0.28 slow-drag commit plus direction-aware latest-delivered velocity >=600 pt/s; the predicted-total-distance wall remains removed. Build237 white-flash correction, Build236 first-post-acquisition real baseline, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle/release tail are retained.
-
-The matched OnePlayer 30fps recording shows materially similar normalized late settle decay to EX (representative OnePlayer ~100→47→11→0 vs EX ~100→43→11→0; second sample OnePlayer ~100→42→6→0 vs EX ~100→49→17→0). This removes the remaining evidence basis for another tail-tuning build. Reopen only for a new target-device regression. This is a feature freeze point, not a replacement for the merged overall Build216 baseline.
-
-### Home carousel — Build239 foundation retained; release-handoff continuity narrowly reopened
-
-The matched OnePlayer-vs-EX 30fps comparison remains valid for the **late settle tail** and does not justify changing Build239's 0.22s commit / 0.18s cancel ease-out. The user subsequently clarified that EX still feels more effortless over the **whole single flick**. Build239 source provides a narrower explanation: release velocity is used only as a binary direction-aware >=600 pt/s commit decision, then discarded before a fixed 0.22s ease-out from whatever progress remains. Thus the visual tail may match while the release boundary still lacks momentum/derivative continuity.
-
-Keep the accepted Build239 velocity gate, Build237 white-flash fix, Build236 start-step real sample, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle frozen. The task is Active only for an optional release-handoff measurement; no behavior patch is authorized yet.
-
-### Home carousel Build240 release-handoff diagnostic — CI/IPA verified
-
-Build240 / 0.14.73 is measurement-only. It keeps Build239 behavior unchanged and records committed-release velocity/progress together with the first post-release animated `transitionProgress` and CADisplayLink samples. This directly implements the previously authorized measurement of derivative/momentum continuity without changing the accepted 600 pt/s direction-aware fling gate, 0.28 slow-drag threshold, Build237 white-flash fix, Build236 start handling, Build231 compositing, Build226 Hero residency, or Build228 0.22s/0.18s settle tail. No timer/interpolator/spring/duration mapping/second owner was added.
-
-Exact evidence: source `0f894953a70e11712a82d28b4e8292979826575c`; run/job `33235107680 / 99054618665` — success; artifact `9709708870` (`sha256:62c9ee71324f0a4a22e3ce3b3ff8b7fdcb6abdb370980c1a89aba8c9bce69fc7`); IPA SHA-256 `a6afbd3706fc6227f9e09749c32680e6c967ea7b2acffd6f58c444a9ab0d5b15`; source ZIP SHA-256 `e9786d8d068e79f62f39464aa69ae6dae696ef223ab31f0b8184a5202eec513c`; OnePlayer 0.14.73 (240), bundle `com.embyplayerlab.app`, MinOS 15.0 independently verified. Evidence is **Code written / CI passed / IPA produced+verified / target-device diagnostic pending / not stable**. Next authority must be target-device logs, not another guessed motion patch.
+Do not reopen the carousel task unless new real-device regression evidence or an explicit new product requirement appears.
 
 ## Active: Poster-heavy scrolling smoothness
 
