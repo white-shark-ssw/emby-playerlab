@@ -46,6 +46,17 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
         let imageAgeMS: Double
     }
 
+    private struct ReleaseProgressSample {
+        let elapsedMS: Double
+        let progress: CGFloat
+    }
+
+    private struct ReleaseDisplaySample {
+        let elapsedMS: Double
+        let gapMS: Double
+        let progress: CGFloat
+    }
+
     private var displayLink: CADisplayLink?
     private var active = false
     private var dragStartedAt: CFTimeInterval = 0
@@ -81,6 +92,14 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
     private var latestImageEvent: ImageEvent?
     private var imageEventsDuringDrag = 0
     private var imageRoleCounts: [String: Int] = [:]
+    private var releaseHandoffAt: CFTimeInterval?
+    private var releaseHandoffVelocityPtS: CGFloat = 0
+    private var releaseHandoffActualProgress: CGFloat = 0
+    private var releaseHandoffVisualProgress: CGFloat = 0
+    private var releaseHandoffWidth: CGFloat = 1
+    private var releaseHandoffLatestProgress: CGFloat = 0
+    private var releaseHandoffProgressSamples: [ReleaseProgressSample] = []
+    private var releaseHandoffDisplaySamples: [ReleaseDisplaySample] = []
 
     private override init() {}
 
@@ -120,6 +139,14 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
         maxPublishToRenderLagMS = 0
         imageEventsDuringDrag = 0
         imageRoleCounts.removeAll(keepingCapacity: true)
+        releaseHandoffAt = nil
+        releaseHandoffVelocityPtS = 0
+        releaseHandoffActualProgress = 0
+        releaseHandoffVisualProgress = 0
+        releaseHandoffWidth = 1
+        releaseHandoffLatestProgress = 0
+        releaseHandoffProgressSamples.removeAll(keepingCapacity: true)
+        releaseHandoffDisplaySamples.removeAll(keepingCapacity: true)
         deliveredTouchStats.record(touch.timestamp)
         recordCoalescedTouches(for: touch, event: event)
         let link = CADisplayLink(target: self, selector: #selector(displayLinkTick(_:)))
@@ -129,6 +156,19 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
         }
         link.add(to: .main, forMode: .common)
         displayLink = link
+    }
+
+    func beginReleaseHandoff(directionalVelocityPtS: CGFloat, actualProgress: CGFloat, visualProgress: CGFloat, width: CGFloat) {
+        precondition(Thread.isMainThread)
+        guard active else { return }
+        releaseHandoffAt = CACurrentMediaTime()
+        releaseHandoffVelocityPtS = directionalVelocityPtS
+        releaseHandoffActualProgress = actualProgress
+        releaseHandoffVisualProgress = visualProgress
+        releaseHandoffWidth = max(1, width)
+        releaseHandoffLatestProgress = visualProgress
+        releaseHandoffProgressSamples.removeAll(keepingCapacity: true)
+        releaseHandoffDisplaySamples.removeAll(keepingCapacity: true)
     }
 
     func recordTouch(_ touch: UITouch, event: UIEvent) {
@@ -169,9 +209,10 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
     func recordSwiftUIUpdate(progress: CGFloat) {
         precondition(Thread.isMainThread)
         guard active else { return }
+        let now = CACurrentMediaTime()
+        recordReleaseAnimatedProgress(progress, at: now)
         if let lastRenderProgress, abs(progress - lastRenderProgress) <= 0.000001 { return }
         lastRenderProgress = progress
-        let now = CACurrentMediaTime()
         renderUpdateStats.record(now)
         if let lastProgressPublishAt { maxPublishToRenderLagMS = max(maxPublishToRenderLagMS, max(0, (now - lastProgressPublishAt) * 1000)) }
     }
@@ -193,6 +234,7 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
         displayLink = nil
         let now = CACurrentMediaTime()
         let durationMS = max(0, (now - dragStartedAt) * 1000)
+        logReleaseHandoff(reason: reason)
         let p95DisplayGap = percentile95(displayGapSamples)
         let roles = imageRoleCounts.keys.sorted().map { "\($0):\(imageRoleCounts[$0] ?? 0)" }.joined(separator: ",")
         let worst = worstDisplayGaps.map { event in
@@ -228,6 +270,7 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
         guard let previousTimestamp else { return }
         let gapMS = max(0, (link.timestamp - previousTimestamp) * 1000)
         displayGapSamples.append(gapMS)
+        recordReleaseDisplaySample(timestamp: link.timestamp, gapMS: gapMS)
         let imageAgeMS: Double
         let imageRole: String
         let imageItemID: String
@@ -245,6 +288,55 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
         if worstDisplayGaps.count > 5 { worstDisplayGaps.removeLast(worstDisplayGaps.count - 5) }
     }
 
+    private func recordReleaseAnimatedProgress(_ progress: CGFloat, at timestamp: CFTimeInterval) {
+        guard let releaseHandoffAt else { return }
+        releaseHandoffLatestProgress = progress
+        guard releaseHandoffProgressSamples.count < 6 else { return }
+        let previousProgress = releaseHandoffProgressSamples.last?.progress ?? releaseHandoffVisualProgress
+        guard abs(progress - previousProgress) > 0.000001 else { return }
+        releaseHandoffProgressSamples.append(ReleaseProgressSample(elapsedMS: max(0, (timestamp - releaseHandoffAt) * 1000), progress: progress))
+    }
+
+    private func recordReleaseDisplaySample(timestamp: CFTimeInterval, gapMS: Double) {
+        guard let releaseHandoffAt, timestamp >= releaseHandoffAt, releaseHandoffDisplaySamples.count < 6 else { return }
+        releaseHandoffDisplaySamples.append(ReleaseDisplaySample(elapsedMS: max(0, (timestamp - releaseHandoffAt) * 1000), gapMS: gapMS, progress: releaseHandoffLatestProgress))
+    }
+
+    private func formatReleaseProgressSamples(_ samples: [ReleaseProgressSample]) -> String {
+        guard !samples.isEmpty else { return "none" }
+        var previousMS = 0.0
+        var previousProgress = releaseHandoffVisualProgress
+        return samples.map { sample in
+            let deltaSeconds = max(0, sample.elapsedMS - previousMS) / 1000
+            let velocity = deltaSeconds > 0.000001 ? (sample.progress - previousProgress) * releaseHandoffWidth / deltaSeconds : 0
+            previousMS = sample.elapsedMS
+            previousProgress = sample.progress
+            return "\(String(format: "%.2f", sample.elapsedMS)):p\(String(format: "%.4f", sample.progress)):v\(String(format: "%.1f", velocity))"
+        }.joined(separator: ",")
+    }
+
+    private func formatReleaseDisplaySamples(_ samples: [ReleaseDisplaySample]) -> String {
+        guard !samples.isEmpty else { return "none" }
+        var previousMS = 0.0
+        var previousProgress = releaseHandoffVisualProgress
+        return samples.map { sample in
+            let deltaSeconds = max(0, sample.elapsedMS - previousMS) / 1000
+            let velocity = deltaSeconds > 0.000001 ? (sample.progress - previousProgress) * releaseHandoffWidth / deltaSeconds : 0
+            previousMS = sample.elapsedMS
+            previousProgress = sample.progress
+            return "\(String(format: "%.2f", sample.elapsedMS)):g\(String(format: "%.2f", sample.gapMS)):p\(String(format: "%.4f", sample.progress)):v\(String(format: "%.1f", velocity))"
+        }.joined(separator: ",")
+    }
+
+    private func logReleaseHandoff(reason: String) {
+        guard releaseHandoffAt != nil else { return }
+        let remainingPt = max(0, (1 - releaseHandoffVisualProgress) * releaseHandoffWidth)
+        DiagnosticsLogger.shared.app(
+            "HomeCarouselReleaseHandoff",
+            "reason=\(reason) release_velocity_pt_s=\(String(format: "%.1f", releaseHandoffVelocityPtS)) actual_progress=\(String(format: "%.4f", releaseHandoffActualProgress)) visual_progress=\(String(format: "%.4f", releaseHandoffVisualProgress)) remaining_pt=\(String(format: "%.1f", remainingPt)) width_pt=\(String(format: "%.1f", releaseHandoffWidth)) animation_samples=\(formatReleaseProgressSamples(releaseHandoffProgressSamples)) display_samples=\(formatReleaseDisplaySamples(releaseHandoffDisplaySamples))"
+        )
+    }
+
     private func percentile95(_ values: [Double]) -> Double {
         guard !values.isEmpty else { return 0 }
         let sorted = values.sorted()
@@ -253,8 +345,13 @@ final class V3HomeCarouselCadenceDiagnostics: NSObject {
     }
 }
 
-struct V3HomeCarouselCadenceRenderProbe: UIViewRepresentable {
-    let progress: CGFloat
+struct V3HomeCarouselCadenceRenderProbe: UIViewRepresentable, Animatable {
+    var progress: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
 
     func makeUIView(context: Context) -> UIView {
         let view = UIView(frame: .zero)

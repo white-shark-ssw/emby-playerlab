@@ -350,13 +350,18 @@ extension V3EmbyHomeView {
             transitionToID = targetID
             transitionProgress = 0
             transitionDirection = releaseDirection
+            V3HomeCarouselCadenceDiagnostics.shared.beginReleaseHandoff(directionalVelocityPtS: directionalVelocity, actualProgress: actualProgress, visualProgress: transitionProgress, width: width)
             completeInteractiveTransition(to: targetID)
             return
         }
         guard let targetID = transitionToID else { V3HomeCarouselCadenceDiagnostics.shared.end(reason: "ended-no-target"); return }
         isCarouselDragging = false
-        if shouldCommit { completeInteractiveTransition(to: targetID) }
-        else { cancelInteractiveTransition() }
+        if shouldCommit {
+            V3HomeCarouselCadenceDiagnostics.shared.beginReleaseHandoff(directionalVelocityPtS: directionalVelocity, actualProgress: actualProgress, visualProgress: transitionProgress, width: width)
+            completeInteractiveTransition(to: targetID)
+        } else {
+            cancelInteractiveTransition()
+        }
     }
 
     func cancelNativeCarouselDrag() {
