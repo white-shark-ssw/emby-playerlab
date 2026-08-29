@@ -1,0 +1,117 @@
+name: Temp Search Build256 Docs
+
+on:
+  push:
+    branches: ["feat/search-page-optimization"]
+    paths:
+      - ".github/search-build256-docs-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  branch-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/search-page-optimization
+          fetch-depth: 0
+      - name: Record Build256 branch evidence
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('docs/project/current/dev/DEV-search-page-optimization.md')
+          text = p.read_text()
+          lines = text.splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith('- Status:'):
+                  lines[i] = '- Status: Active — Build255 target-device rejected for detail-return recommendation reset; Build256 CI/IPA verified, target-device validation pending'
+                  break
+          insert_after = '- Build255 IPA SHA-256: `2dbc76a146d4716eee0965c6861823e0df5592324812584fe261a30afb98019e`'
+          build256_lines = [
+              '- Build256 exact product source: `723d803c70326dee49aabc75f15ce445b7de947e`',
+              '- Build256 identity: **OnePlayer 0.14.89 / Build256**',
+              '- Build256 run/job: `33271528610 / 99150738764` — success',
+              '- Build256 artifact: `OnePlayer-0.14.89-Build256-Search`, ID `9720282077`, digest `sha256:e9c3f0756cb4dbd7a0fa9f2785594fa3df7e41964f472426a14e6c50a231615e`',
+              '- Build256 IPA SHA-256: `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`',
+          ]
+          if build256_lines[0] not in lines:
+              idx = lines.index(insert_after) + 1
+              lines[idx:idx] = build256_lines
+          text = '\n'.join(lines).rstrip() + '\n'
+          marker = '## Build256 CI / IPA evidence — 2026-08-30'
+          if marker not in text:
+              text += f'''\n{marker}\n\nExact product source `723d803c70326dee49aabc75f15ce445b7de947e` removes app-start Search recommendation fetching, removes session-global recommendation metadata/task retention from `V3SearchRecommendationPreloader`, moves the Search model lifetime to `EmbyServerRootViewV3`, and prevents initial recommendation reload when the retained model already has items. The model survives Search detail push/pop while the selected Dock tab remains Search; switching Dock away from Search sets the model to nil, so recommendation metadata is destroyed; re-entering Search creates a fresh model and fetches a new initial 9. Shared image disk/decoded caches remain unchanged.\n\nDedicated Xcode 16.4 Release run/job `33271528610 / 99150738764` passed source validation, MPVKit resolution, Release build, identity verification, IPA packaging/integrity and artifact upload. Artifact `9720282077`, digest `sha256:e9c3f0756cb4dbd7a0fa9f2785594fa3df7e41964f472426a14e6c50a231615e`; independently verified IPA SHA-256 `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`; bundle `com.embyplayerlab.app`; version `0.14.89 (256)`; `MinimumOSVersion=15.0`. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / Build256 target-device tested ❌ / stable/frozen ❌**.\n\n## Next exact action\n\nTarget-device test Build256. Verify app startup does not fetch Search recommendations; first entering Search fetches the initial 9; after several +6 appends, opening a detail and returning preserves the already-loaded recommendation list while remaining on Search; manually switching Dock away from Search destroys that list; re-entering Search performs a fresh initial-9 load.\n'''
+          p.write_text(text.rstrip() + '\n')
+
+          c = Path('docs/changelog/CHANGELOG_v0_14_89_build256.md')
+          text = c.read_text()
+          text = text.replace('Evidence pending dedicated Xcode 16.4 Release CI/IPA and target-device validation.', 'Dedicated Xcode 16.4 Release CI/IPA passed for exact product source `723d803c70326dee49aabc75f15ce445b7de947e` (run `33271528610`, artifact `9720282077`, IPA SHA-256 `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`, MinOS 15.0). Target-device validation remains pending.')
+          c.write_text(text.rstrip() + '\n')
+          PY
+          git diff --check
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add docs/project/current/dev/DEV-search-page-optimization.md docs/changelog/CHANGELOG_v0_14_89_build256.md
+          git commit -m "Record Search Build256 CI evidence"
+          git push origin HEAD:feat/search-page-optimization
+
+  main-docs:
+    runs-on: ubuntu-latest
+    needs: branch-docs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Sync Build255 real-device result and Build256 evidence
+        run: |
+          set -euo pipefail
+          git fetch origin feat/search-page-optimization
+          git show origin/feat/search-page-optimization:docs/project/current/dev/DEV-search-page-optimization.md > docs/project/current/dev/DEV-search-page-optimization.md
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          lines = module.read_text().splitlines()
+          found = False
+          for i, line in enumerate(lines):
+              if line.startswith('| Search page / multi-Emby search |'):
+                  lines[i] = '| Search page / multi-Emby search | **Active — Build255 detail-return lifetime target-device rejected; Build256 CI/IPA verified, target-device pending** | Build248 Dock/keyboard and Build253 recommendation semantics remain target-device accepted. Build255 is target-device rejected because detail return can reset appended recommendations back to the initial 9. Build256 / 0.14.89 exact source `723d803c70326dee49aabc75f15ce445b7de947e` removes app-start Search recommendation fetching, makes the server Dock root own Search state while the Search tab remains selected, destroys that state on manual Dock switch away, and makes initial recommendation loading skip when retained items already exist. Run/job `33271528610 / 99150738764` passed; artifact `9720282077`; IPA SHA-256 `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`; MinOS 15.0. Build256 target-device validation pending; not stable. |'
+                  found = True
+              elif line.startswith('| Other product modules |'):
+                  lines[i] = re.sub(r'Search Build\d+', 'Search Build256', line)
+          if not found:
+              raise SystemExit('Search module row not found')
+          module.write_text('\n'.join(lines).rstrip() + '\n')
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          text = state.read_text().rstrip()
+          marker = '## Search Build255 detail-return reset → Build256 Search-tab lifetime — 2026-08-30'
+          if marker not in text:
+              text += f'''\n\n{marker}\n\nBuild255 / 0.14.88 is target-device tested and rejected as final because, after incremental recommendation loading, opening a detail and returning can drop all appended recommendation items and restore only the initial 9.\n\nBuild256 / 0.14.89 exact source `723d803c70326dee49aabc75f15ce445b7de947e` aligns ownership with the requested Search-tab lifetime: app startup no longer fetches Search recommendations; entering Search creates a fresh Search model and fetches the initial 9; the server root retains that model across Search detail navigation; Search `.task` cannot replace an already-populated recommendation list; switching Dock away from Search destroys the model; re-entering Search creates a fresh model and performs a fresh initial-9 request. The former session-global recommendation metadata/task cache is removed, while shared image caches remain unchanged.\n\nXcode 16.4 Release run/job `33271528610 / 99150738764` passed. Artifact `9720282077`, digest `sha256:e9c3f0756cb4dbd7a0fa9f2785594fa3df7e41964f472426a14e6c50a231615e`; IPA SHA-256 `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`; `com.embyplayerlab.app`; `0.14.89 (256)`; MinOS 15.0; IPA integrity passed. Evidence: **Build255 target-device tested ✅ / Build255 lifetime behavior rejected ❌ / Build256 Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / Build256 target-device pending / not stable**.\n'''
+          state.write_text(text.rstrip() + '\n')
+
+          decisions = Path('docs/project/TECHNICAL_DECISIONS.md')
+          text = decisions.read_text().rstrip()
+          marker = '## Search recommendation state lifetime follows the Search Dock selection — Build256'
+          if marker not in text:
+              text += f'''\n\n{marker}\n\n- Search recommendation metadata must not be app-start-owned or session-global. The initial 9 are fetched only after entering the Search Dock page.\n- While the Search Dock tab remains selected, the server root owns the Search view model so native detail push/pop returns to the same already-loaded recommendation data instead of recreating an initial-9 state.\n- A manual Dock switch away from Search ends that lifetime immediately by releasing the Search model. Re-entering Search creates a fresh model and fresh initial-9 request.\n- Existing persistent/decoded poster image caches remain shared infrastructure and are not part of this Search metadata lifetime. No timer, persistence snapshot, retry/fallback, watchdog or second cache is introduced.\n'''
+          decisions.write_text(text.rstrip() + '\n')
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          text = index.read_text().rstrip()
+          marker = '### Build256 / 0.14.89 — Search detail-return lifetime candidate'
+          if marker not in text:
+              text += f'''\n\n{marker}\n\n- Build255 target-device result: after loading beyond the initial 9, detail push/pop can reset Search recommendations back to only 9; Build255 rejected as final and not stable.\n- exact Build256 product source: `723d803c70326dee49aabc75f15ce445b7de947e`.\n- runtime ownership change: no app-start Search recommendation fetch; Search model owned by server Dock root only while Search tab is selected; initial load skips if retained items already exist; switching away destroys the model; session-global recommendation metadata/task retention removed.\n- existing recommendation request/+6 exclusion semantics and shared image caches are unchanged.\n- run/job: `33271528610 / 99150738764` — success.\n- artifact: `OnePlayer-0.14.89-Build256-Search`, ID `9720282077`, digest `sha256:e9c3f0756cb4dbd7a0fa9f2785594fa3df7e41964f472426a14e6c50a231615e`.\n- IPA SHA-256: `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`.\n- package: `com.embyplayerlab.app`, `0.14.89 (256)`, `MinimumOSVersion=15.0`, IPA integrity passed.\n- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / Build256 target-device pending / not stable.**\n'''
+          index.write_text(text.rstrip() + '\n')
+          PY
+          git diff --check
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add docs/project/current/dev/DEV-search-page-optimization.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/BUILD_TEST_INDEX.md
+          git commit -m "Record Search Build255 device result and Build256 evidence"
+          git push origin HEAD:main
