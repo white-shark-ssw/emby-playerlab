@@ -27,13 +27,14 @@ private final class V3GlobalSearchViewModel: ObservableObject {
     @Published private(set) var recommendationItems: [LibraryItem] = []
     @Published private(set) var isSearching = false
     @Published private(set) var isLoadingRecommendations = false
+    @Published private(set) var hasMoreRecommendations = true
     @Published private(set) var hasSubmittedSearch = false
     private(set) var currentTerm = ""
 
     private let searchItemTypes = ["Movie", "Series", "BoxSet"]
     private var searchGeneration = 0
     private var recommendationGeneration = 0
-    private var recommendationsLoaded = false
+    private var recommendationLimit = 12
     private var hasStoredServerSelection: Bool
 
     init() {
@@ -68,7 +69,12 @@ private final class V3GlobalSearchViewModel: ObservableObject {
     func toggleRecommendations() {
         recommendationsEnabled.toggle()
         UserDefaults.standard.set(recommendationsEnabled, forKey: V3SearchExperienceStorage.recommendationsEnabledKey)
-        if !recommendationsEnabled { recommendationGeneration += 1; isLoadingRecommendations = false }
+        if !recommendationsEnabled {
+            recommendationGeneration += 1
+            isLoadingRecommendations = false
+        } else {
+            hasMoreRecommendations = true
+        }
     }
 
     func toggleServer(_ sessionID: String) {
@@ -90,9 +96,9 @@ private final class V3GlobalSearchViewModel: ObservableObject {
         hasSubmittedSearch = false
     }
 
-    func search(_ term: String, sessions: [EmbySession], currentSession: EmbySession, currentClient: EmbyAPIClient, sessionStore: SessionStore) async {
+    func search(_ term: String, sessions: [EmbySession], currentSession: EmbySession, currentClient: EmbyAPIClient, sessionStore: SessionStore) async -> V3GlobalSearchServerResult? {
         let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { cancelDisplayedSearch(); return }
+        guard !trimmed.isEmpty else { cancelDisplayedSearch(); return nil }
         recordHistory(trimmed)
         searchGeneration += 1
         let generation = searchGeneration
@@ -105,34 +111,55 @@ private final class V3GlobalSearchViewModel: ObservableObject {
         if globalSearchEnabled { targets = sessions.filter { selectedServerIDs.contains($0.id) } }
         else { targets = [currentSession] }
 
+        if targets.count == 1, let stored = targets.first {
+            do {
+                let targetClient = stored.id == currentSession.id ? currentClient : try await sessionStore.clientForBestRoute(for: stored)
+                guard generation == searchGeneration, currentTerm == trimmed else { return nil }
+                isSearching = false
+                hasSubmittedSearch = false
+                return V3GlobalSearchServerResult(session: stored, client: targetClient, items: [], totalRecordCount: nil)
+            } catch {
+                guard generation == searchGeneration else { return nil }
+                isSearching = false
+                if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Search", "single-server route failed server=\(stored.serverName): \(error.localizedDescription)") }
+                return nil
+            }
+        }
+
         for stored in targets {
-            guard generation == searchGeneration else { return }
+            guard generation == searchGeneration else { return nil }
             do {
                 let targetClient = stored.id == currentSession.id ? currentClient : try await sessionStore.clientForBestRoute(for: stored)
                 let page = try await targetClient.searchItemsPage(term: trimmed, limit: 20, startIndex: 0, includeItemTypes: searchItemTypes)
-                guard generation == searchGeneration, currentTerm == trimmed else { return }
+                guard generation == searchGeneration, currentTerm == trimmed else { return nil }
                 if !page.items.isEmpty { serverResults.append(V3GlobalSearchServerResult(session: stored, client: targetClient, items: page.items, totalRecordCount: page.totalRecordCount)) }
             } catch {
-                guard generation == searchGeneration else { return }
+                guard generation == searchGeneration else { return nil }
                 if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Search", "server search failed server=\(stored.serverName): \(error.localizedDescription)") }
             }
         }
 
-        guard generation == searchGeneration else { return }
+        guard generation == searchGeneration else { return nil }
         isSearching = false
+        return nil
     }
 
     func loadRecommendations(client: EmbyAPIClient) async {
-        guard recommendationsEnabled, !recommendationsLoaded, !isLoadingRecommendations else { return }
+        await reloadRecommendations(client: client, targetLimit: recommendationLimit)
+    }
+
+    func loadMoreRecommendations(client: EmbyAPIClient) async {
+        guard recommendationsEnabled, hasMoreRecommendations, !isLoadingRecommendations else { return }
+        recommendationLimit += 6
+        await reloadRecommendations(client: client, targetLimit: recommendationLimit)
+    }
+
+    private func reloadRecommendations(client: EmbyAPIClient, targetLimit: Int) async {
+        guard recommendationsEnabled, !isLoadingRecommendations else { return }
         recommendationGeneration += 1
         let generation = recommendationGeneration
         isLoadingRecommendations = true
-        defer {
-            if generation == recommendationGeneration {
-                isLoadingRecommendations = false
-                recommendationsLoaded = true
-            }
-        }
+        defer { if generation == recommendationGeneration { isLoadingRecommendations = false } }
 
         do {
             let libraries = try await client.userViews()
@@ -140,34 +167,24 @@ private final class V3GlobalSearchViewModel: ObservableObject {
             var result: [LibraryItem] = []
             for library in libraries {
                 guard generation == recommendationGeneration, recommendationsEnabled else { return }
-                let itemTypes = recommendationItemTypes(for: library)
-                guard !itemTypes.isEmpty else { continue }
                 do {
-                    let suggestions = try await client.librarySuggestions(parentId: library.id, limit: 9, includeItemTypes: itemTypes)
+                    let suggestions = try await client.librarySuggestions(parentId: library.id, limit: min(100, targetLimit))
                     for item in suggestions where seen.insert(item.id).inserted {
                         result.append(item)
-                        if result.count == 9 { break }
+                        if result.count == targetLimit { break }
                     }
                 } catch {
                     if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Search", "recommendations failed library=\(library.name): \(error.localizedDescription)") }
                 }
-                if result.count == 9 { break }
+                if result.count == targetLimit { break }
             }
             guard generation == recommendationGeneration, recommendationsEnabled else { return }
             recommendationItems = result
+            hasMoreRecommendations = result.count == targetLimit
         } catch {
             guard generation == recommendationGeneration else { return }
+            hasMoreRecommendations = false
             if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Search", "recommendation libraries failed: \(error.localizedDescription)") }
-        }
-    }
-
-    private func recommendationItemTypes(for library: LibraryItem) -> [String] {
-        switch library.collectionType?.lowercased() {
-        case "movies": return ["Movie"]
-        case "tvshows": return ["Series"]
-        case "homevideos": return ["Video"]
-        case "mixed": return ["Movie", "Series", "Video"]
-        default: return []
         }
     }
 
@@ -191,6 +208,7 @@ struct V3EmbyGlobalSearchView: View {
     @StateObject private var model = V3GlobalSearchViewModel()
     @State private var searchText = ""
     @State private var showClearHistoryAlert = false
+    @State private var directSearchDestination: V3GlobalSearchServerResult?
     @FocusState private var searchFieldFocused: Bool
 
     private var horizontalPosterWidth: CGFloat {
@@ -206,13 +224,14 @@ struct V3EmbyGlobalSearchView: View {
                     searchResults.padding(.top, 20)
                 } else {
                     searchHeader
-                    searchField.padding(.horizontal, 20).padding(.top, 12)
-                    searchLanding.padding(.top, 24)
+                    searchField.padding(.horizontal, 20).padding(.top, 8)
+                    searchLanding.padding(.top, 20)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             .overlay(alignment: .bottom) { dock }
+            .background(directSearchLink)
             .navigationBarHidden(true)
             .alert("清除搜索历史", isPresented: $showClearHistoryAlert) {
                 Button("取消", role: .cancel) {}
@@ -234,25 +253,25 @@ struct V3EmbyGlobalSearchView: View {
     }
 
     private var searchHeader: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 searchSettingsMenu
                 Spacer()
                 Button(action: onClose) {
-                    Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundColor(.primary)
-                        .frame(width: 38, height: 38)
+                    Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundColor(.primary)
+                        .frame(width: 32, height: 32)
                         .background(Color(uiColor: .secondarySystemBackground)).clipShape(Circle())
                 }
                 .buttonStyle(.plain)
             }
-            Text("搜索").font(.system(size: 38, weight: .bold)).foregroundColor(.primary)
+            Text("搜索").font(.system(size: 32, weight: .bold)).foregroundColor(.primary)
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
     }
 
     private var compactSearchHeader: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             searchField
             Button("取消") {
                 searchText = ""
@@ -293,7 +312,7 @@ struct V3EmbyGlobalSearchView: View {
                 }
             }
         } label: {
-            Image(systemName: "gearshape.circle").font(.system(size: 27, weight: .medium)).foregroundColor(.blue).frame(width: 38, height: 38)
+            Image(systemName: "gearshape.circle").font(.system(size: 16.2, weight: .medium)).foregroundColor(.blue).frame(width: 26, height: 26)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("搜索设置")
@@ -306,10 +325,11 @@ struct V3EmbyGlobalSearchView: View {
     }
 
     private var searchField: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "magnifyingglass").font(.system(size: 18)).foregroundColor(.secondary)
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").font(.system(size: 16)).foregroundColor(.secondary)
             TextField("搜索", text: $searchText)
                 .focused($searchFieldFocused)
+                .font(.system(size: 16))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
@@ -318,19 +338,19 @@ struct V3EmbyGlobalSearchView: View {
                 Button {
                     searchText = ""
                     model.cancelDisplayedSearch()
-                } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundColor(.secondary) }
+                } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundColor(.secondary) }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 13)
-        .frame(height: 48)
+        .padding(.horizontal, 12)
+        .frame(height: 36)
         .background(Color(uiColor: .secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var searchLanding: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: 28) {
+            LazyVStack(alignment: .leading, spacing: 24) {
                 if !model.history.isEmpty { searchHistorySection }
                 if model.recommendationsEnabled && (model.isLoadingRecommendations || !model.recommendationItems.isEmpty) { recommendationsSection }
             }
@@ -339,25 +359,25 @@ struct V3EmbyGlobalSearchView: View {
     }
 
     private var searchHistorySection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("搜索历史").font(.system(size: 20, weight: .bold))
                 Spacer()
-                Button { showClearHistoryAlert = true } label: { Image(systemName: "trash").font(.system(size: 19)).foregroundColor(.blue).frame(width: 34, height: 34) }
+                Button { showClearHistoryAlert = true } label: { Image(systemName: "trash").font(.system(size: 19)).foregroundColor(.blue).frame(width: 30, height: 30) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("清除搜索历史")
             }
             .padding(.horizontal, 16)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     ForEach(model.history, id: \.self) { term in
                         Button {
                             searchText = term
                             submitSearch(term)
                         } label: {
-                            Text(term).font(.system(size: 14)).foregroundColor(.primary).lineLimit(1)
-                                .padding(.horizontal, 14).frame(height: 34)
+                            Text(term).font(.system(size: 13)).foregroundColor(.primary).lineLimit(1)
+                                .padding(.horizontal, 12).frame(height: 26)
                                 .background(Color(uiColor: .secondarySystemBackground)).clipShape(Capsule())
                         }
                         .buttonStyle(.plain)
@@ -374,9 +394,13 @@ struct V3EmbyGlobalSearchView: View {
             if model.isLoadingRecommendations && model.recommendationItems.isEmpty {
                 ProgressView().frame(maxWidth: .infinity).padding(.top, 18)
             } else {
-                EmbyPosterGrid(items: Array(model.recommendationItems.prefix(9))) { item in
+                EmbyPosterGrid(items: model.recommendationItems, horizontalPadding: 6, onApproachingEnd: {
+                    guard model.hasMoreRecommendations else { return }
+                    Task { await model.loadMoreRecommendations(client: currentClient) }
+                }) { item in
                     EmbyPosterDetailLink(item: item, client: currentClient) { V3PosterCard(item: item, client: currentClient, width: nil) }
                 }
+                if model.isLoadingRecommendations && !model.recommendationItems.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8) }
             }
         }
     }
@@ -416,19 +440,40 @@ struct V3EmbyGlobalSearchView: View {
         }
     }
 
+    private var directSearchLink: some View {
+        NavigationLink(isActive: Binding(get: { directSearchDestination != nil }, set: { if !$0 { directSearchDestination = nil } })) {
+            if let result = directSearchDestination {
+                V3GlobalSearchServerGridView(serverName: result.session.serverName, term: searchText, client: result.client, dock: dock)
+            } else {
+                EmptyView()
+            }
+        } label: {
+            EmptyView()
+        }
+        .hidden()
+    }
+
     private func submitSearch(_ term: String) {
         let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         searchText = trimmed
         searchFieldFocused = false
-        Task { await model.search(trimmed, sessions: sessionStore.sessions, currentSession: currentSession, currentClient: currentClient, sessionStore: sessionStore) }
+        Task {
+            if let direct = await model.search(trimmed, sessions: sessionStore.sessions, currentSession: currentSession, currentClient: currentClient, sessionStore: sessionStore) {
+                directSearchDestination = direct
+            }
+        }
     }
 
     private func refreshSubmittedSearchIfNeeded() {
         guard model.hasSubmittedSearch else { return }
         let term = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !term.isEmpty else { return }
-        Task { await model.search(term, sessions: sessionStore.sessions, currentSession: currentSession, currentClient: currentClient, sessionStore: sessionStore) }
+        Task {
+            if let direct = await model.search(term, sessions: sessionStore.sessions, currentSession: currentSession, currentClient: currentClient, sessionStore: sessionStore) {
+                directSearchDestination = direct
+            }
+        }
     }
 }
 
