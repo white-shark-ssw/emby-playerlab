@@ -42,7 +42,7 @@ struct EmbyServerRootViewV3: View {
                         if selectedTab == .search { V3EmbyGlobalSearchView(currentSession: session, currentClient: client, onClose: close, dock: emptyDock) }
                         if selectedTab == .settings { OnePlayerServerSettingsView(session: session, onClose: close, dock: dock) }
                     }
-                    .overlay(alignment: .bottom) { if selectedTab == .search { serverTabBar } }
+                    .overlay(alignment: .bottom) { if selectedTab == .search { serverTabBar.padding(.bottom, geometry.safeAreaInsets.bottom) } }
                     .environment(\.serverDockContent, dock)
                     .environment(\.serverDockBottomInset, geometry.safeAreaInsets.bottom)
                     .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
