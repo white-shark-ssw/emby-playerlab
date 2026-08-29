@@ -206,3 +206,11 @@ Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B,
 - Recommendation presentation uses a bounded fixed set for the current candidate; do not mutate the recommendation grid through incremental Suggestions requests while the user is scrolling. This isolates Search from the Build246 load-more twitch without changing the shared poster-grid owner.
 - Existing `EmbyImageDiskCache` remains the persistent poster-byte authority and `EmbyDecodedImageRenderPool` remains the decoded-memory authority. Do not add a Search-specific second disk image cache.
 - This decision is candidate-level until Build247 target-device testing; it does not mark Search stable/frozen.
+
+
+## Search Build248 refinement — safe-area-compensated root Dock and visible-set preload
+
+- Build247 target-device evidence validates root ownership as the right place to separate Dock from keyboard-responsive Search navigation, but also proves that root ownership alone is insufficient when the root deliberately extends its frame by the bottom safe-area inset. A root-owned Search Dock aligned to that expanded bottom must compensate `geometry.safeAreaInsets.bottom` to occupy the same physical band as the other tabs.
+- Search landing recommendations are an up-to-3×3 presentation. Startup warm work should therefore be bounded by the visible recommendation contract rather than an arbitrary larger 60-item set. Per-library Suggestions requests should ask only for remaining visible slots.
+- This refinement preserves the prior decisions: actual returned `LibraryItem.type` is the final Movie/Series whitelist authority; startup warm is one-shot per process; existing `EmbyImageDiskCache` and `EmbyDecodedImageRenderPool` remain cache owners; Search recommendation load-more stays removed.
+- Build248 remains candidate-level until target-device validation.

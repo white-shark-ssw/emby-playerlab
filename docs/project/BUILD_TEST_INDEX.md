@@ -355,3 +355,16 @@ Update this index when a build materially changes architectural understanding, b
 - source ZIP SHA-256: `44494de6213883b8bee16b6e99336b33073ed38b17a53062f9be7a2cff22b73d`.
 - independent package verification: bundle `com.embyplayerlab.app`; OnePlayer `0.14.80 (247)`; `MinimumOSVersion=15.0`; IPA `unzip -t` passed.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
+
+
+### Build248 / 0.14.81 — Search Dock alignment + bounded 3×3 recommendation warm
+
+- Build247 target-device result: root-owned Search Dock rendered too low/outside the screen; recommendation wall remained on spinner. Build247 is rejected as final.
+- exact CI product source: `dc601099ded1074fafc0c7a4e000b8c6fd4c7338`.
+- runtime delta: compensate the root Search overlay by `geometry.safeAreaInsets.bottom`; recommendation preload limit 60→9; each Suggestions request limit is only the remaining visible slots; returned item type remains hard-whitelisted to Movie/Series; no recommendation load-more.
+- run/job: `33259763303 / 99119574495` — success.
+- artifact: `OnePlayer-0.14.81-Build248-Search`; ID `9716945819`; digest `sha256:b15d327e7f628188e9df6a500ff0e26227a149a60a03b6bd1595c9aa82fffd2a`.
+- IPA SHA-256: `8eb734bb26b77f377314223acbf7306da72ac9254a20586bfc443d59fea940c5`.
+- source ZIP SHA-256: `94ce1911d3981d8f5ad53bc59a8a7413a1ddf54a54c1a97e49642b1b909f1bec`.
+- independently verified package: `com.embyplayerlab.app`, `0.14.81 (248)`, `MinimumOSVersion=15.0`, IPA `unzip -t` passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
