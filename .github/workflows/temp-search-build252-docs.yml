@@ -1,0 +1,63 @@
+name: Temp Search Build252 Docs
+
+on:
+  push:
+    branches: ["feat/search-page-optimization"]
+    paths:
+      - ".github/search-build252-docs-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/search-page-optimization
+          fetch-depth: 0
+      - name: Sync Build252 Search evidence
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          checkpoint = Path('docs/project/current/dev/DEV-search-page-optimization.md')
+          text = checkpoint.read_text()
+          text = text.replace('Status: Active — Build250 target-device recommendation rejected; Build251 global-Suggestions correction CI/IPA verified, target-device pending', 'Status: Active — Build251 target-device returned 9 but displayed 0; Build252 CI/IPA verified, target-device pending')
+          marker = '## Build251 target-device result — 2026-08-30'
+          if marker not in text:
+              text += '''\n\n## Build251 target-device result — 2026-08-30\n\nThe user installed Build251. The spinner now ends quickly, but no recommendation content appears. Uploaded `OnePlayer-App-1788023908.log` proves the global request itself succeeds: `/Users/{userId}/Suggestions?...Limit=9&IncludeItemTypes=Movie,Series` returned 9 items, `nilType=0`, while the local post-filter accepted 0. Therefore Build251 fixed request scope/latency but still discarded the complete Emby Suggestions payload after receipt.\n\nBuild251 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / request latency improved ✅ / recommendation display rejected ❌ / not stable**.\n\n## Build252 correction\n\nExact product source `dbfd323ec4a14e12dc57293c98b1fe6fbe239c5e` keeps the single user-global Suggestions request with `IncludeItemTypes=Movie,Series` and removes only the incompatible second client-side type rejection. Search now consumes the exact 9-item Suggestions payload returned by that already constrained Emby request. A returned-type histogram diagnostic is retained for evidence; no library traversal, retry, fallback, timer, watchdog, second cache or shared poster-grid change is added.\n\nBuild252 / OnePlayer 0.14.85 run/job `33265539007 / 99134824511` passed Xcode 16.4 Release build/package. Artifact `9718566319`, digest `sha256:15343da3075db72f32349250d0dc9a1a7b67ecb325bbcd507ea22276084abb9c`; IPA SHA-256 `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`; bundle `com.embyplayerlab.app`; MinOS 15.0; IPA integrity passed. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ❌ / not stable**.\n'''
+          text = text.replace('## Next exact action\n\nTarget-device test Build251 first-paint time against the official Emby web Search behavior. The intended request contract is now one global Suggestions call rather than per-library traversal.', '## Next exact action\n\nTarget-device test Build252. The expected behavior is that the same fast global request now renders its returned 9 recommendations instead of discarding them.')
+          checkpoint.write_text(text)
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          lines = module.read_text().splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith('| Search page / recommendations |'):
+                  lines[i] = '| Search page / recommendations | **Active — Build251 target-device returned 9 but displayed 0; Build252 CI/IPA verified, target-device pending** | Build248 Dock/keyboard behavior remains accepted. Build251 fixed Search recommendation request scope: one user-global `/Users/{userId}/Suggestions` request finishes quickly. Target-device log `OnePlayer-App-1788023908.log` shows `returned=9 nilType=0 accepted=0`, proving the remaining failure is OnePlayer\'s second local type filter discarding all server results. Build252 / 0.14.85 exact source `dbfd323ec4a14e12dc57293c98b1fe6fbe239c5e` displays the exact payload from the already constrained `IncludeItemTypes=Movie,Series` request and keeps type-histogram diagnostics. Run/job `33265539007 / 99134824511` passed; artifact `9718566319`; IPA SHA-256 `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`; MinOS 15.0 verified. Not target-device tested or stable yet. |'
+              if line.startswith('| Other product modules |'):
+                  lines[i] = line.replace('Search Build251', 'Search Build252')
+          module.write_text('\n'.join(lines) + '\n')
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          current = state.read_text()
+          marker = '## Search Build251 real-device result → Build252 direct Suggestions payload — 2026-08-30'
+          if marker not in current:
+              current += f'''\n\n{marker}\n\nBuild251 target-device testing changed the diagnosis again: the global Suggestions request now completes quickly, but the Search page shows no recommendation content. Uploaded `OnePlayer-App-1788023908.log` records one global `/Users/{{userId}}/Suggestions` call with `Limit=9&IncludeItemTypes=Movie,Series`, followed by `returned=9 nilType=0 accepted=0`. Thus the server delivered a full 3×3 payload; OnePlayer discarded it locally.\n\nBuild252 exact product source `dbfd323ec4a14e12dc57293c98b1fe6fbe239c5e` removes only that second local rejection and consumes the exact Emby global Suggestions payload. The request remains server-constrained to Movie/Series, startup warm/image caches remain, and Build248 Dock behavior plus all Player/Transport/P0 contracts are untouched. Run/job `33265539007 / 99134824511` passed; artifact `9718566319`; IPA SHA-256 `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`; MinOS 15.0. Build252 awaits target-device validation.\n'''
+          state.write_text(current)
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          current = index.read_text()
+          marker = '### Build252 / 0.14.85 — Search direct global Suggestions payload'
+          if marker not in current:
+              current += f'''\n\n{marker}\n\n- Build251 target-device: spinner ends quickly but no recommendation wall; log `OnePlayer-App-1788023908.log` shows global Suggestions `returned=9 nilType=0 accepted=0`.\n- exact product source: `dbfd323ec4a14e12dc57293c98b1fe6fbe239c5e`.\n- change: keep one global `/Users/{{userId}}/Suggestions?Limit=9&IncludeItemTypes=Movie,Series` request and remove only the second local type rejection; render the exact returned payload.\n- run/job: `33265539007 / 99134824511` — success.\n- artifact: `OnePlayer-0.14.85-Build252-Search`; ID `9718566319`; digest `sha256:15343da3075db72f32349250d0dc9a1a7b67ecb325bbcd507ea22276084abb9c`.\n- IPA SHA-256: `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`.\n- package: `com.embyplayerlab.app`, `0.14.85 (252)`, `MinimumOSVersion=15.0`, IPA integrity passed.\n- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**\n'''
+          index.write_text(current)
+          PY
+          git diff --check
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add docs/project/current/dev/DEV-search-page-optimization.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/BUILD_TEST_INDEX.md
+          git commit -m "Document Search Build252 candidate evidence"
+          git push origin HEAD:feat/search-page-optimization
