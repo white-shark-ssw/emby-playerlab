@@ -1,0 +1,194 @@
+name: Temp Search Build246 Apply
+
+on:
+  push:
+    branches: ["feat/search-page-optimization"]
+    paths:
+      - ".github/search-build246-apply-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/search-page-optimization
+          fetch-depth: 0
+
+      - name: Apply evidence-backed Search Build246 patch
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          search_path = Path('Sources/UI/EmbySearchExperienceV3.swift')
+          search = search_path.read_text()
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              return text.replace(old, new, 1)
+
+          search = replace_once(search,
+              '    private var recommendationLimit = 12\n    private var hasStoredServerSelection: Bool',
+              '    private var recommendationLimit = 12\n    private var recommendationPosterImages: [String: UIImage] = [:]\n    private var hasStoredServerSelection: Bool',
+              'recommendation image pins')
+
+          search = replace_once(search,
+              '                let page = try await targetClient.searchItemsPage(term: trimmed, limit: 20, startIndex: 0, includeItemTypes: searchItemTypes)',
+              '                let page = try await targetClient.searchPosterItemsPage(term: trimmed, limit: 18, startIndex: 0, includeItemTypes: searchItemTypes)',
+              'multi-server lean search')
+
+          search = replace_once(search,
+              '    func loadMoreRecommendations(client: EmbyAPIClient) async {\n        guard recommendationsEnabled, hasMoreRecommendations, !isLoadingRecommendations else { return }\n        recommendationLimit += 6\n        await reloadRecommendations(client: client, targetLimit: recommendationLimit)\n    }\n',
+              '    func loadMoreRecommendations(client: EmbyAPIClient) async {\n        guard recommendationsEnabled, hasMoreRecommendations, !isLoadingRecommendations else { return }\n        recommendationLimit += 6\n        await reloadRecommendations(client: client, targetLimit: recommendationLimit)\n    }\n\n    func recommendationPosterImage(for itemID: String) -> UIImage? { recommendationPosterImages[itemID] }\n    func pinRecommendationPosterImage(_ image: UIImage, for itemID: String) { recommendationPosterImages[itemID] = image }\n',
+              'recommendation image pin methods')
+
+          search = replace_once(search,
+              '                    let suggestions = try await client.librarySuggestions(parentId: library.id, limit: min(100, targetLimit))',
+              '                    let suggestions = try await client.librarySuggestions(parentId: library.id, limit: min(100, targetLimit), includeItemTypes: ["Movie", "Series"])',
+              'recommendation whitelist')
+
+          search = replace_once(search,
+              '            recommendationItems = result\n            hasMoreRecommendations = result.count == targetLimit',
+              '            if recommendationItems.isEmpty { recommendationItems = result }\n            else {\n                let existingIDs = Set(recommendationItems.map(\\.id))\n                recommendationItems.append(contentsOf: result.filter { !existingIDs.contains($0.id) })\n            }\n            hasMoreRecommendations = result.count == targetLimit',
+              'append-only recommendations')
+
+          search = replace_once(search,
+              '            Image(systemName: "gearshape.circle").font(.system(size: 16.2, weight: .medium)).foregroundColor(.blue).frame(width: 26, height: 26)',
+              '            Image(systemName: "gearshape.circle").font(.system(size: 18.6, weight: .medium)).foregroundColor(.blue).frame(width: 30, height: 30)',
+              'gear +15 percent')
+
+          old_recommendation_cell = '''                EmbyPosterGrid(items: model.recommendationItems, horizontalPadding: 6, onApproachingEnd: {
+                    guard model.hasMoreRecommendations else { return }
+                    Task { await model.loadMoreRecommendations(client: currentClient) }
+                }) { item in
+                    EmbyPosterDetailLink(item: item, client: currentClient) { V3PosterCard(item: item, client: currentClient, width: nil) }
+                }
+                if model.isLoadingRecommendations && !model.recommendationItems.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8) }'''
+          new_recommendation_cell = '''                EmbyPosterGrid(items: model.recommendationItems, horizontalPadding: 6, onApproachingEnd: {
+                    guard model.hasMoreRecommendations else { return }
+                    Task { await model.loadMoreRecommendations(client: currentClient) }
+                }) { item in
+                    EmbyPosterDetailLink(item: item, client: currentClient) {
+                        V3SearchRecommendationPosterCard(item: item, client: currentClient, pinnedImage: model.recommendationPosterImage(for: item.id)) { image in
+                            model.pinRecommendationPosterImage(image, for: item.id)
+                        }
+                    }
+                }'''
+          search = replace_once(search, old_recommendation_cell, new_recommendation_cell, 'recommendation pinned card')
+
+          search = replace_once(search,
+              '    private let pageSize = 60\n    private let includeItemTypes = ["Movie", "Series", "BoxSet"]',
+              '    private let pageSize = 18\n    private let includeItemTypes = ["Movie", "Series", "BoxSet"]',
+              'direct search first page size')
+
+          search = replace_once(search,
+              '            let page = try await client.searchItemsPage(term: term, limit: pageSize, startIndex: start, includeItemTypes: includeItemTypes)',
+              '            let page = try await client.searchPosterItemsPage(term: term, limit: pageSize, startIndex: start, includeItemTypes: includeItemTypes)',
+              'direct lean search')
+
+          marker = '\nstruct V3EmbyGlobalSearchView: View {'
+          if search.count(marker) != 1:
+              raise SystemExit('recommendation card insertion marker mismatch')
+          card = r'''
+
+private struct V3SearchRecommendationPosterCard: View {
+    @Environment(\.embyPosterGridCellWidth) private var gridCellWidth
+    let item: LibraryItem
+    let client: EmbyAPIClient
+    let pinnedImage: UIImage?
+    let onImageLoaded: (UIImage) -> Void
+
+    private var resolvedWidth: CGFloat { gridCellWidth ?? 118 }
+    private var posterHeight: CGFloat { floor(resolvedWidth / EmbyPosterGridMetrics.posterAspectRatio) }
+    private var posterImageMaxWidth: Int {
+        let available = UIScreen.main.bounds.width - EmbyPosterGridMetrics.horizontalPadding * 2 - EmbyPosterGridMetrics.columnSpacing * CGFloat(EmbyPosterGridMetrics.columnCount - 1)
+        let gridWidth = floor(max(1, available) / CGFloat(EmbyPosterGridMetrics.columnCount))
+        return min(440, max(1, Int(ceil(gridWidth * UIScreen.main.scale))))
+    }
+    private var yearText: String { item.productionYear.map(String.init) ?? " " }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if let pinnedImage { Image(uiImage: pinnedImage).resizable().aspectRatio(contentMode: .fill) }
+                    else {
+                        EmbyCachedRemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: posterImageMaxWidth, tag: item.preferredPrimaryImageTag), contentMode: .fill, onImageLoaded: onImageLoaded)
+                    }
+                }
+                .frame(width: resolvedWidth, height: posterHeight)
+                .clipped()
+                if item.playbackProgress > 0 { GeometryReader { proxy in VStack { Spacer(); Rectangle().fill(Color.blue).frame(width: proxy.size.width * item.playbackProgress, height: 3) } } }
+                if let count = item.userData?.unplayedItemCount, count > 0 {
+                    VStack { HStack { Spacer(); Text("\(count)").font(.caption2.weight(.bold)).foregroundColor(.white).padding(6).background(Color.blue).clipShape(Circle()) }; Spacer() }.padding(5)
+                } else if item.isPlayed {
+                    VStack { HStack { Spacer(); Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundColor(.white).padding(6).background(Color.green).clipShape(Circle()) }; Spacer() }.padding(5)
+                }
+            }
+            .frame(width: resolvedWidth, height: posterHeight)
+            .background(Color(uiColor: .secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name).font(.subheadline).lineLimit(1).frame(width: resolvedWidth, height: 20, alignment: .leading)
+                Text(yearText).font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: resolvedWidth, height: 16, alignment: .leading).opacity(item.productionYear == nil ? 0 : 1)
+            }
+            .frame(width: resolvedWidth, height: 38, alignment: .topLeading)
+        }
+        .frame(width: resolvedWidth, alignment: .leading)
+    }
+}
+'''
+          search = search.replace(marker, card + marker, 1)
+          search_path.write_text(search)
+
+          api_path = Path('Sources/Networking/EmbyAPIClient.swift')
+          api = api_path.read_text()
+          insertion_marker = '''    func similarItems(itemId: String, includeItemTypes: [String], limit: Int = 16) async throws -> [LibraryItem] {'''
+          if api.count(insertion_marker) != 1:
+              raise SystemExit('search poster API insertion marker mismatch')
+          lean_method = r'''    func searchPosterItemsPage(term: String, limit: Int = 18, startIndex: Int = 0, includeItemTypes: [String]) async throws -> EmbyItemPage {
+        guard let userId else { throw EmbyAPIError.missingSession }
+        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return EmbyItemPage(items: [], totalRecordCount: 0) }
+        var query = [
+            URLQueryItem(name: "Fields", value: "ImageTags,PrimaryImageAspectRatio,UserData,ProductionYear,SeriesName,SeriesId"),
+            URLQueryItem(name: "EnableImages", value: "true"),
+            URLQueryItem(name: "ImageTypeLimit", value: "1"),
+            URLQueryItem(name: "EnableImageTypes", value: "Primary"),
+            URLQueryItem(name: "EnableUserData", value: "true"),
+            URLQueryItem(name: "Recursive", value: "true"),
+            URLQueryItem(name: "SearchTerm", value: trimmed),
+            URLQueryItem(name: "StartIndex", value: String(startIndex)),
+            URLQueryItem(name: "Limit", value: String(limit)),
+            URLQueryItem(name: "SortBy", value: "SortName"),
+            URLQueryItem(name: "SortOrder", value: "Ascending"),
+        ]
+        if !includeItemTypes.isEmpty { query.append(URLQueryItem(name: "IncludeItemTypes", value: includeItemTypes.joined(separator: ","))) }
+        let page: EmbyItemPage = try await send(path: "Users/\(userId)/Items", method: "GET", query: query)
+        return EmbyItemPage(items: deduplicated(page.items), totalRecordCount: page.totalRecordCount)
+    }
+
+'''
+          api = api.replace(insertion_marker, lean_method + insertion_marker, 1)
+          api_path.write_text(api)
+
+          old_changelog = Path('docs/changelog/CHANGELOG_v0_14_78_build245.md')
+          if old_changelog.exists(): old_changelog.unlink()
+          Path('docs/changelog/CHANGELOG_v0_14_79_build246.md').write_text('''# OnePlayer 0.14.79 / Build246\n\nSearch follow-up from Build245 target-device evidence.\n\n- Search gear enlarged 15% from Build245.\n- Direct and grouped poster search use a Search-specific lean Emby item query and 18-item pages so the first poster wall is not blocked on the prior 60-item heavyweight metadata request.\n- Recommendations are whitelisted to Emby `Movie` and `Series` item types only.\n- Recommendation expansion preserves existing item identities and appends only newly returned items instead of replacing the full prefix; the incremental bottom spinner/layout shift is removed.\n- Recommendation posters keep a Search-lifetime decoded-image pin after first presentation while continuing to use the existing shared persistent Emby image disk cache. Returning to an earlier lazy-grid cell can therefore render the already-seen image immediately instead of showing a placeholder while disk is decoded again.\n- No Player/MPV/PiP, Transport, playback Cache/Session, STRM/302/115, shared poster-grid owner, credential, or Deployment Target changes.\n''')
+          PY
+
+          swiftc -parse Sources/UI/EmbySearchExperienceV3.swift
+          swiftc -parse Sources/Networking/EmbyAPIClient.swift
+          git diff --check
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add Sources/UI/EmbySearchExperienceV3.swift Sources/Networking/EmbyAPIClient.swift docs/changelog
+          git commit -m "Search Build246 latency and poster retention"
+          git push origin HEAD:feat/search-page-optimization
