@@ -1,0 +1,37 @@
+name: TEMP Fix Build241 Module Status Consistency
+
+on:
+  push:
+    branches: [tune/home-carousel-fling-threshold-build241]
+    paths: [.github/build241-module-status-fix-trigger.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Fix stale carousel summary
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path=Path('docs/project/MODULE_STATUS.md')
+          text=path.read_text()
+          text=re.sub(r'^\| Other product modules \|.*$', '| Other product modules | Active parallel work | Build216 / 0.14.49 remains the accepted overall runtime baseline. Home-carousel Build241 / 0.14.74 is the current isolated threshold A/B from exact Build239 behavior, changing only direction-aware fling `600 → 500 pt/s`; CI/IPA is verified and target-device acceptance is pending. Poster and Aether remain separate Active tasks with independent checkpoints/branches; do not infer their candidates from this carousel row. |', text, count=1, flags=re.M)
+          path.write_text(text)
+          PY
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/project/MODULE_STATUS.md
+          git diff --cached --quiet && { echo 'Already consistent'; exit 0; }
+          git commit -m 'Fix Build241 module-status summary'
+          git push origin HEAD:main
