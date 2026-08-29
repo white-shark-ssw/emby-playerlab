@@ -1,0 +1,43 @@
+name: TEMP Sync Build242 Real Device Result
+on:
+  push:
+    branches: [diag/home-carousel-home-perf-ab-build242]
+    paths: [.github/build242-real-device-result-trigger.txt]
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Sync target-device result
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+          s=p.read_text()
+          old='**Active — Build241 / 0.14.74 remains the normal carousel behavior candidate and its 500 pt/s fling gate is left unchanged after the latest target-device log showed no user-visible abnormality. Build242 / 0.14.75 is a diagnostic-only Home-performance A/B from the exact Build241 tested source: it preserves immersive Home mode, Hero vertical footprint, Home rows/scroll structure and refresh behavior while disabling the carousel presentation stack (persistent blurred backdrop, Hero carousel rendering/interaction, preload, auto-advance and carousel-owned Hero scroll updates). Build242 CI/IPA/package identity are verified; target-device Build241-vs-Build242 vertical-scroll comparison is pending.**'
+          new='**Active — Build241 / 0.14.74 remains the normal carousel behavior candidate and its 500 pt/s fling gate is left unchanged. Build242 / 0.14.75 whole-carousel Home-performance isolation has now been target-device compared against Build241; the user reports the vertical-scroll difference feels small / not obvious. This materially weakens the hypothesis that the carousel presentation stack is a major Home-wide performance bottleneck. Build242 remains diagnostic-only and must not replace Build241.**'
+          if old not in s: raise SystemExit('status anchor not found')
+          s=s.replace(old,new,1)
+          old2='- Next exact action: compare Build241 and Build242 on the same target device/data with repeated Home vertical swipes/inertia after initial load. If no clear repeatable improvement, stop treating the carousel whole stack as the primary Home bottleneck; if clearly smoother, isolate individual carousel costs in narrower evidence-backed A/Bs.'
+          new2='- 2026-08-29 target-device result: user reports Build242 vs Build241 feels not very different in Home vertical scrolling. Treat the whole-carousel stack as not demonstrated to be a major Home-wide bottleneck; do not continue carousel performance surgery for vertical scrolling without new evidence.\n- Source review also confirms that when the user disables carousel in Home media management, `carouselItems` returns `[]`; the Home UI therefore takes the non-immersive path and does not mount the persistent backdrop, Hero carousel, preload, or carousel interaction surfaces. Some lightweight timer/metadata/snapshot code may still execute, but the expensive carousel presentation stack is absent.'
+          if old2 not in s: raise SystemExit('next-action anchor not found')
+          p.write_text(s.replace(old2,new2,1))
+
+          q=Path('docs/project/BUILD_TEST_INDEX.md')
+          t=q.read_text()
+          marker='## Build242 target-device result — 2026-08-29'
+          if marker not in t:
+              t += '\n\n'+marker+'\n\n- Diagnostic: OnePlayer 0.14.75 / Build242 whole-carousel Home-performance isolation.\n- Compared on target device against normal Build241 baseline.\n- User result: Home vertical-scroll difference feels small / not obvious.\n- Evidence level: real-device tested.\n- Conclusion: whole carousel presentation stack is not demonstrated to be a major Home-wide performance bottleneck; Build241 remains the normal carousel behavior candidate.\n'
+              q.write_text(t)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/BUILD_TEST_INDEX.md
+          git diff --cached --quiet && exit 0
+          git commit -m 'Record Build242 target-device performance result'
+          git push origin HEAD:main
