@@ -30,6 +30,7 @@ struct EmbyServerRootViewV3: View {
                 GeometryReader { geometry in
                     let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom
                     let dock = AnyView(serverTabBar)
+                    let emptyDock = AnyView(EmptyView())
                     ZStack {
                         V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, onCarouselActiveChanged: { active in homeCarouselActive = active }, dock: dock)
                             .id(homeClientGeneration)
@@ -38,9 +39,10 @@ struct EmbyServerRootViewV3: View {
                             .accessibilityHidden(selectedTab != .home)
 
                         if selectedTab == .favorites { V3EmbyFavoritesView(client: client, onClose: close, dock: dock) }
-                        if selectedTab == .search { V3EmbyGlobalSearchView(currentSession: session, currentClient: client, onClose: close, dock: dock) }
+                        if selectedTab == .search { V3EmbyGlobalSearchView(currentSession: session, currentClient: client, onClose: close, dock: emptyDock) }
                         if selectedTab == .settings { OnePlayerServerSettingsView(session: session, onClose: close, dock: dock) }
                     }
+                    .overlay(alignment: .bottom) { if selectedTab == .search { serverTabBar } }
                     .environment(\.serverDockContent, dock)
                     .environment(\.serverDockBottomInset, geometry.safeAreaInsets.bottom)
                     .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
