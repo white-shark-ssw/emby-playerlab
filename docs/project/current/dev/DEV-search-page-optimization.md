@@ -1,6 +1,6 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build255 target-device rejected for detail-return recommendation reset; Build256 CI/IPA verified, target-device validation pending
+- Status: Completed — Build256 target-device accepted; final Search contract ready for merge
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
@@ -135,3 +135,9 @@ Dedicated Xcode 16.4 Release run/job `33271528610 / 99150738764` passed source v
 ## Next exact action
 
 Target-device test Build256. Verify app startup does not fetch Search recommendations; first entering Search fetches the initial 9; after several +6 appends, opening a detail and returning preserves the already-loaded recommendation list while remaining on Search; manually switching Dock away from Search destroys that list; re-entering Search performs a fresh initial-9 load.
+
+## Build256 target-device acceptance — 2026-08-30
+
+The user accepted Build256 / OnePlayer 0.14.89 on the target device as the final Search implementation. Accepted behavior: app startup performs no Search recommendation fetch; entering Search creates a fresh Search lifetime and loads the initial 9 Movie/Series recommendations; incremental random recommendation loading continues in +6 batches without duplicates or the Build254 container twitch; opening a recommendation detail and returning preserves the already-loaded recommendation dataset while Search remains the selected Dock page; manually switching Dock away from Search destroys that Search dataset; re-entering Search creates a fresh lifetime and fetches a new initial 9. Build248 Dock/keyboard behavior, Build253 Items+Random recommendation authority, Build254 ExcludeItemIds pagination contract, and Build255 non-lazy outer section owner are all retained.
+
+Final accepted Build256 evidence: exact product source `723d803c70326dee49aabc75f15ce445b7de947e`; Xcode 16.4 Release run/job `33271528610 / 99150738764`; artifact `9720282077`; artifact digest `sha256:e9c3f0756cb4dbd7a0fa9f2785594fa3df7e41964f472426a14e6c50a231615e`; IPA SHA-256 `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`; `com.embyplayerlab.app`; `0.14.89 (256)`; `MinimumOSVersion=15.0`; IPA integrity passed. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / user accepted ✅ / stable pending merge ✅**.
