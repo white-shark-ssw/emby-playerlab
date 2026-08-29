@@ -2,15 +2,29 @@
 
 ## Status
 
-**Active — Build241 / 0.14.74 is now the verified test candidate from the exact Build239 behavior baseline. Per the user’s latest decision, Build240 release-handoff momentum diagnostics are no longer the active direction. Build241 lowers only the direction-aware latest-delivered fling trigger from 600 to 500 pt/s so intentional short flicks require slightly less force. The 0.28 slow-drag threshold, Build239 0.22s/0.18s settle behavior, Build237 white-flash correction, Build236 acquisition handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle remain unchanged. CI and IPA/package identity are verified; target-device acceptance is pending.**
+**Active — Build241 / 0.14.74 remains the normal carousel behavior candidate and its 500 pt/s fling gate is left unchanged after the latest target-device log showed no user-visible abnormality. Build242 / 0.14.75 is a diagnostic-only Home-performance A/B from the exact Build241 tested source: it preserves immersive Home mode, Hero vertical footprint, Home rows/scroll structure and refresh behavior while disabling the carousel presentation stack (persistent blurred backdrop, Hero carousel rendering/interaction, preload, auto-advance and carousel-owned Hero scroll updates). Build242 CI/IPA/package identity are verified; target-device Build241-vs-Build242 vertical-scroll comparison is pending.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
-- Working branch: `tune/home-carousel-fling-threshold-build241`
-- Current candidate: OnePlayer `0.14.74 (241)`
+- Working branch: `diag/home-carousel-home-perf-ab-build242`
+- Current normal carousel candidate: OnePlayer `0.14.74 (241)`
+- Current diagnostic A/B: OnePlayer `0.14.75 (242)`
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Deployment Target policy: remain iOS 15.0
 - Accepted overall product baseline: OnePlayer 0.14.49 / Build216 on `main`
 - Historical continuation source: user-supplied `轮播图优化v2.md`
+
+## Build242 — whole-carousel Home-performance isolation A/B
+
+- Exact base: Build241 tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`.
+- Tested source: `3bf163d2c443520c0f22bba9b49902928fa36ca8`.
+- Run/job: `33247895006 / 99088437546` — success.
+- Artifact: `9713463258`; digest `sha256:40fbfb22bcb6461dd358cf72b6fd57fea934ca71acfd478978ffb29b0ebb119f`.
+- IPA SHA-256: `9c08ed8965e5e9e99bf4a17768cc8d124209c3b42e9e48d8d78fba720415e5d4`.
+- Source ZIP SHA-256: `6baaec3cb1bacb14842316baa0b2e4615477f1769ed46f4f7f64bb7287a46d52`.
+- Identity: OnePlayer `0.14.75 (242)`, `com.embyplayerlab.app`, MinOS 15.0 independently reopened.
+- Diagnostic isolation: preserve carousel data presence/immersive mode/Hero footprint/Home rows/vertical ScrollView; disable persistent backdrop, carousel preload, rendered/interactable Hero carousel, auto-advance and carousel-owned Hero scroll-state updates.
+- Purpose: answer whether the carousel whole stack materially degrades Home vertical scrolling. This is not a normal product candidate and must not replace Build241 behavior.
+- Next exact action: compare Build241 and Build242 on the same target device/data with repeated Home vertical swipes/inertia after initial load. If no clear repeatable improvement, stop treating the carousel whole stack as the primary Home bottleneck; if clearly smoother, isolate individual carousel costs in narrower evidence-backed A/Bs.
 
 ## Scope correction — 2026-08-28
 

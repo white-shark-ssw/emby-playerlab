@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build241 / 0.14.74 produced an independently verified IPA from the user-selected Build239 Home-carousel baseline. Build240 release-handoff diagnostics are no longer the active direction; Build241 only lowers the direction-aware fling trigger from 600 to 500 pt/s. Build216 remains the accepted merged overall runtime baseline._
+_Last updated after Build242 / 0.14.75 produced an independently verified diagnostic IPA isolating the carousel whole-stack contribution to Home performance. Build241 / 0.14.74 remains the normal carousel behavior candidate with the accepted-for-testing 500 pt/s fling gate; Build242 is diagnostic-only. Build216 remains the accepted merged overall runtime baseline._
 
 ## Current accepted overall baseline
 
@@ -56,6 +56,10 @@ On 2026-08-29 the user explicitly chose Build239 as the behavior baseline rather
 
 Verified identity: tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`; run/job `33247149430 / 99086484795` success; artifact `9713225510`, digest `sha256:3ea36257c97b4a7947bb46e9aa1e0a5d2dcbd1a96ddf1977d58e0cada180525f`; IPA SHA-256 `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`; source ZIP SHA-256 `b1e37c1c79f08552ad9de6819838cbca1b5b95cd4cc8a95c5b3ebf08a73ab664`; OnePlayer `0.14.74 (241)`, bundle `com.embyplayerlab.app`, MinOS 15.0 independently reopened. Evidence: **Code written / CI passed / IPA produced+verified / real-device pending / not stable**.
 
+
+### Home performance diagnostic — Build242 / 0.14.75
+
+Build242 is an exact-Build241-source diagnostic A/B for whole-Home attribution. It keeps immersive Home selection, carousel data presence, the Hero vertical footprint, Home rows and the same vertical ScrollView structure, but removes the carousel presentation/runtime load: persistent blurred backdrop, carousel Hero rendering/interaction, preload, auto-advance and carousel-owned Hero scroll updates. Exact source `3bf163d2c443520c0f22bba9b49902928fa36ca8`; run/job `33247895006 / 99088437546`; artifact `9713463258`, digest `sha256:40fbfb22bcb6461dd358cf72b6fd57fea934ca71acfd478978ffb29b0ebb119f`; IPA SHA-256 `9c08ed8965e5e9e99bf4a17768cc8d124209c3b42e9e48d8d78fba720415e5d4`; source ZIP SHA-256 `6baaec3cb1bacb14842316baa0b2e4615477f1769ed46f4f7f64bb7287a46d52`; MinOS 15.0. Evidence: **Code written / CI passed / IPA produced+verified / target-device A/B pending / diagnostic only / not stable**.
 
 ### 2026-08-28 acceptance-scope correction
 
