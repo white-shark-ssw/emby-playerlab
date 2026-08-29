@@ -196,3 +196,12 @@ Build241 / OnePlayer 0.14.74 is the final Home-carousel behavior selected by the
 PR #262 integrated only the five exact Build241 runtime blobs onto current `main` and merged at `75d9f53d0984ee7f32e7e3fa02cd9bf8794b56e3`. Independent integration compile run/job `33248884259 / 99090990039` passed and preserved MinOS 15.0. The integration compile is CI evidence only; the real-device acceptance authority remains Build241 itself.
 
 Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B, not a product baseline. It intentionally disabled the carousel presentation/runtime stack and the user explicitly states those diagnostic changes made it unsuitable/broken as normal carousel behavior. Never inherit carousel runtime from Build242. Its retained diagnostic result is only that Home vertical scrolling felt little/no different from Build241, weakening the hypothesis that the whole carousel stack is a major Home-wide performance bottleneck. When the user disables carousel in normal settings, `carouselItems` returns `[]`, so expensive persistent/Hero/preload/interaction presentation is absent.
+
+
+## Search landing recommendations use normal Items + Random, not Suggestions — 2026-08-30
+
+**Decision:** OnePlayer Search landing recommendations use the normal user Items endpoint with `SortBy=Random`, `Recursive=true`, and an explicit `IncludeItemTypes=Movie,Series` whitelist. `/Users/{userId}/Suggestions` is not the Search landing authority.
+
+**Evidence:** Build252 target-device surfaced a `Tag` object from `/Suggestions` despite the Movie/Series query constraint, while official Emby Web Search on the same server shows actual media. Independent inspection of `bpking1/embyExternalUrl` shows Emby Web `/Users/(.*)/Items` traffic with `SortBy=Random` is classified as `searchSuggest`.
+
+**Scope:** This decision only changes Search recommendation metadata retrieval. It does not change Player, MPV, STRM/302/115, UnifiedTransport, playback Session Cache, Emby progress/Resume, credentials, PiP or Deployment Target.

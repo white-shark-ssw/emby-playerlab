@@ -108,3 +108,12 @@ Next: make the next poster build diagnostic-only. Measure MainActor image-assign
 ## Parallel integration rule
 
 Build216 is the accepted overall runtime baseline after the detail episode-range inertia closeout. Build241 is the frozen Home-carousel runtime contract integrated through PR #262. Search Build245 is an independent CI/IPA-verified candidate awaiting target-device validation; poster and Aether remain separate Active lines. If any active candidate is accepted on the target device, resync its durable product diff against then-current `main` in a separate integration step. If that resync materially changes source, rerun affected validation/CI; old-base CI cannot be treated as proof for changed merged source.
+
+
+## Search Build252 Tag-content rejection → Build253 random Items candidate — 2026-08-30
+
+Build252 is target-device rejected for recommendation semantics. OnePlayer surfaced `情趣内衣` and its detail page reports the object type as `Tag`, while the same server in official Emby Web Search shows actual movie/series recommendation titles. This demonstrates that `/Users/{userId}/Suggestions` is not the correct Search landing source for this server/client behavior.
+
+Source evidence from `bpking1/embyExternalUrl` classifies Emby Web `/Users/(.*)/Items` requests with `SortBy=Random` as `searchSuggest`. Build253 exact product source `fc9e5bdf1c24e694c3d28e6c7f4a8f1609bfb5a5` therefore switches Search landing recommendations to one normal `/Users/{userId}/Items` request with `Recursive=true`, `SortBy=Random`, `Limit=9`, `IncludeItemTypes=Movie,Series`. No per-library traversal or `/Suggestions` call remains in the Search preloader. Existing startup/image cache and accepted Dock behavior remain unchanged.
+
+Build253 / 0.14.86 run/job `33266680237 / 99137850447` passed Xcode 16.4 Release build/package. Artifact `9718894001`, digest `sha256:e687831d57682a1e3e86462c4ba7cd25ea196cc593a6b174af081f862e1e464e`; IPA SHA-256 `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`; MinOS 15.0. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable**.

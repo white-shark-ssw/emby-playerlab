@@ -1,105 +1,67 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build244 target-device rejected as final; Build245 CI/IPA verified and ready for target-device test
+- Status: Active — Build252 target-device recommendation content rejected; Build253 random-Items candidate CI/IPA verified, target-device pending
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
 - Base branch: `main`
 - Draft PR: #264
-- Build244 tested source: `0710fa4cf0a59dbf7e6748e951db2e3cddf2b82c`
-- Build244 artifact: `OnePlayer-0.14.77-Build244-Search-final`, ID `9714601161`, IPA SHA-256 `a48d317f3caee89564789bca657da8700953f76a58fcff792562bbb67b146d05`
-- Build245 exact tested product source: `4c5f286ee870589bd2eac05119a516631a31391a`
-- Build245 cleanup branch head after temporary CI removal: `e45c82f41d3dcf3a7d72c7f4e510627fbeada20f`
-- Current test candidate: **OnePlayer 0.14.78 / Build245**
+- Build248 identity: **OnePlayer 0.14.81 / Build248** — Dock/keyboard behavior accepted on target device
+- Build249 identity: **OnePlayer 0.14.82 / Build249** — recommendation rejected on target device
+- Build250 identity: **OnePlayer 0.14.83 / Build250** — recommendation rejected on target device
+- Build251 exact runtime source: `cc1806d7f606581e138579b44d94e16dc9ff7135`
+- Build251 identity: **OnePlayer 0.14.84 / Build251**
+- Build251 run/job: `33264608646 / 99132347141` — success
+- Build251 artifact: `OnePlayer-0.14.84-Build251-Search`, ID `9718288974`
+- Build251 IPA SHA-256: `4923368ddca5bca9e3d9db83234b19547b12673feb22af50fd3e3279b08cc750`
+- Build252 exact product source: `dbfd323ec4a14e12dc57293c98b1fe6fbe239c5e`
+- Build252 identity: **OnePlayer 0.14.85 / Build252**
+- Build252 run/job: `33265539007 / 99134824511` — success
+- Build252 artifact: `OnePlayer-0.14.85-Build252-Search`, ID `9718566319`, digest `sha256:15343da3075db72f32349250d0dc9a1a7b67ecb325bbcd507ea22276084abb9c`
+- Build252 IPA SHA-256: `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`
+- Built/target MinOS: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 
-## Build244 target-device result — 2026-08-29
+## Accepted Search Dock baseline
 
-User installed and tested Build244 and supplied OnePlayer-vs-competitor screenshots. This is authoritative runtime evidence and supersedes the Build244 pending-test state.
+Build248 target-device testing confirmed the Search Dock position matches the other server pages and focusing the Search input no longer moves it. Preserve this behavior unchanged.
 
-What worked / remained usable:
+## Build250 target-device result — 2026-08-30
 
-- Search landing page, persistent history chips, recommendation content and the new gear/menu direction are present on-device.
-- Search remains isolated from Player/Transport/P0 paths; no playback regression was reported in this Search test.
+Build250 still remained on the recommendation spinner. The user then demonstrated official Emby Web Search on the same account/server immediately shows built-in `更多推荐`, which superseded OnePlayer's per-library traversal direction.
 
-What must change before acceptance:
+## Build251 target-device result — 2026-08-30
 
-1. Search gear icon is too large; user requests **40% smaller**.
-2. Focusing the search field still pushes the bottom Dock upward. The Build244 modifier was placed outside the root `GeometryReader`, so the actual geometry that computes Dock placement still reacts to keyboard safe-area changes.
-3. If the active Search target set contains exactly one Emby server — either because only one server exists or global search has only one checked server — submitting Search should skip the grouped horizontal-row presentation and enter that server's `更多` 3-column page directly.
-4. Build244 recommendation UI was artificially capped at 9 and used collection-type filtering. User requests no such filter/cap: initial display **12** items, then load **6 more** each time the user scrolls toward the end.
-5. Build244 landing geometry is visibly oversized/too low compared with the supplied competitor screenshot. Search-owned title, header spacing, input field, history-chip sizing and section positioning must be tightened toward the competitor layout without editing the shared poster-grid owner.
+Build251 switched Search recommendations to one user-global `/Users/{userId}/Suggestions` request with no `ParentId`, `Limit=9`, and `IncludeItemTypes=Movie,Series`. The spinner now ends quickly, but no recommendation content appears.
 
-Build244 therefore has evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / rejected as final Search layout ❌ / not stable**.
+Uploaded `OnePlayer-App-1788023908.log` proves the global request itself succeeds: `/Users/{userId}/Suggestions?...Limit=9&IncludeItemTypes=Movie,Series` returned 9 items, `nilType=0`, while the local post-filter accepted 0. Therefore Build251 fixed request scope/latency but still discarded the complete Emby Suggestions payload after receipt.
 
-## Build245 implemented scope
+Build251 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / request latency improved ✅ / recommendation display rejected ❌ / not stable**.
 
-Exact tested product source `4c5f286ee870589bd2eac05119a516631a31391a` contains only Search-scope follow-up changes plus the Build245 changelog:
+## Build252 correction
 
-- `Sources/UI/EmbySearchExperienceV3.swift`
-  - gear font 27 → 16.2 pt (40% reduction), frame 38 → 26;
-  - landing title 38 → 32 pt, tighter header spacing and a smaller close control;
-  - input field 48 → 36 pt, smaller icon/text sizing and tighter top spacing;
-  - history chips 34 → 26 pt with smaller text/padding; Search/history/recommendation vertical spacing tightened;
-  - recommendation grid uses the existing `EmbyPosterGrid(horizontalPadding:)` parameter with Search-only 6 pt padding; shared `EmbyPosterGrid.swift` remains untouched;
-  - recommendations request 12 initially, no `includeItemTypes` filtering, and `onApproachingEnd` increases the target by 6 and re-requests Emby Suggestions;
-  - one active target server returns a direct Search destination and programmatically enters `V3GlobalSearchServerGridView`; multi-server behavior remains grouped horizontal rows + `更多`.
-- `Sources/UI/EmbyServerRootViewV3.swift`
-  - Search keyboard safe-area ignoring moved from the outer `Group` onto the actual `GeometryReader` so the geometry used for Dock placement should remain full-height while Search owns keyboard focus.
-- `docs/changelog/CHANGELOG_v0_14_78_build245.md`
-  - replaces the Build244 changelog; changelog directory keeps only the latest Search candidate record on this branch.
+Exact product source `dbfd323ec4a14e12dc57293c98b1fe6fbe239c5e` keeps the single user-global Suggestions request with `IncludeItemTypes=Movie,Series` and removes only the incompatible second client-side type rejection. Search now consumes the exact 9-item Suggestions payload returned by that already constrained Emby request. A returned-type histogram diagnostic is retained for evidence.
 
-No retry, timer, watchdog, fallback, duplicate server/session authority or unrelated refactor was added.
+No library traversal, retry, fallback, timer, watchdog, second cache, shared poster-grid edit, Player/MPV/PiP, UnifiedTransport, playback Session Cache, STRM/302/115, Resume/progress, credentials or Deployment Target change.
 
-## Source / ownership evidence
+Build252 / OnePlayer 0.14.85 run/job `33265539007 / 99134824511` passed Xcode 16.4 Release build/package. Artifact `9718566319`; IPA SHA-256 `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`; bundle `com.embyplayerlab.app`; MinOS 15.0; IPA integrity passed.
 
-- Added-server authority remains `SessionStore.sessions`.
-- Per-server route/client authority remains `SessionStore.clientForBestRoute(for:)`.
-- Search API remains the real `searchItemsPage` implementation.
-- Recommendation API is the real `librarySuggestions(parentId:limit:includeItemTypes:)`; it has no `StartIndex`. Incremental loading therefore increases the requested Limit by 6 and replaces the visible deduplicated prefix, rather than inventing a fake pagination parameter.
-- Shared poster/detail contracts remain `EmbyPosterGrid`, `EmbyPosterDetailLink`, and `V3PosterCard`.
-- Search does not modify poster-task-owned `EmbyPosterGrid.swift`, `EmbyServerBrowseV3.swift`, `EmbyServerSharedV3.swift`, or `EmbySharedImageAndNavigation.swift`.
-
-## Build245 CI / IPA evidence — 2026-08-29
-
-- Exact tested product source: **`4c5f286ee870589bd2eac05119a516631a31391a`**.
-- Dedicated workflow run/job: **`33253244567 / 99102435848` — success**.
-- Xcode 16.4 Release build, MPVKit resolution, bundle identity verification, IPA packaging and artifact upload all passed.
-- Product artifact: **`OnePlayer-0.14.78-Build245-Search`**, ID **`9715042997`**, artifact digest **`sha256:7b4fc1baab92d4a05feb3c7a1d9989ab688c6bf01a00907d51ca863abe431ffd`**.
-- IPA SHA-256: **`19f69ca62928a65fb23bfdb44c67a916a7ba9edea20c3c3755f0875bb65a6514`**.
-- Source ZIP SHA-256: **`31b116e57265aee94bcfb577dc60f0fb86e61739728d50a94e536299db936349`**.
-- Independent post-download verification reproduced both embedded SHA-256 values; IPA `unzip -t` reported no compressed-data errors.
-- Independently extracted packaged identity: `CFBundleIdentifier=com.embyplayerlab.app`, `CFBundleShortVersionString=0.14.78`, `CFBundleVersion=245`, `MinimumOSVersion=15.0`, display/name `OnePlayer`.
-- Temporary Build245 workflow and trigger were removed after artifact production; cleanup branch head is `e45c82f41d3dcf3a7d72c7f4e510627fbeada20f` and runtime product source remains the exact tested `4c5f286e...` snapshot.
-
-Build245 evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device tested ❌ / stable-frozen ❌**.
-
-## Parallel / candidate guard
-
-- Search branch remains `feat/search-page-optimization`, PR #264.
-- Active poster work owns its independent Build243 / 0.14.76 line and shared poster files; Search does not edit those files.
-- Aether owns its independent Player/engine candidate and does not overlap Search state ownership.
-- Repository search found no prior `Build245`; Search owns **0.14.78 / Build245** for this follow-up.
-
-## Frozen / do-not-touch
-
-No Player/MPV/PiP, UnifiedTransport, playback Session Cache, STRM/302/115 client-direct media path, Emby Resume/progress, server credential storage, shared poster-grid owner, or Deployment Target change. Deployment Target remains iOS 15.0.
-
-## Validation state
-
-- Build244: **real-device tested and rejected as final** for the five concrete issues above.
-- Build245 code written: **yes** — exact tested product source `4c5f286ee870589bd2eac05119a516631a31391a`.
-- Build245 local syntax parse of both modified Swift files: **passed**.
-- Build245 CI passed: **yes**, run/job `33253244567 / 99102435848`.
-- Build245 IPA produced + independently verified: **yes**, artifact `9715042997`, IPA SHA `19f69ca62928a65fb23bfdb44c67a916a7ba9edea20c3c3755f0875bb65a6514`.
-- Build245 real-device tested: **no**.
-- Stable/frozen: **no**.
-
-## Pending
-
-- User target-device validation of the five requested Build245 corrections: gear size, keyboard/Dock behavior, single-target direct full-grid Search, 12+6 recommendations without media-type filtering, and competitor-aligned landing geometry.
-- If the target-device result is accepted, resync against then-current `main`, rerun affected validation if the sync is material, merge PR #264 and close this task. If not, use only the new device evidence for the next narrow Search patch.
+Build252 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ❌ / stable/frozen ❌**.
 
 ## Next exact action
 
-Hand **OnePlayer 0.14.78 / Build245** to the user for iPhone 15 Pro Max / iOS 17.0 testing. Do not promote Build245 to stable/frozen until the user reports the real-device result.
+Target-device test Build252. Expected behavior: the same fast global Suggestions request now renders its returned 9 recommendations instead of discarding them.
+
+## Build252 target-device content result → Build253 Emby Web-aligned random Items — 2026-08-30
+
+Build252 / OnePlayer 0.14.85 is target-device rejected for recommendation semantics. The user opened an item surfaced from OnePlayer Search recommendations and the detail page identified it as `Tag` (`情趣内衣`), while official Emby Web Search on the same server shows actual movie/series titles. This proves `/Users/{userId}/Suggestions` is not the same data source as Emby Web Search landing recommendations in this environment, even when OnePlayer sends `IncludeItemTypes=Movie,Series`.
+
+External source inspection of `bpking1/embyExternalUrl`, which classifies real Emby Web `/Users/(.*)/Items` traffic, shows requests with `SortBy=Random` are explicitly classified as `searchSuggest`. This matches the official Web behavior and supersedes the `/Suggestions` direction.
+
+Build253 exact product source `fc9e5bdf1c24e694c3d28e6c7f4a8f1609bfb5a5` adds a Search-specific normal Items query: `/Users/{userId}/Items?Recursive=true&Limit=9&SortBy=Random&IncludeItemTypes=Movie,Series`. The Search preloader now uses only this query; startup warm, persistent image cache, decoded-image cache and Build248-accepted Dock/keyboard behavior are unchanged. No retry, fallback, timer, watchdog, per-library traversal or second cache was added.
+
+Build253 / OnePlayer 0.14.86 run/job `33266680237 / 99137850447` passed Xcode 16.4 Release build/package. Artifact `9718894001`, digest `sha256:e687831d57682a1e3e86462c4ba7cd25ea196cc593a6b174af081f862e1e464e`; IPA SHA-256 `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`; bundle `com.embyplayerlab.app`; MinOS 15.0; IPA integrity passed. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ❌ / not stable**.
+
+## Next exact action
+
+Target-device test Build253. Verify Search recommendation first paint remains fast and every surfaced card is a real Movie or Series rather than Tag/Genre/other metadata entities.
