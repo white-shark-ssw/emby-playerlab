@@ -10,15 +10,6 @@ enum V3SearchRecommendationPolicy {
         return !requestedTypes.isEmpty && requestedTypes.allSatisfy { requested in itemTypes.contains { $0.caseInsensitiveCompare(requested) == .orderedSame } }
     }
 
-    static func includeItemTypes(for library: LibraryItem) -> [String]? {
-        switch library.collectionType?.lowercased() {
-        case "movies": return ["Movie"]
-        case "tvshows": return ["Series"]
-        case "mixed": return itemTypes
-        default: return nil
-        }
-    }
-
     static var posterImageMaxWidth: Int {
         let available = UIScreen.main.bounds.width - EmbyPosterGridMetrics.horizontalPadding * 2 - EmbyPosterGridMetrics.columnSpacing * CGFloat(EmbyPosterGridMetrics.columnCount - 1)
         let gridWidth = floor(max(1, available) / CGFloat(EmbyPosterGridMetrics.columnCount))
@@ -95,29 +86,12 @@ final class V3SearchRecommendationPreloader {
     }
 
     private static func fetchRecommendations(client: EmbyAPIClient) async throws -> LoadedRecommendations {
-        let libraries = try await client.userViews()
-        let eligibleLibraries = libraries.compactMap { library -> (LibraryItem, [String])? in
-            guard let includeTypes = V3SearchRecommendationPolicy.includeItemTypes(for: library) else { return nil }
-            return (library, includeTypes)
-        }
-        DiagnosticsLogger.shared.log("Search", "recommendation warm libraries total=\(libraries.count) eligible=\(eligibleLibraries.count)")
-
-        var seen = Set<String>()
-        var result: [LibraryItem] = []
-        for (library, includeTypes) in eligibleLibraries {
-            let remaining = V3SearchRecommendationPolicy.preloadLimit - result.count
-            guard remaining > 0 else { break }
-            let suggestions = try await client.librarySuggestions(parentId: library.id, limit: remaining, includeItemTypes: includeTypes)
-            let accepted = suggestions.filter { V3SearchRecommendationPolicy.allows($0, requestedTypes: includeTypes) }
-            let nilTypeCount = suggestions.filter { $0.type == nil }.count
-            DiagnosticsLogger.shared.log("Search", "recommendation warm library=\(library.name) collection=\(library.collectionType ?? "nil") requested=\(includeTypes.joined(separator: ",")) returned=\(suggestions.count) nilType=\(nilTypeCount) accepted=\(accepted.count)")
-            for item in accepted where seen.insert(item.id).inserted {
-                result.append(item)
-                if result.count == V3SearchRecommendationPolicy.preloadLimit { break }
-            }
-        }
-        DiagnosticsLogger.shared.log("Search", "recommendation warm completed items=\(result.count)")
-        return LoadedRecommendations(items: result, client: client)
+        let requestedTypes = V3SearchRecommendationPolicy.itemTypes
+        let suggestions = try await client.librarySuggestions(limit: V3SearchRecommendationPolicy.preloadLimit, includeItemTypes: requestedTypes)
+        let accepted = suggestions.filter { V3SearchRecommendationPolicy.allows($0, requestedTypes: requestedTypes) }
+        let nilTypeCount = suggestions.filter { $0.type == nil }.count
+        DiagnosticsLogger.shared.log("Search", "recommendation warm global requested=\(requestedTypes.joined(separator: ",")) returned=\(suggestions.count) nilType=\(nilTypeCount) accepted=\(accepted.count)")
+        return LoadedRecommendations(items: Array(accepted.prefix(V3SearchRecommendationPolicy.preloadLimit)), client: client)
     }
 
     private func warmPosterImages(_ urls: [URL]) {
