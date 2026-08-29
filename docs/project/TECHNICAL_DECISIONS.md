@@ -214,3 +214,11 @@ Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B,
 - Search landing recommendations are an up-to-3×3 presentation. Startup warm work should therefore be bounded by the visible recommendation contract rather than an arbitrary larger 60-item set. Per-library Suggestions requests should ask only for remaining visible slots.
 - This refinement preserves the prior decisions: actual returned `LibraryItem.type` is the final Movie/Series whitelist authority; startup warm is one-shot per process; existing `EmbyImageDiskCache` and `EmbyDecodedImageRenderPool` remain cache owners; Search recommendation load-more stays removed.
 - Build248 remains candidate-level until target-device validation.
+
+
+## Search recommendation view eligibility — Build249 candidate
+
+- `UserViews` must not be treated as if every view is a Movie/Series recommendation source. Search recommendation traversal uses the real decoded `LibraryItem.collectionType` before issuing Suggestions. Eligible collection types are `movies`, `tvshows`, and `mixed`; request types map to Movie, Series, and Movie+Series respectively.
+- The returned item `Type` remains the final client-visible whitelist authority. CollectionType filtering is request selection, not a replacement for the Movie/Series output whitelist.
+- Build248 target-device evidence accepts the root-owned, bottom-safe-area-compensated Search Dock behavior; Build249 must preserve it.
+- No retry/timer/watchdog/fallback or second image cache is introduced. Build249 remains candidate-level pending target-device validation.

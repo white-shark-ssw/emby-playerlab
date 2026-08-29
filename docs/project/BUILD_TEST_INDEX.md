@@ -368,3 +368,16 @@ Update this index when a build materially changes architectural understanding, b
 - source ZIP SHA-256: `94ce1911d3981d8f5ad53bc59a8a7413a1ddf54a54c1a97e49642b1b909f1bec`.
 - independently verified package: `com.embyplayerlab.app`, `0.14.81 (248)`, `MinimumOSVersion=15.0`, IPA `unzip -t` passed.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
+
+
+### Build249 / 0.14.82 — Search recommendation CollectionType traversal candidate
+
+- Build248 target-device: Search Dock position/keyboard behavior accepted; recommendation wall still spins.
+- uploaded log `OnePlayer-App-1788018797.log`: Suggestions requests advance sequentially across parent libraries about every 2.4–2.7 s; not a single hung HTTP call.
+- exact CI product source: `f49ed220367de1ffbf9e9a5aba097d2ce160dac7`.
+- runtime delta: query only `movies`/`tvshows`/`mixed` UserViews; map to Movie/Series request type; keep final actual-type Movie/Series whitelist, 9-item cap, startup warm, existing image caches and no recommendation load-more; add preload diagnostics.
+- run/job: `33261820598 / 99124950794` — success.
+- artifact: `OnePlayer-0.14.82-Build249-Search`; ID `9717502081`; digest `sha256:3cc924d6733cb4590361fa255d85ef2c31f879f07538e11523a6e246da487510`.
+- IPA SHA-256: `0c62d51d488197b55dbfb98ab104c48404dd0caac77d786523f753c75acbb7a0`.
+- independently verified package: `com.embyplayerlab.app`, `0.14.82 (249)`, `MinimumOSVersion=15.0`, IPA `unzip -t` passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
