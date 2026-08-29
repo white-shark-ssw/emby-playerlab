@@ -1,6 +1,6 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build252 target-device recommendation content rejected; Build253 random-Items candidate CI/IPA verified, target-device pending
+- Status: Active — Build253 target-device recommendation semantics accepted; incremental recommendation loading requested next
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
@@ -19,6 +19,11 @@
 - Build252 run/job: `33265539007 / 99134824511` — success
 - Build252 artifact: `OnePlayer-0.14.85-Build252-Search`, ID `9718566319`, digest `sha256:15343da3075db72f32349250d0dc9a1a7b67ecb325bbcd507ea22276084abb9c`
 - Build252 IPA SHA-256: `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`
+- Build253 exact product source: `fc9e5bdf1c24e694c3d28e6c7f4a8f1609bfb5a5`
+- Build253 identity: **OnePlayer 0.14.86 / Build253**
+- Build253 run/job: `33266680237 / 99137850447` — success
+- Build253 artifact: `OnePlayer-0.14.86-Build253-Search`, ID `9718894001`, digest `sha256:e687831d57682a1e3e86462c4ba7cd25ea196cc593a6b174af081f862e1e464e`
+- Build253 IPA SHA-256: `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`
 - Built/target MinOS: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 
@@ -48,10 +53,6 @@ Build252 / OnePlayer 0.14.85 run/job `33265539007 / 99134824511` passed Xcode 16
 
 Build252 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ❌ / stable/frozen ❌**.
 
-## Next exact action
-
-Target-device test Build252. Expected behavior: the same fast global Suggestions request now renders its returned 9 recommendations instead of discarding them.
-
 ## Build252 target-device content result → Build253 Emby Web-aligned random Items — 2026-08-30
 
 Build252 / OnePlayer 0.14.85 is target-device rejected for recommendation semantics. The user opened an item surfaced from OnePlayer Search recommendations and the detail page identified it as `Tag` (`情趣内衣`), while official Emby Web Search on the same server shows actual movie/series titles. This proves `/Users/{userId}/Suggestions` is not the same data source as Emby Web Search landing recommendations in this environment, even when OnePlayer sends `IncludeItemTypes=Movie,Series`.
@@ -60,8 +61,14 @@ External source inspection of `bpking1/embyExternalUrl`, which classifies real E
 
 Build253 exact product source `fc9e5bdf1c24e694c3d28e6c7f4a8f1609bfb5a5` adds a Search-specific normal Items query: `/Users/{userId}/Items?Recursive=true&Limit=9&SortBy=Random&IncludeItemTypes=Movie,Series`. The Search preloader now uses only this query; startup warm, persistent image cache, decoded-image cache and Build248-accepted Dock/keyboard behavior are unchanged. No retry, fallback, timer, watchdog, per-library traversal or second cache was added.
 
-Build253 / OnePlayer 0.14.86 run/job `33266680237 / 99137850447` passed Xcode 16.4 Release build/package. Artifact `9718894001`, digest `sha256:e687831d57682a1e3e86462c4ba7cd25ea196cc593a6b174af081f862e1e464e`; IPA SHA-256 `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`; bundle `com.embyplayerlab.app`; MinOS 15.0; IPA integrity passed. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ❌ / not stable**.
+Build253 / OnePlayer 0.14.86 run/job `33266680237 / 99137850447` passed Xcode 16.4 Release build/package. Artifact `9718894001`, digest `sha256:e687831d57682a1e3e86462c4ba7cd25ea196cc593a6b174af081f862e1e464e`; IPA SHA-256 `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`; bundle `com.embyplayerlab.app`; MinOS 15.0; IPA integrity passed.
+
+## Build253 target-device result — 2026-08-30
+
+The user confirmed on iPhone 15 Pro Max / iOS 17.0 that all 9 Search landing recommendations are normal media items. The prior Tag/Genre metadata-object problem is resolved for the tested Build253 path, and the `Items + SortBy=Random + IncludeItemTypes=Movie,Series` recommendation semantics are accepted as the current baseline.
+
+Build253 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / 9-item recommendation semantics accepted ✅ / stable/frozen ❌**.
 
 ## Next exact action
 
-Target-device test Build253. Verify Search recommendation first paint remains fast and every surfaced card is a real Movie or Series rather than Tag/Genre/other metadata entities.
+Evaluate and implement incremental recommendation loading below the accepted initial 3×3 wall without changing the accepted Build253 recommendation source. Preferred direction is to keep `/Users/{userId}/Items` + `SortBy=Random` + `IncludeItemTypes=Movie,Series`, request another small batch when the user approaches the bottom, and exclude already-present item IDs so appended recommendations do not duplicate existing cards. Do not use `StartIndex` as the primary anchor for a random sort.
