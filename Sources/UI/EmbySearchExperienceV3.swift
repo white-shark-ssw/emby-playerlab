@@ -201,9 +201,14 @@ struct V3EmbyGlobalSearchView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                searchHeader
-                searchField.padding(.top, 12)
-                searchContent.padding(.top, 24)
+                if model.hasSubmittedSearch {
+                    compactSearchHeader
+                    searchResults.padding(.top, 20)
+                } else {
+                    searchHeader
+                    searchField.padding(.horizontal, 20).padding(.top, 12)
+                    searchLanding.padding(.top, 24)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
@@ -243,6 +248,22 @@ struct V3EmbyGlobalSearchView: View {
             Text("搜索").font(.system(size: 38, weight: .bold)).foregroundColor(.primary)
         }
         .padding(.horizontal, 20)
+        .padding(.top, 8)
+    }
+
+    private var compactSearchHeader: some View {
+        HStack(spacing: 12) {
+            searchField
+            Button("取消") {
+                searchText = ""
+                searchFieldFocused = false
+                model.cancelDisplayedSearch()
+            }
+            .font(.system(size: 16))
+            .foregroundColor(.blue)
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
         .padding(.top, 8)
     }
 
@@ -305,16 +326,6 @@ struct V3EmbyGlobalSearchView: View {
         .frame(height: 48)
         .background(Color(uiColor: .secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .padding(.horizontal, 20)
-    }
-
-    @ViewBuilder
-    private var searchContent: some View {
-        if model.hasSubmittedSearch {
-            searchResults
-        } else {
-            searchLanding
-        }
     }
 
     private var searchLanding: some View {
