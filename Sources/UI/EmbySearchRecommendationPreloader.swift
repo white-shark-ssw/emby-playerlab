@@ -3,7 +3,7 @@ import UIKit
 
 enum V3SearchRecommendationPolicy {
     static let itemTypes = ["Movie", "Series"]
-    static let preloadLimit = 60
+    static let preloadLimit = 9
 
     static func allows(_ item: LibraryItem) -> Bool {
         guard let type = item.type else { return false }
@@ -90,12 +90,13 @@ final class V3SearchRecommendationPreloader {
         var seen = Set<String>()
         var result: [LibraryItem] = []
         for library in libraries {
-            let suggestions = try await client.librarySuggestions(parentId: library.id, limit: 100, includeItemTypes: V3SearchRecommendationPolicy.itemTypes)
+            let remaining = V3SearchRecommendationPolicy.preloadLimit - result.count
+            guard remaining > 0 else { break }
+            let suggestions = try await client.librarySuggestions(parentId: library.id, limit: remaining, includeItemTypes: V3SearchRecommendationPolicy.itemTypes)
             for item in suggestions where V3SearchRecommendationPolicy.allows(item) && seen.insert(item.id).inserted {
                 result.append(item)
                 if result.count == V3SearchRecommendationPolicy.preloadLimit { break }
             }
-            if result.count == V3SearchRecommendationPolicy.preloadLimit { break }
         }
         return LoadedRecommendations(items: result, client: client)
     }
