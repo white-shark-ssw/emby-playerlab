@@ -65,6 +65,17 @@ extension EmbyAPIClient {
         return libraryHubDeduplicated(page.items)
     }
 
+    func searchLandingRecommendations(limit: Int = 9, includeItemTypes: [String] = []) async throws -> [LibraryItem] {
+        var query = libraryHubCommonFields + [
+            URLQueryItem(name: "Recursive", value: "true"),
+            URLQueryItem(name: "Limit", value: String(max(1, min(100, limit)))),
+            URLQueryItem(name: "SortBy", value: "Random"),
+        ]
+        if !includeItemTypes.isEmpty { query.append(URLQueryItem(name: "IncludeItemTypes", value: includeItemTypes.joined(separator: ","))) }
+        let page: EmbyItemPage = try await libraryHubRequest(path: "Users/\(try libraryHubUserID())/Items", query: query)
+        return libraryHubDeduplicated(page.items)
+    }
+
     func movieRecommendations(parentId: String, categoryLimit: Int = 4, itemLimit: Int = 16) async throws -> [EmbyLibraryRecommendationSection] {
         let query = [
             URLQueryItem(name: "UserId", value: try libraryHubUserID()),
