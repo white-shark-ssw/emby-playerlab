@@ -231,3 +231,12 @@ Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B,
 - When the Suggestions response omits `Type`, the exact `IncludeItemTypes` request that generated that response may serve as the whitelist authority only when every requested type is itself in the Movie/Series whitelist. This is not heuristic media-type inference or a generic fallback; it trusts the server API filter that constrained the response.
 - The Search view must not reapply an incompatible `Type != nil` filter after the preloader has validated the response under this rule.
 - Build248-accepted Dock ownership/safe-area behavior remains unchanged. Build250 remains candidate-level pending target-device first-paint validation.
+
+
+## Search landing recommendations use normal Items + Random, not Suggestions — 2026-08-30
+
+**Decision:** OnePlayer Search landing recommendations use the normal user Items endpoint with `SortBy=Random`, `Recursive=true`, and an explicit `IncludeItemTypes=Movie,Series` whitelist. `/Users/{userId}/Suggestions` is not the Search landing authority.
+
+**Evidence:** Build252 target-device surfaced a `Tag` object from `/Suggestions` despite the Movie/Series query constraint, while official Emby Web Search on the same server shows actual media. Independent inspection of `bpking1/embyExternalUrl` shows Emby Web `/Users/(.*)/Items` traffic with `SortBy=Random` is classified as `searchSuggest`.
+
+**Scope:** This decision only changes Search recommendation metadata retrieval. It does not change Player, MPV, STRM/302/115, UnifiedTransport, playback Session Cache, Emby progress/Resume, credentials, PiP or Deployment Target.

@@ -142,3 +142,12 @@ Build251 / 0.14.84 run/job `33264608646 / 99132347141` passed Xcode 16.4 Release
 Build251 target-device testing changed the diagnosis again: the global Suggestions request now completes quickly, but the Search page shows no recommendation content. Uploaded `OnePlayer-App-1788023908.log` records one global `/Users/{userId}/Suggestions` call with `Limit=9&IncludeItemTypes=Movie,Series`, followed by `returned=9 nilType=0 accepted=0`. Thus the server delivered a full 3×3 payload; OnePlayer discarded it locally.
 
 Build252 exact product source `dbfd323ec4a14e12dc57293c98b1fe6fbe239c5e` removes only that second local rejection and consumes the exact Emby global Suggestions payload. The request remains server-constrained to Movie/Series, startup warm/image caches remain, and Build248 Dock behavior plus all Player/Transport/P0 contracts are untouched. Run/job `33265539007 / 99134824511` passed; artifact `9718566319`; IPA SHA-256 `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`; MinOS 15.0. Build252 awaits target-device validation.
+
+
+## Search Build252 Tag-content rejection → Build253 random Items candidate — 2026-08-30
+
+Build252 is target-device rejected for recommendation semantics. OnePlayer surfaced `情趣内衣` and its detail page reports the object type as `Tag`, while the same server in official Emby Web Search shows actual movie/series recommendation titles. This demonstrates that `/Users/{userId}/Suggestions` is not the correct Search landing source for this server/client behavior.
+
+Source evidence from `bpking1/embyExternalUrl` classifies Emby Web `/Users/(.*)/Items` requests with `SortBy=Random` as `searchSuggest`. Build253 exact product source `fc9e5bdf1c24e694c3d28e6c7f4a8f1609bfb5a5` therefore switches Search landing recommendations to one normal `/Users/{userId}/Items` request with `Recursive=true`, `SortBy=Random`, `Limit=9`, `IncludeItemTypes=Movie,Series`. No per-library traversal or `/Suggestions` call remains in the Search preloader. Existing startup/image cache and accepted Dock behavior remain unchanged.
+
+Build253 / 0.14.86 run/job `33266680237 / 99137850447` passed Xcode 16.4 Release build/package. Artifact `9718894001`, digest `sha256:e687831d57682a1e3e86462c4ba7cd25ea196cc593a6b174af081f862e1e464e`; IPA SHA-256 `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`; MinOS 15.0. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable**.

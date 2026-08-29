@@ -421,3 +421,16 @@ Update this index when a build materially changes architectural understanding, b
 - IPA SHA-256: `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`.
 - package: `com.embyplayerlab.app`, `0.14.85 (252)`, `MinimumOSVersion=15.0`, IPA integrity passed.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
+
+
+### Build253 / 0.14.86 — Search Web-aligned random Items recommendation candidate
+
+- Build252 target-device: rejected for recommendation semantics; a surfaced recommendation opens as type `Tag` (`情趣内衣`) while official Emby Web shows actual movie/series content.
+- exact product source: `fc9e5bdf1c24e694c3d28e6c7f4a8f1609bfb5a5`.
+- change: Search landing recommendation source is now `/Users/{userId}/Items` with `Recursive=true`, `SortBy=Random`, `Limit=9`, `IncludeItemTypes=Movie,Series`; no `/Suggestions` call from Search preloader.
+- source evidence: `bpking1/embyExternalUrl` classifies Emby Web `/Users/(.*)/Items` requests with `SortBy=Random` as `searchSuggest`.
+- run/job: `33266680237 / 99137850447` — success.
+- artifact: `OnePlayer-0.14.86-Build253-Search`; ID `9718894001`; digest `sha256:e687831d57682a1e3e86462c4ba7cd25ea196cc593a6b174af081f862e1e464e`.
+- IPA SHA-256: `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`.
+- package: `com.embyplayerlab.app`, `0.14.86 (253)`, `MinimumOSVersion=15.0`, IPA integrity passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
