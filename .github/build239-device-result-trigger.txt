@@ -1,1 +1,1 @@
-trigger Build239 device-result docs sync
+retrigger Build239 device-result docs sync
