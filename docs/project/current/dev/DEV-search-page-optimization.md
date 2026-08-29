@@ -1,65 +1,56 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build246 target-device tested and rejected as final; Build247 follow-up reserved
+- Status: Active — Build246 target-device rejected; Build247 CI/IPA verified, target-device pending
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
 - Base branch: `main`
 - Draft PR: #264
-- Build244 tested source: `0710fa4cf0a59dbf7e6748e951db2e3cddf2b82c`
-- Build245 exact tested product source: `4c5f286ee870589bd2eac05119a516631a31391a`
 - Build246 exact tested product source: `748d6f31bf724d4f1ec7dab4765d25c9b6a195ac`
 - Build246 run/job: `33255278229 / 99107775908`; artifact `9715650501`; IPA SHA-256 `184082a21d850e7203c1be717e27d7fb95301caa5a36de6b814e4930b30750b9`
-- Reserved test candidate: **OnePlayer 0.14.80 / Build247**
+- Build247 exact CI product source: `5f693d82041bbb59d3fe481aa708b22a5feda42d`
+- Build247 identity: **OnePlayer 0.14.80 / Build247**
+- Build247 run/job: `33258792907 / 99117036605` — success
+- Build247 artifact: `OnePlayer-0.14.80-Build247-Search`, ID `9716657082`, digest `sha256:9628b0c608488edbfc5af477199e847e5a35b119d4ab96edbecd036cbde4bfd1`
+- Build247 IPA SHA-256: `952b2daeef4bc01fe62476611c6620cf7ce79d3905d87bd82336e4650d0d69b0`
+- Build247 source ZIP SHA-256: `44494de6213883b8bee16b6e99336b33073ed38b17a53062f9be7a2cff22b73d`
+- Built MinOS: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 
 ## Build246 target-device result — 2026-08-29
 
-The user installed Build246 and reported five controlling failures/follow-ups. This supersedes the former Build246 real-device-pending state.
+The user installed Build246 and reported five controlling failures/follow-ups:
 
-1. Focusing the Search input still lifts the bottom Dock. This has survived multiple candidate versions, so the prior root `GeometryReader.ignoresSafeArea(.keyboard)` placement is rejected as sufficient.
-2. The recommendation requirement is an explicit **client-visible whitelist**: only items whose actual Emby type is `Movie` or `Series` may be displayed. Sending `IncludeItemTypes=Movie,Series` alone is not considered sufficient enforcement if the returned payload contains another type.
-3. The recommendation poster wall is still too slow when entering Search. Because the query is not known at app launch, this report refers to the Search landing recommendation wall. New direction: execute recommendation metadata/image warming once in the background at app startup instead of starting the first recommendation request only when Search appears.
-4. Scrolling downward while recommendations expand still causes visible container twitching. Build246 append-only replacement and removal of the bottom spinner were therefore insufficient.
-5. Posters in the later/more recommendation area remain visibly slow. The user suspects non-Movie/Series items may contribute; Build247 must enforce the whitelist on returned items and warm the real poster URLs ahead of Search presentation.
+1. Focusing Search still lifts the bottom Dock; the prior outer `.ignoresSafeArea(.keyboard)` strategy is rejected as sufficient.
+2. Recommendations require a real client-visible whitelist: only actual Emby `Movie` and `Series` items may be displayed.
+3. Entering the Search landing page still waits too long for its recommendation poster wall; new requirement is one background recommendation warm at app startup.
+4. Recommendation load-more still causes visible container twitch while scrolling.
+5. Later recommendation posters load slowly; unexpected item types are a possible contributor, but cold poster bytes also remain a direct cost.
 
 Build246 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / rejected as final ✅ / not stable**.
 
-## Current source / ownership evidence
+## Build247 implementation
 
-- `EmbyServerRootViewV3` owns `selectedTab` and `serverTabBar`. In Build246 Search, the Dock is passed as an `AnyView` into `V3EmbyGlobalSearchView` and mounted by an `.overlay(alignment: .bottom)` inside the Search `NavigationView` content. The outer root ignores the keyboard, but the nested navigation/content tree still owns the Search Dock presentation. Build247 will move Search Dock presentation back to the root owner while Search remains selected, rather than adding more keyboard timers or state.
-- `V3GlobalSearchViewModel` currently requests recommendations when the Search view `.task` runs. It uses `librarySuggestions(... includeItemTypes: ["Movie", "Series"])` but does not independently reject an unexpected returned type.
-- Build246 still performs incremental recommendation network work by increasing the requested Suggestions limit while the user approaches the grid end. Even though existing IDs are appended rather than replaced, this remains an asynchronous list-size mutation during active scrolling.
-- `EmbyPosterGrid` triggers `onApproachingEnd` from cells in the last nine item IDs. Search must not modify this shared poster-task-owned grid. Build247 will instead remove recommendation-side incremental network expansion by preloading a fixed recommendation set once per app process and presenting that fixed set.
-- `EmbyImageDiskCache` is the existing persistent byte cache; `EmbyDecodedImageRenderPool` is the existing shared decoded-memory cache. Build247 must reuse them and must not introduce another disk image cache.
-- App startup restoration occurs in `RootView.onAppear` via `sessionStore.restore()`, providing a concrete place to start a Search-only background preloader after saved sessions are available.
+- Search Dock ownership: `EmbyServerRootViewV3` now mounts the real `serverTabBar` at the server root while Search is selected. `V3EmbyGlobalSearchView` receives an empty nested Dock, so its keyboard-responsive `NavigationView` no longer owns the visible Dock.
+- Hard recommendation whitelist: `V3SearchRecommendationPolicy.allows(_:)` accepts only returned `LibraryItem.type == Movie/Series` case-insensitively. The server-side `IncludeItemTypes=Movie,Series` remains an optimization, not the sole enforcement authority.
+- Startup preloader: after `SessionStore.restore()` in `RootView`, `V3SearchRecommendationPreloader.shared.start(...)` starts one process-lifetime warm for restored sessions. Search consumes the same in-flight/completed task instead of starting its first recommendation request only on Search entry.
+- Fixed recommendation set: the preloader deduplicates a bounded 60-item set. Search no longer attaches recommendation `onApproachingEnd`, no longer increases the Suggestions limit during active scrolling, and no longer mutates recommendation item count at the scroll frontier.
+- Poster warm: the preloader warms the exact Search poster URL sizing into the existing persistent `EmbyImageDiskCache` and existing `EmbyDecodedImageRenderPool`. The Search-lifetime decoded-image pin remains. No second disk cache was introduced.
+- Keyword Search remains separate because the keyword is not known at app launch.
 
-## Build247 planned minimal scope
+## Ownership / parallel guard
 
-- Search Dock: root-owned overlay only while `selectedTab == .search`; pass an empty nested Dock into Search so the keyboard-responsive `NavigationView` can no longer move the real Dock.
-- Recommendation whitelist: enforce actual returned `LibraryItem.type` against exactly `Movie` / `Series` in addition to the server query parameter.
-- Startup warm: after `SessionStore.restore()`, start one Search recommendation preload for saved sessions. Fetch a bounded fixed set, publish metadata to a shared Search-only in-memory owner, and warm the exact poster URLs into existing image caches in the background.
-- Search landing: consume the already-started/preloaded fixed recommendation set. Do not issue `onApproachingEnd` incremental recommendation loads; this removes the active-scroll network/list-growth trigger rather than adding debounce/timer/watchdog logic.
-- Keep existing keyword Search behavior separate; a keyword cannot be precomputed at app launch.
-
-## Parallel / candidate guard
-
-- Search branch remains `feat/search-page-optimization`, Draft PR #264.
-- PR head at the start of this cycle was `52da10c61d354d5f6093250c1abec85387847a10`.
-- Active poster task owns Build243; Active Aether task owns Build235. Current project index/checkpoints do not allocate Build247, so Search reserves **0.14.80 / Build247**.
-- Build247 will not edit `EmbyPosterGrid.swift` or `EmbySharedImageAndNavigation.swift`, avoiding the active poster task's shared owners.
-
-## Frozen / do-not-touch
-
-No Player/MPV/PiP, UnifiedTransport, playback Session Cache, STRM/302/115 client-direct media path, Emby Resume/progress, credential storage, shared poster-grid owner, or Deployment Target change. Deployment Target remains iOS 15.0.
+- Build247 does not edit `EmbyPosterGrid.swift` or `EmbySharedImageAndNavigation.swift`; the independent poster-smoothness task retains those shared owners.
+- No Player/MPV/PiP, UnifiedTransport, playback Session Cache, STRM/302/115 client-direct path, Emby Resume/progress, credentials, or Deployment Target changes.
+- Active poster task owns Build243; Active Aether task owns Build235. Build247 is unique to Search.
 
 ## Validation state
 
-- Build246: **target-device tested and rejected as final**.
-- Build247: **reserved / not yet written**.
-- Real-device tested: no.
-- Stable/frozen: no.
+- Patch workflow `33258670151 / 99116714646`: modified Swift syntax parse + `git diff --check` passed.
+- Dedicated Xcode 16.4 Release/MPV run `33258792907 / 99117036605`: passed.
+- Artifact identity independently verified: `com.embyplayerlab.app`, `0.14.80 (247)`, `MinimumOSVersion=15.0`; IPA `unzip -t` passed and independent SHA-256 matches the embedded checksum.
+- Evidence: **Code written ✅ / CI passed ✅ / IPA produced + independently verified ✅ / real-device tested ❌ / stable/frozen ❌**.
 
 ## Next exact action
 
-Implement the narrow Build247 Search-only preloader/whitelist/root-Dock changes without editing shared poster-owned files, run syntax/diff checks, then produce and independently verify a 0.14.80 / Build247 Release IPA before handing it back for target-device validation.
+Target-device test Build247 against the five Build246 failures: Search Dock must remain fixed while keyboard appears; recommendation types must be only Movie/Series; Search landing poster wall should benefit from startup warm; scrolling through the fixed recommendation set should not twitch from recommendation load-more; later posters should already be warm or persistently cached. Do not claim resolution until that test is reported.
