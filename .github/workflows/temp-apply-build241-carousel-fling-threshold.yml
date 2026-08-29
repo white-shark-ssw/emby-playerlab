@@ -1,0 +1,63 @@
+name: TEMP Apply Build241 Carousel Fling Threshold
+
+on:
+  push:
+    branches: [tune/home-carousel-fling-threshold-build241]
+    paths: [.github/build241-apply-trigger.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build241 branch
+        uses: actions/checkout@v4
+        with:
+          ref: tune/home-carousel-fling-threshold-build241
+          fetch-depth: 0
+      - name: Materialize Build241 from exact Build239 baseline
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          interaction_path = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift')
+          interaction = interaction_path.read_text()
+          old = 'let velocityCommit = directionalVelocity >= 600'
+          new = 'let velocityCommit = directionalVelocity >= 500'
+          if interaction.count(old) != 1:
+              raise SystemExit(f'Expected exactly one Build239 600 pt/s gate, found {interaction.count(old)}')
+          if 'HomeCarouselReleaseHandoff' in interaction or 'beginReleaseHandoff' in interaction:
+              raise SystemExit('Build240 release-handoff diagnostics unexpectedly present in Build239 baseline')
+          interaction_path.write_text(interaction.replace(old, new, 1))
+
+          identity_path = Path('Sources/Core/AppIdentity.swift')
+          identity = identity_path.read_text()
+          if identity.count('"0.14.72"') != 2:
+              raise SystemExit('Unexpected Build239 AppIdentity version shape')
+          identity_path.write_text(identity.replace('"0.14.72"', '"0.14.74"'))
+
+          changelog = Path('docs/changelog/CHANGELOG_v0_14_74_build241.md')
+          if changelog.exists():
+              raise SystemExit('Build241 changelog already exists unexpectedly')
+          changelog.write_text('''# OnePlayer 0.14.74 / Build241\n\n## Home carousel\n\n- Baseline is the exact real-device-tested Build239 interaction/presentation source.\n- Lowers only the direction-aware latest-delivered fling trigger from 600 pt/s to 500 pt/s so a short intentional flick can switch items with slightly less force.\n- Keeps the ordinary slow-drag commit threshold at 0.28.\n- Keeps Build239 release/cancel settle timing, Build237 persistent white-flash correction, Build236 acquisition handling, Build231 foreground compositing, Build226 Hero residency, and Build228 max-refresh-through-settle unchanged.\n- Does not carry Build240 release-handoff diagnostic behavior into this candidate.\n- Player / MPV / PiP / Transport / Cache / Emby Session and other Frozen/P0 paths are unchanged.\n- Deployment Target remains iOS 15.0.\n''')
+          PY
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+          changed=set(subprocess.check_output(['git','diff','--name-only'], text=True).splitlines())
+          expected={'Sources/Core/AppIdentity.swift','Sources/UI/EmbyHomeCarouselInteractionV3.swift','docs/changelog/CHANGELOG_v0_14_74_build241.md'}
+          if changed != expected:
+              raise SystemExit(f'Unexpected materialization diff: {sorted(changed)}')
+          PY
+      - name: Commit Build241 product candidate
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselInteractionV3.swift docs/changelog/CHANGELOG_v0_14_74_build241.md
+          git diff --cached --quiet && { echo 'No Build241 product diff produced'; exit 1; }
+          git commit -m "Carousel: lower fling threshold to 500 pt/s for Build241"
+          git push origin HEAD:tune/home-carousel-fling-threshold-build241
