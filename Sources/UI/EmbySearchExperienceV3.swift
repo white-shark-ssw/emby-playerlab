@@ -34,7 +34,6 @@ private final class V3GlobalSearchViewModel: ObservableObject {
     private let searchItemTypes = ["Movie", "Series", "BoxSet"]
     private var searchGeneration = 0
     private var recommendationGeneration = 0
-    private var recommendationLimit = 12
     private var recommendationPosterImages: [String: UIImage] = [:]
     private var hasStoredServerSelection: Bool
 
@@ -145,20 +144,7 @@ private final class V3GlobalSearchViewModel: ObservableObject {
         return nil
     }
 
-    func loadRecommendations(client: EmbyAPIClient) async {
-        await reloadRecommendations(client: client, targetLimit: recommendationLimit)
-    }
-
-    func loadMoreRecommendations(client: EmbyAPIClient) async {
-        guard recommendationsEnabled, hasMoreRecommendations, !isLoadingRecommendations else { return }
-        recommendationLimit += 6
-        await reloadRecommendations(client: client, targetLimit: recommendationLimit)
-    }
-
-    func recommendationPosterImage(for itemID: String) -> UIImage? { recommendationPosterImages[itemID] }
-    func pinRecommendationPosterImage(_ image: UIImage, for itemID: String) { recommendationPosterImages[itemID] = image }
-
-    private func reloadRecommendations(client: EmbyAPIClient, targetLimit: Int) async {
+    func loadRecommendations(session: EmbySession, client: EmbyAPIClient) async {
         guard recommendationsEnabled, !isLoadingRecommendations else { return }
         recommendationGeneration += 1
         let generation = recommendationGeneration
@@ -166,35 +152,19 @@ private final class V3GlobalSearchViewModel: ObservableObject {
         defer { if generation == recommendationGeneration { isLoadingRecommendations = false } }
 
         do {
-            let libraries = try await client.userViews()
-            var seen = Set<String>()
-            var result: [LibraryItem] = []
-            for library in libraries {
-                guard generation == recommendationGeneration, recommendationsEnabled else { return }
-                do {
-                    let suggestions = try await client.librarySuggestions(parentId: library.id, limit: min(100, targetLimit), includeItemTypes: ["Movie", "Series"])
-                    for item in suggestions where seen.insert(item.id).inserted {
-                        result.append(item)
-                        if result.count == targetLimit { break }
-                    }
-                } catch {
-                    if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Search", "recommendations failed library=\(library.name): \(error.localizedDescription)") }
-                }
-                if result.count == targetLimit { break }
-            }
+            let items = try await V3SearchRecommendationPreloader.shared.recommendations(for: session, client: client)
             guard generation == recommendationGeneration, recommendationsEnabled else { return }
-            if recommendationItems.isEmpty { recommendationItems = result }
-            else {
-                let existingIDs = Set(recommendationItems.map(\.id))
-                recommendationItems.append(contentsOf: result.filter { !existingIDs.contains($0.id) })
-            }
-            hasMoreRecommendations = result.count == targetLimit
+            recommendationItems = items.filter(V3SearchRecommendationPolicy.allows)
+            hasMoreRecommendations = false
         } catch {
             guard generation == recommendationGeneration else { return }
             hasMoreRecommendations = false
-            if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Search", "recommendation libraries failed: \(error.localizedDescription)") }
+            if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Search", "recommendations failed: \(error.localizedDescription)") }
         }
     }
+
+    func recommendationPosterImage(for itemID: String) -> UIImage? { recommendationPosterImages[itemID] }
+    func pinRecommendationPosterImage(_ image: UIImage, for itemID: String) { recommendationPosterImages[itemID] = image }
 
     private func recordHistory(_ term: String) {
         history.removeAll { $0.caseInsensitiveCompare(term) == .orderedSame }
@@ -217,11 +187,7 @@ private struct V3SearchRecommendationPosterCard: View {
 
     private var resolvedWidth: CGFloat { gridCellWidth ?? 118 }
     private var posterHeight: CGFloat { floor(resolvedWidth / EmbyPosterGridMetrics.posterAspectRatio) }
-    private var posterImageMaxWidth: Int {
-        let available = UIScreen.main.bounds.width - EmbyPosterGridMetrics.horizontalPadding * 2 - EmbyPosterGridMetrics.columnSpacing * CGFloat(EmbyPosterGridMetrics.columnCount - 1)
-        let gridWidth = floor(max(1, available) / CGFloat(EmbyPosterGridMetrics.columnCount))
-        return min(440, max(1, Int(ceil(gridWidth * UIScreen.main.scale))))
-    }
+    private var posterImageMaxWidth: Int { V3SearchRecommendationPolicy.posterImageMaxWidth }
     private var yearText: String { item.productionYear.map(String.init) ?? " " }
 
     var body: some View {
@@ -298,7 +264,7 @@ struct V3EmbyGlobalSearchView: View {
             }
             .task {
                 model.reconcileServers(sessionStore.sessions)
-                await model.loadRecommendations(client: currentClient)
+                await model.loadRecommendations(session: currentSession, client: currentClient)
             }
             .onChange(of: sessionStore.sessions) { model.reconcileServers($0) }
             .onChange(of: searchText) { value in
@@ -354,7 +320,7 @@ struct V3EmbyGlobalSearchView: View {
 
             Button {
                 model.toggleRecommendations()
-                if model.recommendationsEnabled { Task { await model.loadRecommendations(client: currentClient) } }
+                if model.recommendationsEnabled { Task { await model.loadRecommendations(session: currentSession, client: currentClient) } }
             } label: { menuCheckLabel("显示推荐观看", selected: model.recommendationsEnabled) }
 
             if model.globalSearchEnabled {
@@ -451,10 +417,7 @@ struct V3EmbyGlobalSearchView: View {
             if model.isLoadingRecommendations && model.recommendationItems.isEmpty {
                 ProgressView().frame(maxWidth: .infinity).padding(.top, 18)
             } else {
-                EmbyPosterGrid(items: model.recommendationItems, horizontalPadding: 6, onApproachingEnd: {
-                    guard model.hasMoreRecommendations else { return }
-                    Task { await model.loadMoreRecommendations(client: currentClient) }
-                }) { item in
+                EmbyPosterGrid(items: model.recommendationItems, horizontalPadding: 6) { item in
                     EmbyPosterDetailLink(item: item, client: currentClient) {
                         V3SearchRecommendationPosterCard(item: item, client: currentClient, pinnedImage: model.recommendationPosterImage(for: item.id)) { image in
                             model.pinRecommendationPosterImage(image, for: item.id)
