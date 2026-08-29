@@ -5,9 +5,9 @@ enum V3SearchRecommendationPolicy {
     static let itemTypes = ["Movie", "Series"]
     static let preloadLimit = 9
 
-    static func allows(_ item: LibraryItem) -> Bool {
-        guard let type = item.type else { return false }
-        return itemTypes.contains { type.caseInsensitiveCompare($0) == .orderedSame }
+    static func allows(_ item: LibraryItem, requestedTypes: [String]) -> Bool {
+        if let type = item.type { return itemTypes.contains { type.caseInsensitiveCompare($0) == .orderedSame } }
+        return !requestedTypes.isEmpty && requestedTypes.allSatisfy { requested in itemTypes.contains { $0.caseInsensitiveCompare(requested) == .orderedSame } }
     }
 
     static func includeItemTypes(for library: LibraryItem) -> [String]? {
@@ -108,8 +108,9 @@ final class V3SearchRecommendationPreloader {
             let remaining = V3SearchRecommendationPolicy.preloadLimit - result.count
             guard remaining > 0 else { break }
             let suggestions = try await client.librarySuggestions(parentId: library.id, limit: remaining, includeItemTypes: includeTypes)
-            let accepted = suggestions.filter(V3SearchRecommendationPolicy.allows)
-            DiagnosticsLogger.shared.log("Search", "recommendation warm library=\(library.name) collection=\(library.collectionType ?? "nil") returned=\(suggestions.count) accepted=\(accepted.count)")
+            let accepted = suggestions.filter { V3SearchRecommendationPolicy.allows($0, requestedTypes: includeTypes) }
+            let nilTypeCount = suggestions.filter { $0.type == nil }.count
+            DiagnosticsLogger.shared.log("Search", "recommendation warm library=\(library.name) collection=\(library.collectionType ?? "nil") requested=\(includeTypes.joined(separator: ",")) returned=\(suggestions.count) nilType=\(nilTypeCount) accepted=\(accepted.count)")
             for item in accepted where seen.insert(item.id).inserted {
                 result.append(item)
                 if result.count == V3SearchRecommendationPolicy.preloadLimit { break }
