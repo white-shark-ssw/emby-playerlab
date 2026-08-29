@@ -1,0 +1,70 @@
+name: Temp Search Build253 Main Docs
+
+on:
+  push:
+    branches: ["feat/search-page-optimization"]
+    paths:
+      - ".github/search-build253-main-docs-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Sync Search Build253 authority to main docs
+        run: |
+          set -euo pipefail
+          git fetch origin feat/search-page-optimization
+          git show origin/feat/search-page-optimization:docs/project/current/dev/DEV-search-page-optimization.md > docs/project/current/dev/DEV-search-page-optimization.md
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          lines = module.read_text().splitlines()
+          found = False
+          for i, line in enumerate(lines):
+              if line.startswith('| Search page / recommendations |'):
+                  lines[i] = '| Search page / recommendations | **Active — Build252 target-device content rejected; Build253 CI/IPA verified, target-device pending** | Build248 Dock/keyboard behavior remains target-device accepted. Build252 / 0.14.85 target-device evidence shows OnePlayer Search recommendations can surface a `Tag` entity (`情趣内衣`), unlike official Emby Web Search which shows real movie/series content. Therefore `/Users/{userId}/Suggestions` is rejected as the Search landing recommendation source in this environment. Build253 / 0.14.86 exact source `fc9e5bdf1c24e694c3d28e6c7f4a8f1609bfb5a5` uses the Web-aligned normal `/Users/{userId}/Items` query with `SortBy=Random`, `Recursive=true`, `Limit=9`, `IncludeItemTypes=Movie,Series`. Run/job `33266680237 / 99137850447` passed; artifact `9718894001`; IPA SHA-256 `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`; MinOS 15.0 verified. Not target-device tested or stable yet. |'
+                  found = True
+              elif line.startswith('| Other product modules |'):
+                  lines[i] = re.sub(r'Search Build\d+', 'Search Build253', line)
+          if not found:
+              raise SystemExit('Search module row not found on main')
+          module.write_text('\n'.join(lines) + '\n')
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          current = state.read_text()
+          marker = '## Search Build252 Tag-content rejection → Build253 random Items candidate — 2026-08-30'
+          if marker not in current:
+              current += f'''\n\n{marker}\n\nBuild252 is target-device rejected for recommendation semantics. OnePlayer surfaced `情趣内衣` and its detail page reports the object type as `Tag`, while the same server in official Emby Web Search shows actual movie/series recommendation titles. This demonstrates that `/Users/{{userId}}/Suggestions` is not the correct Search landing source for this server/client behavior.\n\nSource evidence from `bpking1/embyExternalUrl` classifies Emby Web `/Users/(.*)/Items` requests with `SortBy=Random` as `searchSuggest`. Build253 exact product source `fc9e5bdf1c24e694c3d28e6c7f4a8f1609bfb5a5` therefore switches Search landing recommendations to one normal `/Users/{{userId}}/Items` request with `Recursive=true`, `SortBy=Random`, `Limit=9`, `IncludeItemTypes=Movie,Series`. No per-library traversal or `/Suggestions` call remains in the Search preloader. Existing startup/image cache and accepted Dock behavior remain unchanged.\n\nBuild253 / 0.14.86 run/job `33266680237 / 99137850447` passed Xcode 16.4 Release build/package. Artifact `9718894001`, digest `sha256:e687831d57682a1e3e86462c4ba7cd25ea196cc593a6b174af081f862e1e464e`; IPA SHA-256 `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`; MinOS 15.0. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable**.\n'''
+              state.write_text(current)
+
+          decisions = Path('docs/project/TECHNICAL_DECISIONS.md')
+          current = decisions.read_text()
+          marker = '## Search landing recommendations use normal Items + Random, not Suggestions — 2026-08-30'
+          if marker not in current:
+              current += f'''\n\n{marker}\n\n**Decision:** OnePlayer Search landing recommendations use the normal user Items endpoint with `SortBy=Random`, `Recursive=true`, and an explicit `IncludeItemTypes=Movie,Series` whitelist. `/Users/{{userId}}/Suggestions` is not the Search landing authority.\n\n**Evidence:** Build252 target-device surfaced a `Tag` object from `/Suggestions` despite the Movie/Series query constraint, while official Emby Web Search on the same server shows actual media. Independent inspection of `bpking1/embyExternalUrl` shows Emby Web `/Users/(.*)/Items` traffic with `SortBy=Random` is classified as `searchSuggest`.\n\n**Scope:** This decision only changes Search recommendation metadata retrieval. It does not change Player, MPV, STRM/302/115, UnifiedTransport, playback Session Cache, Emby progress/Resume, credentials, PiP or Deployment Target.\n'''
+              decisions.write_text(current)
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          current = index.read_text()
+          marker = '### Build253 / 0.14.86 — Search Web-aligned random Items recommendation candidate'
+          if marker not in current:
+              current += f'''\n\n{marker}\n\n- Build252 target-device: rejected for recommendation semantics; a surfaced recommendation opens as type `Tag` (`情趣内衣`) while official Emby Web shows actual movie/series content.\n- exact product source: `fc9e5bdf1c24e694c3d28e6c7f4a8f1609bfb5a5`.\n- change: Search landing recommendation source is now `/Users/{{userId}}/Items` with `Recursive=true`, `SortBy=Random`, `Limit=9`, `IncludeItemTypes=Movie,Series`; no `/Suggestions` call from Search preloader.\n- source evidence: `bpking1/embyExternalUrl` classifies Emby Web `/Users/(.*)/Items` requests with `SortBy=Random` as `searchSuggest`.\n- run/job: `33266680237 / 99137850447` — success.\n- artifact: `OnePlayer-0.14.86-Build253-Search`; ID `9718894001`; digest `sha256:e687831d57682a1e3e86462c4ba7cd25ea196cc593a6b174af081f862e1e464e`.\n- IPA SHA-256: `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`.\n- package: `com.embyplayerlab.app`, `0.14.86 (253)`, `MinimumOSVersion=15.0`, IPA integrity passed.\n- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**\n'''
+              index.write_text(current)
+          PY
+          git diff --check
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add docs/project/current/dev/DEV-search-page-optimization.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/BUILD_TEST_INDEX.md
+          if ! git diff --cached --quiet; then
+            git commit -m "Record Search Build252 result and Build253 evidence"
+            git push origin HEAD:main
+          fi
