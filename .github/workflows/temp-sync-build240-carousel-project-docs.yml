@@ -1,0 +1,100 @@
+name: TEMP Sync Build240 Carousel Project Docs
+
+on:
+  push:
+    branches: [diag/home-carousel-release-handoff-build240]
+    paths: [.github/build240-docs-sync-trigger.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Update Build240 carousel project records
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          tested_source = '0f894953a70e11712a82d28b4e8292979826575c'
+          run_job = '33235107680 / 99054618665'
+          artifact_id = '9709708870'
+          artifact_digest = '62c9ee71324f0a4a22e3ce3b3ff8b7fdcb6abdb370980c1a89aba8c9bce69fc7'
+          ipa_sha = 'a6afbd3706fc6227f9e09749c32680e6c967ea7b2acffd6f58c444a9ab0d5b15'
+          source_sha = 'e9786d8d068e79f62f39464aa69ae6dae696ef223ab31f0b8184a5202eec513c'
+
+          task_path = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+          text = task_path.read_text()
+          text = re.sub(r'\*\*Active — Build239 / 0\.14\.72 remains the frozen foundation.*?Do not retune the accepted tail or velocity threshold without direct evidence\.\*\*',
+              '**Active — Build240 / 0.14.73 is a measurement-only release-handoff diagnostic on top of the accepted Build239 foundation. It does not change the accepted 0.28 slow-drag commit, direction-aware latest-delivered velocity >=600 pt/s fling decision, Build237 white-flash correction, Build236 real-sample start handling, Build231 foreground compositing, Build226 Hero residency, or Build228 max-refresh-through-settle / 0.22s commit + 0.18s cancel tail. Build240 only records release velocity/progress plus the first post-release animated-progress and display-frame samples so the reopened momentum-continuity question can be measured before any behavior patch. CI/IPA is verified; target-device diagnostic evidence is still required.**',
+              text, count=1, flags=re.S)
+          text = text.replace('- Working branch: `perf/home-carousel-velocity-fling-build239`', '- Working branch: `diag/home-carousel-release-handoff-build240`', 1)
+          text = text.replace('- Current candidate: OnePlayer `0.14.72 (239)`', '- Current candidate: OnePlayer `0.14.73 (240)`', 1)
+          marker = '## Next exact action\n'
+          if marker not in text:
+              raise SystemExit('Task Next exact action marker missing')
+          prefix = text.split(marker, 1)[0]
+          build240 = f'''## Build240 / 0.14.73 — release-handoff measurement only\n\nBuild240 keeps Build239 runtime behavior unchanged and instruments only the already-reopened finger-release → settle handoff. At a committed release it records the existing direction-aware release velocity, touch-down actual progress, current visual progress and page width, then captures up to the first six animated `transitionProgress` changes and first six CADisplayLink intervals. The diagnostic reports derived point/second progress deltas in `HomeCarouselReleaseHandoff`; no timer, interpolator, spring, duration scaling, second visual owner or alternate gesture owner was added. Cancel behavior remains unchanged and is not promoted into a new experiment.\n\nIdentity / validation:\n\n- branch: `diag/home-carousel-release-handoff-build240`\n- OnePlayer `0.14.73 (240)`\n- exact tested source / CI head: `{tested_source}`\n- run/job: `{run_job}` — success\n- artifact: `OnePlayer-0.14.73-build240-release-handoff-diagnostic`, ID `{artifact_id}`, digest `sha256:{artifact_digest}`\n- IPA SHA-256: `{ipa_sha}`\n- source ZIP SHA-256: `{source_sha}`\n- bundle `com.embyplayerlab.app`; `MinimumOSVersion=15.0`; package identity independently reopened/verified\n- exact-scope CI confirms Build239 600 pt/s velocity gate, 0.28 progress gate, Build236 acquisition handling, Build231 one page-level `compositingGroup()`, Build226 Hero residency, Build228 0.22s/0.18s settle timing and Frozen/P0 paths remain unchanged.\n\nEvidence level: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device diagnostic pending ❌ / stable ❌.**\n\n'''
+          next_action = '''## Next exact action\n\nInstall/test Build240 on iPhone 15 Pro Max / iOS 17.0 and perform several representative single quick flicks plus ordinary slow drags. Export the App log containing `HomeCarouselReleaseDecision` and `HomeCarouselReleaseHandoff`. Correlate each committed flick's accepted release velocity / visual progress with the first 2–3 post-release animation/display samples. Only if the measurements show a material derivative/momentum discontinuity should the next candidate change behavior. Do not retune the accepted 600 pt/s gate, 0.28 threshold, 0.22s/0.18s late tail, or add a timer/interpolator/spring/duration mapping without that evidence.\n'''
+          task_path.write_text(prefix + build240 + next_action)
+
+          state_path = Path('docs/project/PROJECT_STATE.md')
+          text = state_path.read_text()
+          text = re.sub(r'_Last updated.*?_', '_Last updated after Build240 / 0.14.73 produced a verified measurement-only IPA for the narrowly reopened Home-carousel release-handoff momentum question. Build239 accepted interaction/presentation contracts and matched late ease-out remain frozen; Build240 changes diagnostics only and now awaits target-device App-log evidence. Build216 remains the accepted merged overall runtime baseline._', text, count=1)
+          anchor = '## Active: Poster-heavy scrolling smoothness'
+          if '### Home carousel Build240 release-handoff diagnostic — CI/IPA verified' not in text:
+              section = f'''### Home carousel Build240 release-handoff diagnostic — CI/IPA verified\n\nBuild240 / 0.14.73 is measurement-only. It keeps Build239 behavior unchanged and records committed-release velocity/progress together with the first post-release animated `transitionProgress` and CADisplayLink samples. This directly implements the previously authorized measurement of derivative/momentum continuity without changing the accepted 600 pt/s direction-aware fling gate, 0.28 slow-drag threshold, Build237 white-flash fix, Build236 start handling, Build231 compositing, Build226 Hero residency, or Build228 0.22s/0.18s settle tail. No timer/interpolator/spring/duration mapping/second owner was added.\n\nExact evidence: source `{tested_source}`; run/job `{run_job}` — success; artifact `{artifact_id}` (`sha256:{artifact_digest}`); IPA SHA-256 `{ipa_sha}`; source ZIP SHA-256 `{source_sha}`; OnePlayer 0.14.73 (240), bundle `com.embyplayerlab.app`, MinOS 15.0 independently verified. Evidence is **Code written / CI passed / IPA produced+verified / target-device diagnostic pending / not stable**. Next authority must be target-device logs, not another guessed motion patch.\n\n'''
+              if anchor not in text: raise SystemExit('PROJECT_STATE poster anchor missing')
+              text = text.replace(anchor, section + anchor, 1)
+          state_path.write_text(text)
+
+          module_path = Path('docs/project/MODULE_STATUS.md')
+          text = module_path.read_text()
+          old = next((line for line in text.splitlines() if line.startswith('| Home carousel interaction |')), None)
+          if not old: raise SystemExit('MODULE_STATUS carousel row missing')
+          new = '| Home carousel interaction | **Active — Build240 measurement IPA verified; Build239 behavior foundation remains frozen; target-device handoff logs pending** | Build240 / 0.14.73 changes diagnostics only: committed-release velocity/progress and the first post-release animated-progress/display samples are logged to measure the narrowly reopened momentum-continuity question. It keeps the accepted Build239 0.28 slow-drag + direction-aware latest-delivered >=600 pt/s fling decision, Build237 white-flash fix, Build236/231/226 foundation and Build228 max-refresh-through-settle / 0.22s commit + 0.18s cancel tail unchanged. Exact tested source `' + tested_source + '`, run/job `' + run_job + '`, artifact `' + artifact_id + '`, MinOS 15.0; target-device diagnostic evidence pending. Build216 remains the merged overall runtime baseline. |'
+          text = text.replace(old, new, 1)
+          module_path.write_text(text)
+
+          decision_path = Path('docs/project/TECHNICAL_DECISIONS.md')
+          text = decision_path.read_text()
+          d013 = '## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only'
+          if 'Build240 / 0.14.73 implements exactly that measurement-only handoff probe' not in text:
+              para = f'''Build240 / 0.14.73 implements exactly that measurement-only handoff probe. It records the already accepted release velocity/current progress and the first post-release animated-progress/CADisplayLink samples, while leaving the 600 pt/s gate, 0.28 slow-drag threshold, fixed 0.22s/0.18s ease-out tail and all retained Build237/236/231/226/228 contracts unchanged. Exact tested source `{tested_source}` passed CI and produced a verified MinOS15 IPA. This is diagnostic evidence only; no momentum-preserving behavior is authorized until target-device logs show a material release derivative discontinuity.\n\n'''
+              if d013 not in text: raise SystemExit('TECHNICAL_DECISIONS D013 anchor missing')
+              text = text.replace(d013, para + d013, 1)
+          decision_path.write_text(text)
+
+          index_path = Path('docs/project/BUILD_TEST_INDEX.md')
+          text = index_path.read_text()
+          row = f'| **Carousel Build240 / 0.14.73** | Release-handoff momentum continuity diagnostics only | **CI/IPA verified; target-device diagnostic pending; runtime behavior unchanged from accepted Build239 foundation.** Logs committed-release directional velocity, actual/visual progress and the first post-release animated-progress/CADisplayLink samples so derivative continuity can be measured before any behavior patch. Keeps 0.28 slow-drag commit, >=600 pt/s direction-aware fling gate, Build237/236/231/226/228 contracts and fixed 0.22s/0.18s tail unchanged; no timer/interpolator/spring/second owner. Tested source `{tested_source}`; run/job `{run_job}`; artifact `{artifact_id}` (`sha256:{artifact_digest}`); IPA SHA-256 `{ipa_sha}`; source ZIP SHA-256 `{source_sha}`; MinOS 15.0. |\n'
+          if row not in text:
+              lines = text.splitlines(keepends=True)
+              for i, line in enumerate(lines):
+                  if line.startswith('| **Carousel Build239 / 0.14.72**'):
+                      lines.insert(i + 1, row)
+                      break
+              else:
+                  raise SystemExit('BUILD_TEST_INDEX Build239 row missing')
+              text = ''.join(lines)
+          index_path.write_text(text)
+          PY
+          git diff --check
+          git diff -- docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/PROJECT_STATE.md docs/project/MODULE_STATUS.md docs/project/TECHNICAL_DECISIONS.md docs/project/BUILD_TEST_INDEX.md
+          git config user.name white-shark-ssw
+          git config user.email houstools@gmail.com
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/PROJECT_STATE.md docs/project/MODULE_STATUS.md docs/project/TECHNICAL_DECISIONS.md docs/project/BUILD_TEST_INDEX.md
+          if git diff --cached --quiet; then
+            echo 'Build240 project docs already synchronized'
+            exit 0
+          fi
+          git commit -m 'Record Build240 carousel handoff diagnostic baseline'
+          git push origin HEAD:main
