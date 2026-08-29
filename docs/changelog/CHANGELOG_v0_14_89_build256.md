@@ -8,4 +8,4 @@
 - Preserve Build253/254 recommendation query semantics, +6 `ExcludeItemIds` loading, Build255 non-lazy outer section owner and Build248 Dock/keyboard behavior.
 - No Player, MPV, STRM/302/115 Transport, playback Session Cache, Resume/progress, PiP, credentials or Deployment Target changes.
 
-Evidence pending dedicated Xcode 16.4 Release CI/IPA and target-device validation.
+Dedicated Xcode 16.4 Release CI/IPA passed for exact product source `723d803c70326dee49aabc75f15ce445b7de947e` (run `33271528610`, artifact `9720282077`, IPA SHA-256 `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`, MinOS 15.0). Target-device validation remains pending.

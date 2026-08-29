@@ -1,6 +1,6 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build255 target-device exposes recommendation lifetime reset after detail return; Build256 lifetime correction implementation/CI in progress
+- Status: Active — Build255 target-device rejected for detail-return recommendation reset; Build256 CI/IPA verified, target-device validation pending
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
@@ -34,6 +34,11 @@
 - Build255 run/job: `33270048487 / 99146794862` — success
 - Build255 artifact: `OnePlayer-0.14.88-Build255-Search`, ID `9719867060`, digest `sha256:a39fcdd34b8016f35ac8e952740879cc0e43e2373437a7e3bd2e8d02d1de1a1f`
 - Build255 IPA SHA-256: `2dbc76a146d4716eee0965c6861823e0df5592324812584fe261a30afb98019e`
+- Build256 exact product source: `723d803c70326dee49aabc75f15ce445b7de947e`
+- Build256 identity: **OnePlayer 0.14.89 / Build256**
+- Build256 run/job: `33271528610 / 99150738764` — success
+- Build256 artifact: `OnePlayer-0.14.89-Build256-Search`, ID `9720282077`, digest `sha256:e9c3f0756cb4dbd7a0fa9f2785594fa3df7e41964f472426a14e6c50a231615e`
+- Build256 IPA SHA-256: `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`
 - Built/target MinOS: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 
@@ -120,3 +125,13 @@ Target-device test Build255 on iPhone 15 Pro Max / iOS 17.0. Repeatedly scroll t
 Build255 / OnePlayer 0.14.88 is target-device tested. After loading recommendation batches beyond the initial 9, opening a movie detail and returning causes Search to return to the initial state: the appended recommendation items are lost and only 9 remain. This is a lifecycle/state-ownership rejection; Build255 is not stable.
 
 Source inspection identifies two concrete owners that conflict with the requested behavior: app startup calls `V3SearchRecommendationPreloader.shared.start(...)` and the shared preloader retains initial recommendation metadata by session; meanwhile `V3EmbyGlobalSearchView` owns its `V3GlobalSearchViewModel` locally and its `.task` calls `loadRecommendations` without guarding already-loaded items. Build256 reserves OnePlayer 0.14.89 / Build256 and changes those exact owners: no app-start Search recommendation fetch; a fresh Search model is created only when Dock enters Search; the server root retains that model while Search pushes/pops detail; initial load runs only while the retained model has no recommendation items; manually switching Dock away from Search sets the model to nil, so recommendation metadata is destroyed; re-entering Search creates a fresh model and fetches a new initial 9. The shared preloader no longer retains recommendation metadata/tasks across Search lifetimes. Existing image disk/decoded caches remain shared and unchanged.
+
+## Build256 CI / IPA evidence — 2026-08-30
+
+Exact product source `723d803c70326dee49aabc75f15ce445b7de947e` removes app-start Search recommendation fetching, removes session-global recommendation metadata/task retention from `V3SearchRecommendationPreloader`, moves the Search model lifetime to `EmbyServerRootViewV3`, and prevents initial recommendation reload when the retained model already has items. The model survives Search detail push/pop while the selected Dock tab remains Search; switching Dock away from Search sets the model to nil, so recommendation metadata is destroyed; re-entering Search creates a fresh model and fetches a new initial 9. Shared image disk/decoded caches remain unchanged.
+
+Dedicated Xcode 16.4 Release run/job `33271528610 / 99150738764` passed source validation, MPVKit resolution, Release build, identity verification, IPA packaging/integrity and artifact upload. Artifact `9720282077`, digest `sha256:e9c3f0756cb4dbd7a0fa9f2785594fa3df7e41964f472426a14e6c50a231615e`; independently verified IPA SHA-256 `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`; bundle `com.embyplayerlab.app`; version `0.14.89 (256)`; `MinimumOSVersion=15.0`. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / Build256 target-device tested ❌ / stable/frozen ❌**.
+
+## Next exact action
+
+Target-device test Build256. Verify app startup does not fetch Search recommendations; first entering Search fetches the initial 9; after several +6 appends, opening a detail and returning preserves the already-loaded recommendation list while remaining on Search; manually switching Dock away from Search destroys that list; re-entering Search performs a fresh initial-9 load.
