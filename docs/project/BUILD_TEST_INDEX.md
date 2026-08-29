@@ -323,3 +323,12 @@ Update this index when a build materially changes architectural understanding, b
 - built `MinimumOSVersion=15.0`; target device iPhone 15 Pro Max / iOS 17.0.
 - target-device result: **user reported “验收通过” on 2026-08-27**.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced ✅ / real-device accepted ✅ / first milestone stable ✅ / merged to main ✅**.
+
+
+## Build242 target-device result — 2026-08-29
+
+- Diagnostic: OnePlayer 0.14.75 / Build242 whole-carousel Home-performance isolation.
+- Compared on target device against normal Build241 baseline.
+- User result: Home vertical-scroll difference feels small / not obvious.
+- Evidence level: real-device tested.
+- Conclusion: whole carousel presentation stack is not demonstrated to be a major Home-wide performance bottleneck; Build241 remains the normal carousel behavior candidate.

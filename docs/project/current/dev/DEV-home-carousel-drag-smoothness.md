@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build241 / 0.14.74 remains the normal carousel behavior candidate and its 500 pt/s fling gate is left unchanged after the latest target-device log showed no user-visible abnormality. Build242 / 0.14.75 is a diagnostic-only Home-performance A/B from the exact Build241 tested source: it preserves immersive Home mode, Hero vertical footprint, Home rows/scroll structure and refresh behavior while disabling the carousel presentation stack (persistent blurred backdrop, Hero carousel rendering/interaction, preload, auto-advance and carousel-owned Hero scroll updates). Build242 CI/IPA/package identity are verified; target-device Build241-vs-Build242 vertical-scroll comparison is pending.**
+**Active — Build241 / 0.14.74 remains the normal carousel behavior candidate and its 500 pt/s fling gate is left unchanged. Build242 / 0.14.75 whole-carousel Home-performance isolation has now been target-device compared against Build241; the user reports the vertical-scroll difference feels small / not obvious. This materially weakens the hypothesis that the carousel presentation stack is a major Home-wide performance bottleneck. Build242 remains diagnostic-only and must not replace Build241.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Working branch: `diag/home-carousel-home-perf-ab-build242`
@@ -24,7 +24,8 @@
 - Identity: OnePlayer `0.14.75 (242)`, `com.embyplayerlab.app`, MinOS 15.0 independently reopened.
 - Diagnostic isolation: preserve carousel data presence/immersive mode/Hero footprint/Home rows/vertical ScrollView; disable persistent backdrop, carousel preload, rendered/interactable Hero carousel, auto-advance and carousel-owned Hero scroll-state updates.
 - Purpose: answer whether the carousel whole stack materially degrades Home vertical scrolling. This is not a normal product candidate and must not replace Build241 behavior.
-- Next exact action: compare Build241 and Build242 on the same target device/data with repeated Home vertical swipes/inertia after initial load. If no clear repeatable improvement, stop treating the carousel whole stack as the primary Home bottleneck; if clearly smoother, isolate individual carousel costs in narrower evidence-backed A/Bs.
+- 2026-08-29 target-device result: user reports Build242 vs Build241 feels not very different in Home vertical scrolling. Treat the whole-carousel stack as not demonstrated to be a major Home-wide bottleneck; do not continue carousel performance surgery for vertical scrolling without new evidence.
+- Source review also confirms that when the user disables carousel in Home media management, `carouselItems` returns `[]`; the Home UI therefore takes the non-immersive path and does not mount the persistent backdrop, Hero carousel, preload, or carousel interaction surfaces. Some lightweight timer/metadata/snapshot code may still execute, but the expensive carousel presentation stack is absent.
 
 ## Scope correction — 2026-08-28
 
