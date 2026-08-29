@@ -6,12 +6,7 @@ extension V3EmbyHomeView {
     func immersiveCarouselHero(width: CGFloat, viewportHeight: CGFloat) -> some View {
         let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + homeCarouselDisplayHeightAdjustment(viewportHeight: viewportHeight)
         return ZStack(alignment: .bottom) {
-            if let item = currentCarouselItem {
-                carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
-                    .opacity(carouselOpacity(for: item.id))
-                    .allowsHitTesting(false)
-            }
-            if let item = transitionTargetCarouselItem {
+            ForEach(carouselHeroResidentItems) { item in
                 carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
                     .opacity(carouselOpacity(for: item.id))
                     .allowsHitTesting(false)
@@ -19,6 +14,7 @@ extension V3EmbyHomeView {
 
             ForEach(model.carouselItems) { item in
                 carouselHeroForeground(item: item, width: width, viewportHeight: viewportHeight)
+                    .compositingGroup()
                     .opacity(carouselForegroundOpacity(for: item.id))
                     .offset(x: carouselForegroundOffset(for: item.id, width: width))
                     .allowsHitTesting(false)
@@ -38,11 +34,21 @@ extension V3EmbyHomeView {
             carouselPageIndicators
                 .padding(.bottom, 18)
                 .allowsHitTesting(false)
+
+            V3HomeCarouselCadenceRenderProbe(progress: transitionProgress)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
         }
         .frame(width: width, height: baseHeight)
-        .contentShape(Rectangle())
-        .onTapGesture { openCurrentCarouselDetailIfAllowed() }
-        .simultaneousGesture(carouselDragGesture(width: width))
+        .overlay {
+            V3HomeCarouselInteractionSurface(
+                shouldBeginHorizontal: { translation in shouldBeginNativeCarouselDrag(translation) },
+                onHorizontalChanged: { translation in handleNativeCarouselDrag(translation, width: width) },
+                onHorizontalEnded: { translation, releaseVelocityX in finishNativeCarouselDrag(translation, releaseVelocityX: releaseVelocityX, width: width) },
+                onHorizontalCancelled: { cancelNativeCarouselDrag() },
+                onTap: { openCurrentCarouselDetailIfAllowed() }
+            )
+        }
     }
 
     func carouselHeroArtwork(item: LibraryItem, width: CGFloat, viewportHeight: CGFloat) -> some View {
@@ -82,7 +88,7 @@ extension V3EmbyHomeView {
 
         return ZStack(alignment: .bottom) {
             ZStack(alignment: .top) {
-                EmbyCachedRemoteImage(url: carouselImageURL(item), contentMode: .fill, placeholderSystemImage: "photo", showsLoadingIndicator: false, onImageLoaded: { image in updateCarouselImageMetrics(image, itemID: item.id) })
+                EmbyCachedRemoteImage(url: carouselImageURL(item), contentMode: .fill, placeholderSystemImage: "photo", showsLoadingIndicator: false, onImageLoaded: { image in V3HomeCarouselCadenceDiagnostics.shared.recordImageCallback(role: "hero", itemID: item.id); updateCarouselImageMetrics(image, itemID: item.id) })
                     .frame(width: renderedImageSize.width, height: renderedImageSize.height)
             }
             .frame(width: width, height: backdropVisualHeight, alignment: .top)
@@ -190,10 +196,10 @@ extension V3EmbyHomeView {
     func persistentCarouselBackdrop(size: CGSize) -> some View {
         ZStack {
             if let item = currentCarouselItem {
-                carouselPersistentImage(item: item, size: size).opacity(carouselOpacity(for: item.id))
+                carouselPersistentImage(item: item, size: size)
             }
             if let item = transitionTargetCarouselItem {
-                carouselPersistentImage(item: item, size: size).opacity(carouselOpacity(for: item.id))
+                carouselPersistentImage(item: item, size: size).opacity(Double(carouselBackdropBlendProgress(transitionProgress)))
             }
 
             LinearGradient(
@@ -213,7 +219,7 @@ extension V3EmbyHomeView {
     }
 
     func carouselPersistentImage(item: LibraryItem, size: CGSize) -> some View {
-        EmbyCachedRemoteImage(url: carouselImageURL(item), contentMode: .fill, placeholderSystemImage: "photo", showsLoadingIndicator: false, onImageLoaded: { image in updateCarouselImageMetrics(image, itemID: item.id) })
+        EmbyCachedRemoteImage(url: carouselImageURL(item), contentMode: .fill, placeholderSystemImage: "photo", showsLoadingIndicator: false, onImageLoaded: { image in V3HomeCarouselCadenceDiagnostics.shared.recordImageCallback(role: "persistent", itemID: item.id); updateCarouselImageMetrics(image, itemID: item.id) })
             .frame(width: size.width, height: size.height)
             .clipped()
             .scaleEffect(1.12)
@@ -223,7 +229,7 @@ extension V3EmbyHomeView {
     var carouselPreloadLayer: some View {
         ZStack {
             ForEach(model.carouselItems) { item in
-                EmbyCachedRemoteImage(url: carouselImageURL(item), contentMode: .fill, placeholderSystemImage: "photo", showsLoadingIndicator: false, onImageLoaded: { image in updateCarouselImageMetrics(image, itemID: item.id) })
+                EmbyCachedRemoteImage(url: carouselImageURL(item), contentMode: .fill, placeholderSystemImage: "photo", showsLoadingIndicator: false, onImageLoaded: { image in V3HomeCarouselCadenceDiagnostics.shared.recordImageCallback(role: "preload", itemID: item.id); updateCarouselImageMetrics(image, itemID: item.id) })
                     .frame(width: 1, height: 1)
                     .clipped()
             }
