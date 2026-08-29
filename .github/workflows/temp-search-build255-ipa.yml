@@ -1,0 +1,189 @@
+name: Temp Search Build255 IPA
+
+on:
+  push:
+    branches: ["feat/search-page-optimization"]
+    paths:
+      - ".github/search-build255-ipa-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout Search branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/search-page-optimization
+          fetch-depth: 0
+
+      - name: Apply Search Build255 container stability correction
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          experience = Path('Sources/UI/EmbySearchExperienceV3.swift')
+          text = experience.read_text()
+          old = '''    private var searchLanding: some View {
+              ScrollView(.vertical, showsIndicators: false) {
+                  LazyVStack(alignment: .leading, spacing: 24) {
+                      if !model.history.isEmpty { searchHistorySection }
+                      if model.recommendationsEnabled && (model.isLoadingRecommendations || !model.recommendationItems.isEmpty) { recommendationsSection }
+                  }
+                  .padding(.bottom, 86)
+              }
+          }
+          '''
+          new = '''    private var searchLanding: some View {
+              ScrollView(.vertical, showsIndicators: false) {
+                  VStack(alignment: .leading, spacing: 24) {
+                      if !model.history.isEmpty { searchHistorySection }
+                      if model.recommendationsEnabled && (model.isLoadingRecommendations || !model.recommendationItems.isEmpty) { recommendationsSection }
+                  }
+                  .padding(.bottom, 86)
+              }
+          }
+          '''
+          if old not in text:
+              raise SystemExit('Search landing LazyVStack source block not found')
+          experience.write_text(text.replace(old, new, 1))
+
+          checkpoint = Path('docs/project/current/dev/DEV-search-page-optimization.md')
+          text = checkpoint.read_text()
+          lines = text.splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith('- Status:'):
+                  lines[i] = '- Status: Active — Build254 incremental loading target-device works but container twitches during append; Build255 layout-owner correction implementation/CI in progress'
+                  break
+          text = '\n'.join(lines).rstrip() + '\n'
+          marker = '## Build254 target-device result → Build255 container stability correction — 2026-08-30'
+          if marker not in text:
+              text += f'''\n{marker}\n\nBuild254 / OnePlayer 0.14.87 is now target-device tested on iPhone 15 Pro Max / iOS 17.0. The user reports only one remaining issue: incremental recommendation loading works, but the Search recommendation container visibly twitches when the +6 append occurs. The accepted first 9 Movie/Series semantics, continued loading, duplicate exclusion and Build248 Dock/keyboard behavior otherwise remain accepted for this test. Build254 is therefore rejected as the final incremental-loading candidate and is not stable.\n\nSource inspection shows Search landing uniquely wraps the dynamically growing recommendation grid in an outer `LazyVStack`, while the established paginated poster page in `V3LibraryBrowserView.pagedPosterTab` uses a normal `VStack` around `EmbyPosterGrid` as pages append. Build255 reserves OnePlayer 0.14.88 / Build255 and changes only this Search landing layout owner from `LazyVStack` to `VStack`. The inner `EmbyPosterGrid` remains lazy, the accepted last-card +6 trigger remains unchanged, and there is no new timer, debounce, retry, fallback, watchdog, spinner, cache or shared poster-grid modification.\n'''
+          checkpoint.write_text(text)
+
+          changelog = Path('docs/changelog/CHANGELOG_v0_14_88_build255.md')
+          changelog.write_text('''# OnePlayer 0.14.88 / Build255\n\n- Fix the only target-device issue reported for Build254 incremental Search recommendations: the recommendation container visibly twitched when a +6 batch appended.\n- Replace only the Search landing outer `LazyVStack` with a normal `VStack`, matching the existing paginated poster-page layout ownership pattern while keeping the inner `EmbyPosterGrid` lazy.\n- Preserve Build253/254 recommendation semantics exactly: first 9 normal Movie/Series items, then +6 batches from `/Users/{userId}/Items` with `SortBy=Random`, `Recursive=true`, `IncludeItemTypes=Movie,Series`, and `ExcludeItemIds` for already-visible recommendations.\n- Preserve the existing last-card load trigger, image caches/pins and Build248 target-device-accepted Dock/keyboard behavior.\n- No shared `EmbyPosterGrid`, Player, MPV, STRM/302/115 Transport, playback Session Cache, Resume/progress, credentials, PiP or Deployment Target changes.\n- No timer, debounce, retry, fallback, watchdog, load-more spinner or second cache.\n\nEvidence pending dedicated Xcode 16.4 Release CI/IPA and target-device validation.\n''')
+          PY
+          git diff --check
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add Sources/UI/EmbySearchExperienceV3.swift docs/project/current/dev/DEV-search-page-optimization.md docs/changelog/CHANGELOG_v0_14_88_build255.md
+          git commit -m "Stabilize Search recommendation append layout"
+          git push origin HEAD:feat/search-page-optimization
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "$SOURCE_SHA" | tee build255-source-sha.txt
+
+      - name: Validate Search Build255 source
+        run: |
+          set -euo pipefail
+          swiftc -parse Sources/UI/EmbySearchExperienceV3.swift
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('Sources/UI/EmbySearchExperienceV3.swift').read_text()
+          start = text.index('    private var searchLanding: some View {')
+          end = text.index('    private var searchHistorySection: some View {', start)
+          block = text[start:end]
+          assert 'VStack(alignment: .leading, spacing: 24)' in block
+          assert 'LazyVStack' not in block
+          rec_start = text.index('    private var recommendationsSection: some View {')
+          rec_end = text.index('    private var searchResults: some View {', rec_start)
+          rec = text[rec_start:rec_end]
+          assert 'EmbyPosterGrid(items: model.recommendationItems, horizontalPadding: 6)' in rec
+          assert 'item.id == model.recommendationItems.last?.id' in rec
+          assert 'Task { await model.loadMoreRecommendations(client: currentClient) }' in rec
+          load_more_start = text.index('func loadMoreRecommendations(client: EmbyAPIClient)')
+          load_more_end = text.index('func recommendationPosterImage', load_more_start)
+          assert 'ProgressView' not in text[load_more_start:load_more_end]
+          PY
+          git diff --check
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Generate assets and project
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+
+      - name: Resolve MPVKit
+        run: |
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build Search Build255 Release app
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache MARKETING_VERSION=0.14.88 CURRENT_PROJECT_VERSION=255 IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build255.log
+
+      - name: Locate and verify Search Build255 app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+          python3 - "$APP_PATH/Info.plist" <<'PY'
+          import plistlib, sys
+          p = plistlib.load(open(sys.argv[1], 'rb'))
+          expected = {'CFBundleIdentifier':'com.embyplayerlab.app','CFBundleShortVersionString':'0.14.88','CFBundleVersion':'255','MinimumOSVersion':'15.0'}
+          for key, value in expected.items():
+              actual = str(p.get(key))
+              if actual != value: raise SystemExit(f'::error::{key} expected {value}, got {actual}')
+          print('Search Build255 identity verification: PASS')
+          PY
+
+      - name: Package and verify Search Build255 IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-0.14.88-Build255-Search.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload Search Build255 candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.88-Build255-Search
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            build255-source-sha.txt
+            built-info-plist.log
+            package.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Search Build255 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.88-Build255-Search-diagnostics
+          path: |
+            build255.log
+            build255-source-sha.txt
+            built-info-plist.log
+            package.log
+          if-no-files-found: warn
+          retention-days: 14
