@@ -1,0 +1,40 @@
+name: Temp Search Build250 Repair
+
+on:
+  push:
+    branches: ["feat/search-page-optimization"]
+    paths:
+      - ".github/search-build250-repair-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/search-page-optimization
+          fetch-depth: 0
+      - name: Restore Build249 Search view and apply Build250 one-line consumer change
+        run: |
+          set -euo pipefail
+          git show f49ed220367de1ffbf9e9a5aba097d2ce160dac7:Sources/UI/EmbySearchExperienceV3.swift > Sources/UI/EmbySearchExperienceV3.swift
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Sources/UI/EmbySearchExperienceV3.swift')
+          text = p.read_text()
+          old = 'recommendationItems = items.filter(V3SearchRecommendationPolicy.allows)'
+          if old not in text:
+              raise SystemExit('expected Build249 recommendation consumer not found')
+          p.write_text(text.replace(old, 'recommendationItems = items', 1))
+          PY
+          swiftc -parse Sources/UI/EmbySearchExperienceV3.swift
+          swiftc -parse Sources/UI/EmbySearchRecommendationPreloader.swift
+          git diff --check
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add Sources/UI/EmbySearchExperienceV3.swift
+          git commit -m "Repair Search Build250 view baseline"
+          git push origin HEAD:feat/search-page-optimization
