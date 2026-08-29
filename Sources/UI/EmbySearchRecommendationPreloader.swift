@@ -5,11 +5,6 @@ enum V3SearchRecommendationPolicy {
     static let itemTypes = ["Movie", "Series"]
     static let preloadLimit = 9
 
-    static func allows(_ item: LibraryItem, requestedTypes: [String]) -> Bool {
-        if let type = item.type { return itemTypes.contains { type.caseInsensitiveCompare($0) == .orderedSame } }
-        return !requestedTypes.isEmpty && requestedTypes.allSatisfy { requested in itemTypes.contains { $0.caseInsensitiveCompare(requested) == .orderedSame } }
-    }
-
     static var posterImageMaxWidth: Int {
         let available = UIScreen.main.bounds.width - EmbyPosterGridMetrics.horizontalPadding * 2 - EmbyPosterGridMetrics.columnSpacing * CGFloat(EmbyPosterGridMetrics.columnCount - 1)
         let gridWidth = floor(max(1, available) / CGFloat(EmbyPosterGridMetrics.columnCount))
@@ -88,10 +83,9 @@ final class V3SearchRecommendationPreloader {
     private static func fetchRecommendations(client: EmbyAPIClient) async throws -> LoadedRecommendations {
         let requestedTypes = V3SearchRecommendationPolicy.itemTypes
         let suggestions = try await client.librarySuggestions(limit: V3SearchRecommendationPolicy.preloadLimit, includeItemTypes: requestedTypes)
-        let accepted = suggestions.filter { V3SearchRecommendationPolicy.allows($0, requestedTypes: requestedTypes) }
-        let nilTypeCount = suggestions.filter { $0.type == nil }.count
-        DiagnosticsLogger.shared.log("Search", "recommendation warm global requested=\(requestedTypes.joined(separator: ",")) returned=\(suggestions.count) nilType=\(nilTypeCount) accepted=\(accepted.count)")
-        return LoadedRecommendations(items: Array(accepted.prefix(V3SearchRecommendationPolicy.preloadLimit)), client: client)
+        let types = Dictionary(grouping: suggestions, by: { $0.type ?? "nil" }).mapValues(\.count).sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+        DiagnosticsLogger.shared.log("Search", "recommendation warm global requested=\(requestedTypes.joined(separator: ",")) returned=\(suggestions.count) types=\(types)")
+        return LoadedRecommendations(items: Array(suggestions.prefix(V3SearchRecommendationPolicy.preloadLimit)), client: client)
     }
 
     private func warmPosterImages(_ urls: [URL]) {
