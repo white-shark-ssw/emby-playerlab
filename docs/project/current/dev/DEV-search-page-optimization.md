@@ -1,6 +1,6 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build248 target-device tested: Dock fixed, recommendations still blocked; Build249 follow-up written
+- Status: Active — Build248 target-device tested: Dock fixed, recommendations still blocked; Build249 CI/IPA verified, target-device pending
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
@@ -11,8 +11,11 @@
 - Build248 run/job: `33259763303 / 99119574495` — success
 - Build248 artifact: `OnePlayer-0.14.81-Build248-Search`, ID `9716945819`
 - Build248 IPA SHA-256: `8eb734bb26b77f377314223acbf7306da72ac9254a20586bfc443d59fea940c5`
-- Build249 source candidate: `1dc84f4b698693b261d5269673debca2e25a30d8`
-- Reserved test candidate: **OnePlayer 0.14.82 / Build249**
+- Build249 exact CI product source: `f49ed220367de1ffbf9e9a5aba097d2ce160dac7`
+- Build249 identity: **OnePlayer 0.14.82 / Build249**
+- Build249 run/job: `33261820598 / 99124950794` — success
+- Build249 artifact: `OnePlayer-0.14.82-Build249-Search`, ID `9717502081`, digest `sha256:3cc924d6733cb4590361fa255d85ef2c31f879f07538e11523a6e246da487510`
+- Build249 IPA SHA-256: `0c62d51d488197b55dbfb98ab104c48404dd0caac77d786523f753c75acbb7a0`
 - Built/target MinOS: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 
@@ -33,7 +36,7 @@ Build248 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified �
 
 ## Build249 evidence-backed correction
 
-Exact source candidate `1dc84f4b698693b261d5269673debca2e25a30d8` changes only `EmbySearchRecommendationPreloader.swift`:
+Exact CI product source `f49ed220367de1ffbf9e9a5aba097d2ce160dac7` changes only the Search recommendation preloader runtime plus the Build249 changelog:
 
 - use the real `LibraryItem.collectionType` already decoded from Emby `UserViews`;
 - query only recommendation-capable libraries: `movies`, `tvshows`, and `mixed`;
@@ -44,18 +47,14 @@ Exact source candidate `1dc84f4b698693b261d5269673debca2e25a30d8` changes only `
 
 No fallback, retry, timer, watchdog, debounce, second cache, shared poster-grid edit, or Player/Transport/PiP change was added.
 
-## Ownership / parallel guard
-
-Build249 does not edit `EmbyPosterGrid.swift` or `EmbySharedImageAndNavigation.swift`. Player/MPV/PiP, UnifiedTransport, playback Session Cache, STRM/302/115 direct-client media path, Resume/progress, credentials and Deployment Target remain untouched.
-
 ## Validation state
 
 - Build248: real-device tested; Dock fix accepted; recommendation loading rejected.
-- Build249 code written: yes — exact source `1dc84f4b698693b261d5269673debca2e25a30d8`.
-- Build249 CI/IPA: pending.
-- Build249 real-device tested: no.
-- Stable/frozen: no.
+- Build249 source validation + Xcode 16.4 Release/MPV build/package: passed in run/job `33261820598 / 99124950794`.
+- Artifact `9717502081`; artifact digest `sha256:3cc924d6733cb4590361fa255d85ef2c31f879f07538e11523a6e246da487510`.
+- Independent package verification: bundle `com.embyplayerlab.app`; OnePlayer `0.14.82 (249)`; `MinimumOSVersion=15.0`; IPA `unzip -t` passed; IPA SHA-256 `0c62d51d488197b55dbfb98ab104c48404dd0caac77d786523f753c75acbb7a0`.
+- Evidence: **Code written ✅ / CI passed ✅ / IPA produced + independently verified ✅ / real-device tested ❌ / stable/frozen ❌**.
 
 ## Next exact action
 
-Compile/package Build249, then test the Search landing recommendation wall. The next app log should show `recommendation warm libraries total=... eligible=...`, only eligible collection types being queried, per-library accepted counts, and `recommendation warm completed items=...` instead of a long chain through unrelated views.
+Target-device test Build249. The next app log should show `recommendation warm libraries total=... eligible=...`, only eligible collection types being queried, per-library accepted counts, and `recommendation warm completed items=...`. Preserve the Build248-accepted Dock behavior while validating whether recommendation first paint is now resolved.
