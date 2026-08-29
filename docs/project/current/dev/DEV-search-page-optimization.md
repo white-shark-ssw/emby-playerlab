@@ -1,60 +1,61 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build247 target-device tested and rejected as final; Build248 CI/IPA verified, target-device pending
+- Status: Active — Build248 target-device tested: Dock fixed, recommendations still blocked; Build249 follow-up written
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
 - Base branch: `main`
 - Draft PR: #264
-- Build246 exact tested product source: `748d6f31bf724d4f1ec7dab4765d25c9b6a195ac`
-- Build247 exact CI product source: `5f693d82041bbb59d3fe481aa708b22a5feda42d`
-- Build247 identity: **OnePlayer 0.14.80 / Build247**
-- Build247 run/job: `33258792907 / 99117036605` — success
-- Build247 artifact: `OnePlayer-0.14.80-Build247-Search`, ID `9716657082`, digest `sha256:9628b0c608488edbfc5af477199e847e5a35b119d4ab96edbecd036cbde4bfd1`
-- Build247 IPA SHA-256: `952b2daeef4bc01fe62476611c6620cf7ce79d3905d87bd82336e4650d0d69b0`
 - Build248 exact CI product source: `dc601099ded1074fafc0c7a4e000b8c6fd4c7338`
 - Build248 identity: **OnePlayer 0.14.81 / Build248**
 - Build248 run/job: `33259763303 / 99119574495` — success
-- Build248 artifact: `OnePlayer-0.14.81-Build248-Search`, ID `9716945819`, digest `sha256:b15d327e7f628188e9df6a500ff0e26227a149a60a03b6bd1595c9aa82fffd2a`
+- Build248 artifact: `OnePlayer-0.14.81-Build248-Search`, ID `9716945819`
 - Build248 IPA SHA-256: `8eb734bb26b77f377314223acbf7306da72ac9254a20586bfc443d59fea940c5`
-- Build248 source ZIP SHA-256: `94ce1911d3981d8f5ad53bc59a8a7413a1ddf54a54c1a97e49642b1b909f1bec`
+- Build249 source candidate: `1dc84f4b698693b261d5269673debca2e25a30d8`
+- Reserved test candidate: **OnePlayer 0.14.82 / Build249**
 - Built/target MinOS: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 
-## Build247 target-device result — 2026-08-29
+## Build248 target-device result — 2026-08-29
 
-The user installed Build247 and supplied a target-device screenshot. This is controlling Search evidence and supersedes the former Build247 real-device-pending state.
+The user reports the Search bottom Dock is now correct: its vertical position matches the other pages and focusing the Search field no longer moves it. That portion of Build248 is accepted as current device evidence and must be preserved.
 
-1. The Search Dock no longer matches the other server pages vertically: after moving it to `EmbyServerRootViewV3`, it is rendered too low and visibly extends beyond the physical screen bottom. Source inspection shows the Search root uses `fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom` and aligns the new root-owned overlay to that expanded bottom. The missing bottom-safe-area compensation explains the exact direction of the screenshot regression.
-2. The Search recommendation area remains on the loading spinner and does not produce visible content. Source inspection shows Build247's startup preloader waits for a fixed 60-item result, while each library Suggestions request asks for up to 100 items before the client stops after collecting 60. Search then awaits that same whole task. This is much more work than the original 3×3 recommendation requirement and can keep the landing UI blocked even though only nine posters are needed.
+The recommendation wall still remains on the spinner. The uploaded app log `OnePlayer-App-1788018797.log` gives direct evidence for the remaining problem:
 
-Build247 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / rejected as final ✅ / not stable**.
+- recommendation requests are not stuck on one HTTP call; they are completing and then the preloader starts another library request sequentially;
+- observed Suggestions calls advance about every 2.4–2.7 s (`15:53:02.153`, `04.609`, `07.188`, `09.961`, `12.498`, `14.952`, `17.412`), each with `Limit=9`;
+- the preloader does not publish any partial result. `fetchRecommendations` only returns after it either accumulates 9 accepted items or finishes scanning all `userViews` libraries;
+- Build248 asks every library for `Movie,Series` without first checking that library's real `CollectionType`. Returned items are then hard-filtered again, so incompatible/non-video views can produce zero accepted items while still costing one full Suggestions request each.
 
-## Build248 evidence-backed implementation
+Therefore the spinner is a preloader traversal problem, not a Dock problem, not image decoding, and not a single hung network request.
 
-Exact CI product source `dc601099ded1074fafc0c7a4e000b8c6fd4c7338` makes only two runtime corrections plus the candidate changelog:
+Build248 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / Dock fix accepted ✅ / recommendation loading rejected ❌ / not stable**.
 
-- Search Dock alignment: keep the real Dock root-owned so the nested keyboard-responsive Search `NavigationView` cannot move it, but add the existing `geometry.safeAreaInsets.bottom` as bottom padding to the root Search overlay. This compensates for the root's intentionally expanded `fullHeight` and brings the Dock back to the same physical vertical band as the other tabs while preserving the Build247 ownership fix.
-- Recommendation startup bound: restore the product requirement of an **up-to-3×3** recommendation wall by changing the Search preload limit from 60 to 9. For each Emby library, request only the number of remaining visible slots instead of `Limit=100`. Returned-item hard whitelist remains exactly `Movie` / `Series`; the existing startup one-shot preloader and exact-poster cache warm remain, but Search no longer waits for irrelevant excess recommendation metadata.
+## Build249 evidence-backed correction
 
-No retry, timeout, debounce, timer, watchdog, second cache owner, shared poster-grid edit, or Player/Transport/Session/Resume/PiP change was added.
+Exact source candidate `1dc84f4b698693b261d5269673debca2e25a30d8` changes only `EmbySearchRecommendationPreloader.swift`:
+
+- use the real `LibraryItem.collectionType` already decoded from Emby `UserViews`;
+- query only recommendation-capable libraries: `movies`, `tvshows`, and `mixed`;
+- map request type to the library: movies→`Movie`, tvshows→`Series`, mixed→`Movie,Series`;
+- preserve the final client-visible whitelist, so only actual returned `Movie` / `Series` items can display;
+- keep the existing 9-item cap, startup one-shot warm, persistent image cache, decoded-image cache, and no recommendation load-more;
+- add Search diagnostics for total/eligible library count, per-library returned/accepted counts, and final accepted count so the next device log can prove exactly where time is spent.
+
+No fallback, retry, timer, watchdog, debounce, second cache, shared poster-grid edit, or Player/Transport/PiP change was added.
 
 ## Ownership / parallel guard
 
-- Search branch remains `feat/search-page-optimization`, Draft PR #264.
-- Current Build248 collision search returned no existing `Build248` repository result before reservation; other active tasks retain their own Build identities.
-- Build248 does not edit `EmbyPosterGrid.swift` or `EmbySharedImageAndNavigation.swift`; the independent poster-smoothness task retains those shared owners.
-- No Player/MPV/PiP, UnifiedTransport, playback Session Cache, STRM/302/115 client-direct path, Emby Resume/progress, credentials, or Deployment Target changes.
+Build249 does not edit `EmbyPosterGrid.swift` or `EmbySharedImageAndNavigation.swift`. Player/MPV/PiP, UnifiedTransport, playback Session Cache, STRM/302/115 direct-client media path, Resume/progress, credentials and Deployment Target remain untouched.
 
 ## Validation state
 
-- Build247: **real-device tested and rejected as final**.
-- Build248 source validation: syntax parse / `git diff --check` / exact source guards passed in run `33259763303`.
-- Build248 dedicated Xcode 16.4 Release/MPV build and package: **passed** — run/job `33259763303 / 99119574495`.
-- Artifact: `OnePlayer-0.14.81-Build248-Search`, ID `9716945819`, digest `sha256:b15d327e7f628188e9df6a500ff0e26227a149a60a03b6bd1595c9aa82fffd2a`.
-- Independent artifact verification reproduced embedded hashes; IPA `unzip -t` passed; packaged identity is `com.embyplayerlab.app`, OnePlayer `0.14.81 (248)`, `MinimumOSVersion=15.0`.
-- Evidence: **Code written ✅ / CI passed ✅ / IPA produced + independently verified ✅ / real-device tested ❌ / stable/frozen ❌**.
+- Build248: real-device tested; Dock fix accepted; recommendation loading rejected.
+- Build249 code written: yes — exact source `1dc84f4b698693b261d5269673debca2e25a30d8`.
+- Build249 CI/IPA: pending.
+- Build249 real-device tested: no.
+- Stable/frozen: no.
 
 ## Next exact action
 
-Target-device test Build248. Confirm: Search Dock vertical band matches Home/Favorites/Settings and still does not lift with keyboard; recommendation wall appears instead of remaining on the spinner; only Movie/Series are visible; recommendation area remains fixed at up to 3×3 with no load-more twitch. Do not claim resolution until the target-device result is reported.
+Compile/package Build249, then test the Search landing recommendation wall. The next app log should show `recommendation warm libraries total=... eligible=...`, only eligible collection types being queried, per-library accepted counts, and `recommendation warm completed items=...` instead of a long chain through unrelated views.
