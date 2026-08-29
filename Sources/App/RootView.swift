@@ -26,6 +26,7 @@ struct RootView: View {
         .onAppear {
             guard !startupResolved else { return }
             sessionStore.restore()
+            V3SearchRecommendationPreloader.shared.start(sessions: sessionStore.sessions, sessionStore: sessionStore)
             if let stored = sessionStore.autoStartSession {
                 sessionStore.activate(stored)
                 autoStartedClient = try? sessionStore.client(for: stored)
