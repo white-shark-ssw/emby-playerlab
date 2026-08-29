@@ -205,3 +205,10 @@ Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B,
 **Evidence:** Build252 target-device surfaced a `Tag` object from `/Suggestions` despite the Movie/Series query constraint, while official Emby Web Search on the same server shows actual media. Independent inspection of `bpking1/embyExternalUrl` shows Emby Web `/Users/(.*)/Items` traffic with `SortBy=Random` is classified as `searchSuggest`.
 
 **Scope:** This decision only changes Search recommendation metadata retrieval. It does not change Player, MPV, STRM/302/115, UnifiedTransport, playback Session Cache, Emby progress/Resume, credentials, PiP or Deployment Target.
+
+## Random Search recommendations paginate by exclusion, not random StartIndex — Build254
+
+- The accepted Search recommendation authority remains `/Users/{userId}/Items` + `SortBy=Random` + `Recursive=true` + `IncludeItemTypes=Movie,Series`.
+- Incremental Search recommendation batches do **not** use `StartIndex` against random sorting. The next small batch uses `ExcludeItemIds` for every recommendation already displayed and appends only new IDs.
+- Initial batch remains 9; incremental batch is 6. A single in-flight state prevents duplicate simultaneous load-more requests. There is no timer/debounce/retry/fallback/watchdog or load-more spinner.
+- Existing Search image persistence/decoded-image ownership remains authoritative; no second cache is introduced.

@@ -375,3 +375,15 @@ Update this index when a build materially changes architectural understanding, b
 - IPA SHA-256: `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`.
 - package: `com.embyplayerlab.app`, `0.14.86 (253)`, `MinimumOSVersion=15.0`, IPA integrity passed.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
+
+### Build254 / 0.14.87 — Search incremental recommendation candidate
+
+- Build253 / 0.14.86 target-device result: initial 9 Search recommendations are all normal media; `Items + Random + Movie,Series` recommendation semantics accepted.
+- exact Build254 product source: `addddc6611a6210437271e4e6715aa88986afa23`.
+- change: preserve the accepted first 9; last lazy-grid card requests +6 from the same Items/Random/Movie+Series query using `ExcludeItemIds` for all currently displayed recommendation IDs; append only new IDs.
+- no `StartIndex + Random`, load-more spinner, retry/fallback/timer/watchdog or second cache.
+- run/job: `33268846116 / 99143580223` — success.
+- artifact: `OnePlayer-0.14.87-Build254-Search`, ID `9719501314`, digest `sha256:3acf642efefccc6b6ea440e6e383bfb2b6cb80a449ca52d89efc39a909d2dc3f`.
+- IPA SHA-256: `7714f225b55a4c93e96aa35951820d43e6be33fa911e14ff378755ac23884130`.
+- package: `com.embyplayerlab.app`, `0.14.87 (254)`, `MinimumOSVersion=15.0`, IPA integrity passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / incremental load-more target-device pending / not stable.**
