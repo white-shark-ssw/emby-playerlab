@@ -12,7 +12,7 @@
 - Build250 identity: **OnePlayer 0.14.83 / Build250**
 - Build250 run/job: `33263279291 / 99128762968` — success
 - Build250 artifact: `9717900754`; IPA SHA-256 `f213b3d6f30ac101d563e3894c3352fdcd9c9bcb46c7a266faa48c8577e73ada`
-- Build251 runtime source after direct correction: `cc1806d7f606581e138579b44d94e16dc9ff7135`
+- Build251 exact runtime source: `cc1806d7f606581e138579b44d94e16dc9ff7135`
 - Build251 identity: **OnePlayer 0.14.84 / Build251**
 - Build251 run/job: `33264608646 / 99132347141` — success
 - Build251 artifact: `OnePlayer-0.14.84-Build251-Search`, ID `9718288974`, digest `sha256:da474aaa24a3d8ff65e41ed990b861ba377f6a92938670bfe89a9625d8cc4470`
@@ -32,9 +32,9 @@ This new real-device/web evidence changes the implementation direction. The curr
 
 Build250 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / Dock accepted ✅ / recommendation loading rejected ❌ / not stable**.
 
-## Build251 direct correction — code written
+## Build251 global-Suggestions correction
 
-Runtime source `cc1806d7f606581e138579b44d94e16dc9ff7135` makes the minimum evidence-backed change:
+Exact runtime source `cc1806d7f606581e138579b44d94e16dc9ff7135` makes the minimum evidence-backed change:
 
 - `librarySuggestions` now accepts an optional `ParentId`; when absent it omits the query parameter entirely rather than sending an empty value.
 - Search recommendation preload no longer calls `userViews()` and no longer traverses libraries.
@@ -45,8 +45,10 @@ Runtime source `cc1806d7f606581e138579b44d94e16dc9ff7135` makes the minimum evid
 
 No retry, timeout, timer, watchdog, fallback traversal, second cache, poster-grid edit, Player/MPV/PiP, UnifiedTransport, playback Session Cache, STRM/302/115, Resume/progress, credentials or Deployment Target change.
 
+Build251 passed Xcode 16.4 Release build, identity verification and IPA packaging in run/job `33264608646 / 99132347141`. Artifact `9718288974`; bundle `com.embyplayerlab.app`; OnePlayer `0.14.84 (251)`; `MinimumOSVersion=15.0`; IPA integrity passed; SHA-256 `4923368ddca5bca9e3d9db83234b19547b12673feb22af50fd3e3279b08cc750`.
+
 Build251 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ❌ / stable/frozen ❌**.
 
 ## Next exact action
 
-Target-device test Build251 first-paint time against the official Emby web Search behavior. The intended request contract is now one global Suggestions call rather than per-library traversal. The intended request contract is now one global Suggestions call rather than per-library traversal.
+Target-device test Build251 first-paint time against the official Emby web Search behavior. The intended request contract is now one global Suggestions call rather than per-library traversal.
