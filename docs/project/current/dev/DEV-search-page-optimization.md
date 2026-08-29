@@ -1,6 +1,6 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build253 recommendation data path target-device accepted; Build254 incremental recommendation candidate implementation/CI in progress
+- Status: Active — Build253 initial 9 recommendations target-device accepted; Build254 incremental +6 candidate CI/IPA verified, target-device pending
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
@@ -24,6 +24,11 @@
 - Build253 run/job: `33266680237 / 99137850447` — success
 - Build253 artifact: `OnePlayer-0.14.86-Build253-Search`, ID `9718894001`, digest `sha256:e687831d57682a1e3e86462c4ba7cd25ea196cc593a6b174af081f862e1e464e`
 - Build253 IPA SHA-256: `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`
+- Build254 exact product source: `addddc6611a6210437271e4e6715aa88986afa23`
+- Build254 identity: **OnePlayer 0.14.87 / Build254**
+- Build254 run/job: `33268846116 / 99143580223` — success
+- Build254 artifact: `OnePlayer-0.14.87-Build254-Search`, ID `9719501314`, digest `sha256:3acf642efefccc6b6ea440e6e383bfb2b6cb80a449ca52d89efc39a909d2dc3f`
+- Build254 IPA SHA-256: `7714f225b55a4c93e96aa35951820d43e6be33fa911e14ff378755ac23884130`
 - Built/target MinOS: iOS 15.0
 - Target device: iPhone 15 Pro Max / iOS 17.0
 
@@ -78,3 +83,13 @@ Evaluate and implement incremental recommendation loading below the accepted ini
 The user target-device tested Build253 / OnePlayer 0.14.86 and confirmed all 9 Search landing recommendations are normal playable movie/series items. This accepts the Search recommendation data source contract: `/Users/{userId}/Items` + `SortBy=Random` + `Recursive=true` + `IncludeItemTypes=Movie,Series`. Build248 Dock/keyboard behavior remains accepted. Search remains Active because the user now requests continued recommendation loading while scrolling.
 
 Build254 reserves OnePlayer 0.14.87 / Build254. It preserves the accepted first 9 exactly, then requests 6 more only when the current last recommendation card reaches the lazy-grid viewport. The follow-up request uses the same normal Items/Random/Movie+Series contract plus Emby's supported `ExcludeItemIds` containing every already-visible recommendation ID. New unique items append in place; no `StartIndex + Random`, timer, debounce, retry, fallback, watchdog, second cache or load-more ProgressView is added. Newly fetched posters reuse the existing persistent `EmbyImageDiskCache`, decoded image pool and Search-lifetime pinning.
+
+## Build254 CI / IPA evidence — 2026-08-30
+
+Exact product source `addddc6611a6210437271e4e6715aa88986afa23` preserves the Build253 first 9 recommendation request and adds only incremental +6 retrieval using the same `/Users/{userId}/Items` + `SortBy=Random` + `Recursive=true` + `IncludeItemTypes=Movie,Series` contract with `ExcludeItemIds` for all already-visible IDs. The current last lazy-grid card triggers the request; returned unique IDs append in place. No `StartIndex + Random`, timer, debounce, retry, fallback, watchdog, second cache or load-more ProgressView was added.
+
+Xcode 16.4 Release run/job `33268846116 / 99143580223` passed source validation, MPVKit resolution, Release build, packaged identity verification and IPA integrity. Artifact `9719501314`, digest `sha256:3acf642efefccc6b6ea440e6e383bfb2b6cb80a449ca52d89efc39a909d2dc3f`; IPA SHA-256 `7714f225b55a4c93e96aa35951820d43e6be33fa911e14ff378755ac23884130`; bundle `com.embyplayerlab.app`; version `0.14.87 (254)`; MinOS 15.0. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / incremental load-more real-device tested ❌ / not stable**.
+
+## Next exact action
+
+Target-device test Build254. Verify the accepted first 9 remain fast/correct, reaching the last visible recommendation appends 6 new non-duplicate Movie/Series items, repeated downward scrolling continues in +6 batches without container twitch, earlier posters remain resident/cached, and the accepted Dock/keyboard behavior is unchanged.

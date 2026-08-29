@@ -8,4 +8,4 @@
 - Preserve the Build248 target-device-accepted Search Dock/keyboard behavior.
 - No Player, MPV, STRM/302/115 Transport, playback Session Cache, Resume/progress, credentials, PiP or Deployment Target changes.
 
-Evidence pending dedicated Xcode 16.4 Release CI/IPA and target-device validation.
+Evidence: Xcode 16.4 Release CI passed and IPA produced/verified; incremental recommendation loading still requires target-device validation.
