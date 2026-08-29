@@ -1,6 +1,6 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build253 target-device recommendation semantics accepted; incremental recommendation loading requested next
+- Status: Active — Build253 recommendation data path target-device accepted; Build254 incremental recommendation candidate implementation/CI in progress
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
@@ -72,3 +72,9 @@ Build253 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified �
 ## Next exact action
 
 Evaluate and implement incremental recommendation loading below the accepted initial 3×3 wall without changing the accepted Build253 recommendation source. Preferred direction is to keep `/Users/{userId}/Items` + `SortBy=Random` + `IncludeItemTypes=Movie,Series`, request another small batch when the user approaches the bottom, and exclude already-present item IDs so appended recommendations do not duplicate existing cards. Do not use `StartIndex` as the primary anchor for a random sort.
+
+## Build253 target-device acceptance → Build254 incremental recommendations — 2026-08-30
+
+The user target-device tested Build253 / OnePlayer 0.14.86 and confirmed all 9 Search landing recommendations are normal playable movie/series items. This accepts the Search recommendation data source contract: `/Users/{userId}/Items` + `SortBy=Random` + `Recursive=true` + `IncludeItemTypes=Movie,Series`. Build248 Dock/keyboard behavior remains accepted. Search remains Active because the user now requests continued recommendation loading while scrolling.
+
+Build254 reserves OnePlayer 0.14.87 / Build254. It preserves the accepted first 9 exactly, then requests 6 more only when the current last recommendation card reaches the lazy-grid viewport. The follow-up request uses the same normal Items/Random/Movie+Series contract plus Emby's supported `ExcludeItemIds` containing every already-visible recommendation ID. New unique items append in place; no `StartIndex + Random`, timer, debounce, retry, fallback, watchdog, second cache or load-more ProgressView is added. Newly fetched posters reuse the existing persistent `EmbyImageDiskCache`, decoded image pool and Search-lifetime pinning.

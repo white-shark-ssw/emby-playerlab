@@ -4,6 +4,7 @@ import UIKit
 enum V3SearchRecommendationPolicy {
     static let itemTypes = ["Movie", "Series"]
     static let preloadLimit = 9
+    static let loadMoreLimit = 6
 
     static var posterImageMaxWidth: Int {
         let available = UIScreen.main.bounds.width - EmbyPosterGridMetrics.horizontalPadding * 2 - EmbyPosterGridMetrics.columnSpacing * CGFloat(EmbyPosterGridMetrics.columnCount - 1)
@@ -51,6 +52,17 @@ final class V3SearchRecommendationPreloader {
             tasksBySessionID[stored.id] = nil
             throw error
         }
+    }
+
+    func moreRecommendations(client: EmbyAPIClient, excluding itemIDs: [String]) async throws -> [LibraryItem] {
+        let requestedTypes = V3SearchRecommendationPolicy.itemTypes
+        let items = try await client.searchLandingRecommendations(limit: V3SearchRecommendationPolicy.loadMoreLimit, includeItemTypes: requestedTypes, excludeItemIds: itemIDs)
+        let urls = items.compactMap { item in
+            client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: V3SearchRecommendationPolicy.posterImageMaxWidth, tag: item.preferredPrimaryImageTag)
+        }
+        warmPosterImages(urls)
+        DiagnosticsLogger.shared.log("Search", "recommendation load-more random-items excluded=\(itemIDs.count) returned=\(items.count)")
+        return Array(items.prefix(V3SearchRecommendationPolicy.loadMoreLimit))
     }
 
     private func beginStartupWarm(for stored: EmbySession, sessionStore: SessionStore) {

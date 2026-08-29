@@ -34,6 +34,7 @@ private final class V3GlobalSearchViewModel: ObservableObject {
     private let searchItemTypes = ["Movie", "Series", "BoxSet"]
     private var searchGeneration = 0
     private var recommendationGeneration = 0
+    private var isLoadingMoreRecommendations = false
     private var recommendationPosterImages: [String: UIImage] = [:]
     private var hasStoredServerSelection: Bool
 
@@ -72,6 +73,7 @@ private final class V3GlobalSearchViewModel: ObservableObject {
         if !recommendationsEnabled {
             recommendationGeneration += 1
             isLoadingRecommendations = false
+            isLoadingMoreRecommendations = false
         } else {
             hasMoreRecommendations = true
         }
@@ -155,11 +157,32 @@ private final class V3GlobalSearchViewModel: ObservableObject {
             let items = try await V3SearchRecommendationPreloader.shared.recommendations(for: session, client: client)
             guard generation == recommendationGeneration, recommendationsEnabled else { return }
             recommendationItems = items
-            hasMoreRecommendations = false
+            hasMoreRecommendations = items.count >= V3SearchRecommendationPolicy.preloadLimit
         } catch {
             guard generation == recommendationGeneration else { return }
             hasMoreRecommendations = false
             if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Search", "recommendations failed: \(error.localizedDescription)") }
+        }
+    }
+
+    func loadMoreRecommendations(client: EmbyAPIClient) async {
+        guard recommendationsEnabled, hasMoreRecommendations, !isLoadingRecommendations, !isLoadingMoreRecommendations, !recommendationItems.isEmpty else { return }
+        let generation = recommendationGeneration
+        let excludedIDs = recommendationItems.map(\.id)
+        isLoadingMoreRecommendations = true
+        defer { if generation == recommendationGeneration { isLoadingMoreRecommendations = false } }
+
+        do {
+            let batch = try await V3SearchRecommendationPreloader.shared.moreRecommendations(client: client, excluding: excludedIDs)
+            guard generation == recommendationGeneration, recommendationsEnabled else { return }
+            let existingIDs = Set(recommendationItems.map(\.id))
+            let newItems = batch.filter { !existingIDs.contains($0.id) }
+            recommendationItems.append(contentsOf: newItems)
+            hasMoreRecommendations = batch.count == V3SearchRecommendationPolicy.loadMoreLimit && newItems.count == batch.count
+            DiagnosticsLogger.shared.log("Search", "recommendation load-more appended=\(newItems.count) total=\(recommendationItems.count) hasMore=\(hasMoreRecommendations)")
+        } catch {
+            guard generation == recommendationGeneration else { return }
+            if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Search", "recommendation load-more failed: \(error.localizedDescription)") }
         }
     }
 
@@ -421,6 +444,10 @@ struct V3EmbyGlobalSearchView: View {
                     EmbyPosterDetailLink(item: item, client: currentClient) {
                         V3SearchRecommendationPosterCard(item: item, client: currentClient, pinnedImage: model.recommendationPosterImage(for: item.id)) { image in
                             model.pinRecommendationPosterImage(image, for: item.id)
+                        }
+                        .onAppear {
+                            guard model.hasMoreRecommendations, item.id == model.recommendationItems.last?.id else { return }
+                            Task { await model.loadMoreRecommendations(client: currentClient) }
                         }
                     }
                 }
