@@ -218,3 +218,10 @@ Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B,
 - Search landing must not add an outer `LazyVStack` around its dynamically growing `EmbyPosterGrid`. The poster grid itself remains the lazy owner.
 - Build254 target-device evidence showed visible container twitch when +6 recommendations appended with nested lazy ownership.
 - Build255 follows the established paginated poster-page pattern: normal outer `VStack` + inner lazy `EmbyPosterGrid`. This is a layout-ownership correction only; no timer, scroll-offset compensation, retry/fallback, second cache or shared grid fork is introduced.
+
+## Search recommendation state lifetime follows the Search Dock selection — Build256
+
+- Search recommendation metadata must not be app-start-owned or session-global. The initial 9 are fetched only after entering the Search Dock page.
+- While the Search Dock tab remains selected, the server root owns the Search view model so native detail push/pop returns to the same already-loaded recommendation data instead of recreating an initial-9 state.
+- A manual Dock switch away from Search ends that lifetime immediately by releasing the Search model. Re-entering Search creates a fresh model and fresh initial-9 request.
+- Existing persistent/decoded poster image caches remain shared infrastructure and are not part of this Search metadata lifetime. No timer, persistence snapshot, retry/fallback, watchdog or second cache is introduced.

@@ -398,3 +398,15 @@ Update this index when a build materially changes architectural understanding, b
 - IPA SHA-256: `2dbc76a146d4716eee0965c6861823e0df5592324812584fe261a30afb98019e`.
 - package: `com.embyplayerlab.app`, `0.14.88 (255)`, `MinimumOSVersion=15.0`, IPA integrity passed.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / Build255 target-device pending / not stable.**
+
+### Build256 / 0.14.89 — Search detail-return lifetime candidate
+
+- Build255 target-device result: after loading beyond the initial 9, detail push/pop can reset Search recommendations back to only 9; Build255 rejected as final and not stable.
+- exact Build256 product source: `723d803c70326dee49aabc75f15ce445b7de947e`.
+- runtime ownership change: no app-start Search recommendation fetch; Search model owned by server Dock root only while Search tab is selected; initial load skips if retained items already exist; switching away destroys the model; session-global recommendation metadata/task retention removed.
+- existing recommendation request/+6 exclusion semantics and shared image caches are unchanged.
+- run/job: `33271528610 / 99150738764` — success.
+- artifact: `OnePlayer-0.14.89-Build256-Search`, ID `9720282077`, digest `sha256:e9c3f0756cb4dbd7a0fa9f2785594fa3df7e41964f472426a14e6c50a231615e`.
+- IPA SHA-256: `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`.
+- package: `com.embyplayerlab.app`, `0.14.89 (256)`, `MinimumOSVersion=15.0`, IPA integrity passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / Build256 target-device pending / not stable.**
