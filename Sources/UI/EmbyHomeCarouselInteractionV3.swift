@@ -341,7 +341,7 @@ extension V3EmbyHomeView {
         let actualProgress = min(1, max(0, actualDistance / max(1, width)))
         let releaseVelocity = releaseVelocityX ?? 0
         let directionalVelocity = releaseVelocity * expectedSign
-        let velocityCommit = directionalVelocity >= 600
+        let velocityCommit = directionalVelocity >= 500
         let shouldCommit = actualProgress >= 0.28 || velocityCommit
         DiagnosticsLogger.shared.app("HomeCarouselReleaseDecision", "actual_progress=\(String(format: "%.3f", actualProgress)) release_velocity_x=\(String(format: "%.2f", releaseVelocity)) directional_velocity=\(String(format: "%.2f", directionalVelocity)) velocity_commit=\(velocityCommit) should_commit=\(shouldCommit)")
         if !isCarouselDragging {
