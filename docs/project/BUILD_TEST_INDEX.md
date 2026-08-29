@@ -434,3 +434,13 @@ Update this index when a build materially changes architectural understanding, b
 - IPA SHA-256: `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`.
 - package: `com.embyplayerlab.app`, `0.14.86 (253)`, `MinimumOSVersion=15.0`, IPA integrity passed.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
+
+### Build256 / 0.14.89 — Search final accepted / merged
+
+- exact tested product source: `723d803c70326dee49aabc75f15ce445b7de947e`.
+- Xcode 16.4 Release run/job: `33271528610 / 99150738764` — success.
+- artifact: `OnePlayer-0.14.89-Build256-Search`, ID `9720282077`, digest `sha256:e9c3f0756cb4dbd7a0fa9f2785594fa3df7e41964f472426a14e6c50a231615e`.
+- IPA SHA-256: `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`; bundle `com.embyplayerlab.app`; MinOS 15.0; integrity passed.
+- target-device: PASS and user accepted.
+- PR #264 merged to `main` at `647c1f66e5836fcd20a23a57600211488eeafb3d`.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / user accepted ✅ / stable/merged ✅**.

@@ -240,3 +240,11 @@ Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B,
 **Evidence:** Build252 target-device surfaced a `Tag` object from `/Suggestions` despite the Movie/Series query constraint, while official Emby Web Search on the same server shows actual media. Independent inspection of `bpking1/embyExternalUrl` shows Emby Web `/Users/(.*)/Items` traffic with `SortBy=Random` is classified as `searchSuggest`.
 
 **Scope:** This decision only changes Search recommendation metadata retrieval. It does not change Player, MPV, STRM/302/115, UnifiedTransport, playback Session Cache, Emby progress/Resume, credentials, PiP or Deployment Target.
+
+## Search state lifetime is Dock-scoped — Build256 final
+
+- Search recommendation metadata is not app-start/global state. A fresh Search lifetime begins when the Search Dock page is entered.
+- Detail push/pop stays inside that Search lifetime and must preserve already-loaded recommendations.
+- Manually switching Dock away from Search ends the lifetime and destroys the recommendation dataset; re-entering Search starts fresh with a new initial 9.
+- Shared image disk/decoded caches may persist independently; recommendation metadata/tasks do not.
+- Build256 target-device accepted; PR #264 merged at `647c1f66e5836fcd20a23a57600211488eeafb3d`.
