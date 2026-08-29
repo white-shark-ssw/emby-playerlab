@@ -1,0 +1,80 @@
+name: TEMP Sync Build241 Carousel Project Docs
+
+on:
+  push:
+    branches: [tune/home-carousel-fling-threshold-build241]
+    paths: [.github/build241-docs-sync-trigger.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Sync Build241 carousel authority docs
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          checkpoint = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+          text = checkpoint.read_text()
+          text = re.sub(r'\*\*Active — user explicitly chose.*?dedicated CI/IPA is pending\.\*\*', '**Active — Build241 / 0.14.74 is now the verified test candidate from the exact Build239 behavior baseline. Per the user’s latest decision, Build240 release-handoff momentum diagnostics are no longer the active direction. Build241 lowers only the direction-aware latest-delivered fling trigger from 600 to 500 pt/s so intentional short flicks require slightly less force. The 0.28 slow-drag threshold, Build239 0.22s/0.18s settle behavior, Build237 white-flash correction, Build236 acquisition handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle remain unchanged. CI and IPA/package identity are verified; target-device acceptance is pending.**', text, count=1, flags=re.S)
+          text = text.replace('Evidence level now: **Code written ✅ / dedicated CI pending / IPA pending / real-device pending / stable ❌.**', 'Evidence level now: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / stable ❌.**\n\nBuild241 verified identity:\n\n- exact tested repository source / CI head: `997a93a5f2c3c6544908ad112df5e714d2538e65`\n- product behavior commit: `8bb59c06913630169f1df649cc38f5d9af202546`\n- run/job: `33247149430 / 99086484795` — success\n- artifact: `OnePlayer-0.14.74-build241-fling-threshold-500`, ID `9713225510`, digest `sha256:3ea36257c97b4a7947bb46e9aa1e0a5d2dcbd1a96ddf1977d58e0cada180525f`\n- IPA SHA-256: `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`\n- source ZIP SHA-256: `b1e37c1c79f08552ad9de6819838cbca1b5b95cd4cc8a95c5b3ebf08a73ab664`\n- package independently reopened: `com.embyplayerlab.app`, OnePlayer `0.14.74 (241)`, `MinimumOSVersion=15.0`\n- source snapshot independently reopened: one `directionalVelocity >= 500` gate; no 600 gate; no Build240 handoff diagnostics; 0.28 progress gate, 0.22s/0.18s settle timing and one page-level `compositingGroup()` retained.\n', 1)
+          text = re.sub(r'## Next exact action\n\n.*\Z', '## Next exact action\n\nInstall/test Build241 on iPhone 15 Pro Max / iOS 17.0. Compare it directly with Build239 for two things: (1) short intentional flicks should switch with slightly less force; (2) ordinary slow drags below the retained 0.28 progress threshold should not begin committing accidentally. If both are acceptable, Build241 can replace Build239 as the fling-threshold sub-contract. Do not reopen Build240 momentum modeling, retune the accepted settle tail, or add spring/interpolation behavior unless new device evidence requires it.\n', text, flags=re.S)
+          checkpoint.write_text(text)
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          text = module.read_text()
+          text = re.sub(r'^\| Home carousel interaction \|.*$', '| Home carousel interaction | **Active — Build241 / 0.14.74 IPA verified from Build239 baseline; 500 pt/s fling gate target-device test pending** | User explicitly chose Build239 as the controlling behavior baseline and closed the Build240 handoff-diagnostic direction for now. Build241 changes only the direction-aware latest-delivered fling trigger `600 → 500 pt/s`; 0.28 slow-drag commit, Build239 0.22s/0.18s settle, Build237 white-flash correction, Build236/231/226/228 retained contracts and all Frozen/P0 paths remain unchanged. Exact tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`, run/job `33247149430 / 99086484795`, artifact `9713225510`, MinOS 15.0; target-device acceptance pending. |', text, count=1, flags=re.M)
+          module.write_text(text)
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          text = state.read_text()
+          text = re.sub(r'^_Last updated after Build240.*?_$', '_Last updated after Build241 / 0.14.74 produced an independently verified IPA from the user-selected Build239 Home-carousel baseline. Build240 release-handoff diagnostics are no longer the active direction; Build241 only lowers the direction-aware fling trigger from 600 to 500 pt/s. Build216 remains the accepted merged overall runtime baseline._', text, count=1, flags=re.M)
+          marker = 'Work: `DEV-home-carousel-drag-smoothness`.\n'
+          insert = '''\n### Current candidate — Build241 / 0.14.74\n\nOn 2026-08-29 the user explicitly chose Build239 as the behavior baseline rather than continuing Build240 momentum-handoff diagnostics, and requested only a slightly easier fling trigger. Build241 therefore starts from exact Build239 tested source and changes one runtime decision: direction-aware latest-delivered fling velocity `>=600 pt/s` becomes `>=500 pt/s`. The ordinary 0.28 progress commit and accepted Build239 presentation/settle contracts remain unchanged. Build238 device logs previously separated intended quick flicks (~1139.8–2239.8 pt/s) from short slow drags (~0–160 pt/s), so 500 is a narrow A/B with a large observed margin rather than an arbitrary broad sensitivity change.\n\nVerified identity: tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`; run/job `33247149430 / 99086484795` success; artifact `9713225510`, digest `sha256:3ea36257c97b4a7947bb46e9aa1e0a5d2dcbd1a96ddf1977d58e0cada180525f`; IPA SHA-256 `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`; source ZIP SHA-256 `b1e37c1c79f08552ad9de6819838cbca1b5b95cd4cc8a95c5b3ebf08a73ab664`; OnePlayer `0.14.74 (241)`, bundle `com.embyplayerlab.app`, MinOS 15.0 independently reopened. Evidence: **Code written / CI passed / IPA produced+verified / real-device pending / not stable**.\n\n'''
+          if '### Current candidate — Build241 / 0.14.74' not in text:
+              if marker not in text: raise SystemExit('PROJECT_STATE carousel work marker missing')
+              text = text.replace(marker, marker + insert, 1)
+          state.write_text(text)
+
+          decisions = Path('docs/project/TECHNICAL_DECISIONS.md')
+          text = decisions.read_text()
+          anchor = 'Build240 / 0.14.73 implements exactly that measurement-only handoff probe.'
+          idx = text.find(anchor)
+          if idx < 0: raise SystemExit('TECHNICAL_DECISIONS Build240 anchor missing')
+          next_heading = text.find('\n## D013', idx)
+          if next_heading < 0: raise SystemExit('TECHNICAL_DECISIONS D013 anchor missing')
+          paragraph = '''\n\n**Build241 direction supersedes Build240 for the current phase by explicit user choice, not by disproving the handoff hypothesis.** The user prefers the real-device-tested Build239 behavior as the baseline and wants only an easier fling trigger. Build241 therefore lowers the accepted direction-aware latest-delivered binary gate from 600 to 500 pt/s and changes nothing else in carousel motion/settle ownership. Build238 logs provide the evidence margin: intended quick flicks were ~1139.8–2239.8 pt/s while short slow drags were ~0–160 pt/s. Treat 500 pt/s as a target-device A/B until accepted; retain the 0.28 slow-drag threshold, Build239 0.22s/0.18s tail, Build237 white-flash correction and Build236/231/226/228 contracts. Do not infer that Build240's momentum-continuity hypothesis was false, and do not reintroduce it without new user/device evidence.\n'''
+          if '**Build241 direction supersedes Build240' not in text:
+              text = text[:next_heading] + paragraph + text[next_heading:]
+          decisions.write_text(text)
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          text = index.read_text()
+          if '| **Carousel Build241 / 0.14.74** |' not in text:
+              build240_line = next((line for line in text.splitlines() if line.startswith('| **Carousel Build240 / 0.14.73** |')), None)
+              if not build240_line: raise SystemExit('BUILD_TEST_INDEX Build240 row missing')
+              row = '| **Carousel Build241 / 0.14.74** | Easier direction-aware fling trigger from exact Build239 behavior baseline | **CI/IPA verified; target-device pending; not stable.** User explicitly chose Build239 over continuing Build240 handoff diagnostics. Only fling gate changes `600 → 500 pt/s`; 0.28 slow-drag commit, 0.22s/0.18s settle, Build237/236/231/226/228 contracts and Frozen/P0 paths remain unchanged. Tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`; run/job `33247149430 / 99086484795`; artifact `9713225510` (`sha256:3ea36257c97b4a7947bb46e9aa1e0a5d2dcbd1a96ddf1977d58e0cada180525f`); IPA SHA-256 `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`; source ZIP SHA-256 `b1e37c1c79f08552ad9de6819838cbca1b5b95cd4cc8a95c5b3ebf08a73ab664`; MinOS 15.0. |'
+              text = text.replace(build240_line, build240_line + '\n' + row, 1)
+          index.write_text(text)
+          PY
+          git diff --check
+          git diff -- docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/BUILD_TEST_INDEX.md
+      - name: Commit synchronized project docs
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/BUILD_TEST_INDEX.md
+          git diff --cached --quiet && { echo 'Docs already current'; exit 0; }
+          git commit -m 'Sync Build241 carousel test baseline'
+          git push origin HEAD:main
