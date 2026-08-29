@@ -381,3 +381,18 @@ Update this index when a build materially changes architectural understanding, b
 - IPA SHA-256: `0c62d51d488197b55dbfb98ab104c48404dd0caac77d786523f753c75acbb7a0`.
 - independently verified package: `com.embyplayerlab.app`, `0.14.82 (249)`, `MinimumOSVersion=15.0`, IPA `unzip -t` passed.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
+
+
+### Build250 / 0.14.83 — Search Suggestions nil-Type whitelist candidate
+
+- Build249 target-device: inherited Dock remains accepted, recommendation spinner remains rejected.
+- device log `OnePlayer-App-1788020447.log`: 21 total views, 19 eligible; first Movie Suggestions returned 9 but accepted 0; first TV Suggestions returned 9 but accepted 0.
+- root cause: Suggestions results on this server omit a usable decoded `Type`, while Build249's second client filter required non-nil Movie/Series and discarded server-side filtered results.
+- exact successful CI source: `6e7ae960bd3cc353b8d6146aea363f3876e9e8e8`.
+- runtime rule: eligible CollectionType + server `IncludeItemTypes` stays Movie/Series-only; actual returned Type remains authoritative when present; when absent, the exact request whitelist is trusted only if every requested type is Movie/Series. Search consumes the prevalidated output directly.
+- run/job: `33263279291 / 99128762968` — success.
+- artifact: `OnePlayer-0.14.83-Build250-Search`; ID `9717900754`; digest `sha256:f5cad646e230ffe1666e30fd2b6ce472b5d16cace168a850c9f07cf0e43e35e0`.
+- IPA SHA-256: `f213b3d6f30ac101d563e3894c3352fdcd9c9bcb46c7a266faa48c8577e73ada`.
+- package verified: `com.embyplayerlab.app`, `0.14.83 (250)`, `MinimumOSVersion=15.0`, IPA integrity passed.
+- superseded CI-only incident: run `33263000305` failed compilation before packaging after an intermediate stale Search-view replacement; no IPA from that run and it is not product evidence.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**

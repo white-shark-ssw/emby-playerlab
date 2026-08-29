@@ -222,3 +222,12 @@ Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B,
 - The returned item `Type` remains the final client-visible whitelist authority. CollectionType filtering is request selection, not a replacement for the Movie/Series output whitelist.
 - Build248 target-device evidence accepts the root-owned, bottom-safe-area-compensated Search Dock behavior; Build249 must preserve it.
 - No retry/timer/watchdog/fallback or second image cache is introduced. Build249 remains candidate-level pending target-device validation.
+
+
+## Search Suggestions type authority when Emby omits `Type` — Build250 candidate
+
+- Search recommendation source eligibility remains based on real `UserViews.CollectionType`: `movies`, `tvshows`, `mixed`. Request types remain strictly Movie/Series.
+- When a Suggestions item returns a usable `Type`, that actual value remains the final whitelist authority and must be Movie or Series.
+- When the Suggestions response omits `Type`, the exact `IncludeItemTypes` request that generated that response may serve as the whitelist authority only when every requested type is itself in the Movie/Series whitelist. This is not heuristic media-type inference or a generic fallback; it trusts the server API filter that constrained the response.
+- The Search view must not reapply an incompatible `Type != nil` filter after the preloader has validated the response under this rule.
+- Build248-accepted Dock ownership/safe-area behavior remains unchanged. Build250 remains candidate-level pending target-device first-paint validation.
