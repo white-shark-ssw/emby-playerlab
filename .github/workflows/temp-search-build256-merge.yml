@@ -1,0 +1,92 @@
+name: Temp Search Build256 Merge
+
+on:
+  push:
+    branches: ["feat/search-page-optimization"]
+    paths:
+      - ".github/search-build256-merge-trigger.txt"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/search-page-optimization
+          fetch-depth: 0
+      - name: Remove transient workflow files before merge
+        run: |
+          set -euo pipefail
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git rm .github/workflows/temp-search-build256-merge.yml .github/search-build256-merge-trigger.txt
+          git commit -m "Remove temporary Search Build256 merge workflow"
+          git push origin HEAD:feat/search-page-optimization
+      - name: Mark PR ready and merge accepted Search
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh pr ready 264 --repo white-shark-ssw/emby-playerlab
+          gh pr merge 264 --repo white-shark-ssw/emby-playerlab --merge --admin --subject "Merge Search page optimization Build256" --body "Build256 / OnePlayer 0.14.89 target-device accepted. Final Search recommendation source, incremental loading, append layout, Dock behavior and Search-tab lifetime contract."
+      - name: Record merged stable authority on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          MERGE_SHA="$(gh pr view 264 --repo white-shark-ssw/emby-playerlab --json mergeCommit --jq '.mergeCommit.oid')"
+          test -n "$MERGE_SHA"
+          export MERGE_SHA
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+          merge_sha = os.environ['MERGE_SHA']
+          module = Path('docs/project/MODULE_STATUS.md')
+          lines = module.read_text().splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith('| Search page /'):
+                  lines[i] = f'| Search page / multi-Emby search | **Stable at Build256 / merged to main** | Build256 / OnePlayer 0.14.89 is the user-accepted final Search contract on iPhone 15 Pro Max / iOS 17.0. Exact tested product source `723d803c70326dee49aabc75f15ce445b7de947e`; run/job `33271528610 / 99150738764`; artifact `9720282077`; IPA SHA-256 `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`; MinOS 15.0; PR #264 merged at `{merge_sha}`. Accepted behavior: no app-start recommendation fetch; Search entry loads fresh initial 9 Movie/Series; +6 random batches exclude displayed IDs; detail push/pop preserves loaded Search data; manual Dock switch away destroys Search state; re-entry starts fresh. Build248 Dock/keyboard, Build253 Items+Random authority, Build254 exclusion paging and Build255 non-lazy section owner are retained. Do not reopen without new regression evidence or explicit requirement. |'
+                  break
+          for i, line in enumerate(lines):
+              if line.startswith('| Other product modules |'):
+                  lines[i] = re.sub(r'Search Build\d+(?: is accepted and being merged)?', 'Search Build256 is stable/merged', line)
+          module.write_text('\n'.join(lines).rstrip() + '\n')
+
+          checkpoint = Path('docs/project/current/dev/DEV-search-page-optimization.md')
+          text = checkpoint.read_text().rstrip()
+          marker = '## Final merge — 2026-08-30'
+          if marker not in text:
+              text += f'\n\n{marker}\n\nBuild256 was accepted on the target device and PR #264 merged to `main` at `{merge_sha}`. Search is now stable/final for this task. Reopen only for new regression evidence or an explicit new requirement.\n'
+          checkpoint.write_text(text.rstrip() + '\n')
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          text = state.read_text().rstrip()
+          marker = '## Search Build256 accepted and merged — 2026-08-30'
+          if marker not in text:
+              text += f'\n\n{marker}\n\nThe user accepted Build256 / OnePlayer 0.14.89 as the final Search implementation on iPhone 15 Pro Max / iOS 17.0. Exact tested product source `723d803c70326dee49aabc75f15ce445b7de947e`; Xcode 16.4 Release run/job `33271528610 / 99150738764`; artifact `9720282077`; IPA SHA-256 `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`; MinOS 15.0. PR #264 merged to `main` at `{merge_sha}`. Final contract: Search recommendations load on Search entry rather than app startup; initial 9 + incremental 6 use normal Movie/Series Items with Random and exclusion paging; detail return preserves the current Search lifetime; manual Dock switch destroys it; re-entry starts fresh; accepted Dock/keyboard and append-layout behavior remain intact. Search is stable/final.\n'
+          state.write_text(text.rstrip() + '\n')
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          text = index.read_text().rstrip()
+          marker = '### Build256 / 0.14.89 — Search final accepted / merged'
+          if marker not in text:
+              text += f'\n\n{marker}\n\n- exact tested product source: `723d803c70326dee49aabc75f15ce445b7de947e`.\n- Xcode 16.4 Release run/job: `33271528610 / 99150738764` — success.\n- artifact: `OnePlayer-0.14.89-Build256-Search`, ID `9720282077`, digest `sha256:e9c3f0756cb4dbd7a0fa9f2785594fa3df7e41964f472426a14e6c50a231615e`.\n- IPA SHA-256: `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`; bundle `com.embyplayerlab.app`; MinOS 15.0; integrity passed.\n- target-device: PASS and user accepted.\n- PR #264 merged to `main` at `{merge_sha}`.\n- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / user accepted ✅ / stable/merged ✅**.\n'
+          index.write_text(text.rstrip() + '\n')
+
+          decisions = Path('docs/project/TECHNICAL_DECISIONS.md')
+          text = decisions.read_text().rstrip()
+          marker = '## Search state lifetime is Dock-scoped — Build256 final'
+          if marker not in text:
+              text += f'\n\n{marker}\n\n- Search recommendation metadata is not app-start/global state. A fresh Search lifetime begins when the Search Dock page is entered.\n- Detail push/pop stays inside that Search lifetime and must preserve already-loaded recommendations.\n- Manually switching Dock away from Search ends the lifetime and destroys the recommendation dataset; re-entering Search starts fresh with a new initial 9.\n- Shared image disk/decoded caches may persist independently; recommendation metadata/tasks do not.\n- Build256 target-device accepted; PR #264 merged at `{merge_sha}`.\n'
+          decisions.write_text(text.rstrip() + '\n')
+          PY
+          git diff --check
+          git add docs/project/MODULE_STATUS.md docs/project/current/dev/DEV-search-page-optimization.md docs/project/PROJECT_STATE.md docs/project/BUILD_TEST_INDEX.md docs/project/TECHNICAL_DECISIONS.md
+          git commit -m "Finalize Search Build256 as stable merged baseline"
+          git push origin HEAD:main
