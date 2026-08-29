@@ -342,3 +342,16 @@ Update this index when a build materially changes architectural understanding, b
 - Exact final main blob identities: cadence `c5ec51991d9a629cfb39785efeb597f3c51375ef`; interaction `144be65ba3fa5618d39591c5f67747024dc5ff0c`; state `e18fc8724170f2a7e613ac93beedf54c3b8d47e8`; core `c7900bae5e608ae46c0cd476c1f08999be9baf0b`; Hero `ab2ab5d80a59e174622dca0006c0f3aad4111a54`.
 - Independent integration compile run/job: `33248884259 / 99090990039` — success; exact blob/contract checks passed; Release generic-iOS compile passed; built MinOS 15.0.
 - Evidence discipline: integration CI does not create a new target-device acceptance identity. Build241 itself supplies the real-device acceptance; the carousel module is now stable/frozen.
+
+
+### Build247 / 0.14.80 — Search startup recommendation warm candidate
+
+- Build246 target-device evidence: Dock still rises with keyboard; recommendation entry/later posters remain slow; returned-type whitelist must be explicit; recommendation load-more still twitches. Build246 is real-device tested and rejected as final.
+- exact CI product source: `5f693d82041bbb59d3fe481aa708b22a5feda42d`.
+- Search-only architecture: server-root owns the visible Search Dock; returned recommendation items are hard-filtered to `Movie`/`Series`; app startup restore begins one bounded 60-item recommendation/poster warm; Search consumes the same task; recommendation grid is fixed and performs no active-scroll load-more. Existing persistent image disk cache and decoded pool remain the cache authorities.
+- run/job: `33258792907 / 99117036605` — success.
+- artifact: `OnePlayer-0.14.80-Build247-Search`; ID `9716657082`; digest `sha256:9628b0c608488edbfc5af477199e847e5a35b119d4ab96edbecd036cbde4bfd1`.
+- IPA SHA-256: `952b2daeef4bc01fe62476611c6620cf7ce79d3905d87bd82336e4650d0d69b0`.
+- source ZIP SHA-256: `44494de6213883b8bee16b6e99336b33073ed38b17a53062f9be7a2cff22b73d`.
+- independent package verification: bundle `com.embyplayerlab.app`; OnePlayer `0.14.80 (247)`; `MinimumOSVersion=15.0`; IPA `unzip -t` passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**

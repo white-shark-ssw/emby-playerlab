@@ -196,3 +196,13 @@ Build241 / OnePlayer 0.14.74 is the final Home-carousel behavior selected by the
 PR #262 integrated only the five exact Build241 runtime blobs onto current `main` and merged at `75d9f53d0984ee7f32e7e3fa02cd9bf8794b56e3`. Independent integration compile run/job `33248884259 / 99090990039` passed and preserved MinOS 15.0. The integration compile is CI evidence only; the real-device acceptance authority remains Build241 itself.
 
 Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B, not a product baseline. It intentionally disabled the carousel presentation/runtime stack and the user explicitly states those diagnostic changes made it unsuitable/broken as normal carousel behavior. Never inherit carousel runtime from Build242. Its retained diagnostic result is only that Home vertical scrolling felt little/no different from Build241, weakening the hypothesis that the whole carousel stack is a major Home-wide performance bottleneck. When the user disables carousel in normal settings, `carouselItems` returns `[]`, so expensive persistent/Hero/preload/interaction presentation is absent.
+
+
+## Search recommendation startup warm and Dock ownership — Build247 candidate
+
+- The visible server Dock belongs to `EmbyServerRootViewV3`. Search may host keyboard-responsive navigation/content, but it must not own a second visible Dock inside that nested tree. This is the direct replacement for the Build244–246 safe-area-only attempts that still lifted Dock on device.
+- Search landing recommendations use a client-visible whitelist: actual returned `LibraryItem.type` must be `Movie` or `Series`. `IncludeItemTypes=Movie,Series` is a server-query optimization, not the final UI authority.
+- Because landing recommendations are independent of a typed keyword, saved-session recommendation metadata and exact poster URLs may be warmed once after app startup restore. The Search page consumes that shared in-flight/completed process-lifetime work. Typed keyword results are not precomputed.
+- Recommendation presentation uses a bounded fixed set for the current candidate; do not mutate the recommendation grid through incremental Suggestions requests while the user is scrolling. This isolates Search from the Build246 load-more twitch without changing the shared poster-grid owner.
+- Existing `EmbyImageDiskCache` remains the persistent poster-byte authority and `EmbyDecodedImageRenderPool` remains the decoded-memory authority. Do not add a Search-specific second disk image cache.
+- This decision is candidate-level until Build247 target-device testing; it does not mark Search stable/frozen.
