@@ -1,0 +1,116 @@
+name: Temp Poster Build243 Relabel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/temp-poster-build243-relabel.yml
+
+permissions:
+  contents: write
+
+jobs:
+  relabel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Reserve Build243 in poster checkpoint
+        run: |
+          git pull --ff-only origin main
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/project/current/dev/DEV-poster-grid-smoothness.md')
+          text = path.read_text(encoding='utf-8')
+          old_status = '**Active — Build228 / 0.14.61 is now target-device diagnostic tested and still visibly hitches, sometimes strongly. Its strongest captured user-drag sample is 55.1 ms; image publish/Combine→UIKit adoption measured 0.0 ms and page apply 0.3 ms, while the synchronous Library persistent snapshot took 39.7 ms and completed about 8 ms before the hitch. Build229 / 0.14.62 therefore moves only Library snapshot JSON conversion/serialization/atomic write off the MainActor onto one serial utility queue while preserving snapshot order/schema/keys and leaving Favorites persistence unchanged. Build229 is exact-source CI/IPA verified but target-device pending; not stable.**'
+          new_status = '**Active — Build229 / 0.14.62 has now been exercised on the target device and visible grid jitter still remains. A captured 77.2 ms grid long frame occurred on StartIndex=0 about 7.3 s after page apply/snapshot completion and about 0.77 s after the latest image publication, so the off-main Library snapshot write is not the direct trigger for that non-pagination hitch and is not the universal root cause. The previously written poster Build233 identity is invalid because the parallel Home task owns Build233; the same measurement-only background-image-work diagnostics are now reserved as OnePlayer 0.14.76 / Build243. No smoothness fix is claimed.**'
+          if old_status not in text:
+              raise SystemExit('poster checkpoint status guard failed')
+          text = text.replace(old_status, new_status, 1)
+
+          marker = '- **Draft PR**: #259\n'
+          identity = '- **Current branch head before relabel**: `deba1534e55bfc73f4d3cf43f2682c854a04cb39` (contains the measurement-only diagnostics but carries the invalid poster Build233 identity)\n- **Retired conflicting poster identity**: OnePlayer `0.14.66 (233)` — invalid for poster attribution because the parallel Home task owns Build233\n- **Reserved poster diagnostic candidate**: OnePlayer `0.14.76 (243)` — uniqueness checked against current Active checkpoints, branches and commit search on 2026-08-29\n'
+          if identity not in text:
+              if marker not in text:
+                  raise SystemExit('poster checkpoint metadata marker missing')
+              text = text.replace(marker, marker + identity, 1)
+
+          insert_before = '\n## Acceptance / protected contracts\n'
+          section = '''\n## Build229 target-device non-pagination hitch / Build243 reservation — 2026-08-29\n\nLatest target-device feedback remains **“还是会有抖动现象”** on the Library/poster-grid path. The captured diagnostic sample contains a **77.2 ms** `PosterScrollHitch` on the grid route with `phase=moving`, `velocity_y=0`, `delta_y=1.33`, on the initial `StartIndex=0` page rather than a pagination boundary. The latest page apply was about **7.38 s** old, the awaited Library snapshot completion about **7.33 s** old, and the latest image publication about **0.77 s** old. Therefore this particular sudden twitch is not directly attributable to the Build228 synchronous snapshot-write window, and Build229 does not solve the overall hitch family. Build228's 39.7 ms synchronous persistence remains valid evidence for one pagination-adjacent severe sample only.\n\nThe next justified step is still **measurement-only**, not another smoothing patch: correlate each existing `PosterScrollHitch` with currently active poster-image disk read, detached decode, network request and image-cache disk-write work, plus the latest completed stage/age/duration. The diagnostics must observe the existing loader/cache call sites without changing image request size, decode policy, cache policy, scroll physics, pagination, Library persistence semantics or any Home/Player/Transport/P0 owner.\n\nA prior attempt wrote this diagnostic code as poster **0.14.66 / Build233** at branch head `deba1534e55bfc73f4d3cf43f2682c854a04cb39`. Current repository facts show the parallel Home task owns Build233 and has since advanced through Build242, while Aether owns Build235. Poster Build233 is therefore retired without distribution. **Build243 / 0.14.76** is the first currently unallocated identity and is reserved for the exact same diagnostic logic, with only identity/changelog relabeling before CI.\n'''
+          if section not in text:
+              if insert_before not in text:
+                  raise SystemExit('poster checkpoint acceptance marker missing')
+              text = text.replace(insert_before, section + insert_before, 1)
+
+          old_next = '''## Next exact action\n\n1. Treat Build220 as a real-device ineffective grid candidate; do not merge or tune the UIKit surface blindly.\n2. Add measurement-only diagnostics for MainActor `image` publication / synchronous Combine→`UIImageView` adoption duration and nearby publish bursts.\n3. Add separate timing for pagination result application and Build213 page-persistent snapshot serialization/write, because the first Build220 dragging hitch is pagination-adjacent.\n4. Preserve Build212 as the historical guardrail: persistent page cache cannot be the universal cause because the grid hitch family predates Build213.\n5. Keep Home-carousel ownership separate and do not touch Player / Transport / Cache / Session P0 contracts.\n'''
+          new_next = '''## Next exact action\n\n1. Retire poster `0.14.66 (233)` as an invalid identity only; do not discard its measurement-only diagnostic code.\n2. Relabel that exact diagnostic logic to reserved poster `0.14.76 (243)` without changing runtime behavior, then run the poster source checker and exact Build229→Build243 scope guard.\n3. Run a dedicated Xcode 16.4 Release / IPA workflow for the exact Build243 source; verify bundle `com.embyplayerlab.app`, version/build, MinOS 15.0, artifact/source identities and hashes before handoff.\n4. Target-device test should reproduce Library 3×3 scrolling and capture `PosterScrollHitch`/`PosterScrollTiming`; use the new active background disk-read/decode/network/disk-write fields to classify the remaining non-pagination sudden twitch.\n5. Do not add another optimization patch until the new diagnostics provide a time-local correlation. Keep Home-carousel ownership separate and do not touch Player / Transport / Cache / Session P0 contracts.\n'''
+          if old_next not in text:
+              raise SystemExit('poster checkpoint next-action guard failed')
+          text = text.replace(old_next, new_next, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git add docs/project/current/dev/DEV-poster-grid-smoothness.md
+          git commit -m "Reserve poster Build243 after identity conflict"
+          git push origin HEAD:main
+      - name: Relabel poster diagnostics to Build243
+        run: |
+          git fetch origin perf/poster-grid-smoothness
+          git checkout -B perf/poster-grid-smoothness origin/perf/poster-grid-smoothness
+          test "$(git rev-parse HEAD)" = "deba1534e55bfc73f4d3cf43f2682c854a04cb39"
+          test "$(git rev-parse HEAD^)" = "f5e3e3eb144578c863b172e3bd3a1aa13e5c2177"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          identity = Path('Sources/Core/AppIdentity.swift')
+          text = identity.read_text(encoding='utf-8')
+          if text.count('0.14.66') != 2:
+              raise SystemExit('unexpected Build233 AppIdentity shape')
+          identity.write_text(text.replace('0.14.66', '0.14.76'), encoding='utf-8')
+
+          old = Path('docs/changelog/CHANGELOG_v0_14_66_build233.md')
+          new = Path('docs/changelog/CHANGELOG_v0_14_76_build243.md')
+          if not old.exists() or new.exists():
+              raise SystemExit('unexpected changelog relabel state')
+          content = old.read_text(encoding='utf-8').replace('# OnePlayer 0.14.66 / Build233', '# OnePlayer 0.14.76 / Build243')
+          new.write_text(content, encoding='utf-8')
+          old.unlink()
+          PY
+          python3 scripts/check_poster_grid_smoothness.py
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+          expected = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbySharedImageAndNavigation.swift',
+              'docs/changelog/CHANGELOG_v0_14_76_build243.md',
+              'scripts/check_poster_grid_smoothness.py',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', 'f5e3e3eb144578c863b172e3bd3a1aa13e5c2177...HEAD'], text=True).splitlines())
+          changed.discard('docs/changelog/CHANGELOG_v0_14_66_build233.md')
+          working = set(subprocess.check_output(['git', 'status', '--porcelain'], text=True).splitlines())
+          if not working:
+              raise SystemExit('expected relabel working tree changes')
+          final = set(subprocess.check_output(['git', 'diff', '--name-only', 'f5e3e3eb144578c863b172e3bd3a1aa13e5c2177'], text=True).splitlines())
+          final.update(p[3:] for p in working if p.startswith('?? '))
+          final.discard('docs/changelog/CHANGELOG_v0_14_66_build233.md')
+          if final != expected:
+              raise SystemExit(f'unexpected Build243 scope before commit: {sorted(final)}')
+          PY
+          git add Sources/Core/AppIdentity.swift docs/changelog/CHANGELOG_v0_14_66_build233.md docs/changelog/CHANGELOG_v0_14_76_build243.md
+          git commit -m "Relabel poster diagnostics as Build243"
+          python3 scripts/check_poster_grid_smoothness.py
+          test "$(git show HEAD:Sources/Core/AppIdentity.swift | grep -c '0.14.76')" -eq 2
+          test "$(git ls-tree -r --name-only HEAD | grep -c '^docs/changelog/CHANGELOG_v0_14_76_build243.md$')" -eq 1
+          test "$(git ls-tree -r --name-only HEAD | grep -c '^docs/changelog/CHANGELOG_v0_14_66_build233.md$')" -eq 0
+          git push origin HEAD:perf/poster-grid-smoothness
+          echo "BUILD243_SOURCE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Summary
+        run: echo "Poster Build243 exact source $BUILD243_SOURCE"
