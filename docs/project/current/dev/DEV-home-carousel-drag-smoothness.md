@@ -2,11 +2,11 @@
 
 ## Status
 
-**Active — Build239 / 0.14.72 remains the frozen foundation for all already accepted carousel contracts, but a new target-device tactile comparison reopens one narrow question: release-handoff velocity continuity. Keep the accepted 0.28 slow-drag commit, direction-aware latest-delivered velocity >=600 pt/s fling decision, Build237 white-flash correction, Build236 real-sample start handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle / 0.22s commit + 0.18s cancel tail unchanged. Matched 30fps evidence still shows OnePlayer and EX have materially similar late ease-out tails; the open difference is the whole-flick handoff immediately after finger release, because Build239 uses release velocity only as a binary commit gate and then always runs the same fixed 0.22s ease-out. Do not retune the accepted tail or velocity threshold without direct evidence.**
+**Active — Build240 / 0.14.73 is a measurement-only release-handoff diagnostic on top of the accepted Build239 foundation. It does not change the accepted 0.28 slow-drag commit, direction-aware latest-delivered velocity >=600 pt/s fling decision, Build237 white-flash correction, Build236 real-sample start handling, Build231 foreground compositing, Build226 Hero residency, or Build228 max-refresh-through-settle / 0.22s commit + 0.18s cancel tail. Build240 only records release velocity/progress plus the first post-release animated-progress and display-frame samples so the reopened momentum-continuity question can be measured before any behavior patch. CI/IPA is verified; target-device diagnostic evidence is still required.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
-- Working branch: `perf/home-carousel-velocity-fling-build239`
-- Current candidate: OnePlayer `0.14.72 (239)`
+- Working branch: `diag/home-carousel-release-handoff-build240`
+- Current candidate: OnePlayer `0.14.73 (240)`
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Deployment Target policy: remain iOS 15.0
 - Accepted overall product baseline: OnePlayer 0.14.49 / Build216 on `main`
@@ -682,6 +682,24 @@ Treat **velocity continuity across release** as the only reopened carousel quest
 - debounce/throttle/timer/interpolator/watchdog/retry smoothing;
 - Build227 physical-pixel foreground X rounding as a sufficient movie-title shimmer fix.
 
+## Build240 / 0.14.73 — release-handoff measurement only
+
+Build240 keeps Build239 runtime behavior unchanged and instruments only the already-reopened finger-release → settle handoff. At a committed release it records the existing direction-aware release velocity, touch-down actual progress, current visual progress and page width, then captures up to the first six animated `transitionProgress` changes and first six CADisplayLink intervals. The diagnostic reports derived point/second progress deltas in `HomeCarouselReleaseHandoff`; no timer, interpolator, spring, duration scaling, second visual owner or alternate gesture owner was added. Cancel behavior remains unchanged and is not promoted into a new experiment.
+
+Identity / validation:
+
+- branch: `diag/home-carousel-release-handoff-build240`
+- OnePlayer `0.14.73 (240)`
+- exact tested source / CI head: `0f894953a70e11712a82d28b4e8292979826575c`
+- run/job: `33235107680 / 99054618665` — success
+- artifact: `OnePlayer-0.14.73-build240-release-handoff-diagnostic`, ID `9709708870`, digest `sha256:62c9ee71324f0a4a22e3ce3b3ff8b7fdcb6abdb370980c1a89aba8c9bce69fc7`
+- IPA SHA-256: `a6afbd3706fc6227f9e09749c32680e6c967ea7b2acffd6f58c444a9ab0d5b15`
+- source ZIP SHA-256: `e9786d8d068e79f62f39464aa69ae6dae696ef223ab31f0b8184a5202eec513c`
+- bundle `com.embyplayerlab.app`; `MinimumOSVersion=15.0`; package identity independently reopened/verified
+- exact-scope CI confirms Build239 600 pt/s velocity gate, 0.28 progress gate, Build236 acquisition handling, Build231 one page-level `compositingGroup()`, Build226 Hero residency, Build228 0.22s/0.18s settle timing and Frozen/P0 paths remain unchanged.
+
+Evidence level: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device diagnostic pending ❌ / stable ❌.**
+
 ## Next exact action
 
-Keep every Build239 accepted/frozen sub-contract unchanged. If this last tactile difference is pursued, measure the release-to-settle handoff only: correlate the already available `release_velocity_x` / `actual_progress` with the first 2–3 post-release `transitionProgress` and display-frame deltas. The purpose is to test derivative/momentum continuity, not to retune the late ease-out tail. Do not add a timer, interpolator, spring, arbitrary duration scaling, or another visual owner without measured evidence.
+Install/test Build240 on iPhone 15 Pro Max / iOS 17.0 and perform several representative single quick flicks plus ordinary slow drags. Export the App log containing `HomeCarouselReleaseDecision` and `HomeCarouselReleaseHandoff`. Correlate each committed flick's accepted release velocity / visual progress with the first 2–3 post-release animation/display samples. Only if the measurements show a material derivative/momentum discontinuity should the next candidate change behavior. Do not retune the accepted 600 pt/s gate, 0.28 threshold, 0.22s/0.18s late tail, or add a timer/interpolator/spring/duration mapping without that evidence.

@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after new target-device tactile evidence narrowed the remaining Home-carousel difference to release-handoff momentum continuity: Build239 accepted contracts and matched late ease-out remain frozen, while only the finger-release → fixed-settle handoff is Active for possible measurement. Build216 remains the accepted merged overall runtime baseline._
+_Last updated after Build240 / 0.14.73 produced a verified measurement-only IPA for the narrowly reopened Home-carousel release-handoff momentum question. Build239 accepted interaction/presentation contracts and matched late ease-out remain frozen; Build240 changes diagnostics only and now awaits target-device App-log evidence. Build216 remains the accepted merged overall runtime baseline._
 
 ## Current accepted overall baseline
 
@@ -233,6 +233,12 @@ The matched OnePlayer 30fps recording shows materially similar normalized late s
 The matched OnePlayer-vs-EX 30fps comparison remains valid for the **late settle tail** and does not justify changing Build239's 0.22s commit / 0.18s cancel ease-out. The user subsequently clarified that EX still feels more effortless over the **whole single flick**. Build239 source provides a narrower explanation: release velocity is used only as a binary direction-aware >=600 pt/s commit decision, then discarded before a fixed 0.22s ease-out from whatever progress remains. Thus the visual tail may match while the release boundary still lacks momentum/derivative continuity.
 
 Keep the accepted Build239 velocity gate, Build237 white-flash fix, Build236 start-step real sample, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle frozen. The task is Active only for an optional release-handoff measurement; no behavior patch is authorized yet.
+
+### Home carousel Build240 release-handoff diagnostic — CI/IPA verified
+
+Build240 / 0.14.73 is measurement-only. It keeps Build239 behavior unchanged and records committed-release velocity/progress together with the first post-release animated `transitionProgress` and CADisplayLink samples. This directly implements the previously authorized measurement of derivative/momentum continuity without changing the accepted 600 pt/s direction-aware fling gate, 0.28 slow-drag threshold, Build237 white-flash fix, Build236 start handling, Build231 compositing, Build226 Hero residency, or Build228 0.22s/0.18s settle tail. No timer/interpolator/spring/duration mapping/second owner was added.
+
+Exact evidence: source `0f894953a70e11712a82d28b4e8292979826575c`; run/job `33235107680 / 99054618665` — success; artifact `9709708870` (`sha256:62c9ee71324f0a4a22e3ce3b3ff8b7fdcb6abdb370980c1a89aba8c9bce69fc7`); IPA SHA-256 `a6afbd3706fc6227f9e09749c32680e6c967ea7b2acffd6f58c444a9ab0d5b15`; source ZIP SHA-256 `e9786d8d068e79f62f39464aa69ae6dae696ef223ab31f0b8184a5202eec513c`; OnePlayer 0.14.73 (240), bundle `com.embyplayerlab.app`, MinOS 15.0 independently verified. Evidence is **Code written / CI passed / IPA produced+verified / target-device diagnostic pending / not stable**. Next authority must be target-device logs, not another guessed motion patch.
 
 ## Active: Poster-heavy scrolling smoothness
 
