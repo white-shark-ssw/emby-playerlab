@@ -35,6 +35,7 @@ private final class V3GlobalSearchViewModel: ObservableObject {
     private var searchGeneration = 0
     private var recommendationGeneration = 0
     private var recommendationLimit = 12
+    private var recommendationPosterImages: [String: UIImage] = [:]
     private var hasStoredServerSelection: Bool
 
     init() {
@@ -130,7 +131,7 @@ private final class V3GlobalSearchViewModel: ObservableObject {
             guard generation == searchGeneration else { return nil }
             do {
                 let targetClient = stored.id == currentSession.id ? currentClient : try await sessionStore.clientForBestRoute(for: stored)
-                let page = try await targetClient.searchItemsPage(term: trimmed, limit: 20, startIndex: 0, includeItemTypes: searchItemTypes)
+                let page = try await targetClient.searchPosterItemsPage(term: trimmed, limit: 18, startIndex: 0, includeItemTypes: searchItemTypes)
                 guard generation == searchGeneration, currentTerm == trimmed else { return nil }
                 if !page.items.isEmpty { serverResults.append(V3GlobalSearchServerResult(session: stored, client: targetClient, items: page.items, totalRecordCount: page.totalRecordCount)) }
             } catch {
@@ -154,6 +155,9 @@ private final class V3GlobalSearchViewModel: ObservableObject {
         await reloadRecommendations(client: client, targetLimit: recommendationLimit)
     }
 
+    func recommendationPosterImage(for itemID: String) -> UIImage? { recommendationPosterImages[itemID] }
+    func pinRecommendationPosterImage(_ image: UIImage, for itemID: String) { recommendationPosterImages[itemID] = image }
+
     private func reloadRecommendations(client: EmbyAPIClient, targetLimit: Int) async {
         guard recommendationsEnabled, !isLoadingRecommendations else { return }
         recommendationGeneration += 1
@@ -168,7 +172,7 @@ private final class V3GlobalSearchViewModel: ObservableObject {
             for library in libraries {
                 guard generation == recommendationGeneration, recommendationsEnabled else { return }
                 do {
-                    let suggestions = try await client.librarySuggestions(parentId: library.id, limit: min(100, targetLimit))
+                    let suggestions = try await client.librarySuggestions(parentId: library.id, limit: min(100, targetLimit), includeItemTypes: ["Movie", "Series"])
                     for item in suggestions where seen.insert(item.id).inserted {
                         result.append(item)
                         if result.count == targetLimit { break }
@@ -179,7 +183,11 @@ private final class V3GlobalSearchViewModel: ObservableObject {
                 if result.count == targetLimit { break }
             }
             guard generation == recommendationGeneration, recommendationsEnabled else { return }
-            recommendationItems = result
+            if recommendationItems.isEmpty { recommendationItems = result }
+            else {
+                let existingIDs = Set(recommendationItems.map(\.id))
+                recommendationItems.append(contentsOf: result.filter { !existingIDs.contains($0.id) })
+            }
             hasMoreRecommendations = result.count == targetLimit
         } catch {
             guard generation == recommendationGeneration else { return }
@@ -196,6 +204,55 @@ private final class V3GlobalSearchViewModel: ObservableObject {
 
     private func persistServerSelection() {
         UserDefaults.standard.set(Array(selectedServerIDs).sorted(), forKey: V3SearchExperienceStorage.selectedServerIDsKey)
+    }
+}
+
+
+private struct V3SearchRecommendationPosterCard: View {
+    @Environment(\.embyPosterGridCellWidth) private var gridCellWidth
+    let item: LibraryItem
+    let client: EmbyAPIClient
+    let pinnedImage: UIImage?
+    let onImageLoaded: (UIImage) -> Void
+
+    private var resolvedWidth: CGFloat { gridCellWidth ?? 118 }
+    private var posterHeight: CGFloat { floor(resolvedWidth / EmbyPosterGridMetrics.posterAspectRatio) }
+    private var posterImageMaxWidth: Int {
+        let available = UIScreen.main.bounds.width - EmbyPosterGridMetrics.horizontalPadding * 2 - EmbyPosterGridMetrics.columnSpacing * CGFloat(EmbyPosterGridMetrics.columnCount - 1)
+        let gridWidth = floor(max(1, available) / CGFloat(EmbyPosterGridMetrics.columnCount))
+        return min(440, max(1, Int(ceil(gridWidth * UIScreen.main.scale))))
+    }
+    private var yearText: String { item.productionYear.map(String.init) ?? " " }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if let pinnedImage { Image(uiImage: pinnedImage).resizable().aspectRatio(contentMode: .fill) }
+                    else {
+                        EmbyCachedRemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: posterImageMaxWidth, tag: item.preferredPrimaryImageTag), contentMode: .fill, onImageLoaded: onImageLoaded)
+                    }
+                }
+                .frame(width: resolvedWidth, height: posterHeight)
+                .clipped()
+                if item.playbackProgress > 0 { GeometryReader { proxy in VStack { Spacer(); Rectangle().fill(Color.blue).frame(width: proxy.size.width * item.playbackProgress, height: 3) } } }
+                if let count = item.userData?.unplayedItemCount, count > 0 {
+                    VStack { HStack { Spacer(); Text("\(count)").font(.caption2.weight(.bold)).foregroundColor(.white).padding(6).background(Color.blue).clipShape(Circle()) }; Spacer() }.padding(5)
+                } else if item.isPlayed {
+                    VStack { HStack { Spacer(); Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundColor(.white).padding(6).background(Color.green).clipShape(Circle()) }; Spacer() }.padding(5)
+                }
+            }
+            .frame(width: resolvedWidth, height: posterHeight)
+            .background(Color(uiColor: .secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name).font(.subheadline).lineLimit(1).frame(width: resolvedWidth, height: 20, alignment: .leading)
+                Text(yearText).font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: resolvedWidth, height: 16, alignment: .leading).opacity(item.productionYear == nil ? 0 : 1)
+            }
+            .frame(width: resolvedWidth, height: 38, alignment: .topLeading)
+        }
+        .frame(width: resolvedWidth, alignment: .leading)
     }
 }
 
@@ -312,7 +369,7 @@ struct V3EmbyGlobalSearchView: View {
                 }
             }
         } label: {
-            Image(systemName: "gearshape.circle").font(.system(size: 16.2, weight: .medium)).foregroundColor(.blue).frame(width: 26, height: 26)
+            Image(systemName: "gearshape.circle").font(.system(size: 18.6, weight: .medium)).foregroundColor(.blue).frame(width: 30, height: 30)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("搜索设置")
@@ -398,9 +455,12 @@ struct V3EmbyGlobalSearchView: View {
                     guard model.hasMoreRecommendations else { return }
                     Task { await model.loadMoreRecommendations(client: currentClient) }
                 }) { item in
-                    EmbyPosterDetailLink(item: item, client: currentClient) { V3PosterCard(item: item, client: currentClient, width: nil) }
+                    EmbyPosterDetailLink(item: item, client: currentClient) {
+                        V3SearchRecommendationPosterCard(item: item, client: currentClient, pinnedImage: model.recommendationPosterImage(for: item.id)) { image in
+                            model.pinRecommendationPosterImage(image, for: item.id)
+                        }
+                    }
                 }
-                if model.isLoadingRecommendations && !model.recommendationItems.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8) }
             }
         }
     }
@@ -529,7 +589,7 @@ private final class V3GlobalSearchServerGridViewModel: ObservableObject {
     private(set) var hasLoaded = false
     private let term: String
     private let client: EmbyAPIClient
-    private let pageSize = 60
+    private let pageSize = 18
     private let includeItemTypes = ["Movie", "Series", "BoxSet"]
     private var nextStartIndex = 0
     private var isFetching = false
@@ -545,7 +605,7 @@ private final class V3GlobalSearchServerGridViewModel: ObservableObject {
         let start = nextStartIndex
         defer { isFetching = false; isInitialLoading = false; hasLoaded = true }
         do {
-            let page = try await client.searchItemsPage(term: term, limit: pageSize, startIndex: start, includeItemTypes: includeItemTypes)
+            let page = try await client.searchPosterItemsPage(term: term, limit: pageSize, startIndex: start, includeItemTypes: includeItemTypes)
             let newItems = page.items.filter { seenItemIDs.insert($0.id).inserted }
             if !newItems.isEmpty { items.append(contentsOf: newItems) }
             nextStartIndex = start + page.items.count

@@ -142,6 +142,28 @@ final class EmbyAPIClient {
         return EmbyItemPage(items: deduplicated(page.items), totalRecordCount: page.totalRecordCount)
     }
 
+    func searchPosterItemsPage(term: String, limit: Int = 18, startIndex: Int = 0, includeItemTypes: [String]) async throws -> EmbyItemPage {
+        guard let userId else { throw EmbyAPIError.missingSession }
+        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return EmbyItemPage(items: [], totalRecordCount: 0) }
+        var query = [
+            URLQueryItem(name: "Fields", value: "ImageTags,PrimaryImageAspectRatio,UserData,ProductionYear,SeriesName,SeriesId"),
+            URLQueryItem(name: "EnableImages", value: "true"),
+            URLQueryItem(name: "ImageTypeLimit", value: "1"),
+            URLQueryItem(name: "EnableImageTypes", value: "Primary"),
+            URLQueryItem(name: "EnableUserData", value: "true"),
+            URLQueryItem(name: "Recursive", value: "true"),
+            URLQueryItem(name: "SearchTerm", value: trimmed),
+            URLQueryItem(name: "StartIndex", value: String(startIndex)),
+            URLQueryItem(name: "Limit", value: String(limit)),
+            URLQueryItem(name: "SortBy", value: "SortName"),
+            URLQueryItem(name: "SortOrder", value: "Ascending"),
+        ]
+        if !includeItemTypes.isEmpty { query.append(URLQueryItem(name: "IncludeItemTypes", value: includeItemTypes.joined(separator: ","))) }
+        let page: EmbyItemPage = try await send(path: "Users/\(userId)/Items", method: "GET", query: query)
+        return EmbyItemPage(items: deduplicated(page.items), totalRecordCount: page.totalRecordCount)
+    }
+
     func similarItems(itemId: String, includeItemTypes: [String], limit: Int = 16) async throws -> [LibraryItem] {
         guard let userId else { throw EmbyAPIError.missingSession }
         var query = commonBrowseFields + [
