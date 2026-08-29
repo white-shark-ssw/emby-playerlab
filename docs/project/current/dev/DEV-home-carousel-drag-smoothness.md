@@ -2,7 +2,7 @@
 
 ## Status
 
-**Frozen-for-current-phase at Build239 / 0.14.72 — target-device velocity-fling behavior is accepted, the Build237 white-flash correction remains accepted, and a matched OnePlayer vs EX 30fps comparison shows the existing Build239 commit ease-out tail is already materially aligned with EX. Keep 0.28 slow-drag commit, direction-aware latest-delivered velocity >=600 pt/s, Build236 real-sample start handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle / 0.22s commit + 0.18s cancel tail. No further carousel tuning is justified without a new real-device regression. Whole-product accepted baseline remains Build216 on main; Build239 is a feature freeze point, not yet a merged overall product baseline.**
+**Active — Build239 / 0.14.72 remains the frozen foundation for all already accepted carousel contracts, but a new target-device tactile comparison reopens one narrow question: release-handoff velocity continuity. Keep the accepted 0.28 slow-drag commit, direction-aware latest-delivered velocity >=600 pt/s fling decision, Build237 white-flash correction, Build236 real-sample start handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle / 0.22s commit + 0.18s cancel tail unchanged. Matched 30fps evidence still shows OnePlayer and EX have materially similar late ease-out tails; the open difference is the whole-flick handoff immediately after finger release, because Build239 uses release velocity only as a binary commit gate and then always runs the same fixed 0.22s ease-out. Do not retune the accepted tail or velocity threshold without direct evidence.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Working branch: `perf/home-carousel-velocity-fling-build239`
@@ -661,6 +661,14 @@ Build239 already uses `.easeOut(duration: 0.22)` for commit and `.easeOut(durati
 
 Evidence: Build239 Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device release intent accepted ✅ / matched OnePlayer-vs-EX tail comparison completed ✅ / feature frozen-for-current-phase ✅ / merged overall product baseline ❌.
 
+### 2026-08-29 new target-device evidence — whole-flick release handoff feels less effortless than EX
+
+After the matched recording established that Build239 already has a materially similar **late** ease-out tail, the user gave a more specific tactile verdict: **EX still feels more effortless / natural over the whole single flick**. This does not invalidate the accepted 600 pt/s fling gate or the matched late-tail evidence. It narrows the remaining difference to the release handoff.
+
+Exact Build239 source explains a credible mechanism. `finishNativeCarouselDrag` uses `latestMoveDeliveredVelocityX` only to decide `velocityCommit` (`directionalVelocity >= 600`). Once commit is chosen, velocity is discarded and `completeInteractiveTransition` always executes `withAnimation(.easeOut(duration: 0.22)) { transitionProgress = 1 }`, regardless of release speed or remaining distance. Therefore finger-tracking is real-touch 1:1 before release, but the first post-release derivative is owned by a fixed normalized animation rather than by the user's measured release momentum. A 700 pt/s and 2000 pt/s flick, or a flick released at 5% versus 25% progress, enter the same 0.22s settle law. This can create a subtle handoff/impedance change even when the last 3–4 settle frames look nearly identical to EX.
+
+Treat **velocity continuity across release** as the only reopened carousel question. Do not infer EX's private implementation (UIScrollView, spring constants, etc.) from the recording. Do not reopen Build237 white-flash, Build236 start-step, Build231 compositing, Build226 Hero residency, Build228 max-refresh-through-settle, the accepted 600 pt/s commit gate, or the matched 0.22s late tail without new regression evidence. Before any behavior patch, measure/compare release velocity against the first post-release progress/display deltas so a change is evidence-backed rather than a guessed spring/easing parameter.
+
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -676,4 +684,4 @@ Evidence: Build239 Code written ✅ / exact scope+Frozen guard ✅ / CI passed �
 
 ## Next exact action
 
-No further Home-carousel tuning is planned. Keep Build239 as the frozen-for-current-phase feature baseline and reopen only for a new real-device regression. Do not tune the 600 pt/s threshold, 0.28 slow-drag threshold, 0.22s/0.18s ease-out tail, Build236 start-step path, Build231 compositing, Build226 Hero residency or Build237 white-flash correction without new evidence.
+Keep every Build239 accepted/frozen sub-contract unchanged. If this last tactile difference is pursued, measure the release-to-settle handoff only: correlate the already available `release_velocity_x` / `actual_progress` with the first 2–3 post-release `transitionProgress` and display-frame deltas. The purpose is to test derivative/momentum continuity, not to retune the late ease-out tail. Do not add a timer, interpolator, spring, arbitrary duration scaling, or another visual owner without measured evidence.

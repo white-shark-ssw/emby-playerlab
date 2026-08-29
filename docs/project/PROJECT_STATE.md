@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after a matched Build239-vs-EX 30fps comparison confirmed OnePlayer already has a materially similar ease-out settle tail. Home-carousel interaction/presentation is frozen-for-current-phase at Build239 / 0.14.72; Build216 remains the accepted merged overall runtime baseline._
+_Last updated after new target-device tactile evidence narrowed the remaining Home-carousel difference to release-handoff momentum continuity: Build239 accepted contracts and matched late ease-out remain frozen, while only the finger-release → fixed-settle handoff is Active for possible measurement. Build216 remains the accepted merged overall runtime baseline._
 
 ## Current accepted overall baseline
 
@@ -227,6 +227,12 @@ A new EX screen recording (5.0s, 510×1108, 30fps) shows a clearly decelerating 
 Build239 / 0.14.72 is the current feature freeze point for Home carousel interaction/presentation. Target-device release intent is accepted with 0.28 slow-drag commit plus direction-aware latest-delivered velocity >=600 pt/s; the predicted-total-distance wall remains removed. Build237 white-flash correction, Build236 first-post-acquisition real baseline, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle/release tail are retained.
 
 The matched OnePlayer 30fps recording shows materially similar normalized late settle decay to EX (representative OnePlayer ~100→47→11→0 vs EX ~100→43→11→0; second sample OnePlayer ~100→42→6→0 vs EX ~100→49→17→0). This removes the remaining evidence basis for another tail-tuning build. Reopen only for a new target-device regression. This is a feature freeze point, not a replacement for the merged overall Build216 baseline.
+
+### Home carousel — Build239 foundation retained; release-handoff continuity narrowly reopened
+
+The matched OnePlayer-vs-EX 30fps comparison remains valid for the **late settle tail** and does not justify changing Build239's 0.22s commit / 0.18s cancel ease-out. The user subsequently clarified that EX still feels more effortless over the **whole single flick**. Build239 source provides a narrower explanation: release velocity is used only as a binary direction-aware >=600 pt/s commit decision, then discarded before a fixed 0.22s ease-out from whatever progress remains. Thus the visual tail may match while the release boundary still lacks momentum/derivative continuity.
+
+Keep the accepted Build239 velocity gate, Build237 white-flash fix, Build236 start-step real sample, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle frozen. The task is Active only for an optional release-handoff measurement; no behavior patch is authorized yet.
 
 ## Active: Poster-heavy scrolling smoothness
 
