@@ -396,3 +396,16 @@ Update this index when a build materially changes architectural understanding, b
 - package verified: `com.embyplayerlab.app`, `0.14.83 (250)`, `MinimumOSVersion=15.0`, IPA integrity passed.
 - superseded CI-only incident: run `33263000305` failed compilation before packaging after an intermediate stale Search-view replacement; no IPA from that run and it is not product evidence.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
+
+
+### Build251 / 0.14.84 — Search user-global Suggestions candidate
+
+- Build250 target-device: Dock/keyboard remains accepted; recommendation first paint rejected because Search still spins.
+- comparative evidence: official Emby Web Search on the same server immediately shows built-in `更多推荐`.
+- exact runtime source: `cc1806d7f606581e138579b44d94e16dc9ff7135`.
+- change: replace `UserViews` + per-library `ParentId` Suggestions traversal with one user-global `/Users/{userId}/Suggestions` request using `IncludeItemTypes=Movie,Series`, `Limit=9`; no fallback traversal.
+- run/job: `33264608646 / 99132347141` — success.
+- artifact: `OnePlayer-0.14.84-Build251-Search`; ID `9718288974`; digest `sha256:da474aaa24a3d8ff65e41ed990b861ba377f6a92938670bfe89a9625d8cc4470`.
+- IPA SHA-256: `4923368ddca5bca9e3d9db83234b19547b12673feb22af50fd3e3279b08cc750`.
+- package: `com.embyplayerlab.app`, `0.14.84 (251)`, `MinimumOSVersion=15.0`, IPA integrity passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
