@@ -3,6 +3,8 @@ name: TEMP Finalize Home Carousel Build241 Compile
 on:
   push:
     branches: [ci/finalize-home-carousel-build241]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
