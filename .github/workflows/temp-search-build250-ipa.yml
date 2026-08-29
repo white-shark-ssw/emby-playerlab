@@ -14,7 +14,7 @@ jobs:
       - name: Checkout exact Search Build250 candidate source
         uses: actions/checkout@v4
         with:
-          ref: a94751ad8c4cce46ee3e9dc771411f87f7047b84
+          ref: 6e7ae960bd3cc353b8d6146aea363f3876e9e8e8
       - name: Select Xcode 16.4
         run: |
           set -euo pipefail
