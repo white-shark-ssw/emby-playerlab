@@ -47,12 +47,12 @@ struct EmbyServerRootViewV3: View {
                     .ignoresSafeArea(.container, edges: .bottom)
                     .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 }
+                .ignoresSafeArea(.keyboard, edges: selectedTab == .search ? .bottom : [])
             } else {
                 ProgressView("连接 \(session.serverName)…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .ignoresSafeArea(.keyboard, edges: selectedTab == .search ? .bottom : [])
         .task { await resolveClient() }
     }
 
