@@ -1,0 +1,134 @@
+name: TEMP Finalize Home Carousel Build241 Docs
+
+on:
+  push:
+    branches: [docs/finalize-home-carousel-build241]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Finalize carousel project documentation
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # MODULE_STATUS.md
+          path = Path('docs/project/MODULE_STATUS.md')
+          text = path.read_text()
+          lines = text.splitlines()
+          out = []
+          home_done = other_done = False
+          for line in lines:
+              if line.startswith('| Home carousel interaction |'):
+                  out.append('| Home carousel interaction | **Frozen / final at Build241 / merged to main** | Build241 / OnePlayer 0.14.74 is the user-accepted final carousel behavior on iPhone 15 Pro Max / iOS 17.0. Exact tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`; run/job `33247149430 / 99086484795`; artifact `9713225510`; IPA SHA-256 `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`; MinOS 15.0. Final integration PR #262 copied only the five exact Build241 carousel runtime blobs onto current `main` and merged at `75d9f53d0984ee7f32e7e3fa02cd9bf8794b56e3`; independent integration compile run `33248884259 / 99090990039` passed with MinOS 15.0. Build242 / 0.14.75 is diagnostic-only, intentionally altered away from normal carousel behavior for whole-stack Home-performance attribution, and must never be treated as final/product/inheritance baseline. User reported Build242 vs Build241 Home vertical-scroll difference was not obvious; this weakens the whole-carousel-as-major-Home-bottleneck hypothesis. When carousel is disabled in settings, `carouselItems` returns `[]`, so the expensive persistent/Hero/preload/interaction presentation stack is not mounted. Do not reopen without new regression evidence or an explicit new requirement. |')
+                  home_done = True
+              elif line.startswith('| Other product modules |'):
+                  out.append('| Other product modules | Active parallel work | Build216 / 0.14.49 remains the accepted packaged overall runtime identity, while `main` additionally contains the completed/frozen Build241 Home-carousel runtime contract through PR #262. Build242 is diagnostic-only and excluded from product inheritance. Poster and Aether remain separate Active tasks with independent checkpoints/branches. |')
+                  other_done = True
+              else:
+                  out.append(line)
+          if not (home_done and other_done):
+              raise SystemExit('MODULE_STATUS expected rows not found')
+          path.write_text('\n'.join(out) + '\n')
+
+          # PROJECT_STATE.md
+          path = Path('docs/project/PROJECT_STATE.md')
+          text = path.read_text()
+          old_first = re.search(r'_Last updated[^\n]*_', text)
+          if not old_first:
+              raise SystemExit('PROJECT_STATE last-updated line not found')
+          new_first = '_Last updated after Home-carousel completion: Build241 / OnePlayer 0.14.74 is the user-accepted final carousel behavior and is now frozen. Its five exact runtime files were cleanly integrated onto current `main` through PR #262; Build242 / 0.14.75 remains diagnostic-only and is explicitly excluded as a product or inheritance baseline. Build216 remains the accepted packaged overall runtime identity._'
+          text = text[:old_first.start()] + new_first + text[old_first.end():]
+          start = text.find('## Active: Home carousel interaction')
+          if start == -1:
+              raise SystemExit('PROJECT_STATE active carousel section not found')
+          next_heading = text.find('\n## ', start + 4)
+          if next_heading == -1:
+              next_heading = len(text)
+          completed = '''## Completed / frozen: Home carousel interaction — Build241 / 0.14.74
+
+Work `DEV-home-carousel-drag-smoothness` is complete. The controlling product/runtime result is **Build241 / OnePlayer 0.14.74**, explicitly selected by the user as the final carousel version after target-device testing on iPhone 15 Pro Max / iOS 17.0.
+
+Final Build241 behavior retains the evidence-backed single UIKit interaction owner, acquisition handling, full-width page slots, three-slot Hero residency, page-level foreground `compositingGroup()`, exact device-max refresh through settle, persistent white-flash correction, ordinary progress commit `>=0.28`, direction-aware latest-delivered fling commit `>=500 pt/s`, commit `.easeOut(duration: 0.22)` and cancel `.easeOut(duration: 0.18)`. No debounce accumulation, second SwiftUI gesture owner, interpolation, timer/watchdog/retry smoothing, or Build240 release-handoff diagnostic is part of the final contract.
+
+Build241 exact tested source: `997a93a5f2c3c6544908ad112df5e714d2538e65`; run/job `33247149430 / 99086484795`; artifact `9713225510`; artifact digest `sha256:3ea36257c97b4a7947bb46e9aa1e0a5d2dcbd1a96ddf1977d58e0cada180525f`; IPA SHA-256 `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`; source ZIP SHA-256 `b1e37c1c79f08552ad9de6819838cbca1b5b95cd4cc8a95c5b3ebf08a73ab664`; built MinOS 15.0. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested and user accepted ✅ / carousel stable-frozen ✅**.
+
+The historical Build241 development branch was not merged wholesale because it had diverged from current `main` and contained unrelated temporary workflows/history. Instead, PR #262 integrated only the five exact Build241 runtime blobs (`EmbyHomeCarouselCadenceDiagnosticsV3.swift`, `EmbyHomeCarouselInteractionV3.swift`, `EmbyHomeCarouselStateV3.swift`, `EmbyHomeCoreV3.swift`, `EmbyHomeHeroV3.swift`) onto current `main`. PR #262 merged at `75d9f53d0984ee7f32e7e3fa02cd9bf8794b56e3`. Independent integration compile run/job `33248884259 / 99090990039` verified those exact blob identities, Release compilation for generic iOS, and MinOS 15.0. This integration CI is not a new real-device build; Build241 remains the real-device acceptance authority.
+
+**Build242 / OnePlayer 0.14.75 is not a final version.** It was an intentionally altered diagnostic package that disabled the carousel presentation/runtime stack for Home-performance attribution and, per the user's final correction, the test modifications made it unsuitable/broken as normal carousel product behavior. Never inherit product behavior from Build242 and never call it stable/final. Its only durable diagnostic conclusion is that the user perceived little/no Home vertical-scroll difference versus Build241, so the whole carousel stack is not demonstrated to be a major Home-wide performance bottleneck. Normal settings behavior also returns `carouselItems == []` when the carousel is disabled, preventing the expensive persistent backdrop/Hero/preload/interaction presentation stack from mounting.
+
+Do not reopen the carousel task unless new real-device regression evidence or an explicit new product requirement appears.
+'''
+          text = text[:start] + completed.rstrip() + '\n' + text[next_heading:]
+          path.write_text(text)
+
+          # TECHNICAL_DECISIONS.md — append one durable final decision with next D number.
+          path = Path('docs/project/TECHNICAL_DECISIONS.md')
+          text = path.read_text().rstrip() + '\n\n'
+          nums = [int(x) for x in re.findall(r'^## D(\d+)\b', text, re.M)]
+          n = max(nums, default=0) + 1
+          text += f'''## D{n:03d} — Home carousel is frozen on Build241; Build242 is diagnostic-only\n\nBuild241 / OnePlayer 0.14.74 is the final Home-carousel behavior selected by the user after target-device testing. The frozen interaction/presentation contract is the exact Build241 tested runtime at source `997a93a5f2c3c6544908ad112df5e714d2538e65`: one UIKit interaction owner; acquisition-relative handling; full-width page slots; three-slot Hero residency; page-level foreground `compositingGroup()`; device-max refresh retained through settle; persistent white-flash correction; ordinary progress commit `>=0.28`; direction-aware latest-delivered fling commit `>=500 pt/s`; commit/cancel settle durations 0.22/0.18 s. Do not replace it with another smoothing owner, timer/watchdog/retry/debounce/interpolation layer without new real-device regression evidence.\n\nPR #262 integrated only the five exact Build241 runtime blobs onto current `main` and merged at `75d9f53d0984ee7f32e7e3fa02cd9bf8794b56e3`. Independent integration compile run/job `33248884259 / 99090990039` passed and preserved MinOS 15.0. The integration compile is CI evidence only; the real-device acceptance authority remains Build241 itself.\n\nBuild242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B, not a product baseline. It intentionally disabled the carousel presentation/runtime stack and the user explicitly states those diagnostic changes made it unsuitable/broken as normal carousel behavior. Never inherit carousel runtime from Build242. Its retained diagnostic result is only that Home vertical scrolling felt little/no different from Build241, weakening the hypothesis that the whole carousel stack is a major Home-wide performance bottleneck. When the user disables carousel in normal settings, `carouselItems` returns `[]`, so expensive persistent/Hero/preload/interaction presentation is absent.\n'''
+          path.write_text(text)
+
+          # BUILD_TEST_INDEX.md
+          path = Path('docs/project/BUILD_TEST_INDEX.md')
+          text = path.read_text()
+          row_pattern = re.compile(r'^\| \*\*Build241 / 0\.14\.74\*\* \|.*$', re.M)
+          final_row = '| **Build241 / 0.14.74** | Home-carousel final interaction/presentation contract | **User-accepted final carousel version; stable/frozen and integrated to main.** Exact tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`; run/job `33247149430 / 99086484795`; artifact `9713225510`; IPA SHA-256 `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`; MinOS 15.0. Final behavior uses direction-aware latest-delivered `>=500 pt/s` fling gate plus ordinary `>=0.28` progress commit and retained Build239/Build237/Build236/Build231/Build226/Build228 contracts. PR #262 later integrated the five exact Build241 runtime blobs onto current `main`; integration compile run `33248884259` passed. Build241 remains the real-device acceptance authority. |'
+          if row_pattern.search(text):
+              text = row_pattern.sub(final_row, text, count=1)
+          else:
+              marker = '| **Build219 / 0.14.52**'
+              idx = text.find(marker)
+              if idx == -1:
+                  raise SystemExit('BUILD_TEST_INDEX insertion anchor not found')
+              # Insert before Build219 only if Build241 row was historically absent from milestone table.
+              text = text[:idx] + final_row + '\n' + text[idx:]
+
+          # Replace final Build242 target-device section if present.
+          b242 = text.find('## Build242 target-device result — 2026-08-29')
+          if b242 != -1:
+              next_h = text.find('\n## ', b242 + 4)
+              if next_h == -1:
+                  next_h = len(text)
+              repl = '''## Build242 diagnostic-only result — 2026-08-29
+
+- Identity: OnePlayer 0.14.75 / Build242; exact source `3bf163d2c443520c0f22bba9b49902928fa36ca8`; run/job `33247895006 / 99088437546`; artifact `9713463258`; IPA SHA-256 `9c08ed8965e5e9e99bf4a17768cc8d124209c3b42e9e48d8d78fba720415e5d4`; MinOS 15.0.
+- Purpose: whole-carousel Home-performance attribution by intentionally disabling persistent backdrop, Hero carousel rendering/interaction, preload, auto-advance and carousel-owned Hero scroll updates.
+- Target-device result: user reports Home vertical-scroll difference versus Build241 feels small / not obvious.
+- Final classification: **real-device diagnostic tested only; not a product candidate, not stable, not an inheritance baseline.** The user explicitly reports the diagnostic modifications made Build242 unsuitable/broken as normal carousel behavior. Never supersede Build241 with Build242.
+- Retained conclusion only: disabling the whole carousel presentation stack did not produce a clear Home vertical-scroll improvement, so the whole carousel stack is not demonstrated to be a major Home-wide performance bottleneck.
+'''
+              text = text[:b242] + repl.rstrip() + '\n' + text[next_h:]
+
+          text = text.rstrip() + '''\n\n## Home-carousel final main integration — 2026-08-29\n\n- Final real-device behavior authority: **Build241 / OnePlayer 0.14.74**.\n- Clean integration PR: **#262**, merged commit `75d9f53d0984ee7f32e7e3fa02cd9bf8794b56e3`.\n- Integration scope: exactly five Build241 runtime files, no Build242 diagnostic behavior and no wholesale merge of the diverged historical Build241 branch.\n- Exact final main blob identities: cadence `c5ec51991d9a629cfb39785efeb597f3c51375ef`; interaction `144be65ba3fa5618d39591c5f67747024dc5ff0c`; state `e18fc8724170f2a7e613ac93beedf54c3b8d47e8`; core `c7900bae5e608ae46c0cd476c1f08999be9baf0b`; Hero `ab2ab5d80a59e174622dca0006c0f3aad4111a54`.\n- Independent integration compile run/job: `33248884259 / 99090990039` — success; exact blob/contract checks passed; Release generic-iOS compile passed; built MinOS 15.0.\n- Evidence discipline: integration CI does not create a new target-device acceptance identity. Build241 itself supplies the real-device acceptance; the carousel module is now stable/frozen.\n'''
+          path.write_text(text)
+
+          # Completed task checkpoints are removed from current/dev after durable facts are moved above.
+          for p in [
+              Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md'),
+              Path('docs/project/current/dev/BUILD241_REAL_DEVICE_LOG_2026-08-29.md'),
+          ]:
+              if p.exists():
+                  p.unlink()
+          PY
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/project
+          git diff --cached --check
+          git diff --cached --name-status
+          git commit -m 'Finalize Build241 Home carousel project state'
+          git push origin HEAD:main
