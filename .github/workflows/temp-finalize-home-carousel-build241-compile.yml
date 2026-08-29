@@ -1,0 +1,61 @@
+name: TEMP Finalize Home Carousel Build241 Compile
+
+on:
+  push:
+    branches: [ci/finalize-home-carousel-build241]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact integration source
+        uses: actions/checkout@v4
+        with:
+          ref: ba161c8eac1841625fb740df00100a56fdfd2d83
+
+      - name: Validate exact Build241 carousel blobs
+        run: |
+          set -euo pipefail
+          test "$(git hash-object Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift)" = "c5ec51991d9a629cfb39785efeb597f3c51375ef"
+          test "$(git hash-object Sources/UI/EmbyHomeCarouselInteractionV3.swift)" = "144be65ba3fa5618d39591c5f67747024dc5ff0c"
+          test "$(git hash-object Sources/UI/EmbyHomeCarouselStateV3.swift)" = "e18fc8724170f2a7e613ac93beedf54c3b8d47e8"
+          test "$(git hash-object Sources/UI/EmbyHomeCoreV3.swift)" = "c7900bae5e608ae46c0cd476c1f08999be9baf0b"
+          test "$(git hash-object Sources/UI/EmbyHomeHeroV3.swift)" = "ab2ab5d80a59e174622dca0006c0f3aad4111a54"
+          grep -F 'directionalVelocity >= 500' Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          grep -F 'actualProgress >= 0.28 || velocityCommit' Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          ! grep -R -F 'HomeCarouselReleaseHandoff' Sources/UI
+          grep -F 'iOS: "15.0"' project.yml
+          grep -F 'deploymentTarget: "15.0"' project.yml
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Compile Release for generic iOS device
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build
+
+      - name: Validate built MinOS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP_PATH/Info.plist")" = "15.0"
+          echo "Compiled exact Build241 carousel runtime on current main integration source."
