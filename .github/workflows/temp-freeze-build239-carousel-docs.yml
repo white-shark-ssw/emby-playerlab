@@ -20,11 +20,11 @@ jobs:
       - name: Prepare helper and latest main
         run: |
           set -euo pipefail
-          cp scripts/temp_freeze_build239_carousel_docs.py /tmp/temp_freeze_build239_carousel_docs.py
+          cp scripts/temp_freeze_build239_carousel_docs_v2.py /tmp/temp_freeze_build239_carousel_docs_v2.py
           git fetch origin main
           git checkout -B main origin/main
       - name: Apply Build239 freeze docs
-        run: python3 /tmp/temp_freeze_build239_carousel_docs.py
+        run: python3 /tmp/temp_freeze_build239_carousel_docs_v2.py
       - name: Validate and push docs
         run: |
           set -euo pipefail
