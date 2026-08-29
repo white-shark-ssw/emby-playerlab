@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Home-carousel completion: Build241 / OnePlayer 0.14.74 is the user-accepted final carousel behavior and is now frozen. Its five exact runtime files were cleanly integrated onto current `main` through PR #262; Build242 / 0.14.75 remains diagnostic-only and is explicitly excluded as a product or inheritance baseline. Build216 remains the accepted packaged overall runtime identity._
+_Last updated 2026-08-29: Home-carousel Build241 remains the user-accepted frozen carousel contract. Search Build244 has now been target-device tested and rejected as final; Search Build245 / OnePlayer 0.14.78 is CI/IPA verified and pending target-device validation. Build216 remains the accepted packaged overall runtime identity._
 
 ## Current accepted overall baseline
 
@@ -59,6 +59,18 @@ The historical Build241 development branch was not merged wholesale because it h
 **Build242 / OnePlayer 0.14.75 is not a final version.** It was an intentionally altered diagnostic package that disabled the carousel presentation/runtime stack for Home-performance attribution and, per the user's final correction, the test modifications made it unsuitable/broken as normal carousel product behavior. Never inherit product behavior from Build242 and never call it stable/final. Its only durable diagnostic conclusion is that the user perceived little/no Home vertical-scroll difference versus Build241, so the whole carousel stack is not demonstrated to be a major Home-wide performance bottleneck. Normal settings behavior also returns `carouselItems == []` when the carousel is disabled, preventing the expensive persistent backdrop/Hero/preload/interaction presentation stack from mounting.
 
 Do not reopen the carousel task unless new real-device regression evidence or an explicit new product requirement appears.
+
+## Active: Search page optimization — Build245 / 0.14.78
+
+Work `DEV-search-page-optimization` remains Active on `feat/search-page-optimization`, draft PR #264.
+
+Build244 / OnePlayer 0.14.77 was the first competitor-aligned Search package and is now **target-device tested but rejected as final**. The user's iPhone 15 Pro Max / iOS 17.0 screenshots established five concrete defects: the leading gear was too large; focusing Search still changed root geometry and pushed the Dock upward; one active Emby target still showed the grouped row instead of entering full results directly; recommendations were artificially capped/filtered; and the landing title/input/history geometry remained visibly larger/lower than the supplied competitor.
+
+Build245 / OnePlayer 0.14.78 makes only those evidence-backed Search changes. Exact tested product source `4c5f286ee870589bd2eac05119a516631a31391a`: gear font reduced exactly 40%; Search-owned title/input/history spacing and sizes tightened; Search keyboard safe-area ownership moved onto the actual root `GeometryReader`; exactly one active server now routes directly to the full paginated 3-column results page; recommendations now start at 12, carry no media-type filter and increase requested Emby Suggestions by 6 on approach to the end. The Emby Suggestions API has no `StartIndex`, so this uses increasing `Limit` plus deduplicated replacement rather than inventing pagination. Shared `EmbyPosterGrid.swift` remains untouched; Search uses its existing `horizontalPadding` input only.
+
+Dedicated Xcode 16.4 Release/MPV run/job `33253244567 / 99102435848` succeeded. Artifact `OnePlayer-0.14.78-Build245-Search`, ID `9715042997`, digest `sha256:7b4fc1baab92d4a05feb3c7a1d9989ab688c6bf01a00907d51ca863abe431ffd`; IPA SHA-256 `19f69ca62928a65fb23bfdb44c67a916a7ba9edea20c3c3755f0875bb65a6514`; source ZIP SHA-256 `31b116e57265aee94bcfb577dc60f0fb86e61739728d50a94e536299db936349`. Independent download verification reproduced both hashes, IPA archive validation passed, and packaged identity is `com.embyplayerlab.app`, OnePlayer `0.14.78 (245)`, `MinimumOSVersion=15.0`. Temporary CI files were removed after packaging; cleanup branch head `e45c82f41d3dcf3a7d72c7f4e510627fbeada20f` does not change the exact tested runtime snapshot.
+
+Evidence: **Build244 real-device tested/rejected as final; Build245 Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device tested ❌ / stable-frozen ❌**. Next gate is the user's Build245 target-device comparison against the same competitor layout and five requirements.
 
 ## Active: Poster-heavy scrolling smoothness
 
