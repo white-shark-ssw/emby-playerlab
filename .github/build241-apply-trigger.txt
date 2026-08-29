@@ -1,1 +1,2 @@
 trigger Build241 carousel threshold materialization
+retry after scope-check fix
