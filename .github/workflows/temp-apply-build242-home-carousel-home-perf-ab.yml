@@ -1,0 +1,78 @@
+name: TEMP Apply Build242 Home Carousel Home Performance A/B
+
+on:
+  push:
+    branches: [diag/home-carousel-home-perf-ab-build242]
+    paths: [.github/build242-apply-trigger.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/home-carousel-home-perf-ab-build242
+          fetch-depth: 0
+      - name: Materialize diagnostic-only Build242 from exact Build241 source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          core = Path('Sources/UI/EmbyHomeCoreV3.swift')
+          text = core.read_text()
+          assert 'private let homeCarouselPerformanceIsolationEnabled' not in text
+          text = text.replace(
+              '    private let carouselTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()\n',
+              '    private let carouselTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()\n    private let homeCarouselPerformanceIsolationEnabled = true\n',
+              1,
+          )
+          old = '''                    if immersive {\n                        V3HomeCarouselTransitionScope(state: carouselTransitionState) {\n                            persistentCarouselBackdrop(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom))\n                        }\n                    } else {\n                        Color(uiColor: .systemBackground).ignoresSafeArea()\n                    }\n                    if immersive { carouselPreloadLayer }\n'''
+          new = '''                    if immersive && !homeCarouselPerformanceIsolationEnabled {\n                        V3HomeCarouselTransitionScope(state: carouselTransitionState) {\n                            persistentCarouselBackdrop(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom))\n                        }\n                    } else {\n                        Color(uiColor: .systemBackground).ignoresSafeArea()\n                    }\n                    if immersive && !homeCarouselPerformanceIsolationEnabled { carouselPreloadLayer }\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          old = '''                    synchronizeCarouselItems()\n                    carouselLastSettledAt = Date()\n                    onCarouselActiveChanged(immersive)\n'''
+          new = '''                    if homeCarouselPerformanceIsolationEnabled {\n                        onCarouselActiveChanged(immersive)\n                    } else {\n                        synchronizeCarouselItems()\n                        carouselLastSettledAt = Date()\n                    }\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              '                .onReceive(carouselTimer) { _ in autoAdvanceCarouselIfNeeded() }\n                .onChange(of: model.carouselItems.map(\\.id)) { _ in synchronizeCarouselItems() }\n',
+              '                .onReceive(carouselTimer) { _ in if !homeCarouselPerformanceIsolationEnabled { autoAdvanceCarouselIfNeeded() } }\n                .onChange(of: model.carouselItems.map(\\.id)) { _ in if !homeCarouselPerformanceIsolationEnabled { synchronizeCarouselItems() } }\n',
+              1,
+          )
+          old = '''                        if immersive {\n                            V3HomeHeroScrollScope(state: heroScrollState) {\n                                V3HomeCarouselTransitionScope(state: carouselTransitionState) {\n                                    immersiveCarouselHero(width: width, viewportHeight: viewportHeight)\n                                }\n                            }\n                        }\n                        else { Color.clear.frame(height: 1) }\n'''
+          new = '''                        if immersive {\n                            if homeCarouselPerformanceIsolationEnabled {\n                                Color.clear.frame(height: homeCarouselPerformanceIsolationHeroHeight(width: width, viewportHeight: viewportHeight))\n                            } else {\n                                V3HomeHeroScrollScope(state: heroScrollState) {\n                                    V3HomeCarouselTransitionScope(state: carouselTransitionState) {\n                                        immersiveCarouselHero(width: width, viewportHeight: viewportHeight)\n                                    }\n                                }\n                            }\n                        }\n                        else { Color.clear.frame(height: 1) }\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              '                            guard immersive, isHomeActive else { return }\n',
+              '                            guard immersive, isHomeActive, !homeCarouselPerformanceIsolationEnabled else { return }\n',
+              1,
+          )
+          marker = '''    @MainActor\n    private func refreshHome() async {\n'''
+          helper = '''    private func homeCarouselPerformanceIsolationHeroHeight(width: CGFloat, viewportHeight: CGFloat) -> CGFloat {\n        let value = CGFloat(min(1, max(0, carouselDisplayRange)))\n        let adjustment: CGFloat\n        if value >= 0.30 {\n            adjustment = min(132, viewportHeight * 0.16) * ((value - 0.30) / 0.70)\n        } else {\n            adjustment = -min(52, viewportHeight * 0.06) * ((0.30 - value) / 0.30)\n        }\n        return AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + adjustment\n    }\n\n'''
+          assert marker in text
+          text = text.replace(marker, helper + marker, 1)
+          core.write_text(text)
+
+          identity = Path('Sources/Core/AppIdentity.swift')
+          ident = identity.read_text()
+          assert 'sourceVersion = "0.14.74"' in ident
+          ident = ident.replace('sourceVersion = "0.14.74"', 'sourceVersion = "0.14.75"')
+          ident = ident.replace('?? "0.14.74"', '?? "0.14.75"')
+          identity.write_text(ident)
+
+          changelog = Path('docs/changelog/CHANGELOG_v0_14_75_build242.md')
+          changelog.write_text('''# OnePlayer 0.14.75 / Build242\n\nDiagnostic-only Home performance A/B from exact Build241 source.\n\n- Keeps the Build241 500 pt/s fling behavior in source, but disables the entire carousel presentation path for this diagnostic package.\n- Preserves Home carousel data presence, immersive layout mode, Hero vertical footprint, Home rows, scroll structure and refresh behavior.\n- Disables full-screen persistent blurred backdrop, Hero carousel rendering/interaction, carousel image preload, carousel auto-advance and carousel-owned Hero scroll-state updates.\n- Purpose: compare Home vertical scrolling with Build241 and determine whether the carousel stack materially affects whole-Home performance.\n- No Player/Transport/Cache/Session/PiP changes.\n- Diagnostic only; not a candidate for normal product behavior.\n''')
+          PY
+          git diff --check
+          git diff -- Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCoreV3.swift
+          git status --short
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCoreV3.swift docs/changelog/CHANGELOG_v0_14_75_build242.md
+          git commit -m 'Home: isolate carousel rendering for Build242 performance A/B'
+          git push origin HEAD:diag/home-carousel-home-perf-ab-build242
