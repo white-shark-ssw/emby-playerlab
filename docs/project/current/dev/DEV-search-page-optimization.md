@@ -1,6 +1,6 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build250 target-device recommendation rejected; Build251 global-Suggestions correction CI/IPA verified, target-device pending
+- Status: Active — Build251 target-device returned 9 but displayed 0; Build252 CI/IPA verified, target-device pending
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
@@ -51,4 +51,17 @@ Build251 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified �
 
 ## Next exact action
 
-Target-device test Build251 first-paint time against the official Emby web Search behavior. The intended request contract is now one global Suggestions call rather than per-library traversal.
+Target-device test Build252. The expected behavior is that the same fast global request now renders its returned 9 recommendations instead of discarding them.
+
+
+## Build251 target-device result — 2026-08-30
+
+The user installed Build251. The spinner now ends quickly, but no recommendation content appears. Uploaded `OnePlayer-App-1788023908.log` proves the global request itself succeeds: `/Users/{userId}/Suggestions?...Limit=9&IncludeItemTypes=Movie,Series` returned 9 items, `nilType=0`, while the local post-filter accepted 0. Therefore Build251 fixed request scope/latency but still discarded the complete Emby Suggestions payload after receipt.
+
+Build251 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / request latency improved ✅ / recommendation display rejected ❌ / not stable**.
+
+## Build252 correction
+
+Exact product source `dbfd323ec4a14e12dc57293c98b1fe6fbe239c5e` keeps the single user-global Suggestions request with `IncludeItemTypes=Movie,Series` and removes only the incompatible second client-side type rejection. Search now consumes the exact 9-item Suggestions payload returned by that already constrained Emby request. A returned-type histogram diagnostic is retained for evidence; no library traversal, retry, fallback, timer, watchdog, second cache or shared poster-grid change is added.
+
+Build252 / OnePlayer 0.14.85 run/job `33265539007 / 99134824511` passed Xcode 16.4 Release build/package. Artifact `9718566319`, digest `sha256:15343da3075db72f32349250d0dc9a1a7b67ecb325bbcd507ea22276084abb9c`; IPA SHA-256 `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`; bundle `com.embyplayerlab.app`; MinOS 15.0; IPA integrity passed. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ❌ / not stable**.

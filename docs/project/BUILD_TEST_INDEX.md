@@ -409,3 +409,15 @@ Update this index when a build materially changes architectural understanding, b
 - IPA SHA-256: `4923368ddca5bca9e3d9db83234b19547b12673feb22af50fd3e3279b08cc750`.
 - package: `com.embyplayerlab.app`, `0.14.84 (251)`, `MinimumOSVersion=15.0`, IPA integrity passed.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
+
+
+### Build252 / 0.14.85 — Search direct global Suggestions payload
+
+- Build251 target-device: spinner ends quickly but no recommendation wall; log `OnePlayer-App-1788023908.log` shows global Suggestions `returned=9 nilType=0 accepted=0`.
+- exact product source: `dbfd323ec4a14e12dc57293c98b1fe6fbe239c5e`.
+- change: keep one global `/Users/{userId}/Suggestions?Limit=9&IncludeItemTypes=Movie,Series` request and remove only the second local type rejection; render the exact returned payload.
+- run/job: `33265539007 / 99134824511` — success.
+- artifact: `OnePlayer-0.14.85-Build252-Search`; ID `9718566319`; digest `sha256:15343da3075db72f32349250d0dc9a1a7b67ecb325bbcd507ea22276084abb9c`.
+- IPA SHA-256: `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`.
+- package: `com.embyplayerlab.app`, `0.14.85 (252)`, `MinimumOSVersion=15.0`, IPA integrity passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**

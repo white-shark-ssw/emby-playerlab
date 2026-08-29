@@ -135,3 +135,10 @@ Build250 / 0.14.83 is target-device rejected for recommendation first paint: the
 Source inspection showed OnePlayer already used Emby's `/Users/{userId}/Suggestions`, but added `ParentId` and serially traversed `UserViews`. Build251 exact runtime source `cc1806d7f606581e138579b44d94e16dc9ff7135` changes only this scope: one user-global Suggestions request, no `ParentId`, `IncludeItemTypes=Movie,Series`, `Limit=9`. Existing Movie/Series whitelist, startup warm, image disk cache, decoded-image cache, accepted Dock behavior and all Player/Transport/P0 contracts remain unchanged.
 
 Build251 / 0.14.84 run/job `33264608646 / 99132347141` passed Xcode 16.4 Release build/package. Artifact `9718288974`, digest `sha256:da474aaa24a3d8ff65e41ed990b861ba377f6a92938670bfe89a9625d8cc4470`; IPA SHA-256 `4923368ddca5bca9e3d9db83234b19547b12673feb22af50fd3e3279b08cc750`; bundle `com.embyplayerlab.app`; MinOS 15.0; IPA integrity passed. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable**.
+
+
+## Search Build251 real-device result → Build252 direct Suggestions payload — 2026-08-30
+
+Build251 target-device testing changed the diagnosis again: the global Suggestions request now completes quickly, but the Search page shows no recommendation content. Uploaded `OnePlayer-App-1788023908.log` records one global `/Users/{userId}/Suggestions` call with `Limit=9&IncludeItemTypes=Movie,Series`, followed by `returned=9 nilType=0 accepted=0`. Thus the server delivered a full 3×3 payload; OnePlayer discarded it locally.
+
+Build252 exact product source `dbfd323ec4a14e12dc57293c98b1fe6fbe239c5e` removes only that second local rejection and consumes the exact Emby global Suggestions payload. The request remains server-constrained to Movie/Series, startup warm/image caches remain, and Build248 Dock behavior plus all Player/Transport/P0 contracts are untouched. Run/job `33265539007 / 99134824511` passed; artifact `9718566319`; IPA SHA-256 `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`; MinOS 15.0. Build252 awaits target-device validation.
