@@ -1,0 +1,80 @@
+name: TEMP Sync Build242 Home Performance Docs
+
+on:
+  push:
+    branches: [diag/home-carousel-home-perf-ab-build242]
+    paths: [.github/build242-docs-sync-trigger.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Sync Build242 diagnostic evidence
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          checkpoint=Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+          s=checkpoint.read_text()
+          old='**Active — Build241 / 0.14.74 is now the verified test candidate from the exact Build239 behavior baseline. Per the user’s latest decision, Build240 release-handoff momentum diagnostics are no longer the active direction. Build241 lowers only the direction-aware latest-delivered fling trigger from 600 to 500 pt/s so intentional short flicks require slightly less force. The 0.28 slow-drag threshold, Build239 0.22s/0.18s settle behavior, Build237 white-flash correction, Build236 acquisition handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle remain unchanged. CI and IPA/package identity are verified; target-device acceptance is pending.**'
+          new='**Active — Build241 / 0.14.74 remains the normal carousel behavior candidate and its 500 pt/s fling gate is left unchanged after the latest target-device log showed no user-visible abnormality. Build242 / 0.14.75 is a diagnostic-only Home-performance A/B from the exact Build241 tested source: it preserves immersive Home mode, Hero vertical footprint, Home rows/scroll structure and refresh behavior while disabling the carousel presentation stack (persistent blurred backdrop, Hero carousel rendering/interaction, preload, auto-advance and carousel-owned Hero scroll updates). Build242 CI/IPA/package identity are verified; target-device Build241-vs-Build242 vertical-scroll comparison is pending.**'
+          assert old in s
+          s=s.replace(old,new,1)
+          s=s.replace('- Working branch: `tune/home-carousel-fling-threshold-build241`\n- Current candidate: OnePlayer `0.14.74 (241)`', '- Working branch: `diag/home-carousel-home-perf-ab-build242`\n- Current normal carousel candidate: OnePlayer `0.14.74 (241)`\n- Current diagnostic A/B: OnePlayer `0.14.75 (242)`',1)
+          marker='## Scope correction — 2026-08-28\n'
+          block='''## Build242 — whole-carousel Home-performance isolation A/B\n\n- Exact base: Build241 tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`.\n- Tested source: `3bf163d2c443520c0f22bba9b49902928fa36ca8`.\n- Run/job: `33247895006 / 99088437546` — success.\n- Artifact: `9713463258`; digest `sha256:40fbfb22bcb6461dd358cf72b6fd57fea934ca71acfd478978ffb29b0ebb119f`.\n- IPA SHA-256: `9c08ed8965e5e9e99bf4a17768cc8d124209c3b42e9e48d8d78fba720415e5d4`.\n- Source ZIP SHA-256: `6baaec3cb1bacb14842316baa0b2e4615477f1769ed46f4f7f64bb7287a46d52`.\n- Identity: OnePlayer `0.14.75 (242)`, `com.embyplayerlab.app`, MinOS 15.0 independently reopened.\n- Diagnostic isolation: preserve carousel data presence/immersive mode/Hero footprint/Home rows/vertical ScrollView; disable persistent backdrop, carousel preload, rendered/interactable Hero carousel, auto-advance and carousel-owned Hero scroll-state updates.\n- Purpose: answer whether the carousel whole stack materially degrades Home vertical scrolling. This is not a normal product candidate and must not replace Build241 behavior.\n- Next exact action: compare Build241 and Build242 on the same target device/data with repeated Home vertical swipes/inertia after initial load. If no clear repeatable improvement, stop treating the carousel whole stack as the primary Home bottleneck; if clearly smoother, isolate individual carousel costs in narrower evidence-backed A/Bs.\n\n'''
+          assert marker in s
+          s=s.replace(marker,block+marker,1)
+          checkpoint.write_text(s)
+
+          state=Path('docs/project/PROJECT_STATE.md')
+          s=state.read_text()
+          first=s.splitlines()[2] if len(s.splitlines())>2 else ''
+          s=s.replace('_Last updated after Build241 / 0.14.74 produced an independently verified IPA from the user-selected Build239 Home-carousel baseline. Build240 release-handoff diagnostics are no longer the active direction; Build241 only lowers the direction-aware fling trigger from 600 to 500 pt/s. Build216 remains the accepted merged overall runtime baseline._', '_Last updated after Build242 / 0.14.75 produced an independently verified diagnostic IPA isolating the carousel whole-stack contribution to Home performance. Build241 / 0.14.74 remains the normal carousel behavior candidate with the accepted-for-testing 500 pt/s fling gate; Build242 is diagnostic-only. Build216 remains the accepted merged overall runtime baseline._',1)
+          anchor='### 2026-08-28 acceptance-scope correction\n'
+          block='''### Home performance diagnostic — Build242 / 0.14.75\n\nBuild242 is an exact-Build241-source diagnostic A/B for whole-Home attribution. It keeps immersive Home selection, carousel data presence, the Hero vertical footprint, Home rows and the same vertical ScrollView structure, but removes the carousel presentation/runtime load: persistent blurred backdrop, carousel Hero rendering/interaction, preload, auto-advance and carousel-owned Hero scroll updates. Exact source `3bf163d2c443520c0f22bba9b49902928fa36ca8`; run/job `33247895006 / 99088437546`; artifact `9713463258`, digest `sha256:40fbfb22bcb6461dd358cf72b6fd57fea934ca71acfd478978ffb29b0ebb119f`; IPA SHA-256 `9c08ed8965e5e9e99bf4a17768cc8d124209c3b42e9e48d8d78fba720415e5d4`; source ZIP SHA-256 `6baaec3cb1bacb14842316baa0b2e4615477f1769ed46f4f7f64bb7287a46d52`; MinOS 15.0. Evidence: **Code written / CI passed / IPA produced+verified / target-device A/B pending / diagnostic only / not stable**.\n\n'''
+          assert anchor in s
+          s=s.replace(anchor,block+anchor,1)
+          state.write_text(s)
+
+          module=Path('docs/project/MODULE_STATUS.md')
+          s=module.read_text()
+          old='| Home carousel interaction | **Active — Build241 / 0.14.74 IPA verified from Build239 baseline; 500 pt/s fling gate target-device test pending** | User explicitly chose Build239 as the controlling behavior baseline and closed the Build240 handoff-diagnostic direction for now. Build241 changes only the direction-aware latest-delivered fling trigger `600 → 500 pt/s`; 0.28 slow-drag commit, Build239 0.22s/0.18s settle, Build237 white-flash correction, Build236/231/226/228 retained contracts and all Frozen/P0 paths remain unchanged. Exact tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`, run/job `33247149430 / 99086484795`, artifact `9713225510`, MinOS 15.0; target-device acceptance pending. |'
+          new='| Home carousel interaction | **Active — Build241 behavior retained; Build242 whole-carousel Home-performance diagnostic IPA verified** | Build241 / 0.14.74 remains the normal carousel candidate with `500 pt/s` fling gate and no user-visible abnormality in the latest target-device log. Build242 / 0.14.75 is diagnostic-only from exact Build241 source and disables carousel presentation/runtime load while preserving immersive Home mode, Hero footprint and Home vertical layout for attribution. Build242 source `3bf163d2c443520c0f22bba9b49902928fa36ca8`, run/job `33247895006 / 99088437546`, artifact `9713463258`, MinOS 15.0; Build241-vs-Build242 target-device Home-scroll A/B pending. |'
+          assert old in s
+          s=s.replace(old,new,1)
+          module.write_text(s)
+
+          index=Path('docs/project/BUILD_TEST_INDEX.md')
+          s=index.read_text()
+          row='| **Carousel Build242 / 0.14.75** | Whole-carousel Home-performance isolation A/B | **CI/IPA verified; target-device Home-scroll A/B pending; diagnostic only, not stable.** Exact Build241 tested source is the base. Preserves immersive Home mode, carousel data presence, Hero vertical footprint, Home rows and vertical ScrollView structure while disabling persistent blurred backdrop, carousel Hero rendering/interaction, preload, auto-advance and carousel-owned Hero scroll updates. Tested source `3bf163d2c443520c0f22bba9b49902928fa36ca8`; run/job `33247895006 / 99088437546`; artifact `9713463258` (`sha256:40fbfb22bcb6461dd358cf72b6fd57fea934ca71acfd478978ffb29b0ebb119f`); IPA SHA-256 `9c08ed8965e5e9e99bf4a17768cc8d124209c3b42e9e48d8d78fba720415e5d4`; source ZIP SHA-256 `6baaec3cb1bacb14842316baa0b2e4615477f1769ed46f4f7f64bb7287a46d52`; MinOS 15.0. |\n'
+          if row not in s:
+              pos=s.find('\n## Current accepted baseline')
+              assert pos!=-1
+              s=s[:pos]+"\n"+row+s[pos:]
+          index.write_text(s)
+
+          decisions=Path('docs/project/TECHNICAL_DECISIONS.md')
+          s=decisions.read_text()
+          anchor='## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only\n'
+          block='''Build242 is the whole-stack Home-performance attribution A/B and does **not** redefine normal carousel behavior. Exact Build241 source remains the behavioral baseline; Build242 preserves immersive Home mode, carousel data presence, Hero footprint and Home vertical layout while disabling carousel persistent blur, Hero rendering/interaction, preload, auto-advance and carousel-owned Hero scroll updates. Only a clear repeatable Build241-vs-Build242 target-device vertical-scroll improvement may justify decomposing carousel performance costs further. If no material improvement appears, do not keep optimizing carousel internals for the separate Home vertical-performance problem.\n\n'''
+          assert anchor in s
+          if block not in s: s=s.replace(anchor,block+anchor,1)
+          decisions.write_text(s)
+          PY
+          git diff --check
+          git status --short
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/PROJECT_STATE.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/TECHNICAL_DECISIONS.md
+          git commit -m 'Sync Build242 Home performance diagnostic evidence'
+          git push origin HEAD:main
