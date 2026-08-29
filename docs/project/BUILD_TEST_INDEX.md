@@ -342,3 +342,23 @@ Update this index when a build materially changes architectural understanding, b
 - Exact final main blob identities: cadence `c5ec51991d9a629cfb39785efeb597f3c51375ef`; interaction `144be65ba3fa5618d39591c5f67747024dc5ff0c`; state `e18fc8724170f2a7e613ac93beedf54c3b8d47e8`; core `c7900bae5e608ae46c0cd476c1f08999be9baf0b`; Hero `ab2ab5d80a59e174622dca0006c0f3aad4111a54`.
 - Independent integration compile run/job: `33248884259 / 99090990039` — success; exact blob/contract checks passed; Release generic-iOS compile passed; built MinOS 15.0.
 - Evidence discipline: integration CI does not create a new target-device acceptance identity. Build241 itself supplies the real-device acceptance; the carousel module is now stable/frozen.
+
+## Search page Build244/Build245 evidence — 2026-08-29
+
+### Build244 / 0.14.77 — first competitor-aligned Search candidate
+
+- Exact tested source: `0710fa4cf0a59dbf7e6748e951db2e3cddf2b82c`; run/job `33251653411 / 99098250151`; artifact `9714601161`; IPA SHA-256 `a48d317f3caee89564789bca657da8700953f76a58fcff792562bbb67b146d05`; MinOS 15.0.
+- Target-device result on iPhone 15 Pro Max / iOS 17.0: Search history/recommendation/menu direction works, but the candidate is rejected as final because the gear is too large, keyboard still pushes the Dock, one-target Search does not directly enter full results, recommendations are capped/filtered, and landing geometry remains visibly too large/low versus the supplied competitor.
+- Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / rejected as final ✅ / not stable.**
+
+### Build245 / 0.14.78 — Search follow-up candidate
+
+- Exact tested product source: `4c5f286ee870589bd2eac05119a516631a31391a`; cleanup branch head after temporary CI removal: `e45c82f41d3dcf3a7d72c7f4e510627fbeada20f`.
+- Scope: 40% smaller gear; tighter competitor-aligned Search title/input/history geometry; Search keyboard safe-area ownership moved onto the root `GeometryReader`; exactly one active Emby target routes directly to the full paginated 3-column result page; Emby Suggestions start at 12 with no media-type filter and increase requested Limit by 6 near the end. Shared poster-grid source is untouched.
+- Run/job: **`33253244567 / 99102435848` — success**.
+- Artifact: `OnePlayer-0.14.78-Build245-Search`; ID **`9715042997`**; digest **`sha256:7b4fc1baab92d4a05feb3c7a1d9989ab688c6bf01a00907d51ca863abe431ffd`**.
+- IPA SHA-256: **`19f69ca62928a65fb23bfdb44c67a916a7ba9edea20c3c3755f0875bb65a6514`**.
+- Source ZIP SHA-256: **`31b116e57265aee94bcfb577dc60f0fb86e61739728d50a94e536299db936349`**.
+- Independent verification: embedded hashes reproduced; IPA `unzip -t` passed; bundle `com.embyplayerlab.app`; OnePlayer `0.14.78 (245)`; `MinimumOSVersion=15.0`.
+- Evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending / not stable.**
+
