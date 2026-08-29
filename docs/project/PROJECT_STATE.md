@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated after Build238 target-device release diagnostics validated latest-delivered-move velocity as the fling-intent signal and Build239 / 0.14.72 reached CI/IPA verification with a direction-aware 600 pt/s fling gate while preserving the 0.28 slow-drag progress threshold. Build216 remains the accepted overall runtime baseline._
+_Last updated after Build239 / 0.14.72 target-device testing accepted direction-aware 600 pt/s velocity fling behavior, while a new EX reference confirmed a visibly decelerating transition tail that does not yet justify changing OnePlayer's existing 0.22s/0.18s ease-out curve without matched evidence. Build216 remains the accepted overall runtime baseline._
 
 ## Current accepted overall baseline
 
@@ -215,6 +215,12 @@ Build238 / 0.14.71 then measured the missing release semantic without changing b
 Build239 / 0.14.72 is the resulting minimal A/B. It keeps ordinary `actualProgress >= 0.28`, removes the legacy `width * 0.24` predicted-total-distance gate from commit, and adds direction-aware latest delivered move velocity >=600 pt/s. The threshold is deliberately inside the measured empty interval and is a OnePlayer tuning value, not an EX constant. Build237 white-flash presentation, Build236 start-step handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle / release tail are unchanged.
 
 Build239 evidence: tested source `ed4e59c2a0e2fac3979d84dad756299659b15387`; run/job `33208503351 / 98975620229` — success; artifact `9700721145` (`sha256:61c4785bba434247039206198cb35700b47cbc2ead2be1178e914229c3814c5f`); IPA SHA-256 `b11992aa6b4c87df87600ec38143798aece6df231507a6d13357856318f6196d`; source ZIP SHA-256 `55b2977ab1df60bbc154cbd926f2997ca8086f6061394f4c05a4e40028783001`; bundle/version/build and MinOS 15.0 independently reopened/verified. Evidence level is **Code written / CI passed / IPA produced+verified / target-device pending / not stable**.
+
+### Carousel Build239 target-device acceptance + EX tail reference
+
+Build239 / 0.14.72 is now target-device accepted for release intent: the user reports no issue with the direction-aware latest-delivered velocity gate at 600 pt/s, while the ordinary 0.28 slow-drag commit remains. Keep the rejected predicted-total-distance width gate removed. The Build236/231/226/228 foundation and Build237 white-flash correction remain frozen-for-current-phase.
+
+A new EX screen recording (5.0s, 510×1108, 30fps) shows a clearly decelerating final transition segment over roughly 0.15–0.25s and no obvious rebound. Current Build239 already has `.easeOut(duration: 0.22)` commit and `.easeOut(duration: 0.18)` cancel. Treat the clip as reference evidence only; do not guess a stronger/longer curve without a matched OnePlayer capture or direct regression evidence.
 
 ## Active: Poster-heavy scrolling smoothness
 

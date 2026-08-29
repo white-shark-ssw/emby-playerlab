@@ -119,6 +119,10 @@ Build238 target-device diagnostics supply the missing evidence: intended quick f
 
 Build239 is the narrow behavioral A/B: keep `actualProgress >= 0.28`; remove the rejected 0.24×width predicted-total-distance commit gate; additionally commit when latest delivered move velocity is direction-compatible and at least 600 pt/s in directional magnitude. `600` is an evidence-bounded OnePlayer tuning value inside the measured gap, not an asserted EX constant. CI/IPA are verified but target-device acceptance is pending, so the velocity threshold is not frozen yet. Retain the frozen-for-current-phase Build236 start-step, Build231 foreground compositing, Build226 Hero residency, Build228 max-refresh-through-settle/release-tail behavior and accepted Build237 persistent source-over correction.
 
+Build239 target-device testing accepts the velocity-intent release contract for the current phase: keep `actualProgress >= 0.28` for ordinary drag and allow commit when direction-aware latest delivered move velocity is `>=600 pt/s`; keep the rejected predicted-total-distance width gate removed. The user reports no issue with Build239. Freeze this release-intent behavior unless new false-commit/false-cancel evidence appears.
+
+A subsequent EX-only 30fps reference clip visibly decelerates into settle over roughly the final 0.15–0.25s, without obvious rebound. OnePlayer Build239 already uses `.easeOut(duration: 0.22)` for commit and `.easeOut(duration: 0.18)` for cancel. Therefore this reference does not by itself authorize another release-tail tuning build; compare a matched OnePlayer capture first if tail matching is reopened.
+
 ## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only
 
 High-frequency native detail scroll offset stays in the Hero-scoped owner, not root detail state. Persistent warm detail cache is presentation-only: safe display metadata may be cached, but PlaybackInfo, MediaSource, PlaySession, ResolvedPlaybackSource and temporary 115/CDN URLs remain live/session-owned. Build182 was real-device accepted/frozen; Build184 visual hierarchy was accepted and merged through PR #255.

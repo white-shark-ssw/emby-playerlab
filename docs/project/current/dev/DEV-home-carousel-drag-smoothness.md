@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build236 start-step handling + Build231 foreground compositing + Build226 Hero residency + Build228 max-refresh-through-settle/release-tail remain frozen-for-current-phase, and Build237 persistent source-over white-flash correction remains target-device accepted. Build238 target-device data strongly separates intended quick flicks from short slow drags on latest delivered move velocity: quick flicks |v| ≈1139.8–2239.8 pt/s versus slow drags ≈0–160 pt/s, while end velocity overlaps and predicted extra travel is often tiny/missing. Build239 / 0.14.72 is now the CI/IPA-verified velocity-fling A/B: ordinary progress commit remains 0.28, the legacy 0.24×width predicted-total-distance gate is removed, and direction-aware latest delivered move velocity >=600 pt/s can commit. Target-device validation pending; stable ❌.**
+**Active — Build239 / 0.14.72 velocity-fling behavior is now target-device accepted: the user reports no issue after replacing the rejected predicted-total-distance wall with direction-aware latest-delivered velocity >=600 pt/s while retaining the 0.28 slow-drag rule. Freeze Build239 fling intent together with the already frozen-for-current-phase Build236/231/226/228 foundation and accepted Build237 white-flash correction. A new EX-only 5.0s / 510×1108 / 30fps reference recording shows a visibly decelerating ease-out tail over roughly the last 0.15–0.25s of several transitions, without obvious rebound. Build239 already uses `.easeOut(duration: 0.22)` for commit and `.easeOut(duration: 0.18)` for cancel, so the EX recording alone does not justify changing duration/curve. Whole carousel remains Active only for optional matched tail-curve comparison; stable ❌.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
 - Working branch: `perf/home-carousel-velocity-fling-build239`
@@ -645,6 +645,14 @@ Retained unchanged: Build237 persistent source-over white-flash correction, Buil
 
 Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable ❌.
 
+### 2026-08-29 Build239 target-device result — velocity fling accepted; EX tail reference observed
+
+User target-device verdict for OnePlayer 0.14.72 / Build239: **“没问题了”**. This accepts the release-intent change for the current phase: keep ordinary slow-drag commit at `actualProgress >= 0.28`, keep direction-aware latest-delivered-move velocity commit at `>=600 pt/s`, and do not restore the rejected predicted-total-distance width gate. No false-commit/false-cancel regression was reported.
+
+The user then supplied EX reference recording `RPReplay_Final1787973831.mp4` (5.0s, 510×1108, 30fps). Frame analysis of multiple transitions shows a clearly decelerating visual tail: late-frame progress increments shrink toward settle over roughly 0.15–0.25s, with no obvious rebound. This is consistent with an ease-out tail. Current Build239 source already uses `withAnimation(.easeOut(duration: 0.22))` for commit and `.easeOut(duration: 0.18)` for cancel. Therefore the EX-only recording does **not** yet prove that OnePlayer's duration or timing curve should change. Do not reopen the accepted release-tail contract by guessing a stronger curve without a matched OnePlayer recording or direct user regression verdict.
+
+Evidence: Build239 Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device velocity-fling tested and accepted ✅ / whole-carousel stable/frozen ❌.
+
 ## Rejected directions not to repeat
 
 - Build222 offscreen-auto-advance guard as a fix;
@@ -660,4 +668,4 @@ Evidence: Code written ✅ / exact scope+Frozen guard ✅ / CI passed ✅ / IPA 
 
 ## Next exact action
 
-Install OnePlayer 0.14.72 / Build239 on iPhone 15 Pro Max / iOS 17.0 and compare directly with EX. Focus only on release intent: (A) repeat about 15 almost-in-place quick flicks in both directions that should commit, and (B) about 10 short slow drags/releases that should cancel unless actual progress itself crosses 0.28. The primary pass criterion is that quick flicks no longer feel blocked by a distance wall while slow drags do not become over-sensitive. If any false commit / false cancel occurs, export the App log and inspect `HomeCarouselRelease` + `HomeCarouselReleaseDecision` before changing the 600 pt/s threshold. Do not reopen Build236/231/226/228, Build237 white-flash presentation or release-tail timing without new regression evidence.
+Keep Build239 release intent frozen-for-current-phase; do not tune the 600 pt/s velocity threshold or restore a width-distance gate without new regression evidence. The EX reference confirms a visible ease-out tail, but Build239 already uses 0.22s/0.18s `.easeOut`. If tail matching is pursued, first compare a matched OnePlayer recording using the same short-flick gesture against the supplied EX clip; only then isolate duration versus timing-curve strength. Do not modify Build236/231/226/228, Build237 white-flash presentation, or the accepted Build239 velocity gate merely from the EX-only clip.
