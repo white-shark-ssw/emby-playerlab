@@ -1,0 +1,46 @@
+name: TEMP Sync Build241 Carousel Checkpoint
+
+on:
+  push:
+    branches: [tune/home-carousel-fling-threshold-build241]
+    paths: [.github/build241-checkpoint-trigger.txt]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Record Build241 pre-CI checkpoint
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+          text = path.read_text()
+          text = re.sub(r'\*\*Active — Build240 / 0\.14\.73.*?required\.\*\*', '**Active — user explicitly chose the real-device-tested Build239 interaction/presentation behavior as the controlling baseline and closed the Build240 release-handoff diagnostic direction for now. Build241 / 0.14.74 is the next narrow A/B from exact Build239 source: lower only the direction-aware latest-delivered fling trigger from 600 to 500 pt/s so intentional short flicks require slightly less force. The 0.28 slow-drag threshold, Build239 0.22s/0.18s settle behavior, Build237 white-flash correction, Build236 acquisition handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle remain unchanged. Product candidate is materialized; dedicated CI/IPA is pending.**', text, count=1, flags=re.S)
+          text = text.replace('- Working branch: `diag/home-carousel-release-handoff-build240`', '- Working branch: `tune/home-carousel-fling-threshold-build241`', 1)
+          text = text.replace('- Current candidate: OnePlayer `0.14.73 (240)`', '- Current candidate: OnePlayer `0.14.74 (241)`', 1)
+          marker = '## Next exact action\n'
+          if marker not in text:
+              raise SystemExit('Next exact action marker missing')
+          prefix = text.split(marker, 1)[0]
+          build241 = '''## Build241 / 0.14.74 — lower fling trigger from Build239 baseline\n\nUser decision on 2026-08-29: keep Build239 as the behavioral baseline and make fling switching a little easier to trigger. Build240 handoff diagnostics are therefore superseded for the current direction without claiming their hypothesis disproven.\n\nMaterialized source identity:\n\n- branch: `tune/home-carousel-fling-threshold-build241`\n- exact Build239 base: `ed4e59c2a0e2fac3979d84dad756299659b15387`\n- current product candidate head: `8bb59c06913630169f1df649cc38f5d9af202546`\n- OnePlayer `0.14.74 (241)`\n- runtime behavior delta: `directionalVelocity >= 600` → `>= 500` only\n- ordinary slow-drag commit remains `actualProgress >= 0.28`\n- no Build240 `HomeCarouselReleaseHandoff` instrumentation is carried into this candidate\n- Player / MPV / PiP / Transport / Cache / Emby Session / Frozen/P0 paths unchanged\n\nWhy 500 pt/s is a narrow evidence-backed A/B: Build238 target-device logs separated intended quick flicks at roughly 1139.8–2239.8 pt/s from short slow drags at roughly 0–160 pt/s. Moving 600 → 500 reduces required flick force while retaining a large observed margin above ordinary slow drags. This threshold is not stable/frozen until target-device testing.\n\nEvidence level now: **Code written ✅ / dedicated CI pending / IPA pending / real-device pending / stable ❌.**\n\n'''
+          next_action = '''## Next exact action\n\nRun exact-scope Build241 CI/IPA from the materialized candidate. After package identity verification, test on iPhone 15 Pro Max / iOS 17.0 whether short intentional flicks switch more easily without making ordinary slow drags below the retained 0.28 progress threshold commit accidentally. Do not change settle timing/curve or add momentum/spring/interpolation behavior in this candidate.\n'''
+          path.write_text(prefix + build241 + next_action)
+          PY
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          git diff --cached --quiet && { echo 'Checkpoint already current'; exit 0; }
+          git commit -m 'Checkpoint Build241 carousel threshold candidate'
+          git push origin HEAD:main
