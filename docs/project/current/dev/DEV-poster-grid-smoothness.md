@@ -2,12 +2,14 @@
 
 ## Status
 
-**Active — Build229 / 0.14.62 is now target-device tested and overall Library 3×3 hitching still exists. The latest captured 77.2 ms moving hitch occurred about 7.3 s after page apply/snapshot completion and about 0.77 s after the latest image publish, so Build228’s synchronous snapshot write is not the direct trigger for this sample and moving Library persistence off MainActor is not sufficient to solve the whole hitch family. Poster branch head `deba1534e55bfc73f4d3cf43f2682c854a04cb39` materialized a diagnostic-only 0.14.66 / Build233 commit, but Build233 is already owned by the independent Home carousel task; resume identity guard therefore fails and poster development is paused until this candidate identity is explicitly released/reallocated. Not stable.**
+**Active — Build229 / 0.14.62 is target-device tested and overall Library 3×3 hitching still exists. The 77.2 ms non-pagination sample is far outside page-apply/snapshot/image-publish windows, so off-main Library persistence is not sufficient for the whole hitch family. The user has explicitly continued this task after the Build233 collision; current repository checks show Home has advanced through Build242, Aether owns Build235, and Build243 is unallocated. Poster therefore retires its invalid 0.14.66 / Build233 identity and reserves OnePlayer 0.14.76 / Build243 for the already-written measurement-only background-image-work diagnostics. No smoothness fix is claimed; not stable.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
 - **Working branch**: `perf/poster-grid-smoothness`
 - **Draft PR**: #259
+- **Retired conflicting poster identity**: OnePlayer `0.14.66 (233)` at `deba1534e55bfc73f4d3cf43f2682c854a04cb39`; no valid poster CI/IPA attribution
+- **Reserved poster diagnostic candidate**: OnePlayer `0.14.76 (243)`; uniqueness rechecked against Active checkpoints, branches and commit search on 2026-08-29
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
 
@@ -23,15 +25,16 @@ Resume identity guard on 2026-08-29 also found a hard candidate collision:
 - real branch / PR head is `deba1534e55bfc73f4d3cf43f2682c854a04cb39`, commit `Add Build233 poster background-work diagnostics`, directly parented by Build229 exact source `f5e3e3eb144578c863b172e3bd3a1aa13e5c2177`;
 - that head changes poster diagnostics/version/changelog to **0.14.66 / Build233** but has no valid poster CI/IPA attribution;
 - independent Active task `DEV-home-carousel-drag-smoothness` already owns OnePlayer **0.14.66 (233)** and has CI/IPA evidence for that identity;
-- Home also allocated Build234 and Aether currently reserves Build235, so poster must not silently rename itself to another number without a fresh collision check.
+- Home subsequently advanced through Build242; Aether currently reserves Build235. Fresh checks on 2026-08-29 find no Build243 branch, commit or current checkpoint allocation.
+- The user explicitly said to continue the current poster task after the timeout, satisfying the checkpoint’s required decision to release/reallocate the invalid poster Build233 identity.
 
-**Identity guard result: FAILED.** Do not run/distribute poster Build233, do not call it a poster candidate, and do not modify product source until the user explicitly resolves the candidate collision.
+**Identity guard result after explicit continuation: PASSED for relabel only.** Poster Build233 is retired for attribution; Build243 / 0.14.76 is reserved for the exact already-written diagnostic logic. This does not authorize any additional optimization or behavior change.
 
-**Evidence:** Build229 Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / overall hitch still present ❌ / pagination-specific improvement unproven / stable ❌. Poster `deba1534...` code exists, but candidate identity is invalid and no poster CI/IPA should be claimed.
+**Evidence:** Build229 Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / overall hitch still present ❌ / pagination-specific improvement unproven / stable ❌. Poster background-work diagnostic code exists at `deba1534...`; it still requires valid Build243 relabel, source guards, CI and IPA before distribution.
 
-**Pending:** explicit user decision to release the invalid poster Build233 identity and allocate a new unique poster candidate after rechecking all Active checkpoints / `BUILD_TEST_INDEX.md`.
+**Pending:** relabel only AppIdentity/changelog from invalid poster 233 to reserved poster 243, keep diagnostic runtime logic unchanged, then run exact Build229→Build243 scope/checker and dedicated Release/IPA validation.
 
-**Next exact action:** after explicit resolution, restore a unique poster candidate identity from the current branch evidence, rerun exact-scope/source guards, then build the existing background-work diagnostic instrumentation to a verified IPA. Until then, no product-source edits.
+**Next exact action:** materialize OnePlayer 0.14.76 / Build243 from `deba1534...` by identity/changelog relabel only; run exact-scope/source guards and a dedicated Xcode 16.4 Release/IPA workflow; verify package identity/MinOS/hashes, then hand the IPA to the user for Library 3×3 diagnostic testing.
 
 ## Build228 real-device result / Build229 candidate — 2026-08-28
 
