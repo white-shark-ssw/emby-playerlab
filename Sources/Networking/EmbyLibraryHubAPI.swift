@@ -54,14 +54,26 @@ extension EmbyAPIClient {
         return libraryHubDeduplicated(page.items)
     }
 
-    func librarySuggestions(parentId: String, limit: Int = 20, includeItemTypes: [String] = []) async throws -> [LibraryItem] {
+    func librarySuggestions(parentId: String? = nil, limit: Int = 20, includeItemTypes: [String] = []) async throws -> [LibraryItem] {
         var query = libraryHubCommonFields + [
-            URLQueryItem(name: "ParentId", value: parentId),
             URLQueryItem(name: "Recursive", value: "true"),
             URLQueryItem(name: "Limit", value: String(max(1, min(100, limit)))),
         ]
+        if let parentId, !parentId.isEmpty { query.append(URLQueryItem(name: "ParentId", value: parentId)) }
         if !includeItemTypes.isEmpty { query.append(URLQueryItem(name: "IncludeItemTypes", value: includeItemTypes.joined(separator: ","))) }
         let page: EmbyItemPage = try await libraryHubRequest(path: "Users/\(try libraryHubUserID())/Suggestions", query: query)
+        return libraryHubDeduplicated(page.items)
+    }
+
+    func searchLandingRecommendations(limit: Int = 9, includeItemTypes: [String] = [], excludeItemIds: [String] = []) async throws -> [LibraryItem] {
+        var query = libraryHubCommonFields + [
+            URLQueryItem(name: "Recursive", value: "true"),
+            URLQueryItem(name: "Limit", value: String(max(1, min(100, limit)))),
+            URLQueryItem(name: "SortBy", value: "Random"),
+        ]
+        if !includeItemTypes.isEmpty { query.append(URLQueryItem(name: "IncludeItemTypes", value: includeItemTypes.joined(separator: ","))) }
+        if !excludeItemIds.isEmpty { query.append(URLQueryItem(name: "ExcludeItemIds", value: excludeItemIds.joined(separator: ","))) }
+        let page: EmbyItemPage = try await libraryHubRequest(path: "Users/\(try libraryHubUserID())/Items", query: query)
         return libraryHubDeduplicated(page.items)
     }
 

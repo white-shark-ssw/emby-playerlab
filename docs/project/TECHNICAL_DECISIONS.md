@@ -198,6 +198,41 @@ PR #262 integrated only the five exact Build241 runtime blobs onto current `main
 Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B, not a product baseline. It intentionally disabled the carousel presentation/runtime stack and the user explicitly states those diagnostic changes made it unsuitable/broken as normal carousel behavior. Never inherit carousel runtime from Build242. Its retained diagnostic result is only that Home vertical scrolling felt little/no different from Build241, weakening the hypothesis that the whole carousel stack is a major Home-wide performance bottleneck. When the user disables carousel in normal settings, `carouselItems` returns `[]`, so expensive persistent/Hero/preload/interaction presentation is absent.
 
 
+## Search recommendation startup warm and Dock ownership — Build247 candidate
+
+- The visible server Dock belongs to `EmbyServerRootViewV3`. Search may host keyboard-responsive navigation/content, but it must not own a second visible Dock inside that nested tree. This is the direct replacement for the Build244–246 safe-area-only attempts that still lifted Dock on device.
+- Search landing recommendations use a client-visible whitelist: actual returned `LibraryItem.type` must be `Movie` or `Series`. `IncludeItemTypes=Movie,Series` is a server-query optimization, not the final UI authority.
+- Because landing recommendations are independent of a typed keyword, saved-session recommendation metadata and exact poster URLs may be warmed once after app startup restore. The Search page consumes that shared in-flight/completed process-lifetime work. Typed keyword results are not precomputed.
+- Recommendation presentation uses a bounded fixed set for the current candidate; do not mutate the recommendation grid through incremental Suggestions requests while the user is scrolling. This isolates Search from the Build246 load-more twitch without changing the shared poster-grid owner.
+- Existing `EmbyImageDiskCache` remains the persistent poster-byte authority and `EmbyDecodedImageRenderPool` remains the decoded-memory authority. Do not add a Search-specific second disk image cache.
+- This decision is candidate-level until Build247 target-device testing; it does not mark Search stable/frozen.
+
+
+## Search Build248 refinement — safe-area-compensated root Dock and visible-set preload
+
+- Build247 target-device evidence validates root ownership as the right place to separate Dock from keyboard-responsive Search navigation, but also proves that root ownership alone is insufficient when the root deliberately extends its frame by the bottom safe-area inset. A root-owned Search Dock aligned to that expanded bottom must compensate `geometry.safeAreaInsets.bottom` to occupy the same physical band as the other tabs.
+- Search landing recommendations are an up-to-3×3 presentation. Startup warm work should therefore be bounded by the visible recommendation contract rather than an arbitrary larger 60-item set. Per-library Suggestions requests should ask only for remaining visible slots.
+- This refinement preserves the prior decisions: actual returned `LibraryItem.type` is the final Movie/Series whitelist authority; startup warm is one-shot per process; existing `EmbyImageDiskCache` and `EmbyDecodedImageRenderPool` remain cache owners; Search recommendation load-more stays removed.
+- Build248 remains candidate-level until target-device validation.
+
+
+## Search recommendation view eligibility — Build249 candidate
+
+- `UserViews` must not be treated as if every view is a Movie/Series recommendation source. Search recommendation traversal uses the real decoded `LibraryItem.collectionType` before issuing Suggestions. Eligible collection types are `movies`, `tvshows`, and `mixed`; request types map to Movie, Series, and Movie+Series respectively.
+- The returned item `Type` remains the final client-visible whitelist authority. CollectionType filtering is request selection, not a replacement for the Movie/Series output whitelist.
+- Build248 target-device evidence accepts the root-owned, bottom-safe-area-compensated Search Dock behavior; Build249 must preserve it.
+- No retry/timer/watchdog/fallback or second image cache is introduced. Build249 remains candidate-level pending target-device validation.
+
+
+## Search Suggestions type authority when Emby omits `Type` — Build250 candidate
+
+- Search recommendation source eligibility remains based on real `UserViews.CollectionType`: `movies`, `tvshows`, `mixed`. Request types remain strictly Movie/Series.
+- When a Suggestions item returns a usable `Type`, that actual value remains the final whitelist authority and must be Movie or Series.
+- When the Suggestions response omits `Type`, the exact `IncludeItemTypes` request that generated that response may serve as the whitelist authority only when every requested type is itself in the Movie/Series whitelist. This is not heuristic media-type inference or a generic fallback; it trusts the server API filter that constrained the response.
+- The Search view must not reapply an incompatible `Type != nil` filter after the preloader has validated the response under this rule.
+- Build248-accepted Dock ownership/safe-area behavior remains unchanged. Build250 remains candidate-level pending target-device first-paint validation.
+
+
 ## Search landing recommendations use normal Items + Random, not Suggestions — 2026-08-30
 
 **Decision:** OnePlayer Search landing recommendations use the normal user Items endpoint with `SortBy=Random`, `Recursive=true`, and an explicit `IncludeItemTypes=Movie,Series` whitelist. `/Users/{userId}/Suggestions` is not the Search landing authority.
@@ -205,23 +240,3 @@ Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B,
 **Evidence:** Build252 target-device surfaced a `Tag` object from `/Suggestions` despite the Movie/Series query constraint, while official Emby Web Search on the same server shows actual media. Independent inspection of `bpking1/embyExternalUrl` shows Emby Web `/Users/(.*)/Items` traffic with `SortBy=Random` is classified as `searchSuggest`.
 
 **Scope:** This decision only changes Search recommendation metadata retrieval. It does not change Player, MPV, STRM/302/115, UnifiedTransport, playback Session Cache, Emby progress/Resume, credentials, PiP or Deployment Target.
-
-## Random Search recommendations paginate by exclusion, not random StartIndex — Build254
-
-- The accepted Search recommendation authority remains `/Users/{userId}/Items` + `SortBy=Random` + `Recursive=true` + `IncludeItemTypes=Movie,Series`.
-- Incremental Search recommendation batches do **not** use `StartIndex` against random sorting. The next small batch uses `ExcludeItemIds` for every recommendation already displayed and appends only new IDs.
-- Initial batch remains 9; incremental batch is 6. A single in-flight state prevents duplicate simultaneous load-more requests. There is no timer/debounce/retry/fallback/watchdog or load-more spinner.
-- Existing Search image persistence/decoded-image ownership remains authoritative; no second cache is introduced.
-
-## Search dynamic poster growth keeps a non-lazy section owner — Build255
-
-- Search landing must not add an outer `LazyVStack` around its dynamically growing `EmbyPosterGrid`. The poster grid itself remains the lazy owner.
-- Build254 target-device evidence showed visible container twitch when +6 recommendations appended with nested lazy ownership.
-- Build255 follows the established paginated poster-page pattern: normal outer `VStack` + inner lazy `EmbyPosterGrid`. This is a layout-ownership correction only; no timer, scroll-offset compensation, retry/fallback, second cache or shared grid fork is introduced.
-
-## Search recommendation state lifetime follows the Search Dock selection — Build256
-
-- Search recommendation metadata must not be app-start-owned or session-global. The initial 9 are fetched only after entering the Search Dock page.
-- While the Search Dock tab remains selected, the server root owns the Search view model so native detail push/pop returns to the same already-loaded recommendation data instead of recreating an initial-9 state.
-- A manual Dock switch away from Search ends that lifetime immediately by releasing the Search model. Re-entering Search creates a fresh model and fresh initial-9 request.
-- Existing persistent/decoded poster image caches remain shared infrastructure and are not part of this Search metadata lifetime. No timer, persistence snapshot, retry/fallback, watchdog or second cache is introduced.

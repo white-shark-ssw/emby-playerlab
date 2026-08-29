@@ -12,6 +12,7 @@ struct EmbyServerRootViewV3: View {
     @State private var client: EmbyAPIClient?
     @State private var homeClientGeneration = 0
     @State private var selectedTab: V3ServerTab = .home
+    @State private var searchModel: V3GlobalSearchViewModel?
     @State private var homeRefreshToken = 0
     @State private var homeScrollToTopToken = 0
     @State private var homeCarouselActive = false
@@ -30,6 +31,7 @@ struct EmbyServerRootViewV3: View {
                 GeometryReader { geometry in
                     let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom
                     let dock = AnyView(serverTabBar)
+                    let emptyDock = AnyView(EmptyView())
                     ZStack {
                         V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, onCarouselActiveChanged: { active in homeCarouselActive = active }, dock: dock)
                             .id(homeClientGeneration)
@@ -38,15 +40,17 @@ struct EmbyServerRootViewV3: View {
                             .accessibilityHidden(selectedTab != .home)
 
                         if selectedTab == .favorites { V3EmbyFavoritesView(client: client, onClose: close, dock: dock) }
-                        if selectedTab == .search { V3EmbySearchView(client: client, onClose: close, dock: dock) }
+                        if selectedTab == .search, let searchModel { V3EmbyGlobalSearchView(currentSession: session, currentClient: client, model: searchModel, onClose: close, dock: emptyDock) }
                         if selectedTab == .settings { OnePlayerServerSettingsView(session: session, onClose: close, dock: dock) }
                     }
+                    .overlay(alignment: .bottom) { if selectedTab == .search { serverTabBar.padding(.bottom, geometry.safeAreaInsets.bottom) } }
                     .environment(\.serverDockContent, dock)
                     .environment(\.serverDockBottomInset, geometry.safeAreaInsets.bottom)
                     .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
                     .ignoresSafeArea(.container, edges: .bottom)
                     .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 }
+                .ignoresSafeArea(.keyboard, edges: selectedTab == .search ? .bottom : [])
             } else {
                 ProgressView("连接 \(session.serverName)…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -101,6 +105,10 @@ struct EmbyServerRootViewV3: View {
                     lastHomeTap = now
                 }
             } else {
+                if selectedTab != tab {
+                    if selectedTab == .search { searchModel = nil }
+                    if tab == .search { searchModel = V3GlobalSearchViewModel() }
+                }
                 selectedTab = tab
                 if tab == .home { lastHomeTap = Date() }
             }

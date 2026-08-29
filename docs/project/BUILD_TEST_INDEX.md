@@ -343,25 +343,84 @@ Update this index when a build materially changes architectural understanding, b
 - Independent integration compile run/job: `33248884259 / 99090990039` — success; exact blob/contract checks passed; Release generic-iOS compile passed; built MinOS 15.0.
 - Evidence discipline: integration CI does not create a new target-device acceptance identity. Build241 itself supplies the real-device acceptance; the carousel module is now stable/frozen.
 
-## Search page Build244/Build245 evidence — 2026-08-29
 
-### Build244 / 0.14.77 — first competitor-aligned Search candidate
+### Build247 / 0.14.80 — Search startup recommendation warm candidate
 
-- Exact tested source: `0710fa4cf0a59dbf7e6748e951db2e3cddf2b82c`; run/job `33251653411 / 99098250151`; artifact `9714601161`; IPA SHA-256 `a48d317f3caee89564789bca657da8700953f76a58fcff792562bbb67b146d05`; MinOS 15.0.
-- Target-device result on iPhone 15 Pro Max / iOS 17.0: Search history/recommendation/menu direction works, but the candidate is rejected as final because the gear is too large, keyboard still pushes the Dock, one-target Search does not directly enter full results, recommendations are capped/filtered, and landing geometry remains visibly too large/low versus the supplied competitor.
-- Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / rejected as final ✅ / not stable.**
+- Build246 target-device evidence: Dock still rises with keyboard; recommendation entry/later posters remain slow; returned-type whitelist must be explicit; recommendation load-more still twitches. Build246 is real-device tested and rejected as final.
+- exact CI product source: `5f693d82041bbb59d3fe481aa708b22a5feda42d`.
+- Search-only architecture: server-root owns the visible Search Dock; returned recommendation items are hard-filtered to `Movie`/`Series`; app startup restore begins one bounded 60-item recommendation/poster warm; Search consumes the same task; recommendation grid is fixed and performs no active-scroll load-more. Existing persistent image disk cache and decoded pool remain the cache authorities.
+- run/job: `33258792907 / 99117036605` — success.
+- artifact: `OnePlayer-0.14.80-Build247-Search`; ID `9716657082`; digest `sha256:9628b0c608488edbfc5af477199e847e5a35b119d4ab96edbecd036cbde4bfd1`.
+- IPA SHA-256: `952b2daeef4bc01fe62476611c6620cf7ce79d3905d87bd82336e4650d0d69b0`.
+- source ZIP SHA-256: `44494de6213883b8bee16b6e99336b33073ed38b17a53062f9be7a2cff22b73d`.
+- independent package verification: bundle `com.embyplayerlab.app`; OnePlayer `0.14.80 (247)`; `MinimumOSVersion=15.0`; IPA `unzip -t` passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
 
-### Build245 / 0.14.78 — Search follow-up candidate
 
-- Exact tested product source: `4c5f286ee870589bd2eac05119a516631a31391a`; cleanup branch head after temporary CI removal: `e45c82f41d3dcf3a7d72c7f4e510627fbeada20f`.
-- Scope: 40% smaller gear; tighter competitor-aligned Search title/input/history geometry; Search keyboard safe-area ownership moved onto the root `GeometryReader`; exactly one active Emby target routes directly to the full paginated 3-column result page; Emby Suggestions start at 12 with no media-type filter and increase requested Limit by 6 near the end. Shared poster-grid source is untouched.
-- Run/job: **`33253244567 / 99102435848` — success**.
-- Artifact: `OnePlayer-0.14.78-Build245-Search`; ID **`9715042997`**; digest **`sha256:7b4fc1baab92d4a05feb3c7a1d9989ab688c6bf01a00907d51ca863abe431ffd`**.
-- IPA SHA-256: **`19f69ca62928a65fb23bfdb44c67a916a7ba9edea20c3c3755f0875bb65a6514`**.
-- Source ZIP SHA-256: **`31b116e57265aee94bcfb577dc60f0fb86e61739728d50a94e536299db936349`**.
-- Independent verification: embedded hashes reproduced; IPA `unzip -t` passed; bundle `com.embyplayerlab.app`; OnePlayer `0.14.78 (245)`; `MinimumOSVersion=15.0`.
-- Evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending / not stable.**
+### Build248 / 0.14.81 — Search Dock alignment + bounded 3×3 recommendation warm
 
+- Build247 target-device result: root-owned Search Dock rendered too low/outside the screen; recommendation wall remained on spinner. Build247 is rejected as final.
+- exact CI product source: `dc601099ded1074fafc0c7a4e000b8c6fd4c7338`.
+- runtime delta: compensate the root Search overlay by `geometry.safeAreaInsets.bottom`; recommendation preload limit 60→9; each Suggestions request limit is only the remaining visible slots; returned item type remains hard-whitelisted to Movie/Series; no recommendation load-more.
+- run/job: `33259763303 / 99119574495` — success.
+- artifact: `OnePlayer-0.14.81-Build248-Search`; ID `9716945819`; digest `sha256:b15d327e7f628188e9df6a500ff0e26227a149a60a03b6bd1595c9aa82fffd2a`.
+- IPA SHA-256: `8eb734bb26b77f377314223acbf7306da72ac9254a20586bfc443d59fea940c5`.
+- source ZIP SHA-256: `94ce1911d3981d8f5ad53bc59a8a7413a1ddf54a54c1a97e49642b1b909f1bec`.
+- independently verified package: `com.embyplayerlab.app`, `0.14.81 (248)`, `MinimumOSVersion=15.0`, IPA `unzip -t` passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
+
+
+### Build249 / 0.14.82 — Search recommendation CollectionType traversal candidate
+
+- Build248 target-device: Search Dock position/keyboard behavior accepted; recommendation wall still spins.
+- uploaded log `OnePlayer-App-1788018797.log`: Suggestions requests advance sequentially across parent libraries about every 2.4–2.7 s; not a single hung HTTP call.
+- exact CI product source: `f49ed220367de1ffbf9e9a5aba097d2ce160dac7`.
+- runtime delta: query only `movies`/`tvshows`/`mixed` UserViews; map to Movie/Series request type; keep final actual-type Movie/Series whitelist, 9-item cap, startup warm, existing image caches and no recommendation load-more; add preload diagnostics.
+- run/job: `33261820598 / 99124950794` — success.
+- artifact: `OnePlayer-0.14.82-Build249-Search`; ID `9717502081`; digest `sha256:3cc924d6733cb4590361fa255d85ef2c31f879f07538e11523a6e246da487510`.
+- IPA SHA-256: `0c62d51d488197b55dbfb98ab104c48404dd0caac77d786523f753c75acbb7a0`.
+- independently verified package: `com.embyplayerlab.app`, `0.14.82 (249)`, `MinimumOSVersion=15.0`, IPA `unzip -t` passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
+
+
+### Build250 / 0.14.83 — Search Suggestions nil-Type whitelist candidate
+
+- Build249 target-device: inherited Dock remains accepted, recommendation spinner remains rejected.
+- device log `OnePlayer-App-1788020447.log`: 21 total views, 19 eligible; first Movie Suggestions returned 9 but accepted 0; first TV Suggestions returned 9 but accepted 0.
+- root cause: Suggestions results on this server omit a usable decoded `Type`, while Build249's second client filter required non-nil Movie/Series and discarded server-side filtered results.
+- exact successful CI source: `6e7ae960bd3cc353b8d6146aea363f3876e9e8e8`.
+- runtime rule: eligible CollectionType + server `IncludeItemTypes` stays Movie/Series-only; actual returned Type remains authoritative when present; when absent, the exact request whitelist is trusted only if every requested type is Movie/Series. Search consumes the prevalidated output directly.
+- run/job: `33263279291 / 99128762968` — success.
+- artifact: `OnePlayer-0.14.83-Build250-Search`; ID `9717900754`; digest `sha256:f5cad646e230ffe1666e30fd2b6ce472b5d16cace168a850c9f07cf0e43e35e0`.
+- IPA SHA-256: `f213b3d6f30ac101d563e3894c3352fdcd9c9bcb46c7a266faa48c8577e73ada`.
+- package verified: `com.embyplayerlab.app`, `0.14.83 (250)`, `MinimumOSVersion=15.0`, IPA integrity passed.
+- superseded CI-only incident: run `33263000305` failed compilation before packaging after an intermediate stale Search-view replacement; no IPA from that run and it is not product evidence.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
+
+
+### Build251 / 0.14.84 — Search user-global Suggestions candidate
+
+- Build250 target-device: Dock/keyboard remains accepted; recommendation first paint rejected because Search still spins.
+- comparative evidence: official Emby Web Search on the same server immediately shows built-in `更多推荐`.
+- exact runtime source: `cc1806d7f606581e138579b44d94e16dc9ff7135`.
+- change: replace `UserViews` + per-library `ParentId` Suggestions traversal with one user-global `/Users/{userId}/Suggestions` request using `IncludeItemTypes=Movie,Series`, `Limit=9`; no fallback traversal.
+- run/job: `33264608646 / 99132347141` — success.
+- artifact: `OnePlayer-0.14.84-Build251-Search`; ID `9718288974`; digest `sha256:da474aaa24a3d8ff65e41ed990b861ba377f6a92938670bfe89a9625d8cc4470`.
+- IPA SHA-256: `4923368ddca5bca9e3d9db83234b19547b12673feb22af50fd3e3279b08cc750`.
+- package: `com.embyplayerlab.app`, `0.14.84 (251)`, `MinimumOSVersion=15.0`, IPA integrity passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
+
+
+### Build252 / 0.14.85 — Search direct global Suggestions payload
+
+- Build251 target-device: spinner ends quickly but no recommendation wall; log `OnePlayer-App-1788023908.log` shows global Suggestions `returned=9 nilType=0 accepted=0`.
+- exact product source: `dbfd323ec4a14e12dc57293c98b1fe6fbe239c5e`.
+- change: keep one global `/Users/{userId}/Suggestions?Limit=9&IncludeItemTypes=Movie,Series` request and remove only the second local type rejection; render the exact returned payload.
+- run/job: `33265539007 / 99134824511` — success.
+- artifact: `OnePlayer-0.14.85-Build252-Search`; ID `9718566319`; digest `sha256:15343da3075db72f32349250d0dc9a1a7b67ecb325bbcd507ea22276084abb9c`.
+- IPA SHA-256: `b4dd85fb880692e0b24c481d58079d2bb33db1609669d7e93a3244c53fc8e236`.
+- package: `com.embyplayerlab.app`, `0.14.85 (252)`, `MinimumOSVersion=15.0`, IPA integrity passed.
+- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
 
 
 ### Build253 / 0.14.86 — Search Web-aligned random Items recommendation candidate
@@ -375,38 +434,3 @@ Update this index when a build materially changes architectural understanding, b
 - IPA SHA-256: `1c9454f49530ea8e41b6164fdcb88bee56bea9338a444c3485b0a2f28965cbf5`.
 - package: `com.embyplayerlab.app`, `0.14.86 (253)`, `MinimumOSVersion=15.0`, IPA integrity passed.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
-
-### Build254 / 0.14.87 — Search incremental recommendation candidate
-
-- Build253 / 0.14.86 target-device result: initial 9 Search recommendations are all normal media; `Items + Random + Movie,Series` recommendation semantics accepted.
-- exact Build254 product source: `addddc6611a6210437271e4e6715aa88986afa23`.
-- change: preserve the accepted first 9; last lazy-grid card requests +6 from the same Items/Random/Movie+Series query using `ExcludeItemIds` for all currently displayed recommendation IDs; append only new IDs.
-- no `StartIndex + Random`, load-more spinner, retry/fallback/timer/watchdog or second cache.
-- run/job: `33268846116 / 99143580223` — success.
-- artifact: `OnePlayer-0.14.87-Build254-Search`, ID `9719501314`, digest `sha256:3acf642efefccc6b6ea440e6e383bfb2b6cb80a449ca52d89efc39a909d2dc3f`.
-- IPA SHA-256: `7714f225b55a4c93e96aa35951820d43e6be33fa911e14ff378755ac23884130`.
-- package: `com.embyplayerlab.app`, `0.14.87 (254)`, `MinimumOSVersion=15.0`, IPA integrity passed.
-- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / incremental load-more target-device pending / not stable.**
-
-### Build255 / 0.14.88 — Search append-layout stability candidate
-
-- Build254 target-device result: incremental +6 recommendation loading works, but the Search recommendation container visibly twitches during append; Build254 rejected as final and not stable.
-- exact Build255 product source: `99af35f86229ca5fb0cf9699fb41ef1bf5c754d2`.
-- runtime delta from Build254: Search landing outer `LazyVStack` → `VStack` only; inner `EmbyPosterGrid` remains lazy and the +6/`ExcludeItemIds` logic is unchanged.
-- run/job: `33270048487 / 99146794862` — success.
-- artifact: `OnePlayer-0.14.88-Build255-Search`, ID `9719867060`, digest `sha256:a39fcdd34b8016f35ac8e952740879cc0e43e2373437a7e3bd2e8d02d1de1a1f`.
-- IPA SHA-256: `2dbc76a146d4716eee0965c6861823e0df5592324812584fe261a30afb98019e`.
-- package: `com.embyplayerlab.app`, `0.14.88 (255)`, `MinimumOSVersion=15.0`, IPA integrity passed.
-- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / Build255 target-device pending / not stable.**
-
-### Build256 / 0.14.89 — Search detail-return lifetime candidate
-
-- Build255 target-device result: after loading beyond the initial 9, detail push/pop can reset Search recommendations back to only 9; Build255 rejected as final and not stable.
-- exact Build256 product source: `723d803c70326dee49aabc75f15ce445b7de947e`.
-- runtime ownership change: no app-start Search recommendation fetch; Search model owned by server Dock root only while Search tab is selected; initial load skips if retained items already exist; switching away destroys the model; session-global recommendation metadata/task retention removed.
-- existing recommendation request/+6 exclusion semantics and shared image caches are unchanged.
-- run/job: `33271528610 / 99150738764` — success.
-- artifact: `OnePlayer-0.14.89-Build256-Search`, ID `9720282077`, digest `sha256:e9c3f0756cb4dbd7a0fa9f2785594fa3df7e41964f472426a14e6c50a231615e`.
-- IPA SHA-256: `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`.
-- package: `com.embyplayerlab.app`, `0.14.89 (256)`, `MinimumOSVersion=15.0`, IPA integrity passed.
-- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / Build256 target-device pending / not stable.**
