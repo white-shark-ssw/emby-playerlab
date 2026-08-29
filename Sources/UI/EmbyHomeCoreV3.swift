@@ -17,11 +17,7 @@ struct V3EmbyHomeView: View {
     @State var isMediaManagementPresented = false
     @State var carouselDisplayRange: Double
     @State var currentCarouselItemID: String?
-    @State var transitionFromID: String?
-    @State var transitionToID: String?
-    @State var transitionProgress: CGFloat = 0
-    @State var transitionDirection = 1
-    @State var isCarouselDragging = false
+    @State var carouselTransitionState = V3HomeCarouselTransitionState()
     @State var carouselLastSettledAt = Date()
     @State var carouselLightForegroundByID: [String: Bool] = [:]
     @State var carouselSourceSizeByID: [String: CGSize] = [:]
@@ -29,7 +25,6 @@ struct V3EmbyHomeView: View {
     @State var carouselLogoResolvedIDs = Set<String>()
     @State var carouselDetailItem: LibraryItem?
     @State var isCarouselDetailPresented = false
-    @State var carouselTapSuppressedUntil = Date.distantPast
     @State var heroScrollState = V3HomeHeroScrollState()
     @State var isHomeRefreshing = false
     @State var isHomeActive = false
@@ -58,8 +53,13 @@ struct V3EmbyHomeView: View {
                 let immersive = !model.carouselItems.isEmpty
                 let viewportHeight = geometry.size.height + geometry.safeAreaInsets.top
                 ZStack(alignment: .top) {
-                    if immersive { persistentCarouselBackdrop(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom)) }
-                    else { Color(uiColor: .systemBackground).ignoresSafeArea() }
+                    if immersive {
+                        V3HomeCarouselTransitionScope(state: carouselTransitionState) {
+                            persistentCarouselBackdrop(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom))
+                        }
+                    } else {
+                        Color(uiColor: .systemBackground).ignoresSafeArea()
+                    }
                     if immersive { carouselPreloadLayer }
 
                     if immersive {
@@ -128,7 +128,13 @@ struct V3EmbyHomeView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     Group {
-                        if immersive { V3HomeHeroScrollScope(state: heroScrollState) { immersiveCarouselHero(width: width, viewportHeight: viewportHeight) } }
+                        if immersive {
+                            V3HomeHeroScrollScope(state: heroScrollState) {
+                                V3HomeCarouselTransitionScope(state: carouselTransitionState) {
+                                    immersiveCarouselHero(width: width, viewportHeight: viewportHeight)
+                                }
+                            }
+                        }
                         else { Color.clear.frame(height: 1) }
                     }
                     .id("v3-home-top")

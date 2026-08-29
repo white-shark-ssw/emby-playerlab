@@ -3,34 +3,34 @@ import Combine
 import UIKit
 
 extension V3EmbyHomeView {
-    func carouselDragGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 12, coordinateSpace: .local)
-            .onChanged { value in
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                guard abs(horizontal) > abs(vertical) * 1.08, abs(horizontal) > 4 else { return }
-                suppressCarouselTap()
-                guard transitionToID == nil || isCarouselDragging else { return }
-                let direction = horizontal < 0 ? 1 : -1
-                guard let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: direction) else { return }
-                if !isCarouselDragging || transitionFromID != currentID || transitionToID != targetID {
-                    transitionFromID = currentID
-                    transitionToID = targetID
-                    transitionProgress = 0
-                    transitionDirection = direction
-                    isCarouselDragging = true
-                }
-                transitionProgress = min(1, max(0, abs(horizontal) / max(1, width)))
-            }
-            .onEnded { value in
-                guard isCarouselDragging, let targetID = transitionToID else { return }
-                suppressCarouselTap()
-                let predicted = abs(value.predictedEndTranslation.width)
-                let shouldCommit = transitionProgress >= 0.28 || predicted >= width * 0.48
-                isCarouselDragging = false
-                if shouldCommit { completeInteractiveTransition(to: targetID) }
-                else { cancelInteractiveTransition() }
-            }
+    var transitionFromID: String? {
+        get { carouselTransitionState.fromID }
+        nonmutating set { carouselTransitionState.fromID = newValue }
+    }
+
+    var transitionToID: String? {
+        get { carouselTransitionState.toID }
+        nonmutating set { carouselTransitionState.toID = newValue }
+    }
+
+    var transitionProgress: CGFloat {
+        get { carouselTransitionState.progress }
+        nonmutating set { carouselTransitionState.progress = newValue }
+    }
+
+    var transitionDirection: Int {
+        get { carouselTransitionState.direction }
+        nonmutating set { carouselTransitionState.direction = newValue }
+    }
+
+    var isCarouselDragging: Bool {
+        get { carouselTransitionState.isDragging }
+        nonmutating set { carouselTransitionState.isDragging = newValue }
+    }
+
+    var carouselTapSuppressedUntil: Date {
+        get { carouselTransitionState.tapSuppressedUntil }
+        nonmutating set { carouselTransitionState.tapSuppressedUntil = newValue }
     }
 
     func suppressCarouselTap() {
@@ -62,6 +62,7 @@ extension V3EmbyHomeView {
             transitionToID = nil
             transitionDirection = 1
             carouselLastSettledAt = Date()
+            V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancelled-settled")
         }
     }
 
@@ -89,6 +90,7 @@ extension V3EmbyHomeView {
         isCarouselDragging = false
         carouselLastSettledAt = Date()
         DiagnosticsLogger.shared.log("HomeCarousel", "settled item=\(itemID)")
+        V3HomeCarouselCadenceDiagnostics.shared.end(reason: "settled")
     }
 
     func synchronizeCarouselItems() {
@@ -179,17 +181,19 @@ extension V3EmbyHomeView {
     }
 
     func carouselBackdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat {
-        let raw = min(1, max(0, rawProgress))
-        let delayed = min(1, max(0, (raw - 0.08) / 0.92))
-        return delayed * delayed * (3 - 2 * delayed)
+        let progress = min(1, max(0, rawProgress))
+        let remaining = 1 - progress
+        let earlyWeight = remaining * remaining * remaining * remaining * remaining * remaining
+        return progress * (1 - 0.85 * earlyWeight)
     }
 
     func carouselForegroundOffset(for itemID: String, width: CGFloat) -> CGFloat {
         guard let fromID = transitionFromID, let toID = transitionToID else { return 0 }
         let direction = CGFloat(transitionDirection)
-        let progress = min(1, max(0, transitionProgress))
-        if itemID == fromID { return -direction * progress * width }
-        if itemID == toID { return direction * (1 - progress) * width }
+        let visualProgress = min(1, max(0, transitionProgress))
+        let pageStep = width
+        if itemID == fromID { return -direction * visualProgress * pageStep }
+        if itemID == toID { return direction * (1 - visualProgress) * pageStep }
         return 0
     }
 
@@ -198,6 +202,14 @@ extension V3EmbyHomeView {
         guard items.count > 1, let index = items.firstIndex(where: { $0.id == itemID }) else { return nil }
         let next = (index + direction + items.count) % items.count
         return items[next].id
+    }
+
+    var carouselHeroResidentItems: [LibraryItem] {
+        guard let currentID = currentCarouselItemID else { return [] }
+        var ids = [currentID]
+        if let previousID = neighborCarouselItemID(from: currentID, direction: -1), !ids.contains(previousID) { ids.append(previousID) }
+        if let nextID = neighborCarouselItemID(from: currentID, direction: 1), !ids.contains(nextID) { ids.append(nextID) }
+        return ids.compactMap { id in model.carouselItems.first { $0.id == id } }
     }
 
     func carouselImageURL(_ item: LibraryItem) -> URL? {
