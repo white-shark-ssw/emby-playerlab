@@ -2,11 +2,11 @@
 
 ## Status
 
-**Active — Build240 / 0.14.73 is a measurement-only release-handoff diagnostic on top of the accepted Build239 foundation. It does not change the accepted 0.28 slow-drag commit, direction-aware latest-delivered velocity >=600 pt/s fling decision, Build237 white-flash correction, Build236 real-sample start handling, Build231 foreground compositing, Build226 Hero residency, or Build228 max-refresh-through-settle / 0.22s commit + 0.18s cancel tail. Build240 only records release velocity/progress plus the first post-release animated-progress and display-frame samples so the reopened momentum-continuity question can be measured before any behavior patch. CI/IPA is verified; target-device diagnostic evidence is still required.**
+**Active — user explicitly chose the real-device-tested Build239 interaction/presentation behavior as the controlling baseline and closed the Build240 release-handoff diagnostic direction for now. Build241 / 0.14.74 is the next narrow A/B from exact Build239 source: lower only the direction-aware latest-delivered fling trigger from 600 to 500 pt/s so intentional short flicks require slightly less force. The 0.28 slow-drag threshold, Build239 0.22s/0.18s settle behavior, Build237 white-flash correction, Build236 acquisition handling, Build231 foreground compositing, Build226 Hero residency and Build228 max-refresh-through-settle remain unchanged. Product candidate is materialized; dedicated CI/IPA is pending.**
 
 - Work ID: `DEV-home-carousel-drag-smoothness`
-- Working branch: `diag/home-carousel-release-handoff-build240`
-- Current candidate: OnePlayer `0.14.73 (240)`
+- Working branch: `tune/home-carousel-fling-threshold-build241`
+- Current candidate: OnePlayer `0.14.74 (241)`
 - Target device: iPhone 15 Pro Max / iOS 17.0
 - Deployment Target policy: remain iOS 15.0
 - Accepted overall product baseline: OnePlayer 0.14.49 / Build216 on `main`
@@ -700,6 +700,25 @@ Identity / validation:
 
 Evidence level: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device diagnostic pending ❌ / stable ❌.**
 
+## Build241 / 0.14.74 — lower fling trigger from Build239 baseline
+
+User decision on 2026-08-29: keep Build239 as the behavioral baseline and make fling switching a little easier to trigger. Build240 handoff diagnostics are therefore superseded for the current direction without claiming their hypothesis disproven.
+
+Materialized source identity:
+
+- branch: `tune/home-carousel-fling-threshold-build241`
+- exact Build239 base: `ed4e59c2a0e2fac3979d84dad756299659b15387`
+- current product candidate head: `8bb59c06913630169f1df649cc38f5d9af202546`
+- OnePlayer `0.14.74 (241)`
+- runtime behavior delta: `directionalVelocity >= 600` → `>= 500` only
+- ordinary slow-drag commit remains `actualProgress >= 0.28`
+- no Build240 `HomeCarouselReleaseHandoff` instrumentation is carried into this candidate
+- Player / MPV / PiP / Transport / Cache / Emby Session / Frozen/P0 paths unchanged
+
+Why 500 pt/s is a narrow evidence-backed A/B: Build238 target-device logs separated intended quick flicks at roughly 1139.8–2239.8 pt/s from short slow drags at roughly 0–160 pt/s. Moving 600 → 500 reduces required flick force while retaining a large observed margin above ordinary slow drags. This threshold is not stable/frozen until target-device testing.
+
+Evidence level now: **Code written ✅ / dedicated CI pending / IPA pending / real-device pending / stable ❌.**
+
 ## Next exact action
 
-Install/test Build240 on iPhone 15 Pro Max / iOS 17.0 and perform several representative single quick flicks plus ordinary slow drags. Export the App log containing `HomeCarouselReleaseDecision` and `HomeCarouselReleaseHandoff`. Correlate each committed flick's accepted release velocity / visual progress with the first 2–3 post-release animation/display samples. Only if the measurements show a material derivative/momentum discontinuity should the next candidate change behavior. Do not retune the accepted 600 pt/s gate, 0.28 threshold, 0.22s/0.18s late tail, or add a timer/interpolator/spring/duration mapping without that evidence.
+Run exact-scope Build241 CI/IPA from the materialized candidate. After package identity verification, test on iPhone 15 Pro Max / iOS 17.0 whether short intentional flicks switch more easily without making ordinary slow drags below the retained 0.28 progress threshold commit accidentally. Do not change settle timing/curve or add momentum/spring/interpolation behavior in this candidate.
