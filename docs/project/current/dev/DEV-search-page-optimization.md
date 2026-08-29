@@ -1,6 +1,6 @@
 # DEV-search-page-optimization
 
-- Status: Active — Build254 target-device rejected for append twitch; Build255 CI/IPA verified, target-device validation pending
+- Status: Active — Build255 target-device exposes recommendation lifetime reset after detail return; Build256 lifetime correction implementation/CI in progress
 - Task: 搜索页面优化 / 1:1 对标竞品搜索体验
 - Routing aliases / keywords: 搜索页面优化, 搜索页, 全局搜索, 搜索历史, 推荐观看, 多 Emby 搜索
 - Working branch: `feat/search-page-optimization`
@@ -114,3 +114,9 @@ Dedicated Xcode 16.4 Release run/job `33270048487 / 99146794862` passed source v
 ## Next exact action
 
 Target-device test Build255 on iPhone 15 Pro Max / iOS 17.0. Repeatedly scroll through the initial 9 recommendations into successive +6 appends and verify the visible Search container/viewport no longer twitches or jumps while load-more still continues and displayed IDs remain non-duplicate.
+
+## Build255 target-device result → Build256 Search-tab lifetime correction — 2026-08-30
+
+Build255 / OnePlayer 0.14.88 is target-device tested. After loading recommendation batches beyond the initial 9, opening a movie detail and returning causes Search to return to the initial state: the appended recommendation items are lost and only 9 remain. This is a lifecycle/state-ownership rejection; Build255 is not stable.
+
+Source inspection identifies two concrete owners that conflict with the requested behavior: app startup calls `V3SearchRecommendationPreloader.shared.start(...)` and the shared preloader retains initial recommendation metadata by session; meanwhile `V3EmbyGlobalSearchView` owns its `V3GlobalSearchViewModel` locally and its `.task` calls `loadRecommendations` without guarding already-loaded items. Build256 reserves OnePlayer 0.14.89 / Build256 and changes those exact owners: no app-start Search recommendation fetch; a fresh Search model is created only when Dock enters Search; the server root retains that model while Search pushes/pops detail; initial load runs only while the retained model has no recommendation items; manually switching Dock away from Search sets the model to nil, so recommendation metadata is destroyed; re-entering Search creates a fresh model and fetches a new initial 9. The shared preloader no longer retains recommendation metadata/tasks across Search lifetimes. Existing image disk/decoded caches remain shared and unchanged.

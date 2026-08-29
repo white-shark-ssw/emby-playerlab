@@ -17,87 +17,24 @@ enum V3SearchRecommendationPolicy {
 final class V3SearchRecommendationPreloader {
     static let shared = V3SearchRecommendationPreloader()
 
-    private struct LoadedRecommendations {
-        let items: [LibraryItem]
-        let client: EmbyAPIClient
-    }
-
-    private var itemsBySessionID: [String: [LibraryItem]] = [:]
-    private var tasksBySessionID: [String: Task<LoadedRecommendations, Error>] = [:]
-    private var didStartAppWarm = false
-
     private init() {}
 
-    func start(sessions: [EmbySession], sessionStore: SessionStore) {
-        guard !didStartAppWarm else { return }
-        didStartAppWarm = true
-        for stored in sessions { beginStartupWarm(for: stored, sessionStore: sessionStore) }
-    }
-
     func recommendations(for stored: EmbySession, client: EmbyAPIClient) async throws -> [LibraryItem] {
-        if let items = itemsBySessionID[stored.id] { return items }
-        if let task = tasksBySessionID[stored.id] {
-            let loaded = try await task.value
-            accept(loaded, sessionID: stored.id)
-            return loaded.items
-        }
-
-        let task = Task { try await Self.fetchRecommendations(client: client) }
-        tasksBySessionID[stored.id] = task
-        do {
-            let loaded = try await task.value
-            accept(loaded, sessionID: stored.id)
-            return loaded.items
-        } catch {
-            tasksBySessionID[stored.id] = nil
-            throw error
-        }
+        let items = try await client.searchLandingRecommendations(limit: V3SearchRecommendationPolicy.preloadLimit, includeItemTypes: V3SearchRecommendationPolicy.itemTypes)
+        let types = Dictionary(grouping: items, by: { $0.type ?? "nil" }).mapValues(\.count).sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+        let accepted = Array(items.prefix(V3SearchRecommendationPolicy.preloadLimit))
+        warmPosterImages(accepted.compactMap { item in client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: V3SearchRecommendationPolicy.posterImageMaxWidth, tag: item.preferredPrimaryImageTag) })
+        DiagnosticsLogger.shared.log("Search", "recommendation initial random-items server=\(stored.serverName) requested=\(V3SearchRecommendationPolicy.itemTypes.joined(separator: ",")) returned=\(items.count) types=\(types)")
+        return accepted
     }
 
     func moreRecommendations(client: EmbyAPIClient, excluding itemIDs: [String]) async throws -> [LibraryItem] {
         let requestedTypes = V3SearchRecommendationPolicy.itemTypes
         let items = try await client.searchLandingRecommendations(limit: V3SearchRecommendationPolicy.loadMoreLimit, includeItemTypes: requestedTypes, excludeItemIds: itemIDs)
-        let urls = items.compactMap { item in
-            client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: V3SearchRecommendationPolicy.posterImageMaxWidth, tag: item.preferredPrimaryImageTag)
-        }
+        let urls = items.compactMap { item in client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: V3SearchRecommendationPolicy.posterImageMaxWidth, tag: item.preferredPrimaryImageTag) }
         warmPosterImages(urls)
         DiagnosticsLogger.shared.log("Search", "recommendation load-more random-items excluded=\(itemIDs.count) returned=\(items.count)")
         return Array(items.prefix(V3SearchRecommendationPolicy.loadMoreLimit))
-    }
-
-    private func beginStartupWarm(for stored: EmbySession, sessionStore: SessionStore) {
-        guard itemsBySessionID[stored.id] == nil, tasksBySessionID[stored.id] == nil else { return }
-        let task = Task {
-            let client = try await sessionStore.clientForBestRoute(for: stored)
-            return try await Self.fetchRecommendations(client: client)
-        }
-        tasksBySessionID[stored.id] = task
-        Task {
-            do {
-                let loaded = try await task.value
-                accept(loaded, sessionID: stored.id)
-            } catch {
-                tasksBySessionID[stored.id] = nil
-                if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Search", "startup recommendation warm failed server=\(stored.serverName): \(error.localizedDescription)") }
-            }
-        }
-    }
-
-    private func accept(_ loaded: LoadedRecommendations, sessionID: String) {
-        itemsBySessionID[sessionID] = loaded.items
-        tasksBySessionID[sessionID] = nil
-        let urls = loaded.items.compactMap { item in
-            loaded.client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: V3SearchRecommendationPolicy.posterImageMaxWidth, tag: item.preferredPrimaryImageTag)
-        }
-        warmPosterImages(urls)
-    }
-
-    private static func fetchRecommendations(client: EmbyAPIClient) async throws -> LoadedRecommendations {
-        let requestedTypes = V3SearchRecommendationPolicy.itemTypes
-        let items = try await client.searchLandingRecommendations(limit: V3SearchRecommendationPolicy.preloadLimit, includeItemTypes: requestedTypes)
-        let types = Dictionary(grouping: items, by: { $0.type ?? "nil" }).mapValues(\.count).sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
-        DiagnosticsLogger.shared.log("Search", "recommendation warm random-items requested=\(requestedTypes.joined(separator: ",")) returned=\(items.count) types=\(types)")
-        return LoadedRecommendations(items: Array(items.prefix(V3SearchRecommendationPolicy.preloadLimit)), client: client)
     }
 
     private func warmPosterImages(_ urls: [URL]) {

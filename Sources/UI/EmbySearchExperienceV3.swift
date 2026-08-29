@@ -9,7 +9,7 @@ private enum V3SearchExperienceStorage {
     static let selectedServerIDsKey = "oneplayer.search.selected-server-ids.v1"
 }
 
-private struct V3GlobalSearchServerResult: Identifiable {
+struct V3GlobalSearchServerResult: Identifiable {
     let session: EmbySession
     let client: EmbyAPIClient
     let items: [LibraryItem]
@@ -18,7 +18,7 @@ private struct V3GlobalSearchServerResult: Identifiable {
 }
 
 @MainActor
-private final class V3GlobalSearchViewModel: ObservableObject {
+final class V3GlobalSearchViewModel: ObservableObject {
     @Published private(set) var history: [String]
     @Published private(set) var globalSearchEnabled: Bool
     @Published private(set) var recommendationsEnabled: Bool
@@ -147,7 +147,7 @@ private final class V3GlobalSearchViewModel: ObservableObject {
     }
 
     func loadRecommendations(session: EmbySession, client: EmbyAPIClient) async {
-        guard recommendationsEnabled, !isLoadingRecommendations else { return }
+        guard recommendationsEnabled, recommendationItems.isEmpty, !isLoadingRecommendations else { return }
         recommendationGeneration += 1
         let generation = recommendationGeneration
         isLoadingRecommendations = true
@@ -251,11 +251,19 @@ struct V3EmbyGlobalSearchView: View {
     let currentClient: EmbyAPIClient
     let onClose: () -> Void
     let dock: AnyView
-    @StateObject private var model = V3GlobalSearchViewModel()
+    @ObservedObject private var model: V3GlobalSearchViewModel
     @State private var searchText = ""
     @State private var showClearHistoryAlert = false
     @State private var directSearchDestination: V3GlobalSearchServerResult?
     @FocusState private var searchFieldFocused: Bool
+
+    init(currentSession: EmbySession, currentClient: EmbyAPIClient, model: V3GlobalSearchViewModel, onClose: @escaping () -> Void, dock: AnyView) {
+        self.currentSession = currentSession
+        self.currentClient = currentClient
+        self.model = model
+        self.onClose = onClose
+        self.dock = dock
+    }
 
     private var horizontalPosterWidth: CGFloat {
         let available = UIScreen.main.bounds.width - 32 - EmbyPosterGridMetrics.columnSpacing * 2

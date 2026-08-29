@@ -12,6 +12,7 @@ struct EmbyServerRootViewV3: View {
     @State private var client: EmbyAPIClient?
     @State private var homeClientGeneration = 0
     @State private var selectedTab: V3ServerTab = .home
+    @State private var searchModel: V3GlobalSearchViewModel?
     @State private var homeRefreshToken = 0
     @State private var homeScrollToTopToken = 0
     @State private var homeCarouselActive = false
@@ -39,7 +40,7 @@ struct EmbyServerRootViewV3: View {
                             .accessibilityHidden(selectedTab != .home)
 
                         if selectedTab == .favorites { V3EmbyFavoritesView(client: client, onClose: close, dock: dock) }
-                        if selectedTab == .search { V3EmbyGlobalSearchView(currentSession: session, currentClient: client, onClose: close, dock: emptyDock) }
+                        if selectedTab == .search, let searchModel { V3EmbyGlobalSearchView(currentSession: session, currentClient: client, model: searchModel, onClose: close, dock: emptyDock) }
                         if selectedTab == .settings { OnePlayerServerSettingsView(session: session, onClose: close, dock: dock) }
                     }
                     .overlay(alignment: .bottom) { if selectedTab == .search { serverTabBar.padding(.bottom, geometry.safeAreaInsets.bottom) } }
@@ -104,6 +105,10 @@ struct EmbyServerRootViewV3: View {
                     lastHomeTap = now
                 }
             } else {
+                if selectedTab != tab {
+                    if selectedTab == .search { searchModel = nil }
+                    if tab == .search { searchModel = V3GlobalSearchViewModel() }
+                }
                 selectedTab = tab
                 if tab == .home { lastHomeTap = Date() }
             }
