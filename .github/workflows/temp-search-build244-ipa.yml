@@ -1,0 +1,134 @@
+name: Temp Search Build244 IPA
+
+on:
+  push:
+    branches: ["feat/search-page-optimization"]
+    paths:
+      - ".github/search-build244-trigger.txt"
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact Build244 candidate source
+        uses: actions/checkout@v4
+        with:
+          ref: d9395aec847659d33ccf6a02f89a6ac6bef683cb
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Export exact source snapshot
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OnePlayer-0.14.77-Build244-Search-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Generate assets and project
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+
+      - name: Resolve MPVKit
+        run: |
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build Build244 Release app
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            MARKETING_VERSION=0.14.77 \
+            CURRENT_PROJECT_VERSION=244 \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build244.log
+
+      - name: Locate and verify Build244 app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+          python3 - "$APP_PATH/Info.plist" <<'PY'
+          import plistlib, sys
+          p = plistlib.load(open(sys.argv[1], 'rb'))
+          expected = {
+              'CFBundleIdentifier': 'com.embyplayerlab.app',
+              'CFBundleShortVersionString': '0.14.77',
+              'CFBundleVersion': '244',
+              'MinimumOSVersion': '15.0',
+          }
+          for key, value in expected.items():
+              actual = str(p.get(key))
+              if actual != value:
+                  raise SystemExit(f'::error::{key} expected {value}, got {actual}')
+          print('Build244 identity verification: PASS')
+          PY
+          grep -F 'IPHONEOS_DEPLOYMENT_TARGET = 15.0' <(xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -showBuildSettings -clonedSourcePackagesDirPath .spm-cache MARKETING_VERSION=0.14.77 CURRENT_PROJECT_VERSION=244 IPHONEOS_DEPLOYMENT_TARGET=15.0)
+
+      - name: Package and verify Build244 IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-0.14.77-Build244-Search.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload Build244 candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.77-Build244-Search
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            built-info-plist.log
+            package.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Build244 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.14.77-Build244-Search-diagnostics
+          path: |
+            build244.log
+            built-info-plist.log
+            package.log
+          if-no-files-found: warn
+          retention-days: 14
