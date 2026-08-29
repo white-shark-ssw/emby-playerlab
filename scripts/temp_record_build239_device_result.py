@@ -55,12 +55,10 @@ def update_main_docs():
 
     p = Path('docs/project/BUILD_TEST_INDEX.md')
     text = p.read_text()
-    marker = '| **Build228 / 0.14.61** | Poster image-adoption + pagination timing diagnostics |'
-    row = '| **Carousel Build239 / 0.14.72** | Direction-aware velocity fling release A/B | **Target-device accepted for release intent; whole carousel not yet Stable.** Keeps 0.28 slow-drag progress commit, removes rejected 0.24×width predicted-total-distance fling gate, and commits direction-aware latest-delivered velocity at >=600 pt/s. User verdict: “没问题了”. Tested source `ed4e59c2a0e2fac3979d84dad756299659b15387`; run/job `33208503351 / 98975620229`; artifact `9700721145`; artifact digest `sha256:61c4785bba434247039206198cb35700b47cbc2ead2be1178e914229c3814c5f`; IPA SHA-256 `b11992aa6b4c87df87600ec38143798aece6df231507a6d13357856318f6196d`; MinOS 15.0. New EX 30fps reference shows visible ease-out tail, but no OnePlayer curve change is yet justified because Build239 already uses 0.22s/0.18s `.easeOut`. |\n'
-    if '**Carousel Build239 / 0.14.72**' not in text:
-        if marker not in text: raise SystemExit('build-index marker missing')
-        text = text.replace(marker,row+marker,1)
-    p.write_text(text)
+    old = '| **Carousel Build239 / 0.14.72** | Direction-aware velocity fling A/B | **CI/IPA verified; target-device pending; not stable.** Keeps ordinary `actualProgress >= 0.28`, removes the rejected 0.24×width predicted-total-distance commit gate, and commits a fling when latest delivered move velocity is direction-compatible with magnitude >=600 pt/s. Build237 white-flash correction and Build236/231/226/228 foundation remain unchanged. Tested source `ed4e59c2a0e2fac3979d84dad756299659b15387`; run/job `33208503351 / 98975620229`; artifact `9700721145`; artifact digest `sha256:61c4785bba434247039206198cb35700b47cbc2ead2be1178e914229c3814c5f`; IPA SHA-256 `b11992aa6b4c87df87600ec38143798aece6df231507a6d13357856318f6196d`; source ZIP SHA-256 `55b2977ab1df60bbc154cbd926f2997ca8086f6061394f4c05a4e40028783001`; MinOS 15.0. |'
+    new = '| **Carousel Build239 / 0.14.72** | Direction-aware velocity fling A/B | **Target-device accepted for release intent; whole carousel not yet Stable.** Keeps 0.28 slow-drag progress commit, removes rejected 0.24×width predicted-total-distance fling gate, and commits direction-aware latest-delivered velocity at >=600 pt/s. User verdict: “没问题了”. Tested source `ed4e59c2a0e2fac3979d84dad756299659b15387`; run/job `33208503351 / 98975620229`; artifact `9700721145`; artifact digest `sha256:61c4785bba434247039206198cb35700b47cbc2ead2be1178e914229c3814c5f`; IPA SHA-256 `b11992aa6b4c87df87600ec38143798aece6df231507a6d13357856318f6196d`; source ZIP SHA-256 `55b2977ab1df60bbc154cbd926f2997ca8086f6061394f4c05a4e40028783001`; MinOS 15.0. New EX 30fps reference shows visible ease-out tail, but no OnePlayer curve change is yet justified because Build239 already uses 0.22s/0.18s `.easeOut`. |'
+    if old not in text: raise SystemExit('build-index Build239 row anchor missing')
+    p.write_text(text.replace(old,new,1))
 
 if __name__ == '__main__':
     update_main_docs()
