@@ -6,9 +6,9 @@
 - Working branch: `feat/search-page-optimization`
 - Base branch: `main`
 - Base/head at task creation: `c6d0f4b9c8eb75906e48cec111f7228bbdae78d3`
-- Current product head: `cf8be3562687ed65a8cf63c62ad3dda3150d3cde`
+- Runtime product head: `cf8be3562687ed65a8cf63c62ad3dda3150d3cde`
 - Draft PR: #264
-- Build / version candidate: not allocated yet
+- Reserved test candidate: **OnePlayer 0.14.77 / Build244**
 
 ## User requirement / target-device evidence
 
@@ -32,7 +32,7 @@
 
 ## Implemented scope
 
-At `cf8be356...`:
+At runtime source `cf8be356...`:
 
 - new isolated `Sources/UI/EmbySearchExperienceV3.swift` owns Search-only UI state and persistence;
 - `Sources/UI/EmbyServerRootViewV3.swift` now mounts `V3EmbyGlobalSearchView` and ignores keyboard safe-area only while Search is selected so the shared Dock remains at the physical bottom/behind the keyboard;
@@ -44,11 +44,20 @@ At `cf8be356...`:
 - search results use the selected server set, preserve `SessionStore` route ownership, show one horizontal poster row per server, and provide `更多` to a paginated shared 3-column grid;
 - no retry/debounce/timer/watchdog/fallback or duplicate server/session state was added.
 
+## CI evidence / candidate allocation — 2026-08-29
+
+- Dedicated workflow `Temp Search PR264 MPV Compile`, run **33251213958**, explicitly checked out runtime source `cf8be3562687ed65a8cf63c62ad3dda3150d3cde`.
+- Xcode 16.4 + MPVKit generic-iPhoneOS Debug compile: **PASS**.
+- `IPHONEOS_DEPLOYMENT_TARGET=15.0` build-setting verification step: **PASS**.
+- Temporary compile workflow/trigger files were deleted after the run; PR #264 net changed paths returned to the two intended runtime files only.
+- Normal `Validate Source` on the PR remains an infrastructure false-negative because that repository workflow still hardcodes the stale `0.13.3` source identity; this is not a Search compiler failure.
+- Fresh collision checks found no `Build244`, `0.14.77`, or branch named with `244`; active poster task owns Build243 / 0.14.76. Search therefore reserves **OnePlayer 0.14.77 / Build244** for the first Search device candidate.
+
 ## Parallel-work conflict guard
 
-- Active poster PR #259 currently modifies `EmbyServerBrowseV3.swift`, `EmbyPosterGrid.swift`, `EmbyServerSharedV3.swift` and related poster/image files.
-- Search implementation intentionally does **not modify** those files. PR #264 changed paths are currently only `Sources/UI/EmbySearchExperienceV3.swift` and `Sources/UI/EmbyServerRootViewV3.swift`.
-- Reusing `EmbyPosterGrid`, `V3PosterCard`, and `EmbyPosterDetailLink` is a shared dependency; re-check poster PR #259 / `main` before final candidate build or merge if that task advances materially.
+- Active poster PR #259 still modifies `EmbyServerBrowseV3.swift`, `EmbyPosterGrid.swift`, `EmbyServerSharedV3.swift`, `EmbySharedImageAndNavigation.swift` and related poster/image files; its current docs reserve Build243 / 0.14.76.
+- Search implementation intentionally does **not modify** poster-owned runtime files. PR #264 net runtime paths are only `Sources/UI/EmbySearchExperienceV3.swift` and `Sources/UI/EmbyServerRootViewV3.swift`.
+- Reusing `EmbyPosterGrid`, `V3PosterCard`, and `EmbyPosterDetailLink` is a shared dependency; re-check poster PR #259 / `main` before merge if that task advances materially.
 - Aether work is Player/engine scoped and does not currently overlap Search UI state ownership.
 
 ## Frozen / do-not-touch
@@ -57,20 +66,19 @@ No Player/MPV/PiP, UnifiedTransport, playback Session Cache, STRM/302/115 client
 
 ## Validation state
 
-- Code written: yes — `cf8be3562687ed65a8cf63c62ad3dda3150d3cde`
-- Draft PR: #264
-- CI passed: pending PR validation
-- IPA produced: no
-- Real-device tested: user requirement/current-vs-competitor evidence only; new implementation not tested
-- Stable/frozen: no
+- Code written: **yes** — runtime source `cf8be3562687ed65a8cf63c62ad3dda3150d3cde`
+- Draft PR: **#264**
+- CI passed: **yes for exact runtime source** — dedicated MPV compile run `33251213958`
+- IPA produced: **no, pending Build244 packaging**
+- Real-device tested: **no** — screenshots are requirement/current-vs-competitor evidence, not validation of new code
+- Stable/frozen: **no**
 
 ## Pending
 
-- Wait for PR #264 `Validate Source` Xcode 16.4 compile result; inspect compiler logs if it fails.
-- Re-check active candidate allocations and reserve a unique Build/version.
-- Materialize candidate identity/changelog, run dedicated Release/IPA validation, verify Artifact/IPA identity and MinOS 15.0.
-- Hand IPA to user for iPhone 15 Pro Max / iOS 17.0 testing.
+- Materialize Build244 changelog/candidate packaging without changing runtime behavior.
+- Run dedicated Xcode 16.4 Release/MPV IPA build for exact Search candidate; verify bundle/version/build, Artifact/IPA integrity and MinOS 15.0.
+- Hand IPA to user for iPhone 15 Pro Max / iOS 17.0 testing of keyboard/Dock, gear/server selection, persistent history + clear alert, multi-server horizontal rows/More grid, and recommendation layout/data.
 
 ## Next exact action
 
-Inspect PR #264 validation run for exact head `cf8be356...`; fix only compiler/source issues proven by that run before allocating the test-build identity.
+Build and verify OnePlayer **0.14.77 / Build244** from the already-compiled Search runtime source, then update the project docs with the IPA evidence without promoting the task to real-device-tested or stable.
