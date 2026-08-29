@@ -82,10 +82,10 @@ final class V3SearchRecommendationPreloader {
 
     private static func fetchRecommendations(client: EmbyAPIClient) async throws -> LoadedRecommendations {
         let requestedTypes = V3SearchRecommendationPolicy.itemTypes
-        let suggestions = try await client.librarySuggestions(limit: V3SearchRecommendationPolicy.preloadLimit, includeItemTypes: requestedTypes)
-        let types = Dictionary(grouping: suggestions, by: { $0.type ?? "nil" }).mapValues(\.count).sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
-        DiagnosticsLogger.shared.log("Search", "recommendation warm global requested=\(requestedTypes.joined(separator: ",")) returned=\(suggestions.count) types=\(types)")
-        return LoadedRecommendations(items: Array(suggestions.prefix(V3SearchRecommendationPolicy.preloadLimit)), client: client)
+        let items = try await client.searchLandingRecommendations(limit: V3SearchRecommendationPolicy.preloadLimit, includeItemTypes: requestedTypes)
+        let types = Dictionary(grouping: items, by: { $0.type ?? "nil" }).mapValues(\.count).sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+        DiagnosticsLogger.shared.log("Search", "recommendation warm random-items requested=\(requestedTypes.joined(separator: ",")) returned=\(items.count) types=\(types)")
+        return LoadedRecommendations(items: Array(items.prefix(V3SearchRecommendationPolicy.preloadLimit)), client: client)
     }
 
     private func warmPosterImages(_ urls: [URL]) {
