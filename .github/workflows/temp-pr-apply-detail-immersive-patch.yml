@@ -1,124 +1,76 @@
-name: TEMP Build262 Carousel Exact Source
+name: TEMP Sync Build262 Carousel Index
 
 on:
   push:
     branches: [ci/build262-carousel-20260830]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build262:
-    runs-on: macos-15
-    timeout-minutes: 180
-    env:
-      PRODUCT_SHA: 86ac642ec33ad927a1bc3688824bfe0909b22bab
-      VERSION: 0.14.95
-      BUILD_NUMBER: 262
+  sync:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact Build262 product source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ env.PRODUCT_SHA }}
+          ref: main
           fetch-depth: 0
 
-      - name: Verify exact source and Build241 guardrails
+      - name: Sync Build262 milestone and corrected carousel lineage
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
-          grep -Fq 'sourceVersion = "0.14.95"' Sources/Core/AppIdentity.swift
-          grep -Fq 'guard dominant >= 2 else { return nil }' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'if horizontal >= vertical * 1.15 { return .horizontal }' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'guard dominant >= 6 else { return nil }' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'prepareCarouselForNewInteractiveDrag()' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'interrupt=commit-settle' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'interrupt=cancel-settle' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'let velocityCommit = directionalVelocity >= 500' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'let shouldCommit = actualProgress >= 0.28 || velocityCommit' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          test "$(grep -Fc 'ForEach(carouselHeroResidentItems)' Sources/UI/EmbyHomeHeroV3.swift)" -eq 2
-          test "$(grep -Fc '.compositingGroup()' Sources/UI/EmbyHomeHeroV3.swift)" -eq 1
-          grep -Fq '.blur(radius: 30)' Sources/UI/EmbyHomeHeroV3.swift
-          ! grep -Fq 'HomeCarouselReleaseHandoff' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          ! grep -Fq 'homeCarouselPerformanceIsolationEnabled' Sources/UI/EmbyHomeCoreV3.swift
-          grep -Fq 'iOS: "15.0"' project.yml
-          grep -Fq 'CADisableMinimumFrameDurationOnPhone' Config/Info.plist
-          git diff --check HEAD^
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Export exact source snapshot
-        shell: bash
-        run: |
-          set -euo pipefail
-          SOURCE_ZIP="OnePlayer-0.14.95-build262-${PRODUCT_SHA:0:7}-source.zip"
-          git archive --format=zip --output "$SOURCE_ZIP" HEAD
-          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
-          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+          path = Path('docs/project/BUILD_TEST_INDEX.md')
+          text = path.read_text()
 
-      - name: Select Xcode 16.4 and install tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo xcode-select -switch /Applications/Xcode_16.4.app
-          brew install xcodegen
-          sudo gem install cocoapods -v 1.16.2 --no-document
-          xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
-          xcodegen --version
-          pod --version
+          lines = text.splitlines()
+          replacement = '| **Build241 / 0.14.74** | Home-carousel merged interaction/presentation baseline | **Previously accepted and integrated to main, but final/frozen status revoked by new 2026-08-30 target-device EX comparison.** Exact tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`; run/job `33247149430 / 99086484795`; artifact `9713225510`; IPA SHA-256 `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`; MinOS 15.0. Build241 retains the direction-aware latest-delivered `>=500 pt/s` fling gate, ordinary `>=0.28` progress commit and Build239/237/236/231/226/228 foundations. PR #262 integrated its exact runtime blobs into `main`. New confirmed Build241 recordings show repeated fast swipes can fall through to Home vertical scrolling and the on-screen FPS indicator can drop to roughly 30/44 while EX holds 120, so Build241 is now the merged baseline to improve, not a frozen final. |'
+          for i, line in enumerate(lines):
+              if line.startswith('| **Build241 / 0.14.74** | Home-carousel final interaction/presentation contract |'):
+                  lines[i] = replacement
+                  break
+          else:
+              raise SystemExit('Build241 primary row not found')
 
-      - name: Generate project and resolve dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/generate_oneplayer_icons.py
-          xcodegen generate
-          pod install --repo-update
-          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+          for i, line in enumerate(lines):
+              if line.startswith('| **Build257 / 0.14.90** | Home auto-advance × vertical inertia containment |'):
+                  lines[i] = line.replace('Build241 manual carousel remains frozen.', 'Build241 manual carousel remains the merged baseline but is reopened by the later direct EX comparison.')
+                  break
 
-      - name: Build Release for generic iOS device
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf build
-          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
+          carousel241 = '| **Carousel Build241 / 0.14.74** | Easier direction-aware fling trigger from exact Build239 behavior baseline | **Target-device behavior was previously accepted, then reopened by stronger 2026-08-30 stress evidence; merged baseline, not stable/frozen.** User explicitly chose Build239 behavior and changed only the fling gate `600 → 500 pt/s`; 0.28 slow-drag commit, 0.22s/0.18s settle and Build237/236/231/226/228 contracts remain. Exact tested source `997a93a5f2c3c6544908ad112df5e714d2538e65`; run/job `33247149430 / 99086484795`; artifact `9713225510` (`sha256:3ea36257c97b4a7947bb46e9aa1e0a5d2dcbd1a96ddf1977d58e0cada180525f`); IPA SHA-256 `338cd80de1671da4fedabdeecd9a001e98074dd119dcf331fda548b420f1f236`; source ZIP SHA-256 `b1e37c1c79f08552ad9de6819838cbca1b5b95cd4cc8a95c5b3ebf08a73ab664`; MinOS 15.0. Latest confirmed Build241 recordings expose unstable rapid-swipe FPS and horizontal→vertical ownership loss, motivating Build262. |'
+          for i, line in enumerate(lines):
+              if line.startswith('| **Carousel Build241 / 0.14.74** | Easier direction-aware fling trigger'):
+                  lines[i] = carousel241
+                  break
+          else:
+              raise SystemExit('Carousel Build241 row not found')
 
-      - name: Locate and validate built app
-        shell: bash
-        run: |
-          set -euo pipefail
-          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
-          test -n "$APP_PATH" && test -d "$APP_PATH"
-          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
-          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version "$VERSION" --build "$BUILD_NUMBER" --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
-          chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
+          build262 = '| **Build262 / 0.14.95** | Home-carousel rapid-swipe ownership + persistent-residency long-frame A/B | **Exact-source CI/IPA verified; target-device pending; not stable.** Exact product source `86ac642ec33ad927a1bc3688824bfe0909b22bab` changes only AppIdentity, `EmbyHomeCarouselInteractionV3.swift` and `EmbyHomeHeroV3.swift`: small spatial axis hysteresis replaces the old 0.5 pt one-sample decision; a new horizontal swipe can take over commit/cancel settle endpoints whose authoritative progress is already 1/0 during delayed cleanup; and the existing current/previous/next resident window is reused for the blurred persistent backdrop as an explicit FPS/long-frame A/B. Build241 `>=500 pt/s` + `>=0.28`, Build231 foreground compositing, Build226 Hero residency, blur30, one UIKit owner and 0.22/0.18 normal settle remain. CI run/job `33311662277 / 99257718260`; artifact `9732204076`, digest `sha256:3558a391076ec952faf93ccdd8be94c2649ebfbf835d228466fae31b0aa8406b`; IPA SHA-256 `0e2a70edb9c5a22df87d0c2a028845dd54b516240f158c205087a0c889133bd5`; source ZIP SHA-256 `b4d6e917478755285e7575e45d71458a3731371dbf05ca9b85a37013f0cf37fa`; bundle `com.embyplayerlab.app`, MinOS 15.0 independently verified. Draft PR #269; real-device rapid-swipe ownership/FPS A/B required before merge. |'
+          if not any(line.startswith('| **Build262 / 0.14.95** |') for line in lines):
+              for i, line in enumerate(lines):
+                  if line.startswith('| **Build261 / 0.14.94** | Home 120 Hz vertical request'):
+                      lines.insert(i + 1, build262)
+                      break
+              else:
+                  raise SystemExit('Build261 insertion anchor not found')
 
-      - name: Package and hash unsigned IPA
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf Payload
-          mkdir Payload
-          cp -R "$APP_PATH" Payload/
-          IPA="OnePlayer-0.14.95-build262-carousel-rapid-120hz-unsigned.ipa"
-          /usr/bin/zip -qry "$IPA" Payload
-          /usr/bin/unzip -t "$IPA" >/dev/null
-          shasum -a 256 "$IPA" | tee "$IPA.sha256"
-          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          carousel242 = '| **Carousel Build242 / 0.14.75** | Whole-carousel Home-performance isolation A/B | **Target-device diagnostic tested; Home-scroll difference felt small/not obvious; diagnostic-only and explicitly not a product baseline.** Exact Build241 tested source was the base. Build242 deliberately disabled the normal carousel presentation/interaction stack while preserving the Home vertical footprint to test whether the whole carousel was a major Home-wide vertical bottleneck. User result: “感觉区别不大”, materially weakening that hypothesis. The user later reiterated that Build242 was a test version whose diagnostic modifications broke normal carousel behavior; never inherit Build242 as the final carousel implementation. Tested source `3bf163d2c443520c0f22bba9b49902928fa36ca8`; run/job `33247895006 / 99088437546`; artifact `9713463258` (`sha256:40fbfb22bcb6461dd358cf72b6fd57fea934ca71acfd478978ffb29b0ebb119f`); IPA SHA-256 `9c08ed8965e5e9e99bf4a17768cc8d124209c3b42e9e48d8d78fba720415e5d4`; source ZIP SHA-256 `6baaec3cb1bacb14842316baa0b2e4615477f1769ed46f4f7f64bb7287a46d52`; MinOS 15.0. |'
+          for i, line in enumerate(lines):
+              if line.startswith('| **Carousel Build242 / 0.14.75** |'):
+                  lines[i] = carousel242
+                  break
+          else:
+              raise SystemExit('Carousel Build242 row not found')
 
-      - name: Upload Build262 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: OnePlayer-0.14.95-build262-carousel-rapid-120hz
-          path: |
-            ${{ env.IPA }}
-            ${{ env.IPA }}.sha256
-            ${{ env.SOURCE_ZIP }}
-            ${{ env.SOURCE_ZIP }}.sha256
-            app-validation.log
-            min-os-report.log
-            built-info-plist.log
-            build.log
-          if-no-files-found: error
-          retention-days: 30
+          path.write_text('\n'.join(lines) + '\n')
+          PY
+          git diff --check
+          git diff -- docs/project/BUILD_TEST_INDEX.md
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add docs/project/BUILD_TEST_INDEX.md
+          git commit -m 'Index Build262 carousel CI and IPA candidate'
+          git push origin HEAD:main
