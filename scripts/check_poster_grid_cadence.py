@@ -11,7 +11,7 @@ home = (root / "Sources/UI/EmbyHomeScrollOffsetObserverV3.swift").read_text()
 identity = (root / "Sources/Core/AppIdentity.swift").read_text()
 info = (root / "Config/Info.plist").read_text()
 
-assert 'static let sourceVersion = "0.14.94"' in identity
+assert 'static let sourceVersion = "0.14.96"' in identity
 assert '<key>CADisableMinimumFrameDurationOnPhone</key>' in info
 assert '<true/>' in info.split('<key>CADisableMinimumFrameDurationOnPhone</key>', 1)[1][:80]
 assert 'diagnosticRoute: String = "grid"' in grid
@@ -29,6 +29,17 @@ assert 'decel_step_ratio_p50=' in diag and 'decel_step_ratio_p95=' in diag and '
 assert 'lastDecelerationDisplayOffsetY' in diag and 'previousDecelerationDisplayWasZero' in diag
 assert 'long_gap_ge12_5=' in diag and 'long_gap_cell_churn=' in diag and 'long_gap_load_ahead=' in diag and 'long_gap_item_change=' in diag and 'long_gap_untracked=' in diag
 assert 'long_gap_max_cell_appear=' in diag and 'long_gap_max_cell_disappear=' in diag and 'long_gap_max_offset_updates=' in diag
+assert 'embyPosterGridDiagnosticOwnerID' in grid
+shared = (root / "Sources/UI/EmbyServerSharedV3.swift").read_text()
+assert '@Environment(\.embyPosterGridDiagnosticOwnerID)' in shared
+assert 'onImageLoaded: { _ in' in shared and 'imageDidPublish(ownerID: ownerID)' in shared
+assert 'image_publish=' in diag and 'long_gap_image_publish=' in diag and 'long_gap_max_image_publish=' in diag
+assert 'severe25_ge25=' in diag and 'severe25_image_publish=' in diag and 'severe25_untracked=' in diag
+assert 'severe33_ge33_3=' in diag and 'severe33_image_publish=' in diag and 'severe33_untracked=' in diag
+assert diag.count('CFRunLoopObserverCreateWithHandler') == 1
+assert 'CFRunLoopActivity.beforeWaiting.rawValue' in diag and 'CFRunLoopMode.commonModes' in diag
+assert 'severe25_no_runloop_wait=' in diag and 'severe25_with_runloop_wait=' in diag
+assert 'severe33_no_runloop_wait=' in diag and 'severe33_with_runloop_wait=' in diag
 assert 'preferredFramesPerSecond' not in diag
 assert 'scrollView.observe(\\.contentOffset' in diag
 assert 'offset_p50_ms=' in diag and 'offset_p95_ms=' in diag and 'offset_p99_ms=' in diag

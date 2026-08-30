@@ -126,6 +126,17 @@ extension EnvironmentValues {
     }
 }
 
+private struct EmbyPosterGridDiagnosticOwnerIDKey: EnvironmentKey {
+    static let defaultValue: UUID? = nil
+}
+
+extension EnvironmentValues {
+    var embyPosterGridDiagnosticOwnerID: UUID? {
+        get { self[EmbyPosterGridDiagnosticOwnerIDKey.self] }
+        set { self[EmbyPosterGridDiagnosticOwnerIDKey.self] = newValue }
+    }
+}
+
 struct EmbyPosterGrid<Content: View>: View {
     let items: [LibraryItem]
     let horizontalPadding: CGFloat
@@ -172,6 +183,7 @@ struct EmbyPosterGrid<Content: View>: View {
                 content(item)
                     .environment(\.embyPosterGridNavigationState, navigationState)
                     .environment(\.embyPosterGridCellWidth, cellWidth)
+                    .environment(\.embyPosterGridDiagnosticOwnerID, diagnosticOwnerID)
                     .frame(width: cellWidth, alignment: .topLeading)
                     .contentShape(Rectangle())
                     .onAppear {

@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 import QuartzCore
 import SwiftUI
@@ -29,18 +30,39 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         var lastDecelerationDisplayDeltaY: CGFloat?
         var previousDecelerationDisplayWasZero = false
         var offsetChangesSinceLastDisplay = 0
+        var imagePublishCount = 0
         var lastDisplayCellAppearCount = 0
         var lastDisplayCellDisappearCount = 0
         var lastDisplayLoadAheadCount = 0
         var lastDisplayItemCountChanges = 0
+        var lastDisplayImagePublishCount = 0
+        var lastDisplayRunLoopBeforeWaitingCount = 0
         var longDisplayGapCount = 0
         var longDisplayGapWithCellChurnCount = 0
+        var longDisplayGapWithImagePublishCount = 0
         var longDisplayGapWithLoadAheadCount = 0
         var longDisplayGapWithItemCountChangeCount = 0
         var longDisplayGapWithNoTrackedGridWorkCount = 0
         var longDisplayGapMaxCellAppearDelta = 0
         var longDisplayGapMaxCellDisappearDelta = 0
+        var longDisplayGapMaxImagePublishDelta = 0
         var longDisplayGapMaxOffsetChanges = 0
+        var severe25GapCount = 0
+        var severe25WithCellChurnCount = 0
+        var severe25WithImagePublishCount = 0
+        var severe25WithLoadAheadCount = 0
+        var severe25WithItemCountChangeCount = 0
+        var severe25WithNoTrackedGridWorkCount = 0
+        var severe25WithoutRunLoopWaitCount = 0
+        var severe25WithRunLoopWaitCount = 0
+        var severe33GapCount = 0
+        var severe33WithCellChurnCount = 0
+        var severe33WithImagePublishCount = 0
+        var severe33WithLoadAheadCount = 0
+        var severe33WithItemCountChangeCount = 0
+        var severe33WithNoTrackedGridWorkCount = 0
+        var severe33WithoutRunLoopWaitCount = 0
+        var severe33WithRunLoopWaitCount = 0
     }
 
     private final class Owner {
@@ -66,6 +88,8 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
     private var displayLink: CADisplayLink?
     private var lastDisplayTimestamp: CFTimeInterval?
     private var refreshRequestActive = false
+    private var runLoopObserver: CFRunLoopObserver?
+    private var runLoopBeforeWaitingCount = 0
 
     private override init() {}
 
@@ -117,6 +141,13 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         owners[ownerID]?.session = session
     }
 
+    func imageDidPublish(ownerID: UUID) {
+        precondition(Thread.isMainThread)
+        guard var session = owners[ownerID]?.session else { return }
+        session.imagePublishCount += 1
+        owners[ownerID]?.session = session
+    }
+
     func loadAheadDidTrigger(ownerID: UUID) {
         precondition(Thread.isMainThread)
         guard var session = owners[ownerID]?.session else { return }
@@ -143,7 +174,9 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
 
         let isUserMotion = scrollView.isDragging || scrollView.isDecelerating
         if owner.session == nil, isUserMotion {
-            owner.session = MotionSession(startedAt: now, startItemCount: owner.itemCount)
+            var session = MotionSession(startedAt: now, startItemCount: owner.itemCount)
+            session.lastDisplayRunLoopBeforeWaitingCount = runLoopBeforeWaitingCount
+            owner.session = session
             owner.lastOffsetTimestamp = now
         }
         guard var session = owner.session else {
@@ -167,6 +200,7 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
 
     private func ensureDisplayLink() {
         guard displayLink == nil else { return }
+        ensureRunLoopObserver()
         lastDisplayTimestamp = nil
         let link = CADisplayLink(target: self, selector: #selector(displayLinkDidFire(_:)))
         link.add(to: .main, forMode: .common)
@@ -178,6 +212,21 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         displayLink = nil
         lastDisplayTimestamp = nil
         refreshRequestActive = false
+        stopRunLoopObserver()
+    }
+
+    private func ensureRunLoopObserver() {
+        guard runLoopObserver == nil else { return }
+        guard let observer = CFRunLoopObserverCreateWithHandler(kCFAllocatorDefault, CFRunLoopActivity.beforeWaiting.rawValue, true, 0, { [weak self] _, _ in self?.runLoopBeforeWaitingCount += 1 }) else { return }
+        runLoopObserver = observer
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, CFRunLoopMode.commonModes)
+    }
+
+    private func stopRunLoopObserver() {
+        guard let runLoopObserver else { return }
+        CFRunLoopRemoveObserver(CFRunLoopGetMain(), runLoopObserver, CFRunLoopMode.commonModes)
+        self.runLoopObserver = nil
+        runLoopBeforeWaitingCount = 0
     }
 
     private func updateRefreshRateRequest() {
@@ -213,19 +262,45 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
                 let intervalMS = max(0, (link.timestamp - previousDisplayTimestamp) * 1000)
                 if intervalMS > 0, intervalMS < 200 {
                     session.displayIntervalsMS.append(intervalMS)
+                    let cellAppearDelta = max(0, session.cellAppearCount - session.lastDisplayCellAppearCount)
+                    let cellDisappearDelta = max(0, session.cellDisappearCount - session.lastDisplayCellDisappearCount)
+                    let loadAheadDelta = max(0, session.loadAheadCount - session.lastDisplayLoadAheadCount)
+                    let itemCountChangeDelta = max(0, session.itemCountChanges - session.lastDisplayItemCountChanges)
+                    let imagePublishDelta = max(0, session.imagePublishCount - session.lastDisplayImagePublishCount)
+                    let runLoopBeforeWaitingDelta = max(0, runLoopBeforeWaitingCount - session.lastDisplayRunLoopBeforeWaitingCount)
+                    let hasCellChurn = cellAppearDelta > 0 || cellDisappearDelta > 0
+                    let hasTrackedGridWork = hasCellChurn || imagePublishDelta > 0 || loadAheadDelta > 0 || itemCountChangeDelta > 0
                     if intervalMS >= 12.5 {
-                        let cellAppearDelta = max(0, session.cellAppearCount - session.lastDisplayCellAppearCount)
-                        let cellDisappearDelta = max(0, session.cellDisappearCount - session.lastDisplayCellDisappearCount)
-                        let loadAheadDelta = max(0, session.loadAheadCount - session.lastDisplayLoadAheadCount)
-                        let itemCountChangeDelta = max(0, session.itemCountChanges - session.lastDisplayItemCountChanges)
                         session.longDisplayGapCount += 1
-                        if cellAppearDelta > 0 || cellDisappearDelta > 0 { session.longDisplayGapWithCellChurnCount += 1 }
+                        if hasCellChurn { session.longDisplayGapWithCellChurnCount += 1 }
+                        if imagePublishDelta > 0 { session.longDisplayGapWithImagePublishCount += 1 }
                         if loadAheadDelta > 0 { session.longDisplayGapWithLoadAheadCount += 1 }
                         if itemCountChangeDelta > 0 { session.longDisplayGapWithItemCountChangeCount += 1 }
-                        if cellAppearDelta == 0 && cellDisappearDelta == 0 && loadAheadDelta == 0 && itemCountChangeDelta == 0 { session.longDisplayGapWithNoTrackedGridWorkCount += 1 }
+                        if !hasTrackedGridWork { session.longDisplayGapWithNoTrackedGridWorkCount += 1 }
                         session.longDisplayGapMaxCellAppearDelta = max(session.longDisplayGapMaxCellAppearDelta, cellAppearDelta)
                         session.longDisplayGapMaxCellDisappearDelta = max(session.longDisplayGapMaxCellDisappearDelta, cellDisappearDelta)
+                        session.longDisplayGapMaxImagePublishDelta = max(session.longDisplayGapMaxImagePublishDelta, imagePublishDelta)
                         session.longDisplayGapMaxOffsetChanges = max(session.longDisplayGapMaxOffsetChanges, session.offsetChangesSinceLastDisplay)
+                    }
+                    if intervalMS >= 25.0 {
+                        session.severe25GapCount += 1
+                        if hasCellChurn { session.severe25WithCellChurnCount += 1 }
+                        if imagePublishDelta > 0 { session.severe25WithImagePublishCount += 1 }
+                        if loadAheadDelta > 0 { session.severe25WithLoadAheadCount += 1 }
+                        if itemCountChangeDelta > 0 { session.severe25WithItemCountChangeCount += 1 }
+                        if !hasTrackedGridWork { session.severe25WithNoTrackedGridWorkCount += 1 }
+                        if runLoopBeforeWaitingDelta == 0 { session.severe25WithoutRunLoopWaitCount += 1 }
+                        else { session.severe25WithRunLoopWaitCount += 1 }
+                    }
+                    if intervalMS >= 33.3 {
+                        session.severe33GapCount += 1
+                        if hasCellChurn { session.severe33WithCellChurnCount += 1 }
+                        if imagePublishDelta > 0 { session.severe33WithImagePublishCount += 1 }
+                        if loadAheadDelta > 0 { session.severe33WithLoadAheadCount += 1 }
+                        if itemCountChangeDelta > 0 { session.severe33WithItemCountChangeCount += 1 }
+                        if !hasTrackedGridWork { session.severe33WithNoTrackedGridWorkCount += 1 }
+                        if runLoopBeforeWaitingDelta == 0 { session.severe33WithoutRunLoopWaitCount += 1 }
+                        else { session.severe33WithRunLoopWaitCount += 1 }
                     }
                 }
             }
@@ -233,6 +308,8 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
             session.lastDisplayCellDisappearCount = session.cellDisappearCount
             session.lastDisplayLoadAheadCount = session.loadAheadCount
             session.lastDisplayItemCountChanges = session.itemCountChanges
+            session.lastDisplayImagePublishCount = session.imagePublishCount
+            session.lastDisplayRunLoopBeforeWaitingCount = runLoopBeforeWaitingCount
             session.offsetChangesSinceLastDisplay = 0
 
             let currentOffsetY = scrollView.contentOffset.y
@@ -287,7 +364,7 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         let durationMS = max(0, (endedAt - session.startedAt) * 1000)
         DiagnosticsLogger.shared.app(
             "PosterGridCadence",
-            "route=\(owner.route) reason=\(reason) duration_ms=\(format(durationMS)) maximum_fps=\(UIScreen.main.maximumFramesPerSecond) refresh_request=\(refreshRequestActive ? 1 : 0) requested_min_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? 80 : 0) requested_max_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? UIScreen.main.maximumFramesPerSecond : 0) offset_samples=\(session.offsetIntervalsMS.count) offset_p50_ms=\(format(offset.p50)) offset_p95_ms=\(format(offset.p95)) offset_p99_ms=\(format(offset.p99)) offset_max_ms=\(format(offset.max)) offset_ge10=\(offset.ge10) offset_ge12_5=\(offset.ge12_5) offset_ge16_7=\(offset.ge16_7) offset_ge25=\(offset.ge25) offset_ge33_3=\(offset.ge33_3) display_samples=\(session.displayIntervalsMS.count) display_p50_ms=\(format(display.p50)) display_p95_ms=\(format(display.p95)) display_p99_ms=\(format(display.p99)) display_max_ms=\(format(display.max)) display_ge10=\(display.ge10) display_ge12_5=\(display.ge12_5) display_ge16_7=\(display.ge16_7) display_ge25=\(display.ge25) display_ge33_3=\(display.ge33_3) drag_samples=\(session.dragSamples) decel_samples=\(session.decelerationSamples) cell_appear=\(session.cellAppearCount) cell_disappear=\(session.cellDisappearCount) load_ahead=\(session.loadAheadCount) item_count_start=\(session.startItemCount) item_count_end=\(owner.itemCount) item_count_changes=\(session.itemCountChanges) max_velocity_y=\(format(Double(session.maxAbsVelocityY))) max_delta_y=\(format(Double(session.maxAbsDeltaY))) decel_display_frames=\(session.decelerationDisplayFrameCount) decel_display_zero=\(session.decelerationDisplayZeroMoveCount) decel_display_catchup=\(session.decelerationDisplayCatchUpCount) decel_display_reverse=\(session.decelerationDisplayReverseCount) decel_delta_p50_pt=\(format(decelerationDelta.p50)) decel_delta_p95_pt=\(format(decelerationDelta.p95)) decel_delta_p99_pt=\(format(decelerationDelta.p99)) decel_delta_max_pt=\(format(decelerationDelta.max)) decel_step_ratio_p50=\(format(decelerationStep.p50)) decel_step_ratio_p95=\(format(decelerationStep.p95)) decel_step_ratio_p99=\(format(decelerationStep.p99)) decel_step_ratio_max=\(format(decelerationStep.max)) long_gap_ge12_5=\(session.longDisplayGapCount) long_gap_cell_churn=\(session.longDisplayGapWithCellChurnCount) long_gap_load_ahead=\(session.longDisplayGapWithLoadAheadCount) long_gap_item_change=\(session.longDisplayGapWithItemCountChangeCount) long_gap_untracked=\(session.longDisplayGapWithNoTrackedGridWorkCount) long_gap_max_cell_appear=\(session.longDisplayGapMaxCellAppearDelta) long_gap_max_cell_disappear=\(session.longDisplayGapMaxCellDisappearDelta) long_gap_max_offset_updates=\(session.longDisplayGapMaxOffsetChanges)"
+            "route=\(owner.route) reason=\(reason) duration_ms=\(format(durationMS)) maximum_fps=\(UIScreen.main.maximumFramesPerSecond) refresh_request=\(refreshRequestActive ? 1 : 0) requested_min_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? 80 : 0) requested_max_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? UIScreen.main.maximumFramesPerSecond : 0) offset_samples=\(session.offsetIntervalsMS.count) offset_p50_ms=\(format(offset.p50)) offset_p95_ms=\(format(offset.p95)) offset_p99_ms=\(format(offset.p99)) offset_max_ms=\(format(offset.max)) offset_ge10=\(offset.ge10) offset_ge12_5=\(offset.ge12_5) offset_ge16_7=\(offset.ge16_7) offset_ge25=\(offset.ge25) offset_ge33_3=\(offset.ge33_3) display_samples=\(session.displayIntervalsMS.count) display_p50_ms=\(format(display.p50)) display_p95_ms=\(format(display.p95)) display_p99_ms=\(format(display.p99)) display_max_ms=\(format(display.max)) display_ge10=\(display.ge10) display_ge12_5=\(display.ge12_5) display_ge16_7=\(display.ge16_7) display_ge25=\(display.ge25) display_ge33_3=\(display.ge33_3) drag_samples=\(session.dragSamples) decel_samples=\(session.decelerationSamples) cell_appear=\(session.cellAppearCount) cell_disappear=\(session.cellDisappearCount) load_ahead=\(session.loadAheadCount) item_count_start=\(session.startItemCount) item_count_end=\(owner.itemCount) item_count_changes=\(session.itemCountChanges) max_velocity_y=\(format(Double(session.maxAbsVelocityY))) max_delta_y=\(format(Double(session.maxAbsDeltaY))) decel_display_frames=\(session.decelerationDisplayFrameCount) decel_display_zero=\(session.decelerationDisplayZeroMoveCount) decel_display_catchup=\(session.decelerationDisplayCatchUpCount) decel_display_reverse=\(session.decelerationDisplayReverseCount) decel_delta_p50_pt=\(format(decelerationDelta.p50)) decel_delta_p95_pt=\(format(decelerationDelta.p95)) decel_delta_p99_pt=\(format(decelerationDelta.p99)) decel_delta_max_pt=\(format(decelerationDelta.max)) decel_step_ratio_p50=\(format(decelerationStep.p50)) decel_step_ratio_p95=\(format(decelerationStep.p95)) decel_step_ratio_p99=\(format(decelerationStep.p99)) decel_step_ratio_max=\(format(decelerationStep.max)) image_publish=\(session.imagePublishCount) long_gap_ge12_5=\(session.longDisplayGapCount) long_gap_cell_churn=\(session.longDisplayGapWithCellChurnCount) long_gap_image_publish=\(session.longDisplayGapWithImagePublishCount) long_gap_load_ahead=\(session.longDisplayGapWithLoadAheadCount) long_gap_item_change=\(session.longDisplayGapWithItemCountChangeCount) long_gap_untracked=\(session.longDisplayGapWithNoTrackedGridWorkCount) long_gap_max_cell_appear=\(session.longDisplayGapMaxCellAppearDelta) long_gap_max_cell_disappear=\(session.longDisplayGapMaxCellDisappearDelta) long_gap_max_image_publish=\(session.longDisplayGapMaxImagePublishDelta) long_gap_max_offset_updates=\(session.longDisplayGapMaxOffsetChanges) severe25_ge25=\(session.severe25GapCount) severe25_cell_churn=\(session.severe25WithCellChurnCount) severe25_image_publish=\(session.severe25WithImagePublishCount) severe25_load_ahead=\(session.severe25WithLoadAheadCount) severe25_item_change=\(session.severe25WithItemCountChangeCount) severe25_untracked=\(session.severe25WithNoTrackedGridWorkCount) severe25_no_runloop_wait=\(session.severe25WithoutRunLoopWaitCount) severe25_with_runloop_wait=\(session.severe25WithRunLoopWaitCount) severe33_ge33_3=\(session.severe33GapCount) severe33_cell_churn=\(session.severe33WithCellChurnCount) severe33_image_publish=\(session.severe33WithImagePublishCount) severe33_load_ahead=\(session.severe33WithLoadAheadCount) severe33_item_change=\(session.severe33WithItemCountChangeCount) severe33_untracked=\(session.severe33WithNoTrackedGridWorkCount) severe33_no_runloop_wait=\(session.severe33WithoutRunLoopWaitCount) severe33_with_runloop_wait=\(session.severe33WithRunLoopWaitCount)"
         )
     }
 
