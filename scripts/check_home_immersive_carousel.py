@@ -5,6 +5,8 @@ home_files = [
     'Sources/UI/EmbyHomeCoreV3.swift',
     'Sources/UI/EmbyHomeHeroV3.swift',
     'Sources/UI/EmbyHomeCarouselStateV3.swift',
+    'Sources/UI/EmbyHomeHeroScrollStateV3.swift',
+    'Sources/UI/EmbyHomeScrollOffsetObserverV3.swift',
     'Sources/UI/EmbyHomeRowsV3.swift',
     'Sources/UI/EmbyHomeModelV3.swift',
     'Sources/UI/EmbyServerSharedV3.swift',
@@ -29,6 +31,14 @@ assert 'AdaptiveHeroRevealMetrics.backdropPinOffset' in home
 assert 'AdaptiveHeroRevealMetrics.clearImageBottom' in home
 assert 'AdaptiveHeroNativeScrollObserver' not in home
 assert 'V3HomeNativeScrollObserver' in home
+
+# Auto-advance must query the real Home UIScrollView and never start while user vertical motion is active.
+assert 'private weak var verticalScrollView: UIScrollView?' in home
+assert 'return verticalScrollView.isDragging || verticalScrollView.isDecelerating' in home
+assert 'onScrollViewChange(scrollView)' in home
+assert 'onScrollViewChange(nil)' in home
+assert 'heroScrollState.attachVerticalScrollView(scrollView)' in home
+assert 'guard !heroScrollState.isVerticalMotionActive else { return }' in home
 
 # Refresh is native and independent from carousel/hero progress.
 assert 'UIRefreshControl' in home
