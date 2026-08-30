@@ -2,18 +2,30 @@
 
 ## Status
 
-**Active — Build276 / 0.15.9 frame-tail attribution is now the current diagnostic candidate, directly based on target-device-tested Build273 native UICollectionView exact source `6ff8b1fdefeb7fbe848d05414661a95c88e8ffb8`. Build276 exact source `6f56370f5990637052140fdcd0adf5e7f3428550`, branch `diag/poster-grid-native-frame-tail-build276`, Draft PR #280, changes exactly four paths and adds per-display callback interval p50/p95/p99/max plus >=12.5/25/33.3 ms gap attribution against existing `insertItems` and same-ID visible-host reconfiguration. It does not change scroll physics, container architecture, pagination source, images, Search, Home or P0. CI/IPA and target-device evidence are still pending.**
+**Active — Build276 / 0.15.9 is target-device tested and reproduced the visible twitch with direct severe-frame evidence. `OnePlayer-App-1788125796.log` contains seven >=25 ms display gaps; all five +60 pagination appends correlate 1:1 with 25.96 / 41.71 / 52.16 / 58.33 / 60.12 ms gaps as item count grows 120→360, while measured batch begin→end is only 1.22–3.52 ms. One same-ID visible-host reconfigure correlates with 66.91 ms and one 64.84 ms gap remains untracked. Exact source shows the @MainActor Library model synchronously rebuilds/serializes/atomically writes the full persistent snapshot after each accepted page, a scaling lead not timed by Build276. Build278 / 0.15.11 exact source `6ff8113d9c45dfae6d745afa98b4a04a3956cf33`, branch `diag/poster-grid-persistence-frame-tail-build278`, Draft PR #281, is diagnostic-only and adds persistence timing without changing cache semantics, scroll physics, container, pagination, Search, Home or P0. Exact-source CI/IPA passed and is independently verified; target-device pending.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
-- **Working branch**: `diag/poster-grid-native-frame-tail-build276`
-- **Draft PR**: #280 Build276 frame-tail attribution; Draft / do not merge before target-device evidence
+- **Working branch**: `diag/poster-grid-persistence-frame-tail-build278`
+- **Draft PR**: #281 Build278 persistence frame-tail attribution; Draft / do not merge before target-device evidence
 - **Superseded PRs**: #278 Build272 fixed-row target-device rejected/closed; #277 Poster Build269 row-stack target-device rejected/closed; #276 Build268 lean-diagnostic target-device rejected/closed; #275 Build267 diagnostic reference-session target-device tested/superseded; earlier poster diagnostics remain historical evidence only
-- **Current branch / PR head**: `6f56370f5990637052140fdcd0adf5e7f3428550`
-- **Current candidate**: OnePlayer **0.15.9 / Build276** — diagnostic-only native frame-tail attribution; Code written + exact four-path scope/checker passed; CI/IPA pending; target-device pending; stable ❌.
+- **Current branch / PR head**: `6ff8113d9c45dfae6d745afa98b4a04a3956cf33`
+- **Current candidate**: OnePlayer **0.15.11 / Build278** — diagnostic-only persistence frame-tail attribution; Code written + exact four-path scope/checker + exact-source CI/IPA independently verified; target-device pending; stable ❌.
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted carousel foundation**: Build241 manual interaction/presentation remains frozen; only automatic-transition scheduling during Home vertical motion is reopened by new device evidence
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
+
+## Build276 target-device result → Build278 persistence attribution — 2026-08-31
+
+Build276 / OnePlayer **0.15.9 (276)** exact source `6f56370f5990637052140fdcd0adf5e7f3428550`, former Draft PR #280, is target-device tested with `OnePlayer-App-1788125796.log`; the user confirmed the visible twitch occurred again. Seven `event=display-gap` records >=25 ms were captured. Every accepted +60 append is followed in the same display interval by a severe gap: **25.96 ms at 120 items, 41.71 ms at 180, 52.16 ms at 240, 58.33 ms at 300, 60.12 ms at 360**. The measured `insert-begin`→`insert-end` duration is only **1.22–3.52 ms**, so the synchronous `performBatchUpdates` call duration alone does not explain the 26–60 ms display tail. A same-ID visible-host reconfigure correlates with a separate **66.91 ms** gap; one **64.84 ms** gap has neither insert nor reconfigure marker.
+
+Exact source adds a concrete scaling lead: `V3LibraryBrowserViewModel` is `@MainActor`; after every accepted page it calls `persistSnapshot()`, which synchronously sends the full accumulated Library snapshot through `V3PagePersistentCache.storeLibrarySnapshot`. That method remaps all accumulated items, `JSONSerialization.data(withJSONObject:)`, then `Data.write(..., .atomic)`. This work grows with the accumulated dataset and can share the missed display interval with the later collection update, but Build276 did not time it, so moving persistence off-main is **not yet justified**.
+
+Build278 / OnePlayer **0.15.11 (278)**, branch `diag/poster-grid-persistence-frame-tail-build278`, Draft PR **#281**, exact source `6ff8113d9c45dfae6d745afa98b4a04a3956cf33`, directly extends Build276 and changes exactly four paths: AppIdentity, `EmbyPagePersistentCache.swift`, changelog and checker. It adds only Library snapshot object-build, JSON serialization, atomic-write, byte-size and total-duration logs. Build276 native collection/pagination/display-gap/reverse behavior and Build213 persistent-cache semantics remain unchanged. Exact-source Xcode 16.4 run/job `33337500594 / 99326940412` passed; cleanup `99327426771` passed; artifact `9739532909`, digest `sha256:7cb116b3cd686e9dd7f0bf47718ed1cf967d72cd057ef902fd1ae0ebadf47182`; IPA SHA `e30ca0a0477dfe1e12192c7e0d630328049be78138a65b947743803e3d55d2ea`; source ZIP SHA `337422655a39a75af0d13d928857a094acf9f92564c9785327e73b8e633f2997`; `0.15.11 (278)` / MinOS15 independently verified.
+
+**Evidence:** Build276 Code/CI/IPA/target-device ✅ / twitch reproduced ✅ / five append-correlated severe gaps ✅ / batch-call-duration-alone sufficient cause ❌ / persistence causal proof pending / Build278 Code+exact scope/checker+CI+IPA ✅ / target-device pending / stable ❌.
+
+**Next exact action:** target-device repeat the same Library `.items` scroll with Build278 and return both `NativePosterCollection` and `PagePersistentCache` logs. Do not change cache threading or semantics before persistence timing is directly correlated with the severe display gaps.
 
 ## Build276 implementation checkpoint — native frame-tail attribution — 2026-08-31
 
