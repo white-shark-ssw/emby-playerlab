@@ -2,15 +2,15 @@
 
 ## Status
 
-**Active — Build258 real-device cadence diagnostics establish a shared 3×3 baseline across Library/Search/detail-filter: on the 120 Hz target device passive display cadence p50/p95 clusters near 16.67 ms even with fixed item counts and modest cell churn. Build257 is target-device verified only as a Home carousel-overlap containment fallback, not the preferred final architecture. Build259 / 0.14.92 is the current high-refresh A/B; CI/IPA verified, target-device pending, not stable.**
+**Active — Build259 target-device testing proves the shared 3×3 device-max refresh request is effective: Library/Search display p50/p95 moved from Build258 ~16.67 ms to ~8.34 ms and obvious jitter is now difficult to see. A residual EX-vs-OnePlayer hand-feel gap remains: EX feels like a continuous smooth curve while OnePlayer still feels slightly coarse/wave-like. Build260 / 0.14.93 is the current diagnostic candidate; it preserves Build259 high refresh and measures real per-display-frame native deceleration continuity. CI/IPA verified, target-device pending, not stable.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
-- **Working branch**: `perf/poster-grid-high-refresh-build259`
-- **Draft PR**: #267
-- **Superseded PRs**: #265 Build257 fallback closed without merge; #266 Build258 diagnostic closed without merge; #259 stale Build243 poster branch retained only as historical diagnostic evidence
-- **Current branch / PR head**: `39168e560d7e626557de8ebde6a88a5d38b3478b`
-- **Current candidate**: OnePlayer `0.14.92 (259)`; directly parented from Build258 exact source `165dffac8690c85283e7a53f4a0b7a20eeb52f8c`; CI/IPA verified 2026-08-30; target-device pending
+- **Working branch**: `perf/poster-grid-curve-diagnostics-build260`
+- **Draft PR**: #268
+- **Superseded PRs**: #267 Build259 A/B completed and closed without merge; #266 Build258 diagnostic closed without merge; #265 Build257 fallback closed without merge; #259 stale Build243 poster branch retained only as historical diagnostic evidence
+- **Current branch / PR head**: `b9a5de5255650f04e312e117f47453122de56adc`
+- **Current candidate**: OnePlayer `0.14.93 (260)`; directly parented from Build259 exact source `39168e560d7e626557de8ebde6a88a5d38b3478b`; CI/IPA verified 2026-08-30; target-device pending
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted carousel foundation**: Build241 manual interaction/presentation remains frozen; only automatic-transition scheduling during Home vertical motion is reopened by new device evidence
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
@@ -37,6 +37,22 @@ Build259 exact-source Xcode 16.4 run/job **`33304743577 / 99239168487`** succeed
 **Evidence:** Build257 target-device containment behavior verified ✅ / Build257 preferred final solution ❌ / Build258 target-device diagnostic tested ✅ / Build258 smoothness fix claimed ❌ / Build259 Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / Build259 target-device tested ❌ / stable ❌.
 
 **Next exact action:** A/B Build258 vs Build259 on Library 3×3, Search full-results 3×3 and Search `推荐观看` 3×3. Judge subjective hand-feel and return `PosterGridCadence` logs. For Search recommendations, allow several accepted +6 batches and verify the Build256 functional contract remains unchanged. If display cadence moves materially toward ~8.3 ms and hand-feel improves, retain the high-refresh direction; otherwise reject it without altering Search semantics or Frozen playback/transport contracts.
+
+## Build259 target-device high-refresh result → Build260 curve-continuity diagnostic — 2026-08-30
+
+Build259 / OnePlayer 0.14.92 exact source `39168e560d7e626557de8ebde6a88a5d38b3478b` is now target-device tested using `OnePlayer-App-1788087127.log`. The shared device-max refresh request is effective: fixed-item Library and Search full-results sessions that were ~16.67 ms display p50/p95 under Build258 now normally report **8.34 ms** display p50/p95 on iPhone 15 Pro Max / iOS 17.0. Search recommendations likewise normally run at 8.34 ms display p50/p95. The user's matching tactile result is that obvious jitter is now difficult to see.
+
+Build259 is nevertheless **not** the final smoothness solution. In direct comparison, EX still feels more silky/fine-grained: the user describes EX as one smooth motion curve while OnePlayer feels slightly coarse or wave-like. Build259 logs retain a relevant but not yet causal signal: across fixed-item Library and Search grids, real `UIScrollView.contentOffset` KVO cadence often has `offset_p50≈8.4 ms` but `offset_p95≈16.8 ms` while display cadence remains 8.34 ms. Because KVO delivery can be coalesced, this does not prove that the visible native scroll position advances every other display frame and does not justify changing `decelerationRate` by guess.
+
+Search recommendation +6 appends remain a separate secondary tail layer: append-heavy sessions can still produce larger p99/max display gaps. This does not explain the fixed-item residual hand-feel gap and does not reopen the accepted Build256 Search functional contract. Initial 9 + incremental +6 Random Items/`ExcludeItemIds`, detail-return lifetime, Dock-away reset and Dock/keyboard behavior remain protected.
+
+Build260 / OnePlayer **0.14.93 (260)** is the minimum next diagnostic, branch `perf/poster-grid-curve-diagnostics-build260`, Draft PR #268, exact source `b9a5de5255650f04e312e117f47453122de56adc`, directly parented from Build259. Exact Build259→260 delta is four paths: AppIdentity, the existing cadence diagnostics owner, Build260 changelog and checker. Build260 preserves the existing single cadence `CADisplayLink` and Build259 80→device-max refresh request unchanged. It adds only passive per-display-frame sampling of the real ancestor `UIScrollView.contentOffset.y` during native deceleration and logs `decel_display_frames`, `decel_display_zero`, `decel_display_catchup`, direction reversals, movement-delta percentiles and consecutive movement-step ratio percentiles. No ScrollView physics/deceleration rate, Grid layout, pagination, image/cache policy, Search implementation, Home carousel runtime, Player/MPV/PiP, UnifiedTransport, playback Cache/Session, STRM/302/115/CDN or Deployment Target behavior changes.
+
+Build260 Xcode 16.4 run/job **`33307963917 / 99247767453`** succeeded. Artifact `OnePlayer-0.14.93-build260-poster-curve-diagnostics`, ID **`9731113592`**, digest `sha256:293055cff1d8524a19ac4e21b39bb2b90afc7451fb1311c4760efc53d08739f8`; IPA SHA-256 `1434d2b31c7ced4f344b2e946c5311d2c287774cfe72bbcbd527a24a1ccbffe8`; source ZIP SHA-256 `875ea8a22e4aca0924c58e70faf250a891a8b97ce980a300bc6bcf1ee16998db`; package `com.embyplayerlab.app`, `0.14.93 (260)`, MinOS 15.0, `CADisableMinimumFrameDurationOnPhone=true`. Downloaded artifact digest, IPA/source hashes, archive integrity and MinOS audit were independently reproduced.
+
+**Evidence:** Build259 target-device tested ✅ / Build259 high-refresh effectiveness proven ✅ / Build259 obvious jitter substantially reduced ✅ / residual EX-vs-OnePlayer hand-feel gap remains ✅ / Build259 final/stable ❌ / Build260 Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / Build260 target-device tested ❌ / physics fix claimed ❌ / stable ❌.
+
+**Next exact action:** install Build260 and perform normal long inertial flings on Library 3×3 and Search full-results 3×3; Search recommendations are secondary and do not need deliberate repeated +6 appends for the first pass. Return the App log. If `decel_display_zero` + `decel_display_catchup` are frequent while display cadence stays ~8.34 ms, investigate native scroll-motion/physics ownership next. If per-display deceleration deltas are already continuous with few/no zero→catch-up pairs, do **not** tune `decelerationRate` by guess; shift the next investigation toward shared SwiftUI Grid presentation/compositing.
 
 ## Build229 latest target-device result / candidate identity guard — 2026-08-29
 
