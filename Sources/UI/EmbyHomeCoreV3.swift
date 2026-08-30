@@ -28,6 +28,7 @@ struct V3EmbyHomeView: View {
     @State var heroScrollState = V3HomeHeroScrollState()
     @State var isHomeRefreshing = false
     @State var isHomeActive = false
+    @State var framePipelineProbeMode = V3HomeFramePipelineProbeMode.carousel
     private let carouselTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, onCarouselActiveChanged: @escaping (Bool) -> Void, dock: AnyView) {
@@ -52,34 +53,47 @@ struct V3EmbyHomeView: View {
             GeometryReader { geometry in
                 let immersive = !model.carouselItems.isEmpty
                 let viewportHeight = geometry.size.height + geometry.safeAreaInsets.top
-                ZStack(alignment: .top) {
-                    if immersive {
-                        V3HomeCarouselTransitionScope(state: carouselTransitionState) {
-                            persistentCarouselBackdrop(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom))
-                        }
-                    } else {
-                        Color(uiColor: .systemBackground).ignoresSafeArea()
-                    }
-                    if immersive { carouselPreloadLayer }
+                Group {
+                    if framePipelineProbeMode == .carousel {
+                        ZStack(alignment: .top) {
+                            if immersive {
+                                V3HomeCarouselTransitionScope(state: carouselTransitionState) {
+                                    persistentCarouselBackdrop(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom))
+                                }
+                            } else {
+                                Color(uiColor: .systemBackground).ignoresSafeArea()
+                            }
+                            if immersive { carouselPreloadLayer }
 
-                    if immersive {
-                        homeScroll(width: geometry.size.width, viewportHeight: viewportHeight, immersive: true)
-                            .background(Color.clear)
-                            .ignoresSafeArea(.container, edges: .top)
-                            .zIndex(1)
-                        header(immersive: true).zIndex(30)
-                    } else {
-                        VStack(spacing: 0) {
-                            header(immersive: false)
-                            homeScroll(width: geometry.size.width, viewportHeight: viewportHeight, immersive: false)
+                            if immersive {
+                                homeScroll(width: geometry.size.width, viewportHeight: viewportHeight, immersive: true)
+                                    .background(Color.clear)
+                                    .ignoresSafeArea(.container, edges: .top)
+                                    .zIndex(1)
+                                header(immersive: true).zIndex(30)
+                            } else {
+                                VStack(spacing: 0) {
+                                    header(immersive: false)
+                                    homeScroll(width: geometry.size.width, viewportHeight: viewportHeight, immersive: false)
+                                }
+                                .zIndex(1)
+                            }
                         }
-                        .zIndex(1)
+                    } else {
+                        V3HomeFramePipelineProbe(mode: framePipelineProbeMode)
                     }
                 }
                 .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 .overlay(alignment: .bottom) {
-                    if immersive { dock.padding(.bottom, serverDockBottomInset) }
-                    else { dock }
+                    if framePipelineProbeMode == .carousel {
+                        if immersive { dock.padding(.bottom, serverDockBottomInset) }
+                        else { dock }
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    V3HomeFramePipelineModeControl(mode: $framePipelineProbeMode)
+                        .padding(.top, geometry.safeAreaInsets.top + 52)
+                        .padding(.trailing, 12)
                 }
                 .onAppear {
                     isHomeActive = true
