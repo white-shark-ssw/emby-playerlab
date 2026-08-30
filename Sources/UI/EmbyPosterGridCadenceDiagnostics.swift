@@ -43,6 +43,7 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
     private var owners: [UUID: Owner] = [:]
     private var displayLink: CADisplayLink?
     private var lastDisplayTimestamp: CFTimeInterval?
+    private var refreshRequestActive = false
 
     private override init() {}
 
@@ -77,6 +78,7 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         owner.observation?.invalidate()
         owner.observation = nil
         if owners.isEmpty { stopDisplayLink() }
+        else { updateRefreshRateRequest() }
     }
 
     func cellDidAppear(ownerID: UUID) {
@@ -137,6 +139,7 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         session.maxAbsVelocityY = max(session.maxAbsVelocityY, abs(scrollView.panGestureRecognizer.velocity(in: scrollView).y))
         session.maxAbsDeltaY = max(session.maxAbsDeltaY, abs(deltaY))
         owner.session = session
+        updateRefreshRateRequest()
     }
 
     private func ensureDisplayLink() {
@@ -151,6 +154,21 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         displayLink?.invalidate()
         displayLink = nil
         lastDisplayTimestamp = nil
+        refreshRequestActive = false
+    }
+
+    private func updateRefreshRateRequest() {
+        guard let displayLink else { return }
+        let maximumFPS = max(60, UIScreen.main.maximumFramesPerSecond)
+        let shouldRequest = maximumFPS > 60 && owners.values.contains { $0.session != nil }
+        guard shouldRequest != refreshRequestActive else { return }
+        refreshRequestActive = shouldRequest
+        if shouldRequest {
+            let maximum = Float(maximumFPS)
+            displayLink.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: maximum, preferred: maximum)
+        } else {
+            displayLink.preferredFrameRateRange = .default
+        }
     }
 
     @objc private func displayLinkDidFire(_ link: CADisplayLink) {
@@ -185,6 +203,7 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         }
 
         for ownerID in staleOwnerIDs { stopObserving(ownerID: ownerID) }
+        updateRefreshRateRequest()
     }
 
     private func log(session: MotionSession, owner: Owner, endedAt: CFTimeInterval, reason: String) {
@@ -193,7 +212,7 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         let durationMS = max(0, (endedAt - session.startedAt) * 1000)
         DiagnosticsLogger.shared.app(
             "PosterGridCadence",
-            "route=\(owner.route) reason=\(reason) duration_ms=\(format(durationMS)) maximum_fps=\(UIScreen.main.maximumFramesPerSecond) offset_samples=\(session.offsetIntervalsMS.count) offset_p50_ms=\(format(offset.p50)) offset_p95_ms=\(format(offset.p95)) offset_p99_ms=\(format(offset.p99)) offset_max_ms=\(format(offset.max)) offset_ge10=\(offset.ge10) offset_ge12_5=\(offset.ge12_5) offset_ge16_7=\(offset.ge16_7) offset_ge25=\(offset.ge25) offset_ge33_3=\(offset.ge33_3) display_samples=\(session.displayIntervalsMS.count) display_p50_ms=\(format(display.p50)) display_p95_ms=\(format(display.p95)) display_p99_ms=\(format(display.p99)) display_max_ms=\(format(display.max)) display_ge10=\(display.ge10) display_ge12_5=\(display.ge12_5) display_ge16_7=\(display.ge16_7) display_ge25=\(display.ge25) display_ge33_3=\(display.ge33_3) drag_samples=\(session.dragSamples) decel_samples=\(session.decelerationSamples) cell_appear=\(session.cellAppearCount) cell_disappear=\(session.cellDisappearCount) load_ahead=\(session.loadAheadCount) item_count_start=\(session.startItemCount) item_count_end=\(owner.itemCount) item_count_changes=\(session.itemCountChanges) max_velocity_y=\(format(Double(session.maxAbsVelocityY))) max_delta_y=\(format(Double(session.maxAbsDeltaY)))"
+            "route=\(owner.route) reason=\(reason) duration_ms=\(format(durationMS)) maximum_fps=\(UIScreen.main.maximumFramesPerSecond) refresh_request=\(refreshRequestActive ? 1 : 0) requested_min_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? 80 : 0) requested_max_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? UIScreen.main.maximumFramesPerSecond : 0) offset_samples=\(session.offsetIntervalsMS.count) offset_p50_ms=\(format(offset.p50)) offset_p95_ms=\(format(offset.p95)) offset_p99_ms=\(format(offset.p99)) offset_max_ms=\(format(offset.max)) offset_ge10=\(offset.ge10) offset_ge12_5=\(offset.ge12_5) offset_ge16_7=\(offset.ge16_7) offset_ge25=\(offset.ge25) offset_ge33_3=\(offset.ge33_3) display_samples=\(session.displayIntervalsMS.count) display_p50_ms=\(format(display.p50)) display_p95_ms=\(format(display.p95)) display_p99_ms=\(format(display.p99)) display_max_ms=\(format(display.max)) display_ge10=\(display.ge10) display_ge12_5=\(display.ge12_5) display_ge16_7=\(display.ge16_7) display_ge25=\(display.ge25) display_ge33_3=\(display.ge33_3) drag_samples=\(session.dragSamples) decel_samples=\(session.decelerationSamples) cell_appear=\(session.cellAppearCount) cell_disappear=\(session.cellDisappearCount) load_ahead=\(session.loadAheadCount) item_count_start=\(session.startItemCount) item_count_end=\(owner.itemCount) item_count_changes=\(session.itemCountChanges) max_velocity_y=\(format(Double(session.maxAbsVelocityY))) max_delta_y=\(format(Double(session.maxAbsDeltaY)))"
         )
     }
 
