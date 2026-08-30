@@ -141,6 +141,7 @@ struct EmbyPosterGrid<Content: View>: View {
     let items: [LibraryItem]
     let horizontalPadding: CGFloat
     let diagnosticRoute: String
+    let usesFixedStandardPosterRowHeight: Bool
     let onApproachingEnd: (() -> Void)?
     private let content: (LibraryItem) -> Content
     @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
@@ -151,12 +152,14 @@ struct EmbyPosterGrid<Content: View>: View {
         items: [LibraryItem],
         horizontalPadding: CGFloat = EmbyPosterGridMetrics.horizontalPadding,
         diagnosticRoute: String = "grid",
+        usesFixedStandardPosterRowHeight: Bool = false,
         onApproachingEnd: (() -> Void)? = nil,
         @ViewBuilder content: @escaping (LibraryItem) -> Content
     ) {
         self.items = items
         self.horizontalPadding = horizontalPadding
         self.diagnosticRoute = diagnosticRoute
+        self.usesFixedStandardPosterRowHeight = usesFixedStandardPosterRowHeight
         self.onApproachingEnd = onApproachingEnd
         self.content = content
     }
@@ -167,6 +170,11 @@ struct EmbyPosterGrid<Content: View>: View {
         let available = containerWidth - horizontalPadding * 2 - spacing
         guard available > 0 else { return nil }
         return floor(available / CGFloat(EmbyPosterGridMetrics.columnCount))
+    }
+
+    private var standardPosterRowHeight: CGFloat? {
+        guard let cellWidth else { return nil }
+        return floor(cellWidth / EmbyPosterGridMetrics.posterAspectRatio) + 42
     }
 
     var body: some View {
@@ -192,6 +200,7 @@ struct EmbyPosterGrid<Content: View>: View {
                             .onDisappear { EmbyPosterGridCadenceDiagnostics.shared.cellDidDisappear(ownerID: diagnosticOwnerID) }
                     }
                 }
+                .frame(height: usesFixedStandardPosterRowHeight ? standardPosterRowHeight : nil, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
