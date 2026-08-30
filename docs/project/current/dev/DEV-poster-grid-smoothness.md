@@ -2,18 +2,30 @@
 
 ## Status
 
-**Active — Build272 / 0.15.5 is now target-device tested and rejected as a sufficient fixed-row solution. Library still runs roughly 110–120 FPS and the user still observes an occasional whole-content up/down twitch during scrolling. `OnePlayer-App-1788117273.log` captures a fixed `775→775` 5.36 s session at display 118.50 Hz / offset 110.85 Hz with `item_count_changes=0`, `load_ahead=0`, and a visible-scale native reverse maximum of 33.00 pt while content height and adjusted top/bottom insets each change by 0.00 pt. Explicit standard poster-row height therefore did not remove the symptom and dynamic row-height/contentSize/inset correction is not supported as the sufficient root cause. The reverse aggregate still lacks edge-distance context, so normal top/bottom bounce must not be misclassified as the visible twitch. Stop further SwiftUI Grid/LazyStack variants; next architecture A/B is Library-only native UICollectionView 3×3 with edge-distance-aware native offset diagnostics.**
+**Active — Build273 / 0.15.6 native UICollectionView A/B is target-device tested and rejected as a sufficient fix. The user still observed several visible twitch events. `OnePlayer-App-1788122398.log` shows five native motion sessions; the clean long `60→360` session runs 51.12 s at display 118.72 Hz / offset 109.43 Hz. All 30 emitted reverse samples >=1 pt are outside the legal top bound during bounce and max at only 3.00 pt; fixed `120→120` runs 118.00 Hz with reverse=0. No interior reverse is captured. Therefore the native container does not eliminate the symptom and Build272's 33 pt reverse ambiguity is not evidence of a true mid-scroll correction. Build273 lacks per-frame interval tails and timestamps for `insertItems` / same-ID visible-host reconfiguration, so the remaining twitch root is unresolved. Do not change scroll physics or container architecture again from this log alone.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
-- **Working branch**: next candidate not yet written; Build272 branch `perf/poster-grid-fixed-row-build272` is closed/rejected evidence only
-- **Draft PR**: none current; #278 Build272 closed without merge after target-device rejection
+- **Working branch**: no new behavior candidate yet; Build273 branch `perf/poster-grid-native-collection-build273` is target-device evidence only
+- **Draft PR**: #279 Build273 rejected as sufficient fix; close without merge
 - **Superseded PRs**: #278 Build272 fixed-row target-device rejected/closed; #277 Poster Build269 row-stack target-device rejected/closed; #276 Build268 lean-diagnostic target-device rejected/closed; #275 Build267 diagnostic reference-session target-device tested/superseded; earlier poster diagnostics remain historical evidence only
-- **Current branch / PR head**: no active implementation branch after Build272 rejection; last tested source `75b479476c043ebf3010dba1ebf4136280e98a6c`
-- **Current candidate**: none packaged after Build272. Next permitted implementation is a Library-only native UICollectionView 3×3 A/B preserving existing data/pagination/card/image/navigation contracts; Search Build256 semantics and all P0/Frozen playback/transport remain protected.
+- **Current branch / PR head**: tested exact source `6ff8b1fdefeb7fbe848d05414661a95c88e8ffb8`; next poster build not allocated yet
+- **Current candidate**: none. Next permitted step is measurement-only per-frame gap attribution against native batch insertion and visible-host reconfiguration; Search/P0 remain protected.
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted carousel foundation**: Build241 manual interaction/presentation remains frozen; only automatic-transition scheduling during Home vertical motion is reopened by new device evidence
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
+
+## Build273 target-device result — native collection insufficient; no interior reverse captured — 2026-08-31
+
+Build273 / OnePlayer **0.15.6 (273)** exact source `6ff8b1fdefeb7fbe848d05414661a95c88e8ffb8`, PR #279, is target-device tested with `OnePlayer-App-1788122398.log`. The user still saw several visible twitch events, so the Library-only native `UICollectionViewFlowLayout` 3×3 A/B is not a sufficient fix.
+
+The log resolves the Build272 reverse ambiguity. In the 51.12 s `60→360` session, display cadence averages **118.72 Hz** and native offset callbacks **109.43 Hz**. All 30 logged reverse samples >=1 pt are outside the legal top bound during bounce, max **3.00 pt**. Fixed `120→120` averages **118.00 Hz** with reverse=0; a short fixed `60→60` session averages **120.13 Hz** with reverse=0. No interior native offset reverse is captured. A later `60→360` session averages 62.66 Hz, but Build273 records only session-average cadence, so that value cannot localize the individual visible twitch events or prove a generic 60 Hz ceiling.
+
+Exact source still performs append `performBatchUpdates/insertItems`, while unchanged item IDs trigger visible hosting-root replacement plus intrinsic-size invalidation. These are concrete synchronous presentation events but are not yet proven causal because Build273 has no per-frame gap timestamps around them.
+
+**Evidence:** Code/CI/IPA ✅ / real-device tested ✅ / native UICollectionView sufficient fix ❌ / interior reverse hypothesis supported ❌ / root unresolved / stable ❌.
+
+**Next:** measurement only: log per-display interval p50/p95/p99/max and gaps >=12.5/25/33.3 ms; timestamp insert begin/end and same-ID visible-host reconfigure count/timing; correlate same-frame windows. No `decelerationRate`, smoothing, new container rewrite, Search semantic change, or P0 change before that evidence.
 
 ## Build272 target-device result — fixed-row rejected; native collection-view gate — 2026-08-31
 

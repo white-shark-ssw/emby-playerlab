@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated 2026-08-31: Home carousel Build274 is now target-device tested at `CAROUSEL ≈90 / TREE FULL ≈90` with screen recording off, proving the full steady-state real carousel tree itself can reproduce the presented-FPS ceiling. Build275 / 0.15.8 is the current CI/IPA-verified diagnostic and splits the two actual high-frequency transition observers into `TREE HERO` and `TREE BACKDROP`. Poster and Aether remain separate; Search Build256 and all P0 playback/transport contracts stay protected._
+_Last updated 2026-08-31: Home Build274/275 remains the separate current carousel diagnostic line. Poster Build273 / 0.15.6 is now target-device tested and still shows several 3×3 twitch events. `OnePlayer-App-1788122398.log` resolves the Build272 reverse ambiguity: all emitted >=1 pt native reverses are top-edge bounce outside legal bounds, max 3.00 pt; fixed-item native sessions can average ~118–120 Hz with no reverse. Native UICollectionView is therefore not a sufficient fix and an interior contentOffset correction is not supported by this run. The next poster step is measurement-only per-frame gap attribution around collection inserts and visible-host reconfiguration, not another container/scroll-physics change. Build216 remains the accepted packaged overall baseline; Search Build256 and all P0 playback/transport contracts remain protected._
 
 ## Current accepted overall baseline
 
@@ -71,6 +71,16 @@ Build241 manual horizontal interaction/presentation remains frozen. New 2026-08-
 Search is complete and stable for its functional task. Build256 exact product source `723d803c70326dee49aabc75f15ce445b7de947e` was accepted on iPhone 15 Pro Max / iOS 17.0; run/job `33271528610 / 99150738764`; artifact `9720282077`; IPA SHA-256 `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`; MinOS 15.0. PR #264 merged at `647c1f66e5836fcd20a23a57600211488eeafb3d`. Final contract: no app-start recommendation fetch; Search entry starts a fresh lifetime with initial 9 Movie/Series Random Items; incremental +6 batches exclude displayed IDs; detail push/pop preserves the loaded dataset; Dock switch away destroys it; re-entry starts fresh. Shared image caches remain independent.
 
 The active poster-smoothness task now profiles the shared 3×3 presentation also used by Search. That performance work does not reopen the accepted Search data source, pagination semantics, state lifetime or Dock behavior.
+
+## Active: Poster-heavy scrolling smoothness
+
+### 2026-08-31 Build273 target-device native-collection result
+
+Build273 exact source `6ff8b1fdefeb7fbe848d05414661a95c88e8ffb8` is target-device tested and rejected as a sufficient Library 3×3 fix. The user still observed several visible twitch events. The clean 51.12 s `60→360` native session averages display 118.72 Hz / offset 109.43 Hz; all 30 reverse events >=1 pt are outside the legal top bound during bounce, max 3.00 pt. Fixed `120→120` is 118.00 Hz with reverse=0. No interior reverse is captured.
+
+Build273 does not log per-frame interval tails or timestamp its existing `insertItems` and same-ID visible-host reconfiguration against gaps, so the remaining twitch cannot yet be assigned. Next poster work is diagnostic-only frame-tail attribution; no new container or scroll-physics behavior is justified.
+
+**Evidence:** Code/CI/IPA/real-device ✅ / sufficient fix ❌ / interior reverse ❌ / root unresolved / stable ❌.
 
 ## Active: Poster-heavy scrolling smoothness
 

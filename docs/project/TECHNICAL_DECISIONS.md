@@ -311,3 +311,12 @@ Build274 target-device testing with screen recording off reports `CAROUSEL ≈90
 Exact source inspection establishes the next boundary without guessing. `V3HomeCarouselTransitionState.progress` is `@Published`, while the high-frequency progress stream is observed through exactly two real `V3HomeCarouselTransitionScope` presentation owners: the persistent full-screen backdrop and the Hero subtree. Do not resume generic ProMotion flags, touch smoothing, easing, timer/watchdog, blur-only removal, foreground-residency tuning or Player/Transport changes before these two observers are separated.
 
 Build275 / 0.15.8 performs that separation while keeping both static trees mounted. `TREE FULL` observes both, `TREE HERO` observes only Hero with backdrop frozen, and `TREE BACKDROP` observes only backdrop with Hero frozen. The real `EmbyHomeHeroV3.swift`, `EmbyHomeCarouselInteractionV3.swift`, and `EmbyHomeCarouselStateV3.swift` blobs remain unchanged. Exact source `8c6a882c03e60e9d2f49e9bc95b09f9e3712577b`; run/job `33334208681 / 99318066653`; artifact `9738555839`; IPA SHA `26229afe7b1cec29ab2bf2cca18c0348fd3337a2d6f996bd2a6b6b07c5bebe64`; MinOS 15.0. Target-device scope results are still required before any product optimization.
+
+
+## D023 — Poster native collection rejects container/offset-reverse as sufficient root
+
+Build273 moves Library `.items` only to native `UICollectionViewFlowLayout` but target-device testing still shows several visible twitch events. Therefore replacing the SwiftUI grid owner with UICollectionView is not a sufficient fix.
+
+`OnePlayer-App-1788122398.log` also shows every emitted reverse >=1 pt occurs outside the legal top bound during normal bounce, max 3.00 pt; fixed-item sessions can run ~118–120 Hz with zero reverse. This run does not support an interior native contentOffset correction as the visible twitch cause. Do not tune `decelerationRate`, add smoothing, or try another container rewrite from this evidence.
+
+Exact Build273 source has two existing synchronous presentation events that now deserve timing: append `performBatchUpdates/insertItems`, and unchanged-ID visible hosting-root replacement with intrinsic-size invalidation. They are candidates only, not proven causes. Next work may instrument per-frame gaps and these two events; behavior changes require same-frame evidence. Search Build256, Home carousel and all P0 playback/transport contracts remain protected.
