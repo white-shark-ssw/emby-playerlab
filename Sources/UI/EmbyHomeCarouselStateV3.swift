@@ -69,6 +69,7 @@ extension V3EmbyHomeView {
     func autoAdvanceCarouselIfNeeded() {
         guard isHomeActive, !isCarouselDragging, transitionToID == nil, model.carouselItems.count > 1 else { return }
         guard Date().timeIntervalSince(carouselLastSettledAt) >= 6 else { return }
+        guard !heroScrollState.isVerticalMotionActive else { return }
         guard let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: 1) else { return }
         transitionFromID = currentID
         transitionToID = targetID
