@@ -57,7 +57,11 @@ struct V3EmbyHomeView: View {
                     if framePipelineProbeMode.usesHomePresentation {
                         ZStack(alignment: .top) {
                             if immersive {
-                                V3HomeCarouselTransitionScope(state: carouselTransitionState) {
+                                if framePipelineProbeMode.observesBackdropTransition {
+                                    V3HomeCarouselTransitionScope(state: carouselTransitionState) {
+                                        persistentCarouselBackdrop(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom))
+                                    }
+                                } else {
                                     persistentCarouselBackdrop(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom))
                                 }
                             } else {
@@ -91,10 +95,10 @@ struct V3EmbyHomeView: View {
                     }
                 }
                 .overlay {
-                    if framePipelineProbeMode == .carouselTree {
+                    if framePipelineProbeMode.isCarouselTreeProbe {
                         ZStack {
                             V3HomeCarouselTreeProgressDriver { progress in
-                                guard framePipelineProbeMode == .carouselTree else { return }
+                                guard framePipelineProbeMode.isCarouselTreeProbe else { return }
                                 transitionProgress = progress
                             }
                             .frame(width: 0, height: 0)
@@ -123,7 +127,7 @@ struct V3EmbyHomeView: View {
                 }
                 .onReceive(carouselTimer) { _ in autoAdvanceCarouselIfNeeded() }
                 .onChange(of: framePipelineProbeMode) { mode in
-                    if mode == .carouselTree { beginFramePipelineCarouselTreeProbe() }
+                    if mode.isCarouselTreeProbe { beginFramePipelineCarouselTreeProbe() }
                     else { endFramePipelineCarouselTreeProbe() }
                 }
                 .onChange(of: model.carouselItems.map(\.id)) { _ in synchronizeCarouselItems() }
@@ -160,7 +164,11 @@ struct V3EmbyHomeView: View {
                     Group {
                         if immersive {
                             V3HomeHeroScrollScope(state: heroScrollState) {
-                                V3HomeCarouselTransitionScope(state: carouselTransitionState) {
+                                if framePipelineProbeMode.observesHeroTransition {
+                                    V3HomeCarouselTransitionScope(state: carouselTransitionState) {
+                                        immersiveCarouselHero(width: width, viewportHeight: viewportHeight)
+                                    }
+                                } else {
                                     immersiveCarouselHero(width: width, viewportHeight: viewportHeight)
                                 }
                             }
