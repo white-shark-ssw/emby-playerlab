@@ -199,6 +199,7 @@ struct V3PosterCard: View {
                 V3RemoteImage(
                     url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: posterImageMaxWidth, tag: item.preferredPrimaryImageTag),
                     contentMode: .fill,
+                    publishesLoadingState: width != nil,
                     onImageLoaded: { _ in
                         if let ownerID = gridDiagnosticOwnerID { EmbyPosterGridCadenceDiagnostics.shared.imageDidPublish(ownerID: ownerID) }
                     }
@@ -229,15 +230,17 @@ struct V3PosterCard: View {
 struct V3RemoteImage: View {
     let url: URL?
     let contentMode: ContentMode
+    let publishesLoadingState: Bool
     let onImageLoaded: ((UIImage) -> Void)?
 
-    init(url: URL?, contentMode: ContentMode, onImageLoaded: ((UIImage) -> Void)? = nil) {
+    init(url: URL?, contentMode: ContentMode, publishesLoadingState: Bool = true, onImageLoaded: ((UIImage) -> Void)? = nil) {
         self.url = url
         self.contentMode = contentMode
+        self.publishesLoadingState = publishesLoadingState
         self.onImageLoaded = onImageLoaded
     }
 
-    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode, placeholderSystemImage: "play.rectangle", showsLoadingIndicator: false, onImageLoaded: onImageLoaded) }
+    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode, placeholderSystemImage: "play.rectangle", showsLoadingIndicator: false, publishesLoadingState: publishesLoadingState, onImageLoaded: onImageLoaded) }
 }
 
 func v3MediaSubtitle(_ item: LibraryItem) -> String {

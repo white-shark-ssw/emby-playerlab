@@ -27,8 +27,13 @@ final class EmbyDecodedImageRenderPool: @unchecked Sendable {
 private final class EmbyCachedImageLoader: ObservableObject {
     @Published var image: UIImage?
     @Published var isLoading = false
+    private let publishesLoadingState: Bool
     private var currentURL: URL?
     private var task: Task<Void, Never>?
+
+    init(publishesLoadingState: Bool) { self.publishesLoadingState = publishesLoadingState }
+
+    private func setLoading(_ value: Bool) { if publishesLoadingState { isLoading = value } }
 
     func load(_ url: URL?) {
         guard currentURL != url || image == nil else { return }
@@ -36,16 +41,16 @@ private final class EmbyCachedImageLoader: ObservableObject {
         task?.cancel()
         guard let url else {
             image = nil
-            isLoading = false
+            setLoading(false)
             return
         }
         if let rendered = EmbyDecodedImageRenderPool.shared.image(for: url) {
             image = rendered
-            isLoading = false
+            setLoading(false)
             return
         }
         image = nil
-        isLoading = true
+        setLoading(true)
         task = Task { [weak self] in
             do {
                 var data = await EmbyImageDiskCache.shared.data(for: url)
@@ -57,7 +62,7 @@ private final class EmbyCachedImageLoader: ObservableObject {
                         await MainActor.run {
                             guard self?.currentURL == url else { return }
                             self?.image = cachedImage
-                            self?.isLoading = false
+                            self?.setLoading(false)
                         }
                         return
                     }
@@ -77,13 +82,13 @@ private final class EmbyCachedImageLoader: ObservableObject {
                 await MainActor.run {
                     guard self?.currentURL == url else { return }
                     self?.image = loaded
-                    self?.isLoading = false
+                    self?.setLoading(false)
                 }
             } catch {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     guard self?.currentURL == url else { return }
-                    self?.isLoading = false
+                    self?.setLoading(false)
                 }
             }
         }
@@ -92,7 +97,7 @@ private final class EmbyCachedImageLoader: ObservableObject {
     func cancel() {
         task?.cancel()
         task = nil
-        if image == nil { isLoading = false }
+        if image == nil { setLoading(false) }
     }
 }
 
@@ -283,15 +288,16 @@ struct EmbyCachedRemoteImage: View {
     let placeholderSystemImage: String
     let showsLoadingIndicator: Bool
     let onImageLoaded: ((UIImage) -> Void)?
-    @StateObject private var loader = EmbyCachedImageLoader()
+    @StateObject private var loader: EmbyCachedImageLoader
     @State private var reportedImageIdentifier: ObjectIdentifier?
 
-    init(url: URL?, contentMode: ContentMode, placeholderSystemImage: String = "photo", showsLoadingIndicator: Bool = true, onImageLoaded: ((UIImage) -> Void)? = nil) {
+    init(url: URL?, contentMode: ContentMode, placeholderSystemImage: String = "photo", showsLoadingIndicator: Bool = true, publishesLoadingState: Bool = true, onImageLoaded: ((UIImage) -> Void)? = nil) {
         self.url = url
         self.contentMode = contentMode
         self.placeholderSystemImage = placeholderSystemImage
         self.showsLoadingIndicator = showsLoadingIndicator
         self.onImageLoaded = onImageLoaded
+        _loader = StateObject(wrappedValue: EmbyCachedImageLoader(publishesLoadingState: publishesLoadingState))
     }
 
     var body: some View {

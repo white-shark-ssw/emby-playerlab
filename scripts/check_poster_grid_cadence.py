@@ -11,7 +11,7 @@ home = (root / "Sources/UI/EmbyHomeScrollOffsetObserverV3.swift").read_text()
 identity = (root / "Sources/Core/AppIdentity.swift").read_text()
 info = (root / "Config/Info.plist").read_text()
 
-assert 'static let sourceVersion = "0.14.96"' in identity
+assert 'static let sourceVersion = "0.14.99"' in identity
 assert '<key>CADisableMinimumFrameDurationOnPhone</key>' in info
 assert '<true/>' in info.split('<key>CADisableMinimumFrameDurationOnPhone</key>', 1)[1][:80]
 assert 'diagnosticRoute: String = "grid"' in grid
@@ -34,6 +34,15 @@ shared = (root / "Sources/UI/EmbyServerSharedV3.swift").read_text()
 assert '@Environment(\.embyPosterGridDiagnosticOwnerID)' in shared
 assert 'onImageLoaded: { _ in' in shared and 'imageDidPublish(ownerID: ownerID)' in shared
 assert 'image_publish=' in diag and 'long_gap_image_publish=' in diag and 'long_gap_max_image_publish=' in diag
+
+image = (root / "Sources/UI/EmbySharedImageAndNavigation.swift").read_text()
+assert 'private let publishesLoadingState: Bool' in image
+assert 'init(publishesLoadingState: Bool)' in image
+assert 'private func setLoading(_ value: Bool) { if publishesLoadingState { isLoading = value } }' in image
+assert 'publishesLoadingState: Bool = true' in image
+assert '_loader = StateObject(wrappedValue: EmbyCachedImageLoader(publishesLoadingState: publishesLoadingState))' in image
+assert 'publishesLoadingState: width != nil' in shared
+assert 'showsLoadingIndicator: false, publishesLoadingState: publishesLoadingState' in shared
 assert 'severe25_ge25=' in diag and 'severe25_image_publish=' in diag and 'severe25_untracked=' in diag
 assert 'severe33_ge33_3=' in diag and 'severe33_image_publish=' in diag and 'severe33_untracked=' in diag
 assert diag.count('CFRunLoopObserverCreateWithHandler') == 1
