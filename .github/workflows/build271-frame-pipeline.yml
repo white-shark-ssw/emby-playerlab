@@ -1,0 +1,168 @@
+name: Build271 Frame Pipeline Probe
+
+on:
+  push:
+    branches: [ci/build271-frame-pipeline-20260831]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build271-frame-pipeline
+  cancel-in-progress: true
+
+env:
+  PRODUCT_SHA: 643ff1cbbd24ea06a315c632b08ac1ad162ee43f
+  BASE_SHA: af92164890e7dc1c869bd586577b39177335df5f
+  VERSION: 0.15.4
+  BUILD_NUMBER: 271
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact product source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+          fetch-depth: 0
+
+      - name: Verify exact source and diagnostic scope
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          mapfile -t changed < <(git diff --name-only "$BASE_SHA" "$PRODUCT_SHA" | sort)
+          printf '%s\n' "${changed[@]}"
+          expected=(
+            Sources/Core/AppIdentity.swift
+            Sources/UI/EmbyHomeCoreV3.swift
+            Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          )
+          mapfile -t expected_sorted < <(printf '%s\n' "${expected[@]}" | sort)
+          test "${#changed[@]}" -eq "${#expected_sorted[@]}"
+          for i in "${!changed[@]}"; do test "${changed[$i]}" = "${expected_sorted[$i]}"; done
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeHeroV3.swift)" = "ab2ab5d80a59e174622dca0006c0f3aad4111a54"
+          grep -F 'static let sourceVersion = "0.15.4"' Sources/Core/AppIdentity.swift
+          grep -F 'case coreAnimation' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'case nativeDisplayLink' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'case swiftUI' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'CADisableMinimumFrameDurationOnPhone' Config/Info.plist
+          grep -F 'iOS: "15.0"' project.yml
+          grep -F 'deploymentTarget: "15.0"' project.yml
+
+      - name: Export exact source snapshot
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OnePlayer-${VERSION}-build${BUILD_NUMBER}-frame-pipeline-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" "$PRODUCT_SHA"
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Inject package identity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          import re
+          from pathlib import Path
+
+          version = "0.15.4"
+          build = "271"
+          info_path = Path("Config/Info.plist")
+          with info_path.open("rb") as handle:
+              info = plistlib.load(handle)
+          info["CFBundleShortVersionString"] = version
+          info["CFBundleVersion"] = build
+          with info_path.open("wb") as handle:
+              plistlib.dump(info, handle, sort_keys=False)
+
+          project_path = Path("project.yml")
+          project = project_path.read_text()
+          project = re.sub(r'MARKETING_VERSION: "[^"]+"', f'MARKETING_VERSION: "{version}"', project)
+          project = re.sub(r'CURRENT_PROJECT_VERSION: "[^"]+"', f'CURRENT_PROJECT_VERSION: "{build}"', project)
+          project_path.write_text(project)
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          xcodegen --version
+          pod --version
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned app
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build | tee build.log
+
+      - name: Validate identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          python3 scripts/validate_built_app.py \
+            "$APP_PATH" \
+            --bundle-id com.embyplayerlab.app \
+            --version "$VERSION" \
+            --build "$BUILD_NUMBER" \
+            --display-name OnePlayer \
+            --minimum-os 15.0 \
+            --primary-icon OnePlayerIcon \
+            --alternate-icon OnePlayerAltIcon
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" 15.0 17.0 min-os-report.log build.log
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-${VERSION}-build${BUILD_NUMBER}-frame-pipeline-probe-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload Build271 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.4-build271-frame-pipeline-probe
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            built-info-plist.log
+            min-os-report.log
+            package.log
+          if-no-files-found: error
+          retention-days: 30
