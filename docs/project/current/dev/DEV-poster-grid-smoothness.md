@@ -2,18 +2,41 @@
 
 ## Status
 
-**Active — Build243 target-device A/B has split the problem into two layers. The user repeatedly reproduced one very large Home hitch when carousel auto-advance begins during active vertical inertia; disabling the carousel removes that large hitch but leaves a milder baseline scrolling jitter. Build243's captured 33.3 ms Library deceleration sample had all background image work counters at zero, so active disk-read/decode/network/cache-write work is not supported as the direct trigger for that sample. Current-main Build257 / 0.14.90 is the narrow auto-advance-vs-inertia candidate; CI/IPA is verified, target-device pending, not stable.**
+**Active — Build258 real-device cadence diagnostics establish a shared 3×3 baseline across Library/Search/detail-filter: on the 120 Hz target device passive display cadence p50/p95 clusters near 16.67 ms even with fixed item counts and modest cell churn. Build257 is target-device verified only as a Home carousel-overlap containment fallback, not the preferred final architecture. Build259 / 0.14.92 is the current high-refresh A/B; CI/IPA verified, target-device pending, not stable.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
-- **Working branch**: `perf/home-library-smoothness-build257`
-- **Draft PR**: #265
+- **Working branch**: `perf/poster-grid-high-refresh-build259`
+- **Draft PR**: #267
 - **Superseded PR**: #259 closed without merge; its stale Build243 poster branch is retained only as historical diagnostic evidence
-- **Current branch / PR head**: `a524d7a56c308a2ed52c5a41b55d061050176e8b`
-- **Current candidate**: OnePlayer `0.14.90 (257)`; based on current-main `44937df8b80424a8c618abb290e9f832793f4120`; CI/IPA verified 2026-08-30; target-device pending
+- **Current branch / PR head**: `39168e560d7e626557de8ebde6a88a5d38b3478b`
+- **Current candidate**: OnePlayer `0.14.92 (259)`; directly parented from Build258 exact source `165dffac8690c85283e7a53f4a0b7a20eeb52f8c`; CI/IPA verified 2026-08-30; target-device pending
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted carousel foundation**: Build241 manual interaction/presentation remains frozen; only automatic-transition scheduling during Home vertical motion is reopened by new device evidence
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
+
+## Build257 containment result → Build258 shared cadence evidence → Build259 A/B — 2026-08-30
+
+Build257 / OnePlayer 0.14.90 was target-device tested. Its vertical-motion gate behaves as designed: while Home is actively dragged or decelerating, a new carousel automatic transition does not begin, so the previously repeatable auto-advance-overlap large hitch is contained. The user explicitly does **not** accept this as the preferred final smoothness architecture; it is retained only as a fallback if the actual scrolling/transition cost cannot be made acceptable. PR #265 is closed without merge. Build241 remains the frozen manual-carousel interaction/presentation authority.
+
+Build258 / OnePlayer 0.14.91 exact source `165dffac8690c85283e7a53f4a0b7a20eeb52f8c` was then target-device diagnostic tested using `OnePlayer-App-1788082165.log`. The shared `EmbyPosterGrid` cadence evidence is cross-route:
+
+- Library `library-items`, fixed `60→60`, 9.56 s motion: display p50/p95 `16.67 ms`, p99 `16.68 ms`; 12 cell appears / 12 disappears; no load-ahead and no item-count change.
+- Detail filter, fixed `60→60`, 14.1 s motion: display p50/p95/p99 `16.67 ms`; no item-count change.
+- Search full-results `global-search-results`, fixed `18→18`: valid sessions repeatedly report display p50/p95 about `16.67 ms` while `maximum_fps=120`; item count is stable and cell churn is small.
+- Search `global-search-recommendations`: one 5.93 s motion grows `15→39` through four accepted +6 append events and adds a separate tail (`display_p99=34.84 ms`, `max=52.39 ms`, item-count changes 4). This can contribute append-adjacent roughness but cannot explain the shared fixed-item 16.67 ms baseline.
+
+The Search route here is the already-final Build256 implementation: PR #264 merged at `647c1f66e5836fcd20a23a57600211488eeafb3d`, and Build258 base `aba2a4a8ddf388ffdec5d90e34aad0a8b32ae9eb` is its descendant. Search's accepted initial-9/+6 Random Items + `ExcludeItemIds`, detail-return lifetime and Dock-away reset are protected functional contracts. Poster smoothness work may optimize the shared presentation path but must not reopen those semantics without new regression evidence.
+
+Build258 therefore rejects several universal-root hypotheses: the mild baseline is not Library-only; not universally pagination/load-ahead driven; not explained by large cell lifecycle churn; and, together with Build243, active poster background disk/decode/network/cache-write is not supported as a universal direct trigger. The `>=16.7 ms` counter is not authoritative for nominal 16.67 ms samples; p50/p95 distributions control this cadence comparison.
+
+Build259 / OnePlayer **0.14.92 (259)** is the minimum next A/B, branch `perf/poster-grid-high-refresh-build259`, Draft PR #267, exact source `39168e560d7e626557de8ebde6a88a5d38b3478b`, directly parented from Build258. It changes exactly four paths: AppIdentity, the existing cadence diagnostics owner, Build259 changelog and its checker. The existing single Build258 `CADisplayLink` requests `CAFrameRateRange(minimum: 80, maximum: deviceMaximum, preferred: deviceMaximum)` only while any observed shared 3×3 real scroll owner has an active drag/deceleration session; it returns to `.default` when no grid motion remains. No second display link, timer, watchdog, retry, fallback, interpolation, Grid geometry, image policy, paging, Search source, Home carousel runtime or Player/Transport code is changed.
+
+Build259 exact-source Xcode 16.4 run/job **`33304743577 / 99239168487`** succeeded. Artifact `OnePlayer-0.14.92-build259-poster-grid-high-refresh-ab`, ID **`9730129850`**, digest `sha256:ac44fcb213597b8ea8cc536c35dc21a157bb2832b869fac33cf5c17633085a1a`; IPA SHA-256 `6d257396ba7a77178e62535c5dd04db58621ea25cf4a30e7e9bf415c7628a18a`; source ZIP SHA-256 `dd121c94b7392abf647ec5471506a6dec903652c7f7f68a19f29ac567660710a`; package `com.embyplayerlab.app`, `0.14.92 (259)`, MinOS 15.0, `CADisableMinimumFrameDurationOnPhone=true`. Downloaded artifact hashes and IPA integrity were independently reproduced.
+
+**Evidence:** Build257 target-device containment behavior verified ✅ / Build257 preferred final solution ❌ / Build258 target-device diagnostic tested ✅ / Build258 smoothness fix claimed ❌ / Build259 Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / Build259 target-device tested ❌ / stable ❌.
+
+**Next exact action:** A/B Build258 vs Build259 on Library 3×3, Search full-results 3×3 and Search `推荐观看` 3×3. Judge subjective hand-feel and return `PosterGridCadence` logs. For Search recommendations, allow several accepted +6 batches and verify the Build256 functional contract remains unchanged. If display cadence moves materially toward ~8.3 ms and hand-feel improves, retain the high-refresh direction; otherwise reject it without altering Search semantics or Frozen playback/transport contracts.
 
 ## Build229 latest target-device result / candidate identity guard — 2026-08-29
 

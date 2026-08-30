@@ -249,8 +249,16 @@ Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B,
 - Shared image disk/decoded caches may persist independently; recommendation metadata/tasks do not.
 - Build256 target-device accepted; PR #264 merged at `647c1f66e5836fcd20a23a57600211488eeafb3d`.
 
-## D013 — Home carousel auto-advance yields to active vertical motion
+## D013 — Home carousel inertia gate is containment fallback, not preferred final architecture
 
-Build241 remains the frozen authority for manual Home-carousel drag/release/presentation. New 2026-08-30 target-device A/B establishes a separate scheduling defect: starting an automatic carousel transition while the Home vertical `UIScrollView` is actively dragging or decelerating produces a repeatable very large hitch; disabling the carousel removes that large hitch while a milder baseline jitter remains.
+Build241 remains the frozen authority for manual Home-carousel drag/release/presentation. Target-device evidence establishes that starting an automatic carousel transition during active Home vertical drag/deceleration can produce a repeatable very large hitch. Build257 reuses the existing real vertical `UIScrollView` and prevents a new auto transition from beginning while `isDragging || isDecelerating`; target-device testing confirms that containment behavior works.
 
-Therefore the automatic-transition scheduler must not begin a new transition while the existing real Home vertical `UIScrollView` reports `isDragging || isDecelerating`. Reuse the existing scroll-view owner; do not add a duplicate vertical-motion boolean, timer, watchdog, debounce, throttle, retry, fallback or smoothing owner. This decision does not authorize retuning Build241 manual carousel motion, release thresholds/timings, Hero residency, persistent backdrop or preload. Build257 / 0.14.90 is the first implementation candidate and remains target-device pending; the residual carousel-off mild jitter is a separate unresolved problem.
+The user explicitly does not accept this gate as the preferred fundamental smoothness solution. PR #265 is closed without merge and Build257 is retained only as a fallback if the actual shared scrolling/transition cost cannot be reduced enough. Do not treat the gate as a frozen mandatory product rule. Build241 manual carousel semantics remain frozen and must not be retuned from this evidence.
+
+## D020 — Shared 3×3 cadence is a first-class smoothness variable; Search semantics remain protected
+
+Build258 target-device diagnostics show Library, Search full-results and detail-filter grids with fixed item counts all delivering passive display cadence p50/p95 near `16.67 ms` while the target device reports `maximum_fps=120`. This cross-route evidence means mild baseline roughness is not demonstrated to be Library-only, pagination-only, Search-append-only or large cell-churn-only. Search `推荐观看` does show a separate long-tail cost during accepted +6 appends, but that is an additional layer rather than a universal explanation.
+
+Build256 Search is stable/merged through PR #264. Its Random Items recommendation authority, initial 9, +6 `ExcludeItemIds` incremental loading, detail-return lifetime and Dock-away reset are protected functional contracts. Poster smoothness work may optimize the shared presentation/cadence layer without altering those semantics.
+
+Build259 is a candidate-level A/B only: reuse the single existing Build258 cadence `CADisplayLink`, request `CAFrameRateRange(minimum: 80, maximum: deviceMaximum, preferred: deviceMaximum)` while any observed real shared-3×3 owner is dragging/decelerating, and return to `.default` when motion ends. No second display link/timer/smoothing owner is allowed. This is not a stable high-refresh architecture decision until target-device hand-feel and cadence evidence accepts it.
