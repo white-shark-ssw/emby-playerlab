@@ -21,9 +21,15 @@ final class V3HomeScrollOffsetProbeView: UIView {
 }
 
 struct V3HomeScrollOffsetObserver: UIViewRepresentable {
+    let onScrollViewChange: (UIScrollView?) -> Void
     let onChange: (CGFloat) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
+    init(onScrollViewChange: @escaping (UIScrollView?) -> Void = { _ in }, onChange: @escaping (CGFloat) -> Void) {
+        self.onScrollViewChange = onScrollViewChange
+        self.onChange = onChange
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onScrollViewChange: onScrollViewChange, onChange: onChange) }
 
     func makeUIView(context: Context) -> V3HomeScrollOffsetProbeView {
         let view = V3HomeScrollOffsetProbeView(frame: .zero)
@@ -38,6 +44,7 @@ struct V3HomeScrollOffsetObserver: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: V3HomeScrollOffsetProbeView, context: Context) {
+        context.coordinator.onScrollViewChange = onScrollViewChange
         context.coordinator.onChange = onChange
         DispatchQueue.main.async { [weak coordinator = context.coordinator, weak uiView] in
             guard let uiView else { return }
@@ -51,19 +58,24 @@ struct V3HomeScrollOffsetObserver: UIViewRepresentable {
     }
 
     final class Coordinator {
+        var onScrollViewChange: (UIScrollView?) -> Void
         var onChange: (CGFloat) -> Void
         private weak var scrollView: UIScrollView?
         private var contentOffsetObservation: NSKeyValueObservation?
         private var restingAdjustedTopInset: CGFloat?
         private var lastUserPullDisplacement: CGFloat?
 
-        init(onChange: @escaping (CGFloat) -> Void) { self.onChange = onChange }
+        init(onScrollViewChange: @escaping (UIScrollView?) -> Void, onChange: @escaping (CGFloat) -> Void) {
+            self.onScrollViewChange = onScrollViewChange
+            self.onChange = onChange
+        }
 
         func attach(from probe: UIView) {
             guard let scrollView = ancestorVerticalScrollView(from: probe) else { return }
             if self.scrollView !== scrollView {
                 contentOffsetObservation?.invalidate()
                 self.scrollView = scrollView
+                onScrollViewChange(scrollView)
                 restingAdjustedTopInset = nil
                 lastUserPullDisplacement = nil
                 scrollView.alwaysBounceVertical = true
@@ -76,6 +88,7 @@ struct V3HomeScrollOffsetObserver: UIViewRepresentable {
         func detach() {
             contentOffsetObservation?.invalidate()
             contentOffsetObservation = nil
+            onScrollViewChange(nil)
             scrollView = nil
             restingAdjustedTopInset = nil
             lastUserPullDisplacement = nil
