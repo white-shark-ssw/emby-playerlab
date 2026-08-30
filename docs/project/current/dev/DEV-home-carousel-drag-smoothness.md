@@ -1,6 +1,6 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build269 / 0.15.2 target-device A/B rejects full-screen persistent `blur(radius: 30)` as the primary cause of the no-recording ~90 FPS ceiling. Build270 / 0.15.3 is now the next single-variable foreground-residency diagnostic from exact Build265 behavior; code written, CI/IPA pending.
+- **Status:** Active — Build269 / 0.15.2 target-device A/B rejects full-screen persistent `blur(radius: 30)` as the primary cause of the no-recording ~90 FPS ceiling. Build270 / 0.15.3 is the current single-variable foreground-residency diagnostic from exact Build265 behavior; exact-source CI/IPA passed and independent artifact verification passed; target-device pending.
 - **Work ID:** `DEV-home-carousel-drag-smoothness`
 - **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps
 - **Task:** Preserve the accepted Build241 carousel appearance/gesture feel while fixing rapid consecutive swipe ownership and improving actual no-screen-recording presentation cadence toward EX on iPhone 15 Pro Max / iOS 17.0.
@@ -12,7 +12,7 @@
 - **Build269 exact product source:** `28d09e1cf7b3932e9033c370df12026889033197`
 - **Current working branch:** `perf/home-carousel-foreground-residency-build270`
 - **Current exact product source:** `cee2031aa7dc2abb59fb371196e22fbce56e32ee`
-- **Current candidate:** OnePlayer `0.15.3 (270)` — foreground-residency diagnostic; CI/IPA pending.
+- **Current candidate:** OnePlayer `0.15.3 (270)` — foreground-residency diagnostic; CI/IPA verified, target-device pending.
 - **Target device:** iPhone 15 Pro Max / iOS 17.0
 - **Deployment Target:** iOS 15.0.
 
@@ -114,11 +114,11 @@ The per-page Build231 `.compositingGroup()` is retained; blur30 is restored beca
 - Build269 real-device tested: ✅ — no-recording max remains ~90 FPS; blur-primary hypothesis rejected.
 - Build269 stable/product candidate: ❌ diagnostic-only.
 - Build270 Code written: ✅ exact source `cee2031aa7dc2abb59fb371196e22fbce56e32ee`.
-- Build270 CI passed: ❌ pending.
-- Build270 IPA produced: ❌ pending.
+- Build270 CI passed: ✅ run/job `33327653253 / 99300535892`.
+- Build270 IPA produced: ✅ artifact `9736735731`; digest `sha256:3a8ab81ccce3b4e6fc10928b829bad053a5060c3130c5ceced9398f85af4ad2b`; IPA SHA `169fb53bd3012c7b864912638f9f627e68282b3f6fb2dd18be58e48edca56b8d`; source ZIP SHA `f586270e852d09623cf5af38d6cd3b8bbaea85d4b8475bc4512e6a816f4ef98a`; Info.plist `0.15.3 (270)`, MinOS 15.0; unzip clean.
 - Build270 real-device tested: ❌ pending.
 - Stable/frozen whole-carousel task: ❌.
 
 ## Next exact action
 
-Run exact-source CI/IPA for Build270 / `0.15.3 (270)`, verify the tested source remains `cee2031aa7dc2abb59fb371196e22fbce56e32ee`, validate bundle/version/build/MinOS and package hashes, then hand off for a **no-screen-recording** system-FPS-HUD A/B versus Build265. If the ~90 ceiling does not materially move, reject the foreground-residency hypothesis and switch direction again rather than stacking speculative optimizations.
+Hand off Build270 / `0.15.3 (270)` for a **no-screen-recording** system-FPS-HUD A/B versus Build265. Exact tested product source is `cee2031aa7dc2abb59fb371196e22fbce56e32ee`; CI/IPA identity and hashes are verified. If the ~90 ceiling does not materially move, reject the foreground-residency hypothesis and switch direction again rather than stacking speculative optimizations. If the ~90 ceiling does not materially move, reject the foreground-residency hypothesis and switch direction again rather than stacking speculative optimizations.
