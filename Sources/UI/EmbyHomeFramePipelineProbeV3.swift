@@ -6,6 +6,8 @@ import UIKit
 enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     case carousel
     case carouselTree
+    case carouselHero
+    case carouselBackdrop
     case coreAnimation
     case nativeDisplayLink
     case swiftUI
@@ -13,7 +15,9 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     var title: String {
         switch self {
         case .carousel: return "CAROUSEL"
-        case .carouselTree: return "TREE120"
+        case .carouselTree: return "TREE FULL"
+        case .carouselHero: return "TREE HERO"
+        case .carouselBackdrop: return "TREE BACKDROP"
         case .coreAnimation: return "CA"
         case .nativeDisplayLink: return "DISPLAYLINK"
         case .swiftUI: return "SWIFTUI"
@@ -23,14 +27,42 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     var detail: String {
         switch self {
         case .carousel: return "Build265 normal carousel"
-        case .carouselTree: return "Full carousel tree ← 120 Hz progress"
+        case .carouselTree: return "Full tree ← 120 Hz progress"
+        case .carouselHero: return "Hero scope ← 120 Hz; backdrop frozen"
+        case .carouselBackdrop: return "Backdrop scope ← 120 Hz; Hero frozen"
         case .coreAnimation: return "Core Animation render-server motion"
         case .nativeDisplayLink: return "CADisplayLink → native CALayer"
         case .swiftUI: return "CADisplayLink → @Published → SwiftUI"
         }
     }
 
-    var usesHomePresentation: Bool { self == .carousel || self == .carouselTree }
+    var usesHomePresentation: Bool {
+        switch self {
+        case .carousel, .carouselTree, .carouselHero, .carouselBackdrop: return true
+        case .coreAnimation, .nativeDisplayLink, .swiftUI: return false
+        }
+    }
+
+    var isCarouselTreeProbe: Bool {
+        switch self {
+        case .carouselTree, .carouselHero, .carouselBackdrop: return true
+        case .carousel, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
+        }
+    }
+
+    var observesBackdropTransition: Bool {
+        switch self {
+        case .carousel, .carouselTree, .carouselBackdrop: return true
+        case .carouselHero, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
+        }
+    }
+
+    var observesHeroTransition: Bool {
+        switch self {
+        case .carousel, .carouselTree, .carouselHero: return true
+        case .carouselBackdrop, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
+        }
+    }
 
     var next: V3HomeFramePipelineProbeMode {
         let modes = Self.allCases
@@ -66,7 +98,7 @@ struct V3HomeFramePipelineProbe: View {
         ZStack {
             Color.black.ignoresSafeArea()
             switch mode {
-            case .carousel, .carouselTree:
+            case .carousel, .carouselTree, .carouselHero, .carouselBackdrop:
                 EmptyView()
             case .coreAnimation, .nativeDisplayLink:
                 V3HomeNativeFramePipelineProbe(mode: mode).ignoresSafeArea()
@@ -192,7 +224,7 @@ private final class V3HomeNativeFramePipelineView: UIView {
         switch mode {
         case .coreAnimation: startCoreAnimation()
         case .nativeDisplayLink: startDisplayLink()
-        case .carousel, .carouselTree, .swiftUI: break
+        case .carousel, .carouselTree, .carouselHero, .carouselBackdrop, .swiftUI: break
         }
     }
 
