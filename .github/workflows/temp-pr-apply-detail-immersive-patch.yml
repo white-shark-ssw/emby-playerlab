@@ -1,128 +1,69 @@
-name: TEMP Build264 Carousel Exact Source
+name: TEMP Sync Build264 Carousel Evidence
 
 on:
   push:
     branches: [ci/build264-carousel-20260830]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build264:
-    runs-on: macos-15
-    timeout-minutes: 180
-    env:
-      PRODUCT_SHA: 323a1ba8c76382de7b893d50e3cf17388747b05f
-      BASE_SHA: 86ac642ec33ad927a1bc3688824bfe0909b22bab
-      VERSION: 0.14.97
-      BUILD_NUMBER: 264
+  sync-docs:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact Build264 product source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ env.PRODUCT_SHA }}
+          ref: main
           fetch-depth: 0
 
-      - name: Verify exact source and carousel guardrails
+      - name: Sync Build262 real-device and Build264 evidence
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
-          grep -Fq 'sourceVersion = "0.14.97"' Sources/Core/AppIdentity.swift
-          grep -Fq 'guard dominant >= 2 else { return nil }' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'if horizontal >= vertical * 1.15 { return .horizontal }' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'guard dominant >= 6 else { return nil }' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'prepareCarouselForNewInteractiveDrag()' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'interrupt=commit-settle' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'interrupt=cancel-settle' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'let velocityCommit = directionalVelocity >= 500' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          grep -Fq 'let shouldCommit = actualProgress >= 0.28 || velocityCommit' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          test "$(grep -Fc 'ForEach(carouselHeroResidentItems)' Sources/UI/EmbyHomeHeroV3.swift)" -eq 1
-          grep -Fq 'if let item = currentCarouselItem {' Sources/UI/EmbyHomeHeroV3.swift
-          grep -Fq 'if let item = transitionTargetCarouselItem {' Sources/UI/EmbyHomeHeroV3.swift
-          grep -Fq 'carouselPersistentImage(item: item, size: size).opacity(Double(carouselBackdropBlendProgress(transitionProgress)))' Sources/UI/EmbyHomeHeroV3.swift
-          test "$(grep -Fc '.compositingGroup()' Sources/UI/EmbyHomeHeroV3.swift)" -eq 1
-          grep -Fq '.blur(radius: 30)' Sources/UI/EmbyHomeHeroV3.swift
-          ! grep -Fq 'HomeCarouselReleaseHandoff' Sources/UI/EmbyHomeCarouselInteractionV3.swift
-          ! grep -Fq 'homeCarouselPerformanceIsolationEnabled' Sources/UI/EmbyHomeCoreV3.swift
-          grep -Fq 'iOS: "15.0"' project.yml
-          grep -Fq 'CADisableMinimumFrameDurationOnPhone' Config/Info.plist
-          git diff --check "$BASE_SHA" HEAD
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Export exact source snapshot
-        shell: bash
-        run: |
-          set -euo pipefail
-          SOURCE_ZIP="OnePlayer-0.14.97-build264-${PRODUCT_SHA:0:7}-source.zip"
-          git archive --format=zip --output "$SOURCE_ZIP" HEAD
-          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
-          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+          # BUILD_TEST_INDEX.md
+          p = Path('docs/project/BUILD_TEST_INDEX.md')
+          t = p.read_text()
+          old = '''| **Build262 / 0.14.95** | Home-carousel rapid-swipe ownership + persistent-residency long-frame A/B | **Exact-source CI/IPA verified; target-device pending; not stable.** Exact product source `86ac642ec33ad927a1bc3688824bfe0909b22bab` changes only AppIdentity, `EmbyHomeCarouselInteractionV3.swift` and `EmbyHomeHeroV3.swift`: small spatial axis hysteresis replaces the old 0.5 pt one-sample decision; a new horizontal swipe can take over commit/cancel settle endpoints whose authoritative progress is already 1/0 during delayed cleanup; and the existing current/previous/next resident window is reused for the blurred persistent backdrop as an explicit FPS/long-frame A/B. Build241 `>=500 pt/s` + `>=0.28`, Build231 foreground compositing, Build226 Hero residency, blur30, one UIKit owner and 0.22/0.18 normal settle remain. CI run/job `33311662277 / 99257718260`; artifact `9732204076`, digest `sha256:3558a391076ec952faf93ccdd8be94c2649ebfbf835d228466fae31b0aa8406b`; IPA SHA-256 `0e2a70edb9c5a22df87d0c2a028845dd54b516240f158c205087a0c889133bd5`; source ZIP SHA-256 `b4d6e917478755285e7575e45d71458a3731371dbf05ca9b85a37013f0cf37fa`; bundle `com.embyplayerlab.app`, MinOS 15.0 independently verified. Draft PR #269; real-device rapid-swipe ownership/FPS A/B required before merge. |'''
+          new = '''| **Build262 / 0.14.95** | Home-carousel rapid-swipe ownership + persistent-residency A/B | **Target-device tested: interaction/FPS materially positive, persistent presentation hard-freeze rejects the candidate; not stable.** Exact source `86ac642ec33ad927a1bc3688824bfe0909b22bab`; run/job `33311662277 / 99257718260`; artifact `9732204076`; IPA SHA `0e2a70edb9c5a22df87d0c2a028845dd54b516240f158c205087a0c889133bd5`; MinOS 15.0. User repeatedly stress-tested rapid swipes and reports FPS generally ~90–100 instead of Build241 ~30/44 low drops; the log contains 9 real `HomeCarouselRapidSwipe` settle interrupts. However `卡住了.mp4` shows the visual carousel hard-freezing on a blended frame while the matching interval still records 11 releases + 11 `HomeCarousel settled` item changes, proving authoritative interaction/current-item state continues while presentation is frozen. The experimental persistent current/previous/next residency is rejected; PR #269 closed without merge. |
+| **Build264 / 0.14.97** | Retain Build262 rapid-swipe fix; roll back persistent residency | **Exact-source CI/IPA verified; target-device pending; not stable.** Directly based on Build262 exact source. Exact product source `323a1ba8c76382de7b893d50e3cf17388747b05f` changes only AppIdentity and `persistentCarouselBackdrop`: Build262 axis hysteresis + rapid-settle takeover remain byte-identical, while persistent backdrop returns to Build241 current+transition-target layering. Accepted Build226 clear-Hero three-slot residency and Build231 foreground compositing remain. Run/job `33315346306 / 99267618336`; artifact `9733296528`, digest `sha256:b3acb0efc4cbbf3b2c05e9cfeb88638aeadf25776f3c1fc6b904f18436855b4f`; IPA SHA `fe8354eaa0cb6afeb59454d6afd31c8e5da3e78bcade1242af499f7db7c51499`; source ZIP SHA `30e8bd7b3c41df3a9b83625da2c6bfdf3d978e64af0a6c5ba6a3cab421dababd`; bundle `com.embyplayerlab.app`, MinOS 15.0 independently verified. Draft PR #272. |'''
+          if old not in t: raise SystemExit('BUILD_TEST_INDEX Build262 anchor missing')
+          p.write_text(t.replace(old, new, 1))
 
-      - name: Select Xcode 16.4 and install tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo xcode-select -switch /Applications/Xcode_16.4.app
-          brew install xcodegen
-          sudo gem install cocoapods -v 1.16.2 --no-document
-          xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
-          xcodegen --version
-          pod --version
+          # PROJECT_STATE.md
+          p = Path('docs/project/PROJECT_STATE.md')
+          t = p.read_text()
+          old = '_Last updated 2026-08-30: Poster Build263 / 0.14.96 is Code written / CI passed / IPA produced+independently verified and awaits target-device severe-gap attribution testing. Build261 remains the real-device authority: Home 120 Hz motion improved, Library cell lifecycle churn is a proven contributor, and a second fixed-item severe-gap source remains. Home-carousel Build262 is a separate active CI/IPA candidate. Search Build256 and P0 playback/transport contracts remain protected._'
+          new = '_Last updated 2026-08-30: Home-carousel Build262 is now target-device tested: rapid-swipe continuity/FPS materially improved, but its experimental persistent three-slot backdrop can hard-freeze visually while interaction/current-item state continues, so Build262 is rejected. Build264 / 0.14.97 retains the Build262 interaction fix and rolls back only persistent residency; exact-source CI/IPA verified, target-device pending. Poster Build263 remains a separate CI/IPA diagnostic candidate. Search Build256 and P0 playback/transport contracts remain protected._'
+          if old not in t: raise SystemExit('PROJECT_STATE last-updated anchor missing')
+          t = t.replace(old, new, 1)
+          old = '## Completed / frozen: Home carousel interaction — Build241 / 0.14.74\n\nWork `DEV-home-carousel-drag-smoothness` is complete. The controlling product/runtime result is **Build241 / OnePlayer 0.14.74**, explicitly selected by the user as the final carousel version after target-device testing on iPhone 15 Pro Max / iOS 17.0.'
+          new = '## Active: Home carousel interaction — Build264 / 0.14.97\n\nWork `DEV-home-carousel-drag-smoothness` was reopened by new 2026-08-30 Build241-vs-EX rapid-swipe evidence. Build241 remains the merged visual/behavior baseline, but its former whole-carousel final/frozen status is revoked: repeated rapid horizontal swipes can fall through to Home vertical scrolling and the on-screen FPS indicator can fall to roughly 30/44 while EX holds 120.'
+          if old not in t: raise SystemExit('PROJECT_STATE carousel heading anchor missing')
+          t = t.replace(old, new, 1)
+          anchor = '**Build242 / OnePlayer 0.14.75 is not a final version.**'
+          insert = '''**Build262 / OnePlayer 0.14.95 is target-device tested but rejected as a product candidate.** Its small axis hysteresis and settle-endpoint takeover are materially positive: the user reports repeated rapid-swipe FPS generally around 90–100 and the App log records 9 actual `HomeCarouselRapidSwipe` interrupts. But the experimental persistent current/previous/next blurred-backdrop residency introduces a severe hard visual freeze. During the matching stuck-video interval the log continues through 11 releases and 11 `HomeCarousel settled` item changes, so the interaction/current-item owner is still advancing while the presentation is frozen. PR #269 is closed without merge.\n\n**Build264 / OnePlayer 0.14.97 is the current rollback A/B.** Exact source `323a1ba8c76382de7b893d50e3cf17388747b05f` is directly based on Build262 and keeps `EmbyHomeCarouselInteractionV3.swift` unchanged; only AppIdentity and the persistent backdrop differ. Persistent presentation returns to Build241 current+transition-target layering, while accepted clear-Hero three-slot residency remains. Exact-source run/job `33315346306 / 99267618336` passed; artifact `9733296528`; IPA SHA `fe8354eaa0cb6afeb59454d6afd31c8e5da3e78bcade1242af499f7db7c51499`; MinOS 15.0; Draft PR #272; target-device pending.\n\n'''
+          if anchor not in t: raise SystemExit('PROJECT_STATE Build242 anchor missing')
+          t = t.replace(anchor, insert + anchor, 1)
+          old = 'Build241 manual horizontal interaction/presentation remains frozen. New 2026-08-30 target-device evidence has reopened only the automatic-transition scheduling sub-contract: auto-advance overlapping Home vertical inertia causes a repeatable large hitch. Do not retune Build241 manual drag/release/presentation behavior from this evidence.'
+          new = 'Build241 is now the historical merged manual-carousel baseline rather than a frozen final. The newer direct EX comparison explicitly reopens manual rapid-swipe ownership/cadence. Build262 proves the new interaction-continuity direction is useful but also rejects persistent blurred three-slot residency because of a hard visual freeze. Build264 keeps the interaction changes and rolls back only that persistent experiment; do not alter the retained 500 pt/s / 0.28 / clear-Hero residency / foreground-compositing contracts without new evidence.'
+          if old not in t: raise SystemExit('PROJECT_STATE frozen sentence anchor missing')
+          p.write_text(t.replace(old, new, 1))
 
-      - name: Generate project and resolve dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/generate_oneplayer_icons.py
-          xcodegen generate
-          pod install --repo-update
-          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
-
-      - name: Build Release for generic iOS device
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf build
-          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
-
-      - name: Locate and validate built app
-        shell: bash
-        run: |
-          set -euo pipefail
-          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
-          test -n "$APP_PATH" && test -d "$APP_PATH"
-          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
-          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version "$VERSION" --build "$BUILD_NUMBER" --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
-          chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
-
-      - name: Package and hash unsigned IPA
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf Payload
-          mkdir Payload
-          cp -R "$APP_PATH" Payload/
-          IPA="OnePlayer-0.14.97-build264-carousel-persistent-rollback-unsigned.ipa"
-          /usr/bin/zip -qry "$IPA" Payload
-          /usr/bin/unzip -t "$IPA" >/dev/null
-          shasum -a 256 "$IPA" | tee "$IPA.sha256"
-          echo "IPA=$IPA" >> "$GITHUB_ENV"
-
-      - name: Upload Build264 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: OnePlayer-0.14.97-build264-carousel-persistent-rollback
-          path: |
-            ${{ env.IPA }}
-            ${{ env.IPA }}.sha256
-            ${{ env.SOURCE_ZIP }}
-            ${{ env.SOURCE_ZIP }}.sha256
-            app-validation.log
-            min-os-report.log
-            built-info-plist.log
-            build.log
-          if-no-files-found: error
-          retention-days: 30
+          # TECHNICAL_DECISIONS.md
+          p = Path('docs/project/TECHNICAL_DECISIONS.md')
+          t = p.read_text()
+          anchor = 'Build242 is the whole-stack Home-performance attribution A/B and does **not** redefine normal carousel behavior.'
+          insert = '''**Build262 rapid-swipe real-device decision:** the Build241 one-sample axis decision and post-release cleanup ownership gap are no longer protected as final behavior. Build262 replaces them inside the same UIKit owner with small spatial hysteresis and endpoint takeover. Target-device stress materially validates this direction: the user reports rapid-swipe FPS generally around 90–100 rather than Build241 30/44-class lows, and the log records 9 actual settle interrupts. Preserve this interaction direction into the next candidate; do not revert it merely because Build262 as a whole is rejected.\n\n**Build262 persistent-residency rejection / Build264 rollback:** do not reuse the clear-Hero `carouselHeroResidentItems` window for the full-screen blurred persistent backdrop. The Build262 stuck recording remains visually frozen on a blended frame while its matching log continues through 11 releases and 11 settled current-item changes, which separates the failure from the interaction state owner and points to presentation. Because persistent three-slot residency is the only new Build262 presentation experiment relative to the long-lived Build241 path, Build264 returns persistent presentation to current+transition-target layering only. This rejection applies to persistent blurred residency; it does **not** reject the accepted Build226 clear-Hero current/previous/next residency or Build231 foreground `compositingGroup()`. No timer/watchdog/retry/zIndex recovery layer is authorized.\n\n'''
+          if anchor not in t: raise SystemExit('TECHNICAL_DECISIONS Build242 anchor missing')
+          p.write_text(t.replace(anchor, insert + anchor, 1))
+          PY
+          git diff --check
+          git diff -- docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add docs/project/BUILD_TEST_INDEX.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md
+          git commit -m 'Docs: record Build262 device result and Build264 baseline'
+          git push origin HEAD:main
