@@ -1,0 +1,65 @@
+name: Temp Sync Build263 Device Status
+on:
+  push:
+    branches: [docs/poster-build263-device-status-20260830]
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/poster-build263-device-status-20260830
+          fetch-depth: 0
+      - name: Checkout latest main
+        run: git checkout main && git pull --ff-only origin main
+      - name: Patch current Build263 status without touching parallel carousel state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          s = state.read_text()
+          old = '_Last updated 2026-08-30: Poster Build263 / 0.14.96 is Code written / CI passed / IPA produced+independently verified and awaits target-device severe-gap attribution testing. Build261 remains the real-device authority: Home 120 Hz motion improved, Library cell lifecycle churn is a proven contributor, and a second fixed-item severe-gap source remains. Home-carousel Build262 is a separate active CI/IPA candidate. Search Build256 and P0 playback/transport contracts remain protected._'
+          new = '_Last updated 2026-08-30: Poster Build263 / 0.14.96 is target-device diagnostic tested. Library fixed-item severe-gap evidence now strongly localizes the remaining >=25/33.3 ms tails to bursts of poster-cell lifecycle realization with image publication usually overlapping: fixed-item severe25 is 26/28 cell-churn and 23/28 image-publish; fixed-item severe33 is 16/16 cell-churn and 15/16 image-publish, with zero severe33 untracked. The exact cost split between cell realization/layout and image state/presentation is still unresolved. Home-carousel Build264 is a separate active CI/IPA candidate. Search Build256 and P0 playback/transport contracts remain protected._'
+          assert old in s
+          s = s.replace(old, new, 1)
+          old2 = 'Build263 / 0.14.96 exact source `bff02ea8e76217b1fe07c298d8b9058b2db1fd08`, Draft PR #271, directly extends target-device-tested Build261 with severe-gap attribution only. It retains the existing single Grid display link/high-refresh request and adds poster image-publish correlation plus passive main-RunLoop `beforeWaiting` classification for `>=25 ms` and `>=33.3 ms` gaps. Exact-source run/job `33313884881 / 99263646157` succeeded; artifact `9732862198`, digest `sha256:6e96b83b78bd8bd37b6e0e3dd2d3f820a328f3810ffc07faf86ea9526f4363bd`; IPA SHA `b8e15a1ac49582ec0dc519c316222d3944b6622cd8afb1afa22ab4d7bbf9d659`; source ZIP SHA `327444119b0b15f894c8a3d8012f195d79ceb77a7ef4b0af16abc3052893424c`; MinOS 15.0 independently verified. Evidence is Code/CI/IPA verified; target-device pending; no root-cause or stability claim.'
+          new2 = 'Build263 / 0.14.96 exact source `bff02ea8e76217b1fe07c298d8b9058b2db1fd08`, Draft PR #271, is now target-device diagnostic tested with `OnePlayer-App-1788098393.log`. Across 26 Library sessions / 5,557 display samples it records 40 gaps `>=25 ms` and 27 `>=33.3 ms`. In 19 fixed-item sessions, cell churn overlaps 26/28 severe25 and all 16/16 severe33; image publication overlaps 23/28 severe25 and 15/16 severe33, leaving only 2 fixed severe25 and zero fixed severe33 untracked. One fixed 775→775 fast pass concentrates up to 18 cell appears + 18 disappears and 27 image publications in a long-gap interval, while another fixed 775 pass performs hundreds of cell/image events but has zero severe25. This establishes burst concentration during high-speed poster-cell realization/image publication as the current lead, not pagination or guessed scroll physics. Build263 is diagnostic tested, not a fix and not stable.'
+          assert old2 in s
+          state.write_text(s.replace(old2, new2, 1))
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          s = module.read_text()
+          old = '| Poster 3-column / poster-heavy scroll smoothness | **Active — Build263 CI/IPA verified; target-device pending** | Build261 / 0.14.94 remains the real-device evidence authority: Home motion-local 80→120 is effective, Library high-speed cell lifecycle churn is a proven long-gap contributor, and fixed-item severe untracked gaps remain. Build263 / 0.14.96 exact source `bff02ea8...` adds only severe >=25/33.3 ms attribution for image publication and main-RunLoop wait behavior on top of existing cell/load-ahead/item-count categories; Grid behavior, scroll physics, Search semantics, image policy and P0/Frozen playback/transport are unchanged. Run/job `33313884881 / 99263646157` passed; artifact `9732862198`; IPA SHA `b8e15a1ac49582ec0dc519c316222d3944b6622cd8afb1afa22ab4d7bbf9d659`; MinOS 15.0. Draft PR #271; target-device pending; not stable. |'
+          new = '| Poster 3-column / poster-heavy scroll smoothness | **Active — Build263 target-device severe-gap attribution** | Build263 / 0.14.96 exact source `bff02ea8...` is target-device diagnostic tested. Across 26 Library sessions / 5,557 display samples: 40 >=25 ms and 27 >=33.3 ms gaps. Fixed-item sessions localize the severe tail strongly: 26/28 severe25 and all 16/16 severe33 overlap cell churn; image publication overlaps 23/28 and 15/16 respectively, leaving only 2 fixed severe25 and zero fixed severe33 untracked. A fast fixed 775 pass concentrates up to 18 appear + 18 disappear + 27 image publishes in a long-gap interval, while another fixed 775 pass has hundreds of events but zero severe25. Next A/B should isolate one shared poster-cell/image-publication cost; do not tune pagination/scroll physics or wholesale-replace Grid yet. Draft PR #271; not stable. Search Build256 and P0/Frozen playback/transport remain protected. |'
+          assert old in s
+          module.write_text(s.replace(old, new, 1))
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          s = index.read_text()
+          old = '| **Build263 / 0.14.96** | Poster-grid severe-gap attribution | **Exact-source CI/IPA verified; target-device pending; not stable.** Exact source `bff02ea8e76217b1fe07c298d8b9058b2db1fd08`, directly parented from target-device-tested Build261. Reuses the existing single Grid CADisplayLink/high-refresh request and adds >=25/33.3 ms attribution for cell churn, poster image publish, load-ahead/item-count changes, untracked work and passive main-RunLoop before-wait classification. No Grid behavior/physics/Search/image-policy/P0 playback change. Run/job `33313884881 / 99263646157`; artifact `9732862198`, digest `sha256:6e96b83b78bd8bd37b6e0e3dd2d3f820a328f3810ffc07faf86ea9526f4363bd`; IPA SHA `b8e15a1ac49582ec0dc519c316222d3944b6622cd8afb1afa22ab4d7bbf9d659`; source ZIP SHA `327444119b0b15f894c8a3d8012f195d79ceb77a7ef4b0af16abc3052893424c`; MinOS 15.0 independently verified. Draft PR #271. |'
+          new = '| **Build263 / 0.14.96** | Poster-grid severe-gap attribution | **Target-device diagnostic tested; fixed-item severe tail strongly localizes to high-speed cell/image burst; not stable.** Exact source `bff02ea8e76217b1fe07c298d8b9058b2db1fd08`; run/job `33313884881 / 99263646157`; artifact `9732862198`, digest `sha256:6e96b83b78bd8bd37b6e0e3dd2d3f820a328f3810ffc07faf86ea9526f4363bd`; IPA SHA `b8e15a1ac49582ec0dc519c316222d3944b6622cd8afb1afa22ab4d7bbf9d659`; source ZIP SHA `327444119b0b15f894c8a3d8012f195d79ceb77a7ef4b0af16abc3052893424c`; MinOS 15.0. `OnePlayer-App-1788098393.log`: 26 Library sessions / 5,557 display samples; 40 >=25 ms, 27 >=33.3 ms. Fixed-item sessions: 26/28 severe25 and 16/16 severe33 overlap cell churn; image publish overlaps 23/28 and 15/16; fixed severe untracked is 2/28 and 0/16. One fixed 775→775 fast pass concentrates up to 18 appear + 18 disappear + 27 image publishes per long-gap interval, while another fixed 775 pass has hundreds of cell/image events but zero severe25. Next A/B isolates one poster-cell/image-publication cost rather than pagination or scroll physics. Draft PR #271. |'
+          assert old in s
+          index.write_text(s.replace(old, new, 1))
+          PY
+          git diff --check
+      - name: Commit and push current status
+        run: |
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add docs/project/PROJECT_STATE.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md
+          git commit -m "Index Build263 target-device severe-gap evidence [skip ci]"
+          git push origin HEAD:main
+  cleanup:
+    needs: sync
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete temporary branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git push https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git --delete docs/poster-build263-device-status-20260830 || true
