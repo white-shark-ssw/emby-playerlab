@@ -2,14 +2,15 @@
 
 ## Status
 
-**Active — Build229 / 0.14.62 is target-device tested and overall Library 3×3 hitching still exists. The 77.2 ms non-pagination sample is far outside page-apply/snapshot/image-publish windows, so off-main Library persistence is not sufficient for the whole hitch family. The user has explicitly continued this task after the Build233 collision; current repository checks show Home has advanced through Build242, Aether owns Build235, and Build243 is unallocated. Poster therefore retires its invalid 0.14.66 / Build233 identity and reserves OnePlayer 0.14.76 / Build243 for the already-written measurement-only background-image-work diagnostics. No smoothness fix is claimed; not stable.**
+**Active — Build243 / 0.14.76 is the current diagnostic candidate. Build229 remains the latest target-device authority and still shows overall Library 3×3 hitching; Build243 adds measurement-only poster background-work diagnostics on top of exact Build229 source. Exact source/scope checks, Xcode 16.4 Release CI, package identity, MinOS and independently downloaded artifact/IPA/source hashes are verified. No smoothness fix is claimed; target-device diagnostic testing is pending; not stable.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
 - **Working branch**: `perf/poster-grid-smoothness`
 - **Draft PR**: #259
+- **Current branch / PR head**: `53a704c2ed752adf023ea3c7f08d7f90f7559133` (`Relabel poster diagnostics as Build243`)
 - **Retired conflicting poster identity**: OnePlayer `0.14.66 (233)` at `deba1534e55bfc73f4d3cf43f2682c854a04cb39`; no valid poster CI/IPA attribution
-- **Reserved poster diagnostic candidate**: OnePlayer `0.14.76 (243)`; uniqueness rechecked against Active checkpoints, branches and commit search on 2026-08-29
+- **Current poster diagnostic candidate**: OnePlayer `0.14.76 (243)`; exact source `53a704c2ed752adf023ea3c7f08d7f90f7559133`; CI/IPA verified 2026-08-30; target-device pending
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
 
@@ -30,11 +31,29 @@ Resume identity guard on 2026-08-29 also found a hard candidate collision:
 
 **Identity guard result after explicit continuation: PASSED for relabel only.** Poster Build233 is retired for attribution; Build243 / 0.14.76 is reserved for the exact already-written diagnostic logic. This does not authorize any additional optimization or behavior change.
 
-**Evidence:** Build229 Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / overall hitch still present ❌ / pagination-specific improvement unproven / stable ❌. Poster background-work diagnostic code exists at `deba1534...`; it still requires valid Build243 relabel, source guards, CI and IPA before distribution.
+**Evidence:** Build229 remains target-device tested and still hitches. Build243 exact source `53a704c2ed752adf023ea3c7f08d7f90f7559133`: Code written ✅ / exact Build229→243 4-path scope+checker ✅ / Xcode 16.4 CI passed ✅ / IPA produced+independently verified ✅ / target-device tested ❌ / smoothness fix claimed ❌ / stable ❌.
 
-**Pending:** relabel only AppIdentity/changelog from invalid poster 233 to reserved poster 243, keep diagnostic runtime logic unchanged, then run exact Build229→Build243 scope/checker and dedicated Release/IPA validation.
+**Pending:** target-device Library 3×3 diagnostic run using Build243, then inspect `PosterScrollHitch` + `PosterScrollTiming` to determine whether a captured long frame overlaps active disk-read / detached-decode / network / image-cache-write work.
 
-**Next exact action:** materialize OnePlayer 0.14.76 / Build243 from `deba1534...` by identity/changelog relabel only; run exact-scope/source guards and a dedicated Xcode 16.4 Release/IPA workflow; verify package identity/MinOS/hashes, then hand the IPA to the user for Library 3×3 diagnostic testing.
+**Next exact action:** install OnePlayer 0.14.76 / Build243 on iPhone 15 Pro Max / iOS 17.0, reproduce Library 3×3 hitching and return the App log. Do not add another optimization before this diagnostic evidence.
+
+## Build243 CI / IPA diagnostic baseline — 2026-08-30
+
+OnePlayer **0.14.76 / Build243** is now materialized from exact poster source `53a704c2ed752adf023ea3c7f08d7f90f7559133`, directly parented by the invalid Build233 diagnostic head `deba1534e55bfc73f4d3cf43f2682c854a04cb39`. The relabel commit changes only `Sources/Core/AppIdentity.swift` and the changelog identity. Against Build229 exact source `f5e3e3eb144578c863b172e3bd3a1aa13e5c2177`, Build243 changes exactly four paths: `AppIdentity.swift`, `EmbySharedImageAndNavigation.swift`, Build243 changelog and `check_poster_grid_smoothness.py`. No Player/MPV/PiP, Transport, playback Cache/Session or Home-carousel owner file is in scope.
+
+The diagnostic runtime addition only records active poster-image `disk_read`, detached `decode`, `network` and image-cache `disk_write` counts plus the latest completed background stage/age/duration in the existing `PosterScrollTiming` line emitted with an existing `PosterScrollHitch`. Image request size, decode policy, cache policy, pagination, Library persistence semantics and scroll behavior are unchanged.
+
+Dedicated Xcode 16.4 Release evidence:
+
+- run/job: **`33300155220 / 99226651825` — success**;
+- exact Build229→Build243 four-path scope, poster checker and `git diff --check`: PASS;
+- artifact: `OnePlayer-0.14.76-build243-poster-background-work-diagnostics`; ID **`9728697893`**; digest / downloaded ZIP SHA-256 `33ebe84f2864ba4494c4b6c164f77730d2eb383a969e2e0d9c98aac8cc0b9cf1`;
+- IPA SHA-256: `f8a7d792f70c970314080a56ef78a9f5734697e7a27373bf67b44dd3d4871d75`;
+- exact-source ZIP SHA-256: `641a720cae3550b160fce7cf223d0ec397df0c3aac6041b0a17f60c8ee37c2f9`;
+- bundle/version/build: `com.embyplayerlab.app`, OnePlayer **0.14.76 (243)**; `MinimumOSVersion=15.0`;
+- downloaded artifact hashes were independently recomputed; IPA archive integrity passed; temporary CI branch was deleted after the run.
+
+**Build243 evidence: Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device tested ❌ / stable/frozen ❌.** This is a diagnostic package, not a claimed smoothness fix.
 
 ## Build228 real-device result / Build229 candidate — 2026-08-28
 
