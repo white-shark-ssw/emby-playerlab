@@ -2,15 +2,15 @@
 
 ## Status
 
-**Active — Build261 is target-device tested. Home vertical scrolling now reaches the intended 120 Hz cadence and is noticeably better, but occasional long-frame tails remain. Library Build261 logs prove two concurrent layers: high-speed SwiftUI cell lifecycle churn is a direct long-gap contributor, while a separate untracked long-frame source remains even with fixed item count. Build261 / 0.14.94 is the current diagnostic authority, Draft PR #270, not stable.**
+**Active — Build263 / 0.14.96 is the current severe-gap diagnostic candidate. It is directly parented from target-device-tested Build261 and is Code written / CI passed / IPA produced+independently verified, but target-device testing is pending and it is not stable. Build261 remains the current real-device evidence authority: high-speed SwiftUI cell lifecycle churn is a proven Library long-gap contributor while a separate fixed-item severe-gap source remains. Build263 adds attribution for poster image publication and main-RunLoop wait behavior without changing Grid behavior or scroll physics.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
-- **Working branch**: `perf/poster-grid-long-frame-build261`
-- **Draft PR**: #270
+- **Working branch**: `perf/poster-grid-severe-attribution-build263`
+- **Draft PR**: #271
 - **Superseded PRs**: #268 Build260 diagnostic completed and closed without merge; #267 Build259 A/B completed and closed without merge; #266 Build258 diagnostic closed without merge; #265 Build257 fallback closed without merge; #259 stale Build243 poster branch retained only as historical diagnostic evidence
-- **Current branch / PR head**: `e552bebd072a915e6cb10d591d704a5a3c342406`
-- **Current candidate**: OnePlayer `0.14.94 (261)`; directly parented from Build260 exact source `b9a5de5255650f04e312e117f47453122de56adc`; CI/IPA verified and target-device tested 2026-08-30; not stable
+- **Current branch / PR head**: `bff02ea8e76217b1fe07c298d8b9058b2db1fd08`
+- **Current candidate**: OnePlayer `0.14.96 (263)`; directly parented from target-device-tested Build261 exact source `e552bebd072a915e6cb10d591d704a5a3c342406`; CI/IPA independently verified; target-device pending; not stable
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted carousel foundation**: Build241 manual interaction/presentation remains frozen; only automatic-transition scheduling during Home vertical motion is reopened by new device evidence
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
@@ -71,6 +71,18 @@ Target-device result from `OnePlayer-App-1788093610.log` on iPhone 15 Pro Max / 
 **Evidence:** Build261 Code written ✅ / CI passed ✅ / IPA produced ✅ / target-device tested ✅ / Home improvement confirmed ✅ / Home stable ❌ / Library cell-churn contribution proven ✅ / separate untracked long-frame source proven ✅ / overall smoothness stable ❌.
 
 **Next exact action:** before a behavioral Grid rewrite, extend severe-gap attribution so `>=25 ms` / `>=33.3 ms` gaps can distinguish cell lifecycle work from image-main-thread publication / SwiftUI update-layout-presentation work and other current owners. Use the same exact Build261 lineage; do not add delay/debounce/timer/watchdog or change scroll physics. For Home, correlate the remaining long gaps with refresh/model/image publication rather than changing the now-effective refresh request.
+
+## Build263 severe-gap attribution candidate — 2026-08-30
+
+Build263 / OnePlayer **0.14.96 (263)** exact source `bff02ea8e76217b1fe07c298d8b9058b2db1fd08`, branch `perf/poster-grid-severe-attribution-build263`, Draft PR #271, directly extends the target-device-tested Build261 source without changing scroll behavior. Exact Build261→263 delta is six paths: AppIdentity; `EmbyPosterGrid.swift` diagnostic owner propagation; `EmbyServerSharedV3.swift` reuse of the existing `EmbyCachedRemoteImage.onImageLoaded` callback for poster publish attribution; `EmbyPosterGridCadenceDiagnostics.swift`; Build263 changelog; and the existing cadence checker.
+
+Build263 preserves the existing single Grid `CADisplayLink` and Build259/261 high-refresh request. It adds `>=25 ms` / `>=33.3 ms` severe-gap counters split by cell lifecycle churn, poster image publication, load-ahead, item-count change and untracked work, plus one passive main-RunLoop `beforeWaiting` observer to distinguish severe gaps where the main loop did or did not reach a wait point between display ticks. No second display link, timer, watchdog, retry, debounce, Grid geometry/LazyVGrid behavior, `decelerationRate`, Search Build256 semantics, image cache/decode/network policy, Home carousel runtime, Player/MPV/PiP, UnifiedTransport, playback Cache/Session, STRM/302/115/CDN or Deployment Target behavior changes.
+
+Exact-source Xcode 16.4 run/job **`33313884881 / 99263646157`** succeeded. Artifact `OnePlayer-0.14.96-build263-severe-attribution`, ID **`9732862198`**, digest `sha256:6e96b83b78bd8bd37b6e0e3dd2d3f820a328f3810ffc07faf86ea9526f4363bd`; IPA SHA-256 `b8e15a1ac49582ec0dc519c316222d3944b6622cd8afb1afa22ab4d7bbf9d659`; exact-source ZIP SHA-256 `327444119b0b15f894c8a3d8012f195d79ceb77a7ef4b0af16abc3052893424c`. Downloaded artifact ZIP digest, embedded hash files, independently recomputed IPA/source hashes, archive integrity, package identity `com.embyplayerlab.app`, version `0.14.96 (263)` and executable MinOS 15.0 were independently verified.
+
+**Evidence:** Build263 Code written ✅ / exact six-path scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device tested ❌ / root cause claimed ❌ / stable ❌. Build261 remains the real-device evidence authority until Build263 is tested.
+
+**Next exact action:** install Build263 and repeat normal/fast Library 3×3 inertial flings, including at least one fixed-item route and one large-library fast pass. Return the App log. Use `severe25_*`, `severe33_*`, `image_publish`, `*_no_runloop_wait` and `*_with_runloop_wait` to choose the next owner-specific change. Do not merge or alter Grid behavior before that device evidence.
 
 ## Build229 latest target-device result / candidate identity guard — 2026-08-29
 
