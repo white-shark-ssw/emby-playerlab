@@ -66,6 +66,7 @@ final class V3PagePersistentCache {
     }
 
     func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) {
+        let startedAt = ProcessInfo.processInfo.systemUptime
         var tabItemsObject: [String: Any] = [:]
         for (key, items) in snapshot.tabItems { tabItemsObject[key] = items.map(libraryItemJSONObject) }
 
@@ -84,7 +85,10 @@ final class V3PagePersistentCache {
             "LoadedTabs": Array(snapshot.loadedTabs).sorted(),
             "PageStates": pageStatesObject,
         ]
+        let objectDurationMs = (ProcessInfo.processInfo.systemUptime - startedAt) * 1000
         store(root, scope: "library|\(libraryID)", client: client)
+        let totalDurationMs = (ProcessInfo.processInfo.systemUptime - startedAt) * 1000
+        DiagnosticsLogger.shared.log("PagePersistentCache", "event=library-snapshot library_items=\(snapshot.tabItems["items"]?.count ?? 0) tab_items=\(snapshot.tabItems.values.reduce(0) { $0 + $1.count }) object_ms=\(format(objectDurationMs)) total_ms=\(format(totalDurationMs))")
     }
 
     func favoritesSnapshot(client: EmbyAPIClient) -> V3FavoritesPersistentSnapshot? {
@@ -127,12 +131,20 @@ final class V3PagePersistentCache {
     private func store(_ root: [String: Any], scope: String, client: EmbyAPIClient) {
         guard let url = cacheFileURL(scope: scope, client: client) else { return }
         do {
+            let serializationStartedAt = ProcessInfo.processInfo.systemUptime
             let data = try JSONSerialization.data(withJSONObject: root)
+            let serializationDurationMs = (ProcessInfo.processInfo.systemUptime - serializationStartedAt) * 1000
+            let writeStartedAt = ProcessInfo.processInfo.systemUptime
             try data.write(to: url, options: .atomic)
+            let writeDurationMs = (ProcessInfo.processInfo.systemUptime - writeStartedAt) * 1000
+            let scopeKind = scope.hasPrefix("library|") ? "library" : "favorites"
+            DiagnosticsLogger.shared.log("PagePersistentCache", "event=store scope=\(scopeKind) bytes=\(data.count) serialization_ms=\(format(serializationDurationMs)) write_ms=\(format(writeDurationMs))")
         } catch {
             DiagnosticsLogger.shared.log("PagePersistentCache", "disk write failed: \(error.localizedDescription)")
         }
     }
+
+    private func format(_ value: Double) -> String { String(format: "%.2f", value) }
 
     private func cacheFileURL(scope: String, client: EmbyAPIClient) -> URL? {
         guard let base = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
