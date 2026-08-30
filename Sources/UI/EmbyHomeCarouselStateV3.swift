@@ -2,6 +2,10 @@ import SwiftUI
 import Combine
 import UIKit
 
+private enum V3HomeCarouselImageAnalysisIdentityCache {
+    static var identifiersByItemID: [String: ObjectIdentifier] = [:]
+}
+
 extension V3EmbyHomeView {
     var transitionFromID: String? {
         get { carouselTransitionState.fromID }
@@ -96,6 +100,7 @@ extension V3EmbyHomeView {
     func synchronizeCarouselItems() {
         let items = model.carouselItems
         let ids = Set(items.map(\.id))
+        V3HomeCarouselImageAnalysisIdentityCache.identifiersByItemID = V3HomeCarouselImageAnalysisIdentityCache.identifiersByItemID.filter { ids.contains($0.key) }
         if items.isEmpty {
             currentCarouselItemID = nil
             transitionFromID = nil
@@ -222,6 +227,9 @@ extension V3EmbyHomeView {
     }
 
     func updateCarouselImageMetrics(_ image: UIImage, itemID: String) {
+        let identifier = ObjectIdentifier(image)
+        guard V3HomeCarouselImageAnalysisIdentityCache.identifiersByItemID[itemID] != identifier else { return }
+        V3HomeCarouselImageAnalysisIdentityCache.identifiersByItemID[itemID] = identifier
         if carouselSourceSizeByID[itemID] != image.size { carouselSourceSizeByID[itemID] = image.size }
         let prefersLight = EmbyImageContrastAnalyzer.prefersLightForeground(for: image)
         guard carouselLightForegroundByID[itemID] != prefersLight else { return }
