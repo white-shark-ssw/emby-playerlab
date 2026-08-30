@@ -5,6 +5,7 @@ import UIKit
 
 enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     case carousel
+    case carouselTree
     case coreAnimation
     case nativeDisplayLink
     case swiftUI
@@ -12,6 +13,7 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     var title: String {
         switch self {
         case .carousel: return "CAROUSEL"
+        case .carouselTree: return "TREE120"
         case .coreAnimation: return "CA"
         case .nativeDisplayLink: return "DISPLAYLINK"
         case .swiftUI: return "SWIFTUI"
@@ -21,11 +23,14 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     var detail: String {
         switch self {
         case .carousel: return "Build265 normal carousel"
+        case .carouselTree: return "Full carousel tree ← 120 Hz progress"
         case .coreAnimation: return "Core Animation render-server motion"
         case .nativeDisplayLink: return "CADisplayLink → native CALayer"
         case .swiftUI: return "CADisplayLink → @Published → SwiftUI"
         }
     }
+
+    var usesHomePresentation: Bool { self == .carousel || self == .carouselTree }
 
     var next: V3HomeFramePipelineProbeMode {
         let modes = Self.allCases
@@ -61,7 +66,7 @@ struct V3HomeFramePipelineProbe: View {
         ZStack {
             Color.black.ignoresSafeArea()
             switch mode {
-            case .carousel:
+            case .carousel, .carouselTree:
                 EmptyView()
             case .coreAnimation, .nativeDisplayLink:
                 V3HomeNativeFramePipelineProbe(mode: mode).ignoresSafeArea()
@@ -80,6 +85,51 @@ struct V3HomeFramePipelineProbe: View {
             .allowsHitTesting(false)
         }
         .onAppear { DiagnosticsLogger.shared.playback("HomeCarouselPipelineProbe", "probe appear mode=\(mode.rawValue) maxFPS=\(UIScreen.main.maximumFramesPerSecond)") }
+    }
+}
+
+struct V3HomeCarouselTreeProgressDriver: UIViewRepresentable {
+    let onProgress: (CGFloat) -> Void
+
+    func makeUIView(context: Context) -> V3HomeCarouselTreeProgressView {
+        let view = V3HomeCarouselTreeProgressView()
+        view.onProgress = onProgress
+        return view
+    }
+
+    func updateUIView(_ uiView: V3HomeCarouselTreeProgressView, context: Context) { uiView.onProgress = onProgress }
+}
+
+final class V3HomeCarouselTreeProgressView: UIView {
+    var onProgress: ((CGFloat) -> Void)?
+    private var displayLink: CADisplayLink?
+
+    deinit { displayLink?.invalidate() }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { stop() }
+        else { start() }
+    }
+
+    private func start() {
+        guard displayLink == nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(displayLinkDidFire(_:)))
+        let maximum = Float(max(60, UIScreen.main.maximumFramesPerSecond))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: maximum, maximum: maximum, preferred: maximum)
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    private func stop() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    @objc private func displayLinkDidFire(_ link: CADisplayLink) {
+        let cycle = link.timestamp.truncatingRemainder(dividingBy: 1.44) / 1.44
+        let value = cycle < 0.5 ? cycle * 2 : (1 - cycle) * 2
+        onProgress?(CGFloat(value))
     }
 }
 
@@ -142,7 +192,7 @@ private final class V3HomeNativeFramePipelineView: UIView {
         switch mode {
         case .coreAnimation: startCoreAnimation()
         case .nativeDisplayLink: startDisplayLink()
-        case .carousel, .swiftUI: break
+        case .carousel, .carouselTree, .swiftUI: break
         }
     }
 
@@ -157,13 +207,16 @@ private final class V3HomeNativeFramePipelineView: UIView {
         animation.autoreverses = true
         animation.repeatCount = .infinity
         animation.timingFunction = CAMediaTimingFunction(name: .linear)
+        let maximum = Float(max(60, UIScreen.main.maximumFramesPerSecond))
+        animation.preferredFrameRateRange = CAFrameRateRange(minimum: maximum, maximum: maximum, preferred: maximum)
         markerLayer.add(animation, forKey: "pipeline-probe")
     }
 
     private func startDisplayLink() {
         guard displayLink == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(displayLinkDidFire(_:)))
-        link.preferredFramesPerSecond = UIScreen.main.maximumFramesPerSecond
+        let maximum = Float(max(60, UIScreen.main.maximumFramesPerSecond))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: maximum, maximum: maximum, preferred: maximum)
         link.add(to: .main, forMode: .common)
         displayLink = link
     }
@@ -193,7 +246,8 @@ private final class V3HomeSwiftUIFrameProbeClock: NSObject, ObservableObject {
     func start() {
         guard displayLink == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(displayLinkDidFire(_:)))
-        link.preferredFramesPerSecond = UIScreen.main.maximumFramesPerSecond
+        let maximum = Float(max(60, UIScreen.main.maximumFramesPerSecond))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: maximum, maximum: maximum, preferred: maximum)
         link.add(to: .main, forMode: .common)
         displayLink = link
     }
@@ -222,5 +276,26 @@ private struct V3HomeSwiftUIFramePipelineProbe: View {
         }
         .onAppear { clock.start() }
         .onDisappear { clock.stop() }
+    }
+}
+
+extension V3EmbyHomeView {
+    func beginFramePipelineCarouselTreeProbe() {
+        guard let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: 1) else { return }
+        transitionFromID = currentID
+        transitionToID = targetID
+        transitionProgress = 0
+        transitionDirection = 1
+        isCarouselDragging = false
+        DiagnosticsLogger.shared.playback("HomeCarouselPipelineProbe", "tree begin from=\(currentID) to=\(targetID) maxFPS=\(UIScreen.main.maximumFramesPerSecond)")
+    }
+
+    func endFramePipelineCarouselTreeProbe() {
+        transitionFromID = nil
+        transitionToID = nil
+        transitionProgress = 0
+        transitionDirection = 1
+        isCarouselDragging = false
+        carouselLastSettledAt = Date()
     }
 }

@@ -54,7 +54,7 @@ struct V3EmbyHomeView: View {
                 let immersive = !model.carouselItems.isEmpty
                 let viewportHeight = geometry.size.height + geometry.safeAreaInsets.top
                 Group {
-                    if framePipelineProbeMode == .carousel {
+                    if framePipelineProbeMode.usesHomePresentation {
                         ZStack(alignment: .top) {
                             if immersive {
                                 V3HomeCarouselTransitionScope(state: carouselTransitionState) {
@@ -85,9 +85,21 @@ struct V3EmbyHomeView: View {
                 }
                 .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 .overlay(alignment: .bottom) {
-                    if framePipelineProbeMode == .carousel {
+                    if framePipelineProbeMode.usesHomePresentation {
                         if immersive { dock.padding(.bottom, serverDockBottomInset) }
                         else { dock }
+                    }
+                }
+                .overlay {
+                    if framePipelineProbeMode == .carouselTree {
+                        ZStack {
+                            V3HomeCarouselTreeProgressDriver { progress in
+                                guard framePipelineProbeMode == .carouselTree else { return }
+                                transitionProgress = progress
+                            }
+                            .frame(width: 0, height: 0)
+                            Color.clear.contentShape(Rectangle()).ignoresSafeArea()
+                        }
                     }
                 }
                 .overlay(alignment: .topTrailing) {
@@ -110,6 +122,10 @@ struct V3EmbyHomeView: View {
                     model.markResumeDirty(itemID)
                 }
                 .onReceive(carouselTimer) { _ in autoAdvanceCarouselIfNeeded() }
+                .onChange(of: framePipelineProbeMode) { mode in
+                    if mode == .carouselTree { beginFramePipelineCarouselTreeProbe() }
+                    else { endFramePipelineCarouselTreeProbe() }
+                }
                 .onChange(of: model.carouselItems.map(\.id)) { _ in synchronizeCarouselItems() }
                 .onDisappear {
                     isHomeActive = false
