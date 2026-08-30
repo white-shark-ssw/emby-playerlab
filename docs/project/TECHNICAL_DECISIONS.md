@@ -248,3 +248,9 @@ Build242 / OnePlayer 0.14.75 is permanently classified as a diagnostic-only A/B,
 - Manually switching Dock away from Search ends the lifetime and destroys the recommendation dataset; re-entering Search starts fresh with a new initial 9.
 - Shared image disk/decoded caches may persist independently; recommendation metadata/tasks do not.
 - Build256 target-device accepted; PR #264 merged at `647c1f66e5836fcd20a23a57600211488eeafb3d`.
+
+## D013 — Home carousel auto-advance yields to active vertical motion
+
+Build241 remains the frozen authority for manual Home-carousel drag/release/presentation. New 2026-08-30 target-device A/B establishes a separate scheduling defect: starting an automatic carousel transition while the Home vertical `UIScrollView` is actively dragging or decelerating produces a repeatable very large hitch; disabling the carousel removes that large hitch while a milder baseline jitter remains.
+
+Therefore the automatic-transition scheduler must not begin a new transition while the existing real Home vertical `UIScrollView` reports `isDragging || isDecelerating`. Reuse the existing scroll-view owner; do not add a duplicate vertical-motion boolean, timer, watchdog, debounce, throttle, retry, fallback or smoothing owner. This decision does not authorize retuning Build241 manual carousel motion, release thresholds/timings, Hero residency, persistent backdrop or preload. Build257 / 0.14.90 is the first implementation candidate and remains target-device pending; the residual carousel-off mild jitter is a separate unresolved problem.

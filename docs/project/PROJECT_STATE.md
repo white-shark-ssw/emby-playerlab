@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated 2026-08-29: Home-carousel Build241 remains the user-accepted frozen carousel contract. Search Build244 has now been target-device tested and rejected as final; Search Build245 / OnePlayer 0.14.78 is CI/IPA verified and pending target-device validation. Build216 remains the accepted packaged overall runtime identity._
+_Last updated 2026-08-30: Build241 manual Home-carousel interaction/presentation remains the accepted frozen foundation; new target-device evidence reopens only auto-advance scheduling during Home vertical inertia. Build257 / 0.14.90 is CI/IPA verified and target-device pending. Carousel-off testing still shows a separate mild baseline scrolling jitter._
 
 ## Current accepted overall baseline
 
@@ -58,7 +58,7 @@ The historical Build241 development branch was not merged wholesale because it h
 
 **Build242 / OnePlayer 0.14.75 is not a final version.** It was an intentionally altered diagnostic package that disabled the carousel presentation/runtime stack for Home-performance attribution and, per the user's final correction, the test modifications made it unsuitable/broken as normal carousel product behavior. Never inherit product behavior from Build242 and never call it stable/final. Its only durable diagnostic conclusion is that the user perceived little/no Home vertical-scroll difference versus Build241, so the whole carousel stack is not demonstrated to be a major Home-wide performance bottleneck. Normal settings behavior also returns `carouselItems == []` when the carousel is disabled, preventing the expensive persistent backdrop/Hero/preload/interaction presentation stack from mounting.
 
-Do not reopen the carousel task unless new real-device regression evidence or an explicit new product requirement appears.
+Build241 manual horizontal interaction/presentation remains frozen. New 2026-08-30 target-device evidence has reopened only the automatic-transition scheduling sub-contract: auto-advance overlapping Home vertical inertia causes a repeatable large hitch. Do not retune Build241 manual drag/release/presentation behavior from this evidence.
 
 ## Active: Search page optimization — Build245 / 0.14.78
 
@@ -73,6 +73,12 @@ Dedicated Xcode 16.4 Release/MPV run/job `33253244567 / 99102435848` succeeded. 
 Evidence: **Build244 real-device tested/rejected as final; Build245 Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device tested ❌ / stable-frozen ❌**. Next gate is the user's Build245 target-device comparison against the same competitor layout and five requirements.
 
 ## Active: Poster-heavy scrolling smoothness
+
+### 2026-08-30 Build243 Home/Library A/B → Build257 inertia gate
+
+Build243 target-device comparison separates the current smoothness problem into two layers. The user repeatedly reproduced a very large Home hitch specifically when the top carousel auto-advanced during active vertical inertia. With carousel disabled, that large hitch disappeared, but mild baseline jitter remained. The Build243 log's captured 33.3 ms Library deceleration hitch had all four background-image work counters at zero and the previous decode ~5.39 s old, so active poster disk/decode/network/cache-write work is not supported as the direct trigger for that sample.
+
+Current `main` retains the accepted Build241 carousel runtime and its pre-Build257 `autoAdvanceCarouselIfNeeded()` had no vertical drag/deceleration gate. The existing Home scroll observer already owns the real vertical `UIScrollView`, so Build257 / 0.14.90 reuses that owner and only prevents a new automatic transition from starting while the same scroll view is `isDragging || isDecelerating`; existing timer cadence and Build241 manual interaction/presentation remain unchanged. Exact source `a524d7a56c308a2ed52c5a41b55d061050176e8b`; Draft PR #265; run/job `33301432703 / 99230262134`; artifact `9729097648`; IPA SHA-256 `2223cb989201d6477069740faef4c0ed42d9e1937df4a0561d15b0de289a1018`; MinOS 15.0. Evidence: **Code written / CI passed / IPA produced+verified / target-device pending / not stable**. The mild carousel-off baseline jitter remains a separate open layer.
 
 ### Poster Build228 device evidence → Build229 off-main persistence candidate
 

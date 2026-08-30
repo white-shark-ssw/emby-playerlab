@@ -2,16 +2,17 @@
 
 ## Status
 
-**Active — Build243 / 0.14.76 is the current diagnostic candidate. Build229 remains the latest target-device authority and still shows overall Library 3×3 hitching; Build243 adds measurement-only poster background-work diagnostics on top of exact Build229 source. Exact source/scope checks, Xcode 16.4 Release CI, package identity, MinOS and independently downloaded artifact/IPA/source hashes are verified. No smoothness fix is claimed; target-device diagnostic testing is pending; not stable.**
+**Active — Build243 target-device A/B has split the problem into two layers. The user repeatedly reproduced one very large Home hitch when carousel auto-advance begins during active vertical inertia; disabling the carousel removes that large hitch but leaves a milder baseline scrolling jitter. Build243's captured 33.3 ms Library deceleration sample had all background image work counters at zero, so active disk-read/decode/network/cache-write work is not supported as the direct trigger for that sample. Current-main Build257 / 0.14.90 is the narrow auto-advance-vs-inertia candidate; CI/IPA is verified, target-device pending, not stable.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
-- **Routing aliases / keywords**: 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
-- **Working branch**: `perf/poster-grid-smoothness`
-- **Draft PR**: #259
-- **Current branch / PR head**: `53a704c2ed752adf023ea3c7f08d7f90f7559133` (`Relabel poster diagnostics as Build243`)
-- **Retired conflicting poster identity**: OnePlayer `0.14.66 (233)` at `deba1534e55bfc73f4d3cf43f2682c854a04cb39`; no valid poster CI/IPA attribution
-- **Current poster diagnostic candidate**: OnePlayer `0.14.76 (243)`; exact source `53a704c2ed752adf023ea3c7f08d7f90f7559133`; CI/IPA verified 2026-08-30; target-device pending
+- **Routing aliases / keywords**: 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
+- **Working branch**: `perf/home-library-smoothness-build257`
+- **Draft PR**: #265
+- **Superseded PR**: #259 closed without merge; its stale Build243 poster branch is retained only as historical diagnostic evidence
+- **Current branch / PR head**: `a524d7a56c308a2ed52c5a41b55d061050176e8b`
+- **Current candidate**: OnePlayer `0.14.90 (257)`; based on current-main `44937df8b80424a8c618abb290e9f832793f4120`; CI/IPA verified 2026-08-30; target-device pending
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
+- **Accepted carousel foundation**: Build241 manual interaction/presentation remains frozen; only automatic-transition scheduling during Home vertical motion is reopened by new device evidence
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
 
 ## Build229 latest target-device result / candidate identity guard — 2026-08-29
@@ -36,6 +37,25 @@ Resume identity guard on 2026-08-29 also found a hard candidate collision:
 **Pending:** target-device Library 3×3 diagnostic run using Build243, then inspect `PosterScrollHitch` + `PosterScrollTiming` to determine whether a captured long frame overlaps active disk-read / detached-decode / network / image-cache-write work.
 
 **Next exact action:** install OnePlayer 0.14.76 / Build243 on iPhone 15 Pro Max / iOS 17.0, reproduce Library 3×3 hitching and return the App log. Do not add another optimization before this diagnostic evidence.
+
+## Build243 target-device A/B → Build257 current-main candidate — 2026-08-30
+
+The user repeatedly compared Build243 on iPhone 15 Pro Max / iOS 17.0 and established a stronger two-layer result than the earlier sparse hitch logs:
+
+1. **Large Home hitch:** when the top carousel begins an automatic transition while the Home vertical scroll is still in inertial deceleration, one very large visible/tactile hitch occurs.
+2. **Residual baseline:** disabling the carousel removes that large hitch, but mild scrolling jitter remains, so the entire smoothness problem is not a single carousel-only cause.
+
+Uploaded `OnePlayer-App-1788077140.log` adds one useful negative result. The captured 33.3 ms Library `PosterScrollHitch` is `phase=decelerating`; at the paired `PosterScrollTiming`, `image_bg_disk_read_active=0`, `image_bg_decode_active=0`, `image_bg_network_active=0`, and `image_bg_disk_write_active=0`. The last completed decode was about 5.39 s old. Therefore this sample does **not** support active poster background disk/decode/network/cache-write work as its direct trigger. It also does not identify the separate mild baseline root cause.
+
+Because Build243's poster branch predates the final Build241 integration, the Home behavior fix was not made on that stale branch. Current `main` was re-read and confirmed to retain the exact accepted Build241 carousel runtime. Its existing `autoAdvanceCarouselIfNeeded()` gated horizontal carousel activity but did not inspect Home vertical `UIScrollView.isDragging` / `isDecelerating`; the existing `V3HomeScrollOffsetObserver` already owns the real ancestor vertical `UIScrollView`.
+
+Build257 / OnePlayer **0.14.90 (257)** is therefore based on current-main commit `44937df8b80424a8c618abb290e9f832793f4120`, branch `perf/home-library-smoothness-build257`, Draft PR #265, exact source `a524d7a56c308a2ed52c5a41b55d061050176e8b`. The only behavior change is: keep a weak reference to that existing real Home vertical `UIScrollView`, and when an auto-advance tick is due, return while `isDragging || isDecelerating`. The already-existing one-second carousel timer naturally checks again later. No new timer, debounce, throttle, watchdog, retry, fallback, interpolation or duplicate vertical-motion boolean state was added. Manual Build241 carousel interaction, release thresholds/timings, Hero residency, persistent backdrop, preload and the 0.62 s automatic transition itself are unchanged.
+
+Build257 exact delta versus its current-main base is seven paths: `AppIdentity.swift`, four Home scroll/carousel files, Build257 changelog and one dedicated inertia-contract checker. Xcode 16.4 run/job **`33301432703 / 99230262134`** succeeded; exact scope + dedicated checker + `git diff --check` passed. Artifact `OnePlayer-0.14.90-build257-home-inertia-gate`, ID **`9729097648`**, digest `sha256:a3d02846d772d940ace45310aa56b094c2f90a18d18ad5912e167f1fcb58cd0a`; IPA SHA-256 `2223cb989201d6477069740faef4c0ed42d9e1937df4a0561d15b0de289a1018`; source ZIP SHA-256 `8b50dac32663484e8e7486b3381b2e781a88b15fd03e613275913673a50276d9`; package `com.embyplayerlab.app`, `0.14.90 (257)`, MinOS 15.0. Independent artifact download reproduced the hashes and IPA archive integrity passed.
+
+**Evidence: user Build243 A/B real-device tested ✅ / Build243 large-overlap hitch causal scheduling condition established ✅ / Build257 Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / Build257 target-device tested ❌ / stable ❌.**
+
+**Next exact action:** install Build257, leave carousel enabled, sustain Home vertical inertial scrolling across the time an auto-advance would normally become due, and verify that no new automatic transition begins until drag/deceleration ends and that the previously repeatable large hitch disappears. The separate mild baseline jitter remains intentionally open and must be investigated only after this large-hitch layer is accepted/rejected.
 
 ## Build243 CI / IPA diagnostic baseline — 2026-08-30
 
