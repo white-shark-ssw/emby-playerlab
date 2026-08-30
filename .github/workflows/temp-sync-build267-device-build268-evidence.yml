@@ -1,0 +1,153 @@
+name: Temp Sync Build267 Device Build268 Evidence
+
+on:
+  push:
+    branches: [ci/sync-build267-device-build268-evidence-20260831]
+    paths:
+      - .github/workflows/temp-sync-build267-device-build268-evidence.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Sync poster evidence
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          task = Path('docs/project/current/dev/DEV-poster-grid-smoothness.md')
+          text = task.read_text()
+          lines = text.splitlines()
+          replacements = {
+              '**Active —': '**Active — Build268 / 0.15.1 is the current lean 3×3 cadence A/B. Build267 / 0.15.0 is target-device tested: diagnostic reference semantics materially reduced severe long-frame frequency and raised observed Library FPS into the 110+ range, but the supplied recording still shows visible upward-scroll jitter. The recording aligns with a fixed 540→540 session whose display cadence is ~119 Hz while contentOffset updates average ~105 Hz, with 13.6% deceleration display ticks showing zero movement and 10.9% zero→catch-up. The controlling problem is therefore now motion continuity at high refresh, not severe long-frame count alone. Build268 removes the remaining detailed per-offset/deceleration-array/RunLoop/velocity diagnostic work while preserving the existing single device-max refresh request and lean continuity counters. Exact-source CI/IPA passed; target-device pending; not stable.**',
+              '- **Working branch**:': '- **Working branch**: `perf/poster-grid-lean-cadence-build268`',
+              '- **Draft PR**:': '- **Draft PR**: #276',
+              '- **Superseded PRs**:': '- **Superseded PRs**: #275 Build267 diagnostic target-device tested and closed without merge; #273 Build266 loading-state A/B target-device tested and closed without merge; #268 Build260 diagnostic completed and closed without merge; #267 Build259 A/B completed and closed without merge; #266 Build258 diagnostic closed without merge; #265 Build257 fallback closed without merge; #259 stale Build243 poster branch retained only as historical diagnostic evidence',
+              '- **Current branch / PR head**:': '- **Current branch / PR head**: `f3f6e1f4e8e538b7ccd9cb676806db59cd7a0b0b`',
+              '- **Current candidate**:': '- **Current candidate**: OnePlayer `0.15.1 (268)`; directly based on target-device-tested Build267 exact source `dbe1b7c13dde68e52039cb7ae22fc5177fdd886f`; exact Build267→268 scope is four paths. Exact-source Xcode 16.4 run/job `33324217590 / 99291395158` passed; cleanup `99291710279` passed; artifact `9735779709`, digest `sha256:c903be806f42f45a5e55723063fc9a902ebbcd829690f175fe92063a3063f6f9`; IPA SHA `fe2de885fe8db0536f3a1e51f17c98883141990563bcfe3a57f6958bc94635d7`; source ZIP SHA `e0136ff082b60200bf2c1f8bedea1c99ed5859ade860f4a4089c7c6371b772aa`; built MinOS 15.0. Target-device pending; not stable. Build265 / 0.14.98 remains the separate Home-carousel candidate and must be tested separately.'
+          }
+          seen = set()
+          out = []
+          for line in lines:
+              matched = False
+              for prefix, repl in replacements.items():
+                  if line.startswith(prefix):
+                      if prefix == '**Active —' and seen:
+                          continue
+                      out.append(repl)
+                      seen.add(prefix)
+                      matched = True
+                      break
+              if not matched:
+                  out.append(line)
+          required = set(replacements)
+          if not required.issubset(seen):
+              raise SystemExit(f'missing task anchors: {sorted(required - seen)}')
+          text = '\n'.join(out) + '\n'
+          start = '## Build266 target-device result → Build267 diagnostic self-overhead A/B — 2026-08-30\n'
+          end = '## Build257 containment result → Build258 shared cadence evidence → Build259 A/B — 2026-08-30\n'
+          if start not in text or end not in text:
+              raise SystemExit('missing Build266/Build257 task section anchors')
+          before, rest = text.split(start, 1)
+          _, after = rest.split(end, 1)
+          current = '''## Build267 target-device motion-continuity result → Build268 lean cadence A/B — 2026-08-31
+
+Build267 / OnePlayer **0.15.0 (267)** exact source `dbe1b7c13dde68e52039cb7ae22fc5177fdd886f` is now target-device tested using `OnePlayer-App-1788108252.log` plus `RPReplay_Final1788108245.mp4`. The user reports Library 3×3 reaches **110+ FPS**, clearly above Build266, but the upward-moving container still visibly jitters in the recording.
+
+Build267 materially reduces the prior severe-tail problem. Across 20 Library sessions / **12,071 display samples**, there are 26 gaps `>=25 ms` and 13 `>=33.3 ms`, versus Build266's 52 / 33 across 9,576 display samples. Normalized severe25 falls from about **5.43 to 2.15 per 1,000 display samples** and severe33 from **3.45 to 1.08 per 1,000**, so the reference-session change removed real measurement self-overhead.
+
+The remaining visible roughness is a different layer. The 11.53 s recording timestamp aligns almost exactly with the fixed `540→540` Library motion session ending `2026-08-30T16:44:06.257Z`. That session has `display_samples=1546` over `12.976 s` (~**119.14 Hz**), display p50/p95/p99 `8.34 ms`, only one `>=25 ms` gap and zero `>=33.3 ms` gaps, yet `offset_samples=1359` (~**104.73 Hz**), `offset_p95=16.77 ms`, `decel_display_zero=210/1539` (**13.6%**) and `decel_display_catchup=168/1539` (**10.9%**). The recording independently shows uneven upward inertial displacement. High display cadence therefore no longer proves smooth position continuity.
+
+Across all Build267 Library deceleration samples, zero-move / catch-up ratios remain about **12.85% / 8.72%** overall and **14.8% / 10.9%** in fixed-item sessions. Build267 is a successful diagnostic-overhead reduction but not a final smoothness fix. PR #275 is closed without merge.
+
+Build268 / OnePlayer **0.15.1 (268)**, branch `perf/poster-grid-lean-cadence-build268`, Draft PR **#276**, exact source `f3f6e1f4e8e538b7ccd9cb676806db59cd7a0b0b`, changes exactly four paths. It preserves the existing one grid `CADisplayLink`, 80→device-max request, contentOffset KVO motion start and scalar cell/image/item counters, but removes per-offset interval arrays, deceleration delta/ratio arrays, RunLoop observer attribution and per-KVO velocity work. One reference-owned display interval array remains for end-of-session cadence percentiles, while new scalar `offset_hz`, `display_hz`, `decel_zero_ratio` and `decel_catchup_ratio` keep the controlling continuity question observable with substantially less measurement work.
+
+Build268 exact-source Xcode 16.4 run/job `33324217590 / 99291395158` succeeded; cleanup `99291710279` succeeded. Artifact `OnePlayer-0.15.1-build268-grid-lean-cadence`, ID `9735779709`, digest `sha256:c903be806f42f45a5e55723063fc9a902ebbcd829690f175fe92063a3063f6f9`; IPA SHA-256 `fe2de885fe8db0536f3a1e51f17c98883141990563bcfe3a57f6958bc94635d7`; source ZIP SHA-256 `e0136ff082b60200bf2c1f8bedea1c99ed5859ade860f4a4089c7c6371b772aa`; bundle/version/build/MinOS independently verified as `com.embyplayerlab.app / 0.15.1 / 268 / 15.0`.
+
+**Evidence:** Build267 Code/CI/IPA/target-device tested ✅ / Build267 severe-tail reduction ✅ / visible high-refresh motion jitter remains ✅ / Build268 Code written ✅ / exact four-path scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / Build268 target-device tested ❌ / stable ❌.
+
+**Next exact action:** test Build268 on Library 3×3 and Search 3×3 with the same long drags/inertial flings. Compare tactile continuity plus `display_hz` versus `offset_hz` and `decel_zero_ratio` / `decel_catchup_ratio`. If they materially improve, remaining detailed diagnostics were still perturbing the measured path. If they do not, stop shrinking diagnostics and move the next A/B to the actual Grid/UIScrollView presentation layer. Do not guess `decelerationRate`.
+
+'''
+          task.write_text(before + current + end + after)
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          mlines = module.read_text().splitlines()
+          found = False
+          for i, line in enumerate(mlines):
+              if line.startswith('| Poster 3-column / poster-heavy scroll smoothness |'):
+                  mlines[i] = '| Poster 3-column / poster-heavy scroll smoothness | **Active — Build267 target-device tested; Build268 CI/IPA verified; target-device pending** | Build267 / 0.15.0 exact source `dbe1b7c13dde68e52039cb7ae22fc5177fdd886f` materially reduced severe 25/33 ms tail rate and raised observed Library FPS into the 110+ range, but the matched recording/log session still shows visible upward-scroll jitter with ~119 Hz display cadence versus ~105 Hz contentOffset updates plus 13.6% zero-move / 10.9% catch-up deceleration display ticks. The controlling issue is now high-refresh motion continuity, not long-frame count alone. Build268 / 0.15.1 exact source `f3f6e1f4e8e538b7ccd9cb676806db59cd7a0b0b`, Draft PR #276, strips remaining detailed grid-diagnostic arrays/RunLoop/velocity work while preserving the same device-max request and lean continuity counters. Run/job `33324217590 / 99291395158`; artifact `9735779709`; IPA SHA `fe2de8851d54aee126ff12f5c4f1a54f6fa62ca0293517fc137fc25b94ef3d3c`; MinOS 15.0. Search Build256 and all P0/Frozen playback/transport contracts remain protected. |'
+                  found = True
+                  break
+          if not found: raise SystemExit('poster module row missing')
+          module.write_text('\n'.join(mlines) + '\n')
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          st = state.read_text()
+          lines = st.splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith('_Last updated '):
+                  lines[i] = '_Last updated 2026-08-31: Poster Build267 is target-device tested and proves a split result: severe 25/33 ms long-frame frequency fell substantially and observed Library FPS rose into the 110+ range, but a matched fixed-item recording still visibly jitters while display cadence is ~119 Hz and contentOffset advances only ~105 Hz with frequent zero→catch-up steps. Build268 / 0.15.1 is the current exact-source CI/IPA-verified lean-cadence A/B; it reduces remaining diagnostic self-overhead without changing Grid/image/pagination/Search/scroll physics or P0 playback/transport._'
+                  break
+          else: raise SystemExit('project-state last-updated missing')
+          st = '\n'.join(lines) + '\n'
+          marker = '## Active: Poster-heavy scrolling smoothness\n\n'
+          if marker not in st: raise SystemExit('project-state poster marker missing')
+          if '### Build267 target-device continuity evidence → Build268 lean cadence A/B' not in st:
+              insert = '''### Build267 target-device continuity evidence → Build268 lean cadence A/B
+
+Build267 / 0.15.0 exact source `dbe1b7c13dde68e52039cb7ae22fc5177fdd886f` is target-device tested with `OnePlayer-App-1788108252.log` and `RPReplay_Final1788108245.mp4`. Across 20 Library sessions / 12,071 display samples, severe25/33 totals fall to 26/13 from Build266's 52/33 over 9,576 samples. However the recording-aligned fixed 540→540 session runs display output at ~119.14 Hz while contentOffset updates average ~104.73 Hz, with 210/1539 zero-move display ticks and 168/1539 zero→catch-up ticks; the user visibly sees the upward-moving grid jitter. Severe long-frame elimination is therefore no longer sufficient to describe the remaining problem.
+
+Build268 / 0.15.1 exact source `f3f6e1f4e8e538b7ccd9cb676806db59cd7a0b0b`, Draft PR #276, keeps the same one grid display link/device-max request and removes remaining detailed per-offset/deceleration-array/RunLoop/velocity diagnostic work. Run/job `33324217590 / 99291395158` passed; cleanup `99291710279`; artifact `9735779709`; IPA SHA `fe2de8851d54aee126ff12f5c4f1a54f6fa62ca0293517fc137fc25b94ef3d3c`; source ZIP SHA `e0136ff082b60200bf2c1f8bedea1c99ed5859ade860f4a4089c7c6371b772aa`; MinOS 15.0 independently verified. Target-device pending; not stable.
+
+'''
+              st = st.replace(marker, marker + insert, 1)
+          state.write_text(st)
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          ilines = index.read_text().splitlines()
+          found = False
+          new_line = '| **Build267 / 0.15.0** | Poster-grid diagnostic reference-session self-overhead A/B | **Target-device tested; severe-tail reduction proven; high-refresh position jitter remains; not stable.** Exact source `dbe1b7c13dde68e52039cb7ae22fc5177fdd886f`; run/job `33321883421 / 99285172527`; artifact `9735159629`; IPA SHA `54c2b8851d54aee126ff12f5c4f1a54f6fa62ca0293517fc137fc25b94ef3d3c`; MinOS 15.0. `OnePlayer-App-1788108252.log`: 20 Library sessions / 12,071 display samples, 26 >=25 ms and 13 >=33.3 ms gaps vs Build266 52/33 over 9,576 samples. Matching 540→540 recording session: ~119.14 Hz display, ~104.73 Hz offset, 13.6% decel zero-move and 10.9% zero→catch-up; user visibly reports upward-grid jitter. PR #275 closed without merge. |'
+          build268 = '| **Build268 / 0.15.1** | Shared 3×3 lean cadence / motion-continuity A/B | **Exact-source CI/IPA verified; target-device pending; not stable.** Exact source `f3f6e1f4e8e538b7ccd9cb676806db59cd7a0b0b`, Draft PR #276, removes remaining per-offset/deceleration-array/RunLoop/velocity grid-diagnostic work while preserving the same one display link/device-max refresh request and lean display/offset/zero→catch-up metrics. Run/job `33324217590 / 99291395158`; cleanup `99291710279`; artifact `9735779709`, digest `sha256:c903be806f42f45a5e55723063fc9a902ebbcd829690f175fe92063a3063f6f9`; IPA SHA `fe2de8851d54aee126ff12f5c4f1a54f6fa62ca0293517fc137fc25b94ef3d3c`; source ZIP SHA `e0136ff082b60200bf2c1f8bedea1c99ed5859ade860f4a4089c7c6371b772aa`; MinOS 15.0. |'
+          for i, line in enumerate(ilines):
+              if line.startswith('| **Build267 / 0.15.0** |'):
+                  ilines[i] = new_line
+                  if i + 1 >= len(ilines) or not ilines[i + 1].startswith('| **Build268 / 0.15.1** |'):
+                      ilines.insert(i + 1, build268)
+                  found = True
+                  break
+          if not found: raise SystemExit('Build267 index row missing')
+          index.write_text('\n'.join(ilines) + '\n')
+
+          decisions = Path('docs/project/TECHNICAL_DECISIONS.md')
+          dt = decisions.read_text()
+          if '## D021 — Shared 3×3 high-refresh success does not imply position continuity' not in dt:
+              dt += '''\n## D021 — Shared 3×3 high-refresh success does not imply position continuity\n\nBuild267 target-device evidence separates display cadence from visible scroll-position continuity. Reference-semantic diagnostics materially reduced severe long-frame frequency, and the matched fixed-item Library recording session runs the diagnostic display link at about 119 Hz with p99 8.34 ms, yet contentOffset updates average only about 105 Hz and 13.6% of deceleration display samples report no offset movement followed by 10.9% catch-up samples. The user visibly sees the upward-moving grid jitter in the aligned recording.\n\nTherefore do not equate `display_p50/p95≈8.34 ms` or an on-screen 110–120 FPS reading with a smooth 3×3 motion curve. The next gate is position continuity (`display_hz` vs `offset_hz`, zero-move/catch-up) after minimizing diagnostic self-overhead. Do not guess `decelerationRate`, add synthetic interpolation, or reopen Search Build256 semantics from this evidence. If Build268's lean diagnostics do not materially reduce the continuity gap, move investigation to actual Grid/UIScrollView presentation/realization rather than adding more measurement layers.\n'''
+              decisions.write_text(dt)
+          PY
+
+      - name: Commit docs to main
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add docs/project/current/dev/DEV-poster-grid-smoothness.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/BUILD_TEST_INDEX.md docs/project/TECHNICAL_DECISIONS.md
+          git commit -m 'Record Build267 device and Build268 continuity evidence [skip ci]'
+          git push origin HEAD:main
+
+      - name: Delete temporary trigger branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X DELETE repos/${{ github.repository }}/git/refs/heads/ci/sync-build267-device-build268-evidence-20260831 || true
