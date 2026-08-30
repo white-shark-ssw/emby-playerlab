@@ -1,0 +1,47 @@
+name: Append Build271 technical decision
+
+on:
+  push:
+    branches: [docs/build271-technical-decision-20260831]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Append decision
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('docs/project/TECHNICAL_DECISIONS.md')
+          text = path.read_text()
+          marker = '## D021 — Presented-FPS diagnosis locates the pipeline boundary before synthetic stress'
+          if marker in text:
+              raise SystemExit('D021 already exists')
+          addition = '''\n\n## D021 — Presented-FPS diagnosis locates the pipeline boundary before synthetic stress\n\nFor the reopened Home-carousel cadence task, the target-device **system FPS HUD with screen recording off** is the controlling evidence for final presented cadence. Screen recording can itself change the HUD from the no-recording ~90 FPS ceiling toward 120, and the existing `CADisplayLink`-based monitors can report near-120 callbacks while the final HUD remains around ~90. Therefore `CADisplayLink` callback frequency must not be presented as final screen FPS.\n\nBuild269 removed only persistent full-screen blur30 and remained around ~90 FPS without recording. Build270 reduced foreground title/logo/metadata residency from all up-to-6 pages to current/previous/next while retaining Build231 page-level `compositingGroup()` and also remained around ~90. Those target-device A/Bs reject persistent blur30 and foreground-residency/offscreen-compositing count as demonstrated primary causes. Do not continue those directions or inherit their diagnostic presentation changes without new evidence.\n\nBuild271 / 0.15.4 changes the diagnostic method rather than stacking another optimization. Exact product source `643ff1cbbd24ea06a315c632b08ac1ad162ee43f` branches directly from Build265 and provides one-package `CAROUSEL → CA → DISPLAYLINK → SWIFTUI` modes. The three simplified probe modes unmount the normal Home/carousel presentation so the first layer that fails to match the preceding simpler layer identifies the next instrumentation boundary: Core Animation/system presentation, main-thread display-link/commit scheduling, SwiftUI publication/render invalidation, or the actual carousel render tree. Dedicated run/job `33329047915 / 99304195063` passed; artifact `9737161622`; IPA SHA `e2c6540e5705f9837dd75db6a41ef7a1ce02d24c3afb3f7abc2160faaa8a963f`; MinOS 15.0 independently verified.\n\nDo **not** add synthetic busy-loop CPU/GPU load, timer-driven stress, or another carousel runtime optimization before the Build271 four-mode target-device boundary result exists. Synthetic stress becomes useful only after the failing layer is known, so it measures headroom instead of contaminating the diagnosis. Build271 is diagnostic-only; CI/IPA verification is not real-device acceptance.\n'''
+          path.write_text(text.rstrip() + addition + '\n')
+          PY
+
+      - name: Verify docs-only diff
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only)" = 'docs/project/TECHNICAL_DECISIONS.md'
+          grep -F '## D021 — Presented-FPS diagnosis locates the pipeline boundary before synthetic stress' docs/project/TECHNICAL_DECISIONS.md
+
+      - name: Commit decision to main
+        run: |
+          set -euo pipefail
+          git config user.name 'ChatGPT'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add docs/project/TECHNICAL_DECISIONS.md
+          git commit -m 'docs: record Build271 pipeline diagnosis decision'
+          git push origin HEAD:main
