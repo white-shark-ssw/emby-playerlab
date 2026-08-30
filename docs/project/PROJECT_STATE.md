@@ -74,6 +74,16 @@ The active poster-smoothness task now profiles the shared 3×3 presentation also
 
 ## Active: Poster-heavy scrolling smoothness
 
+### 2026-08-31 Build276 target-device frame-tail result → Build278 persistence timing
+
+Build276 / OnePlayer **0.15.9 (276)** exact source `6f56370f5990637052140fdcd0adf5e7f3428550` is target-device tested with `OnePlayer-App-1788125796.log`; the user confirmed the visible whole-grid twitch occurred again. Seven `>=25 ms` display gaps were captured. All five accepted +60 pagination appends correlate 1:1 with severe gaps that grow with accumulated Library size: **25.96 / 41.71 / 52.16 / 58.33 / 60.12 ms** at **120 / 180 / 240 / 300 / 360 items**. The measured `insert-begin`→`insert-end` duration itself is only **1.22–3.52 ms**, so `performBatchUpdates` synchronous call duration alone is not a sufficient explanation. One same-ID visible-host reconfigure correlates with **66.91 ms** and one **64.84 ms** gap remains untracked. PR #280 is closed without merge.
+
+Exact source shows `V3LibraryBrowserViewModel` is `@MainActor` and calls `persistSnapshot()` synchronously after every accepted page; `V3PagePersistentCache.storeLibrarySnapshot` rebuilds the full accumulated snapshot, serializes it with `JSONSerialization`, then performs `Data.write(..., .atomic)`. This scales with the accumulated dataset and is now the strongest append-adjacent lead, but Build276 did not time it directly. Build213 persistent-cache semantics therefore remain unchanged pending direct proof.
+
+Build278 / OnePlayer **0.15.11 (278)** is the current diagnostic-only candidate. Exact source `6ff8113d9c45dfae6d745afa98b4a04a3956cf33`, branch `diag/poster-grid-persistence-frame-tail-build278`, Draft PR #281, changes only AppIdentity, `EmbyPagePersistentCache.swift`, changelog and checker. It adds object-build / JSON-serialization / atomic-write / byte-size / total snapshot timing while preserving Build276 native collection, pagination, gap/reverse diagnostics and Build213 cache behavior. Xcode 16.4 run/job `33337500594 / 99326940412` passed; cleanup `99327426771` passed; artifact `9739532909`, digest `sha256:7cb116b3cd686e9dd7f0bf47718ed1cf967d72cd057ef902fd1ae0ebadf47182`; IPA SHA `e30ca0a0477dfe1e12192c7e0d630328049be78138a65b947743803e3d55d2ea`; source ZIP SHA `337422655a39a75af0d13d928857a094acf9f92564c9785327e73b8e633f2997`; `0.15.11 (278)` / MinOS15 independently verified. Target-device persistence correlation is pending; no fix/stable claim.
+
+**Evidence:** Build276 Code/CI/IPA/real-device ✅ / twitch reproduced ✅ / append-correlated severe-tail established ✅ / insert-call-duration-alone sufficient cause ❌ / Build278 Code/scope/checker/CI/IPA ✅ / persistence causal proof pending / real-device Build278 ❌ / stable ❌.
+
 ### 2026-08-31 Build273 target-device native-collection result
 
 Build273 exact source `6ff8b1fdefeb7fbe848d05414661a95c88e8ffb8` is target-device tested and rejected as a sufficient Library 3×3 fix. The user still observed several visible twitch events. The clean 51.12 s `60→360` native session averages display 118.72 Hz / offset 109.43 Hz; all 30 reverse events >=1 pt are outside the legal top bound during bounce, max 3.00 pt. Fixed `120→120` is 118.00 Hz with reverse=0. No interior reverse is captured.
