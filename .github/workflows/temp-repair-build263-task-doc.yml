@@ -1,0 +1,57 @@
+name: Temp Repair Build263 Task Doc
+on:
+  push:
+    branches: [docs/poster-build263-task-repair-20260830]
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/poster-build263-task-repair-20260830
+          fetch-depth: 0
+      - name: Checkout latest main
+        run: git checkout main && git pull --ff-only origin main
+      - name: Restore exact task doc and apply device result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout 742c35c74bc16aabadee02fd00fc548129fa3e3f -- docs/project/current/dev/DEV-poster-grid-smoothness.md
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('docs/project/current/dev/DEV-poster-grid-smoothness.md')
+          s = p.read_text()
+          old = '**Active — Build263 / 0.14.96 is the current severe-gap diagnostic candidate. It is directly parented from target-device-tested Build261 and is Code written / CI passed / IPA produced+independently verified, but target-device testing is pending and it is not stable. Build261 remains the current real-device evidence authority: high-speed SwiftUI cell lifecycle churn is a proven Library long-gap contributor while a separate fixed-item severe-gap source remains. Build263 adds attribution for poster image publication and main-RunLoop wait behavior without changing Grid behavior or scroll physics.**'
+          new = '**Active — Build263 / 0.14.96 is target-device diagnostic tested and is now the current Library severe-gap evidence authority. Across 26 Library motion sessions / 5,557 display samples it records 40 gaps >=25 ms and 27 gaps >=33.3 ms. Fixed-item sessions are decisive: 26/28 severe25 gaps and 16/16 severe33 gaps overlap cell lifecycle churn; 23/28 severe25 and 15/16 severe33 also overlap poster image publication. Severe untracked gaps collapse to 2/28 for fixed-item severe25 and 0/16 for fixed-item severe33. Build263 is diagnostic-only, not stable, and does not yet prove whether the primary cost is SwiftUI cell realization, image state/presentation work, or their burst interaction.**'
+          assert old in s
+          s = s.replace(old, new, 1)
+          old2 = '- **Current candidate**: OnePlayer `0.14.96 (263)`; directly parented from target-device-tested Build261 exact source `e552bebd072a915e6cb10d591d704a5a3c342406`; CI/IPA independently verified; target-device pending; not stable'
+          new2 = '- **Current candidate**: OnePlayer `0.14.96 (263)`; directly parented from target-device-tested Build261 exact source `e552bebd072a915e6cb10d591d704a5a3c342406`; CI/IPA independently verified and target-device diagnostic tested with `OnePlayer-App-1788098393.log`; not stable'
+          assert old2 in s
+          s = s.replace(old2, new2, 1)
+          old3 = '**Evidence:** Build263 Code written ✅ / exact six-path scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device tested ❌ / root cause claimed ❌ / stable ❌. Build261 remains the real-device evidence authority until Build263 is tested.\n\n**Next exact action:** install Build263 and repeat normal/fast Library 3×3 inertial flings, including at least one fixed-item route and one large-library fast pass. Return the App log. Use `severe25_*`, `severe33_*`, `image_publish`, `*_no_runloop_wait` and `*_with_runloop_wait` to choose the next owner-specific change. Do not merge or alter Grid behavior before that device evidence.'
+          new3 = '''Target-device result from `OnePlayer-App-1788098393.log` on iPhone 15 Pro Max / iOS 17.0:\n\n- 26 Library motion sessions / 5,557 display samples contain `40` severe `>=25 ms` gaps and `27` severe `>=33.3 ms` gaps.\n- Overall severe25 overlap: cell churn `32/40` (80%), image publish `24/40` (60%), untracked `6/40`; severe33 overlap: cell churn `22/27`, image publish `16/27`, untracked `3/27`. Categories overlap and must not be summed as exclusive percentages.\n- Fixed-item sessions are stronger: 19 sessions / 2,860 display samples contain `28` severe25 and `16` severe33 gaps. Cell churn overlaps `26/28` severe25 and **all `16/16` severe33**; image publication overlaps `23/28` severe25 and `15/16` severe33; only `2` fixed-item severe25 gaps are untracked and **zero** fixed-item severe33 gaps are untracked.\n- The heaviest fixed `775→775` 7.11 s pass has `24` severe25 / `15` severe33, with `22/24` severe25 overlapping cell churn and `20/24` overlapping image publish; all `15/15` severe33 overlap cell churn and `14/15` image publish. A long-gap interval reaches 18 cell appears + 18 disappears and 27 image publications.\n- A second fixed `775→775` 5.37 s pass still performs 309 cell appears + 306 disappears and 309 image publications but has **zero** severe25 gaps. Therefore raw cell/image activity alone is not sufficient; the dangerous condition is burst concentration during high-speed realization/publication.\n- RunLoop `beforeWaiting` occurred between display ticks for `35/40` severe25 and `25/27` severe33 gaps. This rejects only continuous full-interval main-thread occupation; it does **not** exclude a late main-thread cell/layout/presentation burst after wake that misses the next vsync. Do not over-attribute this result to Core Animation/compositor yet.\n\nExact-source inspection supports the current narrow hypothesis: every `V3PosterCard` mounts `EmbyCachedRemoteImage`; on cell appearance its loader starts work, memory-cache hits synchronously assign `@Published image` on main, and disk/network decode completions also publish `image` on MainActor. Cell disappearance cancels the loader. The Build263 `image_publish` counter is delivered from that image publication path. This matches the severe burst correlation but still does not distinguish cell realization cost from image state/presentation cost.\n\n**Evidence:** Build263 Code written ✅ / exact six-path scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device diagnostic tested ✅ / fixed-item severe-gap cell-burst correlation proven ✅ / image-publication overlap proven ✅ / exact causal owner not yet isolated ❌ / stable ❌.\n\n**Next exact action:** do not tune pagination or scroll physics. The next behavioral A/B should be narrowly aimed at the shared poster-cell realization/image-publication path and preserve exact rendered image quality, Search Build256 semantics and the 3-column contract. Prefer a single-variable experiment that removes one source of per-cell image state publication during fast virtualization before considering a wholesale Grid rewrite.'''
+          assert old3 in s
+          p.write_text(s.replace(old3, new3, 1))
+          PY
+          git diff --check
+          grep -q 'target-device diagnostic tested' docs/project/current/dev/DEV-poster-grid-smoothness.md
+          test "$(cat docs/project/current/dev/DEV-poster-grid-smoothness.md)" != "PLACEHOLDER"
+      - name: Commit and push repair
+        run: |
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add docs/project/current/dev/DEV-poster-grid-smoothness.md
+          git commit -m "Restore poster task and record Build263 device result [skip ci]"
+          git push origin HEAD:main
+  cleanup:
+    needs: repair
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete temporary branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git push https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git --delete docs/poster-build263-task-repair-20260830 || true
