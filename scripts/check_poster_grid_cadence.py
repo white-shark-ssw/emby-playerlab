@@ -13,7 +13,7 @@ info = (root / "Config/Info.plist").read_text()
 shared = (root / "Sources/UI/EmbyServerSharedV3.swift").read_text()
 image = (root / "Sources/UI/EmbySharedImageAndNavigation.swift").read_text()
 
-assert 'static let sourceVersion = "0.15.1"' in identity
+assert 'static let sourceVersion = "0.15.2"' in identity
 assert '<key>CADisableMinimumFrameDurationOnPhone</key>' in info
 assert '<true/>' in info.split('<key>CADisableMinimumFrameDurationOnPhone</key>', 1)[1][:80]
 
@@ -21,6 +21,11 @@ assert 'diagnosticRoute: String = "grid"' in grid
 assert 'EmbyPosterGridCadenceProbe(ownerID: diagnosticOwnerID, route: diagnosticRoute, itemCount: items.count)' in grid
 assert 'cellDidAppear(ownerID: diagnosticOwnerID)' in grid
 assert 'loadAheadDidTrigger(ownerID: diagnosticOwnerID)' in grid
+assert 'LazyVGrid(' not in grid
+assert 'return LazyVStack(alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing)' in grid
+assert 'let rowStarts = Array(stride(from: 0, to: items.count, by: EmbyPosterGridMetrics.columnCount))' in grid
+assert 'HStack(alignment: .top, spacing: EmbyPosterGridMetrics.columnSpacing)' in grid
+assert 'ForEach(items[rowStart..<rowEnd])' in grid
 assert '@Environment(\.embyPosterGridDiagnosticOwnerID)' in shared
 assert 'onImageLoaded: { _ in' in shared and 'imageDidPublish(ownerID: ownerID)' in shared
 
@@ -45,7 +50,7 @@ assert 'display_ge12_5=' in diag and 'display_ge25=' in diag and 'display_ge33_3
 assert 'item_count_changes=' in diag and 'cell_appear=' in diag and 'image_publish=' in diag and 'load_ahead=' in diag
 assert 'decelerationRate' not in diag
 
-# Keep the Build266 image-loading A/B inherited unchanged while testing only diagnostic overhead.
+# Keep the Build266 image-loading A/B inherited unchanged while testing only container layout.
 assert 'private let publishesLoadingState: Bool' in image
 assert 'publishesLoadingState: width != nil' in shared
 assert 'showsLoadingIndicator: false, publishesLoadingState: publishesLoadingState' in shared
@@ -62,4 +67,4 @@ assert 'CAFrameRateRange(minimum: 80, maximum: maximum, preferred: maximum)' in 
 assert 'HomeScrollCadence' in home
 assert 'decelerationRate' not in home
 
-print('poster grid lean cadence source contract: PASS')
+print('poster grid row-stack source contract: PASS')
