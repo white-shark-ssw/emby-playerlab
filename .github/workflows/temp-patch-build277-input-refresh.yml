@@ -1,0 +1,45 @@
+name: TEMP Patch Build277 Input Refresh Request
+
+on:
+  push:
+    branches: [patch/build277-input-refresh-request]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build277 product branch
+        uses: actions/checkout@v4
+        with:
+          ref: diag/home-carousel-input-pipeline-build277
+          fetch-depth: 0
+
+      - name: Add fair device-max refresh request to input probes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Sources/UI/EmbyHomeFramePipelineProbeV3.swift')
+          text = path.read_text()
+          old = '''            case .rawTouch, .nativePan, .nativeScroll:\n                V3HomeInputPipelineProbe(mode: mode).ignoresSafeArea()\n'''
+          new = '''            case .rawTouch, .nativePan, .nativeScroll:\n                ZStack {\n                    V3HomeInputPipelineProbe(mode: mode).ignoresSafeArea()\n                    V3HomeCarouselTreeProgressDriver { _ in }.frame(width: 0, height: 0)\n                }\n'''
+          if old not in text:
+              raise SystemExit('input probe switch block not found')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+          git diff -- Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          test "$(git diff --name-only)" = "Sources/UI/EmbyHomeFramePipelineProbeV3.swift"
+          grep -F 'V3HomeCarouselTreeProgressDriver { _ in }.frame(width: 0, height: 0)' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+
+      - name: Commit product patch
+        run: |
+          set -euo pipefail
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          git commit -m 'Build277: match carousel device-max refresh request'
+          git push origin HEAD:diag/home-carousel-input-pipeline-build277
