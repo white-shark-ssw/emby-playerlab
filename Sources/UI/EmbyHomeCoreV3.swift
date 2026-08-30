@@ -177,7 +177,7 @@ struct V3EmbyHomeView: View {
                 .frame(width: width)
                 .background(
                     ZStack {
-                        V3HomeScrollOffsetObserver { value in
+                        V3HomeScrollOffsetObserver(onScrollViewChange: { scrollView in heroScrollState.attachVerticalScrollView(scrollView) }) { value in
                             guard immersive, isHomeActive else { return }
                             let clampedValue = max(-heroTrackingLimit, value)
                             heroScrollState.update(clampedValue)
