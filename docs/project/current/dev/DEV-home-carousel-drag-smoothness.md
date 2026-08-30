@@ -1,6 +1,6 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build269 blur-off and Build270 foreground-residency target-device A/Bs both leave the no-recording system FPS HUD ceiling around ~90 FPS, so both major-cause hypotheses are rejected. Build271 / 0.15.4 is the current diagnostic: an in-app frame-pipeline benchmark that compares normal carousel, pure Core Animation, native CADisplayLink→CALayer, and CADisplayLink→@Published→SwiftUI paths in one package.
+- **Status:** Active — Build271 target-device pipeline evidence now proves native `CADisplayLink→CALayer` and `CADisplayLink→@Published→SwiftUI` can both present at a real 120 FPS on the target device with recording off. The Build271 `CA` probe showed 60 FPS only because that diagnostic `CABasicAnimation` omitted `CAAnimation.preferredFrameRateRange`; it is not evidence of a 60 FPS system/compositor ceiling. The remaining boundary is the real Home/carousel render tree versus interaction/settle/residency/image-callback lifecycle. Build274 / 0.15.7 is the current exact-source CI/IPA-verified TREE120 diagnostic.
 - **Work ID:** `DEV-home-carousel-drag-smoothness`
 - **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / pipeline probe
 - **Task:** Preserve the accepted Build241 carousel appearance/gesture feel while locating the real cause of the no-screen-recording ~90 FPS presentation ceiling on iPhone 15 Pro Max / iOS 17.0.
@@ -8,9 +8,9 @@
 - **Controlling normal-behavior diagnostic base:** Build265 exact product source `af92164890e7dc1c869bd586577b39177335df5f`.
 - **Build269 diagnostic:** `diag/home-carousel-persistent-blur-build269`, exact product source `28d09e1cf7b3932e9033c370df12026889033197`.
 - **Build270 diagnostic:** `perf/home-carousel-foreground-residency-build270`, exact product source `cee2031aa7dc2abb59fb371196e22fbce56e32ee`.
-- **Current working branch:** `diag/home-carousel-frame-pipeline-build271`.
-- **Current exact product source:** `643ff1cbbd24ea06a315c632b08ac1ad162ee43f`.
-- **Current candidate:** OnePlayer `0.15.4 (271)` — pipeline diagnostic; Code written / exact-source CI passed / IPA produced and independently verified; target-device four-mode HUD test pending.
+- **Current working branch:** `diag/home-carousel-tree120-build274`.
+- **Current exact product source:** `6d18ca0cdb02bbce3f8fee13f8b5dc082a43ab63`.
+- **Current candidate:** OnePlayer `0.15.7 (274)` — full real carousel-tree 120 Hz progress probe; Code written / exact-source CI passed / IPA produced and independently verified; target-device TREE120 HUD result pending.
 - **Target device:** iPhone 15 Pro Max / iOS 17.0.
 - **Deployment Target:** iOS 15.0.
 
@@ -108,6 +108,37 @@ No synthetic busy-loop load is added in Build271. First locate the failing pipel
 - Independent MinOS report ends `Minimum OS compatibility audit: OK`.
 - Diagnostic prerelease tag: `build271-frame-pipeline-test`; publish run `33330204282` success. Release publishing republishes the already-verified fixed artifact; it does not rebuild product code.
 
+## Build271 target-device pipeline result — 2026-08-31
+
+The user supplied direct target-device screenshots and explicitly confirmed that the system FPS HUD shown in them is real. With screen recording off, Build271 shows:
+
+- `PIPE CA`: **60 FPS**.
+- `PIPE DISPLAYLINK`: **120 FPS**.
+- `PIPE SWIFTUI`: **120 FPS**.
+
+The accompanying `OnePlayer-App-1788120204.log` contains 40 normal-carousel cadence sessions. Their internal display-link intervals remain broadly high-refresh (median `display_avg_gap_ms=8.795`), while delivered touch / publish / render state changes are less frequent (median `15.455 / 21.445 / 21.665 ms`). This reinforces the already-established rule that callback cadence is not identical to final presented cadence or to user-driven state publication cadence.
+
+Exact Build271 source explains the 60 FPS CA screenshot: the `CABasicAnimation` probe did **not** set `CAAnimation.preferredFrameRateRange`, while both DISPLAYLINK and SWIFTUI probes explicitly requested `UIScreen.main.maximumFramesPerSecond`. Because the more complex `CADisplayLink→CALayer` and `CADisplayLink→@Published→SwiftUI` paths both reach a real 120 FPS on the same device, Build271 rejects a generic 60/90 FPS ceiling in UIKit/SwiftUI/Combine/CALayer/display-link capability. The next diagnostic must exercise the actual Home carousel render tree.
+
+Build271 evidence is now: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pipeline tested ✅ / generic pipeline ceiling rejected ✅ / actual carousel bottleneck unresolved / stable ❌**.
+
+## Build274 / 0.15.7 — full carousel-tree 120 Hz probe
+
+Build274 is created from exact Build271 product source `643ff1cbbd24ea06a315c632b08ac1ad162ee43f` and changes exactly three product files: AppIdentity, Home diagnostic-mode mounting, and the frame-pipeline probe. `EmbyHomeHeroV3.swift`, `EmbyHomeCarouselInteractionV3.swift`, and `EmbyHomeCarouselStateV3.swift` remain exact protected blobs `ab2ab5d80a59e174622dca0006c0f3aad4111a54`, `f8df5af61101c0272c5ec378caae617000b8fcea`, and `96f38514cfb09668f11c21a61105ac87a2f26f3d`.
+
+New `TREE120` mode keeps the full real Build265/271 Home presentation mounted — persistent blur backdrop, preload layer, three-slot clear Hero artwork, all foreground pages with retained page-level `compositingGroup()`, indicators, Home rows/header/dock — but replaces finger input with one main-thread `CADisplayLink` requesting device-max refresh. That display link drives the **same existing `transitionProgress` owner** continuously 0→1→0 between one fixed current/neighbor pair. It deliberately does not settle, rotate `currentCarouselItemID`, rotate resident windows, or request a new target image during the measurement.
+
+Interpretation is binary:
+
+- `TREE120` also stays around ~90: steady-state real carousel-tree invalidation/composition/commit cost is sufficient to cap presentation, so the next probe should split the real tree's per-frame layers.
+- `TREE120` reaches 120 while manual `CAROUSEL` remains around ~90: the real tree has 120 Hz headroom in steady state; the next target becomes touch delivery / release-settle / resident rotation / image-callback lifecycle rather than static tree cost.
+
+The CA marker probe in Build274 also adds the missing `CAAnimation.preferredFrameRateRange` high-refresh request, correcting the Build271 probe configuration; this is diagnostic hygiene, not a carousel product change.
+
+Build274 exact product source: `6d18ca0cdb02bbce3f8fee13f8b5dc082a43ab63`. Xcode 16.4 run/job `33333236724 / 99315483085` passed. Artifact `9738285110`, digest `sha256:0fb0e5f9a07c6eb16eab00cdf516283991b0d5e6d61597ea368497ccb4f320f7`. IPA SHA-256 `2fc79d5d09aa8e0c2f6384b4a50e933cf79f885c4b8d9fd05932fc1a3cc6295a`; source ZIP SHA-256 `ed85b8c7a1d28de8af26ba7124386dfa987b3e83d8c4d38b61e8b5b61c4d5598`. Independent re-download verifies both hashes, IPA archive integrity, `com.embyplayerlab.app / OnePlayer / 0.15.7 (274)`, `MinimumOSVersion=15.0`, and `Minimum OS compatibility audit: OK`.
+
+A provisional carousel `Build273 / 0.15.6` identity was retired **before valid carousel compile/package attribution** after discovering the independent poster-grid task already owned Build273 (`perf/poster-grid-native-collection-build273`). Never use carousel Build273 for attribution. Build274 is the first valid identity for this TREE120 diagnostic.
+
 ## Scope guard
 
 No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM→302→115/CDN code is in scope. No Build241 gesture thresholds, rapid-swipe ownership, Hero rendering implementation, image cache or transport contract is modified by Build271.
@@ -128,12 +159,14 @@ No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM�
 - Build265 Code / CI / IPA: ✅. Real-device: ✅ ~90 no-recording ceiling; not stable.
 - Build269 Code / CI / IPA: ✅. Real-device: ✅ ~90; blur-primary hypothesis rejected; diagnostic-only.
 - Build270 Code / CI / IPA: ✅. Real-device: ✅ ~90; foreground-residency hypothesis rejected; diagnostic-only.
-- Build271 Code written: ✅ exact product source `643ff1cbbd24ea06a315c632b08ac1ad162ee43f`.
-- Build271 exact-source CI passed: ✅ run/job `33329047915 / 99304195063`.
-- Build271 IPA produced + independently verified: ✅ artifact `9737161622`; IPA SHA `e2c6540e5705f9837dd75db6a41ef7a1ce02d24c3afb3f7abc2160faaa8a963f`; source SHA `df4b09881cab1ff955b830c6dc821eaf8d6bc4ef377898978af1ee24f194ef22`; MinOS 15.0.
-- Build271 real-device tested: ❌ pending four-mode no-recording HUD A/B.
+- Build271 Code / CI / IPA: ✅. Real-device pipeline: ✅ `CA 60 / DISPLAYLINK 120 / SWIFTUI 120`; generic display-link/CALayer/SwiftUI 120 capability proven; CA 60 probe configuration explained; not stable.
+- Carousel Build273: ❌ retired identity collision; poster-grid owns Build273; no valid carousel package attribution.
+- Build274 Code written: ✅ exact product source `6d18ca0cdb02bbce3f8fee13f8b5dc082a43ab63`.
+- Build274 exact-source CI passed: ✅ run/job `33333236724 / 99315483085`.
+- Build274 IPA produced + independently verified: ✅ artifact `9738285110`; IPA SHA `2fc79d5d09aa8e0c2f6384b4a50e933cf79f885c4b8d9fd05932fc1a3cc6295a`; source SHA `ed85b8c7a1d28de8af26ba7124386dfa987b3e83d8c4d38b61e8b5b61c4d5598`; MinOS 15.0.
+- Build274 target-device TREE120 result: ❌ pending.
 - Stable/frozen reopened performance task: ❌.
 
 ## Next exact action
 
-Install Build271 and perform the four-mode no-screen-recording system-HUD test: `CAROUSEL → CA → DISPLAYLINK → SWIFTUI`. Do not change runtime again before this result. The first mode that fails to reach the cadence shown by the preceding simpler mode determines the next instrumentation layer; only after that boundary is known should controlled synthetic CPU/GPU stress be added.
+Install Build274 and keep screen recording off. First observe `PIPE CAROUSEL` under the same rapid-swipe condition, then switch once to `PIPE TREE120` and **do not touch the carousel**; let the fixed pair oscillate for several seconds and report the real system HUD for both modes. `CA` may optionally be rechecked to confirm the corrected 120 Hz animation hint, but the controlling next decision is `CAROUSEL` versus `TREE120`. Do not add another runtime optimization before that result.
