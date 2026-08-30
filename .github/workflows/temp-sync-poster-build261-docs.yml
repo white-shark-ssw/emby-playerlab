@@ -1,0 +1,49 @@
+name: Temp Sync Poster Build261 Docs
+
+on:
+  push:
+    branches:
+      - docs/poster-build261-device-20260830
+    paths:
+      - .github/workflows/temp-sync-poster-build261-docs.yml
+      - scripts/temp_sync_poster_build261_docs.py
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trigger branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Preserve docs patch script
+        run: cp scripts/temp_sync_poster_build261_docs.py /tmp/temp_sync_poster_build261_docs.py
+      - name: Apply to current main
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          python3 /tmp/temp_sync_poster_build261_docs.py
+          git diff --check
+          git diff -- docs/project/current/dev/DEV-poster-grid-smoothness.md docs/project/PROJECT_STATE.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md
+      - name: Commit and push main docs
+        run: |
+          set -euo pipefail
+          git config user.name "white-shark-ssw"
+          git config user.email "houstools@gmail.com"
+          git add docs/project/current/dev/DEV-poster-grid-smoothness.md docs/project/PROJECT_STATE.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md
+          git diff --cached --quiet && { echo "no docs changes"; exit 1; }
+          git commit -m "Document Build261 device long-frame result [skip ci]"
+          git push origin HEAD:main
+  cleanup:
+    if: always()
+    needs: sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete temporary docs branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git ls-remote --exit-code --heads https://github.com/${{ github.repository }}.git refs/heads/docs/poster-build261-device-20260830 >/dev/null 2>&1 && git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git --delete docs/poster-build261-device-20260830 || true
