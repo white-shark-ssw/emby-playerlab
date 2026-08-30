@@ -1,0 +1,49 @@
+name: Temp Sync Poster Build266 Checkpoint
+
+on:
+  push:
+    branches: [docs/poster-build266-checkpoint-20260830]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch latest-main poster checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout main
+          git pull --ff-only origin main
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('docs/project/current/dev/DEV-poster-grid-smoothness.md')
+          s = p.read_text()
+          old_status = '**Active — Build263 / 0.14.96 is target-device diagnostic tested and is now the current Library severe-gap evidence authority. Across 26 Library motion sessions / 5,557 display samples it records 40 gaps >=25 ms and 27 gaps >=33.3 ms. Fixed-item sessions are decisive: 26/28 severe25 gaps and 16/16 severe33 gaps overlap cell lifecycle churn; 23/28 severe25 and 15/16 severe33 also overlap poster image publication. Severe untracked gaps collapse to 2/28 for fixed-item severe25 and 0/16 for fixed-item severe33. Build263 is diagnostic-only, not stable, and does not yet prove whether the primary cost is SwiftUI cell realization, image state/presentation work, or their burst interaction.**'
+          new_status = '**Active — Build266 / 0.14.99 is the current single-variable 3×3 loading-state publication A/B, directly based on target-device-tested Build263. Build263 remains the real-device severe-gap authority: fixed-item severe gaps localize strongly to high-speed cell/image publication bursts. Build266 removes only unused loader `isLoading` publications from shared `V3PosterCard(width == nil)` 3-column cells while preserving image loading/publication, image quality, Grid behavior and all non-grid callers. Code written/source checker passed; CI/IPA and target-device testing are pending; not stable.**'
+          assert old_status in s
+          s = s.replace(old_status, new_status, 1)
+          s = s.replace('- **Working branch**: `perf/poster-grid-severe-attribution-build263`', '- **Working branch**: `perf/poster-grid-loading-state-build266`', 1)
+          s = s.replace('- **Draft PR**: #271', '- **Draft PR**: pending for Build266; #271 is the Build263 diagnostic PR and will be superseded once Build266 PR is created', 1)
+          s = s.replace('- **Current branch / PR head**: `bff02ea8e76217b1fe07c298d8b9058b2db1fd08`', '- **Current branch / PR head**: `957e88dcdc408e537d63b083d0f30e4b1157b1dc`', 1)
+          old_candidate = '- **Current candidate**: OnePlayer `0.14.96 (263)`; directly parented from target-device-tested Build261 exact source `e552bebd072a915e6cb10d591d704a5a3c342406`; CI/IPA independently verified and target-device diagnostic tested with `OnePlayer-App-1788098393.log`; not stable'
+          new_candidate = '- **Current candidate**: OnePlayer `0.14.99 (266)`; directly based on target-device-tested Build263 exact source `bff02ea8e76217b1fe07c298d8b9058b2db1fd08`; exact Build263→266 net scope is five paths; source checker passed; CI/IPA pending; target-device pending; not stable. Build265 / 0.14.98 is owned by parallel Home-carousel branch `perf/home-carousel-image-analysis-dedupe-build265`; the poster Build265 attempt never committed product code and is retired for attribution.'
+          assert old_candidate in s
+          s = s.replace(old_candidate, new_candidate, 1)
+          marker = '## Build229 latest target-device result / candidate identity guard — 2026-08-29\n'
+          assert marker in s
+          section = '''## Build266 3×3 loading-state publication A/B — 2026-08-30\n\nBuild263 target-device evidence supports one narrowly-scoped behavioral A/B before any Grid rewrite: fixed-item severe gaps strongly overlap high-speed cell churn and image publication, but another 775→775 pass can perform hundreds of the same events with no severe gap, pointing to concentrated publication/realization bursts rather than raw event count. Exact source inspection shows every shared `V3PosterCard` uses `EmbyCachedRemoteImage`; the loader exposes both `@Published image` and `@Published isLoading`. The shared 3×3 card renders no loading spinner (`showsLoadingIndicator=false`), yet loader begin/end/cancel still published `isLoading` changes.\n\nBuild266 / OnePlayer **0.14.99 (266)**, branch `perf/poster-grid-loading-state-build266`, exact source `957e88dcdc408e537d63b083d0f30e4b1157b1dc`, directly extends Build263 exact source `bff02ea8e76217b1fe07c298d8b9058b2db1fd08`. Exact net scope is five paths: `AppIdentity.swift`, `EmbySharedImageAndNavigation.swift`, `EmbyServerSharedV3.swift`, Build266 changelog and `check_poster_grid_cadence.py`. The loader now has a default-true `publishesLoadingState` flag; only `V3PosterCard(width == nil)` passes false. Therefore Library/Search/other shared 3-column poster cells stop emitting `isLoading` object-change publications they do not render, while actual `image` loading/cache/decode/network/publication remains unchanged. Horizontal poster cards (`width != nil`) and all other `EmbyCachedRemoteImage` callers retain prior loading-state behavior.\n\nNo image dimensions/quality, cache/decode/network policy, LazyVGrid layout, pagination, Search Build256 semantics, scroll physics, Home-carousel runtime, Player/MPV/PiP, UnifiedTransport, playback cache/session, STRM/302/115/CDN or Deployment Target changes. Dedicated source checker and `git diff --check` pass; GitHub exact Build263→266 comparison confirms only the five intended paths. CI/IPA are still pending.\n\nIdentity guard note: a parallel Home-carousel session allocated **Build265 / 0.14.98** on `perf/home-carousel-image-analysis-dedupe-build265` while the poster implementation was being prepared. The poster `perf/poster-grid-loading-state-build265` attempt contains no committed product patch and is retired; Build266 is the poster candidate.\n\n**Evidence:** Build266 Code written ✅ / exact five-path scope+source checker ✅ / CI passed ❌ / IPA produced ❌ / target-device tested ❌ / stable ❌.\n\n**Next exact action:** create the Build266 Draft PR, run exact-source Xcode 16.4 Release/IPA validation, independently verify artifact/package/MinOS, then target-device A/B Library and Search 3×3 against Build263. If severe25/33 materially fall, loading-state publication is a proven contributor; if not, do not stack more loader changes and shift the next isolation toward cell realization/layout versus actual image publication.\n\n'''
+          s = s.replace(marker, section + marker, 1)
+          p.write_text(s)
+          PY
+          git diff --check
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add docs/project/current/dev/DEV-poster-grid-smoothness.md
+          git commit -m 'Checkpoint poster Build266 A/B [skip ci]'
+          git push origin main
