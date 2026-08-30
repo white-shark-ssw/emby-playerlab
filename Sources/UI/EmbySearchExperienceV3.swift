@@ -448,7 +448,7 @@ struct V3EmbyGlobalSearchView: View {
             if model.isLoadingRecommendations && model.recommendationItems.isEmpty {
                 ProgressView().frame(maxWidth: .infinity).padding(.top, 18)
             } else {
-                EmbyPosterGrid(items: model.recommendationItems, horizontalPadding: 6) { item in
+                EmbyPosterGrid(items: model.recommendationItems, horizontalPadding: 6, diagnosticRoute: "global-search-recommendations") { item in
                     EmbyPosterDetailLink(item: item, client: currentClient) {
                         V3SearchRecommendationPosterCard(item: item, client: currentClient, pinnedImage: model.recommendationPosterImage(for: item.id)) { image in
                             model.pinRecommendationPosterImage(image, for: item.id)
@@ -556,7 +556,7 @@ private struct V3GlobalSearchServerGridView: View {
                 if model.isInitialLoading && model.items.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
                 } else {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
+                    EmbyPosterGrid(items: model.items, diagnosticRoute: "global-search-results", onApproachingEnd: {
                         guard model.hasMore else { return }
                         Task { await model.loadNextPage() }
                     }) { item in
