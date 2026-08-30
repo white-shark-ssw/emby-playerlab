@@ -1,0 +1,62 @@
+name: Publish Build271 Frame Pipeline Probe
+
+on:
+  push:
+    branches: [ci/publish-build271-frame-pipeline-20260831]
+
+permissions:
+  actions: read
+  contents: write
+
+env:
+  ARTIFACT_ID: 9737161622
+  ARTIFACT_DIGEST: 56ae2d35b3fc8598c1db02f5cc8cc23cc7153d8a6079d27b54e0e2fde00fab47
+  PRODUCT_SHA: 643ff1cbbd24ea06a315c632b08ac1ad162ee43f
+  RELEASE_TAG: build271-frame-pipeline-test
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download fixed successful artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > build271-artifact.zip
+          echo "${ARTIFACT_DIGEST}  build271-artifact.zip" | sha256sum -c -
+          unzip -q build271-artifact.zip -d build271
+          find build271 -maxdepth 1 -type f -printf '%f\n' | sort
+
+      - name: Verify packaged files and hashes
+        run: |
+          set -euo pipefail
+          IPA="build271/OnePlayer-0.15.4-build271-frame-pipeline-probe-unsigned.ipa"
+          SRC="build271/OnePlayer-0.15.4-build271-frame-pipeline-source.zip"
+          test -f "$IPA"
+          test -f "$IPA.sha256"
+          test -f "$SRC"
+          test -f "$SRC.sha256"
+          (cd build271 && sha256sum -c OnePlayer-0.15.4-build271-frame-pipeline-probe-unsigned.ipa.sha256)
+          (cd build271 && sha256sum -c OnePlayer-0.15.4-build271-frame-pipeline-source.zip.sha256)
+          unzip -t "$IPA" >/dev/null
+          cat "$IPA.sha256"
+          cat "$SRC.sha256"
+
+      - name: Publish diagnostic prerelease assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" --cleanup-tag -y >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" \
+            build271/OnePlayer-0.15.4-build271-frame-pipeline-probe-unsigned.ipa \
+            build271/OnePlayer-0.15.4-build271-frame-pipeline-probe-unsigned.ipa.sha256 \
+            build271/OnePlayer-0.15.4-build271-frame-pipeline-source.zip \
+            build271/OnePlayer-0.15.4-build271-frame-pipeline-source.zip.sha256 \
+            build271/built-info-plist.log \
+            build271/min-os-report.log \
+            --target "$PRODUCT_SHA" \
+            --title 'OnePlayer Build271 Frame Pipeline Diagnostic' \
+            --notes 'Diagnostic-only Build271 / 0.15.4 frame-pipeline benchmark. Exact product source 643ff1cbbd24ea06a315c632b08ac1ad162ee43f. Dedicated CI run 33329047915 passed. Not a product/stable baseline.' \
+            --prerelease
