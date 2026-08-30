@@ -34,9 +34,7 @@ Build259 / OnePlayer **0.14.92 (259)** is the minimum next A/B, branch `perf/pos
 
 Build259 exact-source Xcode 16.4 run/job **`33304743577 / 99239168487`** succeeded. Artifact `OnePlayer-0.14.92-build259-poster-grid-high-refresh-ab`, ID **`9730129850`**, digest `sha256:ac44fcb213597b8ea8cc536c35dc21a157bb2832b869fac33cf5c17633085a1a`; IPA SHA-256 `6d257396ba7a77178e62535c5dd04db58621ea25cf4a30e7e9bf415c7628a18a`; source ZIP SHA-256 `dd121c94b7392abf647ec5471506a6dec903652c7f7f68a19f29ac567660710a`; package `com.embyplayerlab.app`, `0.14.92 (259)`, MinOS 15.0, `CADisableMinimumFrameDurationOnPhone=true`. Downloaded artifact hashes and IPA integrity were independently reproduced.
 
-**Evidence:** Build257 target-device containment behavior verified ✅ / Build257 preferred final solution ❌ / Build258 target-device diagnostic tested ✅ / Build258 smoothness fix claimed ❌ / Build259 Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / Build259 target-device tested ❌ / stable ❌.
-
-**Next exact action:** A/B Build258 vs Build259 on Library 3×3, Search full-results 3×3 and Search `推荐观看` 3×3. Judge subjective hand-feel and return `PosterGridCadence` logs. For Search recommendations, allow several accepted +6 batches and verify the Build256 functional contract remains unchanged. If display cadence moves materially toward ~8.3 ms and hand-feel improves, retain the high-refresh direction; otherwise reject it without altering Search semantics or Frozen playback/transport contracts.
+**Historical Build259 gate result:** completed on target device. The high-refresh request proved effective and moved shared display cadence toward ~8.34 ms, but did not close the finer EX-vs-OnePlayer hand-feel gap. The controlling current result and next action are recorded in the Build259→Build260 section immediately below.
 
 ## Build259 target-device high-refresh result → Build260 curve-continuity diagnostic — 2026-08-30
 
