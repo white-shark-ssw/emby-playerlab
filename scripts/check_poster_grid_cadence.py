@@ -13,7 +13,7 @@ info = (root / "Config/Info.plist").read_text()
 shared = (root / "Sources/UI/EmbyServerSharedV3.swift").read_text()
 image = (root / "Sources/UI/EmbySharedImageAndNavigation.swift").read_text()
 
-assert 'static let sourceVersion = "0.15.2"' in identity
+assert 'static let sourceVersion = "0.15.5"' in identity
 assert '<key>CADisableMinimumFrameDurationOnPhone</key>' in info
 assert '<true/>' in info.split('<key>CADisableMinimumFrameDurationOnPhone</key>', 1)[1][:80]
 
@@ -26,6 +26,11 @@ assert 'return LazyVStack(alignment: .leading, spacing: EmbyPosterGridMetrics.ro
 assert 'let rowStarts = Array(stride(from: 0, to: items.count, by: EmbyPosterGridMetrics.columnCount))' in grid
 assert 'HStack(alignment: .top, spacing: EmbyPosterGridMetrics.columnSpacing)' in grid
 assert 'ForEach(items[rowStart..<rowEnd])' in grid
+assert 'usesFixedStandardPosterRowHeight: Bool = false' in grid
+assert 'private var standardPosterRowHeight: CGFloat?' in grid
+assert '.frame(height: usesFixedStandardPosterRowHeight ? standardPosterRowHeight : nil, alignment: .topLeading)' in grid
+assert 'usesFixedStandardPosterRowHeight: true' in server
+assert server.count('usesFixedStandardPosterRowHeight: true') == 1
 assert '@Environment(\.embyPosterGridDiagnosticOwnerID)' in shared
 assert 'onImageLoaded: { _ in' in shared and 'imageDidPublish(ownerID: ownerID)' in shared
 
@@ -44,6 +49,11 @@ assert 'displayLink.preferredFrameRateRange = .default' in diag
 assert 'offsetSampleCount += 1' in diag
 assert 'offset_hz=' in diag and 'display_hz=' in diag
 assert 'decel_display_zero=' in diag and 'decel_display_catchup=' in diag
+assert 'decel_reverse_ge1=' in diag
+assert 'decel_reverse_max_pt=' in diag
+assert 'decel_reverse_content_height_delta_pt=' in diag
+assert 'decel_reverse_inset_top_delta_pt=' in diag
+assert 'decel_reverse_inset_bottom_delta_pt=' in diag
 assert 'decel_zero_ratio=' in diag and 'decel_catchup_ratio=' in diag
 assert 'display_p50_ms=' in diag and 'display_p95_ms=' in diag and 'display_p99_ms=' in diag
 assert 'display_ge12_5=' in diag and 'display_ge25=' in diag and 'display_ge33_3=' in diag

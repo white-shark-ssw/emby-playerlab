@@ -127,7 +127,7 @@ struct V3LibraryBrowserView: View {
                 } else if model.hasLoaded(tab: tab) && items.isEmpty {
                     emptyState(text: tab == .favorites ? "这个媒体库还没有收藏内容" : "暂无\(tab.title(contentTitle: contentTitle))内容")
                 } else {
-                    EmbyPosterGrid(items: items, diagnosticRoute: "library-\(tab.rawValue)", onApproachingEnd: {
+                    EmbyPosterGrid(items: items, diagnosticRoute: "library-\(tab.rawValue)", usesFixedStandardPosterRowHeight: true, onApproachingEnd: {
                         guard model.hasMore(tab: tab) else { return }
                         Task { await model.loadNextPage(tab: tab) }
                     }) { item in

@@ -20,8 +20,16 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         var decelerationDisplayZeroMoveCount = 0
         var decelerationDisplayCatchUpCount = 0
         var decelerationDisplayReverseCount = 0
+        var decelerationDisplayReverseAtLeastOnePointCount = 0
+        var maxAbsDecelerationReverseDeltaY: CGFloat = 0
+        var reverseContentHeightDeltaAtMax: CGFloat = 0
+        var reverseInsetTopDeltaAtMax: CGFloat = 0
+        var reverseInsetBottomDeltaAtMax: CGFloat = 0
         var lastDecelerationDisplayOffsetY: CGFloat?
         var lastDecelerationDisplayDeltaY: CGFloat?
+        var lastDecelerationDisplayContentHeight: CGFloat?
+        var lastDecelerationDisplayInsetTop: CGFloat?
+        var lastDecelerationDisplayInsetBottom: CGFloat?
         var previousDecelerationDisplayWasZero = false
 
         init(startedAt: CFTimeInterval, startItemCount: Int) {
@@ -176,6 +184,9 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
             }
 
             let currentOffsetY = scrollView.contentOffset.y
+            let currentContentHeight = scrollView.contentSize.height
+            let currentInsetTop = scrollView.adjustedContentInset.top
+            let currentInsetBottom = scrollView.adjustedContentInset.bottom
             if scrollView.isDecelerating {
                 if let previousOffsetY = session.lastDecelerationDisplayOffsetY {
                     let deltaY = currentOffsetY - previousOffsetY
@@ -187,14 +198,28 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
                         if session.previousDecelerationDisplayWasZero { session.decelerationDisplayCatchUpCount += 1 }
                         if let previousDeltaY = session.lastDecelerationDisplayDeltaY, abs(previousDeltaY) > 0.01, deltaY.sign != previousDeltaY.sign {
                             session.decelerationDisplayReverseCount += 1
+                            let reverseMagnitude = abs(deltaY)
+                            if reverseMagnitude >= 1 { session.decelerationDisplayReverseAtLeastOnePointCount += 1 }
+                            if reverseMagnitude > session.maxAbsDecelerationReverseDeltaY {
+                                session.maxAbsDecelerationReverseDeltaY = reverseMagnitude
+                                session.reverseContentHeightDeltaAtMax = currentContentHeight - (session.lastDecelerationDisplayContentHeight ?? currentContentHeight)
+                                session.reverseInsetTopDeltaAtMax = currentInsetTop - (session.lastDecelerationDisplayInsetTop ?? currentInsetTop)
+                                session.reverseInsetBottomDeltaAtMax = currentInsetBottom - (session.lastDecelerationDisplayInsetBottom ?? currentInsetBottom)
+                            }
                         }
                         session.lastDecelerationDisplayDeltaY = deltaY
                         session.previousDecelerationDisplayWasZero = false
                     }
                 }
                 session.lastDecelerationDisplayOffsetY = currentOffsetY
+                session.lastDecelerationDisplayContentHeight = currentContentHeight
+                session.lastDecelerationDisplayInsetTop = currentInsetTop
+                session.lastDecelerationDisplayInsetBottom = currentInsetBottom
             } else {
                 session.lastDecelerationDisplayOffsetY = currentOffsetY
+                session.lastDecelerationDisplayContentHeight = currentContentHeight
+                session.lastDecelerationDisplayInsetTop = currentInsetTop
+                session.lastDecelerationDisplayInsetBottom = currentInsetBottom
                 session.lastDecelerationDisplayDeltaY = nil
                 session.previousDecelerationDisplayWasZero = false
             }
@@ -221,7 +246,7 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         let catchUpRatio = session.decelerationDisplayFrameCount > 0 ? Double(session.decelerationDisplayCatchUpCount) / Double(session.decelerationDisplayFrameCount) : 0
         DiagnosticsLogger.shared.app(
             "PosterGridCadence",
-            "route=\(owner.route) reason=\(reason) duration_ms=\(format(durationMS)) maximum_fps=\(UIScreen.main.maximumFramesPerSecond) refresh_request=\(refreshRequestActive ? 1 : 0) requested_min_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? 80 : 0) requested_max_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? UIScreen.main.maximumFramesPerSecond : 0) offset_samples=\(session.offsetSampleCount) offset_hz=\(format(offsetHz)) display_samples=\(session.displayIntervalsMS.count) display_hz=\(format(displayHz)) display_p50_ms=\(format(display.p50)) display_p95_ms=\(format(display.p95)) display_p99_ms=\(format(display.p99)) display_max_ms=\(format(display.max)) display_ge10=\(display.ge10) display_ge12_5=\(display.ge12_5) display_ge16_7=\(display.ge16_7) display_ge25=\(display.ge25) display_ge33_3=\(display.ge33_3) item_count_start=\(session.startItemCount) item_count_end=\(owner.itemCount) item_count_changes=\(session.itemCountChanges) cell_appear=\(session.cellAppearCount) cell_disappear=\(session.cellDisappearCount) image_publish=\(session.imagePublishCount) load_ahead=\(session.loadAheadCount) decel_display_frames=\(session.decelerationDisplayFrameCount) decel_display_zero=\(session.decelerationDisplayZeroMoveCount) decel_display_catchup=\(session.decelerationDisplayCatchUpCount) decel_display_reverse=\(session.decelerationDisplayReverseCount) decel_zero_ratio=\(format(zeroRatio)) decel_catchup_ratio=\(format(catchUpRatio))"
+            "route=\(owner.route) reason=\(reason) duration_ms=\(format(durationMS)) maximum_fps=\(UIScreen.main.maximumFramesPerSecond) refresh_request=\(refreshRequestActive ? 1 : 0) requested_min_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? 80 : 0) requested_max_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? UIScreen.main.maximumFramesPerSecond : 0) offset_samples=\(session.offsetSampleCount) offset_hz=\(format(offsetHz)) display_samples=\(session.displayIntervalsMS.count) display_hz=\(format(displayHz)) display_p50_ms=\(format(display.p50)) display_p95_ms=\(format(display.p95)) display_p99_ms=\(format(display.p99)) display_max_ms=\(format(display.max)) display_ge10=\(display.ge10) display_ge12_5=\(display.ge12_5) display_ge16_7=\(display.ge16_7) display_ge25=\(display.ge25) display_ge33_3=\(display.ge33_3) item_count_start=\(session.startItemCount) item_count_end=\(owner.itemCount) item_count_changes=\(session.itemCountChanges) cell_appear=\(session.cellAppearCount) cell_disappear=\(session.cellDisappearCount) image_publish=\(session.imagePublishCount) load_ahead=\(session.loadAheadCount) decel_display_frames=\(session.decelerationDisplayFrameCount) decel_display_zero=\(session.decelerationDisplayZeroMoveCount) decel_display_catchup=\(session.decelerationDisplayCatchUpCount) decel_display_reverse=\(session.decelerationDisplayReverseCount) decel_reverse_ge1=\(session.decelerationDisplayReverseAtLeastOnePointCount) decel_reverse_max_pt=\(format(Double(session.maxAbsDecelerationReverseDeltaY))) decel_reverse_content_height_delta_pt=\(format(Double(session.reverseContentHeightDeltaAtMax))) decel_reverse_inset_top_delta_pt=\(format(Double(session.reverseInsetTopDeltaAtMax))) decel_reverse_inset_bottom_delta_pt=\(format(Double(session.reverseInsetBottomDeltaAtMax))) decel_zero_ratio=\(format(zeroRatio)) decel_catchup_ratio=\(format(catchUpRatio))"
         )
     }
 
