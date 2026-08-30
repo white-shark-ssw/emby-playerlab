@@ -110,7 +110,10 @@ struct V3HomeFramePipelineProbe: View {
             case .carousel, .carouselTree, .carouselHero, .carouselBackdrop:
                 EmptyView()
             case .rawTouch, .nativePan, .nativeScroll:
-                V3HomeInputPipelineProbe(mode: mode).ignoresSafeArea()
+                ZStack {
+                    V3HomeInputPipelineProbe(mode: mode).ignoresSafeArea()
+                    V3HomeCarouselTreeProgressDriver { _ in }.frame(width: 0, height: 0)
+                }
             case .coreAnimation, .nativeDisplayLink:
                 V3HomeNativeFramePipelineProbe(mode: mode).ignoresSafeArea()
             case .swiftUI:
