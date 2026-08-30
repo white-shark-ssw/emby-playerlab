@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated 2026-08-31: Home Build274/275 remains the separate current carousel diagnostic line. Poster Build273 / 0.15.6 is now target-device tested and still shows several 3×3 twitch events. `OnePlayer-App-1788122398.log` resolves the Build272 reverse ambiguity: all emitted >=1 pt native reverses are top-edge bounce outside legal bounds, max 3.00 pt; fixed-item native sessions can average ~118–120 Hz with no reverse. Native UICollectionView is therefore not a sufficient fix and an interior contentOffset correction is not supported by this run. The next poster step is measurement-only per-frame gap attribution around collection inserts and visible-host reconfiguration, not another container/scroll-physics change. Build216 remains the accepted packaged overall baseline; Search Build256 and all P0 playback/transport contracts remain protected._
+_Last updated 2026-08-31: Home carousel Build275 target-device screenshots show `TREE FULL / TREE HERO / TREE BACKDROP / CA / DISPLAYLINK / SWIFTUI = 120 FPS` with recording off. Because Build274 had `TREE FULL≈90`, the Build275 split is not yet causal evidence; the next controlling datum is normal `PIPE CAROUSEL` in the same Build275 package/session. No additional runtime optimization should be made before that control. Poster/Aether remain isolated and all P0 playback/transport contracts remain protected._
 
 ## Current accepted overall baseline
 
@@ -51,6 +51,10 @@ Build216 inherits all accepted/frozen player, PiP, transport, playback-cache, ep
 Build274 target-device evidence closes the prior pipeline boundary: normal `CAROUSEL` and fixed-pair `TREE FULL` both remain around ~90 FPS in the real system HUD with recording off. Therefore touch/release/settle/resident rotation/new-target loading are not required to reproduce the ceiling; the full real carousel transition tree is sufficient.
 
 Exact source shows `transitionProgress` is `@Published` on `V3HomeCarouselTransitionState`, and the high-frequency publication is observed by two presentation scopes rather than the whole Home root: the persistent full-screen backdrop and the Hero subtree. Build275 isolates those observers without changing the real Hero/Interaction/State product files. `TREE FULL` updates both; `TREE HERO` updates only Hero while backdrop remains mounted/frozen; `TREE BACKDROP` updates only backdrop while Hero remains mounted/frozen. Exact source `8c6a882c03e60e9d2f49e9bc95b09f9e3712577b`; run/job `33334208681 / 99318066653`; artifact `9738555839`; IPA SHA `26229afe7b1cec29ab2bf2cca18c0348fd3337a2d6f996bd2a6b6b07c5bebe64`; MinOS 15.0. Target-device scope split is pending; no stable/fix claim.
+
+### Build275 target-device control conflict — 2026-08-31
+
+Build275's supplied target-device screenshots show `TREE FULL=120`, `TREE HERO=120`, `TREE BACKDROP=120`, corrected `CA=120`, `DISPLAYLINK=120` and `SWIFTUI=120` with recording off. This directly conflicts with Build274's earlier sustained `TREE FULL≈90`. Because the FULL control itself changed, Hero-vs-backdrop attribution is not valid yet. Exact source comparison shows the product Hero/Interaction/State blobs are unchanged; the meaningful Build274→275 runtime delta is the conditional HomeCore structure around the two transition-scope mounts and probe-mode routing. The next required evidence is normal `PIPE CAROUSEL` in the same Build275 package/session. Runtime changes are paused until that value is known.
 
 ## Completed / frozen: Home carousel interaction — Build241 / 0.14.74
 

@@ -1,6 +1,6 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build274 target-device result is now `CAROUSEL ≈90 / TREE FULL ≈90` with screen recording off, so steady-state full real carousel-tree invalidation/composition is sufficient to reproduce the presented-FPS ceiling without touch, settle, resident rotation, or new-target loading. Build275 / 0.15.8 is the current exact-source CI/IPA-verified scope-isolation diagnostic: `TREE FULL / TREE HERO / TREE BACKDROP`.
+- **Status:** Active — Build275 target-device screenshots show `TREE FULL=120 / TREE HERO=120 / TREE BACKDROP=120 / CA=120 / DISPLAYLINK=120 / SWIFTUI=120` with screen recording off. This conflicts with Build274 `TREE FULL≈90`, so the scope split is not yet causal evidence. The next controlling datum is normal `PIPE CAROUSEL` in the same Build275 session; do not modify runtime before that value is known.
 - **Work ID:** `DEV-home-carousel-drag-smoothness`
 - **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / pipeline probe
 - **Task:** Preserve the accepted Build241 carousel appearance/gesture feel while locating the real cause of the no-screen-recording ~90 FPS presentation ceiling on iPhone 15 Pro Max / iOS 17.0.
@@ -10,7 +10,7 @@
 - **Build270 diagnostic:** `perf/home-carousel-foreground-residency-build270`, exact product source `cee2031aa7dc2abb59fb371196e22fbce56e32ee`.
 - **Current working branch:** `diag/home-carousel-tree-scope-build275`.
 - **Current exact product source:** `8c6a882c03e60e9d2f49e9bc95b09f9e3712577b`.
-- **Current candidate:** OnePlayer `0.15.8 (275)` — full/Hero/backdrop transition-scope 120 Hz A/B; Code written / exact-source CI passed / IPA produced and independently verified; target-device scope HUD results pending.
+- **Current candidate:** OnePlayer `0.15.8 (275)` — target-device scope probes all show 120 FPS, but the normal `PIPE CAROUSEL` same-build control is still required before interpreting the Build274→275 difference.
 - **Target device:** iPhone 15 Pro Max / iOS 17.0.
 - **Deployment Target:** iOS 15.0.
 
@@ -163,20 +163,36 @@ This preserves static tree complexity while isolating which `ObservableObject` i
 
 Build275 exact product source `8c6a882c03e60e9d2f49e9bc95b09f9e3712577b`. Xcode 16.4 run/job `33334208681 / 99318066653` passed. Artifact `9738555839`, digest `sha256:16e42660ac53bffcc9d7d222fcf81bcadf692a7ff87cbd4562d791dbd6973c0b`. IPA SHA-256 `26229afe7b1cec29ab2bf2cca18c0348fd3337a2d6f996bd2a6b6b07c5bebe64`; source ZIP SHA-256 `4bf558ce4731fb3813e276f19f43e73450f360c79667c48c0a2122fa4848c0f4`. Independent unpack verifies IPA integrity, `com.embyplayerlab.app / OnePlayer / 0.15.8 (275)`, `MinimumOSVersion=15.0`, and the MinOS audit.
 
+## Build275 target-device scope result — 2026-08-31
+
+The user supplied six direct target-device screenshots from Build275 with screen recording off. The system FPS HUD in every supplied probe screenshot reads **120 FPS**:
+
+- `PIPE TREE FULL`: 120 FPS.
+- `PIPE TREE HERO`: 120 FPS.
+- `PIPE TREE BACKDROP`: 120 FPS.
+- `PIPE CA`: 120 FPS.
+- `PIPE DISPLAYLINK`: 120 FPS.
+- `PIPE SWIFTUI`: 120 FPS.
+
+The uploaded `OnePlayer-App-1788123825.log` contains only two `HomeCarousel settled` lines and no `HomeCarouselPipelineProbe` mode/cadence records, so the screenshots are the controlling evidence for this round.
+
+This result **does not yet prove** that Hero and backdrop are individually cheap and only their combination is expensive, because the Build275 `TREE FULL` control itself changed from Build274's sustained ~90 observation to 120. Exact source comparison confirms Build275 did not change the real Hero/Interaction/State files; relative to Build274 the only runtime-relevant Home change is the conditional structure around the two `V3HomeCarouselTransitionScope` mount points plus additional probe-mode routing. In `.carouselTree`, both observers are still present and the same device-max `CADisplayLink` writes the same `transitionProgress` owner.
+
+Therefore Build274's `TREE FULL≈90` is no longer a reproducible invariant. Possible explanations such as session/image-pair dependence or SwiftUI structural invalidation differences remain hypotheses, not conclusions. The next required control is **normal `PIPE CAROUSEL` inside the same Build275 package/session with recording off**. If it also reaches ~120, the Build274→275 HomeCore structural change becomes the primary A/B target. If it remains ~90 while `TREE FULL=120`, the next boundary returns to real interaction lifecycle versus fixed display-link progress, and Build274's TREE result must be treated as non-reproduced.
+
+Build275 evidence is now: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device probe screenshots ✅ / all supplied automatic/simple modes = 120 ✅ / normal same-build CAROUSEL control pending ❌ / stable ❌**.
+
 ## Scope guard
 
 No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM→302→115/CDN code is in scope. No Build241 gesture thresholds, rapid-swipe ownership, Hero rendering implementation, image cache or transport contract is modified by Build271.
 
 ## Acceptance / test procedure
 
-1. Use iPhone 15 Pro Max / iOS 17.0 with screen recording **off**.
-2. `PIPE CAROUSEL`: rapidly swipe as the normal control and note the real system HUD.
-3. Tap once to `PIPE TREE FULL`; stop touching the screen and let the fixed pair oscillate for 5–10 seconds; note HUD.
-4. Tap once to `PIPE TREE HERO`; do not touch; note HUD.
-5. Tap once to `PIPE TREE BACKDROP`; do not touch; note HUD.
-6. Report all four approximate sustained values, e.g. `CAROUSEL 90 / FULL 90 / HERO 120 / BACKDROP 120`.
-7. Interpretation: HERO-only ~90 localizes a sufficient Hero-scope cost; BACKDROP-only ~90 localizes a sufficient backdrop-scope cost; both isolated modes ~120 while FULL ~90 indicates combined budget pressure; both isolated modes ~90 means each scope can independently exceed the 120-Hz budget and requires deeper split.
-8. CI/IPA evidence is not a performance conclusion; target-device HUD remains authoritative.
+1. Use the already-installed Build275 on iPhone 15 Pro Max / iOS 17.0 with screen recording **off**.
+2. Cycle back to `PIPE CAROUSEL`.
+3. Perform the same rapid continuous horizontal swipes used for Build265/269/270 and observe the real system FPS HUD for several seconds.
+4. Report the sustained/typical value only, e.g. `Build275 CAROUSEL≈90` or `Build275 CAROUSEL≈120`.
+5. Do not create another runtime build until this same-package control is known; Build275 `TREE FULL=120` already invalidates using Build274's ~90 full-tree result as a stable causal premise.
 ## Validation state
 
 - Build265 Code / CI / IPA: ✅. Real-device: ✅ ~90 no-recording ceiling; not stable.
@@ -188,8 +204,8 @@ No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM�
 - Build275 Code written: ✅ exact product source `8c6a882c03e60e9d2f49e9bc95b09f9e3712577b`.
 - Build275 exact-source CI passed: ✅ run/job `33334208681 / 99318066653`.
 - Build275 IPA produced + independently verified: ✅ artifact `9738555839`; IPA SHA `26229afe7b1cec29ab2bf2cca18c0348fd3337a2d6f996bd2a6b6b07c5bebe64`; source SHA `4bf558ce4731fb3813e276f19f43e73450f360c79667c48c0a2122fa4848c0f4`; MinOS 15.0.
-- Build275 target-device scope split: ❌ pending.
+- Build275 target-device probes: ✅ screenshots show `TREE FULL / TREE HERO / TREE BACKDROP / CA / DISPLAYLINK / SWIFTUI = 120`; normal same-build `PIPE CAROUSEL` control still pending.
 - Stable/frozen reopened performance task: ❌.
 ## Next exact action
 
-Install Build275 and keep screen recording off. Measure `CAROUSEL → TREE FULL → TREE HERO → TREE BACKDROP`, with no screen touch during the three automatic tree modes. The relative real system-HUD values determine whether the next change targets the Hero observer scope, persistent-backdrop observer scope, or their combined per-frame budget. Do not alter product gesture/release timing, image transport/cache, Player/MPV/PiP, or add smoothing/fallback logic before this scope result.
+Do **not** change runtime yet. In the already-installed Build275, return to `PIPE CAROUSEL`, keep recording off, rapidly swipe for several seconds, and report the real HUD. That single value determines whether the next A/B targets the Build274→275 HomeCore structural difference or returns to interaction-lifecycle isolation.
