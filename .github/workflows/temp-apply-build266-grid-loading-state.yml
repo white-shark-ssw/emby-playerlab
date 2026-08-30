@@ -1,0 +1,97 @@
+name: Temp Apply Build266 Grid Loading State
+
+on:
+  push:
+    branches: [perf/poster-grid-loading-state-build266]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply exact Build266 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=bff02ea8e76217b1fe07c298d8b9058b2db1fd08
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('Sources/Core/AppIdentity.swift')
+          s = p.read_text()
+          assert 'static let sourceVersion = "0.14.96"' in s
+          s = s.replace('static let sourceVersion = "0.14.96"', 'static let sourceVersion = "0.14.99"', 1)
+          s = s.replace('?? "0.14.96"', '?? "0.14.99"', 1)
+          p.write_text(s)
+
+          p = Path('Sources/UI/EmbySharedImageAndNavigation.swift')
+          s = p.read_text()
+          old = '''private final class EmbyCachedImageLoader: ObservableObject {\n    @Published var image: UIImage?\n    @Published var isLoading = false\n    private var currentURL: URL?\n    private var task: Task<Void, Never>?\n'''
+          new = '''private final class EmbyCachedImageLoader: ObservableObject {\n    @Published var image: UIImage?\n    @Published var isLoading = false\n    private let publishesLoadingState: Bool\n    private var currentURL: URL?\n    private var task: Task<Void, Never>?\n\n    init(publishesLoadingState: Bool) { self.publishesLoadingState = publishesLoadingState }\n\n    private func setLoading(_ value: Bool) { if publishesLoadingState { isLoading = value } }\n'''
+          assert old in s
+          s = s.replace(old, new, 1)
+          s = s.replace('''            image = nil\n            isLoading = false\n            return\n''', '''            image = nil\n            setLoading(false)\n            return\n''', 1)
+          s = s.replace('''            image = rendered\n            isLoading = false\n            return\n''', '''            image = rendered\n            setLoading(false)\n            return\n''', 1)
+          s = s.replace('''        image = nil\n        isLoading = true\n''', '''        image = nil\n        setLoading(true)\n''', 1)
+          assert s.count('self?.isLoading = false') == 3
+          s = s.replace('self?.isLoading = false', 'self?.setLoading(false)')
+          assert 'if image == nil { isLoading = false }' in s
+          s = s.replace('if image == nil { isLoading = false }', 'if image == nil { setLoading(false) }', 1)
+          old = '''    @StateObject private var loader = EmbyCachedImageLoader()\n    @State private var reportedImageIdentifier: ObjectIdentifier?\n\n    init(url: URL?, contentMode: ContentMode, placeholderSystemImage: String = "photo", showsLoadingIndicator: Bool = true, onImageLoaded: ((UIImage) -> Void)? = nil) {\n        self.url = url\n        self.contentMode = contentMode\n        self.placeholderSystemImage = placeholderSystemImage\n        self.showsLoadingIndicator = showsLoadingIndicator\n        self.onImageLoaded = onImageLoaded\n    }\n'''
+          new = '''    @StateObject private var loader: EmbyCachedImageLoader\n    @State private var reportedImageIdentifier: ObjectIdentifier?\n\n    init(url: URL?, contentMode: ContentMode, placeholderSystemImage: String = "photo", showsLoadingIndicator: Bool = true, publishesLoadingState: Bool = true, onImageLoaded: ((UIImage) -> Void)? = nil) {\n        self.url = url\n        self.contentMode = contentMode\n        self.placeholderSystemImage = placeholderSystemImage\n        self.showsLoadingIndicator = showsLoadingIndicator\n        self.onImageLoaded = onImageLoaded\n        _loader = StateObject(wrappedValue: EmbyCachedImageLoader(publishesLoadingState: publishesLoadingState))\n    }\n'''
+          assert old in s
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path('Sources/UI/EmbyServerSharedV3.swift')
+          s = p.read_text()
+          old = '''    let url: URL?\n    let contentMode: ContentMode\n    let onImageLoaded: ((UIImage) -> Void)?\n\n    init(url: URL?, contentMode: ContentMode, onImageLoaded: ((UIImage) -> Void)? = nil) {\n        self.url = url\n        self.contentMode = contentMode\n        self.onImageLoaded = onImageLoaded\n    }\n\n    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode, placeholderSystemImage: "play.rectangle", showsLoadingIndicator: false, onImageLoaded: onImageLoaded) }\n'''
+          new = '''    let url: URL?\n    let contentMode: ContentMode\n    let publishesLoadingState: Bool\n    let onImageLoaded: ((UIImage) -> Void)?\n\n    init(url: URL?, contentMode: ContentMode, publishesLoadingState: Bool = true, onImageLoaded: ((UIImage) -> Void)? = nil) {\n        self.url = url\n        self.contentMode = contentMode\n        self.publishesLoadingState = publishesLoadingState\n        self.onImageLoaded = onImageLoaded\n    }\n\n    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode, placeholderSystemImage: "play.rectangle", showsLoadingIndicator: false, publishesLoadingState: publishesLoadingState, onImageLoaded: onImageLoaded) }\n'''
+          assert old in s
+          s = s.replace(old, new, 1)
+          old = '''                V3RemoteImage(\n                    url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: posterImageMaxWidth, tag: item.preferredPrimaryImageTag),\n                    contentMode: .fill,\n                    onImageLoaded: { _ in\n'''
+          new = '''                V3RemoteImage(\n                    url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: posterImageMaxWidth, tag: item.preferredPrimaryImageTag),\n                    contentMode: .fill,\n                    publishesLoadingState: width != nil,\n                    onImageLoaded: { _ in\n'''
+          assert old in s
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path('scripts/check_poster_grid_cadence.py')
+          s = p.read_text()
+          assert 'static let sourceVersion = "0.14.96"' in s
+          s = s.replace('static let sourceVersion = "0.14.96"', 'static let sourceVersion = "0.14.99"', 1)
+          needle = "assert 'image_publish=' in diag and 'long_gap_image_publish=' in diag and 'long_gap_max_image_publish=' in diag\n"
+          addition = '''\nimage = (root / "Sources/UI/EmbySharedImageAndNavigation.swift").read_text()\nassert 'private let publishesLoadingState: Bool' in image\nassert 'init(publishesLoadingState: Bool)' in image\nassert 'private func setLoading(_ value: Bool) { if publishesLoadingState { isLoading = value } }' in image\nassert 'publishesLoadingState: Bool = true' in image\nassert '_loader = StateObject(wrappedValue: EmbyCachedImageLoader(publishesLoadingState: publishesLoadingState))' in image\nassert 'publishesLoadingState: width != nil' in shared\nassert 'showsLoadingIndicator: false, publishesLoadingState: publishesLoadingState' in shared\n'''
+          assert needle in s
+          p.write_text(s.replace(needle, needle + addition, 1))
+
+          Path('docs/changelog/CHANGELOG_v0_14_99_build266.md').write_text('''# OnePlayer 0.14.99 / Build266\n\n## Poster 3×3 loading-state publication A/B\n\n- Directly extends target-device-tested Build263 / 0.14.96.\n- For shared `V3PosterCard` 3-column cells (`width == nil`) only, keeps image loading/publication unchanged but stops publishing loader `isLoading` state that the card never renders.\n- Horizontal poster rows and all other `EmbyCachedRemoteImage` callers retain the previous loading-state behavior.\n- No image size/quality, cache/decode/network, LazyVGrid geometry, pagination, Search Build256 semantics, scroll physics, Home carousel owner, Player/MPV/PiP, UnifiedTransport, playback cache/session, STRM/302/115/CDN or Deployment Target changes.\n- Candidate only: Code written does not imply target-device smoothness improvement.\n''')
+          PY
+          git rm .github/workflows/temp-apply-build266-grid-loading-state.yml
+          python3 scripts/check_poster_grid_cadence.py
+          git diff --check
+          git add -A
+          python3 - <<'PY'
+          import subprocess
+          base = 'bff02ea8e76217b1fe07c298d8b9058b2db1fd08'
+          allowed = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbySharedImageAndNavigation.swift',
+              'Sources/UI/EmbyServerSharedV3.swift',
+              'scripts/check_poster_grid_cadence.py',
+              'docs/changelog/CHANGELOG_v0_14_99_build266.md',
+          }
+          changed = set(subprocess.check_output(['git','diff','--cached','--name-only',base], text=True).splitlines())
+          assert changed == allowed, (changed, allowed)
+          print('Build266 exact five-path final-tree scope: PASS')
+          PY
+      - name: Commit exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git commit -m 'Add Build266 grid loading-state A/B [skip ci]'
+          git push origin HEAD:perf/poster-grid-loading-state-build266
