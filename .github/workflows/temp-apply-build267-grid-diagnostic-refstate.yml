@@ -1,0 +1,78 @@
+name: Temp Apply Build267 Grid Diagnostic Ref State
+
+on:
+  push:
+    branches: [perf/poster-grid-diagnostic-refstate-build267]
+    paths:
+      - .github/workflows/temp-apply-build267-grid-diagnostic-refstate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply exact Build267 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=957e88dcdc408e537d63b083d0f30e4b1157b1dc
+          test "$(git rev-parse HEAD^)" = "$BASE"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('Sources/Core/AppIdentity.swift')
+          s = p.read_text()
+          assert s.count('0.14.99') == 2
+          p.write_text(s.replace('0.14.99', '0.15.0'))
+
+          p = Path('Sources/UI/EmbyPosterGridCadenceDiagnostics.swift')
+          s = p.read_text()
+          assert 'private struct MotionSession {' in s
+          assert 'private final class MotionSession {' not in s
+          s = s.replace('private struct MotionSession {', 'private final class MotionSession {', 1)
+          marker = '''        var severe33WithoutRunLoopWaitCount = 0\n        var severe33WithRunLoopWaitCount = 0\n    }\n\n    private final class Owner {'''
+          replacement = '''        var severe33WithoutRunLoopWaitCount = 0\n        var severe33WithRunLoopWaitCount = 0\n\n        init(startedAt: CFTimeInterval, startItemCount: Int) {\n            self.startedAt = startedAt\n            self.startItemCount = startItemCount\n        }\n    }\n\n    private final class Owner {'''
+          assert marker in s
+          p.write_text(s.replace(marker, replacement, 1))
+
+          p = Path('scripts/check_poster_grid_cadence.py')
+          s = p.read_text()
+          assert 'static let sourceVersion = "0.14.99"' in s
+          s = s.replace('static let sourceVersion = "0.14.99"', 'static let sourceVersion = "0.15.0"', 1)
+          needle = "assert diag.count('CADisplayLink(target:') == 1\n"
+          addition = "assert 'private final class MotionSession {' in diag\nassert 'private struct MotionSession {' not in diag\nassert 'init(startedAt: CFTimeInterval, startItemCount: Int)' in diag\n"
+          assert needle in s
+          p.write_text(s.replace(needle, needle + addition, 1))
+
+          Path('docs/changelog/CHANGELOG_v0_15_0_build267.md').write_text('''# OnePlayer 0.15.0 / Build267\n\n## Poster 3×3 diagnostic self-overhead A/B\n\n- Directly extends target-device-tested Build266 / 0.14.99.\n- Changes only `EmbyPosterGridCadenceDiagnostics.MotionSession` from value semantics to reference semantics while retaining every diagnostic field, threshold, KVO sample, CADisplayLink sample, 80→device-max refresh request and end-of-session log.\n- This removes repeated copy-on-write risk from growing per-session arrays when high-frequency contentOffset/display callbacks mutate the diagnostic session.\n- No poster image loading/quality/cache/decode/network/publication, LazyVGrid geometry, pagination, Search Build256 semantics, scroll physics, Home carousel runtime, Player/MPV/PiP, UnifiedTransport, playback cache/session, STRM/302/115/CDN or Deployment Target changes.\n- Candidate only: Build266 real-device evidence shows 3×3 long frames remain; Build267 tests whether measurement overhead itself is contaminating those results.\n''')
+          PY
+          git rm .github/workflows/temp-apply-build267-grid-diagnostic-refstate.yml
+          python3 scripts/check_poster_grid_cadence.py
+          git diff --check
+          git add -A
+          python3 - <<'PY'
+          import subprocess
+          base = '957e88dcdc408e537d63b083d0f30e4b1157b1dc'
+          allowed = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyPosterGridCadenceDiagnostics.swift',
+              'scripts/check_poster_grid_cadence.py',
+              'docs/changelog/CHANGELOG_v0_15_0_build267.md',
+          }
+          changed = set(subprocess.check_output(['git','diff','--cached','--name-only',base], text=True).splitlines())
+          assert changed == allowed, (changed, allowed)
+          print('Build267 exact four-path final-tree scope: PASS')
+          PY
+      - name: Commit exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git commit -m 'Use reference session for grid cadence diagnostics [skip ci]'
+          git push origin HEAD:perf/poster-grid-diagnostic-refstate-build267
