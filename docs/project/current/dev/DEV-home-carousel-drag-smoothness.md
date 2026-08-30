@@ -1,124 +1,126 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build269 / 0.15.2 target-device A/B rejects full-screen persistent `blur(radius: 30)` as the primary cause of the no-recording ~90 FPS ceiling. Build270 / 0.15.3 is the current single-variable foreground-residency diagnostic from exact Build265 behavior; exact-source CI/IPA passed and independent artifact verification passed; target-device pending.
+- **Status:** Active — Build269 blur-off and Build270 foreground-residency target-device A/Bs both leave the no-recording system FPS HUD ceiling around ~90 FPS, so both major-cause hypotheses are rejected. Build271 / 0.15.4 is now the current diagnostic: an in-app frame-pipeline benchmark that compares normal carousel, pure Core Animation, native CADisplayLink→CALayer, and CADisplayLink→@Published→SwiftUI paths in one package.
 - **Work ID:** `DEV-home-carousel-drag-smoothness`
-- **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps
-- **Task:** Preserve the accepted Build241 carousel appearance/gesture feel while fixing rapid consecutive swipe ownership and improving actual no-screen-recording presentation cadence toward EX on iPhone 15 Pro Max / iOS 17.0.
+- **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / pipeline probe
+- **Task:** Preserve the accepted Build241 carousel appearance/gesture feel while locating the real cause of the no-screen-recording ~90 FPS presentation ceiling on iPhone 15 Pro Max / iOS 17.0.
 - **Base branch:** `main`
-- **Build265 branch:** `perf/home-carousel-image-analysis-dedupe-build265`
-- **Build265 PR:** #274 — closed without merge after target-device evidence corrected the FPS interpretation.
-- **Build265 exact product source:** `af92164890e7dc1c869bd586577b39177335df5f`
-- **Build269 diagnostic branch:** `diag/home-carousel-persistent-blur-build269`
-- **Build269 exact product source:** `28d09e1cf7b3932e9033c370df12026889033197`
-- **Current working branch:** `perf/home-carousel-foreground-residency-build270`
-- **Current exact product source:** `cee2031aa7dc2abb59fb371196e22fbce56e32ee`
-- **Current candidate:** OnePlayer `0.15.3 (270)` — foreground-residency diagnostic; CI/IPA verified, target-device pending.
-- **Target device:** iPhone 15 Pro Max / iOS 17.0
+- **Controlling normal-behavior diagnostic base:** Build265 exact product source `af92164890e7dc1c869bd586577b39177335df5f`.
+- **Build269 diagnostic:** `diag/home-carousel-persistent-blur-build269`, exact product source `28d09e1cf7b3932e9033c370df12026889033197`.
+- **Build270 diagnostic:** `perf/home-carousel-foreground-residency-build270`, exact product source `cee2031aa7dc2abb59fb371196e22fbce56e32ee`.
+- **Current working branch:** `diag/home-carousel-frame-pipeline-build271`.
+- **Current exact product source:** `643ff1cbbd24ea06a315c632b08ac1ad162ee43f`.
+- **Current candidate:** OnePlayer `0.15.4 (271)` — pipeline diagnostic; Code written, exact-source CI run `33328917736` in progress at the time of this checkpoint update.
+- **Target device:** iPhone 15 Pro Max / iOS 17.0.
 - **Deployment Target:** iOS 15.0.
 
-## Controlling interaction baseline
+## Controlling product/interaction baseline
 
-Build241 remains the merged visual/gesture foundation to preserve: one UIKit interaction owner, acquisition-relative handling, full-width page slots, Build226 clear-Hero three-slot residency, Build231 page-level foreground `compositingGroup()`, Build228 device-max refresh through settle, persistent white-flash correction, ordinary progress commit `>=0.28`, direction-aware fling commit `>=500 pt/s`, commit `.easeOut(duration: 0.22)` and cancel `.easeOut(duration: 0.18)`.
+Build241 remains the final/frozen product carousel behavior to preserve: one UIKit interaction owner, acquisition-relative handling, full-width page slots, clear-Hero current/previous/next residency, page-level foreground `compositingGroup()`, max-refresh-through-settle behavior, persistent white-flash correction, ordinary progress commit `>=0.28`, direction-aware fling commit `>=500 pt/s`, commit `.easeOut(duration: 0.22)` and cancel `.easeOut(duration: 0.18)`.
 
-New 2026-08-30/31 target-device evidence reopened the performance claim and rapid-swipe ownership only. Do not treat previous screen-recording 120 FPS or CADisplayLink callback cadence as proof of actual final presented 120 FPS.
+The reopened task is diagnostic/performance work only. Build241 remains the product behavior authority. Build242 remains diagnostic-only and must not be used as a product/inheritance baseline.
 
-## Build262 → Build264 rapid-swipe result
+## Measurement authority
 
-Build262 added spatial axis hysteresis and rapid settle takeover, but its experimental persistent current/previous/next backdrop residency caused a severe visual presentation freeze while authoritative interaction/current-item state continued advancing. That persistent residency experiment was rejected.
+The controlling performance measurement is the target-device **system FPS HUD with screen recording off**.
 
-Build264 rolled only the persistent backdrop back to Build241 current + transition-target structure while retaining the Build262 recognizer/rapid-settle improvements. Target-device testing removed the hard visual freeze and preserved the improved rapid-swipe interaction behavior. This established the retained interaction base for Build265.
+- Screen-recording 120 FPS is not acceptance evidence because target-device testing shows recording itself can change the final presentation cadence.
+- `CADisplayLink` callback timing is diagnostic main-run-loop/display-link evidence only; it is not final compositor/screen-presentation FPS.
+- Current source already contains `CADisableMinimumFrameDurationOnPhone = true` in `Config/Info.plist`; do not add another speculative ProMotion opt-in.
+- Existing `DisplayRefreshRateMonitor` also uses `CADisplayLink`; it can report near-120 callbacks while the system HUD remains around ~90, so it cannot by itself locate the final-present bottleneck.
 
-## Build265 / 0.14.98 — image-analysis dedupe
+## Build265 / 0.14.98 — normal-behavior diagnostic base
 
-Exact source: `af92164890e7dc1c869bd586577b39177335df5f`.
+Exact product source: `af92164890e7dc1c869bd586577b39177335df5f`.
 
-Build265 keeps Build264 behavior and only dedupes repeated `EmbyImageContrastAnalyzer` work for the same decoded carousel `UIImage` identity. CI run/job `33318027714 / 99274932594` passed; artifact `9734083764`; IPA SHA-256 `cf381c823e863562b1f21d40d61926e693b76fac3ba4d5023e7ce2c154ffa100`; source ZIP SHA-256 `b1cf0debf996ea30ba0e7171b035749e5f31192a7e4e70db7e146d76064d2b53`; MinOS 15.0.
+Build265 retains the accepted rapid-swipe path and only dedupes repeated `EmbyImageContrastAnalyzer` work for the same decoded carousel `UIImage` identity. CI run/job `33318027714 / 99274932594` passed; artifact `9734083764`; IPA SHA-256 `cf381c823e863562b1f21d40d61926e693b76fac3ba4d5023e7ce2c154ffa100`; MinOS 15.0.
 
-### Build265 target-device correction
+Target-device controlling result: without screen recording, the system FPS HUD peaks only around ~90 FPS. With recording enabled it can climb toward 120. Therefore Build265 is useful as the normal-behavior exact-source diagnostic base, not a proven 120 FPS product candidate; PR #274 remains closed/unmerged.
 
-The user reports the actual system FPS HUD, **without screen recording**, peaks only around **~90 FPS**. When screen recording is enabled, the HUD can climb to 120 FPS. The supplied recording also showed the HUD ramping roughly `76 → 104 → 120` while the carousel diagnostic `CADisplayLink` callback interval was already around `8.4–9 ms`.
+## Build269 / 0.15.2 — persistent blur A/B rejected
 
-Therefore:
+Build269 branches directly from Build265 and removes only the persistent full-screen `carouselPersistentImage(...).blur(radius: 30)` plus candidate identity. It is diagnostic-only and intentionally changes appearance.
 
-- screen-recording 120 FPS is not an acceptance/control baseline for this task;
-- `HomeCarouselCadence display_*` measures CADisplayLink/main-run-loop callback cadence, not final compositor/screen presentation FPS;
-- previous conversion of those callback intervals into effective presented Hz is withdrawn;
-- Build265 is not a proven 120 FPS product candidate and PR #274 stays closed/unmerged;
-- Build265 remains useful as the normal-behavior exact-source baseline because rapid-swipe interaction is functional and the image-analysis dedupe itself does not introduce a reported regression.
-
-The Build265 App log contained 93 release decisions / cadence sessions and 79 `HomeCarouselRapidSwipe` settle-takeover events, confirming the rapid-swipe path is exercised heavily on device rather than merely compiling.
-
-## Build269 / 0.15.2 — persistent full-screen blur A/B
-
-Purpose: test whether the persistent full-screen `carouselPersistentImage(...).blur(radius: 30)` is the major GPU/compositor limiter behind the no-recording ~90 FPS ceiling.
-
-Build269 branches from exact Build265 behavior and changes only candidate identity plus removal of that persistent real-time blur. It deliberately changes backdrop appearance and is diagnostic-only.
-
-- Branch: `diag/home-carousel-persistent-blur-build269`
-- Exact product source: `28d09e1cf7b3932e9033c370df12026889033197`
-- Corrected CI run/job: `33324520023 / 99292189686` — success.
-- Artifact: `OnePlayer-0.15.2-build269-carousel-persistent-blur-off`, ID `9735866507`.
-- Artifact digest / independently recomputed ZIP SHA-256: `0ef920811a06f762d7544e001c4d05628ce9f58e09ae9df81b6fa578f2e22d18`.
+- Exact product source: `28d09e1cf7b3932e9033c370df12026889033197`.
+- CI run/job: `33324520023 / 99292189686` success.
+- Artifact ID: `9735866507`.
 - IPA SHA-256: `89ff7b1be43f7cefccfe9a4e5d32bab64ed45a4d9543c54ba8905200de3c1b8f`.
-- Source ZIP SHA-256: `e512553e196c4d51cc4fda4249de3135bc54944c7393d5f70f51b9a492669c12`.
-- Independently reopened IPA: bundle `com.embyplayerlab.app`, display/name `OnePlayer`, version `0.15.2`, build `269`, `MinimumOSVersion=15.0`; IPA `unzip -t` clean.
+- MinOS 15.0.
+- Target-device result: no recording, maximum observed FPS still around ~90.
 
-### Build269 target-device result — 2026-08-31
+Conclusion: disabling blur30 does not materially move the ceiling. The hypothesis that this single blur is the primary limiter is rejected. Do not inherit blur-off behavior and do not continue blur-specific tuning without new evidence.
 
-User result: **same as Build265 — without screen recording, maximum observed FPS remains around ~90 FPS.**
+## Build270 / 0.15.3 — foreground residency A/B rejected
 
-This is a direct negative A/B for the tested hypothesis. Removing the full-screen real-time blur does not materially raise the no-recording ceiling, so `blur(radius: 30)` is **not demonstrated to be the primary limiter**. Do not continue blur-specific tuning, do not keep the blur-off product behavior, and do not infer that blur has zero cost; only the major-cause hypothesis is rejected.
+Build270 also branches directly from Build265, restoring normal blur30. It changes only candidate identity plus foreground enumeration from all up-to-6 `model.carouselItems` to the already-existing current/previous/next `carouselHeroResidentItems`. The retained Build231 `.compositingGroup()` stays on each resident foreground page. Hero artwork, gestures, transition state, cache, persistent backdrop, preload, logo resolution and playback/P0 modules are untouched.
 
-## Build270 / 0.15.3 — foreground residency A/B
+- Exact product source: `cee2031aa7dc2abb59fb371196e22fbce56e32ee`.
+- CI run/job: `33327653253 / 99300535892` success.
+- Artifact ID: `9736735731`.
+- Artifact digest: `sha256:3a8ab81ccce3b4e6fc10928b829bad053a5060c3130c5ceced9398f85af4ad2b`.
+- IPA SHA-256: `169fb53bd3012c7b864912638f9f627e68282b3f6fb2dd18be58e48edca56b8d`.
+- Source ZIP SHA-256: `f586270e852d09623cf5af38d6cd3b8bbaea85d4b8475bc4512e6a816f4ef98a`.
+- Info.plist: `0.15.3 (270)`, MinOS 15.0.
+- Target-device result — 2026-08-31: **same as Build265/269; without screen recording, highest observed system HUD remains around ~90 FPS.**
 
-Source review from exact Build265 shows:
+Conclusion: reducing invisible foreground page residency/offscreen compositing groups from up to six pages to current/previous/next does not materially move the ceiling. The foreground-residency/compositing-count major-cause hypothesis is rejected. Build270 remains diagnostic-only and must not become product behavior.
 
-- `V3EmbyHomeViewModel.liveCarouselItems()` caps the carousel at **6 items**.
-- Clear Hero artwork already uses `carouselHeroResidentItems`, exactly current + previous + next.
-- Every interactive transition target is the immediate neighbor of `currentCarouselItemID`; rapid commit-settle interruption first calls `settleCarousel(on:)`, then the three-slot resident window recomputes around the new current item.
-- Foreground title/logo/metadata previously used `ForEach(model.carouselItems)` across all up-to-6 carousel items, and each page applies the retained Build231 `.compositingGroup()` even though `carouselForegroundOpacity` exposes only current/from/to.
-- Logo metadata is separately resolved for all carousel items by `resolveCarouselLogosIfNeeded()`.
+## Build271 / 0.15.4 — frame-pipeline benchmark
 
-Build270 branch `perf/home-carousel-foreground-residency-build270` is created directly from exact Build265 source `af921648...` and exact product source `cee2031aa7dc2abb59fb371196e22fbce56e32ee` changes exactly two files relative to Build265:
+The repeated negative A/Bs now justify changing from component-removal guesses to a code-driven pipeline benchmark.
 
-1. `Sources/Core/AppIdentity.swift`: `0.14.98 → 0.15.3`.
-2. `Sources/UI/EmbyHomeHeroV3.swift`: only the foreground enumeration changes from `ForEach(model.carouselItems)` to the already-existing `ForEach(carouselHeroResidentItems)`.
+Build271 is created directly from exact Build265 source, **not** from Build269 or Build270. Relative to Build265 it changes only:
 
-The per-page Build231 `.compositingGroup()` is retained; blur30 is restored because Build270 inherits Build265, not Build269. No gesture, transition, image-cache, persistent-backdrop, preload, logo-resolution, timer, Home vertical scroll, Player/MPV/PiP/Transport/Cache/Session or P0/Frozen code changes.
+1. `Sources/Core/AppIdentity.swift` — diagnostic identity `0.15.4`.
+2. `Sources/UI/EmbyHomeCoreV3.swift` — adds a diagnostic mode state/control and replaces the entire Home presentation with a probe only when a non-carousel diagnostic mode is selected.
+3. `Sources/UI/EmbyHomeFramePipelineProbeV3.swift` — new diagnostic-only benchmark implementation.
 
-`compare_commits(af921648..., cee2031a...)` confirms exactly two changed files: AppIdentity (2 additions/2 deletions) and EmbyHomeHeroV3 (1 addition/1 deletion).
+`Sources/UI/EmbyHomeHeroV3.swift` is intentionally unchanged from Build265; CI guards its exact blob SHA `ab2ab5d80a59e174622dca0006c0f3aad4111a54`.
 
-## Parallel-task / identity guard
+### Probe modes
 
-- Build268 is occupied by the parallel poster task (`perf/poster-grid-lean-cadence-build268`).
-- Build269 belongs only to this carousel diagnostic.
-- Build270 branch is now uniquely allocated to this task: `perf/home-carousel-foreground-residency-build270`.
-- `DEV-aether-multi-engine-comparison`, poster-grid and Search remain separate state owners.
-- No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM→302→115/CDN code is in scope.
+Tap the top-right `PIPE ...` control to cycle:
 
-## Acceptance criteria
+1. `CAROUSEL` — normal Build265 Home/carousel presentation. This is the in-package control.
+2. `CA` — full-screen simple Core Animation render-server motion. Normal Home/carousel presentation is not mounted in this mode.
+3. `DISPLAYLINK` — `CADisplayLink` requests `UIScreen.main.maximumFramesPerSecond` and directly updates a native `CALayer` on the main thread. Normal Home/carousel presentation is not mounted.
+4. `SWIFTUI` — the same display-link cadence publishes a single scalar through `@Published`, and SwiftUI moves one simple marker. Normal Home/carousel presentation is not mounted.
 
-1. Repeated fast horizontal swipes start immediately after the previous finger-up; Home vertical scrolling does not steal a horizontal sequence after horizontal intent is acquired.
-2. No hard visual freeze occurs while rapid swiping.
-3. Preserve Build241 visual direction, 500 pt/s fling gate, 0.28 progress gate, full-width motion, Build231 foreground compositing behavior, clear-Hero three-slot residency and 0.22/0.18 settle.
-4. Performance comparison uses the target-device **system FPS HUD without screen recording** as the controlling visual cadence condition; screen-recording 120 is not acceptance evidence.
-5. CADisplayLink logs remain diagnostic callback evidence only and must not be translated directly into final presented FPS.
-6. Final candidate must compile/package at MinOS 15.0 with exact-source identity verification before handoff.
-7. Final acceptance requires target-device A/B; CI/IPA alone is not success.
+This single package is intended to locate the layer where the system HUD ceiling first appears:
+
+- if `CA` itself remains ~90, investigate final Core Animation/ProMotion/window/system presentation scheduling rather than carousel view cost;
+- if `CA` reaches ~120 but `DISPLAYLINK` remains ~90, main-thread display-link/commit scheduling becomes the next target;
+- if `CA` and `DISPLAYLINK` reach ~120 but `SWIFTUI` remains ~90, SwiftUI state publication/render invalidation becomes the next target;
+- if all three probes reach ~120 while `CAROUSEL` stays ~90, the bottleneck is inside the actual Home/carousel render tree and further instrumentation should target its per-frame invalidation/commit work rather than static visual components already rejected.
+
+No synthetic busy-loop load is added in Build271. First locate the failing pipeline boundary without heating the device or contaminating subsequent modes; controlled CPU-load headroom testing can be justified only after the boundary is known.
+
+## Scope guard
+
+No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM→302→115/CDN code is in scope. No Build241 gesture thresholds, rapid-swipe ownership, Hero rendering implementation, image cache or transport contract is modified by Build271.
+
+## Acceptance / test procedure
+
+1. Use iPhone 15 Pro Max / iOS 17.0.
+2. Keep screen recording **off** for every comparison.
+3. Open Home and observe the system FPS HUD in `PIPE CAROUSEL` while rapidly swiping as before.
+4. Tap `PIPE CAROUSEL` once for `PIPE CA`; do not swipe, just watch the moving marker and HUD for several seconds.
+5. Tap again for `PIPE DISPLAYLINK`; watch marker/HUD.
+6. Tap again for `PIPE SWIFTUI`; watch marker/HUD.
+7. Report the approximate stable/maximum FPS for all four modes in one result, e.g. `CAROUSEL 90 / CA 120 / DISPLAYLINK 120 / SWIFTUI 90`.
+8. CI/IPA evidence is not a performance conclusion; target-device A/B remains required.
 
 ## Validation state
 
-- Build265 Code written / CI passed / IPA produced: ✅.
-- Build265 real-device tested: ✅ — rapid-swipe path functional, but no-recording presentation peaks around ~90 FPS; not stable.
-- Build269 Code written / corrected CI passed / IPA produced + independently verified: ✅.
-- Build269 real-device tested: ✅ — no-recording max remains ~90 FPS; blur-primary hypothesis rejected.
-- Build269 stable/product candidate: ❌ diagnostic-only.
-- Build270 Code written: ✅ exact source `cee2031aa7dc2abb59fb371196e22fbce56e32ee`.
-- Build270 CI passed: ✅ run/job `33327653253 / 99300535892`.
-- Build270 IPA produced: ✅ artifact `9736735731`; digest `sha256:3a8ab81ccce3b4e6fc10928b829bad053a5060c3130c5ceced9398f85af4ad2b`; IPA SHA `169fb53bd3012c7b864912638f9f627e68282b3f6fb2dd18be58e48edca56b8d`; source ZIP SHA `f586270e852d09623cf5af38d6cd3b8bbaea85d4b8475bc4512e6a816f4ef98a`; Info.plist `0.15.3 (270)`, MinOS 15.0; unzip clean.
-- Build270 real-device tested: ❌ pending.
-- Stable/frozen whole-carousel task: ❌.
+- Build265 Code / CI / IPA: ✅. Real-device: ✅ ~90 no-recording ceiling; not stable.
+- Build269 Code / CI / IPA: ✅. Real-device: ✅ ~90; blur-primary hypothesis rejected; diagnostic-only.
+- Build270 Code / CI / IPA: ✅. Real-device: ✅ ~90; foreground-residency hypothesis rejected; diagnostic-only.
+- Build271 Code written: ✅ exact product source `643ff1cbbd24ea06a315c632b08ac1ad162ee43f`.
+- Build271 exact-source CI: ⏳ run `33328917736` in progress at checkpoint update.
+- Build271 IPA produced: ❌ pending CI.
+- Build271 real-device tested: ❌.
+- Stable/frozen reopened performance task: ❌.
 
 ## Next exact action
 
-Hand off Build270 / `0.15.3 (270)` for a **no-screen-recording** system-FPS-HUD A/B versus Build265. Exact tested product source is `cee2031aa7dc2abb59fb371196e22fbce56e32ee`; CI/IPA identity and hashes are verified. If the ~90 ceiling does not materially move, reject the foreground-residency hypothesis and switch direction again rather than stacking speculative optimizations. If the ~90 ceiling does not materially move, reject the foreground-residency hypothesis and switch direction again rather than stacking speculative optimizations.
+Wait only for the already-running Build271 exact-source CI in the current work turn. If compile/package passes, independently verify artifact identity/MinOS/hashes, sync CI evidence to project docs, and hand off Build271 for the four-mode no-recording system-HUD test. Do not make another runtime change before that test result unless CI exposes a concrete compile/package defect.
