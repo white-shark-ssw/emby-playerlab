@@ -28,6 +28,19 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         var lastDecelerationDisplayOffsetY: CGFloat?
         var lastDecelerationDisplayDeltaY: CGFloat?
         var previousDecelerationDisplayWasZero = false
+        var offsetChangesSinceLastDisplay = 0
+        var lastDisplayCellAppearCount = 0
+        var lastDisplayCellDisappearCount = 0
+        var lastDisplayLoadAheadCount = 0
+        var lastDisplayItemCountChanges = 0
+        var longDisplayGapCount = 0
+        var longDisplayGapWithCellChurnCount = 0
+        var longDisplayGapWithLoadAheadCount = 0
+        var longDisplayGapWithItemCountChangeCount = 0
+        var longDisplayGapWithNoTrackedGridWorkCount = 0
+        var longDisplayGapMaxCellAppearDelta = 0
+        var longDisplayGapMaxCellDisappearDelta = 0
+        var longDisplayGapMaxOffsetChanges = 0
     }
 
     private final class Owner {
@@ -147,6 +160,7 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         if scrollView.isDecelerating { session.decelerationSamples += 1 }
         session.maxAbsVelocityY = max(session.maxAbsVelocityY, abs(scrollView.panGestureRecognizer.velocity(in: scrollView).y))
         session.maxAbsDeltaY = max(session.maxAbsDeltaY, abs(deltaY))
+        session.offsetChangesSinceLastDisplay += 1
         owner.session = session
         updateRefreshRateRequest()
     }
@@ -197,8 +211,29 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
 
             if let previousDisplayTimestamp {
                 let intervalMS = max(0, (link.timestamp - previousDisplayTimestamp) * 1000)
-                if intervalMS > 0, intervalMS < 200 { session.displayIntervalsMS.append(intervalMS) }
+                if intervalMS > 0, intervalMS < 200 {
+                    session.displayIntervalsMS.append(intervalMS)
+                    if intervalMS >= 12.5 {
+                        let cellAppearDelta = max(0, session.cellAppearCount - session.lastDisplayCellAppearCount)
+                        let cellDisappearDelta = max(0, session.cellDisappearCount - session.lastDisplayCellDisappearCount)
+                        let loadAheadDelta = max(0, session.loadAheadCount - session.lastDisplayLoadAheadCount)
+                        let itemCountChangeDelta = max(0, session.itemCountChanges - session.lastDisplayItemCountChanges)
+                        session.longDisplayGapCount += 1
+                        if cellAppearDelta > 0 || cellDisappearDelta > 0 { session.longDisplayGapWithCellChurnCount += 1 }
+                        if loadAheadDelta > 0 { session.longDisplayGapWithLoadAheadCount += 1 }
+                        if itemCountChangeDelta > 0 { session.longDisplayGapWithItemCountChangeCount += 1 }
+                        if cellAppearDelta == 0 && cellDisappearDelta == 0 && loadAheadDelta == 0 && itemCountChangeDelta == 0 { session.longDisplayGapWithNoTrackedGridWorkCount += 1 }
+                        session.longDisplayGapMaxCellAppearDelta = max(session.longDisplayGapMaxCellAppearDelta, cellAppearDelta)
+                        session.longDisplayGapMaxCellDisappearDelta = max(session.longDisplayGapMaxCellDisappearDelta, cellDisappearDelta)
+                        session.longDisplayGapMaxOffsetChanges = max(session.longDisplayGapMaxOffsetChanges, session.offsetChangesSinceLastDisplay)
+                    }
+                }
             }
+            session.lastDisplayCellAppearCount = session.cellAppearCount
+            session.lastDisplayCellDisappearCount = session.cellDisappearCount
+            session.lastDisplayLoadAheadCount = session.loadAheadCount
+            session.lastDisplayItemCountChanges = session.itemCountChanges
+            session.offsetChangesSinceLastDisplay = 0
 
             let currentOffsetY = scrollView.contentOffset.y
             if scrollView.isDecelerating {
@@ -252,7 +287,7 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         let durationMS = max(0, (endedAt - session.startedAt) * 1000)
         DiagnosticsLogger.shared.app(
             "PosterGridCadence",
-            "route=\(owner.route) reason=\(reason) duration_ms=\(format(durationMS)) maximum_fps=\(UIScreen.main.maximumFramesPerSecond) refresh_request=\(refreshRequestActive ? 1 : 0) requested_min_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? 80 : 0) requested_max_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? UIScreen.main.maximumFramesPerSecond : 0) offset_samples=\(session.offsetIntervalsMS.count) offset_p50_ms=\(format(offset.p50)) offset_p95_ms=\(format(offset.p95)) offset_p99_ms=\(format(offset.p99)) offset_max_ms=\(format(offset.max)) offset_ge10=\(offset.ge10) offset_ge12_5=\(offset.ge12_5) offset_ge16_7=\(offset.ge16_7) offset_ge25=\(offset.ge25) offset_ge33_3=\(offset.ge33_3) display_samples=\(session.displayIntervalsMS.count) display_p50_ms=\(format(display.p50)) display_p95_ms=\(format(display.p95)) display_p99_ms=\(format(display.p99)) display_max_ms=\(format(display.max)) display_ge10=\(display.ge10) display_ge12_5=\(display.ge12_5) display_ge16_7=\(display.ge16_7) display_ge25=\(display.ge25) display_ge33_3=\(display.ge33_3) drag_samples=\(session.dragSamples) decel_samples=\(session.decelerationSamples) cell_appear=\(session.cellAppearCount) cell_disappear=\(session.cellDisappearCount) load_ahead=\(session.loadAheadCount) item_count_start=\(session.startItemCount) item_count_end=\(owner.itemCount) item_count_changes=\(session.itemCountChanges) max_velocity_y=\(format(Double(session.maxAbsVelocityY))) max_delta_y=\(format(Double(session.maxAbsDeltaY))) decel_display_frames=\(session.decelerationDisplayFrameCount) decel_display_zero=\(session.decelerationDisplayZeroMoveCount) decel_display_catchup=\(session.decelerationDisplayCatchUpCount) decel_display_reverse=\(session.decelerationDisplayReverseCount) decel_delta_p50_pt=\(format(decelerationDelta.p50)) decel_delta_p95_pt=\(format(decelerationDelta.p95)) decel_delta_p99_pt=\(format(decelerationDelta.p99)) decel_delta_max_pt=\(format(decelerationDelta.max)) decel_step_ratio_p50=\(format(decelerationStep.p50)) decel_step_ratio_p95=\(format(decelerationStep.p95)) decel_step_ratio_p99=\(format(decelerationStep.p99)) decel_step_ratio_max=\(format(decelerationStep.max))"
+            "route=\(owner.route) reason=\(reason) duration_ms=\(format(durationMS)) maximum_fps=\(UIScreen.main.maximumFramesPerSecond) refresh_request=\(refreshRequestActive ? 1 : 0) requested_min_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? 80 : 0) requested_max_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? UIScreen.main.maximumFramesPerSecond : 0) offset_samples=\(session.offsetIntervalsMS.count) offset_p50_ms=\(format(offset.p50)) offset_p95_ms=\(format(offset.p95)) offset_p99_ms=\(format(offset.p99)) offset_max_ms=\(format(offset.max)) offset_ge10=\(offset.ge10) offset_ge12_5=\(offset.ge12_5) offset_ge16_7=\(offset.ge16_7) offset_ge25=\(offset.ge25) offset_ge33_3=\(offset.ge33_3) display_samples=\(session.displayIntervalsMS.count) display_p50_ms=\(format(display.p50)) display_p95_ms=\(format(display.p95)) display_p99_ms=\(format(display.p99)) display_max_ms=\(format(display.max)) display_ge10=\(display.ge10) display_ge12_5=\(display.ge12_5) display_ge16_7=\(display.ge16_7) display_ge25=\(display.ge25) display_ge33_3=\(display.ge33_3) drag_samples=\(session.dragSamples) decel_samples=\(session.decelerationSamples) cell_appear=\(session.cellAppearCount) cell_disappear=\(session.cellDisappearCount) load_ahead=\(session.loadAheadCount) item_count_start=\(session.startItemCount) item_count_end=\(owner.itemCount) item_count_changes=\(session.itemCountChanges) max_velocity_y=\(format(Double(session.maxAbsVelocityY))) max_delta_y=\(format(Double(session.maxAbsDeltaY))) decel_display_frames=\(session.decelerationDisplayFrameCount) decel_display_zero=\(session.decelerationDisplayZeroMoveCount) decel_display_catchup=\(session.decelerationDisplayCatchUpCount) decel_display_reverse=\(session.decelerationDisplayReverseCount) decel_delta_p50_pt=\(format(decelerationDelta.p50)) decel_delta_p95_pt=\(format(decelerationDelta.p95)) decel_delta_p99_pt=\(format(decelerationDelta.p99)) decel_delta_max_pt=\(format(decelerationDelta.max)) decel_step_ratio_p50=\(format(decelerationStep.p50)) decel_step_ratio_p95=\(format(decelerationStep.p95)) decel_step_ratio_p99=\(format(decelerationStep.p99)) decel_step_ratio_max=\(format(decelerationStep.max)) long_gap_ge12_5=\(session.longDisplayGapCount) long_gap_cell_churn=\(session.longDisplayGapWithCellChurnCount) long_gap_load_ahead=\(session.longDisplayGapWithLoadAheadCount) long_gap_item_change=\(session.longDisplayGapWithItemCountChangeCount) long_gap_untracked=\(session.longDisplayGapWithNoTrackedGridWorkCount) long_gap_max_cell_appear=\(session.longDisplayGapMaxCellAppearDelta) long_gap_max_cell_disappear=\(session.longDisplayGapMaxCellDisappearDelta) long_gap_max_offset_updates=\(session.longDisplayGapMaxOffsetChanges)"
         )
     }
 
