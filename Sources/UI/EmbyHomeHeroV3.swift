@@ -12,7 +12,7 @@ extension V3EmbyHomeView {
                     .allowsHitTesting(false)
             }
 
-            ForEach(model.carouselItems) { item in
+            ForEach(carouselHeroResidentItems) { item in
                 carouselHeroForeground(item: item, width: width, viewportHeight: viewportHeight)
                     .compositingGroup()
                     .opacity(carouselForegroundOpacity(for: item.id))
