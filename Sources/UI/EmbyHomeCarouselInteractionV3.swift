@@ -82,8 +82,8 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         let translation = CGSize(width: location.x - origin.x, height: location.y - origin.y)
 
         if axis == nil {
-            guard max(abs(translation.width), abs(translation.height)) >= 0.5 else { return }
-            axis = abs(translation.width) >= abs(translation.height) ? .horizontal : .vertical
+            guard let resolvedAxis = resolvedAxis(for: translation) else { return }
+            axis = resolvedAxis
             if axis == .vertical { state = .failed; return }
             guard shouldBeginHorizontal?(translation) == true else { state = .failed; return }
             let acquisitionTranslation = translation.width
@@ -175,6 +175,17 @@ private final class V3HomeCarouselInteractionRecognizer: UIGestureRecognizer {
         latestMoveDeliveredVelocityX = nil
         latestMoveCoalescedVelocityX = nil
         latestPredictionBaseTranslationX = nil
+    }
+
+    private func resolvedAxis(for translation: CGSize) -> V3HomeCarouselTouchAxis? {
+        let horizontal = abs(translation.width)
+        let vertical = abs(translation.height)
+        let dominant = max(horizontal, vertical)
+        guard dominant >= 2 else { return nil }
+        if horizontal >= vertical * 1.15 { return .horizontal }
+        if vertical >= horizontal * 1.15 { return .vertical }
+        guard dominant >= 6 else { return nil }
+        return horizontal >= vertical ? .horizontal : .vertical
     }
 
     private func recordReleaseMotionSample(translationX: CGFloat, touch: UITouch, event: UIEvent, view: UIView) {
@@ -303,10 +314,29 @@ struct V3HomeCarouselInteractionSurface: UIViewRepresentable {
 
 extension V3EmbyHomeView {
     func shouldBeginNativeCarouselDrag(_ translation: CGSize) -> Bool {
-        guard transitionToID == nil || isCarouselDragging else { return false }
+        guard prepareCarouselForNewInteractiveDrag() else { return false }
         let direction = translation.width < 0 ? 1 : -1
         guard let currentID = currentCarouselItemID else { return false }
         return neighborCarouselItemID(from: currentID, direction: direction) != nil
+    }
+
+    func prepareCarouselForNewInteractiveDrag() -> Bool {
+        guard !isCarouselDragging, let targetID = transitionToID else { return true }
+        if transitionProgress >= 0.999 {
+            DiagnosticsLogger.shared.app("HomeCarouselRapidSwipe", "interrupt=commit-settle target=\(targetID)")
+            settleCarousel(on: targetID)
+            return true
+        }
+        if transitionProgress <= 0.001 {
+            DiagnosticsLogger.shared.app("HomeCarouselRapidSwipe", "interrupt=cancel-settle target=\(targetID)")
+            transitionFromID = nil
+            transitionToID = nil
+            transitionDirection = 1
+            carouselLastSettledAt = Date()
+            V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancel-settle-interrupted")
+            return true
+        }
+        return false
     }
 
     func handleNativeCarouselDrag(_ translation: CGSize, width: CGFloat) {
