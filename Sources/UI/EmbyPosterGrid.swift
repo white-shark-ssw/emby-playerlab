@@ -169,30 +169,30 @@ struct EmbyPosterGrid<Content: View>: View {
         return floor(available / CGFloat(EmbyPosterGridMetrics.columnCount))
     }
 
-    private var columns: [GridItem] {
-        if let cellWidth = cellWidth {
-            return Array(repeating: GridItem(.fixed(cellWidth), spacing: EmbyPosterGridMetrics.columnSpacing, alignment: .top), count: EmbyPosterGridMetrics.columnCount)
-        }
-        return Array(repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: EmbyPosterGridMetrics.columnSpacing, alignment: .top), count: EmbyPosterGridMetrics.columnCount)
-    }
-
     var body: some View {
         let loadAheadIDs = Set(items.suffix(EmbyPosterGridMetrics.loadAheadItemCount).map(\.id))
-        return LazyVGrid(columns: columns, alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing) {
-            ForEach(items) { item in
-                content(item)
-                    .environment(\.embyPosterGridNavigationState, navigationState)
-                    .environment(\.embyPosterGridCellWidth, cellWidth)
-                    .environment(\.embyPosterGridDiagnosticOwnerID, diagnosticOwnerID)
-                    .frame(width: cellWidth, alignment: .topLeading)
-                    .contentShape(Rectangle())
-                    .onAppear {
-                        EmbyPosterGridCadenceDiagnostics.shared.cellDidAppear(ownerID: diagnosticOwnerID)
-                        guard let handler = onApproachingEnd, loadAheadIDs.contains(item.id) else { return }
-                        EmbyPosterGridCadenceDiagnostics.shared.loadAheadDidTrigger(ownerID: diagnosticOwnerID)
-                        handler()
+        let rowStarts = Array(stride(from: 0, to: items.count, by: EmbyPosterGridMetrics.columnCount))
+        return LazyVStack(alignment: .leading, spacing: EmbyPosterGridMetrics.rowSpacing) {
+            ForEach(rowStarts, id: \.self) { rowStart in
+                let rowEnd = min(rowStart + EmbyPosterGridMetrics.columnCount, items.count)
+                HStack(alignment: .top, spacing: EmbyPosterGridMetrics.columnSpacing) {
+                    ForEach(items[rowStart..<rowEnd]) { item in
+                        content(item)
+                            .environment(\.embyPosterGridNavigationState, navigationState)
+                            .environment(\.embyPosterGridCellWidth, cellWidth)
+                            .environment(\.embyPosterGridDiagnosticOwnerID, diagnosticOwnerID)
+                            .frame(width: cellWidth, alignment: .topLeading)
+                            .contentShape(Rectangle())
+                            .onAppear {
+                                EmbyPosterGridCadenceDiagnostics.shared.cellDidAppear(ownerID: diagnosticOwnerID)
+                                guard let handler = onApproachingEnd, loadAheadIDs.contains(item.id) else { return }
+                                EmbyPosterGridCadenceDiagnostics.shared.loadAheadDidTrigger(ownerID: diagnosticOwnerID)
+                                handler()
+                            }
+                            .onDisappear { EmbyPosterGridCadenceDiagnostics.shared.cellDidDisappear(ownerID: diagnosticOwnerID) }
                     }
-                    .onDisappear { EmbyPosterGridCadenceDiagnostics.shared.cellDidDisappear(ownerID: diagnosticOwnerID) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(.horizontal, horizontalPadding)
