@@ -19,6 +19,15 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         var itemCountChanges = 0
         var maxAbsVelocityY: CGFloat = 0
         var maxAbsDeltaY: CGFloat = 0
+        var decelerationDisplayFrameCount = 0
+        var decelerationDisplayZeroMoveCount = 0
+        var decelerationDisplayCatchUpCount = 0
+        var decelerationDisplayReverseCount = 0
+        var decelerationDisplayDeltas: [Double] = []
+        var decelerationDisplayStepRatios: [Double] = []
+        var lastDecelerationDisplayOffsetY: CGFloat?
+        var lastDecelerationDisplayDeltaY: CGFloat?
+        var previousDecelerationDisplayWasZero = false
     }
 
     private final class Owner {
@@ -190,11 +199,40 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
                 let intervalMS = max(0, (link.timestamp - previousDisplayTimestamp) * 1000)
                 if intervalMS > 0, intervalMS < 200 { session.displayIntervalsMS.append(intervalMS) }
             }
-            owner.session = session
 
             let currentOffsetY = scrollView.contentOffset.y
+            if scrollView.isDecelerating {
+                if let previousOffsetY = session.lastDecelerationDisplayOffsetY {
+                    let deltaY = currentOffsetY - previousOffsetY
+                    let absDeltaY = abs(deltaY)
+                    session.decelerationDisplayFrameCount += 1
+                    if absDeltaY <= 0.01 {
+                        session.decelerationDisplayZeroMoveCount += 1
+                        session.previousDecelerationDisplayWasZero = true
+                    } else {
+                        session.decelerationDisplayDeltas.append(Double(absDeltaY))
+                        if session.previousDecelerationDisplayWasZero { session.decelerationDisplayCatchUpCount += 1 }
+                        if let previousDeltaY = session.lastDecelerationDisplayDeltaY, abs(previousDeltaY) > 0.01 {
+                            if deltaY.sign != previousDeltaY.sign { session.decelerationDisplayReverseCount += 1 }
+                            else {
+                                let stepRatio = abs(Double(absDeltaY - abs(previousDeltaY))) / max(Double(abs(previousDeltaY)), 0.01)
+                                if stepRatio < 10 { session.decelerationDisplayStepRatios.append(stepRatio) }
+                            }
+                        }
+                        session.lastDecelerationDisplayDeltaY = deltaY
+                        session.previousDecelerationDisplayWasZero = false
+                    }
+                }
+                session.lastDecelerationDisplayOffsetY = currentOffsetY
+            } else {
+                session.lastDecelerationDisplayOffsetY = currentOffsetY
+                session.lastDecelerationDisplayDeltaY = nil
+                session.previousDecelerationDisplayWasZero = false
+            }
+
             let movedSinceLastDisplay = abs(currentOffsetY - owner.lastDisplayOffsetY) > 0.01
             owner.lastDisplayOffsetY = currentOffsetY
+            owner.session = session
             if !scrollView.isDragging && !scrollView.isDecelerating && !movedSinceLastDisplay {
                 owner.session = nil
                 owner.lastOffsetTimestamp = nil
@@ -209,10 +247,12 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
     private func log(session: MotionSession, owner: Owner, endedAt: CFTimeInterval, reason: String) {
         let offset = intervalSummary(session.offsetIntervalsMS)
         let display = intervalSummary(session.displayIntervalsMS)
+        let decelerationDelta = valueSummary(session.decelerationDisplayDeltas)
+        let decelerationStep = valueSummary(session.decelerationDisplayStepRatios)
         let durationMS = max(0, (endedAt - session.startedAt) * 1000)
         DiagnosticsLogger.shared.app(
             "PosterGridCadence",
-            "route=\(owner.route) reason=\(reason) duration_ms=\(format(durationMS)) maximum_fps=\(UIScreen.main.maximumFramesPerSecond) refresh_request=\(refreshRequestActive ? 1 : 0) requested_min_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? 80 : 0) requested_max_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? UIScreen.main.maximumFramesPerSecond : 0) offset_samples=\(session.offsetIntervalsMS.count) offset_p50_ms=\(format(offset.p50)) offset_p95_ms=\(format(offset.p95)) offset_p99_ms=\(format(offset.p99)) offset_max_ms=\(format(offset.max)) offset_ge10=\(offset.ge10) offset_ge12_5=\(offset.ge12_5) offset_ge16_7=\(offset.ge16_7) offset_ge25=\(offset.ge25) offset_ge33_3=\(offset.ge33_3) display_samples=\(session.displayIntervalsMS.count) display_p50_ms=\(format(display.p50)) display_p95_ms=\(format(display.p95)) display_p99_ms=\(format(display.p99)) display_max_ms=\(format(display.max)) display_ge10=\(display.ge10) display_ge12_5=\(display.ge12_5) display_ge16_7=\(display.ge16_7) display_ge25=\(display.ge25) display_ge33_3=\(display.ge33_3) drag_samples=\(session.dragSamples) decel_samples=\(session.decelerationSamples) cell_appear=\(session.cellAppearCount) cell_disappear=\(session.cellDisappearCount) load_ahead=\(session.loadAheadCount) item_count_start=\(session.startItemCount) item_count_end=\(owner.itemCount) item_count_changes=\(session.itemCountChanges) max_velocity_y=\(format(Double(session.maxAbsVelocityY))) max_delta_y=\(format(Double(session.maxAbsDeltaY)))"
+            "route=\(owner.route) reason=\(reason) duration_ms=\(format(durationMS)) maximum_fps=\(UIScreen.main.maximumFramesPerSecond) refresh_request=\(refreshRequestActive ? 1 : 0) requested_min_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? 80 : 0) requested_max_fps=\(UIScreen.main.maximumFramesPerSecond > 60 ? UIScreen.main.maximumFramesPerSecond : 0) offset_samples=\(session.offsetIntervalsMS.count) offset_p50_ms=\(format(offset.p50)) offset_p95_ms=\(format(offset.p95)) offset_p99_ms=\(format(offset.p99)) offset_max_ms=\(format(offset.max)) offset_ge10=\(offset.ge10) offset_ge12_5=\(offset.ge12_5) offset_ge16_7=\(offset.ge16_7) offset_ge25=\(offset.ge25) offset_ge33_3=\(offset.ge33_3) display_samples=\(session.displayIntervalsMS.count) display_p50_ms=\(format(display.p50)) display_p95_ms=\(format(display.p95)) display_p99_ms=\(format(display.p99)) display_max_ms=\(format(display.max)) display_ge10=\(display.ge10) display_ge12_5=\(display.ge12_5) display_ge16_7=\(display.ge16_7) display_ge25=\(display.ge25) display_ge33_3=\(display.ge33_3) drag_samples=\(session.dragSamples) decel_samples=\(session.decelerationSamples) cell_appear=\(session.cellAppearCount) cell_disappear=\(session.cellDisappearCount) load_ahead=\(session.loadAheadCount) item_count_start=\(session.startItemCount) item_count_end=\(owner.itemCount) item_count_changes=\(session.itemCountChanges) max_velocity_y=\(format(Double(session.maxAbsVelocityY))) max_delta_y=\(format(Double(session.maxAbsDeltaY))) decel_display_frames=\(session.decelerationDisplayFrameCount) decel_display_zero=\(session.decelerationDisplayZeroMoveCount) decel_display_catchup=\(session.decelerationDisplayCatchUpCount) decel_display_reverse=\(session.decelerationDisplayReverseCount) decel_delta_p50_pt=\(format(decelerationDelta.p50)) decel_delta_p95_pt=\(format(decelerationDelta.p95)) decel_delta_p99_pt=\(format(decelerationDelta.p99)) decel_delta_max_pt=\(format(decelerationDelta.max)) decel_step_ratio_p50=\(format(decelerationStep.p50)) decel_step_ratio_p95=\(format(decelerationStep.p95)) decel_step_ratio_p99=\(format(decelerationStep.p99)) decel_step_ratio_max=\(format(decelerationStep.max))"
         )
     }
 
@@ -234,6 +274,16 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
             samples.filter { $0 >= 25.0 }.count,
             samples.filter { $0 >= 33.3 }.count
         )
+    }
+
+    private func valueSummary(_ samples: [Double]) -> (p50: Double, p95: Double, p99: Double, max: Double) {
+        guard !samples.isEmpty else { return (-1, -1, -1, -1) }
+        let sorted = samples.sorted()
+        func percentile(_ value: Double) -> Double {
+            let index = min(sorted.count - 1, max(0, Int(ceil(Double(sorted.count) * value)) - 1))
+            return sorted[index]
+        }
+        return (percentile(0.50), percentile(0.95), percentile(0.99), sorted.last ?? -1)
     }
 
     private func format(_ value: Double) -> String { String(format: "%.2f", value) }
