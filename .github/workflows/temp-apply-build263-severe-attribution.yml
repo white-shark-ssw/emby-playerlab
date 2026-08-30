@@ -1,0 +1,68 @@
+name: Temp Apply Build263 Severe Attribution
+
+on:
+  push:
+    branches:
+      - ci/apply-build263-severe-attribution-20260830
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trigger branch
+        uses: actions/checkout@v4
+        with:
+          ref: ci/apply-build263-severe-attribution-20260830
+          fetch-depth: 0
+
+      - name: Preserve patch script
+        run: cp scripts/temp_apply_build263.py /tmp/temp_apply_build263.py
+
+      - name: Checkout Build263 product branch
+        run: |
+          git fetch origin perf/poster-grid-severe-attribution-build263
+          git checkout -B perf/poster-grid-severe-attribution-build263 origin/perf/poster-grid-severe-attribution-build263
+
+      - name: Apply exact Build263 patch
+        run: python3 /tmp/temp_apply_build263.py
+
+      - name: Verify source contract and exact scope
+        run: |
+          python3 scripts/check_poster_grid_cadence.py
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+          expected = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyPosterGrid.swift',
+              'Sources/UI/EmbyPosterGridCadenceDiagnostics.swift',
+              'Sources/UI/EmbyServerSharedV3.swift',
+              'docs/changelog/CHANGELOG_v0_14_96_build263.md',
+              'scripts/check_poster_grid_cadence.py',
+          }
+          changed = set(subprocess.check_output(['git', 'status', '--short'], text=True).splitlines())
+          paths = {line[3:] for line in changed}
+          assert paths == expected, f'unexpected scope: {sorted(paths)}'
+          print('Build263 exact six-path scope: PASS')
+          PY
+
+      - name: Commit Build263 product source
+        run: |
+          git config user.name white-shark-ssw
+          git config user.email houstools@gmail.com
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyPosterGrid.swift Sources/UI/EmbyPosterGridCadenceDiagnostics.swift Sources/UI/EmbyServerSharedV3.swift docs/changelog/CHANGELOG_v0_14_96_build263.md scripts/check_poster_grid_cadence.py
+          git commit -m "Add Build263 severe poster-grid attribution [skip ci]"
+          git push origin HEAD:perf/poster-grid-severe-attribution-build263
+
+  cleanup:
+    needs: apply
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete temporary trigger branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git --delete ci/apply-build263-severe-attribution-20260830 || true
