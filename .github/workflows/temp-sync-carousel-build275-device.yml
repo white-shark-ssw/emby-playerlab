@@ -1,0 +1,43 @@
+name: Sync carousel Build275 device evidence
+
+on:
+  push:
+    branches: [docs/carousel-build275-device-20260831]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout helper branch
+        uses: actions/checkout@v4
+        with:
+          ref: docs/carousel-build275-device-20260831
+          path: helper
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          path: repo
+      - name: Patch project docs
+        run: |
+          cp helper/.github/scripts/temp-sync-carousel-build275-device.py repo/.github/scripts/temp-sync-carousel-build275-device.py
+          cd repo
+          python3 .github/scripts/temp-sync-carousel-build275-device.py
+          rm .github/scripts/temp-sync-carousel-build275-device.py
+      - name: Verify docs-only scope
+        run: |
+          cd repo
+          git diff --name-only
+          test -z "$(git diff --name-only | grep -Ev '^docs/project/(PROJECT_STATE|MODULE_STATUS|TECHNICAL_DECISIONS|BUILD_TEST_INDEX)\.md$|^docs/project/current/dev/DEV-home-carousel-drag-smoothness\.md$' || true)"
+      - name: Commit docs to main
+        run: |
+          cd repo
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add docs/project/PROJECT_STATE.md docs/project/MODULE_STATUS.md docs/project/TECHNICAL_DECISIONS.md docs/project/BUILD_TEST_INDEX.md docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          git commit -m 'Record Build275 target-device probe result [skip ci]'
+          git push origin HEAD:main
