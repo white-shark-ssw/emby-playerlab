@@ -1,6 +1,6 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build269 blur-off and Build270 foreground-residency target-device A/Bs both leave the no-recording system FPS HUD ceiling around ~90 FPS, so both major-cause hypotheses are rejected. Build271 / 0.15.4 is now the current diagnostic: an in-app frame-pipeline benchmark that compares normal carousel, pure Core Animation, native CADisplayLink→CALayer, and CADisplayLink→@Published→SwiftUI paths in one package.
+- **Status:** Active — Build269 blur-off and Build270 foreground-residency target-device A/Bs both leave the no-recording system FPS HUD ceiling around ~90 FPS, so both major-cause hypotheses are rejected. Build271 / 0.15.4 is the current diagnostic: an in-app frame-pipeline benchmark that compares normal carousel, pure Core Animation, native CADisplayLink→CALayer, and CADisplayLink→@Published→SwiftUI paths in one package.
 - **Work ID:** `DEV-home-carousel-drag-smoothness`
 - **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / pipeline probe
 - **Task:** Preserve the accepted Build241 carousel appearance/gesture feel while locating the real cause of the no-screen-recording ~90 FPS presentation ceiling on iPhone 15 Pro Max / iOS 17.0.
@@ -10,7 +10,7 @@
 - **Build270 diagnostic:** `perf/home-carousel-foreground-residency-build270`, exact product source `cee2031aa7dc2abb59fb371196e22fbce56e32ee`.
 - **Current working branch:** `diag/home-carousel-frame-pipeline-build271`.
 - **Current exact product source:** `643ff1cbbd24ea06a315c632b08ac1ad162ee43f`.
-- **Current candidate:** OnePlayer `0.15.4 (271)` — pipeline diagnostic; Code written, exact-source CI run `33328917736` in progress at the time of this checkpoint update.
+- **Current candidate:** OnePlayer `0.15.4 (271)` — pipeline diagnostic; Code written / exact-source CI passed / IPA produced and independently verified; target-device four-mode HUD test pending.
 - **Target device:** iPhone 15 Pro Max / iOS 17.0.
 - **Deployment Target:** iOS 15.0.
 
@@ -95,6 +95,19 @@ This single package is intended to locate the layer where the system HUD ceiling
 
 No synthetic busy-loop load is added in Build271. First locate the failing pipeline boundary without heating the device or contaminating subsequent modes; controlled CPU-load headroom testing can be justified only after the boundary is known.
 
+### Build / package evidence
+
+- Exact product source: `643ff1cbbd24ea06a315c632b08ac1ad162ee43f`.
+- Dedicated exact-source CI run/job: `33329047915 / 99304195063` — success. The preceding run `33328917736` failed only in a macOS Bash source-guard script before build; product source did not change because of that CI-script issue.
+- Artifact: `OnePlayer-0.15.4-build271-frame-pipeline-probe`, ID `9737161622`.
+- Artifact digest: `sha256:56ae2d35b3fc8598c1db02f5cc8cc23cc7153d8a6079d27b54e0e2fde00fab47`.
+- IPA SHA-256: `e2c6540e5705f9837dd75db6a41ef7a1ce02d24c3afb3f7abc2160faaa8a963f`.
+- Source ZIP SHA-256: `df4b09881cab1ff955b830c6dc821eaf8d6bc4ef377898978af1ee24f194ef22`.
+- Independent artifact re-download/unpack in ChatGPT runtime reproduced both hashes; IPA `unzip -t` passed.
+- Independent IPA Info.plist: bundle `com.embyplayerlab.app`, display `OnePlayer`, version `0.15.4`, build `271`, `MinimumOSVersion=15.0`.
+- Independent MinOS report ends `Minimum OS compatibility audit: OK`.
+- Diagnostic prerelease tag: `build271-frame-pipeline-test`; publish run `33330204282` success. Release publishing republishes the already-verified fixed artifact; it does not rebuild product code.
+
 ## Scope guard
 
 No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM→302→115/CDN code is in scope. No Build241 gesture thresholds, rapid-swipe ownership, Hero rendering implementation, image cache or transport contract is modified by Build271.
@@ -116,11 +129,11 @@ No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM�
 - Build269 Code / CI / IPA: ✅. Real-device: ✅ ~90; blur-primary hypothesis rejected; diagnostic-only.
 - Build270 Code / CI / IPA: ✅. Real-device: ✅ ~90; foreground-residency hypothesis rejected; diagnostic-only.
 - Build271 Code written: ✅ exact product source `643ff1cbbd24ea06a315c632b08ac1ad162ee43f`.
-- Build271 exact-source CI: ⏳ run `33328917736` in progress at checkpoint update.
-- Build271 IPA produced: ❌ pending CI.
-- Build271 real-device tested: ❌.
+- Build271 exact-source CI passed: ✅ run/job `33329047915 / 99304195063`.
+- Build271 IPA produced + independently verified: ✅ artifact `9737161622`; IPA SHA `e2c6540e5705f9837dd75db6a41ef7a1ce02d24c3afb3f7abc2160faaa8a963f`; source SHA `df4b09881cab1ff955b830c6dc821eaf8d6bc4ef377898978af1ee24f194ef22`; MinOS 15.0.
+- Build271 real-device tested: ❌ pending four-mode no-recording HUD A/B.
 - Stable/frozen reopened performance task: ❌.
 
 ## Next exact action
 
-Wait only for the already-running Build271 exact-source CI in the current work turn. If compile/package passes, independently verify artifact identity/MinOS/hashes, sync CI evidence to project docs, and hand off Build271 for the four-mode no-recording system-HUD test. Do not make another runtime change before that test result unless CI exposes a concrete compile/package defect.
+Install Build271 and perform the four-mode no-screen-recording system-HUD test: `CAROUSEL → CA → DISPLAYLINK → SWIFTUI`. Do not change runtime again before this result. The first mode that fails to reach the cadence shown by the preceding simpler mode determines the next instrumentation layer; only after that boundary is known should controlled synthetic CPU/GPU stress be added.
