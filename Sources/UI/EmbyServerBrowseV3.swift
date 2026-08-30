@@ -41,6 +41,7 @@ struct V3LibraryBrowserView: View {
     let dock: AnyView
     @StateObject private var model: V3LibraryBrowserViewModel
     @State private var selectedTab = V3LibraryTab.items
+    @State private var nativePosterSelection: LibraryItem?
 
     init(library: LibraryItem, client: EmbyAPIClient, dock: AnyView) {
         self.library = library
@@ -107,7 +108,9 @@ struct V3LibraryBrowserView: View {
     @ViewBuilder
     private var tabContent: some View {
         switch selectedTab {
-        case .items, .trailers, .collections, .favorites:
+        case .items:
+            nativeItemsTab
+        case .trailers, .collections, .favorites:
             pagedPosterTab(selectedTab)
         case .suggestions:
             suggestionsTab
@@ -115,6 +118,54 @@ struct V3LibraryBrowserView: View {
             genresTab
         case .folders:
             foldersTab
+        }
+    }
+
+    private var nativeItemsTab: some View {
+        let items = model.items(for: .items)
+        return Group {
+            if model.isLoading(tab: .items) && items.isEmpty {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity).padding(.top, 44)
+            } else if model.hasLoaded(tab: .items) && items.isEmpty {
+                emptyState(text: "暂无\(V3LibraryTab.items.title(contentTitle: contentTitle))内容").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                EmbyNativePosterCollectionView(
+                    items: items,
+                    client: client,
+                    isLoading: model.isLoading(tab: .items),
+                    hasMore: model.hasMore(tab: .items),
+                    onApproachingEnd: {
+                        guard model.hasMore(tab: .items) else { return }
+                        Task { await model.loadNextPage(tab: .items) }
+                    },
+                    onRefresh: { Task { await model.refresh(tab: .items) } },
+                    onSelect: { item in
+                        guard nativePosterSelection == nil else { return }
+                        nativePosterSelection = item
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(nativePosterNavigationLink)
+        .overlay(alignment: .top) {
+            if let error = model.errorMessage(for: .items) { errorText(error).padding(.top, 8) }
+        }
+    }
+
+    @ViewBuilder
+    private var nativePosterNavigationLink: some View {
+        if let item = nativePosterSelection {
+            NavigationLink(
+                destination: EmbyPosterDetailDestination(item: item, client: client),
+                isActive: Binding(
+                    get: { nativePosterSelection != nil },
+                    set: { active in if !active { nativePosterSelection = nil } }
+                )
+            ) { EmptyView() }
+            .frame(width: 0, height: 0)
+            .hidden()
         }
     }
 
