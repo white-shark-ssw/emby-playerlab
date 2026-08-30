@@ -1,191 +1,159 @@
-name: Temp PR Build134 EX Scrub HUD
+name: TEMP Materialize Build262 Carousel Registered
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
+  push:
+    branches: [perf/home-carousel-rapid-swipe-120hz-build262]
 
 permissions:
   contents: write
 
 jobs:
-  build134:
-    if: github.event.pull_request.head.ref == 'diag/scrub-hud-ex-0.13.67'
-    runs-on: macos-15
-    timeout-minutes: 180
+  materialize:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: perf/home-carousel-rapid-swipe-120hz-build262
           fetch-depth: 0
 
-      - name: Apply exact EX scrub HUD patch
-        shell: bash
+      - name: Apply Build262 source changes
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          app = Path('Sources/Core/AppIdentity.swift')
-          text = app.read_text()
-          if '"0.13.67"' not in text:
-              count = text.count('"0.13.66"')
-              if count != 2: raise SystemExit(f'AppIdentity mismatch: {count}')
-              app.write_text(text.replace('"0.13.66"', '"0.13.67"'))
+          interaction = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift')
+          text = interaction.read_text()
+          old_axis = '''        if axis == nil {
+            guard max(abs(translation.width), abs(translation.height)) >= 0.5 else { return }
+            axis = abs(translation.width) >= abs(translation.height) ? .horizontal : .vertical
+            if axis == .vertical { state = .failed; return }
+            guard shouldBeginHorizontal?(translation) == true else { state = .failed; return }
+'''
+          new_axis = '''        if axis == nil {
+            guard let resolvedAxis = resolvedAxis(for: translation) else { return }
+            axis = resolvedAxis
+            if axis == .vertical { state = .failed; return }
+            guard shouldBeginHorizontal?(translation) == true else { state = .failed; return }
+'''
+          if text.count(old_axis) != 1: raise SystemExit(f'axis block count={text.count(old_axis)}')
+          text = text.replace(old_axis, new_axis, 1)
 
-          player = Path('Sources/UI/PlayerScreen.swift')
-          text = player.read_text()
-          old_scrub = '                if let feedback = controller.scrubFeedback { feedbackView(feedback).scaleEffect(0.72).zIndex(40) }'
-          new_scrub = '''                if let feedback = controller.scrubFeedback {
-                    VStack {
-                        Spacer()
-                        screenScrubFeedbackView(feedback).padding(.bottom, 116)
-                    }
-                    .allowsHitTesting(false)
-                    .zIndex(40)
-                }'''
-          if 'screenScrubFeedbackView(feedback).padding(.bottom, 116)' not in text:
-              if text.count(old_scrub) != 1: raise SystemExit(f'PlayerScreen scrub anchor mismatch: {text.count(old_scrub)}')
-              text = text.replace(old_scrub, new_scrub, 1)
-
-          anchor = '    private func rateFeedbackView(_ rate: Double) -> some View {'
-          helper = '''    private func screenScrubFeedbackView(_ text: String) -> some View {
-        let lines = text.components(separatedBy: "\\n")
-        let timeParts = (lines.first ?? "").components(separatedBy: " / ")
-        let current = timeParts.first ?? ""
-        let duration = timeParts.count > 1 ? timeParts[1] : ""
-        let deltaRaw = lines.count > 1 ? lines[1] : ""
-        let deltaText = deltaRaw.replacingOccurrences(of: " 秒", with: "s")
-        let isBackward = deltaText.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("-")
-
-        return VStack(spacing: 2) {
-            HStack(spacing: 3) {
-                Text(current).foregroundColor(.white)
-                if !duration.isEmpty { Text("/ " + duration).foregroundColor(.white.opacity(0.58)) }
-            }
-            .font(.system(size: 16, weight: .semibold))
-            .monospacedDigit()
-
-            if !deltaText.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: isBackward ? "backward.fill" : "forward.fill")
-                    Text(deltaText).monospacedDigit()
-                }
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Color(red: 0.11, green: 0.91, blue: 0.32))
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(minWidth: 142)
-        .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Color(red: 0.45, green: 0.43, blue: 0.42).opacity(0.88)))
-        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 0.5))
-        .allowsHitTesting(false)
+          marker = '    private func recordReleaseMotionSample(translationX: CGFloat, touch: UITouch, event: UIEvent, view: UIView) {\n'
+          resolved_axis = '''    private func resolvedAxis(for translation: CGSize) -> V3HomeCarouselTouchAxis? {
+        let horizontal = abs(translation.width)
+        let vertical = abs(translation.height)
+        let dominant = max(horizontal, vertical)
+        guard dominant >= 2 else { return nil }
+        if horizontal >= vertical * 1.15 { return .horizontal }
+        if vertical >= horizontal * 1.15 { return .vertical }
+        guard dominant >= 6 else { return nil }
+        return horizontal >= vertical ? .horizontal : .vertical
     }
 
 '''
-          if 'private func screenScrubFeedbackView(_ text: String)' not in text:
-              if text.count(anchor) != 1: raise SystemExit(f'PlayerScreen helper anchor mismatch: {text.count(anchor)}')
-              text = text.replace(anchor, helper + anchor, 1)
-          player.write_text(text)
+          if text.count(marker) != 1: raise SystemExit('recordReleaseMotionSample marker mismatch')
+          text = text.replace(marker, resolved_axis + marker, 1)
 
-          for temp in [Path('.github/workflows/apply-build134-ex-scrub-hud.yml'), Path('docs/build134-trigger.txt')]:
-              if temp.exists(): temp.unlink()
+          old_home = '''    func shouldBeginNativeCarouselDrag(_ translation: CGSize) -> Bool {
+        guard transitionToID == nil || isCarouselDragging else { return false }
+        let direction = translation.width < 0 ? 1 : -1
+        guard let currentID = currentCarouselItemID else { return false }
+        return neighborCarouselItemID(from: currentID, direction: direction) != nil
+    }
+
+    func handleNativeCarouselDrag(_ translation: CGSize, width: CGFloat) {
+        let horizontal = translation.width
+        suppressCarouselTap()
+        guard transitionToID == nil || isCarouselDragging else { return }
+'''
+          new_home = '''    func shouldBeginNativeCarouselDrag(_ translation: CGSize) -> Bool {
+        guard prepareCarouselForNewInteractiveDrag() else { return false }
+        let direction = translation.width < 0 ? 1 : -1
+        guard let currentID = currentCarouselItemID else { return false }
+        return neighborCarouselItemID(from: currentID, direction: direction) != nil
+    }
+
+    func prepareCarouselForNewInteractiveDrag() -> Bool {
+        guard !isCarouselDragging, let targetID = transitionToID else { return true }
+        if transitionProgress >= 0.999 {
+            DiagnosticsLogger.shared.app("HomeCarouselRapidSwipe", "interrupt=commit-settle target=\\(targetID)")
+            settleCarousel(on: targetID)
+            return true
+        }
+        if transitionProgress <= 0.001 {
+            DiagnosticsLogger.shared.app("HomeCarouselRapidSwipe", "interrupt=cancel-settle target=\\(targetID)")
+            transitionFromID = nil
+            transitionToID = nil
+            transitionDirection = 1
+            carouselLastSettledAt = Date()
+            V3HomeCarouselCadenceDiagnostics.shared.end(reason: "cancel-settle-interrupted")
+            return true
+        }
+        return false
+    }
+
+    func handleNativeCarouselDrag(_ translation: CGSize, width: CGFloat) {
+        let horizontal = translation.width
+        suppressCarouselTap()
+        guard transitionToID == nil || isCarouselDragging else { return }
+'''
+          if text.count(old_home) != 1: raise SystemExit(f'home begin block count={text.count(old_home)}')
+          interaction.write_text(text.replace(old_home, new_home, 1))
+
+          hero = Path('Sources/UI/EmbyHomeHeroV3.swift')
+          text = hero.read_text()
+          old_persistent = '''    func persistentCarouselBackdrop(size: CGSize) -> some View {
+        ZStack {
+            if let item = currentCarouselItem {
+                carouselPersistentImage(item: item, size: size)
+            }
+            if let item = transitionTargetCarouselItem {
+                carouselPersistentImage(item: item, size: size).opacity(Double(carouselBackdropBlendProgress(transitionProgress)))
+            }
+
+            LinearGradient(
+'''
+          new_persistent = '''    func persistentCarouselBackdrop(size: CGSize) -> some View {
+        ZStack {
+            ForEach(carouselHeroResidentItems) { item in
+                carouselPersistentImage(item: item, size: size).opacity(carouselOpacity(for: item.id))
+            }
+
+            LinearGradient(
+'''
+          if text.count(old_persistent) != 1: raise SystemExit(f'persistent block count={text.count(old_persistent)}')
+          hero.write_text(text.replace(old_persistent, new_persistent, 1))
+
+          identity = Path('Sources/Core/AppIdentity.swift')
+          text = identity.read_text()
+          if text.count('0.14.49') != 2: raise SystemExit(f'identity count={text.count("0.14.49")}')
+          identity.write_text(text.replace('0.14.49', '0.14.95'))
           PY
-          git diff --check
-          git status --short
 
-      - name: Commit Build134 source
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'ChatGPT'
-          git config user.email 'chatgpt@users.noreply.github.com'
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m 'Build134: match EX scrub HUD styling'
-            git push origin HEAD:diag/scrub-hud-ex-0.13.67
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          i = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift').read_text()
+          h = Path('Sources/UI/EmbyHomeHeroV3.swift').read_text()
+          a = Path('Sources/Core/AppIdentity.swift').read_text()
+          assert 'guard dominant >= 2 else { return nil }' in i
+          assert 'guard dominant >= 6 else { return nil }' in i
+          assert 'prepareCarouselForNewInteractiveDrag()' in i
+          assert 'interrupt=commit-settle' in i and 'interrupt=cancel-settle' in i
+          assert 'let velocityCommit = directionalVelocity >= 500' in i
+          assert 'actualProgress >= 0.28 || velocityCommit' in i
+          assert 'ForEach(carouselHeroResidentItems)' in h
+          assert h.count('.compositingGroup()') == 1
+          assert '.blur(radius: 30)' in h
+          assert 'sourceVersion = "0.14.95"' in a
+          print('Build262 source assertions OK')
+          PY
 
-      - name: Verify Build134 contract
-        run: |
-          set -euo pipefail
-          grep -Fq 'sourceVersion = "0.13.67"' Sources/Core/AppIdentity.swift
-          grep -Fq 'screenScrubFeedbackView(feedback).padding(.bottom, 116)' Sources/UI/PlayerScreen.swift
-          grep -Fq '.font(.system(size: 16, weight: .semibold))' Sources/UI/PlayerScreen.swift
-          grep -Fq '.font(.system(size: 13, weight: .semibold))' Sources/UI/PlayerScreen.swift
-          grep -Fq 'Color(red: 0.11, green: 0.91, blue: 0.32)' Sources/UI/PlayerScreen.swift
-          grep -Fq 'RoundedRectangle(cornerRadius: 11, style: .continuous)' Sources/UI/PlayerScreen.swift
-          grep -Fq 'intent = "doubleTapFastSeek"' Sources/Player/MPVPlayerEngine.swift
-          grep -Fq 'intent = "scrubReleaseFastSeek"' Sources/Player/MPVPlayerEngine.swift
-          test "$(grep -Fc 'mode = "absolute+keyframes"' Sources/Player/MPVPlayerEngine.swift)" -ge 2
-          grep -Fq 'private static let fastSeekBurstWindow: CFTimeInterval = 1.0' Sources/Player/PlayerController.swift
-          grep -Fq 'IPHONEOS_DEPLOYMENT_TARGET: "15.0"' project.mdklab.yml
-          test ! -e .github/workflows/apply-build134-ex-scrub-hud.yml
-          test ! -e docs/build134-trigger.txt
-
-      - name: Select Xcode and install tools
-        run: |
-          set -euo pipefail
-          sudo xcode-select -switch /Applications/Xcode_16.4.app
-          brew install xcodegen
-          sudo gem install cocoapods -v 1.16.2 --no-document
-          xcodebuild -version
-          swift --version
-
-      - name: Generate project and resolve dependencies
-        run: |
-          set -euo pipefail
-          python3 scripts/generate_oneplayer_icons.py
-          xcodegen generate --spec project.mdklab.yml
-          pod install --repo-update
-          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
-
-      - name: Build Release for generic iOS device
-        run: |
-          set -euo pipefail
-          rm -rf build
-          xcodebuild -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData -clonedSourcePackagesDirPath .spm-cache IPHONEOS_DEPLOYMENT_TARGET=15.0 MARKETING_VERSION=0.13.67 CURRENT_PROJECT_VERSION=134 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' clean build 2>&1 | tee build.log
-
-      - name: Locate built app
-        run: |
-          set -euo pipefail
-          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
-          test -n "$APP_PATH" && test -d "$APP_PATH"
-          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
-
-      - name: Validate app identity
-        run: |
-          set -euo pipefail
-          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id 'com.embyplayerlab.app' --version '0.13.67' --build '134' --display-name 'OnePlayer' --minimum-os '15.0' --primary-icon 'OnePlayerIcon' --alternate-icon 'OnePlayerAltIcon' | tee app-validation.log
-
-      - name: Validate minimum OS
-        run: |
-          set -euo pipefail
-          chmod +x scripts/check_min_os.sh
-          scripts/check_min_os.sh "$APP_PATH" '15.0' '17.0' min-os-report.log build.log
-
-      - name: Package unsigned IPA
-        run: |
-          set -euo pipefail
-          rm -rf Payload
-          mkdir Payload
-          cp -R "$APP_PATH" Payload/
-          IPA='OnePlayer-0.13.67-build134-ex-scrub-hud-unsigned.ipa'
-          /usr/bin/zip -qry "$IPA" Payload
-          /usr/bin/unzip -t "$IPA" >/dev/null
-          /usr/bin/shasum -a 256 "$IPA" > "$IPA.sha256"
-          cat "$IPA.sha256"
-
-      - name: Upload Build134 package
-        uses: actions/upload-artifact@v4
-        with:
-          name: OnePlayer-0.13.67-build134-ex-scrub-hud
-          path: |
-            OnePlayer-0.13.67-build134-ex-scrub-hud-unsigned.ipa
-            OnePlayer-0.13.67-build134-ex-scrub-hud-unsigned.ipa.sha256
-            app-validation.log
-            min-os-report.log
-            build.log
-          if-no-files-found: error
-          retention-days: 14
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/temp-pr-apply-detail-immersive-patch.yml
+          git rm -f .github/workflows/temp-materialize-build262-carousel.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselInteractionV3.swift Sources/UI/EmbyHomeHeroV3.swift .github/workflows/temp-pr-apply-detail-immersive-patch.yml
+          git commit -m "Build262 improve rapid carousel ownership and persistent residency"
+          git push origin HEAD:perf/home-carousel-rapid-swipe-120hz-build262
