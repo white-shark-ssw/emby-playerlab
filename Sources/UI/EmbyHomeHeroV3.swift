@@ -223,7 +223,6 @@ extension V3EmbyHomeView {
             .frame(width: size.width, height: size.height)
             .clipped()
             .scaleEffect(1.12)
-            .blur(radius: 30)
     }
 
     var carouselPreloadLayer: some View {
