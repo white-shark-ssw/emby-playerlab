@@ -3,7 +3,7 @@ import QuartzCore
 import SwiftUI
 import UIKit
 
-enum V3HomeFramePipelineProbeMode: String, CaseIterable {
+enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     case carousel
     case coreAnimation
     case nativeDisplayLink
