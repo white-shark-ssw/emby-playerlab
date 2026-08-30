@@ -2,18 +2,28 @@
 
 ## Status
 
-**Active — Build273 / 0.15.6 native UICollectionView A/B is target-device tested and rejected as a sufficient fix. The user still observed several visible twitch events. `OnePlayer-App-1788122398.log` shows five native motion sessions; the clean long `60→360` session runs 51.12 s at display 118.72 Hz / offset 109.43 Hz. All 30 emitted reverse samples >=1 pt are outside the legal top bound during bounce and max at only 3.00 pt; fixed `120→120` runs 118.00 Hz with reverse=0. No interior reverse is captured. Therefore the native container does not eliminate the symptom and Build272's 33 pt reverse ambiguity is not evidence of a true mid-scroll correction. Build273 lacks per-frame interval tails and timestamps for `insertItems` / same-ID visible-host reconfiguration, so the remaining twitch root is unresolved. Do not change scroll physics or container architecture again from this log alone.**
+**Active — Build276 / 0.15.9 frame-tail attribution is now the current diagnostic candidate, directly based on target-device-tested Build273 native UICollectionView exact source `6ff8b1fdefeb7fbe848d05414661a95c88e8ffb8`. Build276 exact source `6f56370f5990637052140fdcd0adf5e7f3428550`, branch `diag/poster-grid-native-frame-tail-build276`, Draft PR #280, changes exactly four paths and adds per-display callback interval p50/p95/p99/max plus >=12.5/25/33.3 ms gap attribution against existing `insertItems` and same-ID visible-host reconfiguration. It does not change scroll physics, container architecture, pagination source, images, Search, Home or P0. CI/IPA and target-device evidence are still pending.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
-- **Working branch**: no new behavior candidate yet; Build273 branch `perf/poster-grid-native-collection-build273` is target-device evidence only
-- **Draft PR**: #279 Build273 rejected as sufficient fix; close without merge
+- **Working branch**: `diag/poster-grid-native-frame-tail-build276`
+- **Draft PR**: #280 Build276 frame-tail attribution; Draft / do not merge before target-device evidence
 - **Superseded PRs**: #278 Build272 fixed-row target-device rejected/closed; #277 Poster Build269 row-stack target-device rejected/closed; #276 Build268 lean-diagnostic target-device rejected/closed; #275 Build267 diagnostic reference-session target-device tested/superseded; earlier poster diagnostics remain historical evidence only
-- **Current branch / PR head**: tested exact source `6ff8b1fdefeb7fbe848d05414661a95c88e8ffb8`; next poster build not allocated yet
-- **Current candidate**: none. Next permitted step is measurement-only per-frame gap attribution against native batch insertion and visible-host reconfiguration; Search/P0 remain protected.
+- **Current branch / PR head**: `6f56370f5990637052140fdcd0adf5e7f3428550`
+- **Current candidate**: OnePlayer **0.15.9 / Build276** — diagnostic-only native frame-tail attribution; Code written + exact four-path scope/checker passed; CI/IPA pending; target-device pending; stable ❌.
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted carousel foundation**: Build241 manual interaction/presentation remains frozen; only automatic-transition scheduling during Home vertical motion is reopened by new device evidence
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
+
+## Build276 implementation checkpoint — native frame-tail attribution — 2026-08-31
+
+Build276 / OnePlayer **0.15.9 (276)** is allocated to Poster after re-checking the parallel Home checkpoint: Home remains on Build275 / 0.15.8 and has not reserved 276. Build276 branch `diag/poster-grid-native-frame-tail-build276`, Draft PR #280, exact source `6f56370f5990637052140fdcd0adf5e7f3428550`, directly extends target-device-tested Build273 `6ff8b1fdefeb7fbe848d05414661a95c88e8ffb8`.
+
+Build273 product behavior remains unchanged. Build276 only instruments the existing native UICollectionView owner: per-display callback interval p50/p95/p99/max; aggregate gaps >=12.5/25/33.3 ms; individual >=25 ms gap records; overlap counters for the existing append `performBatchUpdates/insertItems` and same-ID visible-host reconfiguration; insert begin/end and reconfigure duration/count. Existing reverse/legal-bound diagnostics and the motion-local 80→device-max refresh request remain. No `decelerationRate`, smoothing/interpolation, new container, pagination-source, image, Search, Home or P0 change.
+
+**Evidence:** Code written ✅ / exact four-path scope+checker ✅ / CI pending / IPA pending / target-device pending / stable ❌.
+
+**Next exact action:** run exact-source Xcode 16.4 Release/IPA for `6f56370f5990637052140fdcd0adf5e7f3428550`, independently verify `0.15.9 (276)` / MinOS15 / hashes, then target-device test Library `.items` and return `NativePosterCollection` logs. Do not change product behavior before that evidence.
 
 ## Build273 target-device result — native collection insufficient; no interior reverse captured — 2026-08-31
 
