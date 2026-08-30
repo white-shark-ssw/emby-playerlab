@@ -8,7 +8,7 @@
 - **Routing aliases / keywords**: 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
 - **Working branch**: `perf/poster-grid-high-refresh-build259`
 - **Draft PR**: #267
-- **Superseded PR**: #259 closed without merge; its stale Build243 poster branch is retained only as historical diagnostic evidence
+- **Superseded PRs**: #265 Build257 fallback closed without merge; #266 Build258 diagnostic closed without merge; #259 stale Build243 poster branch retained only as historical diagnostic evidence
 - **Current branch / PR head**: `39168e560d7e626557de8ebde6a88a5d38b3478b`
 - **Current candidate**: OnePlayer `0.14.92 (259)`; directly parented from Build258 exact source `165dffac8690c85283e7a53f4a0b7a20eeb52f8c`; CI/IPA verified 2026-08-30; target-device pending
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
@@ -57,9 +57,9 @@ Resume identity guard on 2026-08-29 also found a hard candidate collision:
 
 **Evidence:** Build229 remains target-device tested and still hitches. Build243 exact source `53a704c2ed752adf023ea3c7f08d7f90f7559133`: Code written ✅ / exact Build229→243 4-path scope+checker ✅ / Xcode 16.4 CI passed ✅ / IPA produced+independently verified ✅ / target-device tested ❌ / smoothness fix claimed ❌ / stable ❌.
 
-**Pending:** target-device Library 3×3 diagnostic run using Build243, then inspect `PosterScrollHitch` + `PosterScrollTiming` to determine whether a captured long frame overlaps active disk-read / detached-decode / network / image-cache-write work.
+**Historical pending at that point:** subsequently completed by the Build243/Build258 device evidence summarized in the current section above.
 
-**Next exact action:** install OnePlayer 0.14.76 / Build243 on iPhone 15 Pro Max / iOS 17.0, reproduce Library 3×3 hitching and return the App log. Do not add another optimization before this diagnostic evidence.
+**Historical next action:** completed. The controlling current action is the Build258 vs Build259 shared-3×3 A/B above.
 
 ## Build243 target-device A/B → Build257 current-main candidate — 2026-08-30
 
@@ -76,9 +76,9 @@ Build257 / OnePlayer **0.14.90 (257)** is therefore based on current-main commit
 
 Build257 exact delta versus its current-main base is seven paths: `AppIdentity.swift`, four Home scroll/carousel files, Build257 changelog and one dedicated inertia-contract checker. Xcode 16.4 run/job **`33301432703 / 99230262134`** succeeded; exact scope + dedicated checker + `git diff --check` passed. Artifact `OnePlayer-0.14.90-build257-home-inertia-gate`, ID **`9729097648`**, digest `sha256:a3d02846d772d940ace45310aa56b094c2f90a18d18ad5912e167f1fcb58cd0a`; IPA SHA-256 `2223cb989201d6477069740faef4c0ed42d9e1937df4a0561d15b0de289a1018`; source ZIP SHA-256 `8b50dac32663484e8e7486b3381b2e781a88b15fd03e613275913673a50276d9`; package `com.embyplayerlab.app`, `0.14.90 (257)`, MinOS 15.0. Independent artifact download reproduced the hashes and IPA archive integrity passed.
 
-**Evidence: user Build243 A/B real-device tested ✅ / Build243 large-overlap hitch causal scheduling condition established ✅ / Build257 Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / Build257 target-device tested ❌ / stable ❌.**
+**Historical Build257 evidence updated by later device test:** user Build243 A/B real-device tested ✅ / large-overlap scheduling condition established ✅ / Build257 Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+verified ✅ / Build257 target-device containment behavior tested ✅ / preferred final architecture ❌ / stable ❌.
 
-**Next exact action:** install Build257, leave carousel enabled, sustain Home vertical inertial scrolling across the time an auto-advance would normally become due, and verify that no new automatic transition begins until drag/deceleration ends and that the previously repeatable large hitch disappears. The separate mild baseline jitter remains intentionally open and must be investigated only after this large-hitch layer is accepted/rejected.
+**Historical next action:** completed. Build257 contained the overlap hitch but is fallback-only; the mild baseline is now controlled by the Build258 cadence evidence and Build259 A/B above.
 
 ## Build243 CI / IPA diagnostic baseline — 2026-08-30
 
