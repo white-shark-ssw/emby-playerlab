@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PRODUCT_SHA: 9402570e31f6a681e817766e1bea81392d739d5e
+  PRODUCT_SHA: 1446640b0d9cec5cb2f39d36cff0bfeca4efd31d
   BASE_SHA: 8c6a882c03e60e9d2f49e9bc95b09f9e3712577b
   VERSION: 0.15.10
   BUILD_NUMBER: 277
@@ -48,6 +48,7 @@ jobs:
           grep -F 'UIPanGestureRecognizer → native CALayer' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
           grep -F 'native horizontal UIScrollView' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
           grep -F 'HomeCarouselInputProbe' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'V3HomeCarouselTreeProgressDriver { _ in }.frame(width: 0, height: 0)' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
           grep -F 'CADisableMinimumFrameDurationOnPhone' Config/Info.plist
           grep -F 'iOS: "15.0"' project.yml
           grep -F 'deploymentTarget: "15.0"' project.yml
