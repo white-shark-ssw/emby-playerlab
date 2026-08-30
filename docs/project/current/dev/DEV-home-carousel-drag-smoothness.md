@@ -1,6 +1,6 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build265 is the current normal-behavior evidence baseline; Build269 / 0.15.2 has now been target-device tested and rejects full-screen persistent `blur(radius: 30)` as the cause of the observed no-recording ~90 FPS ceiling. Next direction is foreground presentation residency/compositing isolation from exact Build265 source.
+- **Status:** Active — Build269 / 0.15.2 target-device A/B rejects full-screen persistent `blur(radius: 30)` as the primary cause of the no-recording ~90 FPS ceiling. Build270 / 0.15.3 is now the next single-variable foreground-residency diagnostic from exact Build265 behavior; code written, CI/IPA pending.
 - **Work ID:** `DEV-home-carousel-drag-smoothness`
 - **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps
 - **Task:** Preserve the accepted Build241 carousel appearance/gesture feel while fixing rapid consecutive swipe ownership and improving actual no-screen-recording presentation cadence toward EX on iPhone 15 Pro Max / iOS 17.0.
@@ -10,7 +10,9 @@
 - **Build265 exact product source:** `af92164890e7dc1c869bd586577b39177335df5f`
 - **Build269 diagnostic branch:** `diag/home-carousel-persistent-blur-build269`
 - **Build269 exact product source:** `28d09e1cf7b3932e9033c370df12026889033197`
-- **Build269 candidate:** OnePlayer `0.15.2 (269)` — diagnostic only; do not inherit blur-off behavior.
+- **Current working branch:** `perf/home-carousel-foreground-residency-build270`
+- **Current exact product source:** `cee2031aa7dc2abb59fb371196e22fbce56e32ee`
+- **Current candidate:** OnePlayer `0.15.3 (270)` — foreground-residency diagnostic; CI/IPA pending.
 - **Target device:** iPhone 15 Pro Max / iOS 17.0
 - **Deployment Target:** iOS 15.0.
 
@@ -67,23 +69,30 @@ User result: **same as Build265 — without screen recording, maximum observed F
 
 This is a direct negative A/B for the tested hypothesis. Removing the full-screen real-time blur does not materially raise the no-recording ceiling, so `blur(radius: 30)` is **not demonstrated to be the primary limiter**. Do not continue blur-specific tuning, do not keep the blur-off product behavior, and do not infer that blur has zero cost; only the major-cause hypothesis is rejected.
 
-## Source review for next direction
+## Build270 / 0.15.3 — foreground residency A/B
 
-Exact Build265 source confirms:
+Source review from exact Build265 shows:
 
 - `V3EmbyHomeViewModel.liveCarouselItems()` caps the carousel at **6 items**.
 - Clear Hero artwork already uses `carouselHeroResidentItems`, exactly current + previous + next.
 - Every interactive transition target is the immediate neighbor of `currentCarouselItemID`; rapid commit-settle interruption first calls `settleCarousel(on:)`, then the three-slot resident window recomputes around the new current item.
-- Foreground title/logo/metadata currently still uses `ForEach(model.carouselItems)` across all up-to-6 carousel items, and each foreground page applies the retained Build231 `.compositingGroup()` even though `carouselForegroundOpacity` exposes only current/from/to.
-- Logo metadata is separately resolved for all carousel items by `resolveCarouselLogosIfNeeded()`, so reducing foreground view residency does not require changing the logo-resolution owner.
+- Foreground title/logo/metadata previously used `ForEach(model.carouselItems)` across all up-to-6 carousel items, and each page applies the retained Build231 `.compositingGroup()` even though `carouselForegroundOpacity` exposes only current/from/to.
+- Logo metadata is separately resolved for all carousel items by `resolveCarouselLogosIfNeeded()`.
 
-This makes foreground residency the next evidence-backed presentation A/B: keep the beneficial per-page `compositingGroup()` contract, but mount only the same current/previous/next resident window already proven sufficient for every reachable transition target. This is narrower and safer than removing `compositingGroup()` itself, which had positive target-device title-stability evidence in Build231.
+Build270 branch `perf/home-carousel-foreground-residency-build270` is created directly from exact Build265 source `af921648...` and exact product source `cee2031aa7dc2abb59fb371196e22fbce56e32ee` changes exactly two files relative to Build265:
+
+1. `Sources/Core/AppIdentity.swift`: `0.14.98 → 0.15.3`.
+2. `Sources/UI/EmbyHomeHeroV3.swift`: only the foreground enumeration changes from `ForEach(model.carouselItems)` to the already-existing `ForEach(carouselHeroResidentItems)`.
+
+The per-page Build231 `.compositingGroup()` is retained; blur30 is restored because Build270 inherits Build265, not Build269. No gesture, transition, image-cache, persistent-backdrop, preload, logo-resolution, timer, Home vertical scroll, Player/MPV/PiP/Transport/Cache/Session or P0/Frozen code changes.
+
+`compare_commits(af921648..., cee2031a...)` confirms exactly two changed files: AppIdentity (2 additions/2 deletions) and EmbyHomeHeroV3 (1 addition/1 deletion).
 
 ## Parallel-task / identity guard
 
 - Build268 is occupied by the parallel poster task (`perf/poster-grid-lean-cadence-build268`).
 - Build269 belongs only to this carousel diagnostic.
-- Repository branch search currently finds no Build270 branch; Build270 is available for this task once allocated.
+- Build270 branch is now uniquely allocated to this task: `perf/home-carousel-foreground-residency-build270`.
 - `DEV-aether-multi-engine-comparison`, poster-grid and Search remain separate state owners.
 - No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM→302→115/CDN code is in scope.
 
@@ -104,8 +113,12 @@ This makes foreground residency the next evidence-backed presentation A/B: keep 
 - Build269 Code written / corrected CI passed / IPA produced + independently verified: ✅.
 - Build269 real-device tested: ✅ — no-recording max remains ~90 FPS; blur-primary hypothesis rejected.
 - Build269 stable/product candidate: ❌ diagnostic-only.
+- Build270 Code written: ✅ exact source `cee2031aa7dc2abb59fb371196e22fbce56e32ee`.
+- Build270 CI passed: ❌ pending.
+- Build270 IPA produced: ❌ pending.
+- Build270 real-device tested: ❌ pending.
 - Stable/frozen whole-carousel task: ❌.
 
 ## Next exact action
 
-Allocate Build270 from exact Build265 source `af92164890e7dc1c869bd586577b39177335df5f`, not from Build269. Change only candidate identity plus `immersiveCarouselHero` foreground enumeration from all `model.carouselItems` to the already-existing `carouselHeroResidentItems`, retaining each page's Build231 `.compositingGroup()` and all interaction/persistent-backdrop/image-cache behavior. Run exact-source CI/IPA validation and hand off for a no-screen-recording FPS A/B. If the ~90 ceiling does not materially move, reject the foreground-residency hypothesis and switch direction again rather than stacking speculative optimizations.
+Run exact-source CI/IPA for Build270 / `0.15.3 (270)`, verify the tested source remains `cee2031aa7dc2abb59fb371196e22fbce56e32ee`, validate bundle/version/build/MinOS and package hashes, then hand off for a **no-screen-recording** system-FPS-HUD A/B versus Build265. If the ~90 ceiling does not materially move, reject the foreground-residency hypothesis and switch direction again rather than stacking speculative optimizations.
