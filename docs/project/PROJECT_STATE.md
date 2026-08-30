@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated 2026-08-31: Home carousel presentation-cadence work is active. Build269 blur-off and Build270 foreground-residency target-device A/Bs both leave the no-recording system FPS HUD ceiling around ~90 FPS, rejecting both primary-cause hypotheses. Build271 / 0.15.4 is the current diagnostic-only four-mode frame-pipeline benchmark; exact-source CI/IPA and independent package verification passed, target-device `CAROUSEL → CA → DISPLAYLINK → SWIFTUI` HUD testing is pending. Build216 / 0.14.49 remains the accepted packaged overall baseline; Search Build256 remains stable/merged; poster Build267 and Aether remain separate active work; P0 playback/transport contracts remain protected._
+_Last updated 2026-08-31: Poster Build272 / 0.15.5 is target-device tested and rejected as a sufficient fixed-row fix. Library remains roughly 110–120 FPS and still shows an occasional whole-content up/down twitch. A fixed 775→775 session records a 33.00 pt native offset reverse with zero content-height and adjusted-inset change, so explicit row height/contentSize/inset correction is not the sufficient explanation; edge-bounce ambiguity remains because reverse distance-to-bounds was not logged. Poster work now stops further SwiftUI grid/stack variants and moves next to a Library-only native UICollectionView 3×3 A/B. Home Build271 remains the separate current carousel pipeline diagnostic. Search Build256 and all P0 playback/transport contracts remain protected._
 
 ## Current accepted overall baseline
 

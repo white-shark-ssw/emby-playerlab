@@ -281,3 +281,12 @@ Build271 / 0.15.4 changes the diagnostic method rather than stacking another opt
 
 Do **not** add synthetic busy-loop CPU/GPU load, timer-driven stress, or another carousel runtime optimization before the Build271 four-mode target-device boundary result exists. Synthetic stress becomes useful only after the failing layer is known, so it measures headroom instead of contaminating the diagnosis. Build271 is diagnostic-only; CI/IPA verification is not real-device acceptance.
 
+
+
+## D021 — Poster 3×3 stops SwiftUI container variants after Build272
+
+Build269 replaced the shared `LazyVGrid` with row-based `LazyVStack`/`HStack` and did not remove the target-device whole-content up/down twitch. Build272 then made the normal Library standard poster row height explicit from the already-deterministic `V3PosterCard(width:nil)` geometry and still did not remove the symptom. Therefore further `LazyVGrid`/`LazyVStack`/row-height variants are rejected as the next direction without new contradictory real-device evidence.
+
+Build272 target-device log `OnePlayer-App-1788117273.log` contains a fixed `775→775` 5.36 s session at display 118.50 Hz / offset 110.85 Hz with a maximum measured native reverse of 33.00 pt while item count and load-ahead are unchanged and content height plus adjusted top/bottom insets change by 0.00 pt. This rejects dynamic standard-row-height/contentSize/inset change as the sufficient explanation. The reverse counter alone does not prove a mid-scroll correction because distance to legal bounds was not captured and normal edge bounce can reverse direction.
+
+The next permitted architecture A/B is Library-only native `UICollectionView` 3×3, preserving the current Library data/pagination authority, poster presentation/navigation semantics and shared image cache/loading contracts. Its scroll diagnostics should record reverse position and distance to legal top/bottom bounds so edge bounce and true mid-scroll reversal can be separated. Do not reopen Search Build256 data/lifetime semantics, guessed `decelerationRate`, Home carousel behavior, Player/MPV/PiP, UnifiedTransport, playback Cache/Session or STRM/302/115/CDN contracts as part of this A/B.

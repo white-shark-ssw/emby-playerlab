@@ -2,18 +2,32 @@
 
 ## Status
 
-**Active — Build267 / 0.15.0 is the current 3×3 diagnostic self-overhead A/B. Build266 / 0.14.99 is now target-device tested: Home vertical scrolling is clearly smoother and can reach 120 FPS, but shared 3×3 still has visible long frames and did not reach 120 on the on-screen FPS indicator. Build266 therefore rejects unused loader `isLoading` publication as a sufficient 3×3 fix. Source inspection then found that `EmbyPosterGridCadenceDiagnostics.MotionSession` was a value-type struct containing multiple growing arrays while high-frequency KVO/CADisplayLink callbacks repeatedly copied, mutated and reassigned the session. Build267 changes only that diagnostic session to reference semantics, preserving every measurement and all product Grid/image behavior; exact-source CI/IPA passed, target-device pending, not stable.**
+**Active — Build272 / 0.15.5 is now target-device tested and rejected as a sufficient fixed-row solution. Library still runs roughly 110–120 FPS and the user still observes an occasional whole-content up/down twitch during scrolling. `OnePlayer-App-1788117273.log` captures a fixed `775→775` 5.36 s session at display 118.50 Hz / offset 110.85 Hz with `item_count_changes=0`, `load_ahead=0`, and a visible-scale native reverse maximum of 33.00 pt while content height and adjusted top/bottom insets each change by 0.00 pt. Explicit standard poster-row height therefore did not remove the symptom and dynamic row-height/contentSize/inset correction is not supported as the sufficient root cause. The reverse aggregate still lacks edge-distance context, so normal top/bottom bounce must not be misclassified as the visible twitch. Stop further SwiftUI Grid/LazyStack variants; next architecture A/B is Library-only native UICollectionView 3×3 with edge-distance-aware native offset diagnostics.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
-- **Working branch**: `perf/poster-grid-diagnostic-refstate-build267`
-- **Draft PR**: #275
-- **Superseded PRs**: #273 Build266 loading-state A/B target-device tested and closed without merge; #268 Build260 diagnostic completed and closed without merge; #267 Build259 A/B completed and closed without merge; #266 Build258 diagnostic closed without merge; #265 Build257 fallback closed without merge; #259 stale Build243 poster branch retained only as historical diagnostic evidence
-- **Current branch / PR head**: `dbe1b7c13dde68e52039cb7ae22fc5177fdd886f`
-- **Current candidate**: OnePlayer `0.15.0 (267)`; directly based on target-device-tested Build266 exact source `957e88dcdc408e537d63b083d0f30e4b1157b1dc`; exact Build266→267 scope is four paths and only the diagnostic session ownership changes at runtime. Exact-source Xcode 16.4 run/job `33321883421 / 99285172527` passed; cleanup `99285673130` passed; artifact `9735159629`; IPA/source package independently verified; target-device pending; not stable. Build265 / 0.14.98 remains the separate Home-carousel image-analysis-dedupe candidate in Draft PR #274 and must be tested separately from Build267.
+- **Working branch**: next candidate not yet written; Build272 branch `perf/poster-grid-fixed-row-build272` is closed/rejected evidence only
+- **Draft PR**: none current; #278 Build272 closed without merge after target-device rejection
+- **Superseded PRs**: #278 Build272 fixed-row target-device rejected/closed; #277 Poster Build269 row-stack target-device rejected/closed; #276 Build268 lean-diagnostic target-device rejected/closed; #275 Build267 diagnostic reference-session target-device tested/superseded; earlier poster diagnostics remain historical evidence only
+- **Current branch / PR head**: no active implementation branch after Build272 rejection; last tested source `75b479476c043ebf3010dba1ebf4136280e98a6c`
+- **Current candidate**: none packaged after Build272. Next permitted implementation is a Library-only native UICollectionView 3×3 A/B preserving existing data/pagination/card/image/navigation contracts; Search Build256 semantics and all P0/Frozen playback/transport remain protected.
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted carousel foundation**: Build241 manual interaction/presentation remains frozen; only automatic-transition scheduling during Home vertical motion is reopened by new device evidence
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
+
+## Build272 target-device result — fixed-row rejected; native collection-view gate — 2026-08-31
+
+Build272 / OnePlayer **0.15.5 (272)** exact source `75b479476c043ebf3010dba1ebf4136280e98a6c`, Draft PR #278, is target-device tested using `OnePlayer-App-1788117273.log`. User result: Library still reports roughly **110–120 FPS** and the previously identified **whole-content up/down twitch** still occurs during scrolling. The fixed-known-row-height A/B is therefore rejected as a sufficient fix and PR #278 is closed without merge.
+
+The strongest clean sample is fixed `775→775` for **5358.60 ms**: display **118.50 Hz**, offset **110.85 Hz**, p50/p95/p99 **8.34/8.34/8.34 ms**, max **65.18 ms**, only one gap >=25 ms and one >=33.3 ms, `item_count_changes=0`, `load_ahead=0`, yet `decel_display_reverse=1`, `decel_reverse_ge1=1`, `decel_reverse_max_pt=33.00`. At that largest reverse, `contentSize.height` delta is **0.00 pt** and adjusted top/bottom inset deltas are **0.00 / 0.00 pt**. Two short fixed `775→775` sessions also retain 1.00 pt / 0.67 pt reverse signals with zero content-height/inset changes.
+
+This is enough to reject the hypothesis that dynamic standard-poster row height or contentSize/inset change is the sufficient cause of the visible twitch. It is **not** enough to equate every logged reverse with the visible twitch, because Build272 does not record the reverse offset's distance from legal top/bottom bounds and normal UIScrollView edge bounce can legitimately reverse direction. Do not overclaim mid-scroll native correction from the aggregate counter alone.
+
+Build272 CI/IPA evidence remains valid: Xcode 16.4 run/job `33329786724 / 99306181023`, cleanup `99306539929`, artifact `9737328849`, artifact digest `sha256:1f03bfe049762d1cd36547358e7172a26f9aaf685360eba742188ffe8e1fda6d`, IPA SHA `c5e562272375ef816bc584e1e6331986c5eaa5fc1462b485a00745d4a0612b42`, source ZIP SHA `9064a826a47c04b2d194df32071509d3f8e25409877020432d41767a0ddd24f7`, MinOS 15.0.
+
+**Evidence:** Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / fixed-row sufficient fix ❌ / stable ❌.
+
+**Next exact action:** stop further SwiftUI `LazyVGrid` / `LazyVStack` container variants for this symptom. The next implementation A/B is **Library-only native UICollectionView 3×3**, reusing the current Library item source/pagination behavior and preserving card visuals/navigation plus existing image cache/loading contracts. In the same native scroll owner, record reverse event offset and distance to legal top/bottom bounds so normal boundary bounce can be separated from a true mid-scroll reversal. Do not alter Search Build256 semantics, Home carousel runtime, scroll deceleration physics, Player/MPV/PiP, UnifiedTransport, playback Cache/Session, STRM/302/115/CDN, or Deployment Target.
 
 ## Build266 target-device result → Build267 diagnostic self-overhead A/B — 2026-08-30
 
