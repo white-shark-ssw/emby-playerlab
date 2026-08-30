@@ -1,0 +1,167 @@
+name: Build273 Carousel Tree120 Probe
+
+on:
+  push:
+    branches: [ci/build273-carousel-tree120-20260831]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build273-carousel-tree120
+  cancel-in-progress: true
+
+env:
+  PRODUCT_SHA: 1cb2ea902e20d6c9fa936623a1cfa16af6f68b12
+  BASE_SHA: 643ff1cbbd24ea06a315c632b08ac1ad162ee43f
+  VERSION: 0.15.6
+  BUILD_NUMBER: 273
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact product source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+          fetch-depth: 0
+
+      - name: Verify exact source and diagnostic scope
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          changed="$(git diff --name-only "$BASE_SHA" "$PRODUCT_SHA" | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCoreV3.swift Sources/UI/EmbyHomeFramePipelineProbeV3.swift | sort)"
+          printf '%s\n' "$changed"
+          test "$changed" = "$expected"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeHeroV3.swift)" = "ab2ab5d80a59e174622dca0006c0f3aad4111a54"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCarouselInteractionV3.swift)" = "f8df5af61101c0272c5ec378caae617000b8fcea"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCarouselStateV3.swift)" = "96f38514cfb09668f11c21a61105ac87a2f26f3d"
+          grep -F 'static let sourceVersion = "0.15.6"' Sources/Core/AppIdentity.swift
+          grep -F 'case carouselTree' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'var usesHomePresentation: Bool { self == .carousel || self == .carouselTree }' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'struct V3HomeCarouselTreeProgressDriver' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'link.preferredFrameRateRange = CAFrameRateRange' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'animation.preferredFrameRateRange = CAFrameRateRange' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'if framePipelineProbeMode == .carouselTree { beginFramePipelineCarouselTreeProbe() }' Sources/UI/EmbyHomeCoreV3.swift
+          grep -F 'CADisableMinimumFrameDurationOnPhone' Config/Info.plist
+          grep -F 'iOS: "15.0"' project.yml
+          grep -F 'deploymentTarget: "15.0"' project.yml
+
+      - name: Export exact source snapshot
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OnePlayer-${VERSION}-build${BUILD_NUMBER}-carousel-tree120-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" "$PRODUCT_SHA"
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Inject package identity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          import re
+          from pathlib import Path
+
+          version = "0.15.6"
+          build = "273"
+          info_path = Path("Config/Info.plist")
+          with info_path.open("rb") as handle:
+              info = plistlib.load(handle)
+          info["CFBundleShortVersionString"] = version
+          info["CFBundleVersion"] = build
+          with info_path.open("wb") as handle:
+              plistlib.dump(info, handle, sort_keys=False)
+
+          project_path = Path("project.yml")
+          project = project_path.read_text()
+          project = re.sub(r'MARKETING_VERSION: "[^"]+"', f'MARKETING_VERSION: "{version}"', project)
+          project = re.sub(r'CURRENT_PROJECT_VERSION: "[^"]+"', f'CURRENT_PROJECT_VERSION: "{build}"', project)
+          project_path.write_text(project)
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          xcodegen --version
+          pod --version
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned app
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build | tee build.log
+
+      - name: Validate identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          python3 scripts/validate_built_app.py \
+            "$APP_PATH" \
+            --bundle-id com.embyplayerlab.app \
+            --version "$VERSION" \
+            --build "$BUILD_NUMBER" \
+            --display-name OnePlayer \
+            --minimum-os 15.0 \
+            --primary-icon OnePlayerIcon \
+            --alternate-icon OnePlayerAltIcon
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" 15.0 17.0 min-os-report.log build.log
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-${VERSION}-build${BUILD_NUMBER}-carousel-tree120-probe-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload Build273 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.6-build273-carousel-tree120-probe
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            built-info-plist.log
+            min-os-report.log
+            package.log
+          if-no-files-found: error
+          retention-days: 30
