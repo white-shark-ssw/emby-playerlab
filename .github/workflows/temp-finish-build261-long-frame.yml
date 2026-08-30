@@ -1,0 +1,153 @@
+name: Temp Finish Build261 Long Frame
+
+'on':
+  push:
+    branches: [ci/finish-build261-long-frame-20260830]
+    paths:
+      - .github/workflows/temp-finish-build261-long-frame.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build261 branch
+        uses: actions/checkout@v4
+        with:
+          ref: perf/poster-grid-long-frame-build261
+          fetch-depth: 0
+
+      - name: Patch long-gap attribution and changelog
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "675d5c7e7aee730a6ea5714effd7a958409ed42d"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          diag = Path('Sources/UI/EmbyPosterGridCadenceDiagnostics.swift')
+          text = diag.read_text()
+          field_anchor = '''        var lastDecelerationDisplayDeltaY: CGFloat?
+        var previousDecelerationDisplayWasZero = false
+    }'''
+          fields = '''        var lastDecelerationDisplayDeltaY: CGFloat?
+        var previousDecelerationDisplayWasZero = false
+        var offsetChangesSinceLastDisplay = 0
+        var lastDisplayCellAppearCount = 0
+        var lastDisplayCellDisappearCount = 0
+        var lastDisplayLoadAheadCount = 0
+        var lastDisplayItemCountChanges = 0
+        var longDisplayGapCount = 0
+        var longDisplayGapWithCellChurnCount = 0
+        var longDisplayGapWithLoadAheadCount = 0
+        var longDisplayGapWithItemCountChangeCount = 0
+        var longDisplayGapWithNoTrackedGridWorkCount = 0
+        var longDisplayGapMaxCellAppearDelta = 0
+        var longDisplayGapMaxCellDisappearDelta = 0
+        var longDisplayGapMaxOffsetChanges = 0
+    }'''
+          if field_anchor not in text:
+              raise SystemExit('Poster fields baseline not found')
+          text = text.replace(field_anchor, fields, 1)
+
+          content_anchor = '''        session.maxAbsVelocityY = max(session.maxAbsVelocityY, abs(scrollView.panGestureRecognizer.velocity(in: scrollView).y))
+        session.maxAbsDeltaY = max(session.maxAbsDeltaY, abs(deltaY))
+        owner.session = session'''
+          content_new = '''        session.maxAbsVelocityY = max(session.maxAbsVelocityY, abs(scrollView.panGestureRecognizer.velocity(in: scrollView).y))
+        session.maxAbsDeltaY = max(session.maxAbsDeltaY, abs(deltaY))
+        session.offsetChangesSinceLastDisplay += 1
+        owner.session = session'''
+          if content_anchor not in text:
+              raise SystemExit('Poster contentOffset baseline not found')
+          text = text.replace(content_anchor, content_new, 1)
+
+          display_anchor = '''            if let previousDisplayTimestamp {
+                let intervalMS = max(0, (link.timestamp - previousDisplayTimestamp) * 1000)
+                if intervalMS > 0, intervalMS < 200 { session.displayIntervalsMS.append(intervalMS) }
+            }
+
+            let currentOffsetY = scrollView.contentOffset.y'''
+          display_new = '''            if let previousDisplayTimestamp {
+                let intervalMS = max(0, (link.timestamp - previousDisplayTimestamp) * 1000)
+                if intervalMS > 0, intervalMS < 200 {
+                    session.displayIntervalsMS.append(intervalMS)
+                    if intervalMS >= 12.5 {
+                        let cellAppearDelta = max(0, session.cellAppearCount - session.lastDisplayCellAppearCount)
+                        let cellDisappearDelta = max(0, session.cellDisappearCount - session.lastDisplayCellDisappearCount)
+                        let loadAheadDelta = max(0, session.loadAheadCount - session.lastDisplayLoadAheadCount)
+                        let itemCountChangeDelta = max(0, session.itemCountChanges - session.lastDisplayItemCountChanges)
+                        session.longDisplayGapCount += 1
+                        if cellAppearDelta > 0 || cellDisappearDelta > 0 { session.longDisplayGapWithCellChurnCount += 1 }
+                        if loadAheadDelta > 0 { session.longDisplayGapWithLoadAheadCount += 1 }
+                        if itemCountChangeDelta > 0 { session.longDisplayGapWithItemCountChangeCount += 1 }
+                        if cellAppearDelta == 0 && cellDisappearDelta == 0 && loadAheadDelta == 0 && itemCountChangeDelta == 0 { session.longDisplayGapWithNoTrackedGridWorkCount += 1 }
+                        session.longDisplayGapMaxCellAppearDelta = max(session.longDisplayGapMaxCellAppearDelta, cellAppearDelta)
+                        session.longDisplayGapMaxCellDisappearDelta = max(session.longDisplayGapMaxCellDisappearDelta, cellDisappearDelta)
+                        session.longDisplayGapMaxOffsetChanges = max(session.longDisplayGapMaxOffsetChanges, session.offsetChangesSinceLastDisplay)
+                    }
+                }
+            }
+            session.lastDisplayCellAppearCount = session.cellAppearCount
+            session.lastDisplayCellDisappearCount = session.cellDisappearCount
+            session.lastDisplayLoadAheadCount = session.loadAheadCount
+            session.lastDisplayItemCountChanges = session.itemCountChanges
+            session.offsetChangesSinceLastDisplay = 0
+
+            let currentOffsetY = scrollView.contentOffset.y'''
+          if display_anchor not in text:
+              raise SystemExit('Poster display baseline not found')
+          text = text.replace(display_anchor, display_new, 1)
+
+          log_tail = 'decel_step_ratio_p50=\\(format(decelerationStep.p50)) decel_step_ratio_p95=\\(format(decelerationStep.p95)) decel_step_ratio_p99=\\(format(decelerationStep.p99)) decel_step_ratio_max=\\(format(decelerationStep.max))"'
+          log_new = 'decel_step_ratio_p50=\\(format(decelerationStep.p50)) decel_step_ratio_p95=\\(format(decelerationStep.p95)) decel_step_ratio_p99=\\(format(decelerationStep.p99)) decel_step_ratio_max=\\(format(decelerationStep.max)) long_gap_ge12_5=\\(session.longDisplayGapCount) long_gap_cell_churn=\\(session.longDisplayGapWithCellChurnCount) long_gap_load_ahead=\\(session.longDisplayGapWithLoadAheadCount) long_gap_item_change=\\(session.longDisplayGapWithItemCountChangeCount) long_gap_untracked=\\(session.longDisplayGapWithNoTrackedGridWorkCount) long_gap_max_cell_appear=\\(session.longDisplayGapMaxCellAppearDelta) long_gap_max_cell_disappear=\\(session.longDisplayGapMaxCellDisappearDelta) long_gap_max_offset_updates=\\(session.longDisplayGapMaxOffsetChanges)"'
+          if log_tail not in text:
+              raise SystemExit('Poster log baseline not found')
+          diag.write_text(text.replace(log_tail, log_new, 1))
+
+          Path('docs/changelog/CHANGELOG_v0_14_94_build261.md').write_text('''# OnePlayer 0.14.94 / Build261
+
+- Build260 target-device evidence reframes the remaining EX gap around long-frame elimination rather than scroll-curve tuning.
+- Home vertical scrolling requests 80→device-max refresh only during real drag/deceleration through the existing native UIScrollView observer.
+- Home adds passive `HomeScrollCadence` display-interval summaries for direct 120 Hz verification.
+- Shared 3×3 cadence diagnostics classify every >=12.5 ms display gap against same-frame cell churn, load-ahead and item-count changes, while recording offset-update count without per-frame logging.
+- No `decelerationRate`, Grid structure, Search semantics, image/cache policy, Home carousel interaction, Player/MPV/PiP, Transport, STRM/302/115/CDN or Deployment Target change.
+- Diagnostic/A-B candidate only; no final smoothness claim.
+''')
+          PY
+
+          python3 scripts/check_poster_grid_cadence.py
+          git diff --check b9a5de5255650f04e312e117f47453122de56adc...HEAD || true
+          python3 - <<'PY'
+          import subprocess
+          expected = {
+              'Sources/Core/AppIdentity.swift',
+              'Sources/UI/EmbyHomeScrollOffsetObserverV3.swift',
+              'Sources/UI/EmbyPosterGridCadenceDiagnostics.swift',
+              'docs/changelog/CHANGELOG_v0_14_94_build261.md',
+              'scripts/check_poster_grid_cadence.py',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', 'b9a5de5255650f04e312e117f47453122de56adc'], text=True).splitlines())
+          if changed != expected:
+              raise SystemExit(f'unexpected Build261 scope: {sorted(changed)}')
+          PY
+          git diff --check
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Sources/UI/EmbyPosterGridCadenceDiagnostics.swift docs/changelog/CHANGELOG_v0_14_94_build261.md
+          git commit -m 'Attribute Build261 long display gaps'
+          git push origin HEAD:perf/poster-grid-long-frame-build261
+
+  cleanup:
+    if: always()
+    needs: finish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete temporary trigger branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X DELETE repos/${{ github.repository }}/git/refs/heads/ci/finish-build261-long-frame-20260830 || true
