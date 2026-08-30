@@ -1,6 +1,6 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build275 target-device screenshots show `TREE FULL=120 / TREE HERO=120 / TREE BACKDROP=120 / CA=120 / DISPLAYLINK=120 / SWIFTUI=120` with screen recording off. This conflicts with Build274 `TREE FULL≈90`, so the scope split is not yet causal evidence. The next controlling datum is normal `PIPE CAROUSEL` in the same Build275 session; do not modify runtime before that value is known.
+- **Status:** Active — Build275 same-package target-device control is now `CAROUSEL≈90` while `TREE FULL / TREE HERO / TREE BACKDROP / CA / DISPLAYLINK / SWIFTUI = 120` with screen recording off. This proves the unchanged full carousel presentation has 120 Hz headroom under fixed device-max progress and moves the next evidence boundary to the real input→progress-publication path. Build277 / 0.15.10 is the current CI/IPA-verified input-pipeline benchmark.
 - **Work ID:** `DEV-home-carousel-drag-smoothness`
 - **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / pipeline probe
 - **Task:** Preserve the accepted Build241 carousel appearance/gesture feel while locating the real cause of the no-screen-recording ~90 FPS presentation ceiling on iPhone 15 Pro Max / iOS 17.0.
@@ -8,9 +8,9 @@
 - **Controlling normal-behavior diagnostic base:** Build265 exact product source `af92164890e7dc1c869bd586577b39177335df5f`.
 - **Build269 diagnostic:** `diag/home-carousel-persistent-blur-build269`, exact product source `28d09e1cf7b3932e9033c370df12026889033197`.
 - **Build270 diagnostic:** `perf/home-carousel-foreground-residency-build270`, exact product source `cee2031aa7dc2abb59fb371196e22fbce56e32ee`.
-- **Current working branch:** `diag/home-carousel-tree-scope-build275`.
-- **Current exact product source:** `8c6a882c03e60e9d2f49e9bc95b09f9e3712577b`.
-- **Current candidate:** OnePlayer `0.15.8 (275)` — target-device scope probes all show 120 FPS, but the normal `PIPE CAROUSEL` same-build control is still required before interpreting the Build274→275 difference.
+- **Current working branch:** `diag/home-carousel-input-pipeline-build277`.
+- **Current exact product source:** `1446640b0d9cec5cb2f39d36cff0bfeca4efd31d`.
+- **Current candidate:** OnePlayer `0.15.10 (277)` — diagnostic-only `TOUCH LAYER / PAN LAYER / SCROLLVIEW` input benchmark; exact-source CI passed and IPA independently verified; target-device input HUD comparison pending.
 - **Target device:** iPhone 15 Pro Max / iOS 17.0.
 - **Deployment Target:** iOS 15.0.
 
@@ -182,30 +182,46 @@ Therefore Build274's `TREE FULL≈90` is no longer a reproducible invariant. Pos
 
 Build275 evidence is now: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device probe screenshots ✅ / all supplied automatic/simple modes = 120 ✅ / normal same-build CAROUSEL control pending ❌ / stable ❌**.
 
+## Build275 same-package control result — 2026-08-31
+
+The user completed the missing normal control in the **same Build275 package** with screen recording off: **`PIPE CAROUSEL ≈90 FPS`**. The same package/session family already showed **`TREE FULL=120 / TREE HERO=120 / TREE BACKDROP=120 / CA=120 / DISPLAYLINK=120 / SWIFTUI=120`** through the real system FPS HUD. This supersedes the earlier attempt to treat Build274 `TREE FULL≈90` as a stable full-tree ceiling: that result did not reproduce in Build275 and must not remain the causal foundation.
+
+The decisive boundary is now input/publication rather than steady-state presentation cost. In exact Build275 source, normal manual drag writes `transitionProgress` only when the custom UIKit recognizer receives a delivered `touchesMoved` callback; the diagnostic max-refresh `CADisplayLink` running during drag only records cadence and does not drive the carousel. Historical device logs also show delivered-touch/progress-publication/render-change cadence materially sparser than the near-120 display-link callbacks. Do not re-open blur, Hero/backdrop residency, generic SwiftUI/CALayer capability or full-tree component-removal directions from this evidence.
+
+## Build277 / 0.15.10 — input-pipeline benchmark
+
+Build277 branches from exact Build275 source and changes only `Sources/Core/AppIdentity.swift` plus diagnostic `Sources/UI/EmbyHomeFramePipelineProbeV3.swift`. `EmbyHomeCoreV3.swift`, `EmbyHomeHeroV3.swift`, `EmbyHomeCarouselInteractionV3.swift`, and `EmbyHomeCarouselStateV3.swift` remain exact Build275 blobs `ae9e98c09bd10294032d08382b53a18f31bf42ac`, `ab2ab5d80a59e174622dca0006c0f3aad4111a54`, `f8df5af61101c0272c5ec378caae617000b8fcea`, and `96f38514cfb09668f11c21a61105ac87a2f26f3d`.
+
+New black-screen diagnostic modes compare the input layer while avoiding carousel-tree cost: `TOUCH LAYER` is custom `UIGestureRecognizer.touchesMoved → CALayer`, `PAN LAYER` is `UIPanGestureRecognizer → CALayer`, and `SCROLLVIEW` is native horizontal `UIScrollView`. Each input probe carries the same device-max refresh request as the carousel diagnostic so system power-policy downshifting does not contaminate the comparison; the no-op refresh driver does not move the marker or mutate product carousel state. No interpolation, predicted smoothing, timer/watchdog/retry/fallback, product gesture-owner replacement, or P0 change is included.
+
+Corrected authoritative exact product source: `1446640b0d9cec5cb2f39d36cff0bfeca4efd31d`. The earlier source `9402570e31f6a681e817766e1bea81392d739d5e` compiled successfully but lacked the fair max-refresh request in the three input probes and is **not** a real-device baseline. Corrected Xcode 16.4 run/job `33336619261 / 99324579844` passed. Artifact `9739256003`, digest `sha256:06f93adeb462844b49e2c202ec694add5401f68afb49595f94cc3ddc68dbe37d`. IPA SHA-256 `e27c86b5084db257174d3afd5cc33e147be6868ef6262245f8a3361ed63f097c`; source ZIP SHA-256 `32516a75d88f1f98c9fa10159f1ac77772e9aa05098072079538c20bc337e396`. Independent unpack verifies IPA integrity, `com.embyplayerlab.app / OnePlayer / 0.15.10 (277)`, `MinimumOSVersion=15.0`, and MinOS audit OK.
+
+Target-device procedure: recording off, measure `CAROUSEL`, then drag continuously in `TOUCH LAYER`, `PAN LAYER`, and `SCROLLVIEW`, and report the sustained HUD values plus App log. Example: `CAROUSEL 90 / TOUCH 90 / PAN 90 / SCROLLVIEW 120`.
+
 ## Scope guard
 
 No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM→302→115/CDN code is in scope. No Build241 gesture thresholds, rapid-swipe ownership, Hero rendering implementation, image cache or transport contract is modified by Build271.
 
 ## Acceptance / test procedure
 
-1. Use the already-installed Build275 on iPhone 15 Pro Max / iOS 17.0 with screen recording **off**.
-2. Cycle back to `PIPE CAROUSEL`.
-3. Perform the same rapid continuous horizontal swipes used for Build265/269/270 and observe the real system FPS HUD for several seconds.
-4. Report the sustained/typical value only, e.g. `Build275 CAROUSEL≈90` or `Build275 CAROUSEL≈120`.
-5. Do not create another runtime build until this same-package control is known; Build275 `TREE FULL=120` already invalidates using Build274's ~90 full-tree result as a stable causal premise.
+1. Use iPhone 15 Pro Max / iOS 17.0 with screen recording **off**.
+2. `PIPE CAROUSEL`: rapidly swipe as the normal control and note sustained real system HUD.
+3. Tap to `PIPE TOUCH LAYER`: on the black screen, drag the white marker continuously left/right and note HUD.
+4. Tap to `PIPE PAN LAYER`: drag continuously and note HUD.
+5. Tap to `PIPE SCROLLVIEW`: drag/fling the native horizontal content and note HUD.
+6. Send one line such as `CAROUSEL 90 / TOUCH 90 / PAN 90 / SCROLLVIEW 120` plus App log.
+7. Do not infer performance from internal `CADisplayLink` frequency; real HUD with recording off remains authoritative.
 ## Validation state
 
-- Build265 Code / CI / IPA: ✅. Real-device: ✅ ~90 no-recording ceiling; not stable.
-- Build269 Code / CI / IPA: ✅. Real-device: ✅ ~90; blur-primary hypothesis rejected; diagnostic-only.
-- Build270 Code / CI / IPA: ✅. Real-device: ✅ ~90; foreground-residency hypothesis rejected; diagnostic-only.
-- Build271 Code / CI / IPA: ✅. Real-device pipeline: ✅ `CA 60 / DISPLAYLINK 120 / SWIFTUI 120`; generic display-link/CALayer/SwiftUI 120 capability proven; not stable.
-- Carousel Build273: ❌ retired identity collision; poster-grid owns Build273; no valid carousel package attribution.
-- Build274 Code / CI / IPA: ✅. Real-device: ✅ `CAROUSEL ≈90 / TREE FULL ≈90`; full steady-state real carousel tree is sufficient to reproduce the ceiling; diagnostic-only.
-- Build275 Code written: ✅ exact product source `8c6a882c03e60e9d2f49e9bc95b09f9e3712577b`.
-- Build275 exact-source CI passed: ✅ run/job `33334208681 / 99318066653`.
-- Build275 IPA produced + independently verified: ✅ artifact `9738555839`; IPA SHA `26229afe7b1cec29ab2bf2cca18c0348fd3337a2d6f996bd2a6b6b07c5bebe64`; source SHA `4bf558ce4731fb3813e276f19f43e73450f360c79667c48c0a2122fa4848c0f4`; MinOS 15.0.
-- Build275 target-device probes: ✅ screenshots show `TREE FULL / TREE HERO / TREE BACKDROP / CA / DISPLAYLINK / SWIFTUI = 120`; normal same-build `PIPE CAROUSEL` control still pending.
+- Build265 / 269 / 270: target-device ~90 control/rejected component A/Bs; not stable.
+- Build271: target-device `DISPLAYLINK=120 / SWIFTUI=120`; generic pipeline 120 capability proven.
+- Build274: target-device `CAROUSEL≈90 / TREE FULL≈90`, but TREE≈90 did not reproduce in Build275 and is not stable causal evidence.
+- Build275 Code/CI/IPA: ✅. Real-device: ✅ **same-package `CAROUSEL≈90` while TREE FULL/HERO/BACKDROP/CA/DISPLAYLINK/SWIFTUI=120**; input/publication boundary isolated; diagnostic-only.
+- Build277 Code written: ✅ exact product source `1446640b0d9cec5cb2f39d36cff0bfeca4efd31d`.
+- Build277 exact-source CI passed: ✅ run/job `33336619261 / 99324579844`.
+- Build277 IPA produced + independently verified: ✅ artifact `9739256003`; IPA SHA `e27c86b5084db257174d3afd5cc33e147be6868ef6262245f8a3361ed63f097c`; source SHA `32516a75d88f1f98c9fa10159f1ac77772e9aa05098072079538c20bc337e396`; MinOS 15.0.
+- Build277 target-device input benchmark: ❌ pending.
 - Stable/frozen reopened performance task: ❌.
 ## Next exact action
 
-Do **not** change runtime yet. In the already-installed Build275, return to `PIPE CAROUSEL`, keep recording off, rapidly swipe for several seconds, and report the real HUD. That single value determines whether the next A/B targets the Build274→275 HomeCore structural difference or returns to interaction-lifecycle isolation.
+Install corrected Build277 and keep screen recording off. Compare `CAROUSEL → TOUCH LAYER → PAN LAYER → SCROLLVIEW` under continuous horizontal finger motion, then provide the sustained real HUD values and App log. Do not change product gesture ownership, add display-link interpolation, or reopen render-tree component A/Bs before this input-boundary result.

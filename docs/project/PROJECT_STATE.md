@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated 2026-08-31: Home carousel Build275 target-device screenshots show `TREE FULL / TREE HERO / TREE BACKDROP / CA / DISPLAYLINK / SWIFTUI = 120 FPS` with recording off. Because Build274 had `TREE FULL≈90`, the Build275 split is not yet causal evidence; the next controlling datum is normal `PIPE CAROUSEL` in the same Build275 package/session. No additional runtime optimization should be made before that control. Poster/Aether remain isolated and all P0 playback/transport contracts remain protected._
+_Last updated 2026-08-31: Home carousel Build275 same-package target-device control is now `CAROUSEL≈90` while `TREE FULL/HERO/BACKDROP/CA/DISPLAYLINK/SWIFTUI=120` with recording off. The full presentation tree therefore has 120 Hz headroom; the active boundary is real input→progress publication. Build277 / 0.15.10 is exact-source CI/IPA verified and compares custom touch, UIPan and native UIScrollView input pipelines. Poster Build276/Aether remain isolated; all P0 playback/transport contracts stay protected._
 
 ## Current accepted overall baseline
 
@@ -46,15 +46,11 @@ Build216 inherits all accepted/frozen player, PiP, transport, playback-cache, ep
 - **Build213**: Favorites + Library 7-tab disk-backed warm presentation cache; cached-first after relaunch, live refresh remains authoritative, successful accepted state writes through, failed refresh retains old snapshot; target-device accepted through PR #260.
 - **Build216**: detail range-pill taps synchronously stop active native episode-row deceleration before the existing Build191 range-first selection and 0.32 s target scroll; target-device accepted and merged through PR #261.
 
-## Active: Home carousel presented-FPS diagnosis — Build275 / 0.15.8
+## Active: Home carousel input/publication diagnosis — Build277 / 0.15.10
 
-Build274 target-device evidence closes the prior pipeline boundary: normal `CAROUSEL` and fixed-pair `TREE FULL` both remain around ~90 FPS in the real system HUD with recording off. Therefore touch/release/settle/resident rotation/new-target loading are not required to reproduce the ceiling; the full real carousel transition tree is sufficient.
+Build275 now supplies the decisive same-package target-device control with recording off: normal finger-driven `PIPE CAROUSEL≈90`, while `TREE FULL=120`, `TREE HERO=120`, `TREE BACKDROP=120`, corrected `CA=120`, `DISPLAYLINK=120`, and `SWIFTUI=120`. Therefore the unchanged carousel presentation tree and generic SwiftUI/CALayer paths have real 120 Hz headroom; Build274 `TREE FULL≈90` did not reproduce and is no longer a stable causal foundation.
 
-Exact source shows `transitionProgress` is `@Published` on `V3HomeCarouselTransitionState`, and the high-frequency publication is observed by two presentation scopes rather than the whole Home root: the persistent full-screen backdrop and the Hero subtree. Build275 isolates those observers without changing the real Hero/Interaction/State product files. `TREE FULL` updates both; `TREE HERO` updates only Hero while backdrop remains mounted/frozen; `TREE BACKDROP` updates only backdrop while Hero remains mounted/frozen. Exact source `8c6a882c03e60e9d2f49e9bc95b09f9e3712577b`; run/job `33334208681 / 99318066653`; artifact `9738555839`; IPA SHA `26229afe7b1cec29ab2bf2cca18c0348fd3337a2d6f996bd2a6b6b07c5bebe64`; MinOS 15.0. Target-device scope split is pending; no stable/fix claim.
-
-### Build275 target-device control conflict — 2026-08-31
-
-Build275's supplied target-device screenshots show `TREE FULL=120`, `TREE HERO=120`, `TREE BACKDROP=120`, corrected `CA=120`, `DISPLAYLINK=120` and `SWIFTUI=120` with recording off. This directly conflicts with Build274's earlier sustained `TREE FULL≈90`. Because the FULL control itself changed, Hero-vs-backdrop attribution is not valid yet. Exact source comparison shows the product Hero/Interaction/State blobs are unchanged; the meaningful Build274→275 runtime delta is the conditional HomeCore structure around the two transition-scope mounts and probe-mode routing. The next required evidence is normal `PIPE CAROUSEL` in the same Build275 package/session. Runtime changes are paused until that value is known.
+Exact normal interaction source publishes `transitionProgress` from delivered custom-recognizer `touchesMoved` callbacks; the device-max display link used during manual drag only diagnoses cadence. Build277 isolates this boundary without changing HomeCore/Hero/Interaction/State product blobs. Diagnostic modes compare `TOUCH LAYER` (custom touchesMoved→native CALayer), `PAN LAYER` (UIPanGestureRecognizer→native CALayer), and `SCROLLVIEW` (native horizontal UIScrollView), all under an equal device-max refresh request. Exact source `1446640b0d9cec5cb2f39d36cff0bfeca4efd31d`; corrected run/job `33336619261 / 99324579844`; artifact `9739256003`; IPA SHA `e27c86b5084db257174d3afd5cc33e147be6868ef6262245f8a3361ed63f097c`; source SHA `32516a75d88f1f98c9fa10159f1ac77772e9aa05098072079538c20bc337e396`; MinOS 15.0. Real-device input benchmark pending; no product owner/smoothing/fix claim.
 
 ## Completed / frozen: Home carousel interaction — Build241 / 0.14.74
 
