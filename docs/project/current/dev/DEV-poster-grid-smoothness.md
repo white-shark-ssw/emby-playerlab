@@ -2,15 +2,15 @@
 
 ## Status
 
-**Active — Build259 target-device testing proves the shared 3×3 device-max refresh request is effective: Library/Search display p50/p95 moved from Build258 ~16.67 ms to ~8.34 ms and obvious jitter is now difficult to see. A residual EX-vs-OnePlayer hand-feel gap remains: EX feels like a continuous smooth curve while OnePlayer still feels slightly coarse/wave-like. Build260 / 0.14.93 is the current diagnostic candidate; it preserves Build259 high refresh and measures real per-display-frame native deceleration continuity. CI/IPA verified, target-device pending, not stable.**
+**Active — Build261 is target-device tested. Home vertical scrolling now reaches the intended 120 Hz cadence and is noticeably better, but occasional long-frame tails remain. Library Build261 logs prove two concurrent layers: high-speed SwiftUI cell lifecycle churn is a direct long-gap contributor, while a separate untracked long-frame source remains even with fixed item count. Build261 / 0.14.94 is the current diagnostic authority, Draft PR #270, not stable.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
-- **Working branch**: `perf/poster-grid-curve-diagnostics-build260`
-- **Draft PR**: #268
-- **Superseded PRs**: #267 Build259 A/B completed and closed without merge; #266 Build258 diagnostic closed without merge; #265 Build257 fallback closed without merge; #259 stale Build243 poster branch retained only as historical diagnostic evidence
-- **Current branch / PR head**: `b9a5de5255650f04e312e117f47453122de56adc`
-- **Current candidate**: OnePlayer `0.14.93 (260)`; directly parented from Build259 exact source `39168e560d7e626557de8ebde6a88a5d38b3478b`; CI/IPA verified 2026-08-30; target-device pending
+- **Working branch**: `perf/poster-grid-long-frame-build261`
+- **Draft PR**: #270
+- **Superseded PRs**: #268 Build260 diagnostic completed and closed without merge; #267 Build259 A/B completed and closed without merge; #266 Build258 diagnostic closed without merge; #265 Build257 fallback closed without merge; #259 stale Build243 poster branch retained only as historical diagnostic evidence
+- **Current branch / PR head**: `e552bebd072a915e6cb10d591d704a5a3c342406`
+- **Current candidate**: OnePlayer `0.14.94 (261)`; directly parented from Build260 exact source `b9a5de5255650f04e312e117f47453122de56adc`; CI/IPA verified and target-device tested 2026-08-30; not stable
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted carousel foundation**: Build241 manual interaction/presentation remains frozen; only automatic-transition scheduling during Home vertical motion is reopened by new device evidence
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
@@ -51,6 +51,26 @@ Build260 Xcode 16.4 run/job **`33307963917 / 99247767453`** succeeded. Artifact 
 **Evidence:** Build259 target-device tested ✅ / Build259 high-refresh effectiveness proven ✅ / Build259 obvious jitter substantially reduced ✅ / residual EX-vs-OnePlayer hand-feel gap remains ✅ / Build259 final/stable ❌ / Build260 Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / Build260 target-device tested ❌ / physics fix claimed ❌ / stable ❌.
 
 **Next exact action:** install Build260 and perform normal long inertial flings on Library 3×3 and Search full-results 3×3; Search recommendations are secondary and do not need deliberate repeated +6 appends for the first pass. Return the App log. If `decel_display_zero` + `decel_display_catchup` are frequent while display cadence stays ~8.34 ms, investigate native scroll-motion/physics ownership next. If per-display deceleration deltas are already continuous with few/no zero→catch-up pairs, do **not** tune `decelerationRate` by guess; shift the next investigation toward shared SwiftUI Grid presentation/compositing.
+
+## Build261 target-device long-frame attribution — 2026-08-30
+
+Build261 / OnePlayer **0.14.94 (261)** exact source `e552bebd072a915e6cb10d591d704a5a3c342406`, branch `perf/poster-grid-long-frame-build261`, Draft PR #270, directly extends Build260 with two narrowly-scoped changes: Home reuses its existing real ancestor vertical `UIScrollView` observer to request `CAFrameRateRange(minimum: 80, maximum: deviceMaximum, preferred: deviceMaximum)` only during real drag/deceleration and logs `HomeScrollCadence`; Library preserves Build260 cadence sampling and attributes every `>=12.5 ms` display gap to same-frame cell appear/disappear churn, load-ahead, item-count change, offset-update count, or `untracked`. Exact Build260→261 delta is five paths: AppIdentity, Home scroll observer, poster cadence diagnostics, Build261 changelog and cadence checker. No `decelerationRate`, Home carousel interaction/presentation, `EmbyHomeCoreV3`, `EmbyPosterGrid.swift`, Grid geometry, Search semantics, image/cache policy, Player/MPV/PiP, UnifiedTransport, STRM/302/115/CDN or Deployment Target behavior changes.
+
+Build261 Xcode 16.4 run/job **`33310546942 / 99254688579`** succeeded. Artifact `OnePlayer-0.14.94-build261-long-frame`, ID **`9731868664`**, digest `sha256:bf9dab2b5acab5befc5516ce7bb5e920e9e01277caa757f137173c9c8b33c14d`; IPA SHA-256 `d5f719c2cbcd8df4908f9f7ecfd9b5c5db88288cdf16cd45b09a263966511724`; package `com.embyplayerlab.app`, `0.14.94 (261)`, MinOS 15.0. Exact five-path scope, dedicated checker, `git diff --check`, Release compile, package identity, MinOS and artifact upload all passed.
+
+Target-device result from `OnePlayer-App-1788093610.log` on iPhone 15 Pro Max / iOS 17.0:
+
+- **Home improved:** user reports Home is better than before. Across 12 Home motion sessions / 3,309 display samples, every session reports display p50/p95 `8.34 ms`; 9/12 sessions never exceed `16.67 ms`. Remaining long tails are max `50.31 / 36.24 / 76.94 ms`. The first two occur immediately after Home refresh / a burst of HTTP requests; the 76.94 ms sample has no current Home attribution. High refresh is effective but Home is not stable.
+- **Library aggregate:** 49 sessions / 9,573 display samples; `356` gaps `>=12.5 ms`, `94` gaps `>=25 ms`, `57` gaps `>=33.3 ms`, max `175.79 ms`. `193` long gaps overlap cell lifecycle churn; `162` (`45.5%`) are completely `untracked` by current cell/load-ahead/item-count categories. Tracked categories can overlap, so do not sum them as exclusive percentages.
+- **Fixed-count evidence:** sessions with no item-count changes still contain `170` long gaps, `41 >=25 ms`, `23 >=33.3 ms`, max `112.97 ms`. Pagination/item-count diff is therefore not sufficient.
+- **Cell-churn proof:** one fixed `600→600`, 4.74 s fast-scroll session records `73` long gaps; `67` overlap cell churn, with `33 >=25 ms`, `16 >=33.3 ms`, max `70.70 ms`, and up to 12 cell appears + 12 disappears within one long-gap interval. High-speed SwiftUI cell lifecycle churn is a proven contributor.
+- **Second-source proof:** fixed `60→60` pure scrolling can still produce a `33.82 ms` long gap with zero cell churn/load-ahead/item-count changes in that gap. A separate main-thread/rendering source remains.
+
+**Controlling interpretation:** the EX comparison should now be framed as long-frame-tail elimination, not merely requesting 120 Hz. Library has at least two layers: high-speed cell lifecycle churn plus an untracked long-frame source. Do not claim pagination is the root cause, do not tune native scroll physics by guess, and do not wholesale-replace the Grid before the severe `untracked` gaps are isolated. Home's 120 Hz request is a real improvement but its remaining occasional tails also need attribution.
+
+**Evidence:** Build261 Code written ✅ / CI passed ✅ / IPA produced ✅ / target-device tested ✅ / Home improvement confirmed ✅ / Home stable ❌ / Library cell-churn contribution proven ✅ / separate untracked long-frame source proven ✅ / overall smoothness stable ❌.
+
+**Next exact action:** before a behavioral Grid rewrite, extend severe-gap attribution so `>=25 ms` / `>=33.3 ms` gaps can distinguish cell lifecycle work from image-main-thread publication / SwiftUI update-layout-presentation work and other current owners. Use the same exact Build261 lineage; do not add delay/debounce/timer/watchdog or change scroll physics. For Home, correlate the remaining long gaps with refresh/model/image publication rather than changing the now-effective refresh request.
 
 ## Build229 latest target-device result / candidate identity guard — 2026-08-29
 
