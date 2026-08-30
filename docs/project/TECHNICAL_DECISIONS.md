@@ -303,3 +303,11 @@ Build274 / 0.15.7 implements exactly that A/B. One `CADisplayLink` drives the ex
 Build274 exact source `6d18ca0cdb02bbce3f8fee13f8b5dc082a43ab63`; run/job `33333236724 / 99315483085`; artifact `9738285110`; IPA SHA `2fc79d5d09aa8e0c2f6384b4a50e933cf79f885c4b8d9fd05932fc1a3cc6295a`; MinOS 15.0 verified. This is CI/IPA evidence only until the target-device TREE120 HUD result exists.
 
 Build-number attribution rule reinforced: carousel Build273 is invalid/retired because poster-grid had already allocated Build273. Never reuse a build identity across parallel tasks; carousel TREE120 begins at Build274.
+
+## D023 — Full-tree ceiling reproduced; split the two real transition observer scopes
+
+Build274 target-device testing with screen recording off reports `CAROUSEL ≈90 / TREE FULL ≈90`. The TREE probe already removes touch delivery, release/settle, resident-window rotation and new-target image selection while driving the exact existing `transitionProgress` owner between a fixed pair. Therefore those interaction-lifecycle events are not necessary to reproduce the presented-FPS ceiling; steady-state full real carousel-tree invalidation/composition is sufficient.
+
+Exact source inspection establishes the next boundary without guessing. `V3HomeCarouselTransitionState.progress` is `@Published`, while the high-frequency progress stream is observed through exactly two real `V3HomeCarouselTransitionScope` presentation owners: the persistent full-screen backdrop and the Hero subtree. Do not resume generic ProMotion flags, touch smoothing, easing, timer/watchdog, blur-only removal, foreground-residency tuning or Player/Transport changes before these two observers are separated.
+
+Build275 / 0.15.8 performs that separation while keeping both static trees mounted. `TREE FULL` observes both, `TREE HERO` observes only Hero with backdrop frozen, and `TREE BACKDROP` observes only backdrop with Hero frozen. The real `EmbyHomeHeroV3.swift`, `EmbyHomeCarouselInteractionV3.swift`, and `EmbyHomeCarouselStateV3.swift` blobs remain unchanged. Exact source `8c6a882c03e60e9d2f49e9bc95b09f9e3712577b`; run/job `33334208681 / 99318066653`; artifact `9738555839`; IPA SHA `26229afe7b1cec29ab2bf2cca18c0348fd3337a2d6f996bd2a6b6b07c5bebe64`; MinOS 15.0. Target-device scope results are still required before any product optimization.

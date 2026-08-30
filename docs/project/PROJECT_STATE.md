@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated 2026-08-31: Home Build271 target-device pipeline evidence now shows real no-recording HUD `CA 60 / DISPLAYLINK 120 / SWIFTUI 120`; because the Build271 CA probe alone omitted `CAAnimation.preferredFrameRateRange`, this rejects a generic 60/90 FPS UIKit/SwiftUI/Combine/CALayer/display-link ceiling and moves the boundary to the actual carousel tree versus interaction lifecycle. Build274 / 0.15.7 is the current CI/IPA-verified full-tree TREE120 diagnostic, target-device pending. Carousel Build273 is retired because poster-grid already owns Build273. Poster Build272 remains target-device rejected with native UICollectionView as its next independent A/B. Build216 remains the accepted packaged overall baseline; Search Build256 and all P0 playback/transport contracts remain protected._
+_Last updated 2026-08-31: Home carousel Build274 is now target-device tested at `CAROUSEL ≈90 / TREE FULL ≈90` with screen recording off, proving the full steady-state real carousel tree itself can reproduce the presented-FPS ceiling. Build275 / 0.15.8 is the current CI/IPA-verified diagnostic and splits the two actual high-frequency transition observers into `TREE HERO` and `TREE BACKDROP`. Poster and Aether remain separate; Search Build256 and all P0 playback/transport contracts stay protected._
 
 ## Current accepted overall baseline
 
@@ -45,6 +45,12 @@ Build216 inherits all accepted/frozen player, PiP, transport, playback-cache, ep
 - **Build199**: Add/Edit Emby modern editor, same-server route selection, cached-first auto-start, local retained password and optional synchronizable Keychain password for iCloud; merged PR #256.
 - **Build213**: Favorites + Library 7-tab disk-backed warm presentation cache; cached-first after relaunch, live refresh remains authoritative, successful accepted state writes through, failed refresh retains old snapshot; target-device accepted through PR #260.
 - **Build216**: detail range-pill taps synchronously stop active native episode-row deceleration before the existing Build191 range-first selection and 0.32 s target scroll; target-device accepted and merged through PR #261.
+
+## Active: Home carousel presented-FPS diagnosis — Build275 / 0.15.8
+
+Build274 target-device evidence closes the prior pipeline boundary: normal `CAROUSEL` and fixed-pair `TREE FULL` both remain around ~90 FPS in the real system HUD with recording off. Therefore touch/release/settle/resident rotation/new-target loading are not required to reproduce the ceiling; the full real carousel transition tree is sufficient.
+
+Exact source shows `transitionProgress` is `@Published` on `V3HomeCarouselTransitionState`, and the high-frequency publication is observed by two presentation scopes rather than the whole Home root: the persistent full-screen backdrop and the Hero subtree. Build275 isolates those observers without changing the real Hero/Interaction/State product files. `TREE FULL` updates both; `TREE HERO` updates only Hero while backdrop remains mounted/frozen; `TREE BACKDROP` updates only backdrop while Hero remains mounted/frozen. Exact source `8c6a882c03e60e9d2f49e9bc95b09f9e3712577b`; run/job `33334208681 / 99318066653`; artifact `9738555839`; IPA SHA `26229afe7b1cec29ab2bf2cca18c0348fd3337a2d6f996bd2a6b6b07c5bebe64`; MinOS 15.0. Target-device scope split is pending; no stable/fix claim.
 
 ## Completed / frozen: Home carousel interaction — Build241 / 0.14.74
 
