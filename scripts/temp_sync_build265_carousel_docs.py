@@ -1,0 +1,187 @@
+from pathlib import Path
+import re
+
+checkpoint = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+checkpoint.write_text('''# DEV-home-carousel-drag-smoothness
+
+- **Status:** Active — Build264 target-device stress confirms the Build262 hard-freeze regression is removed while the rapid-swipe cadence improvement remains around 90–100 FPS; Build265 / 0.14.98 is exact-source CI/IPA verified and awaits target-device 120 Hz long-frame A/B.
+- **Work ID:** `DEV-home-carousel-drag-smoothness`
+- **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps
+- **Task:** Preserve the Build241 visual/release foundation and the Build262 rapid-swipe ownership improvements while eliminating remaining long-frame tails enough to approach EX's stable 120 FPS rapid-swipe behavior on iPhone 15 Pro Max / iOS 17.0.
+- **Base branch:** `main`
+- **Build264 real-device authority:** `perf/home-carousel-rapid-swipe-build264`, exact source `323a1ba8c76382de7b893d50e3cf17388747b05f`, PR #272 closed without merge after test completion.
+- **Current working branch:** `perf/home-carousel-image-analysis-dedupe-build265`
+- **Current Draft PR:** #274
+- **Current exact product source:** `af92164890e7dc1c869bd586577b39177335df5f`
+- **Current candidate:** OnePlayer `0.14.98 (265)`.
+- **Target device:** iPhone 15 Pro Max / iOS 17.0
+- **Deployment Target:** iOS 15.0.
+
+## Controlling evidence
+
+### Build241 reopen
+
+Build241 / 0.14.74 remains the merged visual/release baseline, but its former final/frozen classification is revoked. The user's matched EX stress recording showed EX holding the on-screen 120 FPS indicator while Build241 could fall to roughly 30/44 FPS and repeated rapid horizontal swipes could lose ownership to the Home vertical ScrollView.
+
+### Build262 / 0.14.95
+
+Build262 exact source `86ac642ec33ad927a1bc3688824bfe0909b22bab` introduced two independent directions:
+
+1. **Interaction continuity:** small spatial axis hysteresis in the existing UIKit recognizer plus `prepareCarouselForNewInteractiveDrag()` so a new swipe can take over a completed commit/cancel settle endpoint during the old delayed-cleanup window. Build241 `>=500 pt/s` fling and `>=0.28` progress rules remain.
+2. **Persistent presentation experiment:** current/previous/next residency for the blurred persistent backdrop.
+
+Target-device stress was split: rapid-swipe FPS improved to roughly 90–100 and `HomeCarouselRapidSwipe` proved the new takeover path executes, but the persistent-residency experiment could hard-freeze the visible blended frame while release/settled state continued advancing. Therefore Build262 is not a product candidate; interaction changes are retained and persistent three-slot residency is rejected.
+
+### Build264 / 0.14.97 target-device result — 2026-08-30
+
+Build264 exact source `323a1ba8c76382de7b893d50e3cf17388747b05f` retains Build262 interaction changes and restores Build241's current + transition-target persistent backdrop.
+
+User verdict from repeated stress:
+
+- **no hard visual freeze reproduced**;
+- on-screen FPS still generally holds around **90–100 FPS**;
+- therefore the cadence gain survives removal of persistent three-slot residency, strongly separating the useful interaction continuity work from the rejected persistent-residency experiment.
+
+Uploaded `OnePlayer-App-1788100650.log`:
+
+- 274 `HomeCarouselCadence` sessions;
+- 3,476 display intervals;
+- weighted display interval average **~9.14 ms**, equivalent to roughly **109 Hz** at the diagnostic display-link layer;
+- **297** intervals `>=12.5 ms`;
+- **55** intervals `>=20 ms`;
+- **4** intervals `>=30 ms`;
+- median session display p95 remains **16.67 ms**;
+- every one of the 55 sessions containing a `>=20 ms` gap places its worst gap within 30 ms of the latest carousel image event; **49** worst gaps associate with `persistent`, **6** with `hero`.
+
+The device-max refresh request is already active (`maximum_fps=120`, `requested_fps=120`). The remaining EX gap is therefore a long-frame/presentation-cost problem, not a missing 120 Hz request.
+
+## Build265 / 0.14.98 — repeated image-analysis dedupe A/B
+
+Exact product source: `af92164890e7dc1c869bd586577b39177335df5f`.
+
+Directly based on target-device-tested Build264 and changes exactly two files:
+
+1. `Sources/Core/AppIdentity.swift`: `0.14.97 → 0.14.98`.
+2. `Sources/UI/EmbyHomeCarouselStateV3.swift`: an ephemeral per-item `ObjectIdentifier` cache records the decoded `UIImage` object already analyzed. Hero/persistent/preload callbacks for the same cached UIImage now skip repeated `EmbyImageContrastAnalyzer.prefersLightForeground` CoreImage work; a newly decoded/replaced UIImage object is analyzed again. The identifier cache is filtered to current carousel IDs during synchronization.
+
+This change intentionally does **not** touch `EmbySharedImageAndNavigation.swift`, because the parallel poster-grid task currently owns changes in that shared file.
+
+Preserved exactly from Build264:
+
+- Build262 axis hysteresis and rapid-settle takeover;
+- one UIKit gesture owner;
+- `>=500 pt/s` fling + `>=0.28` progress commit;
+- Build241 current+target persistent backdrop;
+- Build226 clear-Hero current/previous/next residency;
+- Build231 foreground `compositingGroup()`;
+- 1400px carousel image request;
+- blur radius 30;
+- normal 0.22 / 0.18 settle feel;
+- Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM→302→115/CDN P0/Frozen contracts.
+
+## Build265 CI / package evidence
+
+- Exact source: `af92164890e7dc1c869bd586577b39177335df5f`.
+- Exact-source CI branch: `ci/build265-carousel-20260830`.
+- Run/job: **`33318027714 / 99274932594` — success**.
+- Artifact: `OnePlayer-0.14.98-build265-carousel-image-analysis-dedupe`, ID **`9734083764`**.
+- GitHub artifact digest: **`sha256:8be6c21d32fb460856947864d23d0912f1e664d94e6f4ea6ea4765574b67d8dc`**, independently recomputed and matched.
+- IPA SHA-256: **`cf381c823e863562b1f21d40d61926e693b76fac3ba4d5023e7ce2c154ffa100`**.
+- Source ZIP SHA-256: **`b1cf0debf996ea30ba0e7171b035749e5f31192a7e4e70db7e146d76064d2b53`**.
+- Reopened package: `com.embyplayerlab.app`, OnePlayer `0.14.98 (265)`, `MinimumOSVersion=15.0`, `CADisableMinimumFrameDurationOnPhone=true`.
+- Main advancement since the product merge base is docs-only; no product/dependency build input changed, so exact-source CI remains applicable.
+
+## Acceptance criteria
+
+1. No Build262-style hard visual freeze.
+2. Rapid consecutive horizontal swipes retain carousel ownership and the Build262 settle-takeover behavior.
+3. Build241/264 visual/release behavior remains intact.
+4. Compare Build265 against Build264 using the same rapid-swipe stress: on-screen FPS plus `HomeCarouselCadence` counts for `>=12.5 / >=20 / >=30 ms` gaps.
+5. Stable-120 direction requires the long-frame tail to become rare enough that the target-device overlay remains near 120 under the same stress; a momentary 120 peak is not acceptance.
+6. Do not change image resolution, blur radius, animation curves or gesture math until Build265 establishes whether repeated contrast analysis is a material part of the remaining tail.
+
+## Validation state
+
+- Build264 Code/CI/IPA: ✅.
+- Build264 real-device tested: ✅ — hard freeze not reproduced; FPS generally ~90–100; remaining long-frame tail quantified.
+- Build265 Code written: ✅ exact source `af921648...`.
+- Build265 CI passed: ✅ `33318027714 / 99274932594`.
+- Build265 IPA produced + independently verified: ✅ artifact `9734083764`, hashes above.
+- Build265 real-device tested: ❌.
+- Stable/frozen: ❌.
+
+## Next exact action
+
+Install Build265 and repeat the same long rapid-swipe stress with the FPS overlay visible. Export the App log. Compare weighted display interval plus `>=12.5 / >=20 / >=30 ms` counts against Build264's 9.14 ms / 297 / 55 / 4 baseline. Also confirm no hard freeze and no renewed vertical-scroll ownership failure. If Build265 materially reduces long frames, retain the dedupe; if not, reject it as sufficient and move to the next image presentation/compositor cost rather than stacking speculative smoothing.
+''')
+
+module = Path('docs/project/MODULE_STATUS.md')
+text = module.read_text()
+row = '| Home carousel interaction | **Active — Build265 CI/IPA verified; target-device pending** | Build264 / 0.14.97 is the current real-device authority: the Build262 hard visual freeze no longer reproduces after restoring Build241 current+target persistent presentation, while repeated rapid swipes still hold roughly 90–100 FPS. `OnePlayer-App-1788100650.log` has 274 cadence sessions / 3,476 display intervals, weighted ~9.14 ms (~109 Hz), with 297 >=12.5 ms, 55 >=20 ms and 4 >=30 ms gaps; all 55 >=20 ms session worst gaps occur within 30 ms of a carousel image event (49 persistent, 6 hero). Build265 / 0.14.98 exact source `af921648...` keeps Build264 visuals/interaction and only deduplicates repeated contrast analysis for the same cached UIImage object in carousel-owned state. Run/job `33318027714 / 99274932594` passed; artifact `9734083764`; IPA SHA `cf381c823e863562b1f21d40d61926e693b76fac3ba4d5023e7ce2c154ffa100`; MinOS 15.0. Draft PR #274; target-device pending; not stable. |'
+text, n = re.subn(r'^\| Home carousel interaction \|.*$', row, text, flags=re.M)
+if n != 1: raise SystemExit(f'MODULE_STATUS carousel row replacements={n}')
+other = '| Other product modules | Active parallel work | Build216 / 0.14.49 remains the accepted packaged overall runtime identity. `main` contains the Build241 carousel baseline through PR #262; Build264 is the latest carousel real-device authority and Build265 is the unmerged CI/IPA-verified 120 Hz A/B. Build242 remains diagnostic-only. Search Build256 is stable/merged; poster and Aether remain separate Active tasks with independent checkpoints/branches/build identities. |'
+text, n = re.subn(r'^\| Other product modules \|.*$', other, text, flags=re.M)
+if n != 1: raise SystemExit(f'MODULE_STATUS other row replacements={n}')
+module.write_text(text)
+
+project = Path('docs/project/PROJECT_STATE.md')
+text = project.read_text()
+text = re.sub(r'^_Last updated .*?_$', '_Last updated 2026-08-30: Home-carousel Build264 target-device stress removed the Build262 hard-freeze regression while retaining roughly 90–100 FPS rapid-swipe cadence; Build265 / 0.14.98 is the current exact-source CI/IPA candidate targeting repeated image-analysis cost. Poster/Aether remain separate Active tasks; Search and P0 playback/transport contracts remain protected._', text, count=1, flags=re.M)
+carousel_section = '''## Active: Home carousel interaction / 120 Hz long-frame work
+
+Build241 / 0.14.74 remains the merged visual/release baseline through PR #262, but the former whole-carousel final/frozen classification is revoked by the user's 2026-08-30 EX comparison. EX holds the on-screen 120 FPS indicator through repeated rapid swipes; Build241 could fall to roughly 30/44 FPS and lose a rapid horizontal swipe to the Home vertical ScrollView.
+
+Build262 / 0.14.95 established a materially useful interaction direction: small axis hysteresis plus takeover of completed commit/cancel settle endpoints removes the old rapid-swipe ownership dead window. Its separate persistent current/previous/next residency experiment is rejected because the visible carousel could hard-freeze on a blended frame while release/settled state continued advancing.
+
+Build264 / 0.14.97 is now the controlling target-device runtime evidence. It keeps the Build262 interaction changes but restores Build241 current+transition-target persistent presentation. The user repeatedly stress-tested it and reports **no hard freeze**, while the FPS overlay remains generally **90–100**. `OnePlayer-App-1788100650.log` contains 274 cadence sessions / 3,476 display intervals with weighted average ~9.14 ms (~109 Hz), 297 intervals >=12.5 ms, 55 >=20 ms and 4 >=30 ms. All 55 sessions containing >=20 ms gaps place their worst gap within 30 ms of the latest image event; 49 associate with persistent and 6 with Hero. The existing device-max request already reports `maximum_fps=120` / `requested_fps=120`, so the remaining EX gap is long-frame/presentation cost rather than failure to request 120 Hz.
+
+Build265 / 0.14.98 exact source `af92164890e7dc1c869bd586577b39177335df5f`, Draft PR #274, is the current A/B. It keeps Build264 visual/gesture/presentation behavior unchanged and only avoids rerunning the CoreImage contrast analyzer when Hero/persistent/preload receive the exact same cached UIImage object; a replaced/redecoded object is analyzed again. It deliberately avoids the shared image file owned by the parallel poster task. Run/job `33318027714 / 99274932594` passed; artifact `9734083764`; IPA SHA `cf381c823e863562b1f21d40d61926e693b76fac3ba4d5023e7ce2c154ffa100`; source ZIP SHA `b1cf0debf996ea30ba0e7171b035749e5f31192a7e4e70db7e146d76064d2b53`; MinOS 15.0. Evidence: Code/CI/IPA verified; target-device pending; not stable.
+
+Build242 remains diagnostic-only and must not be inherited as normal carousel behavior. Build262 persistent three-slot residency is also rejected for product inheritance. Do not retune Build241's 500 pt/s / 0.28 release contract, 0.22/0.18 settle, clear-Hero residency or foreground compositing without new evidence.
+
+'''
+pattern = r'## Completed / frozen: Home carousel interaction — Build241 / 0\.14\.74\n.*?(?=## Completed: Search page optimization)'
+text, n = re.subn(pattern, carousel_section, text, count=1, flags=re.S)
+if n != 1:
+    pattern = r'## Active: Home carousel interaction / 120 Hz long-frame work\n.*?(?=## Completed: Search page optimization)'
+    text, n = re.subn(pattern, carousel_section, text, count=1, flags=re.S)
+if n != 1: raise SystemExit(f'PROJECT_STATE carousel section replacements={n}')
+project.write_text(text)
+
+tech = Path('docs/project/TECHNICAL_DECISIONS.md')
+text = tech.read_text()
+marker = '### D012 current 120 Hz rapid-swipe evidence — Build264 → Build265'
+block = '''### D012 current 120 Hz rapid-swipe evidence — Build264 → Build265
+
+Build264 target-device stress supersedes the Build262 persistent-residency experiment without undoing its interaction work. Restoring Build241 current+transition-target persistent presentation removes the observed hard visual freeze, while the user's repeated rapid swipes still hold roughly 90–100 FPS. The uploaded Build264 log records 3,476 display intervals at weighted ~9.14 ms (~109 Hz), with 297 >=12.5 ms, 55 >=20 ms and 4 >=30 ms gaps; all 55 sessions containing >=20 ms gaps place the worst gap within 30 ms of an image event, predominantly persistent (49) rather than Hero (6). Since the existing request already reports 120/120 maximum/requested FPS, do not solve this by adding another refresh owner, easing layer, timer or synthetic interpolation.
+
+Source inspection also shows Hero, persistent and preload can each receive the same decoded 1400px UIImage and each callback re-enters `updateCarouselImageMetrics`, which reruns synchronous CoreImage contrast analysis even when that exact UIImage object was already analyzed. Build265 is therefore the next minimum A/B: carousel-owned ephemeral `ObjectIdentifier` dedupe skips only repeated analysis of the same UIImage object and re-analyzes a new object. It changes no image resolution, blur30, backdrop layering, clear-Hero residency, gesture/release math or shared image loader. This A/B must be rejected as sufficient if target-device `>=12.5/20/30 ms` counts do not materially improve; only then move to the next measured image-presentation/compositor cost.
+
+'''
+if marker not in text:
+    anchor = '## D013 — Detail high-rate scroll and warm presentation stay scoped and presentation-only'
+    if anchor not in text: raise SystemExit('TECHNICAL_DECISIONS D013 anchor missing')
+    text = text.replace(anchor, block + anchor, 1)
+tech.write_text(text)
+
+index = Path('docs/project/BUILD_TEST_INDEX.md')
+text = index.read_text()
+build262 = '| **Build262 / 0.14.95** | Home-carousel rapid-swipe ownership + persistent-residency A/B | **Target-device tested; interaction continuity materially positive, persistent-residency presentation rejected; not stable.** Axis hysteresis + rapid-settle takeover are exercised on device and repeated stress rises to roughly 90–100 FPS, but persistent current/previous/next residency can hard-freeze the visible blended frame while release/settled state continues. Exact source `86ac642ec33ad927a1bc3688824bfe0909b22bab`; run/job `33311662277 / 99257718260`; artifact `9732204076`; IPA SHA `0e2a70edb9c5a22df87d0c2a028845dd54b516240f158c205087a0c889133bd5`; MinOS 15.0. PR #269 closed without merge. Interaction changes retained into Build264; persistent three-slot residency rejected. |'
+text, n = re.subn(r'^\| \*\*Build262 / 0\.14\.95\*\*.*$', build262, text, flags=re.M)
+if n != 1: raise SystemExit(f'BUILD_TEST_INDEX Build262 replacements={n}')
+build264 = '| **Build264 / 0.14.97** | Home-carousel rapid-swipe retention + persistent rollback | **Target-device tested; hard freeze not reproduced; rapid-swipe cadence remains ~90–100 FPS; not stable.** Exact source `323a1ba8c76382de7b893d50e3cf17388747b05f` retains Build262 axis hysteresis/rapid-settle takeover and restores Build241 current+target persistent presentation. `OnePlayer-App-1788100650.log`: 274 cadence sessions / 3,476 display intervals; weighted ~9.14 ms (~109 Hz), 297 >=12.5 ms, 55 >=20 ms, 4 >=30 ms; all 55 >=20 ms session worst gaps are within 30 ms of image events (49 persistent, 6 hero). Run/job `33315346306 / 99267618336`; artifact `9733296528`; IPA SHA `fe8354eaa0cb6afeb59454d6afd31c8e5da3e78bcade1242af499f7db7c51499`; source ZIP SHA `30e8bd7b3c41df3a9b83625da2c6bfdf3d978e64af0a6c5ba6a3cab421dababd`; MinOS 15.0. PR #272 closed after test completion. |'
+build265 = '| **Build265 / 0.14.98** | Home-carousel duplicate image-contrast-analysis A/B | **Exact-source CI/IPA verified; target-device pending; not stable.** Directly based on target-device-tested Build264. Only AppIdentity + carousel state change: the same cached UIImage object is contrast-analyzed once across Hero/persistent/preload callbacks; a new object is analyzed again. No shared image loader, 1400px request, blur30, visual layering, rapid-swipe ownership or release semantics change. Exact source `af92164890e7dc1c869bd586577b39177335df5f`; run/job `33318027714 / 99274932594`; artifact `9734083764`, digest `sha256:8be6c21d32fb460856947864d23d0912f1e664d94e6f4ea6ea4765574b67d8dc`; IPA SHA `cf381c823e863562b1f21d40d61926e693b76fac3ba4d5023e7ce2c154ffa100`; source ZIP SHA `b1cf0debf996ea30ba0e7171b035749e5f31192a7e4e70db7e146d76064d2b53`; MinOS 15.0; Draft PR #274. |'
+if re.search(r'^\| \*\*Build264 / 0\.14\.97\*\*.*$', text, flags=re.M):
+    text = re.sub(r'^\| \*\*Build264 / 0\.14\.97\*\*.*$', build264, text, flags=re.M)
+else:
+    m = re.search(r'^\| \*\*Build263 / 0\.14\.96\*\*.*$', text, flags=re.M)
+    if not m: raise SystemExit('BUILD_TEST_INDEX Build263 anchor missing')
+    text = text[:m.end()] + '\n' + build264 + text[m.end():]
+if re.search(r'^\| \*\*Build265 / 0\.14\.98\*\*.*$', text, flags=re.M):
+    text = re.sub(r'^\| \*\*Build265 / 0\.14\.98\*\*.*$', build265, text, flags=re.M)
+else:
+    m = re.search(r'^\| \*\*Build264 / 0\.14\.97\*\*.*$', text, flags=re.M)
+    if not m: raise SystemExit('BUILD_TEST_INDEX Build264 anchor missing after insert')
+    text = text[:m.end()] + '\n' + build265 + text[m.end():]
+index.write_text(text)
