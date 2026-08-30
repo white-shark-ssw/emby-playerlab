@@ -36,8 +36,8 @@ jobs:
           grep -Fq 'carouselPersistentImage(item: item, size: size).opacity(Double(carouselBackdropBlendProgress(transitionProgress)))' Sources/UI/EmbyHomeHeroV3.swift
           test "$(grep -Fc 'ForEach(carouselHeroResidentItems)' Sources/UI/EmbyHomeHeroV3.swift)" -eq 1
           test "$(grep -Fc '.compositingGroup()' Sources/UI/EmbyHomeHeroV3.swift)" -eq 1
-          grep -Fq 'let objectID = ObjectIdentifier(image)' Sources/UI/EmbyHomeCarouselStateV3.swift
-          grep -Fq 'carouselAnalyzedImageObjectByID[itemID] == objectID' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -Fq 'let identifier = ObjectIdentifier(image)' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -Fq 'V3HomeCarouselImageAnalysisIdentityCache.identifiersByItemID[itemID] != identifier' Sources/UI/EmbyHomeCarouselStateV3.swift
           grep -Fq 'guard dominant >= 2 else { return nil }' Sources/UI/EmbyHomeCarouselInteractionV3.swift
           grep -Fq 'prepareCarouselForNewInteractiveDrag()' Sources/UI/EmbyHomeCarouselInteractionV3.swift
           grep -Fq 'let velocityCommit = directionalVelocity >= 500' Sources/UI/EmbyHomeCarouselInteractionV3.swift
