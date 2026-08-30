@@ -56,7 +56,7 @@ jobs:
             build271/OnePlayer-0.15.4-build271-frame-pipeline-source.zip.sha256 \
             build271/built-info-plist.log \
             build271/min-os-report.log \
-            --target "$PRODUCT_SHA" \
+            --target 'diag/home-carousel-frame-pipeline-build271' \
             --title 'OnePlayer Build271 Frame Pipeline Diagnostic' \
             --notes 'Diagnostic-only Build271 / 0.15.4 frame-pipeline benchmark. Exact product source 643ff1cbbd24ea06a315c632b08ac1ad162ee43f. Dedicated CI run 33329047915 passed. Not a product/stable baseline.' \
             --prerelease
