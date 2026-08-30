@@ -7,7 +7,7 @@ import UIKit
 final class EmbyPosterGridCadenceDiagnostics: NSObject {
     static let shared = EmbyPosterGridCadenceDiagnostics()
 
-    private struct MotionSession {
+    private final class MotionSession {
         let startedAt: CFTimeInterval
         let startItemCount: Int
         var offsetIntervalsMS: [Double] = []
@@ -63,6 +63,11 @@ final class EmbyPosterGridCadenceDiagnostics: NSObject {
         var severe33WithNoTrackedGridWorkCount = 0
         var severe33WithoutRunLoopWaitCount = 0
         var severe33WithRunLoopWaitCount = 0
+
+        init(startedAt: CFTimeInterval, startItemCount: Int) {
+            self.startedAt = startedAt
+            self.startItemCount = startItemCount
+        }
     }
 
     private final class Owner {

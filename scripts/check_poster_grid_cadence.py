@@ -11,7 +11,7 @@ home = (root / "Sources/UI/EmbyHomeScrollOffsetObserverV3.swift").read_text()
 identity = (root / "Sources/Core/AppIdentity.swift").read_text()
 info = (root / "Config/Info.plist").read_text()
 
-assert 'static let sourceVersion = "0.14.99"' in identity
+assert 'static let sourceVersion = "0.15.0"' in identity
 assert '<key>CADisableMinimumFrameDurationOnPhone</key>' in info
 assert '<true/>' in info.split('<key>CADisableMinimumFrameDurationOnPhone</key>', 1)[1][:80]
 assert 'diagnosticRoute: String = "grid"' in grid
@@ -19,6 +19,9 @@ assert 'EmbyPosterGridCadenceProbe(ownerID: diagnosticOwnerID, route: diagnostic
 assert 'cellDidAppear(ownerID: diagnosticOwnerID)' in grid
 assert 'loadAheadDidTrigger(ownerID: diagnosticOwnerID)' in grid
 assert diag.count('CADisplayLink(target:') == 1
+assert 'private final class MotionSession {' in diag
+assert 'private struct MotionSession {' not in diag
+assert 'init(startedAt: CFTimeInterval, startItemCount: Int)' in diag
 assert 'owners.values.contains { $0.session != nil }' in diag
 assert 'CAFrameRateRange(minimum: 80, maximum: maximum, preferred: maximum)' in diag
 assert 'displayLink.preferredFrameRateRange = .default' in diag
