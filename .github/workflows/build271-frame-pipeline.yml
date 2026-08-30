@@ -32,16 +32,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
-          mapfile -t changed < <(git diff --name-only "$BASE_SHA" "$PRODUCT_SHA" | sort)
-          printf '%s\n' "${changed[@]}"
-          expected=(
-            Sources/Core/AppIdentity.swift
-            Sources/UI/EmbyHomeCoreV3.swift
-            Sources/UI/EmbyHomeFramePipelineProbeV3.swift
-          )
-          mapfile -t expected_sorted < <(printf '%s\n' "${expected[@]}" | sort)
-          test "${#changed[@]}" -eq "${#expected_sorted[@]}"
-          for i in "${!changed[@]}"; do test "${changed[$i]}" = "${expected_sorted[$i]}"; done
+          changed="$(git diff --name-only "$BASE_SHA" "$PRODUCT_SHA" | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCoreV3.swift Sources/UI/EmbyHomeFramePipelineProbeV3.swift | sort)"
+          printf '%s\n' "$changed"
+          test "$changed" = "$expected"
           test "$(git rev-parse HEAD:Sources/UI/EmbyHomeHeroV3.swift)" = "ab2ab5d80a59e174622dca0006c0f3aad4111a54"
           grep -F 'static let sourceVersion = "0.15.4"' Sources/Core/AppIdentity.swift
           grep -F 'case coreAnimation' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
