@@ -1,6 +1,6 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build281 target-device result is `CAROUSEL≈90 / CAROUSEL PAN≈90 / CAROUSEL PAN LATCH≈90`, rejecting frame-latching of the latest real Pan translation as a sufficient fix. Build282 / 0.15.15 `TREE PANLOAD` is now the current exact-source CI/IPA-verified diagnostic candidate; target-device active-Pan-load A/B pending.
+- **Status:** Active — Build282 target-device shows both `TREE FULL` and `TREE PANLOAD` can initially reach 120 FPS but sustained motion can decay sharply, observed as low as ~50 FPS. Because both modes decay, active Pan callback load alone is not established as the cause. The next exact action is a same-package sustained-duration control using Build282 `DISPLAYLINK` and `SWIFTUI` before any new runtime patch.
 - **Work ID:** `DEV-home-carousel-drag-smoothness`
 - **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / pipeline probe
 - **Task:** Preserve the accepted Build241 carousel appearance/gesture feel while locating the real cause of the no-screen-recording ~90 FPS presentation ceiling on iPhone 15 Pro Max / iOS 17.0.
@@ -10,7 +10,7 @@
 - **Build270 diagnostic:** `perf/home-carousel-foreground-residency-build270`, exact product source `cee2031aa7dc2abb59fb371196e22fbce56e32ee`.
 - **Current working branch:** `diag/home-carousel-tree-panload-build282`.
 - **Current exact product source:** `58801ef0acc6084c3168e8d7635a1258925cc382`.
-- **Current candidate:** OnePlayer `0.15.15 (282)` — diagnostic-only `TREE PANLOAD`: the existing full-tree device-max synthetic progress remains visual authority while an active standard Pan recognizer records callback load only; exact-source CI/IPA independently verified; target-device pending.
+- **Current candidate:** OnePlayer `0.15.15 (282)` — diagnostic-only `TREE PANLOAD`: exact-source CI/IPA independently verified and now target-device tested. Both `TREE FULL` and `TREE PANLOAD` can start at 120 FPS but fail to sustain it, dropping as low as ~50 FPS; Pan callback load alone is therefore not isolated as causal.
 - **Target device:** iPhone 15 Pro Max / iOS 17.0.
 - **Deployment Target:** iOS 15.0.
 
@@ -281,6 +281,8 @@ Initial exact product source `9babebb132437f70d72918d1a858c0753e9b54a1` reached 
 
 Corrected exact product source: `58801ef0acc6084c3168e8d7635a1258925cc382`. Corrected Xcode 16.4 exact-source CI run/job `33425378615 / 99597549081` succeeds through source guards, Release compilation, identity/MinOS validation, packaging and upload. Artifact `OnePlayer-0.15.15-build282-carousel-tree-panload-probe`, ID `9770646338`, digest `sha256:a8bb976eb2b8889f713357168797c1b144c35511d2b37ea8f22800f7b2876a8e`. Independent artifact re-download/unpack reproduces IPA SHA-256 `3ce933d6d380472fc0dec5aeadeda45d68008a3a37bc86ff48a335437f7d70cd` and source ZIP SHA-256 `fab24ca52fd5a280d2051455537490b8cf12d223f973f0f7542a94e72a652ed6`; IPA archive integrity passes; Info.plist is `com.embyplayerlab.app / OnePlayer / 0.15.15 (282)` with `MinimumOSVersion=15.0`; MinOS audit is OK. Draft PR #285 remains diagnostic-only and must not be merged from CI evidence alone.
 
-Target-device procedure: screen recording **off**. Compare sustained system FPS HUD in `PIPE TREE FULL` versus `PIPE TREE PANLOAD` while continuously dragging horizontally over the PanLoad surface. If TREE FULL remains near 120 but TREE PANLOAD falls toward ~90, active Pan handling/load becomes causal evidence. If both remain near 120, Pan callback load alone is insufficient and the remaining boundary stays in real-carousel input→state/presentation semantics.
+Target-device result — 2026-09-01, screen recording off: the user reports **both `TREE FULL` and `TREE PANLOAD` initially reach 120 FPS but cannot sustain it and can decay to roughly 50 FPS**. This rejects a `TREE PANLOAD`-only drop; active Pan callback processing/load is not sufficient to explain the sustained decline. The supplied `OnePlayer-App-1788202228.log` is only a short startup/network capture and contains no `HomeCarouselPipelineProbe` / PanLoad cadence lines, so the system FPS HUD observation is the controlling evidence for this round.
 
-Build282 evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable ❌**.
+Build282 already contains fair sustained controls with explicit device-max refresh requests: `DISPLAYLINK` (`CADisplayLink → CALayer`) and `SWIFTUI` (`CADisplayLink → @Published → SwiftUI`). **Next exact action:** in the same installed Build282 and with recording off, hold each control for at least the same duration that makes TREE decay. If either simple control also falls from 120 toward ~50, investigate device/system sustained-high-refresh policy or thermal/power state before adding carousel code. If both remain stable near 120 while TREE modes decay, then add narrow carousel-only sustained invalidation/commit instrumentation; do not guess a new visual or gesture patch first.
+
+Build282 evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device tested ✅ / active-Pan-load-only hypothesis rejected ✅ / sustained simple-control gate pending / stable ❌**.
