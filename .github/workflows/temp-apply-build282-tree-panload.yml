@@ -1,0 +1,62 @@
+name: TEMP Apply Build282 Tree PanLoad
+
+on:
+  push:
+    branches: [patch/build282-carousel-tree-panload-20260831]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout helper branch
+        uses: actions/checkout@v4
+        with:
+          ref: patch/build282-carousel-tree-panload-20260831
+          path: helper
+
+      - name: Preserve patch script
+        run: cp helper/scripts/temp_apply_build282_tree_panload.py /tmp/temp_apply_build282_tree_panload.py
+
+      - name: Checkout Build282 target
+        uses: actions/checkout@v4
+        with:
+          ref: diag/home-carousel-tree-panload-build282
+          path: target
+          fetch-depth: 0
+
+      - name: Apply exact patch
+        working-directory: target
+        run: python3 /tmp/temp_apply_build282_tree_panload.py
+
+      - name: Verify exact scope and contracts
+        working-directory: target
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselPanProbeV3.swift Sources/UI/EmbyHomeFramePipelineProbeV3.swift Sources/UI/EmbyHomeHeroV3.swift | sort)"
+          printf '%s\n' "$changed"
+          test "$changed" = "$expected"
+          grep -F 'static let sourceVersion = "0.15.15"' Sources/Core/AppIdentity.swift
+          grep -F 'case carouselTreePanLoad' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'case .carouselTreePanLoad: return "TREE PANLOAD"' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'V3HomeCarouselPanLoadProbeSurface()' Sources/UI/EmbyHomeHeroV3.swift
+          grep -F 'DiagnosticsLogger.shared.app("HomeCarouselPanLoadProbe"' Sources/UI/EmbyHomeCarouselPanProbeV3.swift
+          grep -F 'let velocityCommit = directionalVelocity >= 500' Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          grep -F 'let shouldCommit = actualProgress >= 0.28 || velocityCommit' Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          ! grep -E 'predicted|coalesced|interpol|Timer\.|asyncAfter|DispatchQueue.*after' Sources/UI/EmbyHomeCarouselPanProbeV3.swift | grep -F 'PanLoadProbe'
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCoreV3.swift)" = "ae9e98c09bd10294032d08382b53a18f31bf42ac"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCarouselInteractionV3.swift)" = "f8df5af61101c0272c5ec378caae617000b8fcea"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCarouselStateV3.swift)" = "96f38514cfb09668f11c21a61105ac87a2f26f3d"
+
+      - name: Commit Build282 product source
+        working-directory: target
+        run: |
+          set -euo pipefail
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselPanProbeV3.swift Sources/UI/EmbyHomeFramePipelineProbeV3.swift Sources/UI/EmbyHomeHeroV3.swift
+          git commit -m "Add Build282 tree Pan-load isolation"
+          git push origin HEAD:diag/home-carousel-tree-panload-build282
