@@ -5,6 +5,7 @@ import UIKit
 
 enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     case carousel
+    case carouselPan
     case rawTouch
     case nativePan
     case nativeScroll
@@ -18,6 +19,7 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     var title: String {
         switch self {
         case .carousel: return "CAROUSEL"
+        case .carouselPan: return "CAROUSEL PAN"
         case .rawTouch: return "TOUCH LAYER"
         case .nativePan: return "PAN LAYER"
         case .nativeScroll: return "SCROLLVIEW"
@@ -32,7 +34,8 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
 
     var detail: String {
         switch self {
-        case .carousel: return "Build265 normal carousel"
+        case .carousel: return "Build275 normal carousel owner"
+        case .carouselPan: return "UIPanGestureRecognizer → real carousel state/tree"
         case .rawTouch: return "custom touchesMoved → native CALayer"
         case .nativePan: return "UIPanGestureRecognizer → native CALayer"
         case .nativeScroll: return "native horizontal UIScrollView"
@@ -47,7 +50,7 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
 
     var usesHomePresentation: Bool {
         switch self {
-        case .carousel, .carouselTree, .carouselHero, .carouselBackdrop: return true
+        case .carousel, .carouselPan, .carouselTree, .carouselHero, .carouselBackdrop: return true
         case .rawTouch, .nativePan, .nativeScroll, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
         }
     }
@@ -55,20 +58,20 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     var isCarouselTreeProbe: Bool {
         switch self {
         case .carouselTree, .carouselHero, .carouselBackdrop: return true
-        case .carousel, .rawTouch, .nativePan, .nativeScroll, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
+        case .carousel, .carouselPan, .rawTouch, .nativePan, .nativeScroll, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
         }
     }
 
     var observesBackdropTransition: Bool {
         switch self {
-        case .carousel, .carouselTree, .carouselBackdrop: return true
+        case .carousel, .carouselPan, .carouselTree, .carouselBackdrop: return true
         case .rawTouch, .nativePan, .nativeScroll, .carouselHero, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
         }
     }
 
     var observesHeroTransition: Bool {
         switch self {
-        case .carousel, .carouselTree, .carouselHero: return true
+        case .carousel, .carouselPan, .carouselTree, .carouselHero: return true
         case .rawTouch, .nativePan, .nativeScroll, .carouselBackdrop, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
         }
     }
@@ -107,7 +110,7 @@ struct V3HomeFramePipelineProbe: View {
         ZStack {
             Color.black.ignoresSafeArea()
             switch mode {
-            case .carousel, .carouselTree, .carouselHero, .carouselBackdrop:
+            case .carousel, .carouselPan, .carouselTree, .carouselHero, .carouselBackdrop:
                 EmptyView()
             case .rawTouch, .nativePan, .nativeScroll:
                 ZStack {
@@ -264,6 +267,7 @@ private final class V3HomeInputPipelineView: UIView, UIScrollViewDelegate {
     private var rawRecognizer: V3HomeRawTouchRecognizer?
     private var panRecognizer: UIPanGestureRecognizer?
     private var mode: V3HomeFramePipelineProbeMode = .rawTouch
+    private var configuredMode: V3HomeFramePipelineProbeMode?
     private var cadence = V3HomeInputCadenceAccumulator()
     private var didPositionMarker = false
 
@@ -294,8 +298,9 @@ private final class V3HomeInputPipelineView: UIView, UIScrollViewDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func setMode(_ mode: V3HomeFramePipelineProbeMode) {
-        guard self.mode != mode || rawRecognizer == nil && panRecognizer == nil && scrollView.isHidden else { return }
+        guard configuredMode != mode else { return }
         self.mode = mode
+        configuredMode = mode
         configureMode()
     }
 
@@ -343,7 +348,7 @@ private final class V3HomeInputPipelineView: UIView, UIScrollViewDelegate {
         case .nativeScroll:
             markerLayer.isHidden = true
             scrollView.isHidden = false
-        case .carousel, .carouselTree, .carouselHero, .carouselBackdrop, .coreAnimation, .nativeDisplayLink, .swiftUI:
+        case .carousel, .carouselPan, .carouselTree, .carouselHero, .carouselBackdrop, .coreAnimation, .nativeDisplayLink, .swiftUI:
             break
         }
     }
@@ -467,7 +472,7 @@ private final class V3HomeNativeFramePipelineView: UIView {
         switch mode {
         case .coreAnimation: startCoreAnimation()
         case .nativeDisplayLink: startDisplayLink()
-        case .carousel, .rawTouch, .nativePan, .nativeScroll, .carouselTree, .carouselHero, .carouselBackdrop, .swiftUI: break
+        case .carousel, .carouselPan, .rawTouch, .nativePan, .nativeScroll, .carouselTree, .carouselHero, .carouselBackdrop, .swiftUI: break
         }
     }
 

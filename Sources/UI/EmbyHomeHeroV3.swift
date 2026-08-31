@@ -41,13 +41,22 @@ extension V3EmbyHomeView {
         }
         .frame(width: width, height: baseHeight)
         .overlay {
-            V3HomeCarouselInteractionSurface(
-                shouldBeginHorizontal: { translation in shouldBeginNativeCarouselDrag(translation) },
-                onHorizontalChanged: { translation in handleNativeCarouselDrag(translation, width: width) },
-                onHorizontalEnded: { translation, releaseVelocityX in finishNativeCarouselDrag(translation, releaseVelocityX: releaseVelocityX, width: width) },
-                onHorizontalCancelled: { cancelNativeCarouselDrag() },
-                onTap: { openCurrentCarouselDetailIfAllowed() }
-            )
+            if framePipelineProbeMode == .carouselPan {
+                V3HomeCarouselPanProbeSurface(
+                    shouldBeginHorizontal: { translation in shouldBeginNativeCarouselDrag(translation) },
+                    onHorizontalChanged: { translation in handleNativeCarouselDrag(translation, width: width) },
+                    onHorizontalEnded: { translation, releaseVelocityX in finishNativeCarouselDrag(translation, releaseVelocityX: releaseVelocityX, width: width) },
+                    onHorizontalCancelled: { cancelNativeCarouselDrag() }
+                )
+            } else {
+                V3HomeCarouselInteractionSurface(
+                    shouldBeginHorizontal: { translation in shouldBeginNativeCarouselDrag(translation) },
+                    onHorizontalChanged: { translation in handleNativeCarouselDrag(translation, width: width) },
+                    onHorizontalEnded: { translation, releaseVelocityX in finishNativeCarouselDrag(translation, releaseVelocityX: releaseVelocityX, width: width) },
+                    onHorizontalCancelled: { cancelNativeCarouselDrag() },
+                    onTap: { openCurrentCarouselDetailIfAllowed() }
+                )
+            }
         }
     }
 
