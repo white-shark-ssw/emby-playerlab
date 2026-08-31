@@ -2,18 +2,32 @@
 
 ## Status
 
-**Active — Build278 / 0.15.11 is target-device tested and directly confirms synchronous full-Library presentation persistence as a major pagination-adjacent long-frame source. In `OnePlayer-App-1788165599.log`, the 10 accepted +60 page states from 120→660 items each complete a `PagePersistentCache` library snapshot only 1–8 ms before a severe display gap. Snapshot total time rises 38.31→94.66 ms while the paired display gap rises 49.96→108.33 ms (correlation ≈0.991); the median display-gap minus snapshot-total residual is only ≈12.24 ms. At 480 items the 70.02 ms snapshot finishes before `insert-begin`, yet the same interval is a 79.17 ms gap with `insert_events=0`, which independently rules out collection insertion as the sole cause. Object construction grows 7.77→21.42 ms, JSON serialization dominates at 27.31→62.30 ms, and atomic write is usually 1.97–3.55 ms except the 660-item sample at 10.01 ms. Fixed/no-append sessions at 540/600/660 items remain near 119–120 Hz with no >=25 ms gaps. Therefore Build278 has completed its diagnostic purpose; PR #281 should not merge. The next permitted A/B is a single-variable Library presentation-persistence off-main/coalescing implementation that preserves Build213 cached-first semantics and atomic accepted-state write-through. This does not establish persistence as the universal historical 3×3 root: Build229 previously showed off-main persistence was insufficient for all hitch families, so separate non-pagination tails still require evidence.**
+**Active — Build278 target-device timing proves synchronous full-Library presentation persistence is a major pagination-adjacent severe-frame source. Build280 / 0.15.13 exact source `531d7f53c55e1e3cff44069e9bce3193ac94749a`, branch `perf/poster-grid-offmain-persistence-build280`, Draft PR #282, is the current single-variable fix A/B. It reuses the previously compiled Build229 serial utility queue + async/await persistence mechanism: full Library JSON-object construction, serialization and atomic write move off the scrolling MainActor while the model awaits ordered completion. Build213 cached-first and accepted-state atomic write-through semantics remain; Build278 timing + Build276 native frame-tail diagnostics remain for direct verification. Exact five-path scope/checker passed; CI/IPA/target-device pending. Build279 is occupied by the parallel Home task, so Poster uses Build280 / 0.15.13.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
-- **Working branch**: `diag/poster-grid-persistence-frame-tail-build278`
-- **Draft PR**: none current; #281 Build278 diagnostic completed on target device and should close without merge
+- **Working branch**: `perf/poster-grid-offmain-persistence-build280`
+- **Draft PR**: #282 Build280 off-main persistence A/B; Draft / do not merge before target-device evidence
 - **Superseded PRs**: #278 Build272 fixed-row target-device rejected/closed; #277 Poster Build269 row-stack target-device rejected/closed; #276 Build268 lean-diagnostic target-device rejected/closed; #275 Build267 diagnostic reference-session target-device tested/superseded; earlier poster diagnostics remain historical evidence only
-- **Current branch / PR head**: `6ff8113d9c45dfae6d745afa98b4a04a3956cf33`
-- **Current candidate**: none packaged after Build278. Next permitted A/B: preserve Build213 presentation-cache semantics while moving/coalescing full Library snapshot serialization+atomic write off the scrolling MainActor path; exact Build identity must be rechecked before implementation.
+- **Current branch / PR head**: `531d7f53c55e1e3cff44069e9bce3193ac94749a`
+- **Current candidate**: OnePlayer **0.15.13 / Build280** — off-main Library persistence behavior A/B; Code written + exact five-path scope/checker ✅ / CI pending / IPA pending / target-device pending / stable ❌.
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted carousel foundation**: Build241 manual interaction/presentation remains frozen; only automatic-transition scheduling during Home vertical motion is reopened by new device evidence
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
+
+## Build280 implementation checkpoint — off-main Library persistence A/B — 2026-08-31
+
+Build280 / OnePlayer **0.15.13 (280)** is allocated to Poster after an identity guard found Build279 branches already owned by the parallel Home-carousel task and no Build280 / 0.15.13 allocation. Branch `perf/poster-grid-offmain-persistence-build280`, Draft PR **#282**, exact source `531d7f53c55e1e3cff44069e9bce3193ac94749a`, directly extends Build278 exact source `6ff8113d9c45dfae6d745afa98b4a04a3956cf33`.
+
+Build278 target-device evidence is the behavioral justification: ten accepted +60 states from 120→660 items show synchronous full-snapshot persistence **38.31→94.66 ms** followed only 1–8 ms later by **49.96→108.33 ms** display gaps, correlation ≈0.991; fixed/no-append 540–660-item sessions remain near 119–120 Hz with zero >=25 ms gaps. The 480-item sample proves a 70.02 ms snapshot can consume the missed interval before collection `insert-begin`.
+
+Build280 changes exactly five paths relative to Build278: AppIdentity, `EmbyPagePersistentCache.swift`, `EmbyServerBrowseV3.swift`, changelog and a dedicated checker. It reuses the previously compiled Build229 persistence mechanism rather than inventing a new owner: one serial utility `DispatchQueue` performs full Library JSON-object construction, `JSONSerialization` and atomic write; `V3LibraryBrowserViewModel` awaits that async store so the MainActor yields while persistence runs and accepted snapshots still complete in order. There is **no coalescing** in this candidate. Build278 persistence timing logs are retained and add `main_thread=`, while Build276 native display-gap diagnostics remain unchanged.
+
+Protected scope: no pagination-size/source, UICollectionView behavior, image loading/cache, scroll physics, Search Build256 semantics, Home carousel, Player/MPV/PiP, UnifiedTransport, playback Cache/Session, STRM/302/115/CDN, or Deployment Target change.
+
+**Evidence:** Code written ✅ / exact five-path scope+checker ✅ / Draft PR #282 ✅ / CI pending / IPA pending / target-device pending / stable ❌.
+
+**Next exact action:** run exact-source Xcode 16.4 Release/IPA for `531d7f53c55e1e3cff44069e9bce3193ac94749a`, independently verify `0.15.13 (280)` / MinOS15 / hashes, then target-device repeat Library `.items` pagination. Acceptance evidence is reduction/removal of the 50–100 ms pagination display-gap family while `PagePersistentCache` reports `main_thread=0`; do not claim universal 3×3 resolution from this A/B.
 
 ## Build278 target-device result — synchronous full-snapshot persistence confirmed as pagination-tail source — 2026-08-31
 
