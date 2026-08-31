@@ -1,0 +1,108 @@
+name: Temp sync carousel Build281 Build282 docs
+
+on:
+  push:
+    branches: [docs/carousel-build281-build282-20260901]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/carousel-build281-build282-20260901
+          fetch-depth: 0
+
+      - name: Update current project authority
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def sub_one(path, pattern, replacement, flags=0):
+              p = Path(path)
+              text = p.read_text()
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=flags)
+              if count != 1:
+                  raise SystemExit(f"expected one replacement in {path}, got {count}: {pattern}")
+              p.write_text(updated)
+
+          checkpoint = Path('docs/project/current/dev/DEV-home-carousel-drag-smoothness.md')
+          text = checkpoint.read_text()
+          replacements = {
+              r'^- \*\*Status:\*\*.*$': '- **Status:** Active — Build281 target-device result is `CAROUSEL≈90 / CAROUSEL PAN≈90 / CAROUSEL PAN LATCH≈90`, rejecting frame-latching of the latest real Pan translation as a sufficient fix. Build282 / 0.15.15 `TREE PANLOAD` is now the current exact-source CI/IPA-verified diagnostic candidate; target-device active-Pan-load A/B pending.',
+              r'^- \*\*Current working branch:\*\*.*$': '- **Current working branch:** `diag/home-carousel-tree-panload-build282`.',
+              r'^- \*\*Current exact product source:\*\*.*$': '- **Current exact product source:** `58801ef0acc6084c3168e8d7635a1258925cc382`.',
+              r'^- \*\*Current candidate:\*\*.*$': '- **Current candidate:** OnePlayer `0.15.15 (282)` — diagnostic-only `TREE PANLOAD`: the existing full-tree device-max synthetic progress remains visual authority while an active standard Pan recognizer records callback load only; exact-source CI/IPA independently verified; target-device pending.'
+          }
+          for pattern, replacement in replacements.items():
+              text, count = re.subn(pattern, replacement, text, count=1, flags=re.M)
+              if count != 1:
+                  raise SystemExit(f'checkpoint replacement failed: {pattern} count={count}')
+          marker = '## Build281 target-device result — 2026-09-01'
+          if marker not in text:
+              text += '''\n\n## Build281 target-device result — 2026-09-01\n\nWith screen recording off on iPhone 15 Pro Max / iOS 17.0, the user reports **`CAROUSEL≈90 / CAROUSEL PAN≈90 / CAROUSEL PAN LATCH≈90`**. The same package therefore shows no material final-present improvement from publishing only the latest real Pan translation at most once per device-max display-link tick. The latch executed and changed publication cadence, but the system FPS HUD did not improve.\n\nConclusion: frame alignment/latest-real-input latching alone is rejected as a sufficient 120-FPS fix. This does **not** authorize interpolation, predicted/coalesced synthetic render positions, timers, watchdogs, retries, fallbacks or a second transition owner. Build281 Draft PR #284 is closed unmerged.\n\nBuild281 evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / frame-latch direction rejected as sufficient ✅ / stable ❌**.\n\n## Build282 / 0.15.15 — TREE PANLOAD active-Pan-load isolation\n\nBuild282 branches from exact Build281 source and asks a narrower causal question: can an actively processing Pan recognizer by itself pull an otherwise synthetic 120-Hz full carousel tree down toward the manual ~90-FPS ceiling? `TREE PANLOAD` keeps the existing full-tree device-max `CADisplayLink` as the only visual/progress authority and overlays a standard `UIPanGestureRecognizer` that records callback cadence/load only. It does not call `handleNativeCarouselDrag`, `finishNativeCarouselDrag`, mutate `transitionProgress`, interpolate/predict positions, add timers/watchdogs/retries/fallbacks, or create a second product state owner.\n\nInitial exact product source `9babebb132437f70d72918d1a858c0753e9b54a1` reached exact-source CI run/job `33410468349 / 99548472740`, where source guards and dependency preparation passed but Swift compilation failed because the new `V3HomeCarouselPanLoadProbeSurface: UIViewRepresentable` omitted the required `updateUIView(_:context:)`. Source inspection of the adjacent working representable confirmed the protocol requirement. The only follow-up source edit adds `func updateUIView(_ uiView: UIView, context: Context) {}`; compare `9babebb...` → `58801ef...` changes only `Sources/UI/EmbyHomeCarouselPanProbeV3.swift` by two added lines.\n\nCorrected exact product source: `58801ef0acc6084c3168e8d7635a1258925cc382`. Corrected Xcode 16.4 exact-source CI run/job `33425378615 / 99597549081` succeeds through source guards, Release compilation, identity/MinOS validation, packaging and upload. Artifact `OnePlayer-0.15.15-build282-carousel-tree-panload-probe`, ID `9770646338`, digest `sha256:a8bb976eb2b8889f713357168797c1b144c35511d2b37ea8f22800f7b2876a8e`. Independent artifact re-download/unpack reproduces IPA SHA-256 `3ce933d6d380472fc0dec5aeadeda45d68008a3a37bc86ff48a335437f7d70cd` and source ZIP SHA-256 `fab24ca52fd5a280d2051455537490b8cf12d223f973f0f7542a94e72a652ed6`; IPA archive integrity passes; Info.plist is `com.embyplayerlab.app / OnePlayer / 0.15.15 (282)` with `MinimumOSVersion=15.0`; MinOS audit is OK. Draft PR #285 remains diagnostic-only and must not be merged from CI evidence alone.\n\nTarget-device procedure: screen recording **off**. Compare sustained system FPS HUD in `PIPE TREE FULL` versus `PIPE TREE PANLOAD` while continuously dragging horizontally over the PanLoad surface. If TREE FULL remains near 120 but TREE PANLOAD falls toward ~90, active Pan handling/load becomes causal evidence. If both remain near 120, Pan callback load alone is insufficient and the remaining boundary stays in real-carousel input→state/presentation semantics.\n\nBuild282 evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable ❌**.\n'''
+          checkpoint.write_text(text)
+
+          sub_one(
+              'docs/project/MODULE_STATUS.md',
+              r'^\| Home carousel interaction / presentation cadence \|.*$',
+              '| Home carousel interaction / presentation cadence | **Active — Build281 frame-latch A/B rejected on device; Build282 TREE PANLOAD CI/IPA verified** | Build281 screen-off result is `CAROUSEL≈90 / CAROUSEL PAN≈90 / CAROUSEL PAN LATCH≈90`, so latest-real-translation display-link latching is not a sufficient fix. Build282 / 0.15.15 exact source `58801ef0acc6084c3168e8d7635a1258925cc382` keeps synthetic device-max full-tree progress as visual authority and adds active Pan callback load only. Corrected run/job `33425378615 / 99597549081` succeeds; artifact `9770646338`, digest `sha256:a8bb976eb2b8889f713357168797c1b144c35511d2b37ea8f22800f7b2876a8e`; IPA SHA `3ce933d6d380472fc0dec5aeadeda45d68008a3a37bc86ff48a335437f7d70cd`; source ZIP SHA `fab24ca52fd5a280d2051455537490b8cf12d223f973f0f7542a94e72a652ed6`; MinOS 15.0. Draft PR #285; target-device TREE FULL vs TREE PANLOAD pending; no product-owner/smoothing contract accepted. |',
+              re.M
+          )
+          sub_one(
+              'docs/project/MODULE_STATUS.md',
+              r'^\| Other product modules \|.*$',
+              '| Other product modules | Active parallel work | Build216 / 0.14.49 remains the accepted packaged overall runtime identity. Search Build256 is stable/merged. Home Build282 is diagnostic-only and must not replace the overall baseline. Poster Build283 is a separate target-device-positive active task; Aether remains separate. Build242 remains diagnostic-only and excluded from product inheritance. |',
+              re.M
+          )
+
+          project = Path('docs/project/PROJECT_STATE.md')
+          ps = project.read_text()
+          ps, count = re.subn(
+              r'^_Last updated 2026-09-01:.*_$',
+              '_Last updated 2026-09-01: Poster Build283 / 0.15.16 remains target-device positive for its navigation and pagination-persistence regressions. Home Build281 is now target-device tested at `CAROUSEL≈90 / CAROUSEL PAN≈90 / CAROUSEL PAN LATCH≈90`, rejecting latest-real-input frame latching as a sufficient fix. Home Build282 / 0.15.15 `TREE PANLOAD` exact source `58801ef0acc6084c3168e8d7635a1258925cc382` is CI/IPA verified and awaits target-device TREE FULL vs TREE PANLOAD testing. Build216 remains the accepted packaged overall baseline; Search Build256 and all P0 playback/transport contracts remain protected._',
+              ps, count=1, flags=re.M
+          )
+          if count != 1:
+              raise SystemExit(f'PROJECT_STATE last-updated replacement count={count}')
+          start = '## Active: Home carousel input/publication diagnosis — Build281 / 0.15.14'
+          end = '## Completed / frozen: Home carousel interaction — Build241 / 0.14.74'
+          if start not in ps or end not in ps:
+              raise SystemExit('PROJECT_STATE Home section markers missing')
+          before, rest = ps.split(start, 1)
+          _, after = rest.split(end, 1)
+          home = '''## Active: Home carousel input/publication diagnosis — Build282 / 0.15.15\n\nBuild275 same-package control remains the key boundary: normal finger-driven `CAROUSEL≈90` while fixed device-max progress through the same full tree can reach 120. Build279 then showed standard Pan callback density can already be high while final HUD remains ~90, rejecting recognizer-type/callback-count-only attribution.\n\nBuild281 corrected the Pan probe's refresh fairness and compared immediate direct Pan publication against a display-link latch that publishes at most the newest real translation once per frame. Target-device screen-off result is **`CAROUSEL≈90 / CAROUSEL PAN≈90 / CAROUSEL PAN LATCH≈90`**. Therefore latest-real-translation frame alignment materially changes publication cadence without lifting final presentation and is rejected as a sufficient fix. PR #284 is closed unmerged; this does not authorize interpolation, prediction, synthetic frame filling, timers/watchdogs/fallbacks or duplicate transition state.\n\nBuild282 asks whether active Pan processing/load alone is enough to lower a synthetic 120-Hz full-tree presentation. `TREE PANLOAD` keeps the existing full-tree device-max display-link as sole visual/progress authority and overlays a standard Pan recognizer that records callback cadence only. It does not mutate real carousel progress or release state. Initial source `9babebb...` failed exact-source CI `33410468349 / 99548472740` at Swift compile because the new `UIViewRepresentable` lacked required `updateUIView`. The evidence-backed minimal fix adds only the no-op protocol method; corrected exact source is `58801ef0acc6084c3168e8d7635a1258925cc382`.\n\nCorrected Xcode 16.4 exact-source run/job `33425378615 / 99597549081` succeeds. Artifact `OnePlayer-0.15.15-build282-carousel-tree-panload-probe`, ID `9770646338`, digest `sha256:a8bb976eb2b8889f713357168797c1b144c35511d2b37ea8f22800f7b2876a8e`; independently verified IPA SHA `3ce933d6d380472fc0dec5aeadeda45d68008a3a37bc86ff48a335437f7d70cd`; source ZIP SHA `fab24ca52fd5a280d2051455537490b8cf12d223f973f0f7542a94e72a652ed6`; bundle `com.embyplayerlab.app`; version/build `0.15.15 (282)`; MinOS 15.0; MinOS audit OK. Draft PR #285 is unmerged. Evidence is **Code written / CI passed / IPA produced+verified / real-device pending / stable false**.\n\nNext gate: on iPhone 15 Pro Max / iOS 17.0 with recording off, compare sustained system FPS HUD for `TREE FULL` and `TREE PANLOAD` while continuously dragging horizontally on the latter. A TREE PANLOAD-only drop toward ~90 would make active Pan processing/load causal evidence; both near 120 would reject Pan callback load alone and keep the target on real-carousel input→state/presentation semantics.\n\n'''
+          project.write_text(before + home + end + after)
+
+          decisions = Path('docs/project/TECHNICAL_DECISIONS.md')
+          td = decisions.read_text()
+          if '## D026 — Build281 rejects latest-real frame latching; Build282 isolates active Pan load' not in td:
+              td += '''\n\n## D026 — Build281 rejects latest-real frame latching; Build282 isolates active Pan load\n\nBuild281 target-device evidence with screen recording off is `CAROUSEL≈90 / CAROUSEL PAN≈90 / CAROUSEL PAN LATCH≈90`. Equal device-max refresh and display-link-latching only the newest real Pan translation therefore do not materially improve final presentation. Do not promote latching, interpolation, prediction, synthetic frame filling, timer/watchdog/fallback behavior or a duplicate transition owner from this result. PR #284 is closed unmerged.\n\nBuild282 is authorized only as a diagnostic load-isolation A/B. `TREE PANLOAD` leaves the synthetic device-max full-tree transition driver as the sole visual/progress authority and overlays a standard Pan recognizer that records callback cadence. It may establish whether active Pan processing/load is sufficient to lower the otherwise 120-Hz tree. It must not mutate `transitionProgress`, call the real drag/release handlers, or alter Build241's protected product interaction contract. Corrected exact source `58801ef0acc6084c3168e8d7635a1258925cc382`; run/job `33425378615 / 99597549081`; artifact `9770646338`; IPA SHA `3ce933d6d380472fc0dec5aeadeda45d68008a3a37bc86ff48a335437f7d70cd`; MinOS 15.0. Product behavior may change only after target-device evidence, not from CI/IPA.\n'''
+          decisions.write_text(td)
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          bi = index.read_text()
+          build281 = '| **Build281 / 0.15.14** | Equal-refresh direct Pan vs frame-latched latest-real-input publication | **Target-device tested; frame-latching rejected as sufficient; not stable.** Screen-off result: `CAROUSEL≈90 / CAROUSEL PAN≈90 / CAROUSEL PAN LATCH≈90`. The latch executed and changed publication cadence but did not improve final HUD, so latest-real-input frame alignment alone is insufficient. Exact source `a0bb823f81742c7f08908c0465809a41f9e22b3b`; run/job `33398830817 / 99509848648`; artifact `9760543570`, digest `sha256:6af8d484a4c5782eee6d46f670a2091f715b06c28e0d044ed2517af746213c4f`; IPA SHA `4357afce03a6e35ede340a20d91f589f110389302145048073e0913bae8dfadd`; source SHA `23228a1f084d4d0c46c452f8c8bde2ef9145d3164d6c6f230b2d82e526716c16`; MinOS 15.0. PR #284 closed unmerged. |'
+          bi, count = re.subn(r'^\| \*\*Build281 / 0\.15\.14\*\* \|.*$', build281, bi, count=1, flags=re.M)
+          if count != 1:
+              raise SystemExit(f'BUILD_TEST_INDEX Build281 replacement count={count}')
+          build282 = '| **Build282 / 0.15.15** | Full carousel tree + active Pan callback-load isolation (`TREE PANLOAD`) | **Exact-source CI/IPA verified; target-device pending; diagnostic-only, not stable.** Initial source `9babebb...` failed run/job `33410468349 / 99548472740` at Swift compile because the new `UIViewRepresentable` lacked required `updateUIView`. Minimal fix source `58801ef0acc6084c3168e8d7635a1258925cc382` adds only that no-op protocol method after the diagnostic implementation; corrected run/job `33425378615 / 99597549081` succeeds. Artifact `9770646338`, digest `sha256:a8bb976eb2b8889f713357168797c1b144c35511d2b37ea8f22800f7b2876a8e`; IPA SHA `3ce933d6d380472fc0dec5aeadeda45d68008a3a37bc86ff48a335437f7d70cd`; source ZIP SHA `fab24ca52fd5a280d2051455537490b8cf12d223f973f0f7542a94e72a652ed6`; `0.15.15 (282)` / MinOS 15.0 independently verified; Draft PR #285. |'
+          if '| **Build282 / 0.15.15** |' not in bi:
+              bi = bi.replace(build281 + '\n', build281 + '\n' + build282 + '\n', 1)
+          index.write_text(bi)
+          PY
+
+      - name: Remove helper workflow and commit docs
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/temp-sync-carousel-build282-docs.yml
+          git config user.name "ChatGPT"
+          git config user.email "chatgpt@users.noreply.github.com"
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/BUILD_TEST_INDEX.md
+          git diff --cached --check
+          git commit -m "Record Build281 device and Build282 CI checkpoint"
+          git push origin HEAD:docs/carousel-build281-build282-20260901
