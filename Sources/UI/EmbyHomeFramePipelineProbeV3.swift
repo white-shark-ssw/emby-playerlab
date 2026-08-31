@@ -7,6 +7,7 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     case carousel
     case carouselPan
     case carouselPanLatched
+    case carouselTreePanLoad
     case rawTouch
     case nativePan
     case nativeScroll
@@ -22,6 +23,7 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
         case .carousel: return "CAROUSEL"
         case .carouselPan: return "CAROUSEL PAN"
         case .carouselPanLatched: return "CAROUSEL PAN LATCH"
+        case .carouselTreePanLoad: return "TREE PANLOAD"
         case .rawTouch: return "TOUCH LAYER"
         case .nativePan: return "PAN LAYER"
         case .nativeScroll: return "SCROLLVIEW"
@@ -39,6 +41,7 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
         case .carousel: return "Build275 normal carousel owner"
         case .carouselPan: return "UIPanGestureRecognizer + max-refresh → real carousel"
         case .carouselPanLatched: return "same Pan → display-link latched real carousel"
+        case .carouselTreePanLoad: return "Full tree ← 120 Hz + active Pan load"
         case .rawTouch: return "custom touchesMoved → native CALayer"
         case .nativePan: return "UIPanGestureRecognizer → native CALayer"
         case .nativeScroll: return "native horizontal UIScrollView"
@@ -53,28 +56,28 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
 
     var usesHomePresentation: Bool {
         switch self {
-        case .carousel, .carouselPan, .carouselPanLatched, .carouselTree, .carouselHero, .carouselBackdrop: return true
+        case .carousel, .carouselPan, .carouselPanLatched, .carouselTreePanLoad, .carouselTree, .carouselHero, .carouselBackdrop: return true
         case .rawTouch, .nativePan, .nativeScroll, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
         }
     }
 
     var isCarouselTreeProbe: Bool {
         switch self {
-        case .carouselTree, .carouselHero, .carouselBackdrop: return true
+        case .carouselTreePanLoad, .carouselTree, .carouselHero, .carouselBackdrop: return true
         case .carousel, .carouselPan, .carouselPanLatched, .rawTouch, .nativePan, .nativeScroll, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
         }
     }
 
     var observesBackdropTransition: Bool {
         switch self {
-        case .carousel, .carouselPan, .carouselPanLatched, .carouselTree, .carouselBackdrop: return true
+        case .carousel, .carouselPan, .carouselPanLatched, .carouselTreePanLoad, .carouselTree, .carouselBackdrop: return true
         case .rawTouch, .nativePan, .nativeScroll, .carouselHero, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
         }
     }
 
     var observesHeroTransition: Bool {
         switch self {
-        case .carousel, .carouselPan, .carouselPanLatched, .carouselTree, .carouselHero: return true
+        case .carousel, .carouselPan, .carouselPanLatched, .carouselTreePanLoad, .carouselTree, .carouselHero: return true
         case .rawTouch, .nativePan, .nativeScroll, .carouselBackdrop, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
         }
     }
@@ -113,7 +116,7 @@ struct V3HomeFramePipelineProbe: View {
         ZStack {
             Color.black.ignoresSafeArea()
             switch mode {
-            case .carousel, .carouselPan, .carouselPanLatched, .carouselTree, .carouselHero, .carouselBackdrop:
+            case .carousel, .carouselPan, .carouselPanLatched, .carouselTreePanLoad, .carouselTree, .carouselHero, .carouselBackdrop:
                 EmptyView()
             case .rawTouch, .nativePan, .nativeScroll:
                 ZStack {
@@ -351,7 +354,7 @@ private final class V3HomeInputPipelineView: UIView, UIScrollViewDelegate {
         case .nativeScroll:
             markerLayer.isHidden = true
             scrollView.isHidden = false
-        case .carousel, .carouselPan, .carouselPanLatched, .carouselTree, .carouselHero, .carouselBackdrop, .coreAnimation, .nativeDisplayLink, .swiftUI:
+        case .carousel, .carouselPan, .carouselPanLatched, .carouselTreePanLoad, .carouselTree, .carouselHero, .carouselBackdrop, .coreAnimation, .nativeDisplayLink, .swiftUI:
             break
         }
     }
@@ -475,7 +478,7 @@ private final class V3HomeNativeFramePipelineView: UIView {
         switch mode {
         case .coreAnimation: startCoreAnimation()
         case .nativeDisplayLink: startDisplayLink()
-        case .carousel, .carouselPan, .carouselPanLatched, .rawTouch, .nativePan, .nativeScroll, .carouselTree, .carouselHero, .carouselBackdrop, .swiftUI: break
+        case .carousel, .carouselPan, .carouselPanLatched, .carouselTreePanLoad, .rawTouch, .nativePan, .nativeScroll, .carouselTree, .carouselHero, .carouselBackdrop, .swiftUI: break
         }
     }
 

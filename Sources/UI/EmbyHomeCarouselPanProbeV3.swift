@@ -14,6 +14,75 @@ final class V3HomeCarouselPanProbeRecognizer: UIPanGestureRecognizer {
     }
 }
 
+struct V3HomeCarouselPanLoadProbeSurface: UIViewRepresentable {
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = true
+        let recognizer = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+        recognizer.maximumNumberOfTouches = 1
+        recognizer.cancelsTouchesInView = false
+        recognizer.delaysTouchesBegan = false
+        recognizer.delaysTouchesEnded = false
+        view.addGestureRecognizer(recognizer)
+        return view
+    }
+
+    final class Coordinator: NSObject {
+        private var samples = 0
+        private var intervals = 0
+        private var totalGapMS: Double = 0
+        private var maxGapMS: Double = 0
+        private var lastTimestamp: CFTimeInterval?
+
+        @objc func handlePan(_ recognizer: UIPanGestureRecognizer) {
+            switch recognizer.state {
+            case .began:
+                reset()
+                record()
+            case .changed:
+                record()
+            case .ended:
+                record()
+                finish(reason: "ended")
+            case .cancelled, .failed:
+                finish(reason: "cancelled")
+            default:
+                break
+            }
+        }
+
+        private func reset() {
+            samples = 0
+            intervals = 0
+            totalGapMS = 0
+            maxGapMS = 0
+            lastTimestamp = nil
+        }
+
+        private func record() {
+            let now = CACurrentMediaTime()
+            samples += 1
+            if let lastTimestamp {
+                let gapMS = max(0, (now - lastTimestamp) * 1000)
+                intervals += 1
+                totalGapMS += gapMS
+                maxGapMS = max(maxGapMS, gapMS)
+            }
+            lastTimestamp = now
+        }
+
+        private func finish(reason: String) {
+            guard samples > 0 else { return }
+            let average = intervals > 0 ? totalGapMS / Double(intervals) : 0
+            DiagnosticsLogger.shared.app("HomeCarouselPanLoadProbe", "reason=\(reason) samples=\(samples) avg_gap_ms=\(String(format: "%.2f", average)) max_gap_ms=\(String(format: "%.2f", maxGapMS)) maxFPS=\(UIScreen.main.maximumFramesPerSecond)")
+            reset()
+        }
+    }
+}
+
 struct V3HomeCarouselPanProbeSurface: UIViewRepresentable {
     let frameLatched: Bool
     let shouldBeginHorizontal: (CGSize) -> Bool

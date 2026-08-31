@@ -49,6 +49,8 @@ extension V3EmbyHomeView {
                     onHorizontalEnded: { translation, releaseVelocityX in finishNativeCarouselDrag(translation, releaseVelocityX: releaseVelocityX, width: width) },
                     onHorizontalCancelled: { cancelNativeCarouselDrag() }
                 )
+            } else if framePipelineProbeMode == .carouselTreePanLoad {
+                V3HomeCarouselPanLoadProbeSurface()
             } else {
                 V3HomeCarouselInteractionSurface(
                     shouldBeginHorizontal: { translation in shouldBeginNativeCarouselDrag(translation) },
