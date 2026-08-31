@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build280 target-device pagination A/B is positive and the user has also completed the force-quit/relaunch cached-first regression check without observing a problem. A separate navigation regression was then reported: tapping a Library `.items` cover enters detail without the normal system push entrance animation. Exact source inspection localizes this to the Build273 native UICollectionView path, where `nativePosterNavigationLink` was conditionally created only after `nativePosterSelection` became non-nil, so its `isActive` binding was already true on first mount. Build283 / OnePlayer 0.15.16 is the narrow repair: keep that hidden NavigationLink mounted and let the existing selection binding transition false→true. No custom push or second navigation owner is added. Exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6` is directly parented by Build280 `531d7f53c55e1e3cff44069e9bce3193ac94749a`; exact Build280→283 scope is four paths. Xcode 16.4 Release CI and independently rechecked IPA/source archives are complete. Target-device push-animation confirmation remains the only gate; stable remains false.**
+**Active — Build283 / OnePlayer 0.15.16 is now target-device positive for both intended regression surfaces. The user confirms Library `.items` cover entry to detail has the normal system entrance animation again, accepting the always-mounted hidden `NavigationLink` repair. The accompanying `OnePlayer-App-1788197938.log` also confirms Build280's off-main pagination fix survives unchanged: one continuous 60→660 native Library session runs at 118.34 Hz with p50/p95/p99 8.33/8.70/17.85 ms, max 25.02 ms, exactly one >=25 ms frame and zero >=33.3 ms frames while all persistence remains `main_thread=0` and snapshot total grows to 208.87 ms. The user reports no visible twitch. No additional code change is justified from this log. The broader historical fixed-item/non-pagination poster tail is not globally frozen by this single pagination session, and native interactive swipe-back has not been explicitly rechecked in the latest device report.**
 
 - **Work ID:** `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords:** 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -13,37 +13,45 @@
 - **Current candidate:** OnePlayer **0.15.16 / Build283**
 - **Target device:** iPhone 15 Pro Max / iOS 17.0
 - **Deployment Target / built MinOS:** iOS 15.0
-- **Build identity guard:** Build282 / 0.15.15 is occupied by the parallel Home task; Build283 / 0.15.16 was free when allocated to Poster.
+- **Build identity guard:** Build282 / 0.15.15 is occupied by the parallel Home task; Build283 / 0.15.16 is Poster.
 
-## Build280 accepted evidence within this task
+## Accepted pagination-persistence result
 
 Build278 proved synchronous full-Library persistence caused the pagination-adjacent severe-frame family: snapshot totals 38.31→94.66 ms paired with 49.96→108.33 ms display gaps, correlation ≈0.991.
 
-Build280 moved only full Library snapshot object construction, JSON serialization and atomic write onto one serial `.utility` queue while the MainActor model awaits ordered completion. Target-device log `OnePlayer-App-1788190813.log` shows every persistence record at `main_thread=0`; clean 60→775 pagination no longer reproduces the Build278 50–100 ms persistence-correlated family even though snapshot work grows to 267.76 ms. The user likewise reported no large twitch.
+Build280 moved full Library snapshot object construction, JSON serialization and atomic write onto one serial `.utility` queue while the MainActor model awaits ordered completion. `OnePlayer-App-1788190813.log` showed every persistence record at `main_thread=0`; clean 60→775 pagination no longer reproduced the Build278 50–100 ms persistence-correlated family even while snapshot work grew to 267.76 ms. The user likewise reported no large twitch.
 
-The user then force-quit/relaunched Build280 and reported cached-first Library behavior appeared normal. Follow-up log `OnePlayer-App-1788191685.log` records a fresh app launch at `2026-08-31T15:54:26.621Z`, OnePlayer 0.15.13, and continued ordered `main_thread=0` accepted-state writes. The log has no dedicated cache-load timing marker, so cached-first acceptance is the user's target-device observation. After that fresh launch only two >=25 ms Library display gaps appear (86.94 / 81.65 ms); both have `insert_events=0`, one overlaps a 0.05 ms visible reconfigure, so this does not restore the Build278 pagination-persistence chain.
+The user then force-quit/relaunched Build280 and reported cached-first Library behavior normal. `OnePlayer-App-1788191685.log` records the fresh process and continued ordered `main_thread=0` writes. It has no dedicated cache-load timing marker, so cached-first acceptance is the user's target-device observation.
 
-**Build280 evidence:** Code written ✅ / scope+checker ✅ / CI ✅ / IPA ✅ / target-device pagination A/B positive ✅ / cached-first force-quit/relaunch positive ✅ / universal 3×3 stable claim ❌.
+Build283 now provides a second target-device regression pass after the navigation repair. `OnePlayer-App-1788197938.log` captures one continuous native Library session from **60→660 items over 19.62 s**:
 
-## Navigation regression root cause
+- display **118.34 Hz**;
+- p50 / p95 / p99 **8.33 / 8.70 / 17.85 ms**;
+- max **25.02 ms**;
+- **31** frames >=12.5 ms;
+- exactly **1** frame >=25 ms;
+- **0** frames >=33.3 ms;
+- reconfigure: 20 events, 1.91 ms total, max 0.19 ms.
 
-The regression is independent of Build280 persistence threading and originated when Library `.items` moved to the native UICollectionView path in Build273.
+The sole 25.02 ms gap occurs with `insert_active=1`, about 17 ms after the 240-item insert began. It is not a persistence-completion pair: the corresponding off-main store/snapshot completes roughly 64/67 ms later. All 12 recorded Library store/snapshot pairs report `main_thread=0`; snapshot total still scales up to **208.87 ms** at the 660-item state without bringing back the old 50–100 ms display-tail family.
 
-Build280 source had `nativePosterNavigationLink` only inside `if let item = nativePosterSelection`, while the link's `isActive` binding read `nativePosterSelection != nil`. The native collection tap first sets the selection; SwiftUI then creates the link with the binding already true. That differs from the normal system-owned NavigationLink lifecycle where an already-mounted link transitions inactive→active, and directly matches the user's “direct entry, no entrance animation” report.
+**Accepted sub-contract:** Build280's ordered off-main Library presentation persistence fixes the proven Build278 pagination-persistence tail and remains intact in Build283.
 
-Do not solve this with `UINavigationController.pushViewController`, a custom transition, or a second navigation state owner. Native iOS push/pop and interactive pop remain system-owned.
+**Not globally claimed:** this one pagination session does not prove every historical fixed-item/non-pagination poster-tail family is permanently absent.
 
-## Build283 implementation / CI / IPA
+## Navigation regression and Build283 repair
 
-Build283 retains the native UICollectionView, Build280 persistence, pagination, image policy and existing detail destination. Only the navigation activation lifecycle changes:
+The missing detail entrance animation was independent of persistence threading and originated when Library `.items` moved to the native UICollectionView path in Build273.
 
-- `nativePosterNavigationLink` remains mounted;
-- destination derives from the existing `nativePosterSelection`;
-- `onSelect` still owns selection;
-- the same `isActive` binding now transitions false→true;
-- deactivation still clears the selection.
+Build280 had `nativePosterNavigationLink` only inside `if let item = nativePosterSelection`, while its `isActive` binding read `nativePosterSelection != nil`. The native collection tap first set selection; SwiftUI then mounted the link with the binding already true. Build283 keeps the same hidden link mounted so the existing binding transitions false→true after `onSelect` sets the same `nativePosterSelection` owner.
 
-Exact Build280→283 compare is exactly four paths:
+No direct `UINavigationController.pushViewController`, custom transition or second navigation state owner was added. Native iOS push/pop remains system-owned.
+
+**Target-device result:** the user confirms entering detail is normal again. This accepts the reported push-entrance regression repair. Native interactive swipe-back was part of the prior regression checklist but has not been explicitly reported in the latest device result, so it remains an explicit PR closeout check rather than something inferred as passed.
+
+## Build283 source / CI / IPA identity
+
+Build283 retains the native UICollectionView, Build280 persistence, pagination, image policy and existing detail destination. Exact Build280→283 compare is exactly four paths:
 
 1. `Sources/Core/AppIdentity.swift`
 2. `Sources/UI/EmbyServerBrowseV3.swift`
@@ -60,9 +68,9 @@ CI / package evidence:
 - artifact digest / downloaded ZIP SHA-256: `555ba6cc5c2859fbc8ad8a20fd1784eaf520ff5e4c4d235b9f10c4273b8f24a0`
 - IPA SHA-256: `472b543f679f5db3932195c2abad8d882e78610172ecbe703fc75947c44e5655`
 - exact-source ZIP SHA-256: `c364da8ba7c7552feabb2b4375354f42472d7f88249fc77b29485ef9b3dbc40f`
-- independently verified: both ZIP archives pass integrity checks; `com.embyplayerlab.app`; OnePlayer `0.15.16 (283)`; `MinimumOSVersion=15.0`; runtime MinOS audit OK; `CADisableMinimumFrameDurationOnPhone=true`.
+- independently verified: `com.embyplayerlab.app`; OnePlayer `0.15.16 (283)`; `MinimumOSVersion=15.0`; runtime MinOS audit OK; `CADisableMinimumFrameDurationOnPhone=true`.
 
-**Build283 evidence:** Code written ✅ / exact four-path scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device animation pending / stable ❌.
+**Build283 evidence:** Code written ✅ / exact four-path scope+checker ✅ / CI passed ✅ / IPA produced+independently verified ✅ / detail-push real-device positive ✅ / pagination-persistence regression real-device positive ✅ / interactive-pop explicit recheck pending / universal poster stable claim ❌.
 
 ## Protected contracts
 
@@ -78,4 +86,4 @@ CI / package evidence:
 
 ## Next exact action
 
-Install Build283 on the target device. From Library `.items`, tap several covers and confirm the normal system push entrance animation is restored; then verify native interactive swipe-back still works. Spot-check one Library pagination pass to ensure Build280's large-twitch improvement remains. Do not merge or call the navigation regression fixed until that target-device result is supplied.
+**No product-code change is justified from the current log.** Leave the accepted pagination-persistence and detail-push repair unchanged. If PR #282 is to leave Draft/merge, explicitly spot-check native interactive edge swipe-back once because that previously stated gate has not been reported in the latest device result. If a distinct visible poster hitch reappears later, capture that exact fixed-item/non-pagination session and resume from its evidence rather than reopening persistence, pagination or scroll physics speculatively.
