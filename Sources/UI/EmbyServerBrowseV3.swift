@@ -154,19 +154,19 @@ struct V3LibraryBrowserView: View {
         }
     }
 
-    @ViewBuilder
     private var nativePosterNavigationLink: some View {
-        if let item = nativePosterSelection {
-            NavigationLink(
-                destination: EmbyPosterDetailDestination(item: item, client: client),
-                isActive: Binding(
-                    get: { nativePosterSelection != nil },
-                    set: { active in if !active { nativePosterSelection = nil } }
-                )
-            ) { EmptyView() }
-            .frame(width: 0, height: 0)
-            .hidden()
-        }
+        NavigationLink(
+            destination: Group {
+                if let item = nativePosterSelection { EmbyPosterDetailDestination(item: item, client: client) }
+                else { EmptyView() }
+            },
+            isActive: Binding(
+                get: { nativePosterSelection != nil },
+                set: { active in if !active { nativePosterSelection = nil } }
+            )
+        ) { EmptyView() }
+        .frame(width: 0, height: 0)
+        .hidden()
     }
 
     private func pagedPosterTab(_ tab: V3LibraryTab) -> some View {
