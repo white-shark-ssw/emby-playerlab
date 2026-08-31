@@ -1,8 +1,8 @@
-name: One-shot Preserve Build211 Release Contract
+name: One-shot Sync Build283 Poster Project Docs
 
 on:
   push:
-    branches: [main]
+    branches: [docs/poster-build283-sync]
     paths:
       - ".github/workflows/temp-fix-build211-carousel-encoding.yml"
 
@@ -10,94 +10,67 @@ permissions:
   contents: write
 
 jobs:
-  fix:
+  sync:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: perf/home-carousel-acquisition-relative-build211
+          ref: main
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Guard corrected Build211 source
+      - name: Update poster project state
+        shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "3df8656ac6c3d816245aa1344dd733699f22dee0"
-
-      - name: Preserve touch-down release authority
-        run: |
-          set -euo pipefail
+          git pull --ff-only origin main
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift')
-          s = p.read_text()
-          old = '''    func finishNativeCarouselDrag(_ translation: CGSize, predictedTranslation: CGSize?, width: CGFloat) {
-        guard isCarouselDragging, let targetID = transitionToID else { return }
-        suppressCarouselTap()
-        let actualDistance = abs(translation.width)
-        let expectedSign: CGFloat = transitionDirection > 0 ? -1 : 1
-        let predictedDistance: CGFloat
-        if let predictedTranslation, predictedTranslation.width == 0 || predictedTranslation.width * expectedSign > 0 { predictedDistance = abs(predictedTranslation.width) }
-        else { predictedDistance = actualDistance }
-        let actualProgress = min(1, max(0, actualDistance / max(1, width)))
-        let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48
-        isCarouselDragging = false
-        if shouldCommit { completeInteractiveTransition(to: targetID) }
-        else { cancelInteractiveTransition() }
-    }
-'''
-          new = '''    func finishNativeCarouselDrag(_ translation: CGSize, predictedTranslation: CGSize?, width: CGFloat) {
-        suppressCarouselTap()
-        let actualDistance = abs(translation.width)
-        let releaseDirection = isCarouselDragging ? transitionDirection : (translation.width < 0 ? 1 : -1)
-        let expectedSign: CGFloat = releaseDirection > 0 ? -1 : 1
-        let predictedDistance: CGFloat
-        if let predictedTranslation, predictedTranslation.width == 0 || predictedTranslation.width * expectedSign > 0 { predictedDistance = abs(predictedTranslation.width) }
-        else { predictedDistance = actualDistance }
-        let actualProgress = min(1, max(0, actualDistance / max(1, width)))
-        let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48
-        if !isCarouselDragging {
-            guard shouldCommit, let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: releaseDirection) else { return }
-            transitionFromID = currentID
-            transitionToID = targetID
-            transitionProgress = 0
-            transitionDirection = releaseDirection
-            completeInteractiveTransition(to: targetID)
-            return
-        }
-        guard let targetID = transitionToID else { return }
-        isCarouselDragging = false
-        if shouldCommit { completeInteractiveTransition(to: targetID) }
-        else { cancelInteractiveTransition() }
-    }
-'''
-          if s.count(old) != 1:
-              raise SystemExit(f'Build211 finish anchor count={s.count(old)}')
-          p.write_text(s.replace(old, new, 1))
 
-          c = Path('scripts/check_home_carousel_single_owner.py')
-          check = c.read_text()
-          anchor = "assert 'let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48' in interaction\n"
-          if check.count(anchor) != 1:
-              raise SystemExit('Build211 contract anchor missing')
-          extra = "assert 'let releaseDirection = isCarouselDragging ? transitionDirection : (translation.width < 0 ? 1 : -1)' in interaction\nassert 'if !isCarouselDragging {' in interaction\nassert 'guard shouldCommit, let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: releaseDirection) else { return }' in interaction\n"
-          c.write_text(check.replace(anchor, anchor + extra, 1))
+          module = Path('docs/project/MODULE_STATUS.md')
+          lines = module.read_text().splitlines()
+          prefix = '| Poster 3-column / poster-heavy scroll smoothness |'
+          matches = [i for i, line in enumerate(lines) if line.startswith(prefix)]
+          if len(matches) != 1: raise SystemExit(f'MODULE_STATUS poster row count={len(matches)}')
+          lines[matches[0]] = '| Poster 3-column / poster-heavy scroll smoothness | **Active — Build280 pagination/cached-first target-device positive; Build283 navigation regression repair CI/IPA verified** | Build280 target-device logs remove the proven Build278 persistence-correlated pagination 50–100 ms tail while every persistence operation reports `main_thread=0`; user also reports force-quit/relaunch cached-first behavior normal. Follow-up log `OnePlayer-App-1788191685.log` has a fresh launch and continued off-main writes; its two post-launch 86.94/81.65 ms gaps have `insert_events=0`, so they are not the old pagination chain. User then found Library `.items` detail push lost its entrance animation. Exact source localizes this to the Build273 native collection path conditionally creating an already-active hidden `NavigationLink`. Build283 / 0.15.16 exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6` keeps that link mounted so the existing selection binding transitions false→true; no custom push or second owner. Xcode 16.4 run/job `33412757299 / 99556026814` passed; artifact `9765884301`; IPA SHA `472b543f679f5db3932195c2abad8d882e78610172ecbe703fc75947c44e5655`; MinOS 15.0. Target-device animation/interactive-pop confirmation pending; stable ❌. |'
+          module.write_text('\n'.join(lines) + '\n')
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          lines = index.read_text().splitlines()
+          b280 = '| **Build280 / 0.15.13**'
+          matches = [i for i, line in enumerate(lines) if line.startswith(b280)]
+          if len(matches) != 1: raise SystemExit(f'BUILD_TEST_INDEX Build280 row count={len(matches)}')
+          i = matches[0]
+          lines[i] = '| **Build280 / 0.15.13** | Off-main Library presentation persistence A/B | **Target-device pagination fix positive; cached-first regression user-positive; not a universal 3×3 stable claim.** Exact source `531d7f53c55e1e3cff44069e9bce3193ac94749a`; run/job `33390236717 / 99481947293`; artifact `9757238604`; IPA SHA `e0b71190621671767b73cd95da63e733640ce2e2acfba9945f6178f6d12ac769`. `OnePlayer-App-1788190813.log` shows all persistence `main_thread=0` and clean 60→775 pagination with zero >=25 ms pagination gaps despite snapshot totals up to 267.76 ms. User then force-quit/relaunched and reported cached-first Library behavior normal. Follow-up `OnePlayer-App-1788191685.log` confirms a fresh launch and continued ordered off-main writes; no dedicated cache-load timing marker. |'
+          b283_prefix = '| **Build283 / 0.15.16**'
+          if not any(line.startswith(b283_prefix) for line in lines):
+              lines.insert(i + 1, '| **Build283 / 0.15.16** | Restore native Library detail push animation after native UICollectionView migration | **Code/CI/IPA verified; target-device animation pending; not stable.** User reported Library `.items` cover taps entered detail without the normal entrance animation. Exact source inspection found the Build273 native path created its hidden `NavigationLink` only after selection, with `isActive` already true. Build283 exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6` is directly parented by Build280 and keeps the link mounted so the same selection binding transitions false→true; no custom push/second navigation owner. Exact Build280→283 scope is AppIdentity, `EmbyServerBrowseV3.swift`, changelog and checker only. Xcode 16.4 run/job `33412757299 / 99556026814`; artifact `9765884301`, digest `sha256:555ba6cc5c2859fbc8ad8a20fd1784eaf520ff5e4c4d235b9f10c4273b8f24a0`; IPA SHA `472b543f679f5db3932195c2abad8d882e78610172ecbe703fc75947c44e5655`; source ZIP SHA `c364da8ba7c7552feabb2b4375354f42472d7f88249fc77b29485ef9b3dbc40f`; MinOS 15.0. |')
+          index.write_text('\n'.join(lines) + '\n')
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          text = state.read_text()
+          marker = '## Active: Poster-heavy scrolling smoothness\n'
+          if marker not in text: raise SystemExit('PROJECT_STATE poster section missing')
+          if '### 2026-08-31 Build283 native detail-push regression repair' not in text:
+              section = '''\n### 2026-08-31 Build283 native detail-push regression repair — CI/IPA verified\n\nBuild280 pagination/off-main persistence has now cleared both target-device regression gates relevant to that change: the user did not observe the previous large pagination twitch, logs show `main_thread=0` with the Build278 50–100 ms persistence-correlated family absent during clean pagination, and a force-quit/relaunch cached-first check was also reported normal. Follow-up `OnePlayer-App-1788191685.log` records the fresh 0.15.13 process and continued ordered off-main writes; it contains no dedicated cache-load timing field, so cached-first acceptance is user-observed rather than log-timed.\n\nThat same regression pass exposed a separate navigation defect: Library `.items` native UICollectionView cover taps entered detail without the normal system push entrance animation. Exact Build280 source showed its hidden `NavigationLink` was created only after `nativePosterSelection` became non-nil, so `isActive` was already true at first mount. Build283 / OnePlayer 0.15.16 exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6`, directly parented by Build280, keeps the link mounted and uses the existing selection binding's false→true transition. No direct UIKit push, custom transition or second navigation owner is introduced; native system push/pop ownership remains protected.\n\nBuild283 exact Build280→283 scope is four paths only. Xcode 16.4 run/job `33412757299 / 99556026814` passed; artifact `9765884301`, digest `sha256:555ba6cc5c2859fbc8ad8a20fd1784eaf520ff5e4c4d235b9f10c4273b8f24a0`; IPA SHA `472b543f679f5db3932195c2abad8d882e78610172ecbe703fc75947c44e5655`; exact-source ZIP SHA `c364da8ba7c7552feabb2b4375354f42472d7f88249fc77b29485ef9b3dbc40f`; `0.15.16 (283)` / MinOS 15.0 independently verified. Evidence: **Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device animation pending / stable ❌**.\n'''
+              text = text.replace(marker, marker + section, 1)
+          state.write_text(text)
           PY
-          python3 scripts/check_home_carousel_single_owner.py
-          python3 -m py_compile scripts/check_home_carousel_single_owner.py
           git diff --check
-          python3 - <<'PY'
-          import subprocess
-          expected = {'Sources/UI/EmbyHomeCarouselInteractionV3.swift', 'scripts/check_home_carousel_single_owner.py'}
-          changed = set(subprocess.check_output(['git','diff','--name-only'], text=True).splitlines())
-          if changed != expected: raise SystemExit(f'Unexpected Build211 release patch files: {sorted(changed)}')
-          PY
+          actual="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' docs/project/BUILD_TEST_INDEX.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md | sort)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::unexpected docs scope"
+            printf 'actual:\n%s\nexpected:\n%s\n' "$actual" "$expected"
+            exit 1
+          fi
 
-      - name: Commit Build211 release preservation
+      - name: Commit project-state sync to main
+        shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Sources/UI/EmbyHomeCarouselInteractionV3.swift scripts/check_home_carousel_single_owner.py
-          git commit -m "Preserve Build211 touch-down release authority"
-          git push origin HEAD:perf/home-carousel-acquisition-relative-build211
+          git config user.name "ChatGPT"
+          git config user.email "chatgpt@users.noreply.github.com"
+          git add docs/project/BUILD_TEST_INDEX.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md
+          git commit -m "Record Build283 poster navigation CI baseline"
+          git push origin HEAD:main
