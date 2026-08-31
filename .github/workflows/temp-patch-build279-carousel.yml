@@ -1,0 +1,52 @@
+name: TEMP Patch Build279 Carousel Real Pan
+
+on:
+  push:
+    branches: [patch/build279-carousel-real-pan-20260831]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout helper branch
+        uses: actions/checkout@v4
+        with:
+          ref: patch/build279-carousel-real-pan-20260831
+          path: helper
+
+      - name: Checkout Build279 product branch
+        uses: actions/checkout@v4
+        with:
+          ref: diag/home-carousel-real-pan-build279
+          path: product
+          fetch-depth: 0
+
+      - name: Apply exact diagnostic patch
+        run: |
+          set -euo pipefail
+          cd product
+          python3 ../helper/.github/scripts/temp-patch-build279-carousel.py
+          git diff --check
+          changed="$(git status --short | awk '{print $2}' | sort)"
+          expected="$(printf '%s\n' Sources/UI/EmbyHomeCarouselPanProbeV3.swift Sources/UI/EmbyHomeFramePipelineProbeV3.swift Sources/UI/EmbyHomeHeroV3.swift | sort)"
+          printf '%s\n' "$changed"
+          test "$changed" = "$expected"
+          grep -F 'case carouselPan' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'case .carouselPan: return "CAROUSEL PAN"' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'private var configuredMode: V3HomeFramePipelineProbeMode?' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'guard configuredMode != mode else { return }' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'V3HomeCarouselPanProbeSurface(' Sources/UI/EmbyHomeHeroV3.swift
+          grep -F 'final class V3HomeCarouselPanProbeRecognizer: UIPanGestureRecognizer' Sources/UI/EmbyHomeCarouselPanProbeV3.swift
+
+      - name: Commit product patch
+        run: |
+          set -euo pipefail
+          cd product
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add Sources/UI/EmbyHomeCarouselPanProbeV3.swift Sources/UI/EmbyHomeFramePipelineProbeV3.swift Sources/UI/EmbyHomeHeroV3.swift
+          git commit -m 'Build279: add real-carousel pan input A/B'
+          git push origin HEAD:diag/home-carousel-real-pan-build279
