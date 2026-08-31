@@ -30,6 +30,8 @@ struct V3HomeCarouselPanLoadProbeSurface: UIViewRepresentable {
         return view
     }
 
+    func updateUIView(_ uiView: UIView, context: Context) {}
+
     final class Coordinator: NSObject {
         private var samples = 0
         private var intervals = 0
