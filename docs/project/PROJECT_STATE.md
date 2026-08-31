@@ -76,6 +76,14 @@ The active poster-smoothness task now profiles the shared 3×3 presentation also
 
 ## Active: Poster-heavy scrolling smoothness
 
+### 2026-08-31 Build283 native detail-push regression repair — CI/IPA verified
+
+Build280 pagination/off-main persistence has now cleared both target-device regression gates relevant to that change: the user did not observe the previous large pagination twitch, logs show `main_thread=0` with the Build278 50–100 ms persistence-correlated family absent during clean pagination, and a force-quit/relaunch cached-first check was also reported normal. Follow-up `OnePlayer-App-1788191685.log` records the fresh 0.15.13 process and continued ordered off-main writes; it contains no dedicated cache-load timing field, so cached-first acceptance is user-observed rather than log-timed.
+
+That same regression pass exposed a separate navigation defect: Library `.items` native UICollectionView cover taps entered detail without the normal system push entrance animation. Exact Build280 source showed its hidden `NavigationLink` was created only after `nativePosterSelection` became non-nil, so `isActive` was already true at first mount. Build283 / OnePlayer 0.15.16 exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6`, directly parented by Build280, keeps the link mounted and uses the existing selection binding's false→true transition. No direct UIKit push, custom transition or second navigation owner is introduced; native system push/pop ownership remains protected.
+
+Build283 exact Build280→283 scope is four paths only. Xcode 16.4 run/job `33412757299 / 99556026814` passed; artifact `9765884301`, digest `sha256:555ba6cc5c2859fbc8ad8a20fd1784eaf520ff5e4c4d235b9f10c4273b8f24a0`; IPA SHA `472b543f679f5db3932195c2abad8d882e78610172ecbe703fc75947c44e5655`; exact-source ZIP SHA `c364da8ba7c7552feabb2b4375354f42472d7f88249fc77b29485ef9b3dbc40f`; `0.15.16 (283)` / MinOS 15.0 independently verified. Evidence: **Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device animation pending / stable ❌**.
+
 ### 2026-08-31 Build280 off-main persistence A/B — CI/IPA verified
 
 Build280 / OnePlayer **0.15.13 (280)** exact source `531d7f53c55e1e3cff44069e9bce3193ac94749a`, branch `perf/poster-grid-offmain-persistence-build280`, Draft PR #282, directly extends target-device-tested Build278. It changes exactly five paths: AppIdentity, `EmbyPagePersistentCache.swift`, `EmbyServerBrowseV3.swift`, changelog and checker. Full Library snapshot object construction, JSON serialization and atomic write now run on one serial `.utility` queue; the MainActor model awaits completion, preserving ordered accepted-state write-through while yielding the scrolling main thread. No coalescing is introduced.
