@@ -961,7 +961,7 @@ private struct EmbyDetailFilterResultsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 if model.isInitialLoading && model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.top, 44) }
                 else {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
+                    EmbyPosterGrid(items: model.items, diagnosticRoute: "detail-filter-results", onApproachingEnd: {
                         guard model.hasMore else { return }
                         Task { await model.loadNextPage() }
                     }) { item in
