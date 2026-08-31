@@ -1,0 +1,355 @@
+name: Build285 Clean Poster Integration
+
+on:
+  push:
+    branches: [ci/poster-final-integration-build285]
+    paths:
+      - ".github/workflows/temp-poster-final-integration-build285.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  integrate-build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    env:
+      BASE_SHA: 673109103a0c225ad3878fdb6bf100709cb04653
+      TESTED_SHA: 39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6
+      VERSION: 0.15.18
+      BUILD: 285
+      PRODUCT_BRANCH: integrate/poster-grid-final-build285
+
+    steps:
+      - name: Checkout exact current-main base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Materialize accepted Poster runtime onto current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+          git fetch --no-tags origin perf/poster-grid-offmain-persistence-build280
+          git cat-file -e "$TESTED_SHA^{commit}"
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          base = "673109103a0c225ad3878fdb6bf100709cb04653"
+          tested = "39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6"
+
+          def show(path: str) -> str:
+              return subprocess.check_output(["git", "show", f"{tested}:{path}"], text=True)
+
+          # Exact accepted Library native collection and ordered off-main Library persistence.
+          Path("Sources/UI/EmbyNativePosterCollectionView.swift").write_text(show("Sources/UI/EmbyNativePosterCollectionView.swift"))
+          Path("Sources/UI/EmbyPagePersistentCache.swift").write_text(show("Sources/UI/EmbyPagePersistentCache.swift"))
+
+          # Shared image loader file had no newer main ownership; use the exact tested blob.
+          Path("Sources/UI/EmbySharedImageAndNavigation.swift").write_text(show("Sources/UI/EmbySharedImageAndNavigation.swift"))
+
+          identity_path = Path("Sources/Core/AppIdentity.swift")
+          identity = identity_path.read_text()
+          if identity.count('0.14.49') != 2:
+              raise SystemExit(f"unexpected AppIdentity 0.14.49 count={identity.count('0.14.49')}")
+          identity_path.write_text(identity.replace('0.14.49', '0.15.18'))
+
+          browse_path = Path("Sources/UI/EmbyServerBrowseV3.swift")
+          browse = browse_path.read_text()
+          state_old = "    @StateObject private var model: V3LibraryBrowserViewModel\n    @State private var selectedTab = V3LibraryTab.items\n"
+          state_new = state_old + "    @State private var nativePosterSelection: LibraryItem?\n"
+          if browse.count(state_old) != 1: raise SystemExit("Browse state anchor mismatch")
+          browse = browse.replace(state_old, state_new, 1)
+
+          switch_old = "        switch selectedTab {\n        case .items, .trailers, .collections, .favorites:\n            pagedPosterTab(selectedTab)\n"
+          switch_new = "        switch selectedTab {\n        case .items:\n            nativeItemsTab\n        case .trailers, .collections, .favorites:\n            pagedPosterTab(selectedTab)\n"
+          if browse.count(switch_old) != 1: raise SystemExit("Browse tab switch anchor mismatch")
+          browse = browse.replace(switch_old, switch_new, 1)
+
+          native_block = (
+              "    private var nativeItemsTab: some View {\n"
+              "        let items = model.items(for: .items)\n"
+              "        return Group {\n"
+              "            if model.isLoading(tab: .items) && items.isEmpty {\n"
+              "                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity).padding(.top, 44)\n"
+              "            } else if model.hasLoaded(tab: .items) && items.isEmpty {\n"
+              "                emptyState(text: \"暂无\\(V3LibraryTab.items.title(contentTitle: contentTitle))内容\").frame(maxWidth: .infinity, maxHeight: .infinity)\n"
+              "            } else {\n"
+              "                EmbyNativePosterCollectionView(\n"
+              "                    items: items,\n"
+              "                    client: client,\n"
+              "                    isLoading: model.isLoading(tab: .items),\n"
+              "                    hasMore: model.hasMore(tab: .items),\n"
+              "                    onApproachingEnd: {\n"
+              "                        guard model.hasMore(tab: .items) else { return }\n"
+              "                        Task { await model.loadNextPage(tab: .items) }\n"
+              "                    },\n"
+              "                    onRefresh: { Task { await model.refresh(tab: .items) } },\n"
+              "                    onSelect: { item in\n"
+              "                        guard nativePosterSelection == nil else { return }\n"
+              "                        nativePosterSelection = item\n"
+              "                    }\n"
+              "                )\n"
+              "                .frame(maxWidth: .infinity, maxHeight: .infinity)\n"
+              "            }\n"
+              "        }\n"
+              "        .frame(maxWidth: .infinity, maxHeight: .infinity)\n"
+              "        .background(nativePosterNavigationLink)\n"
+              "        .overlay(alignment: .top) {\n"
+              "            if let error = model.errorMessage(for: .items) { errorText(error).padding(.top, 8) }\n"
+              "        }\n"
+              "    }\n\n"
+              "    private var nativePosterNavigationLink: some View {\n"
+              "        NavigationLink(\n"
+              "            destination: Group {\n"
+              "                if let item = nativePosterSelection { EmbyPosterDetailDestination(item: item, client: client) }\n"
+              "                else { EmptyView() }\n"
+              "            },\n"
+              "            isActive: Binding(\n"
+              "                get: { nativePosterSelection != nil },\n"
+              "                set: { active in if !active { nativePosterSelection = nil } }\n"
+              "            )\n"
+              "        ) { EmptyView() }\n"
+              "        .frame(width: 0, height: 0)\n"
+              "        .hidden()\n"
+              "    }\n\n"
+          )
+          paged_anchor = "    private func pagedPosterTab(_ tab: V3LibraryTab) -> some View {\n"
+          if browse.count(paged_anchor) != 1: raise SystemExit("Browse paged anchor mismatch")
+          browse = browse.replace(paged_anchor, native_block + paged_anchor, 1)
+
+          bare_line = "            persistSnapshot()\n"
+          if browse.count(bare_line) != 4: raise SystemExit(f"unexpected persistence call count={browse.count(bare_line)}")
+          browse = browse.replace(bare_line, "            await persistSnapshot()\n")
+          inline_old = "if didUpdate { loadedTabs.insert(.suggestions); persistSnapshot() }"
+          if browse.count(inline_old) != 1: raise SystemExit("suggestion persistence anchor mismatch")
+          browse = browse.replace(inline_old, "if didUpdate { loadedTabs.insert(.suggestions); await persistSnapshot() }", 1)
+          if browse.count("    private func persistSnapshot() {") != 1: raise SystemExit("persistSnapshot definition mismatch")
+          browse = browse.replace("    private func persistSnapshot() {", "    private func persistSnapshot() async {", 1)
+          store_call = "        V3PagePersistentCache.shared.storeLibrarySnapshot(snapshot, client: client, libraryID: library.id)"
+          if browse.count(store_call) != 1: raise SystemExit("Library store call mismatch")
+          browse = browse.replace(store_call, "        await V3PagePersistentCache.shared.storeLibrarySnapshot(snapshot, client: client, libraryID: library.id)", 1)
+          browse_path.write_text(browse)
+
+          shared_path = Path("Sources/UI/EmbyServerSharedV3.swift")
+          shared = shared_path.read_text()
+          poster_old = "                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: posterImageMaxWidth, tag: item.preferredPrimaryImageTag), contentMode: .fill)"
+          poster_new = "                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: posterImageMaxWidth, tag: item.preferredPrimaryImageTag), contentMode: .fill, publishesLoadingState: width != nil)"
+          if shared.count(poster_old) != 1: raise SystemExit("V3PosterCard image anchor mismatch")
+          shared = shared.replace(poster_old, poster_new, 1)
+          remote_old = (
+              "struct V3RemoteImage: View {\n"
+              "    let url: URL?\n"
+              "    let contentMode: ContentMode\n"
+              "    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode, placeholderSystemImage: \"play.rectangle\", showsLoadingIndicator: false) }\n"
+              "}\n"
+          )
+          remote_new = (
+              "struct V3RemoteImage: View {\n"
+              "    let url: URL?\n"
+              "    let contentMode: ContentMode\n"
+              "    let publishesLoadingState: Bool\n\n"
+              "    init(url: URL?, contentMode: ContentMode, publishesLoadingState: Bool = true) {\n"
+              "        self.url = url\n"
+              "        self.contentMode = contentMode\n"
+              "        self.publishesLoadingState = publishesLoadingState\n"
+              "    }\n\n"
+              "    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode, placeholderSystemImage: \"play.rectangle\", showsLoadingIndicator: false, publishesLoadingState: publishesLoadingState) }\n"
+              "}\n"
+          )
+          if shared.count(remote_old) != 1: raise SystemExit("V3RemoteImage block mismatch")
+          shared_path.write_text(shared.replace(remote_old, remote_new, 1))
+
+          changelog = "\n".join([
+              "# OnePlayer 0.15.18 / Build285",
+              "",
+              "- Clean integration of the target-device-accepted Library poster result onto current main; Build283 remains the real-device behavior authority.",
+              "- Library `.items` uses the accepted iOS 15-compatible native `UICollectionView` 3-column path with native append insertion and device-max refresh request during motion.",
+              "- Preserves the accepted poster-grid image behavior that suppresses unused loading-state publication for grid-sized poster cells.",
+              "- Preserves Build213 cached-first/write-through semantics while moving full Library snapshot object construction, JSON serialization and atomic write to the accepted serial utility queue.",
+              "- Keeps the hidden Library detail `NavigationLink` mounted so system-owned push activation transitions false→true; no custom UIKit push or second navigation owner.",
+              "- Search Build256, Home carousel, Player/MPV/PiP, UnifiedTransport, playback Cache/Session, STRM/302/115/CDN and Deployment Target are unchanged.",
+              "- Deployment Target remains iOS 15.0.",
+              "",
+          ])
+          Path("docs/changelog/CHANGELOG_v0_15_18_build285.md").write_text(changelog)
+
+          checker = "\n".join([
+              "from pathlib import Path",
+              "",
+              "identity = Path('Sources/Core/AppIdentity.swift').read_text()",
+              "native = Path('Sources/UI/EmbyNativePosterCollectionView.swift').read_text()",
+              "browse = Path('Sources/UI/EmbyServerBrowseV3.swift').read_text()",
+              "cache = Path('Sources/UI/EmbyPagePersistentCache.swift').read_text()",
+              "shared = Path('Sources/UI/EmbyServerSharedV3.swift').read_text()",
+              "nav = Path('Sources/UI/EmbySharedImageAndNavigation.swift').read_text()",
+              "",
+              "assert 'static let sourceVersion = \"0.15.18\"' in identity",
+              "assert 'UICollectionViewFlowLayout()' in native",
+              "assert 'collectionView.performBatchUpdates' in native and 'collectionView.insertItems(at: inserted)' in native",
+              "assert 'CAFrameRateRange(minimum: 80' in native",
+              "assert 'decelerationRate =' not in native and 'Timer.' not in native and 'DispatchSourceTimer' not in native",
+              "assert 'case .items:\\n            nativeItemsTab' in browse",
+              "assert '.background(nativePosterNavigationLink)' in browse",
+              "assert 'private var nativePosterNavigationLink: some View' in browse",
+              "assert 'destination: Group {' in browse and 'get: { nativePosterSelection != nil }' in browse",
+              "assert 'if let item = nativePosterSelection {\\n            NavigationLink(' not in browse",
+              "assert 'private func persistSnapshot() async' in browse",
+              "assert 'await V3PagePersistentCache.shared.storeLibrarySnapshot' in browse",
+              "assert 'private let writeQueue = DispatchQueue(label: \"OnePlayer.PagePersistentCache.Write\", qos: .utility)' in cache",
+              "assert 'func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) async' in cache",
+              "assert 'withCheckedContinuation' in cache and 'writeQueue.async' in cache",
+              "assert 'main_thread=\\(Thread.isMainThread ? 1 : 0)' in cache",
+              "assert 'publishesLoadingState: width != nil' in shared",
+              "assert 'let publishesLoadingState: Bool' in shared",
+              "assert 'private let publishesLoadingState: Bool' in nav and 'func setLoading' in nav",
+              "assert 'struct EmbyPosterDetailDestination: View {' in nav",
+              "assert 'private struct EmbyPosterDetailDestination: View {' not in nav",
+              "for text in (native, browse, cache, shared, nav):",
+              "    assert 'targetTime / duration' not in text",
+              "print('Build285 clean Poster integration checker: PASS')",
+              "",
+          ])
+          Path("scripts/check_poster_grid_integration_build285.py").write_text(checker)
+          PY
+
+          python3 scripts/check_poster_grid_integration_build285.py
+          git diff --check
+          actual="$(git diff --name-only "$BASE_SHA" | sort)"
+          expected="$(printf '%s\n' \
+            Sources/Core/AppIdentity.swift \
+            Sources/UI/EmbyNativePosterCollectionView.swift \
+            Sources/UI/EmbyPagePersistentCache.swift \
+            Sources/UI/EmbyServerBrowseV3.swift \
+            Sources/UI/EmbyServerSharedV3.swift \
+            Sources/UI/EmbySharedImageAndNavigation.swift \
+            docs/changelog/CHANGELOG_v0_15_18_build285.md \
+            scripts/check_poster_grid_integration_build285.py | sort)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::unexpected Build285 integration scope"
+            printf 'actual:\n%s\nexpected:\n%s\n' "$actual" "$expected"
+            exit 1
+          fi
+          git config user.name "ChatGPT"
+          git config user.email "chatgpt@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyNativePosterCollectionView.swift Sources/UI/EmbyPagePersistentCache.swift Sources/UI/EmbyServerBrowseV3.swift Sources/UI/EmbyServerSharedV3.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_15_18_build285.md scripts/check_poster_grid_integration_build285.py
+          git commit -m "Integrate accepted Poster grid runtime as Build285"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git diff --exit-code "$BASE_SHA" -- .github/workflows
+
+      - name: Export exact source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OnePlayer-0.15.18-build285-${SOURCE_SHA::7}-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Generate Xcode project and install dependencies
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update 2>&1 | tee pods-install.log
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Xcode 16.4 Release build
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+
+      - name: Validate package identity and MinOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.txt
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "$VERSION" --build "$BUILD" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
+          /usr/libexec/PlistBuddy -c 'Print :CADisableMinimumFrameDurationOnPhone' "$APP_PATH/Info.plist" | grep -qx true
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" "15.0" "17.0" min-os-report.txt build.log
+
+      - name: Package verified IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA="OnePlayer-0.15.18-Build285-PosterFinalIntegration.ipa"
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" | tee ipa-integrity.txt
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+
+      - name: Push clean integration branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git push origin HEAD:"$PRODUCT_BRANCH"
+
+      - name: Upload Build285 integration artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.18-build285-poster-final-integration
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            built-info-plist.txt
+            min-os-report.txt
+            ipa-integrity.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "base=$BASE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "tested=$TESTED_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "integration_source=${SOURCE_SHA:-not-created}" >> "$GITHUB_STEP_SUMMARY"
+          echo "version=$VERSION build=$BUILD" >> "$GITHUB_STEP_SUMMARY"
