@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PRODUCT_SHA: 9babebb132437f70d72918d1a858c0753e9b54a1
+  PRODUCT_SHA: 58801ef0acc6084c3168e8d7635a1258925cc382
   BASE_SHA: a0bb823f81742c7f08908c0465809a41f9e22b3b
   VERSION: 0.15.15
   BUILD_NUMBER: 282
@@ -45,6 +45,7 @@ jobs:
           grep -F 'case .carouselTreePanLoad: return "TREE PANLOAD"' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
           grep -F 'case .carouselTreePanLoad, .carouselTree, .carouselHero, .carouselBackdrop: return true' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
           grep -F 'V3HomeCarouselPanLoadProbeSurface()' Sources/UI/EmbyHomeHeroV3.swift
+          grep -F 'func updateUIView(_ uiView: UIView, context: Context) {}' Sources/UI/EmbyHomeCarouselPanProbeV3.swift
           grep -F 'DiagnosticsLogger.shared.app("HomeCarouselPanLoadProbe"' Sources/UI/EmbyHomeCarouselPanProbeV3.swift
           python3 - <<'PY'
           from pathlib import Path
