@@ -1,0 +1,52 @@
+name: Sync carousel Build279 result and Build281 docs
+on:
+  push:
+    branches:
+      - docs/carousel-build279-result-build281-20260831
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout helper branch
+        uses: actions/checkout@v4
+        with:
+          ref: docs/carousel-build279-result-build281-20260831
+          path: helper
+      - name: Preserve docs sync script
+        run: cp helper/scripts/temp_sync_carousel_build281_docs.py /tmp/temp_sync_carousel_build281_docs.py
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: target
+          fetch-depth: 0
+      - name: Patch carousel project docs
+        working-directory: target
+        run: python3 /tmp/temp_sync_carousel_build281_docs.py
+      - name: Verify docs-only scope
+        working-directory: target
+        run: |
+          set -euo pipefail
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' docs/project/BUILD_TEST_INDEX.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/current/dev/DEV-home-carousel-drag-smoothness.md | sort)"
+          printf '%s\n' "$changed"
+          test "$changed" = "$expected"
+          grep -F 'Build279 target-device real-carousel input result' docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          grep -F 'Build281 / 0.15.14 — equal-refresh direct Pan vs frame-latched publication' docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          grep -F 'Build281 / 0.15.14' docs/project/MODULE_STATUS.md
+          grep -F 'Active: Home carousel input/publication diagnosis — Build281 / 0.15.14' docs/project/PROJECT_STATE.md
+          grep -F 'D025 — Build279 rejects recognizer-only attribution; Build281 tests frame-aligned real input' docs/project/TECHNICAL_DECISIONS.md
+          grep -F '**Build281 / 0.15.14**' docs/project/BUILD_TEST_INDEX.md
+          grep -F '**Build280' docs/project/BUILD_TEST_INDEX.md
+      - name: Commit docs to main
+        working-directory: target
+        run: |
+          set -euo pipefail
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add docs/project/BUILD_TEST_INDEX.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          git commit -m 'Record Build279 result and Build281 carousel probe [skip ci]'
+          git push origin HEAD:main
