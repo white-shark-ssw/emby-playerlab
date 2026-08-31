@@ -154,19 +154,19 @@ struct V3LibraryBrowserView: View {
         }
     }
 
-    @ViewBuilder
     private var nativePosterNavigationLink: some View {
-        if let item = nativePosterSelection {
-            NavigationLink(
-                destination: EmbyPosterDetailDestination(item: item, client: client),
-                isActive: Binding(
-                    get: { nativePosterSelection != nil },
-                    set: { active in if !active { nativePosterSelection = nil } }
-                )
-            ) { EmptyView() }
-            .frame(width: 0, height: 0)
-            .hidden()
-        }
+        NavigationLink(
+            destination: Group {
+                if let item = nativePosterSelection { EmbyPosterDetailDestination(item: item, client: client) }
+                else { EmptyView() }
+            },
+            isActive: Binding(
+                get: { nativePosterSelection != nil },
+                set: { active in if !active { nativePosterSelection = nil } }
+            )
+        ) { EmptyView() }
+        .frame(width: 0, height: 0)
+        .hidden()
     }
 
     private func pagedPosterTab(_ tab: V3LibraryTab) -> some View {
@@ -394,7 +394,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             let refreshed = try await client.libraryItem(itemId: itemID)
             replaceEverywhere(refreshed)
             if let seriesID = refreshed.seriesId, seriesID != refreshed.id, let refreshedSeries = try? await client.libraryItem(itemId: seriesID) { replaceEverywhere(refreshedSeries) }
-            persistSnapshot()
+            await persistSnapshot()
         } catch {
             if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Library", "userdata refresh failed item=\(itemID): \(error.localizedDescription)") }
         }
@@ -452,7 +452,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             }
             pageStates[tab] = state
             loadedTabs.insert(tab)
-            persistSnapshot()
+            await persistSnapshot()
         } catch {
             if !isEmbyRequestCancellation(error) { errorMessages[tab] = error.localizedDescription }
         }
@@ -476,7 +476,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         if let latest { suggestionLatestItems = latest; didUpdate = true }
         if let generic { genericSuggestionItems = generic; didUpdate = true }
         if let recommendations { recommendationSections = recommendations; didUpdate = true }
-        if didUpdate { loadedTabs.insert(.suggestions); persistSnapshot() }
+        if didUpdate { loadedTabs.insert(.suggestions); await persistSnapshot() }
     }
 
     private var suggestionResumeTypes: [String] {
@@ -504,7 +504,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         do {
             genres = try await client.libraryGenres(parentId: library.id, includeItemTypes: expectedItemTypes)
             loadedTabs.insert(.genres)
-            persistSnapshot()
+            await persistSnapshot()
         } catch { if !isEmbyRequestCancellation(error) { errorMessages[.genres] = error.localizedDescription } }
     }
 
@@ -516,11 +516,11 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         do {
             folderItems = try await client.libraryFolderChildren(parentId: library.id)
             loadedTabs.insert(.folders)
-            persistSnapshot()
+            await persistSnapshot()
         } catch { if !isEmbyRequestCancellation(error) { errorMessages[.folders] = error.localizedDescription } }
     }
 
-    private func persistSnapshot() {
+    private func persistSnapshot() async {
         let persistedItems = Dictionary(uniqueKeysWithValues: tabItems.map { ($0.key.rawValue, $0.value) })
         let persistedStates = Dictionary(uniqueKeysWithValues: pageStates.map { ($0.key.rawValue, V3PersistedPageState(nextStartIndex: $0.value.nextStartIndex, hasMore: $0.value.hasMore)) })
         let snapshot = V3LibraryPersistentSnapshot(
@@ -535,7 +535,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             loadedTabs: Set(loadedTabs.map(\.rawValue)),
             pageStates: persistedStates
         )
-        V3PagePersistentCache.shared.storeLibrarySnapshot(snapshot, client: client, libraryID: library.id)
+        await V3PagePersistentCache.shared.storeLibrarySnapshot(snapshot, client: client, libraryID: library.id)
     }
 
     private func replaceEverywhere(_ refreshed: LibraryItem) {
