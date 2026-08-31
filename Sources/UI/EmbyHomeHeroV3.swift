@@ -41,8 +41,9 @@ extension V3EmbyHomeView {
         }
         .frame(width: width, height: baseHeight)
         .overlay {
-            if framePipelineProbeMode == .carouselPan {
+            if framePipelineProbeMode == .carouselPan || framePipelineProbeMode == .carouselPanLatched {
                 V3HomeCarouselPanProbeSurface(
+                    frameLatched: framePipelineProbeMode == .carouselPanLatched,
                     shouldBeginHorizontal: { translation in shouldBeginNativeCarouselDrag(translation) },
                     onHorizontalChanged: { translation in handleNativeCarouselDrag(translation, width: width) },
                     onHorizontalEnded: { translation, releaseVelocityX in finishNativeCarouselDrag(translation, releaseVelocityX: releaseVelocityX, width: width) },
