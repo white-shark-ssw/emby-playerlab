@@ -1,0 +1,36 @@
+name: TEMP Fix carousel Build281 docs sync anchor
+on:
+  push:
+    branches:
+      - docs/carousel-build279-result-build281-20260831
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/carousel-build279-result-build281-20260831
+      - name: Fix current PROJECT_STATE anchor
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/temp_sync_carousel_build281_docs.py')
+          s = p.read_text()
+          old = "pattern = r'## Active: Home carousel input/publication diagnosis — Build277 / 0\\.15\\.10\\n.*?(?=## Completed / frozen: Home carousel interaction)'"
+          new = "pattern = r'## Active: Home carousel input/publication diagnosis — Build279 / 0\\.15\\.12\\n.*?(?=## Completed / frozen: Home carousel interaction)'"
+          if old not in s:
+              print('anchor already corrected; no change')
+              raise SystemExit(0)
+          p.write_text(s.replace(old, new, 1))
+          PY
+      - name: Commit correction when needed
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git diff --check
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add scripts/temp_sync_carousel_build281_docs.py
+          git commit -m 'Fix Build281 docs sync PROJECT_STATE anchor'
+          git push origin HEAD:docs/carousel-build279-result-build281-20260831
