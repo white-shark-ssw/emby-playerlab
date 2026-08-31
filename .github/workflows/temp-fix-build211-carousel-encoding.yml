@@ -1,103 +1,125 @@
-name: One-shot Preserve Build211 Release Contract
+name: One-shot Build283 Poster Navigation IPA
 
 on:
   push:
-    branches: [main]
+    branches: [ci/poster-build283-navigation]
     paths:
       - ".github/workflows/temp-fix-build211-carousel-encoding.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fix:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: perf/home-carousel-acquisition-relative-build211
+          ref: 39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6
           fetch-depth: 0
-          persist-credentials: true
 
-      - name: Guard corrected Build211 source
+      - name: Guard exact Build283 source
+        shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "3df8656ac6c3d816245aa1344dd733699f22dee0"
+          test "$(git rev-parse HEAD)" = "39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6"
+          PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_poster_grid_offmain_persistence.py
+          git diff --check 531d7f53c55e1e3cff44069e9bce3193ac94749a..HEAD
+          actual="$(git diff --name-only 531d7f53c55e1e3cff44069e9bce3193ac94749a..HEAD | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyServerBrowseV3.swift docs/changelog/CHANGELOG_v0_15_16_build283.md scripts/check_poster_grid_offmain_persistence.py | sort)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::unexpected Build280->283 scope"
+            printf 'actual:\n%s\nexpected:\n%s\n' "$actual" "$expected"
+            exit 1
+          fi
 
-      - name: Preserve touch-down release authority
+      - name: Export exact source snapshot
+        shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift')
-          s = p.read_text()
-          old = '''    func finishNativeCarouselDrag(_ translation: CGSize, predictedTranslation: CGSize?, width: CGFloat) {
-        guard isCarouselDragging, let targetID = transitionToID else { return }
-        suppressCarouselTap()
-        let actualDistance = abs(translation.width)
-        let expectedSign: CGFloat = transitionDirection > 0 ? -1 : 1
-        let predictedDistance: CGFloat
-        if let predictedTranslation, predictedTranslation.width == 0 || predictedTranslation.width * expectedSign > 0 { predictedDistance = abs(predictedTranslation.width) }
-        else { predictedDistance = actualDistance }
-        let actualProgress = min(1, max(0, actualDistance / max(1, width)))
-        let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48
-        isCarouselDragging = false
-        if shouldCommit { completeInteractiveTransition(to: targetID) }
-        else { cancelInteractiveTransition() }
-    }
-'''
-          new = '''    func finishNativeCarouselDrag(_ translation: CGSize, predictedTranslation: CGSize?, width: CGFloat) {
-        suppressCarouselTap()
-        let actualDistance = abs(translation.width)
-        let releaseDirection = isCarouselDragging ? transitionDirection : (translation.width < 0 ? 1 : -1)
-        let expectedSign: CGFloat = releaseDirection > 0 ? -1 : 1
-        let predictedDistance: CGFloat
-        if let predictedTranslation, predictedTranslation.width == 0 || predictedTranslation.width * expectedSign > 0 { predictedDistance = abs(predictedTranslation.width) }
-        else { predictedDistance = actualDistance }
-        let actualProgress = min(1, max(0, actualDistance / max(1, width)))
-        let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48
-        if !isCarouselDragging {
-            guard shouldCommit, let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: releaseDirection) else { return }
-            transitionFromID = currentID
-            transitionToID = targetID
-            transitionProgress = 0
-            transitionDirection = releaseDirection
-            completeInteractiveTransition(to: targetID)
-            return
-        }
-        guard let targetID = transitionToID else { return }
-        isCarouselDragging = false
-        if shouldCommit { completeInteractiveTransition(to: targetID) }
-        else { cancelInteractiveTransition() }
-    }
-'''
-          if s.count(old) != 1:
-              raise SystemExit(f'Build211 finish anchor count={s.count(old)}')
-          p.write_text(s.replace(old, new, 1))
+          SOURCE_ZIP="OnePlayer-0.15.16-build283-39014a0-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
 
-          c = Path('scripts/check_home_carousel_single_owner.py')
-          check = c.read_text()
-          anchor = "assert 'let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48' in interaction\n"
-          if check.count(anchor) != 1:
-              raise SystemExit('Build211 contract anchor missing')
-          extra = "assert 'let releaseDirection = isCarouselDragging ? transitionDirection : (translation.width < 0 ? 1 : -1)' in interaction\nassert 'if !isCarouselDragging {' in interaction\nassert 'guard shouldCommit, let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: releaseDirection) else { return }' in interaction\n"
-          c.write_text(check.replace(anchor, anchor + extra, 1))
-          PY
-          python3 scripts/check_home_carousel_single_owner.py
-          python3 -m py_compile scripts/check_home_carousel_single_owner.py
-          git diff --check
-          python3 - <<'PY'
-          import subprocess
-          expected = {'Sources/UI/EmbyHomeCarouselInteractionV3.swift', 'scripts/check_home_carousel_single_owner.py'}
-          changed = set(subprocess.check_output(['git','diff','--name-only'], text=True).splitlines())
-          if changed != expected: raise SystemExit(f'Unexpected Build211 release patch files: {sorted(changed)}')
-          PY
-
-      - name: Commit Build211 release preservation
+      - name: Select Xcode 16.4
+        shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Sources/UI/EmbyHomeCarouselInteractionV3.swift scripts/check_home_carousel_single_owner.py
-          git commit -m "Preserve Build211 touch-down release authority"
-          git push origin HEAD:perf/home-carousel-acquisition-relative-build211
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: Generate project and install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned app
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION=0.15.16 \
+            CURRENT_PROJECT_VERSION=283 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+
+      - name: Validate and package IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then echo '::error::Release app missing'; exit 1; fi
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.txt
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version 0.15.16 --build 283 --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" 15.0 17.0 min-os-report.log build.log
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-0.15.16-Build283-PosterNavigation.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME"
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload Build283 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.16-build283-poster-navigation
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            built-info-plist.txt
+            min-os-report.log
+          if-no-files-found: error
+          retention-days: 30
