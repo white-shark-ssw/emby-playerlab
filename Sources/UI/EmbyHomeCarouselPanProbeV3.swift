@@ -1,3 +1,4 @@
+import QuartzCore
 import SwiftUI
 import UIKit
 
@@ -119,7 +120,7 @@ struct V3HomeCarouselPanProbeSurface: UIViewRepresentable {
         private func endCadence(reason: String) {
             guard sampleCount > 0 else { return }
             let average = intervalCount > 0 ? totalGapMS / Double(intervalCount) : 0
-            DiagnosticsLogger.shared.app("HomeCarouselPanProbe", "reason=\(reason) samples=\(sampleCount) avg_gap_ms=\(String(format: \"%.2f\", average)) max_gap_ms=\(String(format: \"%.2f\", maxGapMS)) maxFPS=\(UIScreen.main.maximumFramesPerSecond)")
+            DiagnosticsLogger.shared.app("HomeCarouselPanProbe", "reason=\(reason) samples=\(sampleCount) avg_gap_ms=\(String(format: "%.2f", average)) max_gap_ms=\(String(format: "%.2f", maxGapMS)) maxFPS=\(UIScreen.main.maximumFramesPerSecond)")
             sampleCount = 0
             intervalCount = 0
             totalGapMS = 0
