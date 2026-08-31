@@ -1,0 +1,50 @@
+name: TEMP Fix Build281 Probe Source
+on:
+  push:
+    branches:
+      - ci/fix-build281-probe-source-20260831
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout helper branch
+        uses: actions/checkout@v4
+        with:
+          ref: ci/fix-build281-probe-source-20260831
+          path: helper
+      - name: Preserve repair script
+        run: cp helper/scripts/temp_fix_build281_probe.py /tmp/temp_fix_build281_probe.py
+      - name: Checkout Build281 target
+        uses: actions/checkout@v4
+        with:
+          ref: diag/home-carousel-pan-latch-build281
+          path: target
+          fetch-depth: 0
+      - name: Restore exact Build279 probe and apply narrow mode patch
+        working-directory: target
+        run: |
+          git checkout 94f7a4ba5aa5bfdd3beb724e216015141dfc50b7 -- Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          python3 /tmp/temp_fix_build281_probe.py
+      - name: Verify probe diff scope
+        working-directory: target
+        run: |
+          git diff --check
+          files="$(git diff --name-only)"
+          test "$files" = "Sources/UI/EmbyHomeFramePipelineProbeV3.swift"
+          git diff --numstat -- Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          added=$(git diff --numstat -- Sources/UI/EmbyHomeFramePipelineProbeV3.swift | awk '{print $1}')
+          deleted=$(git diff --numstat -- Sources/UI/EmbyHomeFramePipelineProbeV3.swift | awk '{print $2}')
+          test "$added" -le 12
+          test "$deleted" -le 8
+          grep -q 'case carouselPanLatched' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -q 'CAROUSEL PAN LATCH' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+      - name: Commit repaired probe to Build281
+        working-directory: target
+        run: |
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          git commit -m 'Repair Build281 probe source scope'
+          git push origin HEAD:diag/home-carousel-pan-latch-build281
