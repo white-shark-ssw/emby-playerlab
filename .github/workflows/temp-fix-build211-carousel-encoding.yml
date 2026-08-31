@@ -1,4 +1,4 @@
-name: One-shot Sync Build283 Poster Project Docs
+name: One-shot Sync Build283 Poster Device Result
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Update poster project state
+      - name: Update Build283 poster device evidence
         shell: bash
         run: |
           set -euo pipefail
@@ -32,28 +32,39 @@ jobs:
           prefix = '| Poster 3-column / poster-heavy scroll smoothness |'
           matches = [i for i, line in enumerate(lines) if line.startswith(prefix)]
           if len(matches) != 1: raise SystemExit(f'MODULE_STATUS poster row count={len(matches)}')
-          lines[matches[0]] = '| Poster 3-column / poster-heavy scroll smoothness | **Active — Build280 pagination/cached-first target-device positive; Build283 navigation regression repair CI/IPA verified** | Build280 target-device logs remove the proven Build278 persistence-correlated pagination 50–100 ms tail while every persistence operation reports `main_thread=0`; user also reports force-quit/relaunch cached-first behavior normal. Follow-up log `OnePlayer-App-1788191685.log` has a fresh launch and continued off-main writes; its two post-launch 86.94/81.65 ms gaps have `insert_events=0`, so they are not the old pagination chain. User then found Library `.items` detail push lost its entrance animation. Exact source localizes this to the Build273 native collection path conditionally creating an already-active hidden `NavigationLink`. Build283 / 0.15.16 exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6` keeps that link mounted so the existing selection binding transitions false→true; no custom push or second owner. Xcode 16.4 run/job `33412757299 / 99556026814` passed; artifact `9765884301`; IPA SHA `472b543f679f5db3932195c2abad8d882e78610172ecbe703fc75947c44e5655`; MinOS 15.0. Target-device animation/interactive-pop confirmation pending; stable ❌. |'
+          lines[matches[0]] = '| Poster 3-column / poster-heavy scroll smoothness | **Active — Build280 pagination/cached-first accepted; Build283 detail-push + pagination regression real-device positive** | Build280 already removed the proven Build278 persistence-correlated pagination 50–100 ms family with ordered off-main persistence and passed the cached-first force-quit/relaunch check. Build283 / 0.15.16 exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6` restores the system detail push activation lifecycle without a custom push or second owner. Target-device result: user confirms detail entry animation is normal. `OnePlayer-App-1788197938.log` captures one continuous Library 60→660 pagination session over 19.62 s at 118.34 Hz, p50/p95/p99 8.33/8.70/17.85 ms, max 25.02 ms, exactly one >=25 ms frame and zero >=33.3 ms frames. The sole 25.02 ms gap occurs with `insert_active=1`; all Library persistence remains `main_thread=0` while snapshot total grows to 208.87 ms, so the old persistence-tail chain does not return. Reconfigure max is 0.19 ms. User reports no visible twitch. This accepts the Build280 pagination fix on Build283 and the navigation repair; the broader historical fixed-item/non-pagination poster tail is not globally frozen by this one session. |'
           module.write_text('\n'.join(lines) + '\n')
 
           index = Path('docs/project/BUILD_TEST_INDEX.md')
           lines = index.read_text().splitlines()
-          b280 = '| **Build280 / 0.15.13**'
-          matches = [i for i, line in enumerate(lines) if line.startswith(b280)]
-          if len(matches) != 1: raise SystemExit(f'BUILD_TEST_INDEX Build280 row count={len(matches)}')
-          i = matches[0]
-          lines[i] = '| **Build280 / 0.15.13** | Off-main Library presentation persistence A/B | **Target-device pagination fix positive; cached-first regression user-positive; not a universal 3×3 stable claim.** Exact source `531d7f53c55e1e3cff44069e9bce3193ac94749a`; run/job `33390236717 / 99481947293`; artifact `9757238604`; IPA SHA `e0b71190621671767b73cd95da63e733640ce2e2acfba9945f6178f6d12ac769`. `OnePlayer-App-1788190813.log` shows all persistence `main_thread=0` and clean 60→775 pagination with zero >=25 ms pagination gaps despite snapshot totals up to 267.76 ms. User then force-quit/relaunched and reported cached-first Library behavior normal. Follow-up `OnePlayer-App-1788191685.log` confirms a fresh launch and continued ordered off-main writes; no dedicated cache-load timing marker. |'
-          b283_prefix = '| **Build283 / 0.15.16**'
-          if not any(line.startswith(b283_prefix) for line in lines):
-              lines.insert(i + 1, '| **Build283 / 0.15.16** | Restore native Library detail push animation after native UICollectionView migration | **Code/CI/IPA verified; target-device animation pending; not stable.** User reported Library `.items` cover taps entered detail without the normal entrance animation. Exact source inspection found the Build273 native path created its hidden `NavigationLink` only after selection, with `isActive` already true. Build283 exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6` is directly parented by Build280 and keeps the link mounted so the same selection binding transitions false→true; no custom push/second navigation owner. Exact Build280→283 scope is AppIdentity, `EmbyServerBrowseV3.swift`, changelog and checker only. Xcode 16.4 run/job `33412757299 / 99556026814`; artifact `9765884301`, digest `sha256:555ba6cc5c2859fbc8ad8a20fd1784eaf520ff5e4c4d235b9f10c4273b8f24a0`; IPA SHA `472b543f679f5db3932195c2abad8d882e78610172ecbe703fc75947c44e5655`; source ZIP SHA `c364da8ba7c7552feabb2b4375354f42472d7f88249fc77b29485ef9b3dbc40f`; MinOS 15.0. |')
+          prefix = '| **Build283 / 0.15.16**'
+          matches = [i for i, line in enumerate(lines) if line.startswith(prefix)]
+          if len(matches) != 1: raise SystemExit(f'BUILD_TEST_INDEX Build283 row count={len(matches)}')
+          lines[matches[0]] = '| **Build283 / 0.15.16** | Restore native Library detail push animation after native UICollectionView migration | **Target-device navigation and pagination regression positive; broader poster task remains Active.** Exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6` is directly parented by Build280 and keeps the hidden `NavigationLink` mounted so the same selection binding transitions false→true; no custom push/second navigation owner. Xcode 16.4 run/job `33412757299 / 99556026814`; artifact `9765884301`, digest `sha256:555ba6cc5c2859fbc8ad8a20fd1784eaf520ff5e4c4d235b9f10c4273b8f24a0`; IPA SHA `472b543f679f5db3932195c2abad8d882e78610172ecbe703fc75947c44e5655`; source ZIP SHA `c364da8ba7c7552feabb2b4375354f42472d7f88249fc77b29485ef9b3dbc40f`; MinOS 15.0. User confirms normal detail entry on target device. `OnePlayer-App-1788197938.log`: Library 60→660, 19.62 s, 118.34 Hz, p95 8.70 ms, p99 17.85 ms, max 25.02 ms, one >=25 ms / zero >=33.3 ms; sole 25.02 ms frame overlaps insert, while all persistence is `main_thread=0` with snapshot total up to 208.87 ms. User reports no visible twitch. Evidence: Code ✅ / CI ✅ / IPA ✅ / real-device navigation ✅ / real-device pagination regression ✅ / universal fixed-item smoothness not claimed. |'
           index.write_text('\n'.join(lines) + '\n')
 
           state = Path('docs/project/PROJECT_STATE.md')
           text = state.read_text()
-          marker = '## Active: Poster-heavy scrolling smoothness\n'
-          if marker not in text: raise SystemExit('PROJECT_STATE poster section missing')
-          if '### 2026-08-31 Build283 native detail-push regression repair' not in text:
-              section = '''\n### 2026-08-31 Build283 native detail-push regression repair — CI/IPA verified\n\nBuild280 pagination/off-main persistence has now cleared both target-device regression gates relevant to that change: the user did not observe the previous large pagination twitch, logs show `main_thread=0` with the Build278 50–100 ms persistence-correlated family absent during clean pagination, and a force-quit/relaunch cached-first check was also reported normal. Follow-up `OnePlayer-App-1788191685.log` records the fresh 0.15.13 process and continued ordered off-main writes; it contains no dedicated cache-load timing field, so cached-first acceptance is user-observed rather than log-timed.\n\nThat same regression pass exposed a separate navigation defect: Library `.items` native UICollectionView cover taps entered detail without the normal system push entrance animation. Exact Build280 source showed its hidden `NavigationLink` was created only after `nativePosterSelection` became non-nil, so `isActive` was already true at first mount. Build283 / OnePlayer 0.15.16 exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6`, directly parented by Build280, keeps the link mounted and uses the existing selection binding's false→true transition. No direct UIKit push, custom transition or second navigation owner is introduced; native system push/pop ownership remains protected.\n\nBuild283 exact Build280→283 scope is four paths only. Xcode 16.4 run/job `33412757299 / 99556026814` passed; artifact `9765884301`, digest `sha256:555ba6cc5c2859fbc8ad8a20fd1784eaf520ff5e4c4d235b9f10c4273b8f24a0`; IPA SHA `472b543f679f5db3932195c2abad8d882e78610172ecbe703fc75947c44e5655`; exact-source ZIP SHA `c364da8ba7c7552feabb2b4375354f42472d7f88249fc77b29485ef9b3dbc40f`; `0.15.16 (283)` / MinOS 15.0 independently verified. Evidence: **Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device animation pending / stable ❌**.\n'''
-              text = text.replace(marker, marker + section, 1)
+          old_header = next((line for line in text.splitlines() if line.startswith('_Last updated ')), None)
+          if old_header is None: raise SystemExit('PROJECT_STATE last-updated line missing')
+          new_header = '_Last updated 2026-09-01: Poster Build283 / 0.15.16 exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6` is now target-device positive for the two intended regression surfaces: the native Library detail push entrance animation is restored, and the Build280 off-main pagination fix remains intact. `OnePlayer-App-1788197938.log` shows a 60→660 Library session at 118.34 Hz with p95 8.70 ms, p99 17.85 ms, max 25.02 ms, only one >=25 ms and zero >=33.3 ms frames while persistence stays `main_thread=0` and snapshot total reaches 208.87 ms. The user reports no visible twitch. This accepts the navigation repair and pagination-persistence sub-contract on device; it does not by itself freeze every historical fixed-item/non-pagination poster-tail family. Home Build281 remains separate; Search Build256 and all P0 playback/transport contracts remain protected._'
+          text = text.replace(old_header, new_header, 1)
+          marker = '### 2026-08-31 Build283 native detail-push regression repair — CI/IPA verified'
+          start = text.find(marker)
+          if start < 0: raise SystemExit('PROJECT_STATE Build283 section missing')
+          next_marker = text.find('\n### ', start + len(marker))
+          if next_marker < 0: raise SystemExit('PROJECT_STATE next poster subsection missing')
+          section = '''### 2026-09-01 Build283 target-device result — navigation + pagination regression positive
+
+Build283 / OnePlayer 0.15.16 exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6` has now been tested on the target device. The user confirms Library `.items` cover entry to detail is normal again, accepting the Build283 always-mounted hidden `NavigationLink` repair for the reported missing system push entrance animation. The user also reports no visible poster twitch in the accompanying pagination pass.
+
+`OnePlayer-App-1788197938.log` captures one continuous native Library session from 60→660 items over 19.62 s: display 118.34 Hz, p50/p95/p99 8.33/8.70/17.85 ms, max 25.02 ms, 31 frames >=12.5 ms, exactly one >=25 ms, and zero >=33.3 ms. That sole 25.02 ms gap occurs at 17:38:41.210 with `insert_active=1`, 17 ms after the 240-item insert began. It is not a persistence-completion pair: the corresponding off-main store/snapshot completes about 64/67 ms later. Reconfigure work remains tiny (20 events, 1.91 ms total, max 0.19 ms).
+
+All 12 recorded Library snapshot/store pairs report `main_thread=0`. Accepted-state snapshot total still grows materially with item count, reaching 208.87 ms at the 660-item state, yet the old Build278 50–100 ms persistence-correlated display-tail family does not return. This is strong target-device confirmation that Build280's off-main persistence fix survives the Build283 navigation change.
+
+Current evidence classification: **Build283 Code written ✅ / exact scope+checker ✅ / CI passed ✅ / IPA produced+verified ✅ / detail-push regression real-device positive ✅ / pagination-persistence regression real-device positive ✅ / universal fixed-item/non-pagination poster smoothness not claimed / Poster task remains Active**. No additional code change is justified from this log.
+'''
+          text = text[:start] + section + text[next_marker + 1:]
           state.write_text(text)
           PY
           git diff --check
@@ -65,12 +76,12 @@ jobs:
             exit 1
           fi
 
-      - name: Commit project-state sync to main
+      - name: Commit Build283 device evidence to main
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "ChatGPT"
           git config user.email "chatgpt@users.noreply.github.com"
           git add docs/project/BUILD_TEST_INDEX.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md
-          git commit -m "Record Build283 poster navigation CI baseline"
+          git commit -m "Record Build283 poster target-device result"
           git push origin HEAD:main
