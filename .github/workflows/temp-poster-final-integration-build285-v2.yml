@@ -1,0 +1,174 @@
+name: Build285 Clean Poster Integration v2
+
+on:
+  push:
+    branches: [ci/poster-final-integration-build285]
+    paths:
+      - ".github/workflows/temp-poster-final-integration-build285-v2.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  integrate-build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    env:
+      BASE_SHA: 673109103a0c225ad3878fdb6bf100709cb04653
+      TESTED_SHA: 39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6
+      VERSION: 0.15.18
+      BUILD: 285
+      PRODUCT_BRANCH: integrate/poster-grid-final-build285
+
+    steps:
+      - name: Checkout exact current-main base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE_SHA }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Materialize exact accepted scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+          git fetch --no-tags origin ci/poster-final-integration-build285 perf/poster-grid-offmain-persistence-build280
+          git cat-file -e "$TESTED_SHA^{commit}"
+          git show origin/ci/poster-final-integration-build285:scripts/temp_materialize_poster_build285.py > /tmp/materialize.py
+          python3 /tmp/materialize.py
+          python3 scripts/check_poster_grid_integration_build285.py
+          git diff --check
+          actual="$(git status --porcelain | cut -c4- | sort)"
+          expected="$(printf '%s\n' \
+            Sources/Core/AppIdentity.swift \
+            Sources/UI/EmbyNativePosterCollectionView.swift \
+            Sources/UI/EmbyPagePersistentCache.swift \
+            Sources/UI/EmbyServerBrowseV3.swift \
+            Sources/UI/EmbyServerSharedV3.swift \
+            Sources/UI/EmbySharedImageAndNavigation.swift \
+            docs/changelog/CHANGELOG_v0_15_18_build285.md \
+            scripts/check_poster_grid_integration_build285.py | sort)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::unexpected Build285 integration scope"
+            printf 'actual:\n%s\nexpected:\n%s\n' "$actual" "$expected"
+            exit 1
+          fi
+          git config user.name "ChatGPT"
+          git config user.email "chatgpt@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyNativePosterCollectionView.swift Sources/UI/EmbyPagePersistentCache.swift Sources/UI/EmbyServerBrowseV3.swift Sources/UI/EmbyServerSharedV3.swift Sources/UI/EmbySharedImageAndNavigation.swift docs/changelog/CHANGELOG_v0_15_18_build285.md scripts/check_poster_grid_integration_build285.py
+          git commit -m "Integrate accepted Poster grid runtime as Build285"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git diff --exit-code "$BASE_SHA" -- .github/workflows
+
+      - name: Export exact source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OnePlayer-0.15.18-build285-${SOURCE_SHA::7}-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" HEAD
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Select Xcode 16.4
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          swift --version
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodegen --version
+          pod --version
+
+      - name: Generate project and resolve dependencies
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update 2>&1 | tee pods-install.log
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache 2>&1 | tee package-resolution.log
+
+      - name: Xcode 16.4 Release build
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+
+      - name: Validate built app and MinOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH" && test -d "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.txt
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id "com.embyplayerlab.app" --version "$VERSION" --build "$BUILD" --display-name "OnePlayer" --minimum-os "15.0" --primary-icon "OnePlayerIcon" --alternate-icon "OnePlayerAltIcon"
+          /usr/libexec/PlistBuddy -c 'Print :CADisableMinimumFrameDurationOnPhone' "$APP_PATH/Info.plist" | grep -qx true
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" "15.0" "17.0" min-os-report.txt build.log
+
+      - name: Package verified IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA="OnePlayer-0.15.18-Build285-PosterFinalIntegration.ipa"
+          /usr/bin/zip -qry "$IPA" Payload
+          /usr/bin/unzip -t "$IPA" | tee ipa-integrity.txt
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+
+      - name: Push clean product branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git push origin HEAD:"$PRODUCT_BRANCH"
+
+      - name: Upload verified Build285 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.18-build285-poster-final-integration
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            built-info-plist.txt
+            min-os-report.txt
+            ipa-integrity.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "base=$BASE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "tested=$TESTED_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "integration_source=${SOURCE_SHA:-not-created}" >> "$GITHUB_STEP_SUMMARY"
+          echo "version=$VERSION build=$BUILD" >> "$GITHUB_STEP_SUMMARY"
