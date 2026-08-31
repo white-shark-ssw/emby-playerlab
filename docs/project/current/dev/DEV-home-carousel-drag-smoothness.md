@@ -1,6 +1,6 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build277 target-device input benchmark is complete: normal `CAROUSEL≈90`, valid `PAN≈110`, valid `SCROLLVIEW≈110`; the reported `TOUCH≈110` is invalid because the raw-touch recognizer was not installed by the Build277 first-entry guard. Logs show standard Pan/Scroll callbacks near 120 Hz while normal carousel delivered-touch/publication remains materially sparser. Build279 / 0.15.12 is the current CI/IPA-verified real-carousel `UIPanGestureRecognizer` A/B.
+- **Status:** Active — Build279 target-device rejects recognizer-type-only replacement: `CAROUSEL≈90 / CAROUSEL PAN≈90 / corrected TOUCH≈80`. Build281 / 0.15.14 is the current CI/IPA-verified direct-vs-frame-latched real-input publication A/B.
 - **Work ID:** `DEV-home-carousel-drag-smoothness`
 - **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / pipeline probe
 - **Task:** Preserve the accepted Build241 carousel appearance/gesture feel while locating the real cause of the no-screen-recording ~90 FPS presentation ceiling on iPhone 15 Pro Max / iOS 17.0.
@@ -8,9 +8,9 @@
 - **Controlling normal-behavior diagnostic base:** Build265 exact product source `af92164890e7dc1c869bd586577b39177335df5f`.
 - **Build269 diagnostic:** `diag/home-carousel-persistent-blur-build269`, exact product source `28d09e1cf7b3932e9033c370df12026889033197`.
 - **Build270 diagnostic:** `perf/home-carousel-foreground-residency-build270`, exact product source `cee2031aa7dc2abb59fb371196e22fbce56e32ee`.
-- **Current working branch:** `diag/home-carousel-real-pan-build279`.
-- **Current exact product source:** `94f7a4ba5aa5bfdd3beb724e216015141dfc50b7`.
-- **Current candidate:** OnePlayer `0.15.12 (279)` — diagnostic-only normal `CAROUSEL` vs real-tree `CAROUSEL PAN`, plus corrected raw-touch probe; exact-source CI/IPA independently verified; target-device pending.
+- **Current working branch:** `diag/home-carousel-pan-latch-build281`.
+- **Current exact product source:** `a0bb823f81742c7f08908c0465809a41f9e22b3b`.
+- **Current candidate:** OnePlayer `0.15.14 (281)` — diagnostic-only `CAROUSEL PAN` with equal gesture-local max-refresh versus `CAROUSEL PAN LATCH` that publishes only the latest real Pan translation at most once per display-link tick; exact-source CI/IPA independently verified; target-device pending.
 - **Target device:** iPhone 15 Pro Max / iOS 17.0.
 - **Deployment Target:** iOS 15.0.
 
@@ -221,6 +221,21 @@ Build279 also fixes the Build277 raw-touch probe initialization with an explicit
 - Independent IPA identity: `com.embyplayerlab.app / OnePlayer / 0.15.12 (279)`; `MinimumOSVersion=15.0`; MinOS audit OK.
 - Evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending ❌ / stable ❌**.
 
+## Build279 target-device real-carousel input result — 2026-08-31
+
+The user tested Build279 with screen recording off and reported **`CAROUSEL≈90 / CAROUSEL PAN≈90 / TOUCH LAYER≈80`**. The uploaded `OnePlayer-App-1788177649.log` confirms 67 real-carousel Pan sessions and 101 corrected raw-touch sessions. Standard Pan callbacks are not sparse: 300 Pan samples / 233 intervals give a weighted average callback interval of about **6.26 ms** with a 40.76 ms tail. Corrected raw touch gives 1,370 samples / 1,269 intervals at about **8.25 ms** weighted average, yet the system HUD remains only ~80. Normal custom-carousel delivered touch across the 24 logged cadence sessions is materially sparser at about **12.68 ms** weighted average, but denser Pan/raw callback delivery still does not lift final presentation.
+
+Conclusion: **recognizer type or callback count alone is not sufficient**. Build279 also had one diagnostic fairness gap: its real-carousel Pan surface did not carry the same gesture-local device-max `CADisplayLink` request that normal CAROUSEL starts after horizontal acquisition. Therefore Build279 rejects naked owner replacement but does not yet isolate equal-refresh direct publication versus frame-aligned publication. PR #283 is closed without merge.
+
+## Build281 / 0.15.14 — equal-refresh direct Pan vs frame-latched publication
+
+Build281 supersedes Build279 without touching HomeCore, the product `V3HomeCarouselInteractionRecognizer`, transition-state ownership, Build241 `>=500 / >=0.28` release contract, Player/MPV/PiP/Transport/Cache/Emby Session, or any media path. It keeps the standard Pan diagnostic owner and adds exactly one publication-timing A/B:
+
+- `CAROUSEL PAN`: standard `UIPanGestureRecognizer` drives the existing real carousel callbacks immediately **and** starts the same style device-max `CADisplayLink` refresh request for fairness. The link does not drive position in this mode.
+- `CAROUSEL PAN LATCH`: the same Pan samples and max-refresh request are used, but `.changed` only replaces one pending **real** translation. The display link publishes at most one pending value per tick. There is no interpolation, predicted/coalesced render authority, synthetic intermediate position, timer, watchdog, fallback, retry or second transition state. On finger end the final real translation is synchronously published before the unchanged release callback.
+
+Exact product source `a0bb823f81742c7f08908c0465809a41f9e22b3b`. Xcode 16.4 exact-source run/job `33398830817 / 99509848648` passed. Artifact `9760543570`, digest `sha256:6af8d484a4c5782eee6d46f670a2091f715b06c28e0d044ed2517af746213c4f`. IPA SHA-256 `4357afce03a6e35ede340a20d91f589f110389302145048073e0913bae8dfadd`; source ZIP SHA-256 `23228a1f084d4d0c46c452f8c8bde2ef9145d3164d6c6f230b2d82e526716c16`. Independent unpack verifies `com.embyplayerlab.app / OnePlayer / 0.15.14 (281)`, `MinimumOSVersion=15.0`, IPA integrity and MinOS audit OK. Draft PR #284 remains unmerged pending target-device A/B.
+
 ## Scope guard
 
 No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM→302→115/CDN code is in scope. No Build241 gesture thresholds, rapid-swipe ownership, Hero rendering implementation, image cache or transport contract is modified by Build271.
@@ -228,27 +243,23 @@ No Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM�
 ## Acceptance / test procedure
 
 1. Use iPhone 15 Pro Max / iOS 17.0 with screen recording **off**.
-2. `PIPE CAROUSEL`: rapidly swipe as the normal control and note sustained real system HUD.
-3. Tap to `PIPE TOUCH LAYER`: on the black screen, drag the white marker continuously left/right and note HUD.
-4. Tap to `PIPE PAN LAYER`: drag continuously and note HUD.
-5. Tap to `PIPE SCROLLVIEW`: drag/fling the native horizontal content and note HUD.
-6. Send one line such as `CAROUSEL 90 / TOUCH 90 / PAN 90 / SCROLLVIEW 120` plus App log.
-7. Do not infer performance from internal `CADisplayLink` frequency; real HUD with recording off remains authoritative.
+2. `PIPE CAROUSEL`: normal product owner control; note sustained HUD during continuous horizontal drag.
+3. `PIPE CAROUSEL PAN`: same real tree with standard Pan + equal gesture-local max-refresh request; note sustained HUD.
+4. `PIPE CAROUSEL PAN LATCH`: same Pan/tree/refresh request but latest-real-input publication is display-link aligned; note sustained HUD.
+5. Send one line such as `CAROUSEL 90 / PAN 90 / PAN LATCH 120` plus App log.
+6. Do not judge the diagnostic Pan release feel as final product semantics and do not infer final FPS from internal display-link callback timing.
+
 ## Validation state
 
-- Build265 / 269 / 270: target-device ~90 control/rejected component A/Bs; not stable.
-- Build271: target-device `DISPLAYLINK=120 / SWIFTUI=120`; generic pipeline 120 capability proven.
-- Build274: target-device `CAROUSEL≈90 / TREE FULL≈90`, but TREE≈90 did not reproduce in Build275 and is not stable causal evidence.
-- Build275 Code/CI/IPA: ✅. Real-device: ✅ **same-package `CAROUSEL≈90` while TREE FULL/HERO/BACKDROP/CA/DISPLAYLINK/SWIFTUI=120**; input/publication boundary isolated; diagnostic-only.
-- Build277 Code written: ✅ exact product source `1446640b0d9cec5cb2f39d36cff0bfeca4efd31d`.
-- Build277 exact-source CI passed: ✅ run/job `33336619261 / 99324579844`.
-- Build277 IPA produced + independently verified: ✅ artifact `9739256003`; IPA SHA `e27c86b5084db257174d3afd5cc33e147be6868ef6262245f8a3361ed63f097c`; source SHA `32516a75d88f1f98c9fa10159f1ac77772e9aa05098072079538c20bc337e396`; MinOS 15.0.
-- Build277 target-device input benchmark: ✅ completed; PAN≈110 and SCROLLVIEW≈110 are valid, TOUCH result invalid due probe initialization bug.
-- Build279 Code written: ✅ exact source `94f7a4ba5aa5bfdd3beb724e216015141dfc50b7`.
-- Build279 exact-source CI passed: ✅ run/job `33377860245 / 99443301805`.
-- Build279 IPA produced + independently verified: ✅ artifact `9752649942`; IPA SHA `36f17a02a0deddbae593f137d455cba3d22849bf28f00c0fafeb755b620abf9b`; source SHA `9e3f149fed7426db36d5d32669b2ebc3c049661b80b7dc560f3b6834cf8038b9`; MinOS 15.0.
-- Build279 target-device real-carousel PAN A/B: ❌ pending.
+- Build275 same-package control: real-device `CAROUSEL≈90`, fixed TREE/simple probes = 120.
+- Build277 real-device: valid PAN≈110 / SCROLLVIEW≈110; reported TOUCH value invalid due initialization bug.
+- Build279 real-device: ✅ `CAROUSEL≈90 / CAROUSEL PAN≈90 / corrected TOUCH≈80`; recognizer-type/callback-density alone is not sufficient. PR #283 closed, unmerged.
+- Build281 Code written: ✅ exact source `a0bb823f81742c7f08908c0465809a41f9e22b3b`.
+- Build281 exact-source CI passed: ✅ run/job `33398830817 / 99509848648`.
+- Build281 IPA produced + independently verified: ✅ artifact `9760543570`; artifact digest `sha256:6af8d484a4c5782eee6d46f670a2091f715b06c28e0d044ed2517af746213c4f`; IPA SHA `4357afce03a6e35ede340a20d91f589f110389302145048073e0913bae8dfadd`; source SHA `23228a1f084d4d0c46c452f8c8bde2ef9145d3164d6c6f230b2d82e526716c16`; MinOS 15.0.
+- Build281 target-device direct-vs-latched publication A/B: ❌ pending.
 - Stable/frozen reopened performance task: ❌.
+
 ## Next exact action
 
-Install Build279 with screen recording off. Compare sustained system HUD under **normal `PIPE CAROUSEL`** and **`PIPE CAROUSEL PAN`** using long continuous horizontal drags; then briefly retest corrected `PIPE TOUCH LAYER` and provide the App log. The decisive control is whether `CAROUSEL PAN` materially lifts the same real carousel tree above the normal ~90 FPS ceiling. Do not replace the product owner or add DisplayLink interpolation before that target-device result.
+Install Build281 with screen recording off and compare sustained system HUD under **`PIPE CAROUSEL`**, **`PIPE CAROUSEL PAN`**, and **`PIPE CAROUSEL PAN LATCH`** using long continuous horizontal drags. Provide the App log. If equal-refresh direct Pan stays ~90 but frame-latched Pan materially rises, frame alignment becomes evidence-backed for the next product-semantics A/B; if both remain ~90, reject frame alignment and do not add interpolation/smoothing.
