@@ -6,6 +6,7 @@ import UIKit
 enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     case carousel
     case carouselPan
+    case carouselPanLatched
     case rawTouch
     case nativePan
     case nativeScroll
@@ -20,6 +21,7 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
         switch self {
         case .carousel: return "CAROUSEL"
         case .carouselPan: return "CAROUSEL PAN"
+        case .carouselPanLatched: return "CAROUSEL PAN LATCH"
         case .rawTouch: return "TOUCH LAYER"
         case .nativePan: return "PAN LAYER"
         case .nativeScroll: return "SCROLLVIEW"
@@ -35,7 +37,8 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     var detail: String {
         switch self {
         case .carousel: return "Build275 normal carousel owner"
-        case .carouselPan: return "UIPanGestureRecognizer → real carousel state/tree"
+        case .carouselPan: return "UIPanGestureRecognizer + max-refresh → real carousel"
+        case .carouselPanLatched: return "same Pan → display-link latched real carousel"
         case .rawTouch: return "custom touchesMoved → native CALayer"
         case .nativePan: return "UIPanGestureRecognizer → native CALayer"
         case .nativeScroll: return "native horizontal UIScrollView"
@@ -50,7 +53,7 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
 
     var usesHomePresentation: Bool {
         switch self {
-        case .carousel, .carouselPan, .carouselTree, .carouselHero, .carouselBackdrop: return true
+        case .carousel, .carouselPan, .carouselPanLatched, .carouselTree, .carouselHero, .carouselBackdrop: return true
         case .rawTouch, .nativePan, .nativeScroll, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
         }
     }
@@ -58,20 +61,20 @@ enum V3HomeFramePipelineProbeMode: String, CaseIterable, Equatable {
     var isCarouselTreeProbe: Bool {
         switch self {
         case .carouselTree, .carouselHero, .carouselBackdrop: return true
-        case .carousel, .carouselPan, .rawTouch, .nativePan, .nativeScroll, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
+        case .carousel, .carouselPan, .carouselPanLatched, .rawTouch, .nativePan, .nativeScroll, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
         }
     }
 
     var observesBackdropTransition: Bool {
         switch self {
-        case .carousel, .carouselPan, .carouselTree, .carouselBackdrop: return true
+        case .carousel, .carouselPan, .carouselPanLatched, .carouselTree, .carouselBackdrop: return true
         case .rawTouch, .nativePan, .nativeScroll, .carouselHero, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
         }
     }
 
     var observesHeroTransition: Bool {
         switch self {
-        case .carousel, .carouselPan, .carouselTree, .carouselHero: return true
+        case .carousel, .carouselPan, .carouselPanLatched, .carouselTree, .carouselHero: return true
         case .rawTouch, .nativePan, .nativeScroll, .carouselBackdrop, .coreAnimation, .nativeDisplayLink, .swiftUI: return false
         }
     }
@@ -110,7 +113,7 @@ struct V3HomeFramePipelineProbe: View {
         ZStack {
             Color.black.ignoresSafeArea()
             switch mode {
-            case .carousel, .carouselPan, .carouselTree, .carouselHero, .carouselBackdrop:
+            case .carousel, .carouselPan, .carouselPanLatched, .carouselTree, .carouselHero, .carouselBackdrop:
                 EmptyView()
             case .rawTouch, .nativePan, .nativeScroll:
                 ZStack {
@@ -348,7 +351,7 @@ private final class V3HomeInputPipelineView: UIView, UIScrollViewDelegate {
         case .nativeScroll:
             markerLayer.isHidden = true
             scrollView.isHidden = false
-        case .carousel, .carouselPan, .carouselTree, .carouselHero, .carouselBackdrop, .coreAnimation, .nativeDisplayLink, .swiftUI:
+        case .carousel, .carouselPan, .carouselPanLatched, .carouselTree, .carouselHero, .carouselBackdrop, .coreAnimation, .nativeDisplayLink, .swiftUI:
             break
         }
     }
@@ -428,8 +431,8 @@ private struct V3HomeNativeFramePipelineProbe: UIViewRepresentable {
 private final class V3HomeNativeFramePipelineView: UIView {
     private let markerLayer = CALayer()
     private var mode: V3HomeFramePipelineProbeMode = .coreAnimation
+    private var configuredMode: V3HomeFramePipelineProbeMode?
     private var displayLink: CADisplayLink?
-    private var animationWidth: CGFloat = 0
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -441,55 +444,58 @@ private final class V3HomeNativeFramePipelineView: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    deinit { displayLink?.invalidate() }
-
-    func setMode(_ mode: V3HomeFramePipelineProbeMode) {
-        guard self.mode != mode || displayLink == nil && markerLayer.animation(forKey: "pipeline-probe") == nil else { return }
-        self.mode = mode
-        applyMode()
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        if window == nil { stopDisplayLink(); markerLayer.removeAllAnimations() }
-        else { applyMode() }
-    }
+    deinit { stop() }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         markerLayer.bounds = CGRect(x: 0, y: 0, width: 24, height: 24)
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        markerLayer.position = CGPoint(x: 24, y: bounds.midY)
-        CATransaction.commit()
-        if mode == .coreAnimation, abs(animationWidth - bounds.width) > 0.5 { startCoreAnimation() }
+        if markerLayer.position == .zero { markerLayer.position = CGPoint(x: bounds.midX, y: bounds.midY) }
+        if mode == .coreAnimation, window != nil { startCoreAnimation() }
     }
 
-    private func applyMode() {
-        stopDisplayLink()
-        markerLayer.removeAllAnimations()
-        guard window != nil else { return }
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { stop() }
+        else { configureMode() }
+    }
+
+    func setMode(_ mode: V3HomeFramePipelineProbeMode) {
+        guard configuredMode != mode else { return }
+        self.mode = mode
+        configuredMode = mode
+        if window != nil { configureMode() }
+    }
+
+    private func configureMode() {
+        stop()
         switch mode {
-        case .coreAnimation: startCoreAnimation()
-        case .nativeDisplayLink: startDisplayLink()
-        case .carousel, .carouselPan, .rawTouch, .nativePan, .nativeScroll, .carouselTree, .carouselHero, .carouselBackdrop, .swiftUI: break
+        case .coreAnimation:
+            startCoreAnimation()
+        case .nativeDisplayLink:
+            startDisplayLink()
+        default:
+            break
         }
     }
 
     private func startCoreAnimation() {
-        guard bounds.width > 60 else { return }
-        animationWidth = bounds.width
+        guard bounds.width > 40 else { return }
         markerLayer.removeAllAnimations()
-        let animation = CABasicAnimation(keyPath: "transform.translation.x")
-        animation.fromValue = 0
-        animation.toValue = bounds.width - 48
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        markerLayer.position = CGPoint(x: 24, y: bounds.midY)
+        CATransaction.commit()
+        let animation = CABasicAnimation(keyPath: "position.x")
+        animation.fromValue = 24
+        animation.toValue = max(24, bounds.width - 24)
         animation.duration = 0.72
         animation.autoreverses = true
         animation.repeatCount = .infinity
-        animation.timingFunction = CAMediaTimingFunction(name: .linear)
-        let maximum = Float(max(60, UIScreen.main.maximumFramesPerSecond))
-        animation.preferredFrameRateRange = CAFrameRateRange(minimum: maximum, maximum: maximum, preferred: maximum)
-        markerLayer.add(animation, forKey: "pipeline-probe")
+        if #available(iOS 15.0, *) {
+            let maximum = Float(max(60, UIScreen.main.maximumFramesPerSecond))
+            animation.preferredFrameRateRange = CAFrameRateRange(minimum: maximum, maximum: maximum, preferred: maximum)
+        }
+        markerLayer.add(animation, forKey: "probe-motion")
     }
 
     private func startDisplayLink() {
@@ -501,27 +507,29 @@ private final class V3HomeNativeFramePipelineView: UIView {
         displayLink = link
     }
 
-    private func stopDisplayLink() {
+    private func stop() {
+        markerLayer.removeAllAnimations()
         displayLink?.invalidate()
         displayLink = nil
     }
 
     @objc private func displayLinkDidFire(_ link: CADisplayLink) {
-        guard bounds.width > 60 else { return }
+        let span = max(1, bounds.width - 48)
         let cycle = link.timestamp.truncatingRemainder(dividingBy: 1.44) / 1.44
-        let phase = cycle < 0.5 ? cycle * 2 : (1 - cycle) * 2
-        let x = 24 + CGFloat(phase) * (bounds.width - 48)
+        let position = cycle < 0.5 ? cycle * 2 : (1 - cycle) * 2
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        markerLayer.position = CGPoint(x: x, y: bounds.midY)
+        markerLayer.position.x = 24 + span * CGFloat(position)
         CATransaction.commit()
     }
 }
 
 @MainActor
-private final class V3HomeSwiftUIFrameProbeClock: NSObject, ObservableObject {
-    @Published private(set) var phase: CGFloat = 0
+private final class V3HomeSwiftUIFrameProbeModel: ObservableObject {
+    @Published var position: CGFloat = 0
     private var displayLink: CADisplayLink?
+
+    deinit { displayLink?.invalidate() }
 
     func start() {
         guard displayLink == nil else { return }
@@ -539,43 +547,24 @@ private final class V3HomeSwiftUIFrameProbeClock: NSObject, ObservableObject {
 
     @objc private func displayLinkDidFire(_ link: CADisplayLink) {
         let cycle = link.timestamp.truncatingRemainder(dividingBy: 1.44) / 1.44
-        let value = cycle < 0.5 ? cycle * 2 : (1 - cycle) * 2
-        phase = CGFloat(value)
+        position = CGFloat(cycle < 0.5 ? cycle * 2 : (1 - cycle) * 2)
     }
 }
 
 private struct V3HomeSwiftUIFramePipelineProbe: View {
-    @StateObject private var clock = V3HomeSwiftUIFrameProbeClock()
+    @StateObject private var model = V3HomeSwiftUIFrameProbeModel()
 
     var body: some View {
         GeometryReader { geometry in
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white)
-                .frame(width: 24, height: 24)
-                .position(x: 24 + clock.phase * max(0, geometry.size.width - 48), y: geometry.size.height / 2)
+            ZStack(alignment: .leading) {
+                Color.black
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 24, height: 24)
+                    .offset(x: max(0, geometry.size.width - 24) * model.position)
+            }
         }
-        .onAppear { clock.start() }
-        .onDisappear { clock.stop() }
-    }
-}
-
-extension V3EmbyHomeView {
-    func beginFramePipelineCarouselTreeProbe() {
-        guard let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: 1) else { return }
-        transitionFromID = currentID
-        transitionToID = targetID
-        transitionProgress = 0
-        transitionDirection = 1
-        isCarouselDragging = false
-        DiagnosticsLogger.shared.playback("HomeCarouselPipelineProbe", "tree begin from=\(currentID) to=\(targetID) maxFPS=\(UIScreen.main.maximumFramesPerSecond)")
-    }
-
-    func endFramePipelineCarouselTreeProbe() {
-        transitionFromID = nil
-        transitionToID = nil
-        transitionProgress = 0
-        transitionDirection = 1
-        isCarouselDragging = false
-        carouselLastSettledAt = Date()
+        .onAppear { model.start() }
+        .onDisappear { model.stop() }
     }
 }
