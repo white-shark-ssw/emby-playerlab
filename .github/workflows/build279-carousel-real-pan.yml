@@ -1,0 +1,171 @@
+name: Build279 Carousel Real Pan Probe
+
+on:
+  push:
+    branches: [ci/build279-carousel-real-pan-20260831]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build279-carousel-real-pan
+  cancel-in-progress: true
+
+env:
+  PRODUCT_SHA: 94f7a4ba5aa5bfdd3beb724e216015141dfc50b7
+  BASE_SHA: 8c6a882c03e60e9d2f49e9bc95b09f9e3712577b
+  VERSION: 0.15.12
+  BUILD_NUMBER: 279
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact product source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+          fetch-depth: 0
+
+      - name: Verify exact source and protected carousel contracts
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          changed="$(git diff --name-only "$BASE_SHA" "$PRODUCT_SHA" | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselPanProbeV3.swift Sources/UI/EmbyHomeFramePipelineProbeV3.swift Sources/UI/EmbyHomeHeroV3.swift | sort)"
+          printf '%s\n' "$changed"
+          test "$changed" = "$expected"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCoreV3.swift)" = "ae9e98c09bd10294032d08382b53a18f31bf42ac"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCarouselInteractionV3.swift)" = "f8df5af61101c0272c5ec378caae617000b8fcea"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCarouselStateV3.swift)" = "96f38514cfb09668f11c21a61105ac87a2f26f3d"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCarouselCadenceDiagnosticsV3.swift)" = "c5ec51991d9a629cfb39785efeb597f3c51375ef"
+          grep -F 'static let sourceVersion = "0.15.12"' Sources/Core/AppIdentity.swift
+          grep -F 'case carouselPan' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'case .carouselPan: return "CAROUSEL PAN"' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'guard configuredMode != mode else { return }' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'framePipelineProbeMode == .carouselPan' Sources/UI/EmbyHomeHeroV3.swift
+          grep -F 'final class V3HomeCarouselPanProbeRecognizer: UIPanGestureRecognizer' Sources/UI/EmbyHomeCarouselPanProbeV3.swift
+          grep -F 'DiagnosticsLogger.shared.app("HomeCarouselPanProbe"' Sources/UI/EmbyHomeCarouselPanProbeV3.swift
+          grep -F 'let velocityCommit = directionalVelocity >= 500' Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          grep -F 'let shouldCommit = actualProgress >= 0.28 || velocityCommit' Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          ! grep -E 'Timer\.|asyncAfter|DispatchQueue.*after' Sources/UI/EmbyHomeCarouselPanProbeV3.swift
+          grep -F 'CADisableMinimumFrameDurationOnPhone' Config/Info.plist
+          grep -F 'iOS: "15.0"' project.yml
+          grep -F 'deploymentTarget: "15.0"' project.yml
+
+      - name: Export exact source snapshot
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OnePlayer-${VERSION}-build${BUILD_NUMBER}-carousel-real-pan-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" "$PRODUCT_SHA"
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Inject package identity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          import re
+          from pathlib import Path
+
+          version = "0.15.12"
+          build = "279"
+          info_path = Path("Config/Info.plist")
+          with info_path.open("rb") as handle:
+              info = plistlib.load(handle)
+          info["CFBundleShortVersionString"] = version
+          info["CFBundleVersion"] = build
+          with info_path.open("wb") as handle:
+              plistlib.dump(info, handle, sort_keys=False)
+
+          project_path = Path("project.yml")
+          project = project_path.read_text()
+          project = re.sub(r'MARKETING_VERSION: "[^"]+"', f'MARKETING_VERSION: "{version}"', project)
+          project = re.sub(r'CURRENT_PROJECT_VERSION: "[^"]+"', f'CURRENT_PROJECT_VERSION: "{build}"', project)
+          project_path.write_text(project)
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          xcodegen --version
+          pod --version
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned app
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build | tee build.log
+
+      - name: Validate identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          python3 scripts/validate_built_app.py \
+            "$APP_PATH" \
+            --bundle-id com.embyplayerlab.app \
+            --version "$VERSION" \
+            --build "$BUILD_NUMBER" \
+            --display-name OnePlayer \
+            --minimum-os 15.0 \
+            --primary-icon OnePlayerIcon \
+            --alternate-icon OnePlayerAltIcon
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" 15.0 17.0 min-os-report.log build.log
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-${VERSION}-build${BUILD_NUMBER}-carousel-real-pan-probe-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload Build279 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.12-build279-carousel-real-pan-probe
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            built-info-plist.log
+            min-os-report.log
+            package.log
+          if-no-files-found: error
+          retention-days: 30
