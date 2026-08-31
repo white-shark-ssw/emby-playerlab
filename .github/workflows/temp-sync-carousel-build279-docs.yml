@@ -1,0 +1,66 @@
+name: Sync carousel Build277 result and Build279 docs
+
+on:
+  push:
+    branches:
+      - docs/carousel-build277-result-build279-20260831
+    paths:
+      - scripts/temp_sync_carousel_build279_docs.py
+      - .github/workflows/temp-sync-carousel-build279-docs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout helper branch
+        uses: actions/checkout@v4
+        with:
+          ref: docs/carousel-build277-result-build279-20260831
+          path: helper
+
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: repo
+          fetch-depth: 0
+
+      - name: Patch current project docs
+        run: |
+          set -euo pipefail
+          cp helper/scripts/temp_sync_carousel_build279_docs.py repo/.temp_sync_carousel_build279_docs.py
+          cd repo
+          python .temp_sync_carousel_build279_docs.py
+          rm .temp_sync_carousel_build279_docs.py
+
+      - name: Verify docs-only scope
+        run: |
+          set -euo pipefail
+          cd repo
+          git diff --name-only | tee /tmp/changed.txt
+          test -s /tmp/changed.txt
+          while IFS= read -r path; do
+            case "$path" in
+              docs/project/current/dev/DEV-home-carousel-drag-smoothness.md|docs/project/MODULE_STATUS.md|docs/project/PROJECT_STATE.md|docs/project/BUILD_TEST_INDEX.md|docs/project/TECHNICAL_DECISIONS.md) ;;
+              *) echo "Unexpected changed path: $path"; exit 1 ;;
+            esac
+          done < /tmp/changed.txt
+          grep -q 'Build279 / 0.15.12' docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          grep -q 'Build277 target-device input result' docs/project/current/dev/DEV-home-carousel-drag-smoothness.md
+          grep -q '9752649942' docs/project/MODULE_STATUS.md
+          grep -q 'Active: Home carousel input/publication diagnosis — Build279 / 0.15.12' docs/project/PROJECT_STATE.md
+          grep -q 'Build279 / 0.15.12' docs/project/BUILD_TEST_INDEX.md
+          grep -q 'D025 — Carousel Build277 validates denser standard input delivery' docs/project/TECHNICAL_DECISIONS.md
+
+      - name: Commit docs to main
+        run: |
+          set -euo pipefail
+          cd repo
+          git config user.name ChatGPT
+          git config user.email chatgpt@users.noreply.github.com
+          git add docs/project/current/dev/DEV-home-carousel-drag-smoothness.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/BUILD_TEST_INDEX.md docs/project/TECHNICAL_DECISIONS.md
+          git commit -m 'Record Build277 input result and Build279 Pan probe [skip ci]'
+          git push origin HEAD:main
