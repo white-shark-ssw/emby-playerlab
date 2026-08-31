@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated 2026-08-31: Home carousel Build275 same-package target-device control is now `CAROUSEL≈90` while `TREE FULL/HERO/BACKDROP/CA/DISPLAYLINK/SWIFTUI=120` with recording off. The full presentation tree therefore has 120 Hz headroom; the active boundary is real input→progress publication. Build277 / 0.15.10 is exact-source CI/IPA verified and compares custom touch, UIPan and native UIScrollView input pipelines. Poster Build276/Aether remain isolated; all P0 playback/transport contracts stay protected._
+_Last updated 2026-08-31: Poster Build278 / 0.15.11 target-device timing directly confirms synchronous full-Library presentation persistence as a major pagination-adjacent long-frame source: 10 page states from 120→660 items show snapshot total 38.31→94.66 ms paired 1–8 ms later with 49.96→108.33 ms display gaps (correlation ≈0.991), including a 480-item 70.02 ms snapshot that finishes before insert-begin yet produces a 79.17 ms gap. Fixed/no-append 540–660-item sessions remain near 119–120 Hz with zero >=25 ms gaps. Next Poster A/B may move/coalesce only presentation snapshot serialization+atomic write off the scrolling MainActor while preserving Build213 cached-first/write-through semantics; this is not a claim that persistence explains every historical poster hitch. Home Build277 remains separate; Search Build256 and all P0 playback/transport contracts remain protected._
 
 ## Current accepted overall baseline
 
@@ -73,6 +73,12 @@ Search is complete and stable for its functional task. Build256 exact product so
 The active poster-smoothness task now profiles the shared 3×3 presentation also used by Search. That performance work does not reopen the accepted Search data source, pagination semantics, state lifetime or Dock behavior.
 
 ## Active: Poster-heavy scrolling smoothness
+
+### 2026-08-31 Build278 target-device persistence proof
+
+Build278 exact source `6ff8113d9c45dfae6d745afa98b4a04a3956cf33` is target-device tested. Ten +60 Library page states from 120→660 items show synchronous full-snapshot persistence totals **38.31→94.66 ms** followed 1–8 ms later by severe display gaps **49.96→108.33 ms**; correlation ≈0.991. At 480 items the 70.02 ms snapshot finishes before `insert-begin`, while the same interval becomes a 79.17 ms display gap with `insert_events=0`, proving persistence can consume the missed frame independently of collection insertion. JSON serialization dominates the scaling cost. Fixed/no-append 540/600/660-item sessions remain near 119–120 Hz with no >=25 ms gaps.
+
+Conclusion: synchronous Build213 Library presentation persistence is a proven direct pagination-tail contributor, but not the universal historical 3×3 root. Next A/B is persistence-threading/coalescing only, preserving cached-first relaunch, accepted-state atomic write-through and all Search/Home/P0 behavior. Build278 remains diagnostic-only and not stable.
 
 ### 2026-08-31 Build276 target-device frame-tail result → Build278 persistence timing
 
