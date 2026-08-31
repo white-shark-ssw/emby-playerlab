@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated 2026-08-31: Poster Build278 / 0.15.11 target-device timing directly confirms synchronous full-Library presentation persistence as a major pagination-adjacent long-frame source: 10 page states from 120→660 items show snapshot total 38.31→94.66 ms paired 1–8 ms later with 49.96→108.33 ms display gaps (correlation ≈0.991), including a 480-item 70.02 ms snapshot that finishes before insert-begin yet produces a 79.17 ms gap. Fixed/no-append 540–660-item sessions remain near 119–120 Hz with zero >=25 ms gaps. Next Poster A/B may move/coalesce only presentation snapshot serialization+atomic write off the scrolling MainActor while preserving Build213 cached-first/write-through semantics; this is not a claim that persistence explains every historical poster hitch. Home Build279 remains separate; Search Build256 and all P0 playback/transport contracts remain protected._
+_Last updated 2026-08-31: Poster Build278 target-device timing proved synchronous full-Library persistence is a major pagination-adjacent long-frame source. Build280 / 0.15.13 exact source `531d7f53c55e1e3cff44069e9bce3193ac94749a` is now the single-variable off-main persistence A/B with exact five-path scope/checker, Xcode 16.4 CI and independently verified IPA complete: run/job `33390236717 / 99481947293`, artifact `9757238604`, IPA SHA `e0b71190621671767b73cd95da63e733640ce2e2acfba9945f6178f6d12ac769`, MinOS 15.0. Target-device validation remains pending; no stable claim. Home Build279 remains separate; Search Build256 and all P0 playback/transport contracts remain protected._
 
 ## Current accepted overall baseline
 
@@ -75,6 +75,14 @@ Search is complete and stable for its functional task. Build256 exact product so
 The active poster-smoothness task now profiles the shared 3×3 presentation also used by Search. That performance work does not reopen the accepted Search data source, pagination semantics, state lifetime or Dock behavior.
 
 ## Active: Poster-heavy scrolling smoothness
+
+### 2026-08-31 Build280 off-main persistence A/B — CI/IPA verified
+
+Build280 / OnePlayer **0.15.13 (280)** exact source `531d7f53c55e1e3cff44069e9bce3193ac94749a`, branch `perf/poster-grid-offmain-persistence-build280`, Draft PR #282, directly extends target-device-tested Build278. It changes exactly five paths: AppIdentity, `EmbyPagePersistentCache.swift`, `EmbyServerBrowseV3.swift`, changelog and checker. Full Library snapshot object construction, JSON serialization and atomic write now run on one serial `.utility` queue; the MainActor model awaits completion, preserving ordered accepted-state write-through while yielding the scrolling main thread. No coalescing is introduced.
+
+Exact-source Xcode 16.4 run/job `33390236717 / 99481947293` passed; cleanup `99482802350` passed. Artifact `9757238604`, digest `sha256:9b2d096e3c5d5909d17d3e9c875390cc2de81a3c50ef5158b7afcf3e56620111`; IPA SHA `e0b71190621671767b73cd95da63e733640ce2e2acfba9945f6178f6d12ac769`; exact-source ZIP SHA `7f23b8bd788a79b2ee71558835826c453440fdabaca47f082ce12a0604e114c5`. Package `com.embyplayerlab.app`, `0.15.13 (280)`, MinOS 15.0 and `CADisableMinimumFrameDurationOnPhone=true` were independently verified; both archives pass integrity checks.
+
+**Evidence:** Code/scope/checker/CI/IPA ✅ / target-device pending / stable ❌. Next gate is real-device Library `.items` pagination: verify persistence logs `main_thread=0`, compare severe display gaps against Build278, and confirm cached-first/write-through behavior remains intact.
 
 ### 2026-08-31 Build278 target-device persistence proof
 

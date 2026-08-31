@@ -2,7 +2,7 @@
 
 ## Status
 
-**Active — Build278 target-device timing proves synchronous full-Library presentation persistence is a major pagination-adjacent severe-frame source. Build280 / 0.15.13 exact source `531d7f53c55e1e3cff44069e9bce3193ac94749a`, branch `perf/poster-grid-offmain-persistence-build280`, Draft PR #282, is the current single-variable fix A/B. It reuses the previously compiled Build229 serial utility queue + async/await persistence mechanism: full Library JSON-object construction, serialization and atomic write move off the scrolling MainActor while the model awaits ordered completion. Build213 cached-first and accepted-state atomic write-through semantics remain; Build278 timing + Build276 native frame-tail diagnostics remain for direct verification. Exact five-path scope/checker passed; CI/IPA/target-device pending. Build279 is occupied by the parallel Home task, so Poster uses Build280 / 0.15.13.**
+**Active — Build278 target-device timing proves synchronous full-Library presentation persistence is a major pagination-adjacent severe-frame source. Build280 / 0.15.13 exact source `531d7f53c55e1e3cff44069e9bce3193ac94749a`, branch `perf/poster-grid-offmain-persistence-build280`, Draft PR #282, is the current single-variable fix A/B. It moves full Library JSON-object construction, serialization and atomic write onto the previously proven serial utility queue while the MainActor model awaits ordered completion; Build213 cached-first and accepted-state atomic write-through semantics remain. Exact five-path scope/checker, Xcode 16.4 Release CI and independently verified IPA are complete. Run/job `33390236717 / 99481947293`, artifact `9757238604`, IPA SHA `e0b71190621671767b73cd95da63e733640ce2e2acfba9945f6178f6d12ac769`, source ZIP SHA `7f23b8bd788a79b2ee71558835826c453440fdabaca47f082ce12a0604e114c5`, MinOS 15.0. Target-device validation is now the only next gate; stable remains false. Build279 is occupied by the parallel Home task.**
 
 - **Work ID**: `DEV-poster-grid-smoothness`
 - **Routing aliases / keywords**: 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
@@ -10,7 +10,7 @@
 - **Draft PR**: #282 Build280 off-main persistence A/B; Draft / do not merge before target-device evidence
 - **Superseded PRs**: #278 Build272 fixed-row target-device rejected/closed; #277 Poster Build269 row-stack target-device rejected/closed; #276 Build268 lean-diagnostic target-device rejected/closed; #275 Build267 diagnostic reference-session target-device tested/superseded; earlier poster diagnostics remain historical evidence only
 - **Current branch / PR head**: `531d7f53c55e1e3cff44069e9bce3193ac94749a`
-- **Current candidate**: OnePlayer **0.15.13 / Build280** — off-main Library persistence behavior A/B; Code written + exact five-path scope/checker ✅ / CI pending / IPA pending / target-device pending / stable ❌.
+- **Current candidate**: OnePlayer **0.15.13 / Build280** — off-main Library persistence behavior A/B; Code written + exact five-path scope/checker ✅ / CI passed ✅ / IPA independently verified ✅ / target-device pending / stable ❌.
 - **Target device**: iPhone 15 Pro Max / iOS 17.0
 - **Accepted carousel foundation**: Build241 manual interaction/presentation remains frozen; only automatic-transition scheduling during Home vertical motion is reopened by new device evidence
 - **Accepted overall baseline**: OnePlayer **0.14.49 / Build216**, PR #261, merge `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
@@ -25,9 +25,9 @@ Build280 changes exactly five paths relative to Build278: AppIdentity, `EmbyPage
 
 Protected scope: no pagination-size/source, UICollectionView behavior, image loading/cache, scroll physics, Search Build256 semantics, Home carousel, Player/MPV/PiP, UnifiedTransport, playback Cache/Session, STRM/302/115/CDN, or Deployment Target change.
 
-**Evidence:** Code written ✅ / exact five-path scope+checker ✅ / Draft PR #282 ✅ / CI pending / IPA pending / target-device pending / stable ❌.
+**Evidence:** Code written ✅ / exact five-path scope+checker ✅ / Draft PR #282 ✅ / CI passed ✅ / IPA produced+independently verified ✅ / target-device pending / stable ❌.
 
-**Next exact action:** run exact-source Xcode 16.4 Release/IPA for `531d7f53c55e1e3cff44069e9bce3193ac94749a`, independently verify `0.15.13 (280)` / MinOS15 / hashes, then target-device repeat Library `.items` pagination. Acceptance evidence is reduction/removal of the 50–100 ms pagination display-gap family while `PagePersistentCache` reports `main_thread=0`; do not claim universal 3×3 resolution from this A/B.
+**Next exact action:** target-device repeat Library `.items` pagination with Build280. Acceptance evidence is reduction/removal of the Build278 50–100 ms pagination display-gap family while `PagePersistentCache` reports `main_thread=0`; also confirm cached-first relaunch and accepted-state persistence still behave normally. Do not merge or claim universal 3×3 resolution before that device evidence.
 
 ## Build278 target-device result — synchronous full-snapshot persistence confirmed as pagination-tail source — 2026-08-31
 
