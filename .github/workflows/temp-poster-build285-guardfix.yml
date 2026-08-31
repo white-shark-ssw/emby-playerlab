@@ -1,0 +1,38 @@
+name: Fix Build285 Scope Guard
+
+on:
+  push:
+    branches: [ci/poster-final-integration-build285]
+    paths:
+      - ".github/workflows/temp-poster-build285-guardfix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ci/poster-final-integration-build285
+          persist-credentials: true
+      - name: Include untracked files in exact scope guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/temp-poster-final-integration-build285.yml')
+          text = path.read_text()
+          old = '          actual="$(git diff --name-only "$BASE_SHA" | sort)"'
+          new = '          actual="$(git status --porcelain | cut -c4- | sort)"'
+          if text.count(old) != 1: raise SystemExit(f'guard anchor count={text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git diff --check
+          git config user.name "ChatGPT"
+          git config user.email "chatgpt@users.noreply.github.com"
+          git add .github/workflows/temp-poster-final-integration-build285.yml
+          git commit -m "Fix Build285 exact scope guard"
+          git push origin HEAD:ci/poster-final-integration-build285
