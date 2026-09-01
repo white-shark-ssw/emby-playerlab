@@ -1,103 +1,172 @@
-name: One-shot Preserve Build211 Release Contract
+name: Build284 Home Carousel Crossover
 
 on:
   push:
-    branches: [main]
-    paths:
-      - ".github/workflows/temp-fix-build211-carousel-encoding.yml"
+    branches: [ci/build284-home-crossover-20260902]
 
 permissions:
   contents: write
 
+concurrency:
+  group: build284-home-crossover
+  cancel-in-progress: true
+
+env:
+  BASE_SHA: 58801ef0acc6084c3168e8d7635a1258925cc382
+  VERSION: 0.15.17
+  BUILD_NUMBER: 284
+  PRODUCT_BRANCH: diag/home-carousel-crossover-build284
+
 jobs:
-  fix:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout control branch
+        uses: actions/checkout@v4
         with:
-          ref: perf/home-carousel-acquisition-relative-build211
           fetch-depth: 0
-          persist-credentials: true
 
-      - name: Guard corrected Build211 source
+      - name: Materialize exact Build284 product source
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "3df8656ac6c3d816245aa1344dd733699f22dee0"
-
-      - name: Preserve touch-down release authority
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('Sources/UI/EmbyHomeCarouselInteractionV3.swift')
-          s = p.read_text()
-          old = '''    func finishNativeCarouselDrag(_ translation: CGSize, predictedTranslation: CGSize?, width: CGFloat) {
-        guard isCarouselDragging, let targetID = transitionToID else { return }
-        suppressCarouselTap()
-        let actualDistance = abs(translation.width)
-        let expectedSign: CGFloat = transitionDirection > 0 ? -1 : 1
-        let predictedDistance: CGFloat
-        if let predictedTranslation, predictedTranslation.width == 0 || predictedTranslation.width * expectedSign > 0 { predictedDistance = abs(predictedTranslation.width) }
-        else { predictedDistance = actualDistance }
-        let actualProgress = min(1, max(0, actualDistance / max(1, width)))
-        let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48
-        isCarouselDragging = false
-        if shouldCommit { completeInteractiveTransition(to: targetID) }
-        else { cancelInteractiveTransition() }
-    }
-'''
-          new = '''    func finishNativeCarouselDrag(_ translation: CGSize, predictedTranslation: CGSize?, width: CGFloat) {
-        suppressCarouselTap()
-        let actualDistance = abs(translation.width)
-        let releaseDirection = isCarouselDragging ? transitionDirection : (translation.width < 0 ? 1 : -1)
-        let expectedSign: CGFloat = releaseDirection > 0 ? -1 : 1
-        let predictedDistance: CGFloat
-        if let predictedTranslation, predictedTranslation.width == 0 || predictedTranslation.width * expectedSign > 0 { predictedDistance = abs(predictedTranslation.width) }
-        else { predictedDistance = actualDistance }
-        let actualProgress = min(1, max(0, actualDistance / max(1, width)))
-        let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48
-        if !isCarouselDragging {
-            guard shouldCommit, let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: releaseDirection) else { return }
-            transitionFromID = currentID
-            transitionToID = targetID
-            transitionProgress = 0
-            transitionDirection = releaseDirection
-            completeInteractiveTransition(to: targetID)
-            return
-        }
-        guard let targetID = transitionToID else { return }
-        isCarouselDragging = false
-        if shouldCommit { completeInteractiveTransition(to: targetID) }
-        else { cancelInteractiveTransition() }
-    }
-'''
-          if s.count(old) != 1:
-              raise SystemExit(f'Build211 finish anchor count={s.count(old)}')
-          p.write_text(s.replace(old, new, 1))
-
-          c = Path('scripts/check_home_carousel_single_owner.py')
-          check = c.read_text()
-          anchor = "assert 'let shouldCommit = actualProgress >= 0.28 || max(actualDistance, predictedDistance) >= width * 0.48' in interaction\n"
-          if check.count(anchor) != 1:
-              raise SystemExit('Build211 contract anchor missing')
-          extra = "assert 'let releaseDirection = isCarouselDragging ? transitionDirection : (translation.width < 0 ? 1 : -1)' in interaction\nassert 'if !isCarouselDragging {' in interaction\nassert 'guard shouldCommit, let currentID = currentCarouselItemID, let targetID = neighborCarouselItemID(from: currentID, direction: releaseDirection) else { return }' in interaction\n"
-          c.write_text(check.replace(anchor, anchor + extra, 1))
-          PY
-          python3 scripts/check_home_carousel_single_owner.py
-          python3 -m py_compile scripts/check_home_carousel_single_owner.py
-          git diff --check
-          python3 - <<'PY'
-          import subprocess
-          expected = {'Sources/UI/EmbyHomeCarouselInteractionV3.swift', 'scripts/check_home_carousel_single_owner.py'}
-          changed = set(subprocess.check_output(['git','diff','--name-only'], text=True).splitlines())
-          if changed != expected: raise SystemExit(f'Unexpected Build211 release patch files: {sorted(changed)}')
-          PY
-
-      - name: Commit Build211 release preservation
-        run: |
-          set -euo pipefail
+          cp .github/scripts/materialize-build284-home-crossover.py /tmp/materialize-build284-home-crossover.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Sources/UI/EmbyHomeCarouselInteractionV3.swift scripts/check_home_carousel_single_owner.py
-          git commit -m "Preserve Build211 touch-down release authority"
-          git push origin HEAD:perf/home-carousel-acquisition-relative-build211
+          git checkout -B build284 "$BASE_SHA"
+          python3 /tmp/materialize-build284-home-crossover.py
+          changed="$(git diff --name-only "$BASE_SHA" | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeFramePipelineProbeV3.swift | sort)"
+          printf 'Build284 changed paths:\n%s\n' "$changed"
+          test "$changed" = "$expected"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCoreV3.swift)" = "ae9e98c09bd10294032d08382b53a18f31bf42ac"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeHeroV3.swift)" = "4e081d42dd0b188ac48cbb6a882e2457f83bdcad"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCarouselInteractionV3.swift)" = "f8df5af61101c0272c5ec378caae617000b8fcea"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCarouselStateV3.swift)" = "96f38514cfb09668f11c21a61105ac87a2f26f3d"
+          grep -F 'static let sourceVersion = "0.15.17"' Sources/Core/AppIdentity.swift
+          grep -F 'case .carouselTree: return "CROSSOVER"' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'private let phaseDuration: CFTimeInterval = 15' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'HomeCarouselCrossover' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'if !treeActive { onProgress?(0.5) }' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'guard phaseIndex % 2 == 1 else { return }' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          grep -F 'link.preferredFrameRateRange = CAFrameRateRange(minimum: maximum, maximum: maximum, preferred: maximum)' Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          ! git diff --name-only "$BASE_SHA" | grep -E 'Sources/(Player|Transport|Session|Cache)/|Sources/UI/(EmbyHomeCoreV3|EmbyHomeHeroV3|EmbyHomeCarouselInteractionV3|EmbyHomeCarouselStateV3|Player|MPV|PlayerPiP)' >/dev/null
+          grep -F 'let velocityCommit = directionalVelocity >= 500' Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          grep -F 'let shouldCommit = actualProgress >= 0.28 || velocityCommit' Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          grep -F 'CADisableMinimumFrameDurationOnPhone' Config/Info.plist
+          grep -F 'iOS: "15.0"' project.yml
+          grep -F 'deploymentTarget: "15.0"' project.yml
+          git diff --check
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeFramePipelineProbeV3.swift
+          git commit -m "Add Build284 Home crossover diagnostic"
+          PRODUCT_SHA="$(git rev-parse HEAD)"
+          echo "PRODUCT_SHA=$PRODUCT_SHA" >> "$GITHUB_ENV"
+          git push --force origin HEAD:"$PRODUCT_BRANCH"
+          echo "Build284 product source: $PRODUCT_SHA"
+
+      - name: Export exact source snapshot
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          SOURCE_ZIP="OnePlayer-${VERSION}-build${BUILD_NUMBER}-home-crossover-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" "$PRODUCT_SHA"
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Inject package identity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          import re
+          from pathlib import Path
+          version = "0.15.17"
+          build = "284"
+          info_path = Path("Config/Info.plist")
+          with info_path.open("rb") as handle:
+              info = plistlib.load(handle)
+          info["CFBundleShortVersionString"] = version
+          info["CFBundleVersion"] = build
+          with info_path.open("wb") as handle:
+              plistlib.dump(info, handle, sort_keys=False)
+          project_path = Path("project.yml")
+          project = project_path.read_text()
+          project = re.sub(r'MARKETING_VERSION: "[^"]+"', f'MARKETING_VERSION: "{version}"', project)
+          project = re.sub(r'CURRENT_PROJECT_VERSION: "[^"]+"', f'CURRENT_PROJECT_VERSION: "{build}"', project)
+          project_path.write_text(project)
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          xcodegen --version
+          pod --version
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned app
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build | tee build.log
+
+      - name: Validate identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version "$VERSION" --build "$BUILD_NUMBER" --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" 15.0 17.0 min-os-report.log build.log
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-${VERSION}-build${BUILD_NUMBER}-home-crossover-probe-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload Build284 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.17-build284-home-crossover-probe
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            built-info-plist.log
+            min-os-report.log
+            package.log
+          if-no-files-found: error
+          retention-days: 30
