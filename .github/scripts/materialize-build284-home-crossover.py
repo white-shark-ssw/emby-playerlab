@@ -97,7 +97,7 @@ replacement = r'''final class V3HomeCarouselTreeProgressView: UIView {
             let treeActive = phaseIndex % 2 == 1
             let round = phaseIndex / 2 + 1
             phaseLayer.string = treeActive ? "CROSSOVER TREE \(round)/3" : "CROSSOVER REF \(round)/3"
-            DiagnosticsLogger.shared.playback("HomeCarouselCrossover", "phase=\(treeActive ? \"tree\" : \"reference\") round=\(round) maxFPS=\(UIScreen.main.maximumFramesPerSecond) lowPower=\(ProcessInfo.processInfo.isLowPowerModeEnabled) thermal=\(thermalStateName)")
+            DiagnosticsLogger.shared.playback("HomeCarouselCrossover", "phase=\(treeActive ? "tree" : "reference") round=\(round) maxFPS=\(UIScreen.main.maximumFramesPerSecond) lowPower=\(ProcessInfo.processInfo.isLowPowerModeEnabled) thermal=\(thermalStateName)")
             if !treeActive { onProgress?(0.5) }
         }
 
@@ -139,7 +139,7 @@ replacement = r'''final class V3HomeCarouselTreeProgressView: UIView {
         let treeActive = lastPhaseIndex % 2 == 1
         let round = lastPhaseIndex / 2 + 1
         let average = totalGapMS / Double(intervalCount)
-        DiagnosticsLogger.shared.playback("HomeCarouselCrossover", "summary phase=\(treeActive ? \"tree\" : \"reference\") round=\(round) intervals=\(intervalCount) avgGapMS=\(String(format: \"%.3f\", average)) maxGapMS=\(String(format: \"%.3f\", maxGapMS)) reason=\(reason)")
+        DiagnosticsLogger.shared.playback("HomeCarouselCrossover", "summary phase=\(treeActive ? "tree" : "reference") round=\(round) intervals=\(intervalCount) avgGapMS=\(String(format: "%.3f", average)) maxGapMS=\(String(format: "%.3f", maxGapMS)) reason=\(reason)")
     }
 
     private var thermalStateName: String {
