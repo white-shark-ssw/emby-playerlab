@@ -1,0 +1,45 @@
+name: Sync Build286 Project Index
+
+on:
+  push:
+    branches: [ci/build286-doc-index-sync-20260904]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Append Build286 authority entries to latest main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -B docs-build286 origin/main
+          python3 - <<'PY'
+          from pathlib import Path
+
+          tech = Path('docs/project/TECHNICAL_DECISIONS.md')
+          marker = '## D029 — Home carousel high-frequency progress must not invalidate the full semantic presentation scope'
+          if marker not in tech.read_text():
+              with tech.open('a') as f:
+                  f.write('''\n\n## D029 — Home carousel high-frequency progress must not invalidate the full semantic presentation scope\n\nBuild286 is an architecture A/B, not yet a frozen runtime contract. Source review established that Build241/main published `fromID`, `toID`, `progress` and `direction` through one parent `V3HomeCarouselTransitionState` observed by both the full Hero and persistent-backdrop scopes. Build279/281 already rejected callback density and display-link latching as sufficient explanations, while Build282 demonstrated that simple device-max DisplayLink and simple `@Published → SwiftUI` paths can sustain 120 on the same device/package. The next justified boundary is therefore the amount of real presentation tree invalidated by each progress publication.\n\nBuild286 preserves one UIKit interaction owner, one `V3HomeCarouselTransitionState` and one stored progress value. The parent now owns a nested `V3HomeCarouselProgressState`; low-frequency `fromID` / `toID` / `direction` remain parent-published semantics, while leaf wrappers observe progress for Hero artwork opacity, foreground X offset, target-backdrop opacity, indicators and the cadence probe. This is notification-granularity isolation only: no second progress owner/value, DisplayLink/frame latch, interpolation/prediction, timer/watchdog/retry/fallback, blur removal, residency reduction or gesture rewrite is authorized by this decision.\n\nExact product source `7e7b2ec944f5c0e74bc291e37683f1529e3d46b4`, Draft PR #289. Xcode 16.4 run/job `33786964921 / 100753960778` passed and artifact `9905942602` was independently verified (`0.15.19 (286)`, IPA SHA `5c26b36eb70117abbd27885f5b637827020f7fffcc949d79a45e5b9a19bc28b0`, MinOS 15.0). Evidence remains **Code written / CI passed / IPA produced / real-device pending / not stable**. Manual prolonged FPS transcription is not a required acceptance gate; target-device validation is qualitative hand-feel plus visual/gesture regression checking.\n''')
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          marker = '## Build286 — Home progress-observation architecture A/B'
+          if marker not in index.read_text():
+              with index.open('a') as f:
+                  f.write('''\n\n## Build286 — Home progress-observation architecture A/B\n\n- Product: OnePlayer `0.15.19 (286)`\n- Work: `DEV-home-carousel-drag-smoothness`\n- Base checkpoint: `8dac5e687506d52fab9b3634389fa029cb7f0bde`\n- Product branch: `perf/home-carousel-progress-scope-build286`\n- Exact product source: `7e7b2ec944f5c0e74bc291e37683f1529e3d46b4`\n- Draft PR: #289, open/unmerged\n- Xcode: 16.4\n- CI run/job: `33786964921 / 100753960778` — success\n- Artifact: `OnePlayer-0.15.19-build286-home-progress-scope`, ID `9905942602`, digest `sha256:983c3cb1aa650f727266019b9a1ea834fad9c29266a043a775f9109c40f0c9f4`\n- IPA SHA-256: `5c26b36eb70117abbd27885f5b637827020f7fffcc949d79a45e5b9a19bc28b0`\n- Source ZIP SHA-256: `ff975b72afcfc660542c112a2eb55e4c0f8669e11933bc4d368df7b3c7c8f68e`\n- Bundle / MinOS: `com.embyplayerlab.app / 15.0`\n- Scope: five product paths only — AppIdentity, transition-state declaration, new progress-presentation helper, transitionProgress accessor and Hero leaf bindings; HomeCore remains blob `c7900bae5e608ae46c0cd476c1f08999be9baf0b`.\n- Architecture: one parent transition owner and one stored progress value; progress object notifications are consumed only by leaf opacity/offset/read scopes instead of invalidating the broad parent Hero/backdrop scopes.\n- Preserved: Build241 gesture/acquisition semantics, three-slot clear-Hero residency, foreground `compositingGroup()`, blur30, full-width movement, `>=0.28`, `>=500 pt/s`, 0.22/0.18 settle, white-flash correction, all P0 playback/Transport contracts.\n- Independent package verification: outer artifact digest, IPA/source hashes, archive integrity, Info.plist `0.15.19 (286)`, `MinimumOSVersion=15.0`, `CADisableMinimumFrameDurationOnPhone=true`, runtime Mach-O MinOS 15.0 and source-ZIP git blobs all verified.\n- Evidence: **Code written ✅ / exact-scope guarded ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / stable ❌**.\n- Target-device gate: normal slow/rapid swipes, release/cancel/rapid takeover, white-flash/visual regression and overall hand-feel. No prolonged FPS transcription required.\n''')
+          PY
+          git add docs/project/TECHNICAL_DECISIONS.md docs/project/BUILD_TEST_INDEX.md
+          if git diff --cached --quiet; then
+            echo 'Build286 entries already present'
+            exit 0
+          fi
+          git commit -m 'Index Build286 Home progress-scope candidate'
+          git push origin HEAD:main
