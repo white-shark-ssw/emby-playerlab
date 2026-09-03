@@ -473,3 +473,25 @@ Update this index when a build materially changes architectural understanding, b
 - target-device: PASS and user accepted.
 - PR #264 merged to `main` at `647c1f66e5836fcd20a23a57600211488eeafb3d`.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅ / user accepted ✅ / stable/merged ✅**.
+
+
+## Build286 — Home progress-observation architecture A/B
+
+- Product: OnePlayer `0.15.19 (286)`
+- Work: `DEV-home-carousel-drag-smoothness`
+- Base checkpoint: `8dac5e687506d52fab9b3634389fa029cb7f0bde`
+- Product branch: `perf/home-carousel-progress-scope-build286`
+- Exact product source: `7e7b2ec944f5c0e74bc291e37683f1529e3d46b4`
+- Draft PR: #289, open/unmerged
+- Xcode: 16.4
+- CI run/job: `33786964921 / 100753960778` — success
+- Artifact: `OnePlayer-0.15.19-build286-home-progress-scope`, ID `9905942602`, digest `sha256:983c3cb1aa650f727266019b9a1ea834fad9c29266a043a775f9109c40f0c9f4`
+- IPA SHA-256: `5c26b36eb70117abbd27885f5b637827020f7fffcc949d79a45e5b9a19bc28b0`
+- Source ZIP SHA-256: `ff975b72afcfc660542c112a2eb55e4c0f8669e11933bc4d368df7b3c7c8f68e`
+- Bundle / MinOS: `com.embyplayerlab.app / 15.0`
+- Scope: five product paths only — AppIdentity, transition-state declaration, new progress-presentation helper, transitionProgress accessor and Hero leaf bindings; HomeCore remains blob `c7900bae5e608ae46c0cd476c1f08999be9baf0b`.
+- Architecture: one parent transition owner and one stored progress value; progress object notifications are consumed only by leaf opacity/offset/read scopes instead of invalidating the broad parent Hero/backdrop scopes.
+- Preserved: Build241 gesture/acquisition semantics, three-slot clear-Hero residency, foreground `compositingGroup()`, blur30, full-width movement, `>=0.28`, `>=500 pt/s`, 0.22/0.18 settle, white-flash correction, all P0 playback/Transport contracts.
+- Independent package verification: outer artifact digest, IPA/source hashes, archive integrity, Info.plist `0.15.19 (286)`, `MinimumOSVersion=15.0`, `CADisableMinimumFrameDurationOnPhone=true`, runtime Mach-O MinOS 15.0 and source-ZIP git blobs all verified.
+- Evidence: **Code written ✅ / exact-scope guarded ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / stable ❌**.
+- Target-device gate: normal slow/rapid swipes, release/cancel/rapid takeover, white-flash/visual regression and overall hand-feel. No prolonged FPS transcription required.
