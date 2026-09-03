@@ -1,0 +1,425 @@
+name: Build286 Home Carousel Progress Scope
+
+on:
+  push:
+    branches: [ci/build286-home-progress-scope-20260904]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build286-home-progress-scope
+  cancel-in-progress: true
+
+env:
+  BASE_SHA: 8dac5e687506d52fab9b3634389fa029cb7f0bde
+  VERSION: 0.15.19
+  BUILD_NUMBER: 286
+  PRODUCT_BRANCH: perf/home-carousel-progress-scope-build286
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout control branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Materialize exact Build286 product source
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B build286 "$BASE_SHA"
+
+          test "$(git rev-parse HEAD:Sources/Core/AppIdentity.swift)" = "f64254efbaaed03252c0f3713aeff96579831f85"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCarouselInteractionV3.swift)" = "144be65ba3fa5618d39591c5f67747024dc5ff0c"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCarouselStateV3.swift)" = "e18fc8724170f2a7e613ac93beedf54c3b8d47e8"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeHeroV3.swift)" = "ab2ab5d80a59e174622dca0006c0f3aad4111a54"
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCoreV3.swift)" = "c7900bae5e608ae46c0cd476c1f08999be9baf0b"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one match in {path}: {old!r}, got {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once("Sources/Core/AppIdentity.swift", 'static let sourceVersion = "0.14.49"', 'static let sourceVersion = "0.15.19"')
+          replace_once("Sources/Core/AppIdentity.swift", '?? "0.14.49"', '?? "0.15.19"')
+
+          replace_once(
+              "Sources/UI/EmbyHomeCarouselInteractionV3.swift",
+              '    @Published var progress: CGFloat = 0\n',
+              '    let progress = V3HomeCarouselProgressState()\n',
+          )
+
+          replace_once(
+              "Sources/UI/EmbyHomeCarouselStateV3.swift",
+              '''    var transitionProgress: CGFloat {
+              get { carouselTransitionState.progress }
+              nonmutating set { carouselTransitionState.progress = newValue }
+          }
+          ''',
+              '''    var transitionProgress: CGFloat {
+              get { carouselTransitionState.progress.value }
+              nonmutating set { carouselTransitionState.progress.value = newValue }
+          }
+          ''',
+          )
+
+          progress_file = Path("Sources/UI/EmbyHomeCarouselProgressPresentationV3.swift")
+          progress_file.write_text('''import SwiftUI
+          import Combine
+
+          final class V3HomeCarouselProgressState: ObservableObject {
+              @Published var value: CGFloat = 0
+          }
+
+          struct V3HomeCarouselProgressOpacity<Content: View>: View {
+              @ObservedObject var progress: V3HomeCarouselProgressState
+              let resolveOpacity: (CGFloat) -> Double
+              let content: Content
+
+              init(progress: V3HomeCarouselProgressState, resolveOpacity: @escaping (CGFloat) -> Double, @ViewBuilder content: () -> Content) {
+                  self.progress = progress
+                  self.resolveOpacity = resolveOpacity
+                  self.content = content()
+              }
+
+              var body: some View { content.opacity(resolveOpacity(progress.value)) }
+          }
+
+          struct V3HomeCarouselProgressOffsetX<Content: View>: View {
+              @ObservedObject var progress: V3HomeCarouselProgressState
+              let resolveOffsetX: (CGFloat) -> CGFloat
+              let content: Content
+
+              init(progress: V3HomeCarouselProgressState, resolveOffsetX: @escaping (CGFloat) -> CGFloat, @ViewBuilder content: () -> Content) {
+                  self.progress = progress
+                  self.resolveOffsetX = resolveOffsetX
+                  self.content = content()
+              }
+
+              var body: some View { content.offset(x: resolveOffsetX(progress.value)) }
+          }
+
+          struct V3HomeCarouselProgressReadScope<Content: View>: View {
+              @ObservedObject var progress: V3HomeCarouselProgressState
+              let content: (CGFloat) -> Content
+
+              init(progress: V3HomeCarouselProgressState, @ViewBuilder content: @escaping (CGFloat) -> Content) {
+                  self.progress = progress
+                  self.content = content
+              }
+
+              var body: some View { content(progress.value) }
+          }
+          '''.replace('          ', ''))
+
+          hero = Path("Sources/UI/EmbyHomeHeroV3.swift")
+          text = hero.read_text()
+
+          old = '''    func immersiveCarouselHero(width: CGFloat, viewportHeight: CGFloat) -> some View {
+              let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + homeCarouselDisplayHeightAdjustment(viewportHeight: viewportHeight)
+              return ZStack(alignment: .bottom) {
+          '''
+          new = '''    func immersiveCarouselHero(width: CGFloat, viewportHeight: CGFloat) -> some View {
+              let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + homeCarouselDisplayHeightAdjustment(viewportHeight: viewportHeight)
+              let progressState = carouselTransitionState.progress
+              let fromID = transitionFromID
+              let toID = transitionToID
+              let direction = transitionDirection
+              let currentID = currentCarouselItemID
+              return ZStack(alignment: .bottom) {
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("immersiveCarouselHero header mismatch")
+          text = text.replace(old, new, 1)
+
+          old = '''            ForEach(carouselHeroResidentItems) { item in
+                  carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
+                      .opacity(carouselOpacity(for: item.id))
+                      .allowsHitTesting(false)
+              }
+          '''
+          new = '''            ForEach(carouselHeroResidentItems) { item in
+                  V3HomeCarouselProgressOpacity(progress: progressState, resolveOpacity: { rawProgress in
+                      if let fromID, let toID {
+                          let blend = carouselBackdropBlendProgress(rawProgress)
+                          if item.id == fromID { return Double(1 - blend) }
+                          if item.id == toID { return Double(blend) }
+                          return 0
+                      }
+                      return item.id == currentID ? 1 : 0
+                  }) {
+                      carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
+                  }
+                  .allowsHitTesting(false)
+              }
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("Hero artwork block mismatch")
+          text = text.replace(old, new, 1)
+
+          old = '''            ForEach(model.carouselItems) { item in
+                  carouselHeroForeground(item: item, width: width, viewportHeight: viewportHeight)
+                      .compositingGroup()
+                      .opacity(carouselForegroundOpacity(for: item.id))
+                      .offset(x: carouselForegroundOffset(for: item.id, width: width))
+                      .allowsHitTesting(false)
+              }
+          '''
+          new = '''            ForEach(model.carouselItems) { item in
+                  V3HomeCarouselProgressOffsetX(progress: progressState, resolveOffsetX: { rawProgress in
+                      guard let fromID, let toID else { return 0 }
+                      let visualProgress = min(1, max(0, rawProgress))
+                      let pageStep = width
+                      let visualDirection = CGFloat(direction)
+                      if item.id == fromID { return -visualDirection * visualProgress * pageStep }
+                      if item.id == toID { return visualDirection * (1 - visualProgress) * pageStep }
+                      return 0
+                  }) {
+                      carouselHeroForeground(item: item, width: width, viewportHeight: viewportHeight)
+                          .compositingGroup()
+                          .opacity(carouselForegroundOpacity(for: item.id))
+                  }
+                  .allowsHitTesting(false)
+              }
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("Hero foreground block mismatch")
+          text = text.replace(old, new, 1)
+
+          old = '''            carouselPageIndicators
+                  .padding(.bottom, 18)
+                  .allowsHitTesting(false)
+
+              V3HomeCarouselCadenceRenderProbe(progress: transitionProgress)
+                  .frame(width: 0, height: 0)
+                  .allowsHitTesting(false)
+          '''
+          new = '''            V3HomeCarouselProgressReadScope(progress: progressState) { progress in
+                  let displayedItemID = (toID != nil && progress >= 0.5) ? toID : currentID
+                  carouselPageIndicators(displayedItemID: displayedItemID)
+              }
+              .padding(.bottom, 18)
+              .allowsHitTesting(false)
+
+              V3HomeCarouselProgressReadScope(progress: progressState) { progress in
+                  V3HomeCarouselCadenceRenderProbe(progress: progress)
+                      .frame(width: 0, height: 0)
+                      .allowsHitTesting(false)
+              }
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("Indicators/probe block mismatch")
+          text = text.replace(old, new, 1)
+
+          old = '''    var carouselPageIndicators: some View {
+              HStack(spacing: 8) {
+                  ForEach(model.carouselItems) { item in
+                      Circle()
+                          .fill(item.id == displayedCarouselItemID ? Color.primary.opacity(0.88) : Color.primary.opacity(0.26))
+                          .frame(width: item.id == displayedCarouselItemID ? 7 : 6, height: item.id == displayedCarouselItemID ? 7 : 6)
+                  }
+              }
+              .padding(.horizontal, 12)
+              .frame(height: 18)
+          }
+          '''
+          new = '''    func carouselPageIndicators(displayedItemID: String?) -> some View {
+              HStack(spacing: 8) {
+                  ForEach(model.carouselItems) { item in
+                      Circle()
+                          .fill(item.id == displayedItemID ? Color.primary.opacity(0.88) : Color.primary.opacity(0.26))
+                          .frame(width: item.id == displayedItemID ? 7 : 6, height: item.id == displayedItemID ? 7 : 6)
+                  }
+              }
+              .padding(.horizontal, 12)
+              .frame(height: 18)
+          }
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("Page indicators block mismatch")
+          text = text.replace(old, new, 1)
+
+          old = '''    func persistentCarouselBackdrop(size: CGSize) -> some View {
+              ZStack {
+                  if let item = currentCarouselItem {
+                      carouselPersistentImage(item: item, size: size)
+                  }
+                  if let item = transitionTargetCarouselItem {
+                      carouselPersistentImage(item: item, size: size).opacity(Double(carouselBackdropBlendProgress(transitionProgress)))
+                  }
+          '''
+          new = '''    func persistentCarouselBackdrop(size: CGSize) -> some View {
+              let progressState = carouselTransitionState.progress
+              return ZStack {
+                  if let item = currentCarouselItem {
+                      carouselPersistentImage(item: item, size: size)
+                  }
+                  if let item = transitionTargetCarouselItem {
+                      V3HomeCarouselProgressOpacity(progress: progressState, resolveOpacity: { Double(carouselBackdropBlendProgress($0)) }) {
+                          carouselPersistentImage(item: item, size: size)
+                      }
+                  }
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("Persistent backdrop block mismatch")
+          text = text.replace(old, new, 1)
+
+          hero.write_text(text)
+          PY
+
+          changed="$(git diff --name-only "$BASE_SHA" | sort)"
+          expected="$(printf '%s\n' \
+            Sources/Core/AppIdentity.swift \
+            Sources/UI/EmbyHomeCarouselInteractionV3.swift \
+            Sources/UI/EmbyHomeCarouselProgressPresentationV3.swift \
+            Sources/UI/EmbyHomeCarouselStateV3.swift \
+            Sources/UI/EmbyHomeHeroV3.swift | sort)"
+          printf 'Build286 changed paths:\n%s\n' "$changed"
+          test "$changed" = "$expected"
+
+          grep -F 'let progress = V3HomeCarouselProgressState()' Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          ! grep -F '@Published var progress: CGFloat = 0' Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          grep -F '@Published var value: CGFloat = 0' Sources/UI/EmbyHomeCarouselProgressPresentationV3.swift
+          grep -F 'get { carouselTransitionState.progress.value }' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'nonmutating set { carouselTransitionState.progress.value = newValue }' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'V3HomeCarouselProgressOpacity(progress: progressState' Sources/UI/EmbyHomeHeroV3.swift
+          grep -F 'V3HomeCarouselProgressOffsetX(progress: progressState' Sources/UI/EmbyHomeHeroV3.swift
+          grep -F 'V3HomeCarouselProgressReadScope(progress: progressState)' Sources/UI/EmbyHomeHeroV3.swift
+          grep -F '.compositingGroup()' Sources/UI/EmbyHomeHeroV3.swift
+          grep -F '.blur(radius: 30)' Sources/UI/EmbyHomeHeroV3.swift
+          grep -F 'ForEach(carouselHeroResidentItems)' Sources/UI/EmbyHomeHeroV3.swift
+          grep -F 'let velocityCommit = directionalVelocity >= 500' Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          grep -F 'let shouldCommit = actualProgress >= 0.28 || velocityCommit' Sources/UI/EmbyHomeCarouselInteractionV3.swift
+          grep -F 'withAnimation(.easeOut(duration: 0.22)) { transitionProgress = 1 }' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'withAnimation(.easeOut(duration: 0.18)) { transitionProgress = 0 }' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'CADisableMinimumFrameDurationOnPhone' Config/Info.plist
+          grep -F 'iOS: "15.0"' project.yml
+          grep -F 'deploymentTarget: "15.0"' project.yml
+          ! git diff --name-only "$BASE_SHA" | grep -E 'Sources/(Player|Transport|Session|Cache)/|Sources/UI/(Player|MPV|PlayerPiP)' >/dev/null
+          test "$(git rev-parse HEAD:Sources/UI/EmbyHomeCoreV3.swift)" = "c7900bae5e608ae46c0cd476c1f08999be9baf0b"
+          git diff --check
+
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselInteractionV3.swift Sources/UI/EmbyHomeCarouselProgressPresentationV3.swift Sources/UI/EmbyHomeCarouselStateV3.swift Sources/UI/EmbyHomeHeroV3.swift
+          git commit -m "Narrow Home carousel progress invalidation scope"
+          PRODUCT_SHA="$(git rev-parse HEAD)"
+          echo "PRODUCT_SHA=$PRODUCT_SHA" >> "$GITHUB_ENV"
+          git push --force origin HEAD:"$PRODUCT_BRANCH"
+          echo "Build286 product source: $PRODUCT_SHA"
+
+      - name: Export exact source snapshot
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          SOURCE_ZIP="OnePlayer-${VERSION}-build${BUILD_NUMBER}-home-progress-scope-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" "$PRODUCT_SHA"
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Inject package identity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          import re
+          from pathlib import Path
+          version = "0.15.19"
+          build = "286"
+          info_path = Path("Config/Info.plist")
+          with info_path.open("rb") as handle:
+              info = plistlib.load(handle)
+          info["CFBundleShortVersionString"] = version
+          info["CFBundleVersion"] = build
+          with info_path.open("wb") as handle:
+              plistlib.dump(info, handle, sort_keys=False)
+          project_path = Path("project.yml")
+          project = project_path.read_text()
+          project = re.sub(r'MARKETING_VERSION: "[^"]+"', f'MARKETING_VERSION: "{version}"', project)
+          project = re.sub(r'CURRENT_PROJECT_VERSION: "[^"]+"', f'CURRENT_PROJECT_VERSION: "{build}"', project)
+          project_path.write_text(project)
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          xcodegen --version
+          pod --version
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned app
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build | tee build.log
+
+      - name: Validate identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version "$VERSION" --build "$BUILD_NUMBER" --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" 15.0 17.0 min-os-report.log build.log
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-${VERSION}-build${BUILD_NUMBER}-home-progress-scope-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload Build286 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.19-build286-home-progress-scope
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            built-info-plist.log
+            min-os-report.log
+            package.log
+          if-no-files-found: error
+          retention-days: 30
