@@ -5,19 +5,42 @@ import UIKit
 extension V3EmbyHomeView {
     func immersiveCarouselHero(width: CGFloat, viewportHeight: CGFloat) -> some View {
         let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + homeCarouselDisplayHeightAdjustment(viewportHeight: viewportHeight)
+        let progressState = carouselTransitionState.progress
+        let fromID = transitionFromID
+        let toID = transitionToID
+        let direction = transitionDirection
+        let currentID = currentCarouselItemID
         return ZStack(alignment: .bottom) {
             ForEach(carouselHeroResidentItems) { item in
-                carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
-                    .opacity(carouselOpacity(for: item.id))
-                    .allowsHitTesting(false)
+                V3HomeCarouselProgressOpacity(progress: progressState, resolveOpacity: { rawProgress in
+                    if let fromID, let toID {
+                        let blend = carouselBackdropBlendProgress(rawProgress)
+                        if item.id == fromID { return Double(1 - blend) }
+                        if item.id == toID { return Double(blend) }
+                        return 0
+                    }
+                    return item.id == currentID ? 1 : 0
+                }) {
+                    carouselHeroArtwork(item: item, width: width, viewportHeight: viewportHeight)
+                }
+                .allowsHitTesting(false)
             }
 
             ForEach(model.carouselItems) { item in
-                carouselHeroForeground(item: item, width: width, viewportHeight: viewportHeight)
-                    .compositingGroup()
-                    .opacity(carouselForegroundOpacity(for: item.id))
-                    .offset(x: carouselForegroundOffset(for: item.id, width: width))
-                    .allowsHitTesting(false)
+                V3HomeCarouselProgressOffsetX(progress: progressState, resolveOffsetX: { rawProgress in
+                    guard let fromID, let toID else { return 0 }
+                    let visualProgress = min(1, max(0, rawProgress))
+                    let pageStep = width
+                    let visualDirection = CGFloat(direction)
+                    if item.id == fromID { return -visualDirection * visualProgress * pageStep }
+                    if item.id == toID { return visualDirection * (1 - visualProgress) * pageStep }
+                    return 0
+                }) {
+                    carouselHeroForeground(item: item, width: width, viewportHeight: viewportHeight)
+                        .compositingGroup()
+                        .opacity(carouselForegroundOpacity(for: item.id))
+                }
+                .allowsHitTesting(false)
             }
 
             NavigationLink(
@@ -31,13 +54,18 @@ extension V3EmbyHomeView {
             .hidden()
             .allowsHitTesting(false)
 
-            carouselPageIndicators
-                .padding(.bottom, 18)
-                .allowsHitTesting(false)
+            V3HomeCarouselProgressReadScope(progress: progressState) { progress in
+                let displayedItemID = (toID != nil && progress >= 0.5) ? toID : currentID
+                carouselPageIndicators(displayedItemID: displayedItemID)
+            }
+            .padding(.bottom, 18)
+            .allowsHitTesting(false)
 
-            V3HomeCarouselCadenceRenderProbe(progress: transitionProgress)
-                .frame(width: 0, height: 0)
-                .allowsHitTesting(false)
+            V3HomeCarouselProgressReadScope(progress: progressState) { progress in
+                V3HomeCarouselCadenceRenderProbe(progress: progress)
+                    .frame(width: 0, height: 0)
+                    .allowsHitTesting(false)
+            }
         }
         .frame(width: width, height: baseHeight)
         .overlay {
@@ -181,12 +209,12 @@ extension V3EmbyHomeView {
         return item.name
     }
 
-    var carouselPageIndicators: some View {
+    func carouselPageIndicators(displayedItemID: String?) -> some View {
         HStack(spacing: 8) {
             ForEach(model.carouselItems) { item in
                 Circle()
-                    .fill(item.id == displayedCarouselItemID ? Color.primary.opacity(0.88) : Color.primary.opacity(0.26))
-                    .frame(width: item.id == displayedCarouselItemID ? 7 : 6, height: item.id == displayedCarouselItemID ? 7 : 6)
+                    .fill(item.id == displayedItemID ? Color.primary.opacity(0.88) : Color.primary.opacity(0.26))
+                    .frame(width: item.id == displayedItemID ? 7 : 6, height: item.id == displayedItemID ? 7 : 6)
             }
         }
         .padding(.horizontal, 12)
@@ -194,12 +222,15 @@ extension V3EmbyHomeView {
     }
 
     func persistentCarouselBackdrop(size: CGSize) -> some View {
-        ZStack {
+        let progressState = carouselTransitionState.progress
+        return ZStack {
             if let item = currentCarouselItem {
                 carouselPersistentImage(item: item, size: size)
             }
             if let item = transitionTargetCarouselItem {
-                carouselPersistentImage(item: item, size: size).opacity(Double(carouselBackdropBlendProgress(transitionProgress)))
+                V3HomeCarouselProgressOpacity(progress: progressState, resolveOpacity: { Double(carouselBackdropBlendProgress($0)) }) {
+                    carouselPersistentImage(item: item, size: size)
+                }
             }
 
             LinearGradient(
