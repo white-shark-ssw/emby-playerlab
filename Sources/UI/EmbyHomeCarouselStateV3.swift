@@ -14,8 +14,8 @@ extension V3EmbyHomeView {
     }
 
     var transitionProgress: CGFloat {
-        get { carouselTransitionState.progress }
-        nonmutating set { carouselTransitionState.progress = newValue }
+        get { carouselTransitionState.progress.value }
+        nonmutating set { carouselTransitionState.progress.value = newValue }
     }
 
     var transitionDirection: Int {

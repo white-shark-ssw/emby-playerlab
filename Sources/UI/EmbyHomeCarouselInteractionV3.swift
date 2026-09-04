@@ -5,7 +5,7 @@ import UIKit
 final class V3HomeCarouselTransitionState: ObservableObject {
     @Published var fromID: String?
     @Published var toID: String?
-    @Published var progress: CGFloat = 0
+    let progress = V3HomeCarouselProgressState()
     @Published var direction = 1
     var isDragging = false
     var tapSuppressedUntil = Date.distantPast
