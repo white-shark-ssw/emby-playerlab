@@ -18,7 +18,7 @@ struct EmbyPersonMediaView: View {
                 if model.isInitialLoading && model.items.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
                 } else if let itemId = person.itemId, !itemId.isEmpty {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
+                    EmbyPosterGrid(items: model.items, diagnosticRoute: "person-results", onApproachingEnd: {
                         guard model.hasMore else { return }
                         Task { await model.loadNextPage() }
                     }) { item in

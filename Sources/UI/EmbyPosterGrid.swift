@@ -129,19 +129,23 @@ extension EnvironmentValues {
 struct EmbyPosterGrid<Content: View>: View {
     let items: [LibraryItem]
     let horizontalPadding: CGFloat
+    let diagnosticRoute: String
     let onApproachingEnd: (() -> Void)?
     private let content: (LibraryItem) -> Content
     @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
+    @State private var diagnosticOwnerID = UUID()
     @StateObject private var navigationState = EmbyPosterGridNavigationState()
 
     init(
         items: [LibraryItem],
         horizontalPadding: CGFloat = EmbyPosterGridMetrics.horizontalPadding,
+        diagnosticRoute: String = "grid",
         onApproachingEnd: (() -> Void)? = nil,
         @ViewBuilder content: @escaping (LibraryItem) -> Content
     ) {
         self.items = items
         self.horizontalPadding = horizontalPadding
+        self.diagnosticRoute = diagnosticRoute
         self.onApproachingEnd = onApproachingEnd
         self.content = content
     }
@@ -171,14 +175,18 @@ struct EmbyPosterGrid<Content: View>: View {
                     .frame(width: cellWidth, alignment: .topLeading)
                     .contentShape(Rectangle())
                     .onAppear {
+                        EmbyPosterGridCadenceDiagnostics.shared.cellDidAppear(ownerID: diagnosticOwnerID)
                         guard let handler = onApproachingEnd, loadAheadIDs.contains(item.id) else { return }
+                        EmbyPosterGridCadenceDiagnostics.shared.loadAheadDidTrigger(ownerID: diagnosticOwnerID)
                         handler()
                     }
+                    .onDisappear { EmbyPosterGridCadenceDiagnostics.shared.cellDidDisappear(ownerID: diagnosticOwnerID) }
             }
         }
         .padding(.horizontal, horizontalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(GeometryReader { proxy in Color.clear.preference(key: EmbyPosterGridWidthPreferenceKey.self, value: proxy.size.width) })
+        .background(EmbyPosterGridCadenceProbe(ownerID: diagnosticOwnerID, route: diagnosticRoute, itemCount: items.count).frame(width: 0, height: 0))
         .onPreferenceChange(EmbyPosterGridWidthPreferenceKey.self) { width in
             if width > 0 && abs(containerWidth - width) > 0.5 { containerWidth = width }
         }
