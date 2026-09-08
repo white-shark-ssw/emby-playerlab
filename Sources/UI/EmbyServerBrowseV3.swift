@@ -127,7 +127,7 @@ struct V3LibraryBrowserView: View {
                 } else if model.hasLoaded(tab: tab) && items.isEmpty {
                     emptyState(text: tab == .favorites ? "这个媒体库还没有收藏内容" : "暂无\(tab.title(contentTitle: contentTitle))内容")
                 } else {
-                    EmbyPosterGrid(items: items, onApproachingEnd: {
+                    EmbyPosterGrid(items: items, diagnosticRoute: "library-\(tab.rawValue)", onApproachingEnd: {
                         guard model.hasMore(tab: tab) else { return }
                         Task { await model.loadNextPage(tab: tab) }
                     }) { item in
@@ -174,7 +174,7 @@ struct V3LibraryBrowserView: View {
                 } else if model.hasLoaded(tab: .genres) && model.genres.isEmpty {
                     emptyState(text: "这个媒体库暂无类别")
                 } else {
-                    EmbyPosterGrid(items: model.genres) { genre in
+                    EmbyPosterGrid(items: model.genres, diagnosticRoute: "library-genres") { genre in
                         NavigationLink(destination: V3LibraryGenreGridView(library: library, genre: genre, client: client, dock: dock)) {
                             V3LibraryGenreCard(item: genre, client: client)
                         }
@@ -547,7 +547,7 @@ private struct V3LibraryGenreGridView: View {
             VStack(alignment: .leading, spacing: 14) {
                 if model.isLoading && model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.top, 44) }
                 else {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: { guard model.hasMore else { return }; Task { await model.loadNextPage() } }) { item in
+                    EmbyPosterGrid(items: model.items, diagnosticRoute: "library-genre-results", onApproachingEnd: { guard model.hasMore else { return }; Task { await model.loadNextPage() } }) { item in
                         EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) }
                     }
                 }
@@ -629,7 +629,7 @@ private struct V3LibraryFolderGrid: View {
     let dock: AnyView
 
     var body: some View {
-        EmbyPosterGrid(items: items) { item in
+        EmbyPosterGrid(items: items, diagnosticRoute: "library-folder") { item in
             if v3LibraryIsBrowsableFolder(item) {
                 NavigationLink(destination: V3LibraryFolderBrowserView(folder: item, client: client, dock: dock)) { V3LibraryFolderCard(item: item, client: client) }.buttonStyle(.plain)
             } else {
@@ -821,7 +821,7 @@ private struct V3FavoriteCategoryGridView: View {
                 if model.isInitialLoading && model.items.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
                 } else {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
+                    EmbyPosterGrid(items: model.items, diagnosticRoute: "favorites-category", onApproachingEnd: {
                         guard model.hasMore else { return }
                         Task { await model.loadNextPage() }
                     }) { item in
@@ -1005,7 +1005,7 @@ struct V3EmbySearchView: View {
                         if model.isInitialLoading && model.items.isEmpty {
                             ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
                         } else {
-                            EmbyPosterGrid(items: model.items, onApproachingEnd: {
+                            EmbyPosterGrid(items: model.items, diagnosticRoute: "server-search-results", onApproachingEnd: {
                                 guard model.hasMore else { return }
                                 Task { await model.loadNextPage() }
                             }) { item in

@@ -178,6 +178,7 @@ struct V3LandscapeCard: View {
 
 struct V3PosterCard: View {
     @Environment(\.embyPosterGridCellWidth) private var gridCellWidth
+    @Environment(\.embyPosterGridDiagnosticOwnerID) private var gridDiagnosticOwnerID
     let item: LibraryItem
     let client: EmbyAPIClient
     let width: CGFloat?
@@ -195,7 +196,13 @@ struct V3PosterCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ZStack(alignment: .bottomLeading) {
-                V3RemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: posterImageMaxWidth, tag: item.preferredPrimaryImageTag), contentMode: .fill)
+                V3RemoteImage(
+                    url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: posterImageMaxWidth, tag: item.preferredPrimaryImageTag),
+                    contentMode: .fill,
+                    onImageLoaded: { _ in
+                        if let ownerID = gridDiagnosticOwnerID { EmbyPosterGridCadenceDiagnostics.shared.imageDidPublish(ownerID: ownerID) }
+                    }
+                )
                     .frame(width: resolvedWidth, height: posterHeight)
                     .clipped()
                 if item.playbackProgress > 0 { GeometryReader { proxy in VStack { Spacer(); Rectangle().fill(Color.blue).frame(width: proxy.size.width * item.playbackProgress, height: 3) } } }
@@ -222,7 +229,15 @@ struct V3PosterCard: View {
 struct V3RemoteImage: View {
     let url: URL?
     let contentMode: ContentMode
-    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode, placeholderSystemImage: "play.rectangle", showsLoadingIndicator: false) }
+    let onImageLoaded: ((UIImage) -> Void)?
+
+    init(url: URL?, contentMode: ContentMode, onImageLoaded: ((UIImage) -> Void)? = nil) {
+        self.url = url
+        self.contentMode = contentMode
+        self.onImageLoaded = onImageLoaded
+    }
+
+    var body: some View { EmbyCachedRemoteImage(url: url, contentMode: contentMode, placeholderSystemImage: "play.rectangle", showsLoadingIndicator: false, onImageLoaded: onImageLoaded) }
 }
 
 func v3MediaSubtitle(_ item: LibraryItem) -> String {
