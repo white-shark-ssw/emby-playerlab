@@ -21,36 +21,87 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Remove superseded Build287 module-status row
+      - name: Record Build288 target-device acceptance and close task
         run: |
           set -euo pipefail
-          EXPECTED_MAIN=07368c868deda7092281010f4632293aee0bad53
+          EXPECTED_MAIN=f6a4c2a5f51fa1d0aead75d272daec3165f2760f
           test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN"
           python3 - <<'PY'
           from pathlib import Path
+
+          # BUILD_TEST_INDEX: promote Build288 from pending diagnostic to accepted closeout.
+          path = Path('docs/project/BUILD_TEST_INDEX.md')
+          text = path.read_text()
+          lines = text.splitlines()
+          prefix = '- **Build288 / OnePlayer 0.15.21** — diagnostic candidate only; no repair claim.'
+          matches = [i for i, line in enumerate(lines) if line.startswith(prefix)]
+          if len(matches) != 1:
+              raise SystemExit(f'expected one Build288 pending line, found {len(matches)}')
+          i = matches[0]
+          lines[i] = '- **Build288 / OnePlayer 0.15.21** — **target-device accepted closeout on 2026-10-05**. Exact product source `ce565996e37dcb750117c9de4607b23b673edce3` restores the original Build286 still-viewer ordering and adds only narrow `StillViewer` lifecycle diagnostics plus AppIdentity; `ImmersiveUIComponents.swift`, `EmbyMediaDetailView.swift`, system navigation ownership, Home runtime and all P0 playback/transport paths remain unchanged. Xcode 16.4 run/job `37296666668 / 111719392128` succeeded; artifact `OnePlayer-0.15.21-build288-detail-nav-diagnostics`, ID `11340525765`, digest `sha256:9bbc4b5636f446f882025531bf33ac9a6b99512963f560fa9039ca0c0e111449`; IPA SHA-256 `f1100a6b2b344c6615ad20c2328cf096d52c84b46bf10a0402dad52ae5fa7eed`; source ZIP SHA-256 `ea963fe5f8d7d0a9303a8dcef48ddc1b2fe2947b376b527988eb06a6655d8609`; MinOS 15.0. The user reports the previously reproduced opaque top bar/native back title did not recur in Build288 and explicitly accepted task completion. Because Build288 contains no new detail behavior change versus Build286 beyond reverting rejected Build287 and adding diagnostics, no causal root-fix claim is made; the durable result is to retain Build286 detail behavior and reject Build287 dismiss-first ordering. PR #290 is closed unmerged because it is stacked on the separate unmerged Home Build286 line and merging identity/diagnostics would not integrate a distinct detail behavior fix. **Evidence: Code written ✅ / exact scope ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device accepted ✅ / task completed ✅ / behavior contract frozen ✅ / merged not required.**'
+          path.write_text('\n'.join(lines) + ('\n' if text.endswith('\n') else ''))
+
+          # MODULE_STATUS: task is complete and frozen at the accepted runtime behavior.
           path = Path('docs/project/MODULE_STATUS.md')
           text = path.read_text()
-          stale_prefix = '| Detail immersive navigation appearance | **Active — Build287 CI/IPA verified; real-device repair pending** |'
           lines = text.splitlines()
-          matches = [line for line in lines if line.startswith(stale_prefix)]
+          prefix = '| Detail immersive navigation / still viewer | **Active — Build287 rejected; Build288 diagnostic CI/IPA ready** |'
+          matches = [i for i, line in enumerate(lines) if line.startswith(prefix)]
           if len(matches) != 1:
-              raise SystemExit(f'expected exactly one stale Build287 module row, found {len(matches)}')
-          lines = [line for line in lines if not line.startswith(stale_prefix)]
-          updated = '\n'.join(lines) + ('\n' if text.endswith('\n') else '')
-          required = '| Detail immersive navigation / still viewer | **Active — Build287 rejected; Build288 diagnostic CI/IPA ready** |'
-          if required not in updated:
-              raise SystemExit('Build288 replacement row missing')
-          path.write_text(updated)
+              raise SystemExit(f'expected one active detail module row, found {len(matches)}')
+          i = matches[0]
+          lines[i] = '| Detail immersive navigation / still viewer | **Completed / frozen — Build288 target-device accepted** | Build287/0.15.20 worsened the opaque top-bar/native-back-title regression and remains rejected. Build288/0.15.21 exact source `ce565996e37dcb750117c9de4607b23b673edce3` restores Build286 still-viewer ordering and adds lifecycle diagnostics only; run/job `37296666668 / 111719392128`, artifact `11340525765`, IPA SHA `f1100a6b2b344c6615ad20c2328cf096d52c84b46bf10a0402dad52ae5fa7eed`, MinOS 15.0. On 2026-10-05 the user reports the prior regression did not recur and explicitly accepted completion. No causal fix beyond rejecting Build287 is claimed. Preserve transparent immersive navigation during normal detail scroll/still-viewer use, system-owned push/pop, and Build182/184/191/216 contracts; reopen only on new target-device regression. PR #290 is closed unmerged because it is stacked on the separate Home Build286 task and has no distinct detail behavior patch to integrate. |'
+          old = 'Detail Build287 is rejected on target device; Build288 is the separate Build286-stacked, CI/IPA-verified diagnostic candidate awaiting fresh target-device lifecycle logs and does not claim a repair.'
+          new = 'Detail immersive navigation is completed/frozen from the Build288 target-device acceptance; Build287 remains rejected, and PR #290 is closed unmerged because Build288 adds no distinct detail behavior patch over Build286.'
+          joined = '\n'.join(lines) + ('\n' if text.endswith('\n') else '')
+          if old not in joined:
+              raise SystemExit('MODULE_STATUS other-product detail sentence missing')
+          path.write_text(joined.replace(old, new, 1))
+
+          # PROJECT_STATE: make the acceptance a durable project-level fact without changing overall baseline.
+          path = Path('docs/project/PROJECT_STATE.md')
+          text = path.read_text()
+          old_header = next((line for line in text.splitlines() if line.startswith('_Last updated ')), None)
+          if old_header is None:
+              raise SystemExit('PROJECT_STATE last-updated line missing')
+          new_header = '_Last updated 2026-10-05: Detail immersive navigation / still-viewer task is completed from Build288 / 0.15.21 target-device acceptance. Build287 dismiss-first ordering is rejected; Build288 restores Build286 detail behavior and only adds lifecycle diagnostics, and the user reports the opaque top bar/native back title no longer reproduced. PR #290 is closed unmerged because this task is stacked on the separate unmerged Home Build286 line and contains no distinct detail behavior fix to integrate. Build216 remains the accepted packaged overall baseline; Home/Poster/Aether remain separate active lines; Search Build256 and all P0 playback/transport contracts remain protected._'
+          text = text.replace(old_header, new_header, 1)
+          marker = '## Completed / frozen: Detail immersive navigation / still viewer — Build288 / 0.15.21'
+          if marker not in text:
+              anchor = '- **Build216**: detail range-pill taps synchronously stop active native episode-row deceleration before the existing Build191 range-first selection and 0.32 s target scroll; target-device accepted and merged through PR #261.\n'
+              if anchor not in text:
+                  raise SystemExit('PROJECT_STATE Build216 foundation anchor missing')
+              section = '''\n## Completed / frozen: Detail immersive navigation / still viewer — Build288 / 0.15.21\n\nWork `DEV-detail-immersive-still-viewer-nav` is complete. Build287 / 0.15.20 is permanently rejected by target-device evidence because its dismiss-first / clear-binding-in-dismiss-completion ordering made the opaque system top bar/native back title regression materially easier to trigger. Do not reintroduce that ordering without new contrary device evidence.\n\nBuild288 exact source `ce565996e37dcb750117c9de4607b23b673edce3` restores the original Build286 still-viewer ordering and adds only narrow `StillViewer` lifecycle diagnostics plus AppIdentity. Xcode 16.4 run/job `37296666668 / 111719392128` passed; artifact `11340525765`; IPA SHA `f1100a6b2b344c6615ad20c2328cf096d52c84b46bf10a0402dad52ae5fa7eed`; source ZIP SHA `ea963fe5f8d7d0a9303a8dcef48ddc1b2fe2947b376b527988eb06a6655d8609`; built MinOS 15.0. On 2026-10-05 the user reports the previously reproduced top-bar regression did not appear in Build288 and explicitly accepted the task for completion.\n\nEvidence limitation is important: relative to Build286, Build288 does not contain a new detail/navigation behavior fix; it only removes the rejected Build287 ordering and adds diagnostics. Therefore no causal root-fix is claimed. The frozen product contract is the observed accepted behavior: normal detail scrolling and still-viewer use must retain transparent immersive navigation, native back-title leakage must not reappear, and UIKit remains the sole push/pop/interactive-pop owner. No timer, watchdog, delayed reapply, global `UINavigationBar.appearance()` mutation or second navigation owner is authorized.\n\nPR #290 is closed without merge. It is stacked on the separate unmerged Home Build286 branch, and merging its AppIdentity/diagnostics would not integrate a distinct detail behavior change. The accepted detail conclusion is recorded in project state/build evidence rather than silently pulling Home candidate code into `main`. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device accepted ✅ / task completed ✅ / behavior contract frozen ✅ / merged not required**.\n\n'''
+              text = text.replace(anchor, anchor + section, 1)
+          path.write_text(text)
+
+          # TECHNICAL_DECISIONS: extend D007 with the durable rejected-direction result.
+          path = Path('docs/project/TECHNICAL_DECISIONS.md')
+          text = path.read_text()
+          decision = '2026-10-05 detail still-viewer closeout:'
+          if decision not in text:
+              anchor = 'Native iOS push/pop and interactive-pop remain system-owned. Immersive appearance may adapt around navigation but must not replace that ownership.\n'
+              if anchor not in text:
+                  raise SystemExit('D007 anchor missing')
+              addition = '\n2026-10-05 detail still-viewer closeout: Build287\'s “dismiss UIKit host first, then clear the still-selection binding in dismissal completion” ordering is rejected by target-device evidence because it made the opaque top-bar/native-back-title regression materially easier to trigger. Build288 restored the prior Build286 ordering and was accepted on the target device without the reported regression recurring. This acceptance does not prove a causal root fix because Build288 adds no new detail behavior beyond reverting Build287 and adding diagnostics. Durable rule: retain system-owned navigation and the accepted Build286 detail/still-viewer ordering; do not add dismiss-first completion ordering, global navigation-bar appearance mutation, timer/watchdog/delayed reapply, or a second navigation state owner without new target-device evidence.\n'
+              text = text.replace(anchor, anchor + addition, 1)
+          path.write_text(text)
+
+          # Completion rule: current/dev contains only active tasks, so remove the completed checkpoint.
+          checkpoint = Path('docs/project/current/dev/DEV-detail-immersive-still-viewer-nav.md')
+          if not checkpoint.exists():
+              raise SystemExit('detail checkpoint missing before completion cleanup')
+          checkpoint.unlink()
           PY
           git diff --check
-          git diff -- docs/project/MODULE_STATUS.md
+          git diff -- docs/project/BUILD_TEST_INDEX.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/current/dev/DEV-detail-immersive-still-viewer-nav.md
 
-      - name: Commit cleanup to main
+      - name: Commit closeout to main
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/project/MODULE_STATUS.md
+          git add docs/project/BUILD_TEST_INDEX.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/current/dev/DEV-detail-immersive-still-viewer-nav.md
           git diff --cached --quiet && exit 0
-          git commit -m "Remove superseded Build287 module status"
+          git commit -m "Close accepted Build288 detail immersive task"
           git push origin HEAD:main
