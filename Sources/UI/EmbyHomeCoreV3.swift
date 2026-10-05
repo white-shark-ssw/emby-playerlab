@@ -16,16 +16,14 @@ struct V3EmbyHomeView: View {
     @StateObject var model: V3EmbyHomeViewModel
     @State var isMediaManagementPresented = false
     @State var carouselDisplayRange: Double
-    @State var currentCarouselItemID: String?
-    @State var carouselTransitionState = V3HomeCarouselTransitionState()
-    @State var carouselLastSettledAt = Date()
-    @State var carouselLightForegroundByID: [String: Bool] = [:]
-    @State var carouselSourceSizeByID: [String: CGSize] = [:]
+    @State var carouselRuntimeState: V3HomeCarouselRuntimeState
+    @State var carouselPresentationBridge: V3HomeCarouselPresentationBridge
+    @State var carouselPresentationItems: [V3HomeCarouselPresentationItem] = []
     @State var carouselLogoByID: [String: EmbyImageInfo] = [:]
     @State var carouselLogoResolvedIDs = Set<String>()
     @State var carouselDetailItem: LibraryItem?
     @State var isCarouselDetailPresented = false
-    @State var heroScrollState = V3HomeHeroScrollState()
+    @State var heroScrollState: V3HomeHeroScrollState
     @State var isHomeRefreshing = false
     @State var isHomeActive = false
     private let carouselTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -44,7 +42,10 @@ struct V3EmbyHomeView: View {
         _carouselDisplayRange = State(initialValue: min(1, max(0, savedRange)))
         let homeModel = V3EmbyHomeViewModel(session: session, client: client)
         _model = StateObject(wrappedValue: homeModel)
-        _currentCarouselItemID = State(initialValue: homeModel.carouselItems.first?.id)
+        let bridge = V3HomeCarouselPresentationBridge()
+        _carouselPresentationBridge = State(initialValue: bridge)
+        _carouselRuntimeState = State(initialValue: V3HomeCarouselRuntimeState(currentID: homeModel.carouselItems.first?.id))
+        _heroScrollState = State(initialValue: V3HomeHeroScrollState(presentation: bridge))
     }
 
     var body: some View {
@@ -52,15 +53,22 @@ struct V3EmbyHomeView: View {
             GeometryReader { geometry in
                 let immersive = !model.carouselItems.isEmpty
                 let viewportHeight = geometry.size.height + geometry.safeAreaInsets.top
+                let nativeSurfaceHeight = geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
                 ZStack(alignment: .top) {
                     if immersive {
-                        V3HomeCarouselTransitionScope(state: carouselTransitionState) {
-                            persistentCarouselBackdrop(size: CGSize(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom))
-                        }
+                        // Keep Build286's layout extent; the native top overscan is render-only.
+                        Color.clear.frame(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom)
+                            .overlay(alignment: .top) {
+                                V3HomeCarouselNativeSurface(bridge: carouselPresentationBridge, width: geometry.size.width, viewportHeight: viewportHeight, surfaceHeight: nativeSurfaceHeight, displayRange: carouselDisplayRange)
+                                    .frame(width: geometry.size.width, height: nativeSurfaceHeight)
+                                    .offset(y: -geometry.safeAreaInsets.top)
+                                    .allowsHitTesting(false)
+                            }
                     } else {
                         Color(uiColor: .systemBackground).ignoresSafeArea()
                     }
-                    if immersive { carouselPreloadLayer }
+
+                    if immersive { V3HomeCarouselResourcePreparationView(items: carouselPresentationItems, bridge: carouselPresentationBridge) }
 
                     if immersive {
                         homeScroll(width: geometry.size.width, viewportHeight: viewportHeight, immersive: true)
@@ -83,8 +91,10 @@ struct V3EmbyHomeView: View {
                 }
                 .onAppear {
                     isHomeActive = true
+                    carouselRuntimeState.bind(presentation: carouselPresentationBridge)
+                    heroScrollState.bind(presentation: carouselPresentationBridge)
                     synchronizeCarouselItems()
-                    carouselLastSettledAt = Date()
+                    carouselRuntimeState.lastSettledAt = Date()
                     onCarouselActiveChanged(immersive)
                     Task {
                         if !model.hasLoaded { await model.refresh() }
@@ -99,7 +109,7 @@ struct V3EmbyHomeView: View {
                 .onChange(of: model.carouselItems.map(\.id)) { _ in synchronizeCarouselItems() }
                 .onDisappear {
                     isHomeActive = false
-                    isCarouselDragging = false
+                    carouselRuntimeState.deactivate()
                     onCarouselActiveChanged(false)
                 }
                 .overlay(alignment: .center) {
@@ -128,13 +138,7 @@ struct V3EmbyHomeView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     Group {
-                        if immersive {
-                            V3HomeHeroScrollScope(state: heroScrollState) {
-                                V3HomeCarouselTransitionScope(state: carouselTransitionState) {
-                                    immersiveCarouselHero(width: width, viewportHeight: viewportHeight)
-                                }
-                            }
-                        }
+                        if immersive { immersiveCarouselHero(width: width, viewportHeight: viewportHeight) }
                         else { Color.clear.frame(height: 1) }
                     }
                     .id("v3-home-top")
@@ -183,9 +187,7 @@ struct V3EmbyHomeView: View {
                             heroScrollState.update(clampedValue)
                         }
                         if immersive {
-                            V3HomeOwnedRefreshControl { completion in
-                                Task { await refreshHome(); completion() }
-                            }
+                            V3HomeOwnedRefreshControl { completion in Task { await refreshHome(); completion() } }
                         } else {
                             V3HomeRefreshControlStyler(immersive: false)
                         }
