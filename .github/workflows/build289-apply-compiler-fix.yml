@@ -1,0 +1,51 @@
+name: Build289 Apply Compiler Fix
+
+on:
+  push:
+    branches: [ci/build289-compiler-fix-20261005]
+    paths: [.github/workflows/build289-apply-compiler-fix.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact product branch
+        uses: actions/checkout@v4
+        with:
+          ref: perf/home-carousel-progress-scope-build286
+          fetch-depth: 0
+
+      - name: Apply compiler-proven one-line fix
+        run: |
+          set -euo pipefail
+          OLD_SHA=aec32ec2cbe42ce09465efebc6e4624f317302a5
+          FILE=Sources/UI/EmbyHomeCarouselNativePresentationV3.swift
+          test "$(git rev-parse HEAD)" = "$OLD_SHA"
+          test "$(grep -Fxc '        if !animated { V3HomeCarouselCadenceDiagnostics.shared.recordSwiftUIUpdate(progress) }' "$FILE")" = 1
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Sources/UI/EmbyHomeCarouselNativePresentationV3.swift')
+          old = '        if !animated { V3HomeCarouselCadenceDiagnostics.shared.recordSwiftUIUpdate(progress) }'
+          new = '        if !animated { V3HomeCarouselCadenceDiagnostics.shared.recordSwiftUIUpdate(progress: progress) }'
+          text = path.read_text()
+          assert text.count(old) == 1
+          path.write_text(text.replace(old, new, 1))
+          PY
+          test "$(git diff --name-only)" = "$FILE"
+          git diff --check
+          git diff -- "$FILE"
+          grep -F 'recordSwiftUIUpdate(progress: progress)' "$FILE"
+
+      - name: Commit exact product fix
+        run: |
+          set -euo pipefail
+          git config user.name 'OnePlayer CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add Sources/UI/EmbyHomeCarouselNativePresentationV3.swift
+          git commit -m 'fix: label Home carousel cadence progress argument'
+          NEW_SHA="$(git rev-parse HEAD)"
+          echo "NEW_PRODUCT_SHA=$NEW_SHA"
+          git push origin HEAD:perf/home-carousel-progress-scope-build286
