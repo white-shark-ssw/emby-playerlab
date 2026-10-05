@@ -115,3 +115,15 @@ Do not regress the retained carousel contracts while investigating:
 ## Handoff state
 
 There is deliberately **no new patch** in this handoff turn. The newest evidence says the current candidate is rejected and the next safe move is diagnosis, not another guessed fix. PR #289 remains the active unmerged Home task container; Build290 remains useful only as a rejected test point and exact source baseline.
+
+## Resumed diagnosis — 2026-10-05 latest recording
+
+User explicitly continues this Work ID and authorizes evidence-backed restructuring. Supplied recording RPReplay_Final1791212395(1).mp4 is 9.17 s / 30 fps / 510×1108. User reports reverse movement during swipes, image-logo/text-title alternation, and Dock too high. Private video remains outside public GitHub.
+
+Resume guard passed: PR #289 Draft/open/unmerged and product branch/head remain perf/home-carousel-progress-scope-build286 / 9e0bb371fe65c29524b92ac1892bab84b6684444. Other Active tasks use distinct branch/candidate identities; no Build291 has yet been allocated.
+
+Concrete source violation: applyVisualState sets foreground transform then calls layoutVisiblePages, which sets that transformed foreground's frame to x=0. This cancels translation by changing its base center, aligns two foreground pages on top of each other, and leaves release animation starting from a displaced center. Apple UIView frame contract explicitly forbids changing frame while transform is nonidentity. Title-resource loss is not established: motion does not change logo resources. First correct overlap before adding logo fallbacks/caches.
+
+Dock source: accepted Build286 persistent backdrop contributed geometry.height + bottomSafeArea to root layout, while Build290 root frame uses geometry.height only and keeps the same Dock bottom inset. The native rendering extent also includes topSafeArea. Restore the accepted layout extent and make native rendering an overlay of that extent so top overscan cannot affect Dock alignment.
+
+Next exact action: fix foreground layout using bounds/center at geometry boundaries, remove page relayout from ordinary progress updates, preserve prepared logo resources; isolate native render extent from accepted Home layout extent. Run native geometry/animation-takeover regressions before final unique candidate allocation and CI/package verification. No new candidate yet; latest valid package remains rejected Build290.
