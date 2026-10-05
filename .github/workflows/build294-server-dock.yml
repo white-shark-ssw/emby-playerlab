@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PRODUCT_SHA: 95de9aed5aef6ab5443db1336719905e7442ccf7
+  PRODUCT_SHA: ca60a034d68d451bc0f93f5681465398131d54c5
   PRODUCT_BRANCH: refactor/server-dock-build294
   BASE_SHA: 119ab10eee869488b97415746a0243f51953eba0
   VERSION: 0.15.27
