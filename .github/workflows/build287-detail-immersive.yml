@@ -1,0 +1,191 @@
+name: Build287 Detail Immersive Dismiss Order
+
+on:
+  push:
+    branches: [ci/build287-detail-immersive-20261005]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build287-detail-immersive
+  cancel-in-progress: true
+
+env:
+  BASE_SHA: 7e7b2ec944f5c0e74bc291e37683f1529e3d46b4
+  PRODUCT_SHA: 5b8806a0de63618e4f520b70f2e353952f327ecc
+  VERSION: 0.15.20
+  BUILD_NUMBER: 287
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout control branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Materialize and validate exact Build287 product source
+        run: |
+          set -euo pipefail
+          git fetch origin fix/detail-immersive-still-viewer-nav perf/home-carousel-progress-scope-build286
+          git checkout --detach "$PRODUCT_SHA"
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+
+          changed="$(git diff --name-only "$BASE_SHA" "$PRODUCT_SHA" | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyDetailOverlayViews.swift | sort)"
+          printf 'Build287 changed paths versus Build286:\n%s\n' "$changed"
+          test "$changed" = "$expected"
+
+          test "$(git rev-parse "$BASE_SHA:Sources/UI/EmbyDetailOverlayViews.swift")" = "55f48a9f7bcc3eb99610d73268a7a98a595bc50b"
+          test "$(git rev-parse "$PRODUCT_SHA:Sources/UI/EmbyDetailOverlayViews.swift")" = "ac1e1ec9edd4b1f0a9da240a3de96e0375b10003"
+          test "$(git rev-parse "$PRODUCT_SHA:Sources/Core/AppIdentity.swift")" = "9a58fa31aa56d368f5a39720c6e54a3ab8ed532e"
+          test "$(git rev-parse "$BASE_SHA:Sources/UI/ImmersiveUIComponents.swift")" = "$(git rev-parse "$PRODUCT_SHA:Sources/UI/ImmersiveUIComponents.swift")"
+          test "$(git rev-parse "$BASE_SHA:Sources/UI/EmbyMediaDetailView.swift")" = "$(git rev-parse "$PRODUCT_SHA:Sources/UI/EmbyMediaDetailView.swift")"
+          test "$(git rev-parse "$BASE_SHA:Sources/UI/EmbyServerBrowseV3.swift")" = "$(git rev-parse "$PRODUCT_SHA:Sources/UI/EmbyServerBrowseV3.swift")"
+
+          grep -F 'static let sourceVersion = "0.15.20"' Sources/Core/AppIdentity.swift
+          grep -F 'func dismiss(completion: (() -> Void)? = nil)' Sources/UI/EmbyDetailOverlayViews.swift
+          grep -F 'host.dismiss(animated: false, completion: completion)' Sources/UI/EmbyDetailOverlayViews.swift
+          grep -F 'coordinator.dismiss { binding.wrappedValue = nil }' Sources/UI/EmbyDetailOverlayViews.swift
+          grep -F 'iOS: "15.0"' project.yml
+          grep -F 'deploymentTarget: "15.0"' project.yml
+          grep -F 'CADisableMinimumFrameDurationOnPhone' Config/Info.plist
+          ! git diff --name-only "$BASE_SHA" "$PRODUCT_SHA" | grep -E 'Sources/(Player|Transport|Session|Cache)/|Sources/UI/(Player|MPV|PlayerPiP|ImmersiveUIComponents|EmbyMediaDetailView|EmbyServerBrowseV3)' >/dev/null
+          git diff --check "$BASE_SHA" "$PRODUCT_SHA"
+
+      - name: Export exact source snapshot
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OnePlayer-${VERSION}-build${BUILD_NUMBER}-detail-immersive-dismiss-order-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" "$PRODUCT_SHA"
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Inject package identity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          import re
+          from pathlib import Path
+
+          version = "0.15.20"
+          build = "287"
+
+          info_path = Path("Config/Info.plist")
+          with info_path.open("rb") as handle:
+              info = plistlib.load(handle)
+          info["CFBundleShortVersionString"] = version
+          info["CFBundleVersion"] = build
+          with info_path.open("wb") as handle:
+              plistlib.dump(info, handle, sort_keys=False)
+
+          project_path = Path("project.yml")
+          project = project_path.read_text()
+          project = re.sub(r'MARKETING_VERSION: "[^"]+"', f'MARKETING_VERSION: "{version}"', project)
+          project = re.sub(r'CURRENT_PROJECT_VERSION: "[^"]+"', f'CURRENT_PROJECT_VERSION: "{build}"', project)
+          project_path.write_text(project)
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcodegen --version
+          pod --version
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned app
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+
+      - name: Validate identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version "$VERSION" --build "$BUILD_NUMBER" --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" 15.0 17.0 min-os-report.log build.log
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+
+      - name: Package and checksum IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-${VERSION}-build${BUILD_NUMBER}-detail-immersive-dismiss-order-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Write candidate manifest
+        run: |
+          set -euo pipefail
+          IPA_SHA="$(awk '{print $1}' "$IPA_NAME.sha256")"
+          SOURCE_SHA="$(awk '{print $1}' "$SOURCE_ZIP.sha256")"
+          cat > candidate-manifest.json <<EOF
+          {
+            "product": "OnePlayer",
+            "version": "$VERSION",
+            "build": $BUILD_NUMBER,
+            "baseBuild": 286,
+            "baseSha": "$BASE_SHA",
+            "productSha": "$PRODUCT_SHA",
+            "ipa": "$IPA_NAME",
+            "ipaSha256": "$IPA_SHA",
+            "sourceZip": "$SOURCE_ZIP",
+            "sourceZipSha256": "$SOURCE_SHA",
+            "minimumOS": "15.0",
+            "changedPaths": ["Sources/Core/AppIdentity.swift", "Sources/UI/EmbyDetailOverlayViews.swift"]
+          }
+          EOF
+          cat candidate-manifest.json
+
+      - name: Upload Build287 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.20-build287-detail-immersive-dismiss-order
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            candidate-manifest.json
+            built-info-plist.log
+            min-os-report.log
+            package.log
+          if-no-files-found: error
+          retention-days: 30
