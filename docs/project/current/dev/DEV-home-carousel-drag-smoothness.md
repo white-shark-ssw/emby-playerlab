@@ -1,6 +1,6 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build286 architecture A/B is code-written, exact-scope guarded, Xcode 16.4 CI-passed and IPA-produced/independently verified. Manual sustained system-FPS-HUD transcription remains retired. The next gate is qualitative target-device hand-feel/regression testing; no FPS transcription is required.
+- **Status:** Active — Build286 architecture A/B is CI/IPA verified and real-device exercised through identical Build288 Home runtime on 2026-10-05. User reports persistent swipe frame drops, failure to sustain desired 120 FPS and a large competitor experience gap. Scope isolation is insufficient as the final smoothness fix; re-audit the complete carousel requirements before selecting a bounded architecture replacement. Manual sustained system-FPS-HUD transcription remains retired.
 - **Work ID:** `DEV-home-carousel-drag-smoothness`
 - **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / invalidation scope / progress publication
 - **Task:** Preserve Build241 product interaction/presentation while reducing unnecessary high-frequency SwiftUI invalidation in the real Home carousel tree.
@@ -98,17 +98,17 @@ Excluded: new DisplayLink/frame latch; timer/watchdog/retry/fallback; interpolat
 - Exact-scope/static guards: ✅
 - Xcode 16.4 CI passed: ✅
 - IPA produced + independently verified: ✅
-- Real-device hand-feel/regression result: pending ❌
+- Real-device smoothness result through Build288: tested, insufficient ❌; comprehensive gesture/visual regression pass not inferred.
 - Stable/frozen reopened performance task: ❌
+
+## Latest evidence / assessment — 2026-10-05
+
+On 2026-10-05 the user explicitly reports that Build288 retains Build286 carousel logic and still visibly drops frames during swipes, fails to sustain the desired 120 FPS, and feels substantially worse than the competitor. This is qualitative target-device evidence, not a new numerical frame trace. Git-tree comparison of exact Build288 source `ce565996e37dcb750117c9de4607b23b673edce3` against exact Build286 `7e7b2ec944f5c0e74bc291e37683f1529e3d46b4` confirms identical HomeCore, Hero, HeroScrollState and all four carousel runtime/diagnostic blobs. Therefore the Build286 progress-scope A/B has now been real-device exercised through Build288 and is insufficient as a final smoothness fix; no unsupported claim of zero improvement is made. Build288 detail-navigation acceptance remains separate and unchanged.
+
+PR #289 and its branch head both still match exact source `7e7b2ec944f5c0e74bc291e37683f1529e3d46b4`. Other current checkpoints were checked: Poster Build283 and Aether Build235 remain separate owners/branches; the Search checkpoint is Completed. No branch/Build/candidate collision or new allocation. No source code changed in this assessment.
 
 ## Next exact action
 
-Install Build286 on iPhone 15 Pro Max / iOS 17.0 and use the carousel normally. No prolonged FPS transcription is required. Check only:
+First rebuild the complete carousel requirement/acceptance matrix from current source and controlling real-device evidence: gesture acquisition and finger tracking; repeated swipes/reversal/settle takeover; automatic advance; tap-to-detail; artwork/foreground/persistent-backdrop appearance; Home vertical scroll/stretch/refresh interaction; image preparation/residency; activation/deactivation and data refresh; sustained smoothness on iPhone 15 Pro Max/iOS17 and MinOS15. Separate accepted behavior from implementation choices. Then develop a concrete, bounded renderer A/B design around one authoritative transition and progress before any code change. The user's latest request is to re-plan and verify the complete module requirements before refactoring. Current work is requirements/architecture assessment; no code replacement has begun. Recommended scope: high-frequency movement/blending presentation; retain the input recognizer, acquisition, commit/cancel, full-width slide, artwork residency, visual masks/blur/foreground compositing and white-flash contracts. A stable UIKit/CALayer hierarchy consuming the same authority is a candidate, not a proven root-fix. First inspect actual presentation/animation handoff APIs and state ownership, and define one matched real-content comparison before implementation. Do not re-run rejected Pan-only/frame-latch/blur-only/residency-only guesses or the retired manual prolonged HUD protocol.
 
-- slow drag tracking;
-- rapid consecutive swipes / takeover;
-- commit and cancel release tails;
-- page-transition continuity and white-flash regression;
-- overall hand-feel versus the prior product baseline.
-
-A compact result such as `明显更顺 / 差不多 / 更差 + 是否有视觉或手势回归` is sufficient. CI/IPA success is not a claim that the real-device smoothness issue is fixed.
+No six-chat export is necessary for current assessment. A handoff is needed only if an unrecorded experiment materially overlaps the proposed renderer boundary; request its exact source/Build, changed layer and device outcome, not all history.
