@@ -9,6 +9,7 @@ final class DockTests: XCTestCase {
         window.rootViewController = host
         window.makeKeyAndVisible()
         settle(host.view)
+        XCTAssertGreaterThan(window.bounds.height, window.bounds.width, "The device regression fixture must remain in portrait")
         return (window, host)
     }
 
@@ -40,7 +41,7 @@ final class DockTests: XCTestCase {
             XCTAssertEqual(current.height, 40, accuracy: 0.5)
             XCTAssertEqual(current.maxY, accepted.maxY, accuracy: 0.5)
         }
-        XCTAssertGreaterThan(accepted.minY, 800)
+        XCTAssertGreaterThan(accepted.minY, UIScreen.main.bounds.midY)
     }
 
     @MainActor func testOversizedContentAndNativeNavigationBarCannotMoveDock() {
@@ -117,7 +118,9 @@ final class DockTests: XCTestCase {
         func visibleFrames(_ view: UIView) -> [CGRect] {
             guard !view.isHidden, view.alpha > 0.01 else { return [] }
             let own = view.convert(view.bounds, to: window)
-            var result: [CGRect] = view.accessibilityIdentifier == "dock-probe" && own.intersection(window.bounds).width > 400 ? [own] : []
+            let intersection = own.intersection(window.bounds)
+            let visible = own.width > 0 && own.height > 0 && intersection.width >= own.width * 0.9 && intersection.height >= own.height * 0.9
+            var result: [CGRect] = view.accessibilityIdentifier == "dock-probe" && visible ? [own] : []
             for child in view.subviews { result += visibleFrames(child) }
             return result
         }

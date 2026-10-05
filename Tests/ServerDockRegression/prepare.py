@@ -67,6 +67,7 @@ final class RootActionProbe {
 (target / 'DockRegressionHost.swift').write_text('''import UIKit
 @main final class DockRegressionAppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask { .portrait }
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         let window = UIWindow(frame: UIScreen.main.bounds)
         window.rootViewController = UIViewController()
@@ -90,6 +91,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.oneplayer.dock-regression-host
         SWIFT_VERSION: "5.0"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait
   ServerDockRegression:
     type: bundle.unit-test
     platform: iOS
