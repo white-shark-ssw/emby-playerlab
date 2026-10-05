@@ -7,84 +7,18 @@ enum ImmersiveUIMetrics {
     static let topControlHitSize: CGFloat = 44
     static let topControlPadding: CGFloat = 1
     static let quickJumpHitWidth: CGFloat = 15
-    static let serverDockHeight: CGFloat = 40
 }
 
 enum DetailPresentationSettingsKey {
     static let fullyImmersive = "ui.detailFullyImmersive"
 }
 
-private struct ServerDockContentKey: EnvironmentKey {
-    static let defaultValue: AnyView? = nil
-}
-
-private struct ServerDockBottomInsetKey: EnvironmentKey {
-    static let defaultValue: CGFloat = 0
-}
-
-extension EnvironmentValues {
-    var serverDockContent: AnyView? {
-        get { self[ServerDockContentKey.self] }
-        set { self[ServerDockContentKey.self] = newValue }
-    }
-
-    var serverDockBottomInset: CGFloat {
-        get { self[ServerDockBottomInsetKey.self] }
-        set { self[ServerDockBottomInsetKey.self] = newValue }
-    }
-}
-
-final class ServerDockVisibilityController: ObservableObject {
-    @Published private(set) var isHidden = false
-    private var hiddenOwners = Set<UUID>()
-    private var visibilityGeneration = 0
-
-    func hide(owner: UUID) {
-        precondition(Thread.isMainThread)
-        visibilityGeneration += 1
-        hiddenOwners.insert(owner)
-        if !isHidden { isHidden = true }
-    }
-
-    func show(owner: UUID) {
-        precondition(Thread.isMainThread)
-        hiddenOwners.remove(owner)
-        guard hiddenOwners.isEmpty else { return }
-        visibilityGeneration += 1
-        let generation = visibilityGeneration
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.hiddenOwners.isEmpty, self.visibilityGeneration == generation else { return }
-            self.isHidden = false
-        }
-    }
-}
-
-private struct ServerDockVisibilityControllerKey: EnvironmentKey {
-    static let defaultValue: ServerDockVisibilityController? = nil
-}
-
-extension EnvironmentValues {
-    var serverDockVisibilityController: ServerDockVisibilityController? {
-        get { self[ServerDockVisibilityControllerKey.self] }
-        set { self[ServerDockVisibilityControllerKey.self] = newValue }
-    }
-}
-
 private struct DetailPagePresentationModifier: ViewModifier {
     @AppStorage(DetailPresentationSettingsKey.fullyImmersive) private var fullyImmersive = true
-    @Environment(\.serverDockContent) private var serverDockContent
-    @Environment(\.serverDockBottomInset) private var serverDockBottomInset
 
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: .bottom) {
-                if !fullyImmersive, let serverDockContent {
-                    serverDockContent
-                        .frame(height: ImmersiveUIMetrics.serverDockHeight)
-                        .padding(.bottom, serverDockBottomInset)
-                        .zIndex(100)
-                }
-            }
+            .serverDockPage(isVisible: !fullyImmersive)
             .ignoresSafeArea(.container, edges: .bottom)
     }
 }

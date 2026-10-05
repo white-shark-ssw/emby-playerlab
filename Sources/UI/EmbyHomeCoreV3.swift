@@ -4,14 +4,12 @@ import UIKit
 
 struct V3EmbyHomeView: View {
     @Environment(\.colorScheme) var colorScheme
-    @Environment(\.serverDockBottomInset) private var serverDockBottomInset
     let session: EmbySession
     let client: EmbyAPIClient
     let refreshToken: Int
     let scrollToTopToken: Int
     let onClose: () -> Void
     let onCarouselActiveChanged: (Bool) -> Void
-    let dock: AnyView
     let carouselDisplayRangeKey: String
     @StateObject var model: V3EmbyHomeViewModel
     @State var isMediaManagementPresented = false
@@ -28,14 +26,13 @@ struct V3EmbyHomeView: View {
     @State var isHomeActive = false
     private let carouselTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
-    init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, onCarouselActiveChanged: @escaping (Bool) -> Void, dock: AnyView) {
+    init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, onCarouselActiveChanged: @escaping (Bool) -> Void) {
         self.session = session
         self.client = client
         self.refreshToken = refreshToken
         self.scrollToTopToken = scrollToTopToken
         self.onClose = onClose
         self.onCarouselActiveChanged = onCarouselActiveChanged
-        self.dock = dock
         let rangeKey = "osplayer.home.carousel-display-range.\(session.serverId).\(session.user.id)"
         carouselDisplayRangeKey = rangeKey
         let savedRange = UserDefaults.standard.object(forKey: rangeKey) as? Double ?? 0.30
@@ -85,10 +82,6 @@ struct V3EmbyHomeView: View {
                     }
                 }
                 .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-                .overlay(alignment: .bottom) {
-                    if immersive { dock.padding(.bottom, serverDockBottomInset) }
-                    else { dock }
-                }
                 .onAppear {
                     isHomeActive = true
                     carouselRuntimeState.bind(presentation: carouselPresentationBridge)
@@ -127,6 +120,7 @@ struct V3EmbyHomeView: View {
                     }
                 }
             }
+            .serverDockPage()
             .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
@@ -165,7 +159,7 @@ struct V3EmbyHomeView: View {
                                         HStack(spacing: 8) {
                                             sectionTitle(library.name)
                                             Spacer()
-                                            NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client, dock: dock))
+                                            NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client))
                                                 .font(.subheadline).foregroundColor(.blue).padding(.trailing, 16)
                                         }
                                         posterRow(items)
@@ -176,7 +170,7 @@ struct V3EmbyHomeView: View {
                         }
                     }
                     .padding(.top, immersive ? 2 : 18)
-                    .padding(.bottom, 86)
+                    .serverDockContentPadding()
                 }
                 .frame(width: width)
                 .background(

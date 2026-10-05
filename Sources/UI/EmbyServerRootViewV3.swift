@@ -30,21 +30,18 @@ struct EmbyServerRootViewV3: View {
             if let client {
                 GeometryReader { geometry in
                     let fullHeight = geometry.size.height + geometry.safeAreaInsets.bottom
-                    let dock = AnyView(serverTabBar)
-                    let emptyDock = AnyView(EmptyView())
                     ZStack {
-                        V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, onCarouselActiveChanged: { active in homeCarouselActive = active }, dock: dock)
+                        V3EmbyHomeView(session: session, client: client, refreshToken: homeRefreshToken, scrollToTopToken: homeScrollToTopToken, onClose: close, onCarouselActiveChanged: { active in homeCarouselActive = active })
                             .id(homeClientGeneration)
                             .opacity(selectedTab == .home ? 1 : 0)
                             .allowsHitTesting(selectedTab == .home)
                             .accessibilityHidden(selectedTab != .home)
 
-                        if selectedTab == .favorites { V3EmbyFavoritesView(client: client, onClose: close, dock: dock) }
-                        if selectedTab == .search, let searchModel { V3EmbyGlobalSearchView(currentSession: session, currentClient: client, model: searchModel, onClose: close, dock: emptyDock) }
-                        if selectedTab == .settings { OnePlayerServerSettingsView(session: session, onClose: close, dock: dock) }
+                        if selectedTab == .favorites { V3EmbyFavoritesView(client: client, onClose: close) }
+                        if selectedTab == .search, let searchModel { V3EmbyGlobalSearchView(currentSession: session, currentClient: client, model: searchModel, onClose: close) }
+                        if selectedTab == .settings { OnePlayerServerSettingsView(session: session, onClose: close) }
                     }
-                    .overlay(alignment: .bottom) { if selectedTab == .search { serverTabBar.padding(.bottom, geometry.safeAreaInsets.bottom) } }
-                    .environment(\.serverDockContent, dock)
+                    .environment(\.serverDockConfiguration, ServerDockConfiguration(selectedTab: selectedTab, usesMaterialBackground: selectedTab == .home && homeCarouselActive, onSelect: selectTab))
                     .environment(\.serverDockBottomInset, geometry.safeAreaInsets.bottom)
                     .frame(width: geometry.size.width, height: fullHeight, alignment: .top)
                     .ignoresSafeArea(.container, edges: .bottom)
@@ -71,63 +68,24 @@ struct EmbyServerRootViewV3: View {
         }
     }
 
-    private var serverTabBar: some View {
-        HStack(spacing: 0) {
-            serverTabButton(.home, title: "首页", systemImage: "house")
-            serverTabButton(.favorites, title: "收藏", systemImage: "heart")
-            serverTabButton(.search, title: "搜索", systemImage: "magnifyingglass")
-            serverTabButton(.settings, title: "设置", systemImage: "gearshape")
-        }
-        .frame(height: ImmersiveUIMetrics.serverDockHeight)
-        .background(
-            Group {
-                if selectedTab == .home && homeCarouselActive {
-                    Rectangle().fill(.ultraThinMaterial)
-                        .overlay(Color(uiColor: .systemBackground).opacity(0.10))
-                        .overlay(alignment: .top) { Color.primary.opacity(0.08).frame(height: 0.5) }
-                } else {
-                    Color(uiColor: .secondarySystemBackground)
-                }
-            }
-            .ignoresSafeArea(edges: .bottom)
-        )
-    }
-
-    private func serverTabButton(_ tab: V3ServerTab, title: String, systemImage: String) -> some View {
-        Button {
-            if tab == .home && selectedTab == .home {
-                let now = Date()
-                if now.timeIntervalSince(lastHomeTap) <= 0.36 {
-                    homeRefreshToken += 1
-                    lastHomeTap = .distantPast
-                } else {
-                    homeScrollToTopToken += 1
-                    lastHomeTap = now
-                }
+    private func selectTab(_ tab: V3ServerTab) {
+        if tab == .home && selectedTab == .home {
+            let now = Date()
+            if now.timeIntervalSince(lastHomeTap) <= 0.36 {
+                homeRefreshToken += 1
+                lastHomeTap = .distantPast
             } else {
-                if selectedTab != tab {
-                    if selectedTab == .search { searchModel = nil }
-                    if tab == .search { searchModel = V3GlobalSearchViewModel() }
-                }
-                selectedTab = tab
-                if tab == .home { lastHomeTap = Date() }
+                homeScrollToTopToken += 1
+                lastHomeTap = now
             }
-        } label: {
-            ZStack {
-                Color.clear
-                VStack(spacing: 0) {
-                    Image(systemName: selectedTab == tab && tab != .search ? systemImage + ".fill" : systemImage).font(.system(size: 19))
-                    Text(title).font(.system(size: 10))
-                }
-                .foregroundColor(selectedTab == tab ? .blue : .secondary)
-                .offset(y: 8)
+        } else {
+            if selectedTab != tab {
+                if selectedTab == .search { searchModel = nil }
+                if tab == .search { searchModel = V3GlobalSearchViewModel() }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
+            selectedTab = tab
+            if tab == .home { lastHomeTap = Date() }
         }
-        .frame(maxWidth: .infinity, minHeight: ImmersiveUIMetrics.serverDockHeight, maxHeight: ImmersiveUIMetrics.serverDockHeight)
-        .contentShape(Rectangle())
-        .buttonStyle(.plain)
     }
 
     private func close() {
@@ -136,5 +94,3 @@ struct EmbyServerRootViewV3: View {
         else { presentationMode.wrappedValue.dismiss() }
     }
 }
-
-private enum V3ServerTab { case home, favorites, search, settings }

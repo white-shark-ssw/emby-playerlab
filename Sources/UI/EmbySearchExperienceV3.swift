@@ -250,19 +250,17 @@ struct V3EmbyGlobalSearchView: View {
     let currentSession: EmbySession
     let currentClient: EmbyAPIClient
     let onClose: () -> Void
-    let dock: AnyView
     @ObservedObject private var model: V3GlobalSearchViewModel
     @State private var searchText = ""
     @State private var showClearHistoryAlert = false
     @State private var directSearchDestination: V3GlobalSearchServerResult?
     @FocusState private var searchFieldFocused: Bool
 
-    init(currentSession: EmbySession, currentClient: EmbyAPIClient, model: V3GlobalSearchViewModel, onClose: @escaping () -> Void, dock: AnyView) {
+    init(currentSession: EmbySession, currentClient: EmbyAPIClient, model: V3GlobalSearchViewModel, onClose: @escaping () -> Void) {
         self.currentSession = currentSession
         self.currentClient = currentClient
         self.model = model
         self.onClose = onClose
-        self.dock = dock
     }
 
     private var horizontalPosterWidth: CGFloat {
@@ -284,7 +282,7 @@ struct V3EmbyGlobalSearchView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-            .overlay(alignment: .bottom) { dock }
+            .serverDockPage()
             .background(directSearchLink)
             .navigationBarHidden(true)
             .alert("清除搜索历史", isPresented: $showClearHistoryAlert) {
@@ -408,7 +406,7 @@ struct V3EmbyGlobalSearchView: View {
                 if !model.history.isEmpty { searchHistorySection }
                 if model.recommendationsEnabled && (model.isLoadingRecommendations || !model.recommendationItems.isEmpty) { recommendationsSection }
             }
-            .padding(.bottom, 86)
+            .serverDockContentPadding()
         }
     }
 
@@ -470,7 +468,7 @@ struct V3EmbyGlobalSearchView: View {
                 if model.isSearching { ProgressView().frame(maxWidth: .infinity).padding(.top, model.serverResults.isEmpty ? 34 : 0) }
                 else if model.serverResults.isEmpty { Text("未找到相关内容").font(.subheadline).foregroundColor(.secondary).frame(maxWidth: .infinity).padding(.top, 34) }
             }
-            .padding(.bottom, 86)
+            .serverDockContentPadding()
         }
     }
 
@@ -479,7 +477,7 @@ struct V3EmbyGlobalSearchView: View {
             HStack {
                 Text(result.session.serverName).font(.system(size: 20, weight: .bold)).lineLimit(1)
                 Spacer()
-                NavigationLink(destination: V3GlobalSearchServerGridView(serverName: result.session.serverName, term: model.currentTerm, client: result.client, dock: dock)) {
+                NavigationLink(destination: V3GlobalSearchServerGridView(serverName: result.session.serverName, term: model.currentTerm, client: result.client)) {
                     Text("更多").font(.system(size: 16)).foregroundColor(.blue)
                 }
                 .buttonStyle(.plain)
@@ -501,7 +499,7 @@ struct V3EmbyGlobalSearchView: View {
     private var directSearchLink: some View {
         NavigationLink(isActive: Binding(get: { directSearchDestination != nil }, set: { if !$0 { directSearchDestination = nil } })) {
             if let result = directSearchDestination {
-                V3GlobalSearchServerGridView(serverName: result.session.serverName, term: searchText, client: result.client, dock: dock)
+                V3GlobalSearchServerGridView(serverName: result.session.serverName, term: searchText, client: result.client)
             } else {
                 EmptyView()
             }
@@ -539,14 +537,12 @@ private struct V3GlobalSearchServerGridView: View {
     let serverName: String
     let term: String
     let client: EmbyAPIClient
-    let dock: AnyView
     @StateObject private var model: V3GlobalSearchServerGridViewModel
 
-    init(serverName: String, term: String, client: EmbyAPIClient, dock: AnyView) {
+    init(serverName: String, term: String, client: EmbyAPIClient) {
         self.serverName = serverName
         self.term = term
         self.client = client
-        self.dock = dock
         _model = StateObject(wrappedValue: V3GlobalSearchServerGridViewModel(term: term, client: client))
     }
 
@@ -566,13 +562,13 @@ private struct V3GlobalSearchServerGridView: View {
                 if let errorMessage = model.errorMessage { Text(errorMessage).font(.footnote).foregroundColor(.red).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
             }
             .padding(.top, 8)
-            .padding(.bottom, 86)
+            .serverDockContentPadding()
         }
         .navigationTitle(serverName)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(false)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .overlay(alignment: .bottom) { dock }
+        .serverDockPage()
         .nativeInteractivePop()
         .onAppear { if !model.hasLoaded { Task { await model.loadNextPage() } } }
     }
