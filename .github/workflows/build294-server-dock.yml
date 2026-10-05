@@ -40,7 +40,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
 
           changed="$(git diff --name-only "$BASE_SHA" "$PRODUCT_SHA" | sort)"
-          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselNativePresentationV3.swift docs/changelog/CHANGELOG_v0_15_26_build294.md | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCoreV3.swift Sources/UI/EmbyHomeRowsV3.swift Sources/UI/EmbySearchExperienceV3.swift Sources/UI/EmbyServerBrowseV3.swift Sources/UI/EmbyServerRootViewV3.swift Sources/UI/ImmersiveUIComponents.swift Sources/UI/OnePlayerSettingsViews.swift Sources/UI/ServerDock.swift Tests/ServerDockRegression/CarouselTests.swift Tests/ServerDockRegression/DockTests.swift Tests/ServerDockRegression/Stubs.swift Tests/ServerDockRegression/Support.swift Tests/ServerDockRegression/prepare.py docs/changelog/CHANGELOG_v0_15_27_build294.md docs/project/current/dev/DEV-server-dock-refactor.md scripts/check_server_dock_refactor.py | sort)"
           test "$changed" = "$expected"
           git diff --check "$BASE_SHA" "$PRODUCT_SHA"
           python3 scripts/check_server_dock_refactor.py "$BASE_SHA"
