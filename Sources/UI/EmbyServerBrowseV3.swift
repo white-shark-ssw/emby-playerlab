@@ -38,14 +38,12 @@ private struct V3LibraryPageState {
 struct V3LibraryBrowserView: View {
     let library: LibraryItem
     let client: EmbyAPIClient
-    let dock: AnyView
     @StateObject private var model: V3LibraryBrowserViewModel
     @State private var selectedTab = V3LibraryTab.items
 
-    init(library: LibraryItem, client: EmbyAPIClient, dock: AnyView) {
+    init(library: LibraryItem, client: EmbyAPIClient) {
         self.library = library
         self.client = client
-        self.dock = dock
         _model = StateObject(wrappedValue: V3LibraryBrowserViewModel(library: library, client: client))
     }
 
@@ -60,7 +58,7 @@ struct V3LibraryBrowserView: View {
             ToolbarItem(placement: .navigationBarTrailing) { sortMenu.disabled(!selectedTab.supportsSorting).opacity(selectedTab.supportsSorting ? 1 : 0.35) }
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .overlay(alignment: .bottom) { dock }
+        .serverDockPage()
         .nativeInteractivePop()
         .task(id: selectedTab) { await model.load(tab: selectedTab) }
         .onReceive(NotificationCenter.default.publisher(for: EmbyUserDataChange.notification)) { notification in
@@ -137,7 +135,7 @@ struct V3LibraryBrowserView: View {
                 if let error = model.errorMessage(for: tab) { errorText(error) }
             }
             .padding(.top, 8)
-            .padding(.bottom, 86)
+            .serverDockContentPadding()
         }
         .refreshable { await model.refresh(tab: tab) }
     }
@@ -161,7 +159,7 @@ struct V3LibraryBrowserView: View {
                 if let error = model.errorMessage(for: .suggestions) { errorText(error) }
             }
             .padding(.top, 8)
-            .padding(.bottom, 86)
+            .serverDockContentPadding()
         }
         .refreshable { await model.refresh(tab: .suggestions) }
     }
@@ -175,7 +173,7 @@ struct V3LibraryBrowserView: View {
                     emptyState(text: "这个媒体库暂无类别")
                 } else {
                     EmbyPosterGrid(items: model.genres) { genre in
-                        NavigationLink(destination: V3LibraryGenreGridView(library: library, genre: genre, client: client, dock: dock)) {
+                        NavigationLink(destination: V3LibraryGenreGridView(library: library, genre: genre, client: client)) {
                             V3LibraryGenreCard(item: genre, client: client)
                         }
                         .buttonStyle(.plain)
@@ -184,7 +182,7 @@ struct V3LibraryBrowserView: View {
                 if let error = model.errorMessage(for: .genres) { errorText(error) }
             }
             .padding(.top, 8)
-            .padding(.bottom, 86)
+            .serverDockContentPadding()
         }
         .refreshable { await model.refresh(tab: .genres) }
     }
@@ -197,12 +195,12 @@ struct V3LibraryBrowserView: View {
                 } else if model.hasLoaded(tab: .folders) && model.folderItems.isEmpty {
                     emptyState(text: "这个媒体库暂无文件夹内容")
                 } else {
-                    V3LibraryFolderGrid(items: model.folderItems, client: client, dock: dock)
+                    V3LibraryFolderGrid(items: model.folderItems, client: client)
                 }
                 if let error = model.errorMessage(for: .folders) { errorText(error) }
             }
             .padding(.top, 8)
-            .padding(.bottom, 86)
+            .serverDockContentPadding()
         }
         .refreshable { await model.refresh(tab: .folders) }
     }
@@ -531,14 +529,12 @@ private struct V3LibraryGenreGridView: View {
     let library: LibraryItem
     let genre: LibraryItem
     let client: EmbyAPIClient
-    let dock: AnyView
     @StateObject private var model: V3LibraryGenreGridViewModel
 
-    init(library: LibraryItem, genre: LibraryItem, client: EmbyAPIClient, dock: AnyView) {
+    init(library: LibraryItem, genre: LibraryItem, client: EmbyAPIClient) {
         self.library = library
         self.genre = genre
         self.client = client
-        self.dock = dock
         _model = StateObject(wrappedValue: V3LibraryGenreGridViewModel(library: library, genre: genre, client: client))
     }
 
@@ -554,12 +550,12 @@ private struct V3LibraryGenreGridView: View {
                 if let error = model.errorMessage { Text(error).foregroundColor(.red).font(.footnote).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
             }
             .padding(.top, 8)
-            .padding(.bottom, 86)
+            .serverDockContentPadding()
         }
         .navigationTitle(genre.name)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .overlay(alignment: .bottom) { dock }
+        .serverDockPage()
         .nativeInteractivePop()
         .refreshable { await model.refresh() }
         .onAppear { if !model.hasLoaded { Task { await model.refresh() } } }
@@ -626,12 +622,11 @@ private func v3LibraryIsBrowsableFolder(_ item: LibraryItem) -> Bool { ["folder"
 private struct V3LibraryFolderGrid: View {
     let items: [LibraryItem]
     let client: EmbyAPIClient
-    let dock: AnyView
 
     var body: some View {
         EmbyPosterGrid(items: items) { item in
             if v3LibraryIsBrowsableFolder(item) {
-                NavigationLink(destination: V3LibraryFolderBrowserView(folder: item, client: client, dock: dock)) { V3LibraryFolderCard(item: item, client: client) }.buttonStyle(.plain)
+                NavigationLink(destination: V3LibraryFolderBrowserView(folder: item, client: client)) { V3LibraryFolderCard(item: item, client: client) }.buttonStyle(.plain)
             } else {
                 EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) }
             }
@@ -666,13 +661,11 @@ private struct V3LibraryFolderCard: View {
 private struct V3LibraryFolderBrowserView: View {
     let folder: LibraryItem
     let client: EmbyAPIClient
-    let dock: AnyView
     @StateObject private var model: V3LibraryFolderBrowserViewModel
 
-    init(folder: LibraryItem, client: EmbyAPIClient, dock: AnyView) {
+    init(folder: LibraryItem, client: EmbyAPIClient) {
         self.folder = folder
         self.client = client
-        self.dock = dock
         _model = StateObject(wrappedValue: V3LibraryFolderBrowserViewModel(folder: folder, client: client))
     }
 
@@ -680,16 +673,16 @@ private struct V3LibraryFolderBrowserView: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
                 if model.isLoading && model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.top, 44) }
-                else { V3LibraryFolderGrid(items: model.items, client: client, dock: dock) }
+                else { V3LibraryFolderGrid(items: model.items, client: client) }
                 if let error = model.errorMessage { Text(error).foregroundColor(.red).font(.footnote).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
             }
             .padding(.top, 8)
-            .padding(.bottom, 86)
+            .serverDockContentPadding()
         }
         .navigationTitle(folder.name)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .overlay(alignment: .bottom) { dock }
+        .serverDockPage()
         .nativeInteractivePop()
         .refreshable { await model.load(force: true) }
         .onAppear { if !model.hasLoaded { Task { await model.load() } } }
@@ -720,13 +713,11 @@ private final class V3LibraryFolderBrowserViewModel: ObservableObject {
 struct V3EmbyFavoritesView: View {
     let client: EmbyAPIClient
     let onClose: () -> Void
-    let dock: AnyView
     @StateObject private var model: V3FavoritesViewModel
 
-    init(client: EmbyAPIClient, onClose: @escaping () -> Void, dock: AnyView) {
+    init(client: EmbyAPIClient, onClose: @escaping () -> Void) {
         self.client = client
         self.onClose = onClose
-        self.dock = dock
         _model = StateObject(wrappedValue: V3FavoritesViewModel(client: client))
     }
 
@@ -742,10 +733,10 @@ struct V3EmbyFavoritesView: View {
                     if model.isLoading { ProgressView().frame(maxWidth: .infinity) }
                     if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
                 }
-                .padding(.bottom, 86)
+                .serverDockContentPadding()
             }
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-            .overlay(alignment: .bottom) { dock }
+            .serverDockPage()
             .refreshable { await model.load() }
             .onAppear { Task { await model.load() } }
             .navigationBarHidden(true)
@@ -789,7 +780,7 @@ struct V3EmbyFavoritesView: View {
         HStack {
             Text(title).font(.system(size: 20, weight: .bold))
             Spacer()
-            NavigationLink(destination: V3FavoriteCategoryGridView(title: title, includeItemType: includeItemType, client: client, dock: dock, isPeople: isPeople)) {
+            NavigationLink(destination: V3FavoriteCategoryGridView(title: title, includeItemType: includeItemType, client: client, isPeople: isPeople)) {
                 Text("更多").font(.system(size: 16, weight: .regular)).foregroundColor(.blue)
             }
             .buttonStyle(.plain)
@@ -802,15 +793,13 @@ private struct V3FavoriteCategoryGridView: View {
     let title: String
     let includeItemType: String
     let client: EmbyAPIClient
-    let dock: AnyView
     let isPeople: Bool
     @StateObject private var model: V3FavoriteCategoryGridViewModel
 
-    init(title: String, includeItemType: String, client: EmbyAPIClient, dock: AnyView, isPeople: Bool) {
+    init(title: String, includeItemType: String, client: EmbyAPIClient, isPeople: Bool) {
         self.title = title
         self.includeItemType = includeItemType
         self.client = client
-        self.dock = dock
         self.isPeople = isPeople
         _model = StateObject(wrappedValue: V3FavoriteCategoryGridViewModel(includeItemType: includeItemType, client: client))
     }
@@ -832,12 +821,12 @@ private struct V3FavoriteCategoryGridView: View {
                 if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
             }
             .padding(.top, 8)
-            .padding(.bottom, 86)
+            .serverDockContentPadding()
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .overlay(alignment: .bottom) { dock }
+        .serverDockPage()
         .nativeInteractivePop()
         .onAppear { if !model.hasLoaded { Task { await model.reload() } } }
     }
@@ -974,14 +963,12 @@ private enum V3SearchDefaults {
 struct V3EmbySearchView: View {
     let client: EmbyAPIClient
     let onClose: () -> Void
-    let dock: AnyView
     @StateObject private var model: V3SearchViewModel
     @State private var searchText = ""
 
-    init(client: EmbyAPIClient, onClose: @escaping () -> Void, dock: AnyView) {
+    init(client: EmbyAPIClient, onClose: @escaping () -> Void) {
         self.client = client
         self.onClose = onClose
-        self.dock = dock
         _model = StateObject(wrappedValue: V3SearchViewModel(client: client, detailedSearchEnabled: V3SearchDefaults.detailedSearchEnabled))
     }
 
@@ -1013,12 +1000,12 @@ struct V3EmbySearchView: View {
                             }
                         }
                     }
-                    .padding(.bottom, 86)
+                    .serverDockContentPadding()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-            .overlay(alignment: .bottom) { dock }
+            .serverDockPage()
             .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
@@ -1103,7 +1090,6 @@ private final class V3SearchViewModel: ObservableObject {
 struct V3EmbyServerSettingsView: View {
     let session: EmbySession
     let onClose: () -> Void
-    let dock: AnyView
     @State private var shareURL: URL?
 
     var body: some View {
@@ -1130,10 +1116,10 @@ struct V3EmbyServerSettingsView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 86)
+                .serverDockContentPadding()
             }
             .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
-            .overlay(alignment: .bottom) { dock }
+            .serverDockPage()
             .navigationBarHidden(true)
             .sheet(isPresented: Binding(get: { shareURL != nil }, set: { if !$0 { shareURL = nil } })) { if let shareURL { ActivityView(items: [shareURL]) } }
         }

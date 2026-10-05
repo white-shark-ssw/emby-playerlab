@@ -76,7 +76,6 @@ struct AppearanceSettingsView: View {
 struct OnePlayerServerSettingsView: View {
     let session: EmbySession
     let onClose: () -> Void
-    let dock: AnyView
 
     var body: some View {
         NavigationView {
@@ -101,10 +100,10 @@ struct OnePlayerServerSettingsView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 86)
+                .serverDockContentPadding()
             }
             .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
-            .overlay(alignment: .bottom) { dock }
+            .serverDockPage()
             .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())

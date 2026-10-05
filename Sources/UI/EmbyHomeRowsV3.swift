@@ -9,7 +9,7 @@ extension V3EmbyHomeView {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
                 ForEach(model.visibleLibraries) { library in
-                    NavigationLink(destination: V3LibraryBrowserView(library: library, client: client, dock: dock)) { V3LibraryTile(item: library, client: client) }.buttonStyle(.plain)
+                    NavigationLink(destination: V3LibraryBrowserView(library: library, client: client)) { V3LibraryTile(item: library, client: client) }.buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
