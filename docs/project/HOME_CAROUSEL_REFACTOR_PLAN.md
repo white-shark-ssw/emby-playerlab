@@ -1,5 +1,8 @@
 # 首页轮播需求复核与重构设计
 
+> Current implementation status (2026-10-06): Build289/290 were implemented and device rejected. Build291 source dbeaa9d3472c85a5c238598da3aac41d8e49f43c corrects the proved transform/frame and Dock-extent violations; native regressions, exact-source CI and IPA verification passed, target-device acceptance pending. The earlier pre-implementation statements below are historical planning context. Live identity and next action: [task checkpoint](current/dev/DEV-home-carousel-drag-smoothness.md).
+
+
 更新：2026-10-05。Work ID：`DEV-home-carousel-drag-smoothness`。
 
 具体开发顺序、文件职责、阶段出口和交接验收见 [HOME_CAROUSEL_DEVELOPMENT_PLAN.md](HOME_CAROUSEL_DEVELOPMENT_PLAN.md)。本文件保留需求/源码/参考证据；历史候选中的开放选择以后面的已选方向及开发计划为准。
