@@ -41,7 +41,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
 
           changed="$(git diff --name-only "$BUILD291_SHA" "$PRODUCT_SHA" | sort)"
-          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselNativePresentationV3.swift Sources/UI/EmbyHomeCarouselStateV3.swift docs/changelog/CHANGELOG_v0_15_24_build292.md | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCarouselNativePresentationV3.swift Sources/UI/EmbyHomeCarouselStateV3.swift docs/changelog/CHANGELOG_v0_15_25_build292.md | sort)"
           test "$changed" = "$expected"
           git diff --check "$BUILD291_SHA" "$PRODUCT_SHA"
           grep -F 'static let sourceVersion = "0.15.25"' Sources/Core/AppIdentity.swift
