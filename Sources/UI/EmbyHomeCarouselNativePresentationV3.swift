@@ -20,6 +20,7 @@ struct V3HomeCarouselTransitionVisualState {
     let toID: String?
     let direction: Int
     let progress: CGFloat
+    var trailingID: String? = nil
 }
 
 enum V3HomeCarouselNativeLayout {
@@ -58,6 +59,10 @@ enum V3HomeCarouselNativeLayout {
         let progress = (0.30 - value) / 0.30
         let scale = 1 + 0.12 * progress
         return CGSize(width: defaultSize.width * scale, height: defaultSize.height * scale)
+    }
+
+    static func transitionBlendProgress(_ progress: CGFloat) -> CGFloat {
+        progress < 0 ? 1 - backdropBlendProgress(1 + progress) : backdropBlendProgress(progress)
     }
 
     static func backdropBlendProgress(_ rawProgress: CGFloat) -> CGFloat {
@@ -187,7 +192,7 @@ final class V3HomeCarouselPresentationBridge {
     func interruptAndReadProgress(fromID: String?, toID: String?, direction: Int, fallback: CGFloat) -> CGFloat {
         guard let view else { return fallback }
         let progress = view.interruptAndReadProgress(fromID: fromID, toID: toID, direction: direction, fallback: fallback)
-        visualState = V3HomeCarouselTransitionVisualState(currentID: visualState.currentID, fromID: fromID, toID: toID, direction: direction, progress: progress)
+        visualState = V3HomeCarouselTransitionVisualState(currentID: visualState.currentID, fromID: fromID, toID: toID, direction: direction, progress: progress, trailingID: visualState.trailingID)
         return progress
     }
 
@@ -323,7 +328,6 @@ final class V3HomeCarouselNativeView: UIView {
 
         func layoutArtwork(width: CGFloat, viewportHeight: CGFloat, displayRange: Double, rawScrollMinY: CGFloat) {
             let adjustment = V3HomeCarouselNativeLayout.displayHeightAdjustment(displayRange: displayRange, viewportHeight: viewportHeight)
-            let backdropBaseHeight = AdaptiveHeroRevealMetrics.detailBaseHeight(width: width) + adjustment
             let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + adjustment
             let backdropViewportHeight = AdaptiveHeroRevealMetrics.detailBackdropViewportHeight(width: width)
             let sourceSize = analysis?.sourceSize ?? imageView.image?.size
@@ -337,7 +341,6 @@ final class V3HomeCarouselNativeView: UIView {
             let consumedCropScroll = min(upwardScroll * AdaptiveHeroRevealMetrics.detailCropResponseFactor, cropTravel)
             let cropPhaseDistance = cropTravel / AdaptiveHeroRevealMetrics.detailCropResponseFactor
             let backdropPinOffset = min(upwardScroll, cropPhaseDistance)
-            let backdropVisualHeight = backdropBaseHeight + stretch
             let visualHeight = baseHeight + stretch
             let renderedSize: CGSize
             if stretch > 0 {
@@ -348,13 +351,14 @@ final class V3HomeCarouselNativeView: UIView {
                 let aspect = initialSize.height > 1 ? initialSize.width / initialSize.height : 1
                 renderedSize = CGSize(width: targetHeight * aspect, height: targetHeight)
             }
-            let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(renderedImageSize: renderedSize, viewportHeight: backdropVisualHeight)
-            let maskFadeSpan = min(0.34, clearImageBottom * 0.46)
+            // Fade the clear artwork into the same solid base across the full Hero/content boundary.
+            let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(renderedImageSize: renderedSize, viewportHeight: visualHeight)
+            let maskFadeSpan = min(0.55, clearImageBottom * 0.62)
             let maskStart = max(0.10, clearImageBottom - maskFadeSpan)
             let maskFirstMid = maskStart + (clearImageBottom - maskStart) * 0.29
             let maskSecondMid = maskStart + (clearImageBottom - maskStart) * 0.71
             frame = CGRect(x: 0, y: min(0, rawScrollMinY), width: width, height: visualHeight)
-            clipView.frame = CGRect(x: 0, y: 0, width: width, height: backdropVisualHeight)
+            clipView.frame = CGRect(x: 0, y: 0, width: width, height: visualHeight)
             imageView.frame = CGRect(x: (width - renderedSize.width) * 0.5, y: backdropPinOffset, width: renderedSize.width, height: renderedSize.height)
             maskGradient.frame = clipView.bounds
             maskGradient.colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.black.withAlphaComponent(0.92).cgColor, UIColor.black.withAlphaComponent(0.52).cgColor, UIColor.clear.cgColor]
@@ -500,10 +504,10 @@ final class V3HomeCarouselNativeView: UIView {
     }
 
     func applyVisualState(_ state: V3HomeCarouselTransitionVisualState, animated: Bool) {
-        let pagePairChanged = visualState.fromID != state.fromID || visualState.toID != state.toID || visualState.currentID != state.currentID
+        let pagePairChanged = visualState.trailingID != state.trailingID || visualState.fromID != state.fromID || visualState.toID != state.toID || visualState.currentID != state.currentID
         visualState = state
-        let progress = min(1, max(0, state.progress))
-        let blend = V3HomeCarouselNativeLayout.backdropBlendProgress(progress)
+        let progress = min(1, max(state.trailingID == nil ? 0 : -1, state.progress))
+        let blend = V3HomeCarouselNativeLayout.transitionBlendProgress(progress)
         let width = max(1, presentationWidth)
         for (id, page) in pages {
             if let fromID = state.fromID, let toID = state.toID {
@@ -513,8 +517,12 @@ final class V3HomeCarouselNativeView: UIView {
                     page.foregroundController.view.transform = CGAffineTransform(translationX: -CGFloat(state.direction) * progress * width, y: 0)
                 } else if id == toID {
                     page.artwork.isHidden = false; page.foregroundController.view.isHidden = false
-                    page.artwork.alpha = blend; page.foregroundController.view.alpha = 1
+                    page.artwork.alpha = progress >= 0 ? blend : 0; page.foregroundController.view.alpha = 1
                     page.foregroundController.view.transform = CGAffineTransform(translationX: CGFloat(state.direction) * (1 - progress) * width, y: 0)
+                } else if id == state.trailingID {
+                    page.artwork.isHidden = false; page.foregroundController.view.isHidden = false
+                    page.artwork.alpha = progress < 0 ? blend : 0; page.foregroundController.view.alpha = 1
+                    page.foregroundController.view.transform = CGAffineTransform(translationX: -CGFloat(state.direction) * (1 + progress) * width, y: 0)
                 } else {
                     page.artwork.isHidden = true; page.foregroundController.view.isHidden = true
                     page.artwork.alpha = 0; page.foregroundController.view.alpha = 0; page.foregroundController.view.transform = .identity
@@ -550,12 +558,12 @@ final class V3HomeCarouselNativeView: UIView {
 
     func interruptAndReadProgress(fromID: String?, toID: String?, direction: Int, fallback: CGFloat) -> CGFloat {
         let width = max(1, presentationWidth)
-        var progress = min(1, max(0, fallback))
+        var progress = min(1, max(visualState.trailingID == nil ? 0 : -1, fallback))
         if let fromID, let page = pages[fromID], let presentation = page.foregroundController.view.layer.presentation() {
-            progress = min(1, max(0, abs(CGFloat(presentation.transform.m41)) / width))
+            progress = min(1, max(visualState.trailingID == nil ? 0 : -1, -CGFloat(presentation.transform.m41) / (CGFloat(direction) * width)))
         }
         stopAnimation()
-        let state = V3HomeCarouselTransitionVisualState(currentID: visualState.currentID, fromID: fromID, toID: toID, direction: direction, progress: progress)
+        let state = V3HomeCarouselTransitionVisualState(currentID: visualState.currentID, fromID: fromID, toID: toID, direction: direction, progress: progress, trailingID: visualState.trailingID)
         applyVisualState(state, animated: false)
         return progress
     }
@@ -571,6 +579,10 @@ final class V3HomeCarouselNativeView: UIView {
         if let fromID = state.fromID, let toID = state.toID {
             if let from = pages[fromID] { from.artwork.alpha = 1 - blend; from.foregroundController.view.transform = CGAffineTransform(translationX: -CGFloat(state.direction) * targetProgress * width, y: 0) }
             if let to = pages[toID] { to.artwork.alpha = blend; to.foregroundController.view.transform = CGAffineTransform(translationX: CGFloat(state.direction) * (1 - targetProgress) * width, y: 0) }
+            if let trailingID = state.trailingID, let trailing = pages[trailingID] {
+                trailing.artwork.alpha = 0
+                trailing.foregroundController.view.transform = CGAffineTransform(translationX: -CGFloat(state.direction) * (1 + targetProgress) * width, y: 0)
+            }
         }
         updateBaseColor(progress: targetProgress)
         updateIndicatorSelection(state.toID != nil && targetProgress >= 0.5 ? state.toID : state.currentID)
@@ -603,8 +615,9 @@ final class V3HomeCarouselNativeView: UIView {
 
     private func updateBaseColor(progress: CGFloat) {
         guard let fromID = visualState.fromID, let toID = visualState.toID else { baseColorView.backgroundColor = resolvedBaseColor(itemID: visualState.currentID); return }
-        let blend = V3HomeCarouselNativeLayout.backdropBlendProgress(progress)
-        baseColorView.backgroundColor = mix(resolvedBaseColor(itemID: fromID), resolvedBaseColor(itemID: toID), amount: blend)
+        let blend = V3HomeCarouselNativeLayout.transitionBlendProgress(progress)
+        let blendTarget = progress < 0 ? visualState.trailingID : toID
+        baseColorView.backgroundColor = mix(resolvedBaseColor(itemID: fromID), resolvedBaseColor(itemID: blendTarget), amount: blend)
     }
 
     private func mix(_ a: UIColor, _ b: UIColor, amount: CGFloat) -> UIColor {

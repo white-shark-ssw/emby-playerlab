@@ -14,6 +14,9 @@ final class V3HomeCarouselRuntimeState {
     private var itemIDs: [String] = []
     private var dragOriginSignedProgress: CGFloat = 0
     private var animationToken: UInt64 = 0
+    private var committedTargetID: String?
+    private var trailingID: String?
+    private var rebasedCommittedDrag = false
     private weak var presentation: V3HomeCarouselPresentationBridge?
 
     init(currentID: String? = nil) { self.currentID = currentID }
@@ -32,6 +35,8 @@ final class V3HomeCarouselRuntimeState {
             toID = nil
             progress = 0
             direction = 1
+            trailingID = nil
+            rebasedCommittedDrag = false
             isDragging = false
             presentation?.stopAnimationAndPresent(visualState)
             return
@@ -54,6 +59,8 @@ final class V3HomeCarouselRuntimeState {
             toID = nil
             progress = 0
             direction = 1
+            trailingID = nil
+            rebasedCommittedDrag = false
             isDragging = false
             dragOriginSignedProgress = 0
             lastSettledAt = Date()
@@ -71,15 +78,30 @@ final class V3HomeCarouselRuntimeState {
 
     func prepareHorizontalDrag(acquisitionTranslationX: CGFloat) -> Bool {
         guard let currentID, itemIDs.count > 1 else { return false }
-        if fromID != nil, toID != nil {
+        let requestedDirection = acquisitionTranslationX < 0 ? 1 : -1
+        rebasedCommittedDrag = false
+        if let oldFromID = fromID, let oldToID = toID {
+            let wasCommitted = committedTargetID == oldToID
             invalidateAnimation()
             progress = presentation?.interruptAndReadProgress(fromID: fromID, toID: toID, direction: direction, fallback: progress) ?? progress
+            // Continue to the next page from the visible position, without finishing the old animator.
+            // A negative origin retains the outgoing page until the committed anchor reaches center.
+            if wasCommitted, direction == requestedDirection, progress >= 0, itemIDs.count > 2, let nextID = neighborID(from: oldToID, direction: requestedDirection) {
+                self.currentID = oldToID
+                fromID = oldToID
+                toID = nextID
+                trailingID = oldFromID
+                progress -= 1
+                rebasedCommittedDrag = true
+            } else if progress < 0 {
+                rebasedCommittedDrag = true
+            }
             dragOriginSignedProgress = CGFloat(direction) * progress
             isDragging = true
+            presentation?.present(visualState)
             return true
         }
-
-        let requestedDirection = acquisitionTranslationX < 0 ? 1 : -1
+        trailingID = nil
         guard let targetID = neighborID(from: currentID, direction: requestedDirection) else { return false }
         fromID = currentID
         toID = targetID
@@ -98,6 +120,7 @@ final class V3HomeCarouselRuntimeState {
         if signedPosition > 0.0001 { nextDirection = 1 }
         else if signedPosition < -0.0001 { nextDirection = -1 }
         guard let targetID = neighborID(from: currentID, direction: nextDirection) else { return }
+        trailingID = nil
         fromID = currentID
         toID = targetID
         direction = nextDirection
@@ -107,22 +130,33 @@ final class V3HomeCarouselRuntimeState {
     }
 
     func finishDrag(actualTranslationX: CGFloat, releaseVelocityX: CGFloat?, width: CGFloat) {
-        guard isDragging, let targetID = toID else {
+        guard isDragging, toID != nil else {
             V3HomeCarouselCadenceDiagnostics.shared.end(reason: "ended-no-transition")
             return
         }
         let distanceProgress: CGFloat
-        if abs(dragOriginSignedProgress) <= 0.0001 { distanceProgress = min(1, max(0, abs(actualTranslationX) / max(1, width))) }
+        if rebasedCommittedDrag || abs(dragOriginSignedProgress) <= 0.0001 { distanceProgress = min(1, max(0, abs(actualTranslationX) / max(1, width))) }
         else { distanceProgress = progress }
         let releaseVelocity = releaseVelocityX ?? 0
-        let expectedSign: CGFloat = direction > 0 ? -1 : 1
+        let releaseDirection = rebasedCommittedDrag && actualTranslationX != 0 ? (actualTranslationX < 0 ? 1 : -1) : direction
+        let expectedSign: CGFloat = releaseDirection > 0 ? -1 : 1
         let directionalVelocity = releaseVelocity * expectedSign
         let velocityCommit = directionalVelocity >= 500
         let shouldCommit = distanceProgress >= 0.28 || velocityCommit
         DiagnosticsLogger.shared.app("HomeCarouselReleaseDecision", "actual_progress=\(String(format: "%.3f", distanceProgress)) release_velocity_x=\(String(format: "%.2f", releaseVelocity)) directional_velocity=\(String(format: "%.2f", directionalVelocity)) velocity_commit=\(velocityCommit) should_commit=\(shouldCommit)")
         isDragging = false
-        if shouldCommit { animateCommit(to: targetID) }
-        else { animateCancel() }
+        if shouldCommit {
+            if rebasedCommittedDrag, let currentID, let targetID = neighborID(from: currentID, direction: releaseDirection) {
+                let signedPosition = CGFloat(direction) * progress
+                direction = releaseDirection
+                progress = signedPosition * CGFloat(direction)
+                fromID = currentID
+                toID = targetID
+                trailingID = progress < 0 ? neighborID(from: currentID, direction: -direction) : nil
+                presentation?.present(visualState)
+            }
+            if let targetID = toID { animateCommit(to: targetID) }
+        } else { animateCancel() }
     }
 
     func cancelDrag() {
@@ -143,6 +177,7 @@ final class V3HomeCarouselRuntimeState {
         direction = 1
         progress = 0
         presentation?.present(visualState)
+        committedTargetID = targetID
         animate(to: 1, duration: 0.62, curve: .easeInOut) { [weak self] in self?.settle(on: targetID) }
     }
 
@@ -163,26 +198,33 @@ final class V3HomeCarouselRuntimeState {
         toID = nil
         progress = 0
         direction = 1
+        trailingID = nil
+        rebasedCommittedDrag = false
+        committedTargetID = nil
         isDragging = false
         dragOriginSignedProgress = 0
         presentation?.stopAnimationAndPresent(visualState)
     }
 
     private var visualState: V3HomeCarouselTransitionVisualState {
-        V3HomeCarouselTransitionVisualState(currentID: currentID, fromID: fromID, toID: toID, direction: direction, progress: progress)
+        V3HomeCarouselTransitionVisualState(currentID: currentID, fromID: fromID, toID: toID, direction: direction, progress: progress, trailingID: trailingID)
     }
 
     private func animateCommit(to targetID: String) {
+        committedTargetID = targetID
         animate(to: 1, duration: 0.22, curve: .easeOut) { [weak self] in self?.settle(on: targetID) }
     }
 
     private func animateCancel() {
+        committedTargetID = nil
         animate(to: 0, duration: 0.18, curve: .easeOut) { [weak self] in
             guard let self else { return }
             self.progress = 0
             self.fromID = nil
             self.toID = nil
             self.direction = 1
+            self.trailingID = nil
+            self.rebasedCommittedDrag = false
             self.dragOriginSignedProgress = 0
             self.lastSettledAt = Date()
             self.presentation?.present(self.visualState)
@@ -195,7 +237,7 @@ final class V3HomeCarouselRuntimeState {
         let token = animationToken
         let fromID = self.fromID
         let toID = self.toID
-        let targetState = V3HomeCarouselTransitionVisualState(currentID: currentID, fromID: fromID, toID: toID, direction: direction, progress: targetProgress)
+        let targetState = V3HomeCarouselTransitionVisualState(currentID: currentID, fromID: fromID, toID: toID, direction: direction, progress: targetProgress, trailingID: trailingID)
         let didStart = presentation?.animate(targetState, duration: duration, curve: curve) { [weak self] in
             guard let self, self.animationToken == token, self.fromID == fromID, self.toID == toID else { return }
             self.progress = targetProgress
@@ -213,6 +255,9 @@ final class V3HomeCarouselRuntimeState {
         toID = nil
         progress = 0
         direction = 1
+        trailingID = nil
+        rebasedCommittedDrag = false
+        committedTargetID = nil
         isDragging = false
         dragOriginSignedProgress = 0
         lastSettledAt = Date()
@@ -221,7 +266,7 @@ final class V3HomeCarouselRuntimeState {
         V3HomeCarouselCadenceDiagnostics.shared.end(reason: "settled")
     }
 
-    private func invalidateAnimation() { animationToken &+= 1 }
+    private func invalidateAnimation() { animationToken &+= 1; committedTargetID = nil }
 }
 
 extension V3EmbyHomeView {
