@@ -122,9 +122,9 @@ jobs:
 
       - name: Build unsigned app
         run: |
-          set -euo pipefail
-          set -o pipefail
+          set -uo pipefail
           rm -rf build
+          set +e
           xcodebuild \
             -workspace EmbyPlayerLab.xcworkspace \
             -scheme EmbyPlayerLab \
@@ -139,6 +139,25 @@ jobs:
             CODE_SIGN_IDENTITY='' \
             DEVELOPMENT_TEAM='' \
             clean build 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            grep -n -E '(^|[[:space:]])error:|SwiftCompile|CompileSwift' build.log | tail -n 240 > compiler-errors.txt || true
+            echo '===== Build289 compiler diagnostics ====='
+            cat compiler-errors.txt
+            exit "$status"
+          fi
+
+      - name: Upload Build289 compiler diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.22-build289-compiler-diagnostics
+          path: |
+            compiler-errors.txt
+            build.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Validate identity and minimum OS
         run: |
