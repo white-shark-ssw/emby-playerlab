@@ -1,6 +1,6 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build291 code written; native regression/Release CI and package verification in progress. Build289/290 remain real-device rejected.
+- **Status:** Active — Build291 code written and native simulator regressions passed; Release CI/package verification in progress. Build289/290 remain real-device rejected.
 - **Work ID:** DEV-home-carousel-drag-smoothness
 - **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / native presentation / Dock
 - **Task:** Correct reverse foreground movement, logo/text overlap and Dock upward regression; continue evidence-backed Home carousel refinement.
@@ -33,7 +33,7 @@ Product delta from Build290 is exactly AppIdentity, HomeCore, NativePresentation
 - Dedicated control harness compiles real NativePresentation, runtime class and metric definitions; only unrelated delivery/diagnostic services are stubbed. UIKit tests check full-width separation/base centers under both directions and reversal, vertical/resource callbacks, release direction, takeover continuity and invalidated completion.
 - Dock harness extracts the actual Home root expression from accepted Build286 and candidate source, preserving the server root/safe-area/navigation structure for comparison.
 - Rejected Build290 runs the same geometry/Dock assertions as a negative control; candidate must pass. Simulator results are distinct from user real-device acceptance.
-- Release compile, artifact retrieval, digest/source/IPA/plist/MinOS verification still pending. No current IPA291 has been claimed.
+- Native regression step passed in run 37336790243 / job 111853475339: rejected Build290 negative control failed assertions as required, candidate suite passed. Exact-source product guard passed. Release compile, artifact retrieval, digest/source/IPA/plist/MinOS verification still pending. No current IPA291 has been claimed.
 
 ## Next exact action
 
