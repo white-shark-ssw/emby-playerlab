@@ -63,10 +63,13 @@ struct EmbyStillViewerPresenter: UIViewControllerRepresentable {
     final class Coordinator {
         weak var host: UIViewController?
 
-        func dismiss() {
-            guard let host else { return }
-            host.dismiss(animated: false)
+        func dismiss(completion: (() -> Void)? = nil) {
+            guard let host else {
+                completion?()
+                return
+            }
             self.host = nil
+            host.dismiss(animated: false, completion: completion)
         }
     }
 
@@ -89,8 +92,7 @@ struct EmbyStillViewerPresenter: UIViewControllerRepresentable {
         let binding = $selectedIndex
         let coordinator = context.coordinator
         let viewer = EmbyStillViewer(images: images, initialIndex: index, itemId: itemId, client: client) {
-            binding.wrappedValue = nil
-            coordinator.dismiss()
+            coordinator.dismiss { binding.wrappedValue = nil }
         }
         let host = UIHostingController(rootView: viewer)
         host.view.backgroundColor = .clear
