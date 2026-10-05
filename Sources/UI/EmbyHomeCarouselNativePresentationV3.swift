@@ -84,7 +84,8 @@ struct V3HomeCarouselImageAnalysis {
         let prefersLight = EmbyImageContrastAnalyzer.prefersLightForeground(for: image)
         guard let input = CIImage(image: image) else { return V3HomeCarouselImageAnalysis(sourceSize: image.size, prefersLightForeground: prefersLight, red: 0.18, green: 0.18, blue: 0.18) }
         let extent = input.extent
-        let sample = CGRect(x: extent.minX + extent.width * 0.10, y: extent.minY + extent.height * 0.10, width: extent.width * 0.80, height: extent.height * 0.80).intersection(extent)
+        // Core Image's lower edge is minY. Carry that image color into the content floor.
+        let sample = CGRect(x: extent.minX + extent.width * 0.10, y: extent.minY + extent.height * 0.02, width: extent.width * 0.80, height: extent.height * 0.18).intersection(extent)
         guard !sample.isNull, sample.width > 0, sample.height > 0, let filter = CIFilter(name: "CIAreaAverage") else { return V3HomeCarouselImageAnalysis(sourceSize: image.size, prefersLightForeground: prefersLight, red: 0.18, green: 0.18, blue: 0.18) }
         filter.setValue(input, forKey: kCIInputImageKey)
         filter.setValue(CIVector(cgRect: sample), forKey: kCIInputExtentKey)
@@ -322,8 +323,8 @@ final class V3HomeCarouselNativeView: UIView {
             let usesLight = analysis?.prefersLightForeground ?? true
             let alpha: CGFloat = usesLight ? 0.22 : 0.16
             let color = usesLight ? UIColor.black : UIColor.white
-            contrastGradient.colors = [UIColor.clear.cgColor, UIColor.clear.cgColor, color.withAlphaComponent(alpha * 0.42).cgColor, color.withAlphaComponent(alpha).cgColor, UIColor.clear.cgColor]
-            contrastGradient.locations = [0.00, 0.46, 0.66, 0.82, 1.00]
+            contrastGradient.colors = [UIColor.clear.cgColor, UIColor.clear.cgColor, color.withAlphaComponent(alpha * 0.42).cgColor, color.withAlphaComponent(alpha).cgColor, UIColor.clear.cgColor, UIColor.clear.cgColor]
+            contrastGradient.locations = [0.00, 0.46, 0.66, 0.78, 0.90, 1.00]
         }
 
         func layoutArtwork(width: CGFloat, viewportHeight: CGFloat, displayRange: Double, rawScrollMinY: CGFloat) {
@@ -352,7 +353,7 @@ final class V3HomeCarouselNativeView: UIView {
                 renderedSize = CGSize(width: targetHeight * aspect, height: targetHeight)
             }
             // Fade the clear artwork into the same solid base across the full Hero/content boundary.
-            let clearImageBottom = AdaptiveHeroRevealMetrics.clearImageBottom(renderedImageSize: renderedSize, viewportHeight: visualHeight)
+            let clearImageBottom = min(0.90, AdaptiveHeroRevealMetrics.clearImageBottom(renderedImageSize: renderedSize, viewportHeight: visualHeight))
             let maskFadeSpan = min(0.55, clearImageBottom * 0.62)
             let maskStart = max(0.10, clearImageBottom - maskFadeSpan)
             let maskFirstMid = maskStart + (clearImageBottom - maskStart) * 0.29
@@ -402,6 +403,12 @@ final class V3HomeCarouselNativeView: UIView {
     private var orderedIDs: [String] = []
     private var indicatorViews: [String: UIView] = [:]
     private var resources: [String: V3HomeCarouselNativeResource] = [:]
+    private struct ArtworkHandoff {
+        let alphas: [String: CGFloat]
+        let foregroundOffsets: [String: CGFloat]
+        let baseColor: UIColor
+    }
+    private var artworkHandoff: ArtworkHandoff?
     private var animator: UIViewPropertyAnimator?
     private var visualState = V3HomeCarouselTransitionVisualState(currentID: nil, fromID: nil, toID: nil, direction: 1, progress: 0)
     private var presentationWidth: CGFloat = 0
@@ -506,6 +513,7 @@ final class V3HomeCarouselNativeView: UIView {
     func applyVisualState(_ state: V3HomeCarouselTransitionVisualState, animated: Bool) {
         let pagePairChanged = visualState.trailingID != state.trailingID || visualState.fromID != state.fromID || visualState.toID != state.toID || visualState.currentID != state.currentID
         visualState = state
+        if state.fromID == nil { artworkHandoff = nil }
         let progress = min(1, max(state.trailingID == nil ? 0 : -1, state.progress))
         let blend = V3HomeCarouselNativeLayout.transitionBlendProgress(progress)
         let width = max(1, presentationWidth)
@@ -535,6 +543,7 @@ final class V3HomeCarouselNativeView: UIView {
         }
         if pagePairChanged { layoutPages() }
         updateBaseColor(progress: progress)
+        applyArtworkHandoff(state)
         updateIndicatorSelection(state.toID != nil && progress >= 0.5 ? state.toID : state.currentID)
         if !animated { V3HomeCarouselCadenceDiagnostics.shared.recordSwiftUIUpdate(progress: progress) }
     }
@@ -549,6 +558,7 @@ final class V3HomeCarouselNativeView: UIView {
         animator.addCompletion { [weak self] position in
             guard let self else { return }
             self.animator = nil
+            self.artworkHandoff = nil
             self.visualState = state
             self.applyVisualState(state, animated: false)
             if position == .end { completion() }
@@ -562,6 +572,13 @@ final class V3HomeCarouselNativeView: UIView {
         if let fromID, let page = pages[fromID], let presentation = page.foregroundController.view.layer.presentation() {
             progress = min(1, max(visualState.trailingID == nil ? 0 : -1, -CGFloat(presentation.transform.m41) / (CGFloat(direction) * width)))
         }
+        // Capture every still-visible image, not just the logical pair. A previous outgoing
+        // artwork may still contribute while the foreground has already advanced another page.
+        artworkHandoff = ArtworkHandoff(
+            alphas: pages.mapValues { CGFloat($0.artwork.layer.presentation()?.opacity ?? Float($0.artwork.alpha)) },
+            foregroundOffsets: pages.mapValues { CGFloat($0.foregroundController.view.layer.presentation()?.transform.m41 ?? $0.foregroundController.view.transform.tx) },
+            baseColor: baseColorView.layer.presentation()?.backgroundColor.map { UIColor(cgColor: $0) } ?? baseColorView.backgroundColor ?? .clear
+        )
         stopAnimation()
         let state = V3HomeCarouselTransitionVisualState(currentID: visualState.currentID, fromID: fromID, toID: toID, direction: direction, progress: progress, trailingID: visualState.trailingID)
         applyVisualState(state, animated: false)
@@ -584,8 +601,25 @@ final class V3HomeCarouselNativeView: UIView {
                 trailing.foregroundController.view.transform = CGAffineTransform(translationX: -CGFloat(state.direction) * (1 + targetProgress) * width, y: 0)
             }
         }
+        // All captured outgoing artworks must finish fading, including pages outside the new pair.
+        for (id, page) in pages where id != state.fromID && id != state.toID { page.artwork.alpha = 0 }
         updateBaseColor(progress: targetProgress)
         updateIndicatorSelection(state.toID != nil && targetProgress >= 0.5 ? state.toID : state.currentID)
+    }
+
+    private func applyArtworkHandoff(_ state: V3HomeCarouselTransitionVisualState) {
+        guard let handoff = artworkHandoff, let fromID = state.fromID, let from = pages[fromID], let origin = handoff.foregroundOffsets[fromID] else { return }
+        // The captured layer values are presentation endpoints, not another transition owner.
+        // Rebase changes page labels but keeps these offsets, so acquisition has zero blend jump.
+        let movement = min(1, abs(from.foregroundController.view.transform.tx - origin) / max(1, presentationWidth))
+        for (id, page) in pages {
+            let captured = handoff.alphas[id] ?? 0
+            let nominal = page.artwork.alpha
+            let alpha = captured + (nominal - captured) * movement
+            page.artwork.alpha = alpha
+            page.artwork.isHidden = alpha <= 0
+        }
+        baseColorView.backgroundColor = mix(handoff.baseColor, baseColorView.backgroundColor ?? .clear, amount: movement)
     }
 
     private func layoutPages(visibleOnly: Bool = true) {
