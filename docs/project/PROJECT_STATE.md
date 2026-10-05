@@ -59,13 +59,9 @@ PR #290 is closed without merge. It is stacked on the separate unmerged Home Bui
 
 ## Active: Home carousel — Build291 geometry positive; Build292 rapid/fade validation
 
-OnePlayer **0.15.24 / Build291**, exact product source **dbeaa9d3472c85a5c238598da3aac41d8e49f43c**, remains on Draft PR#289 / perf/home-carousel-progress-scope-build286. Build289/290 are target-device rejected. The latest user recording specifically adds reverse motion and image-logo/text-title overlap to the Dock-up regression; source and rejected-source simulator tests now establish the transform→frame reset violation rather than a guessed framework/FPS limit.
+User confirms Build291 (0.15.24, dbeaa9d3472c85a5c238598da3aac41d8e49f43c) repairs the reported reverse motion, logo/text overlap and Dock upward regression. Build289/290 remain rejected. Overall native carousel smoothness remains Active: new device feedback identifies consecutive quick swipes and hard artwork/content seam.
 
-Build291 uses bounds/center for fixed foreground base geometry, removes ordinary progress page relayout, preserves the animator during resource configuration, and isolates native top overscan in an overlay of the accepted Build286 viewport+bottom-safe-area Home extent. Dock/input/runtime owners are unchanged. No shared Poster/images, detail/navigation or Frozen/P0 code changes. Product delta from Build290 is AppIdentity, HomeCore, NativePresentation and changelog.
-
-Xcode16.4 run/job **37336790243 / 111853475339** passed. Rejected Build290 gives 48 assertion failures in 3 negative-control tests; candidate gives 5 tests / 0 failures. Artifact **11356997513**; IPA SHA **a5a20c47f39a1df06b41211894dc01a3755ce939387574fa164fd02a484e8708**; MinOS15.0 independently verified. Exact package evidence is below and in BUILD_TEST_INDEX/checkpoint.
-
-Evidence is **Code written / simulator regressions passed / CI passed / IPA produced+verified / target-device pending / not stable**. Continue from the checkpoint with user testing of slow/rapid/reversal/settle-takeover/title/Dock and vertical/navigation behavior; do not claim final smoothness or 120FPS from simulator/CI/IPA.
+Build292 (0.15.25), exact source23ed1864f63d4701509df98b72d15e67038f801a, rebases committed same-direction takeover from native presentation position and retains the outgoing resident page, allowing the following neighbor to be committed; broader native mask fades across the full Hero into the same solid sampled color. Build291 HomeCore/Dock geometry and input remain unchanged. Draft PR#289 remains open/unmerged. Native negative control and candidate regression stage passed in run37341422303; exact-source Release/package underway; IPA/device/120FPS pending. See latest Build292 entry below and task checkpoint.
 
 ## Historical accepted interaction foundation: Home carousel — Build241 / 0.14.74
 
