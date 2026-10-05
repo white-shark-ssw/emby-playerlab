@@ -1,33 +1,36 @@
 # OnePlayer Project State
 
-_Last updated 2026-10-06: User explicitly accepted OnePlayer0.15.26/Build293 home-carousel reconstruction after testing. PR#289 merged to main; carousel interaction/native presentation is completed and stable/frozen. Build292120FPS is user-reported evidence._
+_Last updated 2026-10-06: User accepted OnePlayer0.15.27/Build294 independent Dock reconstruction. PR#291 merged; Dock task completed and stable/frozen. Accepted Build293 carousel and P0 contracts remain protected._
 
 ## Current accepted overall baseline
 
-- Product: **OnePlayer0.15.26 / Build293** — home-carousel acceptance milestone
-- Canonical branch: **main**, PR **#289**, merge **f0a737519801ff55f18e31f9bdcf5f83c9097c17**
-- Accepted/tested product source: **fa8ff44ff4a5384fd4603a64b33354f941764a8c**
-- Dedicated exact-source CI run/job: **37345215494 /111882105262 — success**
-- Artifact: **OnePlayer-0.15.26-build293-home-carousel-handoff**, ID **11361570366**
-- Artifact digest: **sha256:fe13e098eeb32b92b6e255784d0e742d7ffa2f5ac6225fcffe2daa1c61a87213**
-- IPA SHA256: **8b57d565e0b7c93a12e43e65e3c2085350933097119ddf0b370f69d0df4f91bf**
-- SourceZIP SHA256: **31b41a2ef631a99dbeb76926746fc87c5bff2c4e558ca0b193d2957aaaf447fc**
-- Deployment Target / built MinOS: **iOS15.0**
+- Product: **OnePlayer0.15.27 / Build294** — independent server Dock acceptance milestone
+- Canonical branch: **main**, PR **#291**, merge **cbea35bbdca027cf734a17370a93da106c545863**
+- Accepted/tested product source: **ca60a034d68d451bc0f93f5681465398131d54c5**
+- Exact-source CI control: **57cadec698dee04f144db8758e84e89bc4d79511** / ci/build294-server-dock-20261006
+- Dedicated CI run/job: **37355042210 /111915202727 — success**
+- Artifact: **OnePlayer-0.15.27-build294-server-dock**, ID **11364093817**
+- Artifact digest: **sha256:d43a93a534debd792a26b35f00f34b21a2560e758184d7002761411dae022c39**
+- IPA SHA256: **8c733224574672b9a7d22f9aa9e3f1423e4dd6a50d1c5631bb6731de16c5f7ab**
+- SourceZIP SHA256: **864930c2356cf906e3bbfcce84f678eee45e91453b7a58db31feb709da785f4e**
+- Bundle: **com.embyplayerlab.app**; Deployment Target / built MinOS: **iOS15.0**
 - Target device: **iPhone15ProMax /iOS17.0**
-- Real-device result: **user explicitly accepted Build293 carousel reconstruction on2026-10-06**
-- Evidence: **Code written /10 native tests passed /CI passed /IPA verified /real-device accepted /stable-frozen carousel scope /merged to main**
+- Real-device result: **user explicitly accepted Build294 on2026-10-06**
+- Evidence: **Code written /18 native tests passed /CI passed /IPA verified /real-device accepted /stable-frozen Dock scope /merged to main**
 
-Build293 inherits the accepted player/PiP/transport/cache/session/episode/detail/server-management contracts below. Its accepted carousel behavior uses resident native pages, one transition authority, continuous animation takeover and a shared solid lower-edge floor. This acceptance does not merge other Active tasks or infer a new frame trace; stable120FPS was explicitly reported for Build292. Build216 remains the historical accepted detail episode-range inertia milestone under Accepted product foundations.
+Build294 inherits accepted Build293 carousel behavior and player/PiP/transport/cache/session/episode/detail/server-management contracts. Dock placement now has one shared viewport host; page roots retain native-navigation visibility, while server root retains tab/Search lifetime/Home tap ownership. No new frame-rate claim is inferred from Dock acceptance. Build293 remains the accepted carousel milestone and Build216 the historical detail episode-range inertia milestone.
 
-## Active: Server Dock reconstruction — Build294 /0.15.27
+## Completed / stable: Server Dock reconstruction — Build294 /0.15.27
 
-DEV-server-dock-refactor / Draft PR#291 / branch refactor/server-dock-build294. **OnePlayer0.15.27 / Build294**, tested source **ca60a034d68d451bc0f93f5681465398131d54c5**, based on main119ab10eee869488b97415746a0243f51953eba0 (runtime bytes identical to accepted Build293 before this refactor). User authorized the independent Dock task and implementation.
+DEV-server-dock-refactor / merged PR#291 / branch refactor/server-dock-build294. **OnePlayer0.15.27 / Build294**, tested source **ca60a034d68d451bc0f93f5681465398131d54c5**, based on main119ab10eee869488b97415746a0243f51953eba0 (runtime bytes identical to accepted Build293 before this refactor). User authorized the independent Dock task and implementation.
 
 Typed Dock bar and one fixed-viewport host replace the page-local AnyView overlays/parameter chain and Search-only root overlay. Root retains selected tab/Search lifetime/Home tap actions; page roots declare visibility within native navigation. Shared physical bottom inset, keyboard exclusion and content clearance keep oversized content from moving Dock. Detail's actual fully-immersive preference remains authoritative. Frozen carousel native/runtime/input and Player/PiP/Transport/Cache/Emby source unchanged; iOS15 retained.
 
 Exact-source Xcode16.4 CI **37355042210 / job111915202727** passed on control **57cadec698dee04f144db8758e84e89bc4d79511** (ci/build294-server-dock-20261006). **18 native regressions /0 failures**, covering accepted Home carousel on/off Dock position, all tab/style geometry, actual software keyboard frame + stable Dock, oversized content/native bars, native push hide/pop restore, actual detail preference, root Search lifetime/Home tap actions and nine retained carousel tests. Release/package/embedded MinOS audit passed. Independently verified artifact **11364093817**, SHA-256 **d43a93a534debd792a26b35f00f34b21a2560e758184d7002761411dae022c39**; IPA SHA-256 **8c733224574672b9a7d22f9aa9e3f1423e4dd6a50d1c5631bb6731de16c5f7ab**; source ZIP SHA-256 **864930c2356cf906e3bbfcce84f678eee45e91453b7a58db31feb709da785f4e**; bundle **com.embyplayerlab.app**, version **0.15.27**, Build **294**, Info MinOS **15.0**, arm64 executable MinOS **15.0.0**.
 
-**Code written /CI passed /IPA produced+independently verified /target-device pending /not stable**. Overall accepted baseline remains Build293. Next: iPhone15ProMax/iOS17.0 test four tabs, carousel on/off, keyboard focus/dismiss, nested browsing, detail fully-immersive preference, native push/pop/edge-back and Home repeated taps. Do not rebuild, merge or freeze before new runtime/device evidence.
+User explicitly accepted OnePlayer0.15.27/Build294 on2026-10-06: “没什么问题，验收通过”. Target device iPhone15ProMax/iOS17.0. PR#291 merged at **cbea35bbdca027cf734a17370a93da106c545863**; exact tested source **ca60a034d68d451bc0f93f5681465398131d54c5**. PR head **4a3b7fd8a33fab1ab03dad74e62b9c096eeb258a** and merged main differ from tested source only in project documents; runtime/tests are identical.
+
+**Code written /18 native regressions passed /CI passed /IPA independently verified /real-device accepted /stable-frozen Dock scope /merged to main**. Build294 is the current accepted overall baseline and inherits accepted Build293 carousel and P0 contracts. DEV-server-dock-refactor completed; only its checkpoint is removed. Other Active tasks remain unchanged. Preserve shared Dock viewport/safe-area/keyboard/content-clearance ownership, original bar appearance, root tab/Search-lifetime/Home-tap actions and native detail/navigation visibility. Reopen only on explicit new requirements or regression evidence.
 
 ## Frozen / protected contracts
 
@@ -52,6 +55,7 @@ Exact-source Xcode16.4 CI **37355042210 / job111915202727** passed on control **
 - **Build195**: SeasonId-first player grouping + lazy very-large episode row; merged PR #258.
 - **Build199**: Add/Edit Emby modern editor, same-server route selection, cached-first auto-start, local retained password and optional synchronizable Keychain password for iCloud; merged PR #256.
 - **Build213**: Favorites + Library 7-tab disk-backed warm presentation cache; cached-first after relaunch, live refresh remains authoritative, successful accepted state writes through, failed refresh retains old snapshot; target-device accepted through PR #260.
+- **Build294**: independent typed server Dock and fixed-viewport host; user accepted0.15.27 on2026-10-06, PR#291 merged; physical inset/keyboard/content clearance centralized, existing root/navigation/detail contracts retained; iOS15 preserved.
 - **Build293**: native resident home carousel, continuous rapid takeover and shared lower-edge floor; user accepted0.15.26 on2026-10-06, PR#289 merged; iOS15 preserved.
 - **Build216**: detail range-pill taps synchronously stop active native episode-row deceleration before the existing Build191 range-first selection and 0.32 s target scroll; target-device accepted and merged through PR #261.
 
