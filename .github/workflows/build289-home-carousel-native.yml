@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PRODUCT_SHA: aec32ec2cbe42ce09465efebc6e4624f317302a5
+  PRODUCT_SHA: 0f5a1893988e20e0dcfe21d0395abe194c2340e6
   PRODUCT_BRANCH: perf/home-carousel-progress-scope-build286
   BUILD286_SHA: 7e7b2ec944f5c0e74bc291e37683f1529e3d46b4
   VERSION: 0.15.22
