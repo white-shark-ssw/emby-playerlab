@@ -24,12 +24,11 @@ jobs:
       - name: Record Build288 target-device acceptance and close task
         run: |
           set -euo pipefail
-          EXPECTED_MAIN=f6a4c2a5f51fa1d0aead75d272daec3165f2760f
+          EXPECTED_MAIN=e2860b862320c702ba177b2b564c703838a4575d
           test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN"
           python3 - <<'PY'
           from pathlib import Path
 
-          # BUILD_TEST_INDEX: promote Build288 from pending diagnostic to accepted closeout.
           path = Path('docs/project/BUILD_TEST_INDEX.md')
           text = path.read_text()
           lines = text.splitlines()
@@ -37,11 +36,9 @@ jobs:
           matches = [i for i, line in enumerate(lines) if line.startswith(prefix)]
           if len(matches) != 1:
               raise SystemExit(f'expected one Build288 pending line, found {len(matches)}')
-          i = matches[0]
-          lines[i] = '- **Build288 / OnePlayer 0.15.21** — **target-device accepted closeout on 2026-10-05**. Exact product source `ce565996e37dcb750117c9de4607b23b673edce3` restores the original Build286 still-viewer ordering and adds only narrow `StillViewer` lifecycle diagnostics plus AppIdentity; `ImmersiveUIComponents.swift`, `EmbyMediaDetailView.swift`, system navigation ownership, Home runtime and all P0 playback/transport paths remain unchanged. Xcode 16.4 run/job `37296666668 / 111719392128` succeeded; artifact `OnePlayer-0.15.21-build288-detail-nav-diagnostics`, ID `11340525765`, digest `sha256:9bbc4b5636f446f882025531bf33ac9a6b99512963f560fa9039ca0c0e111449`; IPA SHA-256 `f1100a6b2b344c6615ad20c2328cf096d52c84b46bf10a0402dad52ae5fa7eed`; source ZIP SHA-256 `ea963fe5f8d7d0a9303a8dcef48ddc1b2fe2947b376b527988eb06a6655d8609`; MinOS 15.0. The user reports the previously reproduced opaque top bar/native back title did not recur in Build288 and explicitly accepted task completion. Because Build288 contains no new detail behavior change versus Build286 beyond reverting rejected Build287 and adding diagnostics, no causal root-fix claim is made; the durable result is to retain Build286 detail behavior and reject Build287 dismiss-first ordering. PR #290 is closed unmerged because it is stacked on the separate unmerged Home Build286 line and merging identity/diagnostics would not integrate a distinct detail behavior fix. **Evidence: Code written ✅ / exact scope ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device accepted ✅ / task completed ✅ / behavior contract frozen ✅ / merged not required.**'
+          lines[matches[0]] = '- **Build288 / OnePlayer 0.15.21** — **target-device accepted closeout on 2026-10-05**. Exact product source `ce565996e37dcb750117c9de4607b23b673edce3` restores the original Build286 still-viewer ordering and adds only narrow `StillViewer` lifecycle diagnostics plus AppIdentity; `ImmersiveUIComponents.swift`, `EmbyMediaDetailView.swift`, system navigation ownership, Home runtime and all P0 playback/transport paths remain unchanged. Xcode 16.4 run/job `37296666668 / 111719392128` succeeded; artifact `OnePlayer-0.15.21-build288-detail-nav-diagnostics`, ID `11340525765`, digest `sha256:9bbc4b5636f446f882025531bf33ac9a6b99512963f560fa9039ca0c0e111449`; IPA SHA-256 `f1100a6b2b344c6615ad20c2328cf096d52c84b46bf10a0402dad52ae5fa7eed`; source ZIP SHA-256 `ea963fe5f8d7d0a9303a8dcef48ddc1b2fe2947b376b527988eb06a6655d8609`; MinOS 15.0. The user reports the previously reproduced opaque top bar/native back title did not recur in Build288 and explicitly accepted task completion. Because Build288 contains no new detail behavior change versus Build286 beyond reverting rejected Build287 and adding diagnostics, no causal root-fix claim is made; the durable result is to retain Build286 detail behavior and reject Build287 dismiss-first ordering. PR #290 is closed unmerged because it is stacked on the separate unmerged Home Build286 line and merging identity/diagnostics would not integrate a distinct detail behavior fix. **Evidence: Code written ✅ / exact scope ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device accepted ✅ / task completed ✅ / behavior contract frozen ✅ / merged not required.**'
           path.write_text('\n'.join(lines) + ('\n' if text.endswith('\n') else ''))
 
-          # MODULE_STATUS: task is complete and frozen at the accepted runtime behavior.
           path = Path('docs/project/MODULE_STATUS.md')
           text = path.read_text()
           lines = text.splitlines()
@@ -49,8 +46,7 @@ jobs:
           matches = [i for i, line in enumerate(lines) if line.startswith(prefix)]
           if len(matches) != 1:
               raise SystemExit(f'expected one active detail module row, found {len(matches)}')
-          i = matches[0]
-          lines[i] = '| Detail immersive navigation / still viewer | **Completed / frozen — Build288 target-device accepted** | Build287/0.15.20 worsened the opaque top-bar/native-back-title regression and remains rejected. Build288/0.15.21 exact source `ce565996e37dcb750117c9de4607b23b673edce3` restores Build286 still-viewer ordering and adds lifecycle diagnostics only; run/job `37296666668 / 111719392128`, artifact `11340525765`, IPA SHA `f1100a6b2b344c6615ad20c2328cf096d52c84b46bf10a0402dad52ae5fa7eed`, MinOS 15.0. On 2026-10-05 the user reports the prior regression did not recur and explicitly accepted completion. No causal fix beyond rejecting Build287 is claimed. Preserve transparent immersive navigation during normal detail scroll/still-viewer use, system-owned push/pop, and Build182/184/191/216 contracts; reopen only on new target-device regression. PR #290 is closed unmerged because it is stacked on the separate Home Build286 task and has no distinct detail behavior patch to integrate. |'
+          lines[matches[0]] = '| Detail immersive navigation / still viewer | **Completed / frozen — Build288 target-device accepted** | Build287/0.15.20 worsened the opaque top-bar/native-back-title regression and remains rejected. Build288/0.15.21 exact source `ce565996e37dcb750117c9de4607b23b673edce3` restores Build286 still-viewer ordering and adds lifecycle diagnostics only; run/job `37296666668 / 111719392128`, artifact `11340525765`, IPA SHA `f1100a6b2b344c6615ad20c2328cf096d52c84b46bf10a0402dad52ae5fa7eed`, MinOS 15.0. On 2026-10-05 the user reports the prior regression did not recur and explicitly accepted completion. No causal fix beyond rejecting Build287 is claimed. Preserve transparent immersive navigation during normal detail scroll/still-viewer use, system-owned push/pop, and Build182/184/191/216 contracts; reopen only on new target-device regression. PR #290 is closed unmerged because it is stacked on the separate Home Build286 task and has no distinct detail behavior patch to integrate. |'
           old = 'Detail Build287 is rejected on target device; Build288 is the separate Build286-stacked, CI/IPA-verified diagnostic candidate awaiting fresh target-device lifecycle logs and does not claim a repair.'
           new = 'Detail immersive navigation is completed/frozen from the Build288 target-device acceptance; Build287 remains rejected, and PR #290 is closed unmerged because Build288 adds no distinct detail behavior patch over Build286.'
           joined = '\n'.join(lines) + ('\n' if text.endswith('\n') else '')
@@ -58,7 +54,6 @@ jobs:
               raise SystemExit('MODULE_STATUS other-product detail sentence missing')
           path.write_text(joined.replace(old, new, 1))
 
-          # PROJECT_STATE: make the acceptance a durable project-level fact without changing overall baseline.
           path = Path('docs/project/PROJECT_STATE.md')
           text = path.read_text()
           old_header = next((line for line in text.splitlines() if line.startswith('_Last updated ')), None)
@@ -75,7 +70,6 @@ jobs:
               text = text.replace(anchor, anchor + section, 1)
           path.write_text(text)
 
-          # TECHNICAL_DECISIONS: extend D007 with the durable rejected-direction result.
           path = Path('docs/project/TECHNICAL_DECISIONS.md')
           text = path.read_text()
           decision = '2026-10-05 detail still-viewer closeout:'
@@ -87,7 +81,6 @@ jobs:
               text = text.replace(anchor, anchor + addition, 1)
           path.write_text(text)
 
-          # Completion rule: current/dev contains only active tasks, so remove the completed checkpoint.
           checkpoint = Path('docs/project/current/dev/DEV-detail-immersive-still-viewer-nav.md')
           if not checkpoint.exists():
               raise SystemExit('detail checkpoint missing before completion cleanup')
