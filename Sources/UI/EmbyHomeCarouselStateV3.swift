@@ -116,6 +116,13 @@ final class V3HomeCarouselRuntimeState {
     func updateDrag(translationX: CGFloat, width: CGFloat) {
         guard isDragging, let currentID else { return }
         let signedPosition = min(1, max(-1, dragOriginSignedProgress - translationX / max(1, width)))
+        if rebasedCommittedDrag {
+            progress = signedPosition * CGFloat(direction)
+            trailingID = progress < 0 ? neighborID(from: currentID, direction: -direction) : nil
+            V3HomeCarouselCadenceDiagnostics.shared.recordProgressPublish(progress)
+            presentation?.present(visualState)
+            return
+        }
         var nextDirection = direction
         if signedPosition > 0.0001 { nextDirection = 1 }
         else if signedPosition < -0.0001 { nextDirection = -1 }
