@@ -1,59 +1,206 @@
-name: Apply Build290 Home Dock Layout Fix
+name: Build290 Home Carousel Dock Layout Fix
 
 on:
   push:
     branches: [ci/build289-home-carousel-native-20261005]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: build290-home-dock-patch
+  group: build290-home-carousel-dock-fix
   cancel-in-progress: true
 
 env:
-  PREVIOUS_PRODUCT_SHA: 0f5a1893988e20e0dcfe21d0395abe194c2340e6
+  PRODUCT_SHA: 9e0bb371fe65c29524b92ac1892bab84b6684444
   PRODUCT_BRANCH: perf/home-carousel-progress-scope-build286
+  BUILD286_SHA: 7e7b2ec944f5c0e74bc291e37683f1529e3d46b4
+  BUILD289_SHA: 0f5a1893988e20e0dcfe21d0395abe194c2340e6
+  VERSION: 0.15.23
+  BUILD_NUMBER: 290
 
 jobs:
-  patch:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
     steps:
       - name: Checkout control branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Apply exact product patch
+      - name: Checkout and guard exact product source
         run: |
           set -euo pipefail
           git fetch origin "$PRODUCT_BRANCH"
-          test "$(git rev-parse "origin/$PRODUCT_BRANCH")" = "$PREVIOUS_PRODUCT_SHA"
-          git checkout -B "$PRODUCT_BRANCH" "origin/$PRODUCT_BRANCH"
-          python3 - <<'PY'
-          from pathlib import Path
-          core_path = Path("Sources/UI/EmbyHomeCoreV3.swift")
-          core = core_path.read_text()
-          old = "                }\n                .background(Color(uiColor: .systemBackground).ignoresSafeArea())\n"
-          new = "                }\n                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)\n                .background(Color(uiColor: .systemBackground).ignoresSafeArea())\n"
-          if core.count(old) != 1:
-              raise SystemExit(f"unexpected Home root layout match count: {core.count(old)}")
-          core_path.write_text(core.replace(old, new, 1))
-          identity_path = Path("Sources/Core/AppIdentity.swift")
-          identity = identity_path.read_text()
-          if identity.count('"0.15.22"') != 2:
-              raise SystemExit("unexpected AppIdentity version count")
-          identity_path.write_text(identity.replace('"0.15.22"', '"0.15.23"'))
-          PY
-          git diff --check
-          changed="$(git diff --name-only | sort)"
-          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCoreV3.swift | sort)"
-          printf 'Build290 fix paths:\n%s\n' "$changed"
+          test "$(git rev-parse "origin/$PRODUCT_BRANCH")" = "$PRODUCT_SHA"
+          git checkout --detach "$PRODUCT_SHA"
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+
+          build290_changed="$(git diff --name-only "$BUILD289_SHA" "$PRODUCT_SHA" | sort)"
+          build290_expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCoreV3.swift | sort)"
+          printf 'Build290 delta from Build289:\n%s\n' "$build290_changed"
+          test "$build290_changed" = "$build290_expected"
+
+          changed="$(git diff --name-only "$BUILD286_SHA" "$PRODUCT_SHA" | sort)"
+          expected="$(printf '%s\n' \
+            Sources/Core/AppIdentity.swift \
+            Sources/UI/EmbyHomeCarouselNativePresentationV3.swift \
+            Sources/UI/EmbyHomeCarouselStateV3.swift \
+            Sources/UI/EmbyHomeCoreV3.swift \
+            Sources/UI/EmbyHomeHeroScrollStateV3.swift \
+            Sources/UI/EmbyHomeHeroV3.swift | sort)"
+          printf 'Build290 product paths:\n%s\n' "$changed"
           test "$changed" = "$expected"
-          grep -F '.frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)' Sources/UI/EmbyHomeCoreV3.swift
+          git diff --check "$BUILD286_SHA" "$PRODUCT_SHA"
+
           grep -F 'static let sourceVersion = "0.15.23"' Sources/Core/AppIdentity.swift
-          git config user.name "OnePlayer CI"
-          git config user.email "actions@users.noreply.github.com"
-          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCoreV3.swift
-          git commit -m "fix: constrain Home layout around native carousel"
-          git push origin "HEAD:$PRODUCT_BRANCH"
+          grep -F '.frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)' Sources/UI/EmbyHomeCoreV3.swift
+          grep -F 'final class V3HomeCarouselRuntimeState' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'UIViewPropertyAnimator' Sources/UI/EmbyHomeCarouselNativePresentationV3.swift
+          grep -F 'presentation.transform.m41' Sources/UI/EmbyHomeCarouselNativePresentationV3.swift
+          grep -F 'directionalVelocity >= 500' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'distanceProgress >= 0.28 || velocityCommit' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'duration: 0.22' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'duration: 0.18' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'duration: 0.62' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'timeIntervalSince(lastSettledAt) >= 6' Sources/UI/EmbyHomeCarouselStateV3.swift
+          ! grep -F 'DispatchQueue.main.asyncAfter' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'V3HomeCarouselNativeSurface' Sources/UI/EmbyHomeCoreV3.swift
+          grep -F 'V3HomeCarouselResourcePreparationView' Sources/UI/EmbyHomeCoreV3.swift
+          ! grep -F 'V3HomeCarouselProgress' Sources/UI/EmbyHomeHeroV3.swift
+          ! grep -F '.blur(radius: 30)' Sources/UI/EmbyHomeHeroV3.swift
+          ! grep -F 'persistentCarouselBackdrop' Sources/UI/EmbyHomeHeroV3.swift
+          ! grep -F 'carouselPreloadLayer' Sources/UI/EmbyHomeHeroV3.swift
+          grep -F 'iOS: "15.0"' project.yml
+          grep -F 'deploymentTarget: "15.0"' project.yml
+          ! git diff --name-only "$BUILD286_SHA" "$PRODUCT_SHA" | grep -E 'Sources/(Player|Transport|Session|Cache)/|Sources/UI/(Player|MPV|PlayerPiP)' >/dev/null
+
+      - name: Export exact source snapshot
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          SOURCE_ZIP="OnePlayer-${VERSION}-build${BUILD_NUMBER}-home-carousel-dock-fix-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" "$PRODUCT_SHA"
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Inject package identity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          import re
+          from pathlib import Path
+          version = "0.15.23"
+          build = "290"
+          info_path = Path("Config/Info.plist")
+          with info_path.open("rb") as handle:
+              info = plistlib.load(handle)
+          info["CFBundleShortVersionString"] = version
+          info["CFBundleVersion"] = build
+          with info_path.open("wb") as handle:
+              plistlib.dump(info, handle, sort_keys=False)
+          project_path = Path("project.yml")
+          project = project_path.read_text()
+          project = re.sub(r'MARKETING_VERSION: "[^"]+"', f'MARKETING_VERSION: "{version}"', project)
+          project = re.sub(r'CURRENT_PROJECT_VERSION: "[^"]+"', f'CURRENT_PROJECT_VERSION: "{build}"', project)
+          project_path.write_text(project)
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcodegen --version
+          pod --version
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned app
+        run: |
+          set -uo pipefail
+          rm -rf build
+          set +e
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            grep -n -E '(^|[[:space:]])error:|SwiftCompile|CompileSwift' build.log | tail -n 240 > compiler-errors.txt || true
+            echo '===== Build290 compiler diagnostics ====='
+            cat compiler-errors.txt
+            exit "$status"
+          fi
+
+      - name: Upload Build290 compiler diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.23-build290-compiler-diagnostics
+          path: |
+            compiler-errors.txt
+            build.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Validate identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version "$VERSION" --build "$BUILD_NUMBER" --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" 15.0 17.0 min-os-report.log build.log
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-${VERSION}-build${BUILD_NUMBER}-home-carousel-dock-fix-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload Build290 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.23-build290-home-carousel-dock-fix
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            built-info-plist.log
+            min-os-report.log
+            package.log
+            build.log
+          if-no-files-found: error
+          retention-days: 30
