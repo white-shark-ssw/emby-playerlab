@@ -121,7 +121,6 @@ final class V3HomeCarouselPresentationBridge {
             resources[item.id] = resource
         }
         view?.configure(items: items, resources: resourcesSnapshot())
-        view?.applyVisualState(visualState, animated: false)
     }
 
     func updateGeometry(width: CGFloat, viewportHeight: CGFloat, surfaceHeight: CGFloat, displayRange: Double) {
@@ -424,7 +423,7 @@ final class V3HomeCarouselNativeView: UIView {
         baseColorView.frame = bounds
         artworkContainer.frame = bounds
         foregroundContainer.frame = bounds
-        layoutVisiblePages()
+        layoutPages(visibleOnly: false)
         layoutIndicators()
     }
 
@@ -454,14 +453,15 @@ final class V3HomeCarouselNativeView: UIView {
         }
         orderedIDs = newIDs
         rebuildIndicatorsIfNeeded()
-        layoutVisiblePages()
-        applyVisualState(visualState, animated: false)
+        layoutPages(visibleOnly: false)
+        // Resource arrivals may update content, but must not snap an in-flight animator to its target.
+        if animator == nil { applyVisualState(visualState, animated: false) }
     }
 
     func setHeroImage(_ image: UIImage, itemID: String) {
         resources[itemID] = V3HomeCarouselNativeResource(heroImage: image, logoImage: resources[itemID]?.logoImage, analysis: resources[itemID]?.analysis)
         pages[itemID]?.artwork.imageView.image = image
-        layoutVisiblePages()
+        layoutPages()
     }
 
     func setLogoImage(_ image: UIImage, itemID: String) {
@@ -478,7 +478,7 @@ final class V3HomeCarouselNativeView: UIView {
         resources[itemID] = resource
         guard let page = pages[itemID] else { return }
         page.update(item: page.item, resource: resource)
-        layoutVisiblePages()
+        layoutPages()
         updateBaseColor(progress: visualState.progress)
     }
 
@@ -495,11 +495,12 @@ final class V3HomeCarouselNativeView: UIView {
 
     func updateRawScrollMinY(_ value: CGFloat) {
         rawScrollMinY = value
-        layoutVisiblePages()
+        layoutPages()
         layoutIndicators()
     }
 
     func applyVisualState(_ state: V3HomeCarouselTransitionVisualState, animated: Bool) {
+        let pagePairChanged = visualState.fromID != state.fromID || visualState.toID != state.toID || visualState.currentID != state.currentID
         visualState = state
         let progress = min(1, max(0, state.progress))
         let blend = V3HomeCarouselNativeLayout.backdropBlendProgress(progress)
@@ -524,7 +525,7 @@ final class V3HomeCarouselNativeView: UIView {
                 page.artwork.alpha = visible ? 1 : 0; page.foregroundController.view.alpha = visible ? 1 : 0; page.foregroundController.view.transform = .identity
             }
         }
-        layoutVisiblePages()
+        if pagePairChanged { layoutPages() }
         updateBaseColor(progress: progress)
         updateIndicatorSelection(state.toID != nil && progress >= 0.5 ? state.toID : state.currentID)
         if !animated { V3HomeCarouselCadenceDiagnostics.shared.recordSwiftUIUpdate(progress: progress) }
@@ -534,7 +535,7 @@ final class V3HomeCarouselNativeView: UIView {
         stopAnimation()
         let targetProgress = min(1, max(0, state.progress))
         visualState = state
-        layoutVisiblePages()
+        layoutPages()
         let animator = UIViewPropertyAnimator(duration: duration, curve: curve) { [weak self] in self?.applyAnimatedTarget(state, targetProgress: targetProgress) }
         self.animator = animator
         animator.addCompletion { [weak self] position in
@@ -575,16 +576,21 @@ final class V3HomeCarouselNativeView: UIView {
         updateIndicatorSelection(state.toID != nil && targetProgress >= 0.5 ? state.toID : state.currentID)
     }
 
-    private func layoutVisiblePages() {
+    private func layoutPages(visibleOnly: Bool = true) {
         guard presentationWidth > 0, viewportHeight > 0 else { return }
         let adjustment = V3HomeCarouselNativeLayout.displayHeightAdjustment(displayRange: displayRange, viewportHeight: viewportHeight)
         let baseHeight = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: presentationWidth, viewportHeight: viewportHeight) + adjustment
         let stretch = max(0, rawScrollMinY)
         let visualHeight = baseHeight + stretch
         let heroY = min(0, rawScrollMinY)
-        for page in pages.values where !page.artwork.isHidden || !page.foregroundController.view.isHidden {
+        for page in pages.values where !visibleOnly || !page.artwork.isHidden || !page.foregroundController.view.isHidden {
             page.artwork.layoutArtwork(width: presentationWidth, viewportHeight: viewportHeight, displayRange: displayRange, rawScrollMinY: rawScrollMinY)
-            page.foregroundController.view.frame = CGRect(x: 0, y: heroY, width: presentationWidth, height: visualHeight)
+            // frame is undefined under a nonidentity transform. Keep the untransformed base fixed.
+            let foreground = page.foregroundController.view!
+            let size = CGSize(width: presentationWidth, height: visualHeight)
+            let center = CGPoint(x: presentationWidth * 0.5, y: heroY + visualHeight * 0.5)
+            if foreground.bounds.size != size { foreground.bounds.size = size }
+            if foreground.center != center { foreground.center = center }
         }
     }
 

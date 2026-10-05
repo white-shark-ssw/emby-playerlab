@@ -56,10 +56,14 @@ struct V3EmbyHomeView: View {
                 let nativeSurfaceHeight = geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
                 ZStack(alignment: .top) {
                     if immersive {
-                        V3HomeCarouselNativeSurface(bridge: carouselPresentationBridge, width: geometry.size.width, viewportHeight: viewportHeight, surfaceHeight: nativeSurfaceHeight, displayRange: carouselDisplayRange)
-                            .frame(width: geometry.size.width, height: nativeSurfaceHeight)
-                            .offset(y: -geometry.safeAreaInsets.top)
-                            .allowsHitTesting(false)
+                        // Keep Build286's layout extent; the native top overscan is render-only.
+                        Color.clear.frame(width: geometry.size.width, height: geometry.size.height + geometry.safeAreaInsets.bottom)
+                            .overlay(alignment: .top) {
+                                V3HomeCarouselNativeSurface(bridge: carouselPresentationBridge, width: geometry.size.width, viewportHeight: viewportHeight, surfaceHeight: nativeSurfaceHeight, displayRange: carouselDisplayRange)
+                                    .frame(width: geometry.size.width, height: nativeSurfaceHeight)
+                                    .offset(y: -geometry.safeAreaInsets.top)
+                                    .allowsHitTesting(false)
+                            }
                     } else {
                         Color(uiColor: .systemBackground).ignoresSafeArea()
                     }
@@ -80,7 +84,6 @@ struct V3EmbyHomeView: View {
                         .zIndex(1)
                     }
                 }
-                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
                 .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 .overlay(alignment: .bottom) {
                     if immersive { dock.padding(.bottom, serverDockBottomInset) }
