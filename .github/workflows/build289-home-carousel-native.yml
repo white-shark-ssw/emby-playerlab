@@ -1,22 +1,22 @@
-name: Build289 Home Carousel Native Runtime
+name: Build290 Home Carousel Dock Layout Fix
 
 on:
   push:
-    branches: [ci/build289-home-carousel-native-20261005]
+    branches: [ci/build290-home-dock-fix-20261005]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: build289-home-carousel-native
+  group: build290-home-dock-fix
   cancel-in-progress: true
 
 env:
-  PRODUCT_SHA: 0f5a1893988e20e0dcfe21d0395abe194c2340e6
+  PREVIOUS_PRODUCT_SHA: 0f5a1893988e20e0dcfe21d0395abe194c2340e6
   PRODUCT_BRANCH: perf/home-carousel-progress-scope-build286
   BUILD286_SHA: 7e7b2ec944f5c0e74bc291e37683f1529e3d46b4
-  VERSION: 0.15.22
-  BUILD_NUMBER: 289
+  VERSION: 0.15.23
+  BUILD_NUMBER: 290
 
 jobs:
   build:
@@ -28,13 +28,60 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout and guard exact product source
+      - name: Apply exact Build290 product fix
         run: |
           set -euo pipefail
           git fetch origin "$PRODUCT_BRANCH"
-          test "$(git rev-parse "origin/$PRODUCT_BRANCH")" = "$PRODUCT_SHA"
-          git checkout --detach "$PRODUCT_SHA"
+          test "$(git rev-parse "origin/$PRODUCT_BRANCH")" = "$PREVIOUS_PRODUCT_SHA"
+          git checkout -B "$PRODUCT_BRANCH" "origin/$PRODUCT_BRANCH"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          core_path = Path("Sources/UI/EmbyHomeCoreV3.swift")
+          core = core_path.read_text()
+          old = """                }
+                .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+"""
+          new = """                }
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+"""
+          if core.count(old) != 1:
+              raise SystemExit(f"unexpected Home root layout match count: {core.count(old)}")
+          core_path.write_text(core.replace(old, new, 1))
+
+          identity_path = Path("Sources/Core/AppIdentity.swift")
+          identity = identity_path.read_text()
+          if identity.count('"0.15.22"') != 2:
+              raise SystemExit(f"unexpected AppIdentity 0.15.22 count: {identity.count(chr(34) + '0.15.22' + chr(34))}")
+          identity_path.write_text(identity.replace('"0.15.22"', '"0.15.23"'))
+          PY
+
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCoreV3.swift | sort)"
+          printf 'Build290 fix paths:\n%s\n' "$changed"
+          test "$changed" = "$expected"
+          grep -F '.frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)' Sources/UI/EmbyHomeCoreV3.swift
+          grep -F 'static let sourceVersion = "0.15.23"' Sources/Core/AppIdentity.swift
+          git diff -- Sources/UI/EmbyHomeCoreV3.swift Sources/Core/AppIdentity.swift
+
+          git config user.name "OnePlayer CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCoreV3.swift
+          git commit -m "fix: constrain Home layout around native carousel"
+          PRODUCT_SHA="$(git rev-parse HEAD)"
+          echo "PRODUCT_SHA=$PRODUCT_SHA" >> "$GITHUB_ENV"
+          git push origin "HEAD:$PRODUCT_BRANCH"
+
+      - name: Guard exact product source
+        run: |
+          set -euo pipefail
           test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          changed_from_previous="$(git diff --name-only "$PREVIOUS_PRODUCT_SHA" "$PRODUCT_SHA" | sort)"
+          expected_fix="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyHomeCoreV3.swift | sort)"
+          test "$changed_from_previous" = "$expected_fix"
 
           changed="$(git diff --name-only "$BUILD286_SHA" "$PRODUCT_SHA" | sort)"
           expected="$(printf '%s\n' \
@@ -44,11 +91,11 @@ jobs:
             Sources/UI/EmbyHomeCoreV3.swift \
             Sources/UI/EmbyHomeHeroScrollStateV3.swift \
             Sources/UI/EmbyHomeHeroV3.swift | sort)"
-          printf 'Build289 product paths:\n%s\n' "$changed"
+          printf 'Build290 product paths from Build286:\n%s\n' "$changed"
           test "$changed" = "$expected"
           git diff --check "$BUILD286_SHA" "$PRODUCT_SHA"
 
-          grep -F 'static let sourceVersion = "0.15.22"' Sources/Core/AppIdentity.swift
+          grep -F 'static let sourceVersion = "0.15.23"' Sources/Core/AppIdentity.swift
           grep -F 'final class V3HomeCarouselRuntimeState' Sources/UI/EmbyHomeCarouselStateV3.swift
           grep -F 'UIViewPropertyAnimator' Sources/UI/EmbyHomeCarouselNativePresentationV3.swift
           grep -F 'presentation.transform.m41' Sources/UI/EmbyHomeCarouselNativePresentationV3.swift
@@ -60,6 +107,7 @@ jobs:
           grep -F 'timeIntervalSince(lastSettledAt) >= 6' Sources/UI/EmbyHomeCarouselStateV3.swift
           ! grep -F 'DispatchQueue.main.asyncAfter' Sources/UI/EmbyHomeCarouselStateV3.swift
           grep -F 'V3HomeCarouselNativeSurface' Sources/UI/EmbyHomeCoreV3.swift
+          grep -F '.frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)' Sources/UI/EmbyHomeCoreV3.swift
           grep -F 'V3HomeCarouselResourcePreparationView' Sources/UI/EmbyHomeCoreV3.swift
           ! grep -F 'V3HomeCarouselProgress' Sources/UI/EmbyHomeHeroV3.swift
           ! grep -F '.blur(radius: 30)' Sources/UI/EmbyHomeHeroV3.swift
@@ -73,7 +121,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
-          SOURCE_ZIP="OnePlayer-${VERSION}-build${BUILD_NUMBER}-home-carousel-native-source.zip"
+          SOURCE_ZIP="OnePlayer-${VERSION}-build${BUILD_NUMBER}-home-carousel-dock-fix-source.zip"
           git archive --format=zip --output "$SOURCE_ZIP" "$PRODUCT_SHA"
           shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
           echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
@@ -85,8 +133,8 @@ jobs:
           import plistlib
           import re
           from pathlib import Path
-          version = "0.15.22"
-          build = "289"
+          version = "0.15.23"
+          build = "290"
           info_path = Path("Config/Info.plist")
           with info_path.open("rb") as handle:
               info = plistlib.load(handle)
@@ -143,16 +191,16 @@ jobs:
           set -e
           if [ "$status" -ne 0 ]; then
             grep -n -E '(^|[[:space:]])error:|SwiftCompile|CompileSwift' build.log | tail -n 240 > compiler-errors.txt || true
-            echo '===== Build289 compiler diagnostics ====='
+            echo '===== Build290 compiler diagnostics ====='
             cat compiler-errors.txt
             exit "$status"
           fi
 
-      - name: Upload Build289 compiler diagnostics
+      - name: Upload Build290 compiler diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.15.22-build289-compiler-diagnostics
+          name: OnePlayer-0.15.23-build290-compiler-diagnostics
           path: |
             compiler-errors.txt
             build.log
@@ -176,16 +224,16 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "$APP_PATH" Payload/
-          IPA_NAME="OnePlayer-${VERSION}-build${BUILD_NUMBER}-home-carousel-native-unsigned.ipa"
+          IPA_NAME="OnePlayer-${VERSION}-build${BUILD_NUMBER}-home-carousel-dock-fix-unsigned.ipa"
           /usr/bin/zip -qry "$IPA_NAME" Payload
           /usr/bin/unzip -t "$IPA_NAME" | tee package.log
           shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
 
-      - name: Upload Build289 package
+      - name: Upload Build290 package
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.15.22-build289-home-carousel-native
+          name: OnePlayer-0.15.23-build290-home-carousel-dock-fix
           path: |
             ${{ env.IPA_NAME }}
             ${{ env.IPA_NAME }}.sha256
