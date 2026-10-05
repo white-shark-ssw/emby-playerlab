@@ -28,7 +28,7 @@ Resume identity guard passed: PR#289 and product branch both dbeaa9d at start; m
 
 ## Validation state
 
-Source/static scope reviewed. Native suite contains 8 actual-source tests: prior geometry/reversal, vertical/resource geometry, release/presentation interruption, reverse/stale completion, accepted Dock; new consecutive committed swipe in both directions, rebased reversal, full Hero mask. Build291 is negative control for consecutive swipe and fade tests. CI run37341422303 has passed the native regression stage (Build291 negative control and full8-test candidate suite); Release/package/device results pending. Initial CI37341265451 failed before compile due old-version changelog path in guard; CI-only correction, product unchanged.
+Actual-source simulator8tests/0failures; Build291 negative control2tests/10expected failures confirms consecutive same-page retention and shorter/harder mask. Exact-source Release CI37341422303/job111869158278 passed. Artifact11359555710, source ZIP comment/bytes, IPA integrity/checksums/bundle0.15.25/292 and Info.plist+Mach-O MinOS15.0 independently verified. Full identities below. IPA saved and supplied for user testing; Build292 device and120FPS pending. Initial CI37341265451 failed before compile due old-version changelog pathname in guard; corrected CI-only, product unchanged.
 
 ## Pending / Next exact action
 
