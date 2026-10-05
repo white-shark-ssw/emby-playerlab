@@ -1,6 +1,6 @@
 # DEV-detail-immersive-still-viewer-nav
 
-- **Status:** Active — target-device regression reported; investigation baseline established; product code not changed yet because the supplied runtime log does not expose an exact version / Build / branch / commit identity.
+- **Status:** Active — Build286 target-device regression identified; minimal Build287 source patch written; CI/IPA pending.
 - **Work ID:** `DEV-detail-immersive-still-viewer-nav`
 - **Routing aliases / keywords:** `详情页沉浸修复 / 详情页顶栏 / 剧照返回顶栏 / 沉浸式详情 / still viewer nav / immersive detail`
 - **Task:** 修复详情页在进入/退出剧照查看路径后继续向下滚动时，原本透明沉浸式顶部导航区域可能变回不透明系统顶栏、覆盖上半部沉浸背景的问题。
@@ -8,59 +8,76 @@
 ## User intent / acceptance criteria
 
 1. 目标真机仍为 iPhone 15 Pro Max / iOS 17.0。
-2. 查看并退出详情页剧照后，详情页继续上下滚动时，顶部状态栏/导航栏区域必须保持现有沉浸式透明外观，不得出现截图中的不透明顶部栏。
-3. 不改变正常详情页的 Hero、持续背景、滚动手感、剧照浏览视觉或关闭交互，除非真实证据证明其中某一项就是故障所有者。
+2. 查看并退出详情页剧照后，详情页继续上下滚动时，顶部状态栏/导航栏区域必须保持现有沉浸式透明外观，不得出现截图中的不透明顶部栏和系统返回标题回归。
+3. 不改变正常详情页 Hero、持续背景、滚动手感、剧照浏览视觉或关闭交互。
 4. Native iOS push / pop / interactive-pop 继续由系统拥有；不得用自定义 push/pop、第二导航状态所有者或全局 UINavigationController 接管来规避问题。
 5. 保留 Build182 详情页高频滚动隔离/冷启动展示缓存、Build184 视觉层级、Build191 选集导航和 Build216 range inertia 合同。
 6. 不触碰 Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM→302→115/CDN P0 路径。
-7. Deployment Target 优先保持 iOS 15.0；本任务没有提高最低系统版本的依据。
+7. Deployment Target 保持 iOS 15.0。
 
 ## Baseline / identity
 
-- **Repository investigation base:** `main` at `91223978caf31c1de4c8e6cd38f9c2c07d0cee2f`.
+- **Failing runtime confirmed by user:** OnePlayer `0.15.19 / Build286`.
+- **Build286 exact product source:** `7e7b2ec944f5c0e74bc291e37683f1529e3d46b4`.
+- **Build286 branch / PR:** `perf/home-carousel-progress-scope-build286` / draft PR `#289`.
+- **Build286 CI/IPA reference:** run/job `33786964921 / 100753960778`; artifact `OnePlayer-0.15.19-build286-home-progress-scope`, ID `9905942602`; IPA SHA-256 `5c26b36eb70117abbd27885f5b637827020f7fffcc949d79a45e5b9a19bc28b0`; MinOS 15.0.
 - **Working branch:** `fix/detail-immersive-still-viewer-nav`.
-- **Branch creation base/head:** `91223978caf31c1de4c8e6cd38f9c2c07d0cee2f`.
+- **Working branch baseline:** force-moved before code edits to exact Build286 product source `7e7b2ec944f5c0e74bc291e37683f1529e3d46b4` so the detail repair candidate preserves the user-tested Build286 Home runtime.
+- **Current branch head:** `5b8806a0de63618e4f520b70f2e353952f327ecc`.
 - **PR:** none yet.
-- **Build candidate:** not allocated yet.
+- **Build candidate:** OnePlayer `0.15.20 / Build287` — uniquely allocated after checking current project references and PRs; no existing Build287 candidate found.
 - **Runtime evidence supplied by user:** screenshot + `OnePlayer-App-1791191453.log`, captured on target device on 2026-10-05.
-- **Runtime version / Build / branch / commit:** unresolved from the supplied file; do not assume `main` is the tested package.
-- **Relevant source identity at investigation base:** `Sources/UI/EmbyMediaDetailView.swift` blob `63c55d252da2d2402adfe898c410c9f3f1eddcf1`; `Sources/UI/EmbyDetailOverlayViews.swift` blob `55f48a9f7bcc3eb99610d73268a7a98a595bc50b`; `Sources/UI/ImmersiveUIComponents.swift` blob `7d6d04d6dcfc95dcff8b54888196229e3468e005`.
-- **Parallel Poster note:** Build283 branch has a different `EmbyMediaDetailView.swift` blob (`dd6d6b57819bd9bccab6390cc5876435c59c949b`) but the same `ImmersiveUIComponents.swift` blob (`7d6d04d6dcfc95dcff8b54888196229e3468e005`). Exact runtime attribution therefore still matters before any product patch.
+
+This task is intentionally **stacked for test packaging on Build286** because that is the failing package the user actually tested. It does not take ownership of Build286's Home carousel work. The Build286→Build287 product delta is currently only `Sources/Core/AppIdentity.swift` and `Sources/UI/EmbyDetailOverlayViews.swift`; no Home file is edited by this task.
 
 ## Evidence collected
 
 ### Target-device symptom
 
-The screenshot shows the detail page content/backdrop remaining visible below, while the top status/navigation region has become a light opaque bar with the system back title. The user reports this appears after viewing stills and then scrolling down.
+The screenshot shows the detail content/backdrop remaining visible while the top status/navigation region becomes a light opaque system bar and the native back title reappears. The user reports this occurs after entering/exiting the still viewer and then continuing to scroll.
 
-The supplied log contains normal detail entry followed by repeated immersive navigation appearance events and later restoration/disappearance events. For example, item `179373` records detail appear, `destination-nav-appearance stack=3`, source snapshot install, later additional appearance events, then `destination-nav-restore stack=0` and detail disappear. The log proves the immersive navigation bridge is active in the affected session, but it does not identify the exact installed Build and does not itself log the moment the opaque bar becomes visible.
+The supplied Build286 log records the immersive destination bridge applying navigation appearance during the same detail sessions. It does not record a corresponding explicit `destination-nav-restore` at the exact visible failure moment, which is consistent with the appearance being overwritten/re-resolved after modal teardown rather than the bridge intentionally restoring it.
 
-### Real source ownership
+### Exact Build286 source ownership
 
-- `EmbyMediaDetailView` owns `selectedStillIndex`, mounts `EmbyStillViewerPresenter` as a background representable, keeps the navigation bar visible, and applies `immersiveSystemNavigationAppearance()`.
-- `EmbyStillViewerPresenter` owns the UIKit modal presentation of the still viewer through an `UIHostingController` with `.overFullScreen` presentation.
-- `ImmersiveNavigationAppearanceViewController` owns the destination `UINavigationItem` appearance snapshot/apply/restore lifecycle. It applies a transparent `UINavigationBarAppearance` in `viewWillAppear` / `viewDidAppear` and restores the previous item appearances in `viewDidDisappear` / teardown.
-- Native navigation ownership remains UIKit/system-owned; the immersive bridge is appearance-only.
+- `EmbyMediaDetailView` owns `selectedStillIndex`, keeps the system navigation bar alive and attaches `immersiveSystemNavigationAppearance()`.
+- `EmbyStillViewerPresenter` owns the UIKit `.overFullScreen` still-viewer host.
+- In exact Build286 source, still-viewer dismissal first writes `selectedStillIndex = nil`, then calls `host.dismiss(animated: false)` without waiting for dismissal completion.
+- The `selectedStillIndex` write invalidates/rebuilds the detail SwiftUI body and therefore can drive the existing immersive appearance bridge update while the UIKit modal teardown is still in progress.
+- `ImmersiveNavigationAppearanceViewController` is already the single destination appearance owner. It reapplies transparent `UINavigationBarAppearance` from `updateUIViewController`, `viewWillAppear` and `viewDidAppear` and restores only on disappearance/teardown.
 
-This establishes a concrete interaction surface between still-viewer UIKit presentation lifecycle and destination navigation-item appearance lifecycle. It is a justified investigation target, but the current evidence is not yet sufficient to claim which lifecycle callback is wrong or to add a recovery mechanism.
+The violated ordering is therefore concrete: the parent state change that can reapply immersive appearance occurs **before** the UIKit dismissal has completed. UIKit/SwiftUI may finish its navigation-item reconciliation after that early refresh, leaving the detail destination with default opaque appearance until another bridge lifecycle update occurs.
+
+## Implemented Build287 source patch
+
+Exact Build286→current branch diff: two files only.
+
+1. `Sources/UI/EmbyDetailOverlayViews.swift`
+   - `Coordinator.dismiss` now accepts an optional completion and keeps the host alive locally through `dismiss(animated:false, completion:)`.
+   - The still-viewer close path no longer clears `selectedStillIndex` before dismissal.
+   - It dismisses the UIKit host first and clears the existing binding only in the UIKit dismissal completion.
+   - That existing state mutation then causes the detail body/immersive appearance bridge update **after** modal teardown, not before it.
+2. `Sources/Core/AppIdentity.swift`
+   - candidate source version only: `0.15.20`.
+
+No notification channel, retry, timer, watchdog, polling, global navigation appearance, custom pop owner, new navigation state owner or fallback was added.
 
 ## Files / modules in scope
 
-Primary investigation scope:
+- `Sources/UI/EmbyDetailOverlayViews.swift` — modified.
+- `Sources/Core/AppIdentity.swift` — candidate identity only.
+- `Sources/UI/ImmersiveUIComponents.swift` — inspected, not modified.
+- `Sources/UI/EmbyMediaDetailView.swift` — inspected, not modified.
+- CI/checker/project docs only as needed for Build287 validation.
 
-- `Sources/UI/EmbyDetailOverlayViews.swift`
-- `Sources/UI/ImmersiveUIComponents.swift`
-- `Sources/UI/EmbyMediaDetailView.swift`
-- narrow diagnostics/static checker only if needed to prove the lifecycle defect
-
-Do not touch `Sources/UI/EmbyServerBrowseV3.swift` or poster-grid navigation activation merely because the affected detail page was entered from a poster route; the parallel Poster task owns that route repair unless new evidence directly implicates it.
+Do not touch `Sources/UI/EmbyServerBrowseV3.swift` or poster-grid navigation activation unless new evidence directly implicates that route.
 
 ## State owner / shared dependencies
 
 - Detail still-viewer presentation owner: `EmbyStillViewerPresenter`.
 - Destination navigation appearance owner: `ImmersiveNavigationAppearanceViewController` / destination `UINavigationItem`.
 - Native push/pop/interactive-pop owner: system UIKit navigation controller.
-- Detail page scroll owner and Build182 performance state remain unchanged unless evidence directly contradicts that assumption.
+- This patch changes only ordering between the still-viewer presentation owner and the existing parent binding invalidation; it does not create a second appearance owner.
 
 ## Frozen / do-not-touch
 
@@ -74,57 +91,61 @@ Do not touch `Sources/UI/EmbyServerBrowseV3.swift` or poster-grid navigation act
 
 ## Parallel conflicts checked against
 
-- `DEV-aether-multi-engine-comparison`: no source/state overlap with detail UI/nav appearance.
-- `DEV-home-carousel-drag-smoothness`: no source/state overlap with detail UI/nav appearance.
-- `DEV-poster-grid-smoothness`: **shared native-navigation principle and adjacent route lifecycle exist.** Poster Build283 owns its `EmbyServerBrowseV3` detail-activation repair and still has an explicit interactive-pop recheck pending. This task must remain isolated to the detail/still-viewer/appearance owner unless evidence proves a route dependency. If the final repair would require `EmbyServerBrowseV3` or Poster-owned route state, stop and record the dependency/stacking explicitly instead of silently editing both tasks.
-- No Build/version candidate has been allocated, so there is no Build identity collision yet.
+- `DEV-aether-multi-engine-comparison`: no source/state overlap.
+- `DEV-home-carousel-drag-smoothness`: Build287 test package is stacked on exact Build286 to preserve the failing runtime, but this task edits no Home file/state owner. Build286 remains Home task evidence; Build287 does not claim Home acceptance.
+- `DEV-poster-grid-smoothness`: shared native-navigation principle and adjacent route lifecycle exist, but this task does not edit Poster-owned `EmbyServerBrowseV3`/grid routing.
+- `DEV-search-page-optimization`: no source/state overlap.
+- No Build287 collision found before allocation.
 
 ## Completed
 
-- Session routed explicitly as a new development task by user request.
-- Repository-wide rules, development router, module status, project state and technical navigation decision re-read.
-- Other Active development checkpoints checked for branch/source/state overlap.
-- Unique branch `fix/detail-immersive-still-viewer-nav` created from `main` head `91223978caf31c1de4c8e6cd38f9c2c07d0cee2f`.
-- User screenshot and `OnePlayer-App-1791191453.log` inspected.
-- Real detail, still-viewer and immersive navigation appearance definitions/call sites inspected.
-- Initial structural hypothesis narrowed to modal-presentation ↔ destination-navigation-appearance lifecycle interaction; no patch claimed yet.
+- New task checkpoint and dedicated branch created.
+- Repository rules, routers, module status, project state, navigation decision and notification rules re-read.
+- User identified the failing package as Build286.
+- Exact Build286 branch/PR/source/CI/IPA identity resolved.
+- Working branch moved to exact Build286 product source before code edits.
+- Exact Build286 detail/still-viewer/immersive appearance source re-read.
+- Minimal dismissal-order patch written.
+- Candidate identity advanced to `0.15.20 / Build287`.
+- Build286→Build287 source diff checked: exactly `AppIdentity.swift` + `EmbyDetailOverlayViews.swift`.
 
 ## Validation state
 
-- User target-device regression report: ✅
+- User target-device regression report on Build286: ✅
 - Screenshot symptom captured: ✅
 - App log captured: ✅
-- Relevant real source/state owners inspected: ✅
-- Exact installed runtime Build / branch / commit identity: pending ❌
-- Reproduction against matching source: pending ❌
-- Code written: ❌
-- CI passed: ❌
-- IPA produced: ❌
+- Exact installed runtime identity: ✅ Build286 / `7e7b2ec...`
+- Matching source/state owners inspected: ✅
+- Code written: ✅
+- Narrow source scope compare: ✅ two files only
+- CI passed: ❌ pending
+- IPA produced: ❌ pending
 - Repair real-device tested: ❌
 - Stable / frozen: ❌
 
 ## Pending
 
-1. Resolve the exact installed OnePlayer version / Build / branch / source commit corresponding to `OnePlayer-App-1791191453.log`.
-2. Re-read the matching source blobs before editing and verify whether still-viewer dismissal/presentation causes the appearance bridge to restore or lose destination `UINavigationItem` appearance while the detail destination remains active.
-3. Make only the smallest owner-level change supported by that evidence.
-4. Preserve system-owned navigation and existing detail frozen contracts; add only narrow diagnostics/checker coverage required by the discovered invariant.
-5. Allocate a unique Build/version candidate only after the patch direction is proven and collision-checked.
+1. Create Build287 validation/packaging path from exact branch head.
+2. Validate the two-file scope, source version, iOS 15.0, and frozen/P0 exclusions.
+3. Release-build/package an unsigned TrollStore IPA on Xcode 16.4.
+4. Verify version `0.15.20`, Build `287`, bundle identity, MinOS 15.0, exact source SHA, artifact integrity and IPA SHA-256.
+5. Hand Build287 to the user for the exact still-viewer → dismiss → scroll regression test.
 
 ## Next exact action
 
-Resolve the exact runtime package identity first. If the supplied package is confirmed to match a known branch/candidate, inspect that exact branch's `EmbyMediaDetailView.swift`, `EmbyDetailOverlayViews.swift` and `ImmersiveUIComponents.swift`, then reproduce the still-viewer dismissal lifecycle in source and patch the violated appearance invariant at its existing owner. Do not patch `main` speculatively while runtime identity is unresolved.
+Create the Build287 CI/package candidate from current head `5b8806a0de63618e4f520b70f2e353952f327ecc`, preserving exact Build286 Home files and changing only the two recorded Build287 paths. Continue through CI and verified IPA unless an external build blocker appears.
 
 ## Rejected / do-not-repeat
 
-- Do not assume GitHub `main` is the failing runtime package.
-- Do not fix this by hiding the native navigation bar or implementing custom back navigation.
+- Do not hide the native navigation bar or implement custom back navigation.
 - Do not add a timer/delayed reapply/watchdog/retry loop to keep the bar transparent.
 - Do not globally mutate `UINavigationBar.appearance()`.
-- Do not modify Poster Build283 route ownership just because the screenshot was reached from a poster grid.
+- Do not add a notification-based second appearance refresh channel when the existing selected-index invalidation can be correctly ordered after UIKit dismissal completion.
+- Do not modify Poster route ownership merely because the affected detail page was entered from a poster grid.
 - Do not reopen Build182 scroll/cache behavior without direct evidence.
 
 ## Open questions / risks
 
-- The current runtime Build identity is absent from the supplied log. This is the only material blocker before a product code change.
-- `.overFullScreen` presentation can affect UIKit appearance callbacks, but source structure alone does not prove which callback produces the visible opaque bar. The task must verify the actual lifecycle before changing behavior.
+- Build287 is only a source-level candidate until CI/IPA and target-device testing are complete.
+- The patch is deliberately based on the lifecycle ordering proven by exact Build286 source and the observed modal-associated symptom; only real-device testing can prove that this ordering correction removes the visible opaque-bar regression.
+- Because the test package is stacked on unmerged Build286 Home work, eventual integration of the detail fix into `main` should carry only the detail patch/identity-neutral runtime change unless Home Build286 is independently accepted/merged.
