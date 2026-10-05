@@ -1,5 +1,8 @@
 # 首页轮播需求复核与重构设计
 
+> Latest controlling state (2026-10-06): Build291 reverse/title/Dock corrections are user-confirmed. Build292 (0.15.25, exact23ed1864f63d4701509df98b72d15e67038f801a, PR#289) adds continuous committed same-direction takeover with presentation-position rebasing and broadens artwork fading across the full Hero into the same sampled solid base. Eight native regressions and exact-source CI/IPA verification pass; device hand-feel/fade/120FPS pending. HomeCore/Dock and Frozen/P0 unchanged. See DEV-home-carousel-drag-smoothness and BUILD_TEST_INDEX. Historical planned/unimplemented descriptions below are superseded for this implemented scope.
+
+
 > Current implementation status (2026-10-06): Build289/290 were implemented and device rejected. Build291 source dbeaa9d3472c85a5c238598da3aac41d8e49f43c corrects the proved transform/frame and Dock-extent violations; native regressions, exact-source CI and IPA verification passed, target-device acceptance pending. The earlier pre-implementation statements below are historical planning context. Live identity and next action: [task checkpoint](current/dev/DEV-home-carousel-drag-smoothness.md).
 
 

@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated2026-10-06: Build291 geometry fixes are user-confirmed on target device; Build292 rapid takeover/fade refinement is in native regression and exact-source CI. 120FPS and overall smoothness remain unverified._
+_Last updated 2026-10-06: Build291 reverse/title/Dock fixes user-confirmed; Build292 rapid takeover/fade passed eight native regressions and exact-source Release CI; IPA independently verified and supplied for target-device testing. Final smoothness/120FPS remains unverified._
 
 ## Current accepted overall baseline
 
@@ -57,11 +57,11 @@ Evidence limitation is important: relative to Build286, Build288 does not contai
 PR #290 is closed without merge. It is stacked on the separate unmerged Home Build286 branch, and merging its AppIdentity/diagnostics would not integrate a distinct detail behavior change. The accepted detail conclusion is recorded in project state/build evidence rather than silently pulling Home candidate code into `main`. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device accepted ✅ / task completed ✅ / behavior contract frozen ✅ / merged not required**.
 
 
-## Active: Home carousel — Build291 geometry positive; Build292 rapid/fade validation
+## Active: Home carousel — Build291 geometry positive; Build292 verified rapid/fade candidate; device pending
 
 User confirms Build291 (0.15.24, dbeaa9d3472c85a5c238598da3aac41d8e49f43c) repairs the reported reverse motion, logo/text overlap and Dock upward regression. Build289/290 remain rejected. Overall native carousel smoothness remains Active: new device feedback identifies consecutive quick swipes and hard artwork/content seam.
 
-Build292 (0.15.25), exact source23ed1864f63d4701509df98b72d15e67038f801a, rebases committed same-direction takeover from native presentation position and retains the outgoing resident page, allowing the following neighbor to be committed; broader native mask fades across the full Hero into the same solid sampled color. Build291 HomeCore/Dock geometry and input remain unchanged. Draft PR#289 remains open/unmerged. Native negative control and candidate regression stage passed in run37341422303; exact-source Release/package underway; IPA/device/120FPS pending. See latest Build292 entry below and task checkpoint.
+Build292 (0.15.25), exact source23ed1864f63d4701509df98b72d15e67038f801a, rebases committed same-direction takeover from native presentation position and retains the outgoing resident page, allowing the following neighbor to be committed; broader native mask fades across the full Hero into the same solid sampled color. Build291 HomeCore/Dock geometry and input remain unchanged. Draft PR#289 remains open/unmerged. Native8-test suite, exact-source Release CI and independently verified IPA complete (run37341422303, artifact11359555710); device/120FPS pending. See latest Build292 entry below and task checkpoint.
 
 ## Historical accepted interaction foundation: Home carousel — Build241 / 0.14.74
 
@@ -296,3 +296,14 @@ Native clear artwork now fades across full foreground Hero height rather than cl
 Reserved **OnePlayer0.15.25 / Build292 / home-carousel-rapid-fade**; product branch perf/home-carousel-progress-scope-build286 / Draft PR#289; exact product **23ed1864f63d4701509df98b72d15e67038f801a**; predecessor Build291 **dbeaa9d3472c85a5c238598da3aac41d8e49f43c**. Product changes exactly AppIdentity, NativePresentation, RuntimeState and changelog. CI control branch **ci/build292-home-carousel-rapid-fade-20261005**, head **8dc55421a62325a6611f54f337ffc9c56d4f9208**; detached exact-source guard and native tests compare previous Build291 with candidate. First control run failed before compilation because its changelog pathname used the old version suffix; corrected in CI only, product unchanged.
 
 Evidence: **Code written / static scope reviewed / native simulator tests+Release CI+IPA pending / device validation pending / no120FPS or stable claim**. Next: run actual consecutive-swipe negative control and full candidate suite, build/package/MinOS audit, independently inspect exact-source ZIP and IPA, hand off HTTPS artifact for real-device continuous quick switching, cancellation/reversal, gradual fade and retained title/Dock/vertical behavior.
+
+### Build292 verified handoff — 2026-10-06 (Asia/Shanghai)
+
+- **OnePlayer 0.15.25 / Build292**, exact product **23ed1864f63d4701509df98b72d15e67038f801a**; branch perf/home-carousel-progress-scope-build286 / Draft PR#289 open/unmerged. Product head and PR identity rechecked before final docs/handoff.
+- Dedicated CI **37341422303 / 111869158278 — success**, control head **8dc55421a62325a6611f54f337ffc9c56d4f9208**. Detached exact product checkout above; CI control head is not packaged source.
+- Actual-source native simulator suite **8 tests / 0 failures**. Build291 negative control gives **2 tests / 10 expected assertions**, reproducing both same-page retention under consecutive swipes (both directions) and shorter/harder artwork mask extent. Previous geometry, resource/vertical updates, release interruption, reverse/cancel/stale completion and accepted Dock regression remain green. New candidate verifies consecutive committed takeover without a foreground position jump, rebased reversal, full Hero mask. Simulator results do not prove target-device 120FPS.
+- Artifact **OnePlayer-0.15.25-build292-home-carousel-rapid-fade**, ID **11359555710**, 22568055 bytes, digest **sha256:3748e9021d3c63d86426a1679cab04fc58194006b3bebad54bda50c1b0e7ddff**.
+- IPA **OnePlayer-0.15.25-build292-home-carousel-rapid-fade-unsigned.ipa**, **18606692 bytes**, SHA256 **881705509a433e75751fe4b8101d8a70ce3a5c398e95309d1bb6b0fb0b908d9c**. Source ZIP SHA256 **18528c4d850e25dd35d4250033832d70cf39910ee4407defd101b0359c84d62f**; archive comment equals exact product SHA; AppIdentity/NativePresentation/RuntimeState/HomeCore bytes independently match inspected candidate. All archive integrity and CI checksum files pass.
+- Bundle **com.embyplayerlab.app**, version/build **0.15.25 / 292**, Info.plist MinOS **15.0**, executable LC_BUILD_VERSION **15.0**; CI embedded/runtime MinOS audit OK; CADisableMinimumFrameDurationOnPhone=true.
+- Evidence: **Code written / native regressions passed / exact-source Release CI passed / IPA produced+independently verified / Build292 target-device pending / no final120FPS or stable claim**. Build291 reverse/title/Dock corrections have user-confirmed device-positive feedback; Build289/290 remain rejected.
+- **Next exact action:** receive Build292 device results for repeated fast same-direction swipes, immediate reversal, held drag/reversal, release/cancel takeover, artwork/content gradient, image-logo/title, Dock, vertical scroll/stretch/refresh and detail push/pop. Actual sustained presented120FPS remains a separate device goal. Do not rebuild or retune without new source/device evidence.
