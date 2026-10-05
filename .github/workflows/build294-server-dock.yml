@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PRODUCT_SHA: 855a1ce48c455a996a880a170fc00910a48b315a
+  PRODUCT_SHA: 95de9aed5aef6ab5443db1336719905e7442ccf7
   PRODUCT_BRANCH: refactor/server-dock-build294
   BASE_SHA: 119ab10eee869488b97415746a0243f51953eba0
   VERSION: 0.15.27
@@ -27,9 +27,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Preserve native regression harness
-        run: cp -R Tests/ServerDockRegression "$RUNNER_TEMP/server-dock-regression"
 
       - name: Checkout and guard exact product source
         run: |
@@ -103,7 +100,7 @@ jobs:
       - name: Native Dock and retained Build293 carousel regressions
         run: |
           set -euo pipefail
-          CONTROL="$RUNNER_TEMP/server-dock-regression"
+          CONTROL="$PWD/Tests/ServerDockRegression"
           FIXED="$RUNNER_TEMP/server-dock-tests"
           python3 "$CONTROL/prepare.py" "$PWD" "$FIXED" "$BASE_SHA"
           (cd "$FIXED" && xcodegen generate)
