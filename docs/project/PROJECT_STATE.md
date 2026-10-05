@@ -19,6 +19,16 @@ _Last updated 2026-10-06: User explicitly accepted OnePlayer0.15.26/Build293 hom
 
 Build293 inherits the accepted player/PiP/transport/cache/session/episode/detail/server-management contracts below. Its accepted carousel behavior uses resident native pages, one transition authority, continuous animation takeover and a shared solid lower-edge floor. This acceptance does not merge other Active tasks or infer a new frame trace; stable120FPS was explicitly reported for Build292. Build216 remains the historical accepted detail episode-range inertia milestone under Accepted product foundations.
 
+## Active: Server Dock reconstruction — Build294 /0.15.27
+
+DEV-server-dock-refactor / Draft PR#291 / branch refactor/server-dock-build294. **OnePlayer0.15.27 / Build294**, tested source **ca60a034d68d451bc0f93f5681465398131d54c5**, based on main119ab10eee869488b97415746a0243f51953eba0 (runtime bytes identical to accepted Build293 before this refactor). User authorized the independent Dock task and implementation.
+
+Typed Dock bar and one fixed-viewport host replace the page-local AnyView overlays/parameter chain and Search-only root overlay. Root retains selected tab/Search lifetime/Home tap actions; page roots declare visibility within native navigation. Shared physical bottom inset, keyboard exclusion and content clearance keep oversized content from moving Dock. Detail's actual fully-immersive preference remains authoritative. Frozen carousel native/runtime/input and Player/PiP/Transport/Cache/Emby source unchanged; iOS15 retained.
+
+Exact-source Xcode16.4 CI **37355042210 / job111915202727** passed on control **57cadec698dee04f144db8758e84e89bc4d79511** (ci/build294-server-dock-20261006). **18 native regressions /0 failures**, covering accepted Home carousel on/off Dock position, all tab/style geometry, actual software keyboard frame + stable Dock, oversized content/native bars, native push hide/pop restore, actual detail preference, root Search lifetime/Home tap actions and nine retained carousel tests. Release/package/embedded MinOS audit passed. Independently verified artifact **11364093817**, SHA-256 **d43a93a534debd792a26b35f00f34b21a2560e758184d7002761411dae022c39**; IPA SHA-256 **8c733224574672b9a7d22f9aa9e3f1423e4dd6a50d1c5631bb6731de16c5f7ab**; source ZIP SHA-256 **864930c2356cf906e3bbfcce84f678eee45e91453b7a58db31feb709da785f4e**; bundle **com.embyplayerlab.app**, version **0.15.27**, Build **294**, Info MinOS **15.0**, arm64 executable MinOS **15.0.0**.
+
+**Code written /CI passed /IPA produced+independently verified /target-device pending /not stable**. Overall accepted baseline remains Build293. Next: iPhone15ProMax/iOS17.0 test four tabs, carousel on/off, keyboard focus/dismiss, nested browsing, detail fully-immersive preference, native push/pop/edge-back and Home repeated taps. Do not rebuild, merge or freeze before new runtime/device evidence.
+
 ## Frozen / protected contracts
 
 - MPV remains the main playback engine; MDK is manual/experimental backup.
