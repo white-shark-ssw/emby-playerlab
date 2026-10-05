@@ -527,7 +527,7 @@ final class V3HomeCarouselNativeView: UIView {
         layoutVisiblePages()
         updateBaseColor(progress: progress)
         updateIndicatorSelection(state.toID != nil && progress >= 0.5 ? state.toID : state.currentID)
-        if !animated { V3HomeCarouselCadenceDiagnostics.shared.recordSwiftUIUpdate(progress) }
+        if !animated { V3HomeCarouselCadenceDiagnostics.shared.recordSwiftUIUpdate(progress: progress) }
     }
 
     func animateVisualState(_ state: V3HomeCarouselTransitionVisualState, duration: TimeInterval, curve: UIView.AnimationCurve, completion: @escaping () -> Void) {
