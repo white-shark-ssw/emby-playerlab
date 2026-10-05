@@ -1,0 +1,83 @@
+name: Build289 Sync Project Docs
+
+on:
+  push:
+    branches: [ci/build289-doc-sync-20261005]
+    paths: [.github/workflows/build289-sync-project-docs.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main authority
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Guard and update Build289 authority
+        run: |
+          set -euo pipefail
+          EXPECTED_MAIN=5a6e0c16043415c08e895dbdbe37b04d576e766b
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          build_index = Path('docs/project/BUILD_TEST_INDEX.md')
+          project_state = Path('docs/project/PROJECT_STATE.md')
+          module_status = Path('docs/project/MODULE_STATUS.md')
+          technical = Path('docs/project/TECHNICAL_DECISIONS.md')
+
+          # BUILD_TEST_INDEX: append one milestone, preserving all historical evidence.
+          text = build_index.read_text()
+          assert '## Build289 — Home native carousel presentation runtime candidate' not in text
+          text += '''\n\n## Build289 — Home native carousel presentation runtime candidate\n\n- Identity: **OnePlayer 0.15.22 / Build289**.\n- Work: `DEV-home-carousel-drag-smoothness`; Draft PR **#289** remains open/unmerged on `perf/home-carousel-progress-scope-build286`.\n- Exact product source: **`0f5a1893988e20e0dcfe21d0395abe194c2340e6`**.\n- Build286/identical-Build288 progress-scope path was already real-device exercised and remains insufficient as the final smoothness solution. Build289 is the next implementation candidate, not a stable replacement yet.\n- Architecture: keep one UIKit horizontal input/transition authority; move high-frequency visual progress off the SwiftUI published-progress hot path into a stable Home-private native presentation hierarchy. Existing resident pages are prepared ahead of motion; foreground pages translate directly, artwork crossfades separately, lower-Home color is prepared per item, and settle uses interruptible `UIViewPropertyAnimator`. New horizontal input during settle reads the current presentation transform, invalidates the prior animation token/completion, and continues from the visible position.\n- Resource preparation remains Home-private and uses existing decoded-image delivery; no shared image-cache/network owner, Poster path, Player/MPV/PiP, UnifiedTransport, playback Cache/Session, STRM/302/115/CDN or Seek contract was changed. Deployment target remains iOS 15.0.\n- First dedicated compile run `37319886241 / 111795965228` exposed one concrete Swift signature error: missing `progress:` at the cadence diagnostic call. Commit `0f5a1893988e20e0dcfe21d0395abe194c2340e6` changes exactly that one call site; its GitHub diff is one file / one line.\n- Successful Xcode 16.4 Release run/job: **`37320875778 / 111799316027`** — exact-source guard, dependency preparation, unsigned Release build, identity/MinOS validation, IPA integrity packaging and artifact upload all passed.\n- Artifact: **`OnePlayer-0.15.22-build289-home-carousel-native`**, ID **`11350650920`**, digest **`sha256:7d9f7760783ef7c9fa71aa8a36b5c873da1c65978dbdf61620b91324131e5c7b`**.\n- Independently downloaded IPA SHA-256: **`e7e57876f0e199b82d9fb64eeb74d6024de43bdea6bb9c46e4eb99701dc27871`**; source ZIP SHA-256: **`62fa71ac9d587e68021cc1701a2db3a0337e073f703351b3034c2b74b8c7a6d8`**; both match CI checksum files and IPA `unzip -t` passes.\n- Package identity verified: `com.embyplayerlab.app`, `0.15.22 (289)`, `MinimumOSVersion=15.0`; runtime Mach-O MinOS audit passes at 15.0.\n- Required next gate: iPhone 15 Pro Max / iOS 17.0 qualitative slow/rapid/reversal/release/cancel/settle-takeover and Home vertical-interaction testing. No real-device smoothness result is inferred from CI.\n- Evidence: **Code written ✅ / exact-scope guarded ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device tested ❌ / stable-frozen ❌**.\n'''
+          build_index.write_text(text)
+
+          # PROJECT_STATE: refresh summary and replace only the active Home section.
+          text = project_state.read_text()
+          text, count = re.subn(r'_Last updated 2026-10-05:.*?_\n', '_Last updated 2026-10-05: Home carousel Build289 / 0.15.22 native-presentation candidate is now code-complete, exact-source CI passed and IPA independently verified; target-device testing is still pending, so no smoothness/stable claim is made. Detail immersive navigation remains completed from Build288 acceptance; Build216 remains the accepted packaged overall baseline; Poster/Aether remain separate active lines; Search Build256 and all P0 playback/transport contracts remain protected._\n', text, count=1, flags=re.S)
+          assert count == 1
+          start = text.index('## Active: Home carousel — requirements-first refactor; Build286 path insufficient in Build288 testing')
+          end = text.index('## Historical accepted interaction foundation: Home carousel — Build241 / 0.14.74', start)
+          replacement = '''## Active: Home carousel — Build289 native presentation candidate packaged; target-device pending\n\nBuild286's progress-notification narrowing has already been real-device exercised through Build288's identical Home runtime and remains insufficient as the final smoothness fix. The requirements-first audit and `HOME_CAROUSEL_DEVELOPMENT_PLAN.md` have now advanced into an implementation candidate rather than remaining plan-only.\n\nCurrent Draft PR remains **#289** on `perf/home-carousel-progress-scope-build286`; exact Build289 product source is **`0f5a1893988e20e0dcfe21d0395abe194c2340e6`**, identity **OnePlayer 0.15.22 / Build289**. High-frequency carousel presentation no longer relies on SwiftUI published progress to move the active pages. The Home-private native surface keeps bounded resident page nodes, applies foreground transforms and artwork blending directly, uses prepared per-item color for the lower Home surface, and settles through interruptible `UIViewPropertyAnimator`. A new horizontal drag during settle reads the actual presentation transform, invalidates the old animation token/completion and takes over from the visible position. The existing UIKit input authority, ordinary `>=0.28` commit, direction-aware `>=500 pt/s` fling and 0.22/0.18 settle/cancel contracts remain protected.\n\nThe first compiler attempt exposed one concrete missing Swift argument label; the fix commit changes exactly one line. Dedicated Xcode 16.4 run/job **`37320875778 / 111799316027`** then passed exact-source guards, Release compile, bundle/MinOS checks, IPA package integrity and artifact upload. Artifact **`OnePlayer-0.15.22-build289-home-carousel-native`**, ID **`11350650920`**, digest `sha256:7d9f7760783ef7c9fa71aa8a36b5c873da1c65978dbdf61620b91324131e5c7b`; independently verified IPA SHA-256 **`e7e57876f0e199b82d9fb64eeb74d6024de43bdea6bb9c46e4eb99701dc27871`**, source ZIP SHA-256 **`62fa71ac9d587e68021cc1701a2db3a0337e073f703351b3034c2b74b8c7a6d8`**, bundle `com.embyplayerlab.app`, version/build `0.15.22 (289)`, built/runtime MinOS 15.0.\n\nNo shared Poster image pipeline, Player/MPV/PiP, UnifiedTransport, playback Cache/Session, STRM/302/115/CDN path or Seek contract was changed. Build289 is now the current Home test candidate, but **CI/IPA does not establish runtime smoothness**. Required next evidence is target-device slow/rapid swipe, reversal, release/cancel, repeated immediate settle takeover, white-flash/visual continuity, tap-to-detail and Home vertical-scroll interaction. Home remains Active and not Frozen until that evidence exists.\n\n'''
+          text = text[:start] + replacement + text[end:]
+          project_state.write_text(text)
+
+          # MODULE_STATUS: update only Home and the roll-up row.
+          text = module_status.read_text()
+          lines = text.splitlines()
+          home_matches = [i for i, line in enumerate(lines) if line.startswith('| Home carousel interaction / presentation cadence |')]
+          assert len(home_matches) == 1
+          lines[home_matches[0]] = '| Home carousel interaction / presentation cadence | **Active — Build289 CI/IPA verified; target-device pending** | Build286/identical-Build288 progress-scope architecture is insufficient by 2026-10-05 target-device evidence. Build289 / 0.15.22 exact source `0f5a1893988e20e0dcfe21d0395abe194c2340e6`, Draft PR #289, implements the approved bounded native presentation runtime: one UIKit input/transition authority, resident Home-private page nodes, direct foreground transforms + separate artwork blending, prepared per-item lower-Home color, interruptible `UIViewPropertyAnimator`, and presentation-layer/token-based immediate settle takeover. Run/job `37320875778 / 111799316027` passed; artifact `11350650920`; IPA SHA `e7e57876f0e199b82d9fb64eeb74d6024de43bdea6bb9c46e4eb99701dc27871`; source ZIP SHA `62fa71ac9d587e68021cc1701a2db3a0337e073f703351b3034c2b74b8c7a6d8`; MinOS 15.0. Shared Poster/image infrastructure and all Player/Transport/Cache/Session/P0 contracts are untouched. Evidence stops at Code written + CI passed + IPA produced/verified; real-device smoothness/visual/settle-takeover acceptance is pending, so Home remains Active and not Frozen. |'
+          rollup_matches = [i for i, line in enumerate(lines) if line.startswith('| Other product modules |')]
+          assert len(rollup_matches) == 1
+          lines[rollup_matches[0]] = '| Other product modules | Active parallel work | Build216 / 0.14.49 remains the accepted packaged overall runtime identity. Search Build256 is stable/merged. Home Build289 / 0.15.22 is the current unmerged CI/IPA-verified native-presentation test candidate and is awaiting target-device validation; it is not stable/frozen. Detail immersive navigation is completed/frozen from Build288 acceptance; Poster Build283 remains a separate target-device-positive active task; Aether remains separate. Build242 and Build284 remain diagnostic-only/superseded and excluded from product inheritance. |'
+          module_status.write_text('\n'.join(lines) + '\n')
+
+          # TECHNICAL_DECISIONS: record implemented architecture while preserving pending evidence boundary.
+          text = technical.read_text()
+          assert '## D031 — Build289 implements the bounded native Home presentation runtime; device acceptance remains pending' not in text
+          text += '''\n\n## D031 — Build289 implements the bounded native Home presentation runtime; device acceptance remains pending\n\nBuild289 converts the D030 selected direction into product code without changing the accepted input authority or P0 playback/transport contracts. Exact source `0f5a1893988e20e0dcfe21d0395abe194c2340e6` keeps one UIKit horizontal interaction/transition authority and replaces the high-frequency SwiftUI published-progress presentation path with a stable Home-private native surface. The bounded carousel set is represented by resident page nodes; finger motion updates existing foreground transforms and artwork opacity/base-color state rather than constructing content, decoding/analyzing resources, rebuilding text/layout ownership, persisting data or performing a shared cache/network rewrite in the per-progress path.\n\nSettle/cancel is driven by interruptible `UIViewPropertyAnimator`. When a new horizontal gesture takes over a running settle, the presentation layer's current foreground transform is read to recover the actually visible progress; the prior animator is stopped and a generation/token invalidates its stale completion even if the same from/to pair recurs. This implements the user's explicit immediate-settle-takeover requirement without adding a timer, watchdog, retry, interpolation, synthetic position, duplicate progress/current-page owner or compatibility shim. Foreground translation remains separate from artwork crossfade, and the lower Home surface uses prepared per-item color rather than synchronous per-motion image analysis.\n\nBuild289 does **not** prove native presentation fixes the target-device smoothness gap. The first dedicated compile exposed one missing Swift argument label and commit `0f5a1893988e20e0dcfe21d0395abe194c2340e6` contains the exact one-line correction. Xcode 16.4 run/job `37320875778 / 111799316027` subsequently passed exact-source scope guards, Release compilation, identity/MinOS validation, IPA integrity and artifact upload. Artifact `11350650920`; IPA SHA `e7e57876f0e199b82d9fb64eeb74d6024de43bdea6bb9c46e4eb99701dc27871`; source ZIP SHA `62fa71ac9d587e68021cc1701a2db3a0337e073f703351b3034c2b74b8c7a6d8`; MinOS 15.0. Evidence is therefore **Code written / CI passed / IPA produced+verified / real-device pending / not stable**. Build286 remains historical evidence that scope-only notification narrowing is insufficient; Build289 is the current device-test candidate, not yet a frozen architecture.\n'''
+          technical.write_text(text)
+          PY
+
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' docs/project/BUILD_TEST_INDEX.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md | sort)"
+          test "$changed" = "$expected"
+          git diff --check
+          git diff --stat
+          git diff -- docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md | sed -n '1,260p'
+
+      - name: Commit Build289 authority to main
+        run: |
+          set -euo pipefail
+          git config user.name 'OnePlayer CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add docs/project/BUILD_TEST_INDEX.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md
+          git commit -m 'docs: record Build289 Home carousel package baseline'
+          git push origin HEAD:main
