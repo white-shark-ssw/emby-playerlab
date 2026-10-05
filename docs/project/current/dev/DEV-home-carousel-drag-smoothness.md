@@ -1,6 +1,6 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build291 simulator regressions, exact-source CI and independently verified IPA complete; target-device acceptance pending.
+- **Status:** Active — Build291 geometry corrections target-device positive; rapid consecutive swipe and artwork/content seam refinement in progress.
 - **Work ID:** DEV-home-carousel-drag-smoothness
 - **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / native presentation / Dock
 - **Task:** Correct reverse foreground movement, logo/text overlap and Dock upward regression; continue evidence-backed Home carousel refinement.
@@ -51,3 +51,11 @@ Do not repeat guessed Dock offsets, progress smoothing/interpolation, retry/time
 - Bundle **com.embyplayerlab.app**, version/build **0.15.24 / 291**, Info.plist MinOS **15.0**, main executable LC_BUILD_VERSION independently read as **15.0**; CI runtime MinOS audit OK; CADisableMinimumFrameDurationOnPhone=true.
 - Evidence: **Code written / native simulator regression passed / exact-source CI passed / IPA produced+independently verified / target-device pending / not stable**. Private recording remains outside public repo. No final FPS or title-resource-loss verdict is inferred.
 - Next gate: iPhone15ProMax/iOS17.0 slow drag, held reversals, repeated quick switches, commit/cancel takeover, image-logo/text-title continuity, bottom Dock, Home vertical scroll/stretch/refresh and detail push/pop. If title alternation persists with page separation repaired, trace itemID/logoURL/resource callbacks; do not guess another cache/fallback.
+
+## Build291 target-device result / Build292 reservation — 2026-10-06
+
+User confirms prior reverse motion, logo/text overlap and Dock regression are repaired. New controlling issues: consecutive fast swipes do not advance continuously; artwork/content transition looks too hard in IMG_8032/8033. Screenshots are visible in conversation; provided local copies are missing, no numerical 120FPS conclusion. Source: takeover retains the previous from/current pair until animation completion, so repeated gestures can keep finishing the same page. Artwork mask clips at backdrop height while foreground/content boundary is later.
+
+Resume guard: branch/PR#289 still dbeaa9d; main499b628; separate Poster283/Aether235; no Build292/0.15.25 or matching CI candidate found in branches/checkpoints/build index/latest CI. Reserve OnePlayer0.15.25/Build292/home-carousel-rapid-fade exclusively for this task. Implement continuous same-direction committed takeover with presentation-position rebasing and retained outgoing page, preserving opposite-direction takeover and thresholds/times; broaden native artwork mask toward Hero/content boundary using the same sampled solid base, no new blur. Preserve Dock root layout and Frozen/P0.
+
+Next exact action: patch exact dbeaa9d source, add actual UIKit/runtime negative-control regression for consecutive swipes, compile/MinOS/package exact final source, independently verify and deliver HTTPS artifact. Code/CI/IPA for292 pending; real-device smoothness/120FPS pending.
