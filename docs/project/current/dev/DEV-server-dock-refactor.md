@@ -8,6 +8,7 @@
 - **Baseline:** Accepted OnePlayer0.15.26/Build293 tested fa8ff44ff4a5384fd4603a64b33354f941764a8c; current main119ab10eee869488b97415746a0243f51953eba0. Recursive tree compared: all product/source blobs identical; only closeout docs differ.
 - **Working branch:** refactor/server-dock-build294
 - **PR:** Draft#291 https://github.com/white-shark-ssw/emby-playerlab/pull/291
+- **Current PR branch head:** 4a3b7fd8a33fab1ab03dad74e62b9c096eeb258a; docs-only merge of mainc7734f953a7d1593f1ce9457e21896ebe77b24e4. Compare from tested source proves only five authority documents changed; runtime/tests identical.
 - **Product source head:** ca60a034d68d451bc0f93f5681465398131d54c5 (exact tested source; subsequent PR synchronization is docs-only)
 - **CI control:** ci/build294-server-dock-20261006 / 57cadec698dee04f144db8758e84e89bc4d79511; run37355042210 /job111915202727 completed successfully.
 - **Build candidate:** OnePlayer0.15.27/Build294; OnePlayer-0.15.27-build294-server-dock. Reserved solely to this task; verified IPA available.
