@@ -6,11 +6,11 @@
 - **Task:** Correct reverse foreground movement, logo/text overlap and Dock upward regression; continue evidence-backed Home carousel refinement.
 - **Working branch:** perf/home-carousel-progress-scope-build286
 - **Draft PR:** #289 — open/unmerged
-- **Current exact product head:** dbeaa9d3472c85a5c238598da3aac41d8e49f43c
+- **Current exact product head:** 23ed1864f63d4701509df98b72d15e67038f801a
 - **Parent/rejected source:** Build290 / 9e0bb371fe65c29524b92ac1892bab84b6684444
-- **Reserved candidate:** OnePlayer 0.15.24 / Build291 / home-carousel-geometry
-- **CI control branch/head:** ci/build291-home-carousel-geometry-20261005 / f7ea52f37fae6b3858c8366bd705299b33a29689
-- **CI workflow:** .github/workflows/build291-home-carousel-geometry.yml (push, exact product SHA guard)
+- **Reserved candidate:** OnePlayer 0.15.25 / Build292 / home-carousel-rapid-fade
+- **CI control branch/head:** ci/build292-home-carousel-rapid-fade-20261005 / 8dc55421a62325a6611f54f337ffc9c56d4f9208
+- **CI workflow:** .github/workflows/build292-home-carousel-rapid-fade.yml (push, exact product SHA guard)
 - **Target / MinOS:** iPhone15ProMax / iOS17.0; iOS15.0
 
 ## Latest controlling real-device evidence
@@ -59,3 +59,15 @@ User confirms prior reverse motion, logo/text overlap and Dock regression are re
 Resume guard: branch/PR#289 still dbeaa9d; main499b628; separate Poster283/Aether235; no Build292/0.15.25 or matching CI candidate found in branches/checkpoints/build index/latest CI. Reserve OnePlayer0.15.25/Build292/home-carousel-rapid-fade exclusively for this task. Implement continuous same-direction committed takeover with presentation-position rebasing and retained outgoing page, preserving opposite-direction takeover and thresholds/times; broaden native artwork mask toward Hero/content boundary using the same sampled solid base, no new blur. Preserve Dock root layout and Frozen/P0.
 
 Next exact action: patch exact dbeaa9d source, add actual UIKit/runtime negative-control regression for consecutive swipes, compile/MinOS/package exact final source, independently verify and deliver HTTPS artifact. Code/CI/IPA for292 pending; real-device smoothness/120FPS pending.
+
+## Build292 — consecutive committed takeover / full Hero fade (2026-10-06)
+
+Build291 **target-device positive for the reported reverse movement, logo/text overlap and Dock alignment fixes**. User reports new failures: consecutive quick swipes cannot advance continuously, artwork/content seam looks too hard. IMG_8032/8033 are qualitative screenshots, not a 120Hz trace. No broad smoothness acceptance is inferred.
+
+Source diagnosis: interrupted committed release retains old current/from until completion, so repeated swipes can keep targeting the same page. Build292 promotes the committed target only for same-direction takeover with presentation-relative negative origin and retained outgoing resident page, preserving foreground offsets. A qualifying fresh swipe may then commit the next neighbor; a reverse takeover retains the existing path. Runtime owns the commit intent; native renderer owns no second progress value. When the incoming anchor remains before center, takeover resumes its bounded three-page span instead of queuing invisible pages. Thresholds/times remain0.28/500pt/s and0.22/0.18/0.62s;6s auto unchanged.
+
+Native clear artwork now fades across full foreground Hero height rather than clipping at shorter backdrop height; broadened mask fades into the same sampled solid color. No new blur or frame layout on ordinary progress. HomeCore/Dock geometry is byte-identical to device-positive Build291. Shared images/Poster, detail/navigation and Frozen/P0 remain untouched; iOS15.0.
+
+Reserved **OnePlayer0.15.25 / Build292 / home-carousel-rapid-fade**; product branch perf/home-carousel-progress-scope-build286 / Draft PR#289; exact product **23ed1864f63d4701509df98b72d15e67038f801a**; predecessor Build291 **dbeaa9d3472c85a5c238598da3aac41d8e49f43c**. Product changes exactly AppIdentity, NativePresentation, RuntimeState and changelog. CI control branch **ci/build292-home-carousel-rapid-fade-20261005**, head **8dc55421a62325a6611f54f337ffc9c56d4f9208**; detached exact-source guard and native tests compare previous Build291 with candidate. First control run failed before compilation because its changelog pathname used the old version suffix; corrected in CI only, product unchanged.
+
+Evidence: **Code written / static scope reviewed / native simulator tests+Release CI+IPA pending / device validation pending / no120FPS or stable claim**. Next: run actual consecutive-swipe negative control and full candidate suite, build/package/MinOS audit, independently inspect exact-source ZIP and IPA, hand off HTTPS artifact for real-device continuous quick switching, cancellation/reversal, gradual fade and retained title/Dock/vertical behavior.

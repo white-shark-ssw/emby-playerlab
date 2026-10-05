@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated 2026-10-06: Home Build291 / 0.15.24 has passed native simulator regressions and exact-source Release CI; its IPA/source/digest/MinOS identities are independently verified and handed off for target-device testing. Build289/290 remain device rejected. No final smoothness/120FPS or stable claim. Build216 accepted overall baseline and all parallel/Frozen/P0 contracts remain unchanged._
+_Last updated2026-10-06: Build291 geometry fixes are user-confirmed on target device; Build292 rapid takeover/fade refinement is in native regression and exact-source CI. 120FPS and overall smoothness remain unverified._
 
 ## Current accepted overall baseline
 
@@ -57,7 +57,7 @@ Evidence limitation is important: relative to Build286, Build288 does not contai
 PR #290 is closed without merge. It is stacked on the separate unmerged Home Build286 branch, and merging its AppIdentity/diagnostics would not integrate a distinct detail behavior change. The accepted detail conclusion is recorded in project state/build evidence rather than silently pulling Home candidate code into `main`. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device accepted ✅ / task completed ✅ / behavior contract frozen ✅ / merged not required**.
 
 
-## Active: Home carousel — Build291 geometry candidate; target-device pending
+## Active: Home carousel — Build291 geometry positive; Build292 rapid/fade validation
 
 OnePlayer **0.15.24 / Build291**, exact product source **dbeaa9d3472c85a5c238598da3aac41d8e49f43c**, remains on Draft PR#289 / perf/home-carousel-progress-scope-build286. Build289/290 are target-device rejected. The latest user recording specifically adds reverse motion and image-logo/text-title overlap to the Dock-up regression; source and rejected-source simulator tests now establish the transform→frame reset violation rather than a guessed framework/FPS limit.
 
@@ -288,3 +288,15 @@ Evidence at reservation: **Code written / static scope reviewed; simulator/CI/IP
 - Bundle **com.embyplayerlab.app**, version/build **0.15.24 / 291**, Info.plist MinOS **15.0**, main executable LC_BUILD_VERSION independently read as **15.0**; CI runtime MinOS audit OK; CADisableMinimumFrameDurationOnPhone=true.
 - Evidence: **Code written / native simulator regression passed / exact-source CI passed / IPA produced+independently verified / target-device pending / not stable**. Private recording remains outside public repo. No final FPS or title-resource-loss verdict is inferred.
 - Next gate: iPhone15ProMax/iOS17.0 slow drag, held reversals, repeated quick switches, commit/cancel takeover, image-logo/text-title continuity, bottom Dock, Home vertical scroll/stretch/refresh and detail push/pop. If title alternation persists with page separation repaired, trace itemID/logoURL/resource callbacks; do not guess another cache/fallback.
+
+## Build292 — consecutive committed takeover / full Hero fade (2026-10-06)
+
+Build291 **target-device positive for the reported reverse movement, logo/text overlap and Dock alignment fixes**. User reports new failures: consecutive quick swipes cannot advance continuously, artwork/content seam looks too hard. IMG_8032/8033 are qualitative screenshots, not a 120Hz trace. No broad smoothness acceptance is inferred.
+
+Source diagnosis: interrupted committed release retains old current/from until completion, so repeated swipes can keep targeting the same page. Build292 promotes the committed target only for same-direction takeover with presentation-relative negative origin and retained outgoing resident page, preserving foreground offsets. A qualifying fresh swipe may then commit the next neighbor; a reverse takeover retains the existing path. Runtime owns the commit intent; native renderer owns no second progress value. When the incoming anchor remains before center, takeover resumes its bounded three-page span instead of queuing invisible pages. Thresholds/times remain0.28/500pt/s and0.22/0.18/0.62s;6s auto unchanged.
+
+Native clear artwork now fades across full foreground Hero height rather than clipping at shorter backdrop height; broadened mask fades into the same sampled solid color. No new blur or frame layout on ordinary progress. HomeCore/Dock geometry is byte-identical to device-positive Build291. Shared images/Poster, detail/navigation and Frozen/P0 remain untouched; iOS15.0.
+
+Reserved **OnePlayer0.15.25 / Build292 / home-carousel-rapid-fade**; product branch perf/home-carousel-progress-scope-build286 / Draft PR#289; exact product **23ed1864f63d4701509df98b72d15e67038f801a**; predecessor Build291 **dbeaa9d3472c85a5c238598da3aac41d8e49f43c**. Product changes exactly AppIdentity, NativePresentation, RuntimeState and changelog. CI control branch **ci/build292-home-carousel-rapid-fade-20261005**, head **8dc55421a62325a6611f54f337ffc9c56d4f9208**; detached exact-source guard and native tests compare previous Build291 with candidate. First control run failed before compilation because its changelog pathname used the old version suffix; corrected in CI only, product unchanged.
+
+Evidence: **Code written / static scope reviewed / native simulator tests+Release CI+IPA pending / device validation pending / no120FPS or stable claim**. Next: run actual consecutive-swipe negative control and full candidate suite, build/package/MinOS audit, independently inspect exact-source ZIP and IPA, hand off HTTPS artifact for real-device continuous quick switching, cancellation/reversal, gradual fade and retained title/Dock/vertical behavior.
