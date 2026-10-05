@@ -1,0 +1,88 @@
+# 首页轮播需求复核与重构设计
+
+更新：2026-10-05。Work ID：`DEV-home-carousel-drag-smoothness`。
+
+## 状态与证据
+
+本文件是需求与实现边界设计，尚无重构代码、CI 或新 IPA。用户已同意先完整规划需求，再进行重构，并要求从设计上排除部分容易产生长帧的工作。用户明确选择：松手收尾动画期间再次横滑，应**立即接管，从当前可见位置继续**。
+
+Build286 产品分支 `perf/home-carousel-progress-scope-build286`，PR #289，head `7e7b2ec944f5c0e74bc291e37683f1529e3d46b4`。Build288 精确源码 `ce565996e37dcb750117c9de4607b23b673edce3` 的 HomeCore / Hero / HeroScrollState / CarouselState / Interaction / ProgressPresentation / CadenceDiagnostics blobs 与 Build286 相同。用户确认该轮播仍滑动掉帧、无法持续达到期望的120帧、竞品体验差距大。这是定性真机结论，没有新的数值帧轨迹；不能推导“完全没有改善”。
+
+真实代码已核对：`EmbyHomeCoreV3.swift`、`EmbyHomeHeroV3.swift`、三个轮播状态/交互/进度呈现文件、`EmbyHomeCarouselCadenceDiagnosticsV3.swift`、`EmbyHomeModelV3.swift`、`EmbySharedImageAndNavigation.swift`、`EmbyImageDiskCache.swift`、`DiagnosticsLogger.swift`。
+
+## 需求与验收矩阵
+
+| 领域 | 产品需求 | 当前依据 / 处理 |
+|---|---|---|
+| 方向与起步 | 横滑轮播、纵滑首页；慢拖细腻跟手，反向拖动连续 | 保留已验证的单 UIKit 获取方向/真实样本起步基础，不重跑猜测式手势优化 |
+| 连续操作 | 收尾期间新横滑立即接管，当前位置连续，无先跳到终点 | 本轮用户明确确认；现有 `shouldBeginNativeCarouselDrag` 在 toID 非空且非 dragging 时拒绝新横滑，需要明确替换这一行为 |
+| 分页 | 全宽前景页距，首尾循环；正常拖动>=0.28或同方向最近真实移动速度>=500pt/s提交 | 保留 Build241 产品合同；不猜竞品参数 |
+| 松手 | 正常提交0.22s / 取消0.18s easeOut；持续高刷新请求覆盖收尾 | 保留未被推翻的行为；接管须停止旧动画并从实际可见状态转交，不能用已到终点的模型值跳变 |
+| 自动轮播 | 保留激活条件、6s已落定间隔、0.62s easeInOut和单个已有调度来源 | 当前源码的行为；不得把“惯性期间暂停自动轮播”的旧退让方案当作根本解决 |
+| 点击与导航 | 普通轻触进入当前项目详情；拖动/未落定抑制误触；系统拥有导航 | 保留真实入口和已有抑制语义；不创建第二导航 owner |
+| 外观 | 图片渐变、全宽前景横移、logo/标题/评分/年份/类型/概述、明暗文字、渐变遮罩、blur30背景 | 视觉效果不因重构自动删减；foreground compositing和白闪修正必须等效保留并真机复核 |
+| 首页联动 | 上下滚动时裁剪/拉伸/定位、沉浸背景、下拉刷新仍正常 | 原有Hero纵向几何合同；不让横向每次进度发布触发整页更新 |
+| 数据 | Emby/HomeModel保持内容权威；保留设置、cached-first与live刷新 | 当前live轮播最多6项；内容/顺序/资源绑定只在接受内容变化时重算 |
+| 图片 | 保留清晰Hero当前/前/后3槽常驻基础；资源准备独立于手指移动 | 不降低清晰度、移除邻页或使用冻结背景掩盖成本；非就绪资源的冷启动表现需遵循现有占位，不等待网络阻塞手势 |
+| 生命周期 | 离开首页停止轮播活动；返回/内容替换/取消可恢复正确状态 | 使用现有Home激活与内容生命周期；不新增watchdog/retry兜底 |
+| 性能 | iPhone15ProMax/iOS17正常操作持续流畅，慢拖/快甩/反向/自动×纵向惯性均验收 | 真机验证才是结论；120Hz约8.33ms只是显示周期，回调频率不等于最终呈现 |
+| 兼容及保护 | MinOS15；Player/MPV/PiP/Transport/Cache/EmbySession与客户端直连不受影响 | Frozen/P0保持；不提升最低系统版本 |
+
+## 从设计上禁止进入运动路径的工作
+
+“运动路径”包括手指拖动、松手收尾、自动切换，以及它们与首页纵向滚动重叠的时段。不能只把成本从手指跟随挪到收尾、自动轮播或滚动惯性期间。
+
+| 工作 | 允许的阶段 / 边界 | 运动路径要求 |
+|---|---|---|
+| 内容集合构建、选邻页、查找URL、字符串格式化 | 接受内容/资源配置变化时建立绑定 | 不在每个进度回调重新遍历各媒体库和生成轮播列表；一次手势保留固定内容身份 |
+| 文件IO、JSON、网络等待、图片缩放/解码 | 使用已有后台资源链；准备结果由轮播适配层消费 | 不同步等待、不在主线程补做；后台已解码不代表首次图层提交必然免费 |
+| 明暗分析、尺寸/前景资料计算 | 图片身份/几何/外观变化时准备 | 不因hero/persistent/preload多个角色重复在运动回调计算；不能让结果更新使整页同步重建 |
+| 视图/图层创建、销毁、布局和文字重排 | 内容/尺寸变化时准备有界槽位 | 单次运动只改已存在节点的位置/透明度；邻页轮换不能无界堆积，也不能在连续接管时集中重活 |
+| 图层合成 | 建立稳定的遮罩、背景和前景合成关系 | 不动态堆叠快照、强制整页栅格化或每次进度制造额外离屏层；保留视觉效果后测render成本 |
+| 图片回调发布 | 准备结果按现有item/URL身份验证，只更新相应资源槽 | 回调不改轮播选择、不启动自动动画、不让不可见角色扇出整树更新 |
+| 日志与统计 | 已有后台日志落盘；阶段汇总和有界统计 | 不在逐帧回调格式化大量字符串/排序样本；保留播放诊断，不擅自更改共享logger |
+| 动画完成 | 同一个过渡owner拥有取消、完成、接管 | 旧完成回调必须失效；不得靠固定延迟重新纠正新状态 |
+
+后台任务的准备完成时间不能变成手势开始的等待条件。已加载资源及时展示；冷启动仍允许异步占位，具体占位策略不新增行为。在持续操作下也不能无限等待“空闲”：预准备的有界槽位和异步结果应支持连续循环，而不是用暂停自动轮播、积压更新或一次性排空工作来换短时指标。
+
+## 当前源码事实，避免重复误诊
+
+1. `EmbyCachedImageLoader` 已通过 `Task.detached(.utility)` 调用ImageIO thumbnail解码，并用 `kCGImageSourceShouldCacheImmediately`；磁盘缓存是独立actor。不能声称所有图片解码都在主线程，也不能无依据替换全局解码器。其UIImage回退路径和首次提交成本如需修改，应先取得具体证据。
+2. `DiagnosticsLogger` 已有utility队列负责格式化/落盘。前台仍存在消息构造和有限入队，不等于日志写盘当前阻塞主线程。
+3. Hero / persistent / preload各自调用 `updateCarouselImageMetrics`；其中同步做 `EmbyImageContrastAnalyzer.prefersLightForeground`，包含CoreImage average/render并可能更新Home的尺寸和颜色字典。不同角色拥有独立loader，回调有各自的去重范围。可据此设计单次资源准备/小范围发布，但旧Build212的1–3ms结果不支持把分析计算认定为目前主要根因。
+4. 当前 `model.carouselItems` 是计算属性，会重新从媒体库内容构建集合；每次取邻页/当前项目等会再次访问。最多6个显示项不等于源集合构建完全没有成本。重构可在接受内容变化时生成只读呈现绑定，不建立第二内容权威。
+5. Build286仍是UIKit输入→单个published progress→多个SwiftUI位移/透明度scope。不能从这个事实断言所有后代每次重新栅格化，也不能从简单SwiftUI probe达到120断言复杂真实树没有成本。
+6. 当前完成/取消用 `asyncAfter`，完成检查主要是fromID/toID。新需求允许同一对页面被再次接管，单靠同一ID组合不能证明旧完成仍有效；新的单owner必须具有可靠取消/完成身份，防止旧动画落定新手势。这是接管新需求的确定性要求，不是新增防御式重试。
+
+## 重构职责和候选呈现路径
+
+- HomeModel继续拥有接受后的Emby内容和设置。
+- 轮播唯一过渡owner拥有当前页、邻页、方向、progress、拖动/收尾/自动/取消和有效完成身份。没有第二套可独立前进的progress或当前页。
+- 资源准备仅持有当前内容身份对应的图片、尺寸和前景资料；复用已有图片缓存，不建立另一个全局缓存/网络层。
+- 呈现层消费同一owner和已经准备好的绑定。候选为稳定UIKit视图/图层层级，正常运动仅修改transform/position/opacity；低频内容更新继续和Home桥接。这是一条需要A/B验证的方案，不是已证明的根因修复。
+- 接管顺序：读取当前可见状态→取消旧动画及其完成权限→把状态转交到同一owner→新手势从该状态继续。不把模型目标终点当成可见起点，不先跳到终点；不添加连续预测/插值来编造手指位置。
+- 大面积模糊/遮罩/文字合成的GPU成本独立检查。不能用原生呈现替换后主线程变轻来宣称render hitch也消失。不默认预烘焙所有页面或新增全尺寸快照缓存；若需要派生背景，先证明瓶颈并核对视觉一致性、内存及已有缓存边界。
+
+## 验证顺序与停止条件
+
+1. 静态检查：只有内容变化能重建内容绑定；运动回调不得发起重活；接管后旧完成无法落定；无第二过渡owner；MinOS15和P0边界不变。
+2. 使用真实图片、文字、模糊背景和Home内容完成同包匹配A/B。简单参考图形仅作控制，不能替代真实轮播验收。
+3. 真机覆盖：慢拖/反向/连续快甩、收尾立即接管、提交和取消、首尾循环、热/冷资源、首页离开返回、数据刷新、自动切换与纵向惯性重叠，以及持续使用。
+4. 区分app更新/commit与render服务器/GPU；若可获取Instruments轨迹，优先用Animation Hitches分类。现有App日志只证明其实际记录阶段，CADisplayLink不能作为最终FPS权威。记录帧尾分布、资源提交/槽轮换/动画完成事件，不要求用户长时间手抄HUD。
+5. CPU路径变轻但真实体验仍差时，继续定位render或首次提交边界，不叠加新timer/watchdog/插值。只有真机验收后才称Stable；CI/IPA只证明对应证据层级。
+
+## 尚需具体设计核对
+
+- 立即接管时，跨越中点后的当前/目标页选择与反向目标规则，必须画出正常/提交/取消/再次接管的状态转换并对照真实行为。
+- UIKit/CALayer如何保持渐变/裁剪/blur30和foreground compositing的视觉等价；尚未选择用哪种离屏实现。
+- 现有SwiftUI缓存图片组件如何把已准备资源交给原生呈现，避免改动Poster共享路径和重复loader；尚未设计新公共API。
+- 内容刷新恰好发生在运动期间的接受边界，以及不就绪邻页的现有占位表现，需在具体实现前核对。
+- 当前没有Xcode/Instruments真机执行轨迹；不虚构可直接在此Linux环境完成这些运行验证。
+
+## 参考资料
+
+- Apple: [Understanding hitches in your app](https://developer.apple.com/documentation/xcode/understanding-hitches-in-your-app)
+- Apple: [prepareForDisplay(completionHandler:)](https://developer.apple.com/documentation/uikit/uiimage/preparefordisplay(completionhandler:))
+- Apple: [Demystify and eliminate hitches in the render phase](https://developer.apple.com/videos/play/tech-talks/10857/)
+
+图片异步prepare API只是官方可选路径；现有解码已后台执行，本设计不因此自动加入另一次prepare或提高系统版本。
