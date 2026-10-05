@@ -19,6 +19,14 @@ _Last updated 2026-10-06: User explicitly accepted OnePlayer0.15.26/Build293 hom
 
 Build293 inherits the accepted player/PiP/transport/cache/session/episode/detail/server-management contracts below. Its accepted carousel behavior uses resident native pages, one transition authority, continuous animation takeover and a shared solid lower-edge floor. This acceptance does not merge other Active tasks or infer a new frame trace; stable120FPS was explicitly reported for Build292. Build216 remains the historical accepted detail episode-range inertia milestone under Accepted product foundations.
 
+## Active: Server Dock reconstruction — Build294 /0.15.27
+
+DEV-server-dock-refactor / Draft PR#291 / branch refactor/server-dock-build294. Product candidate **OnePlayer0.15.27 /Build294**, exact **95de9aed5aef6ab5443db1336719905e7442ccf7**, based on main119ab10eee869488b97415746a0243f51953eba0 with product bytes identical to accepted Build293. User explicitly authorized independent Dock task and implementation on2026-10-06.
+
+Typed Dock bar and one fixed-viewport host replace the page-local AnyView overlays/parameter chain and Search-only root overlay. Root retains selected tab/Search lifetime/Home tap actions; page roots declare visibility within native navigation. Shared physical bottom inset, keyboard exclusion and content clearance keep oversized content from moving Dock. Detail's actual fully-immersive preference remains authoritative. Frozen carousel native/runtime/input and Player/PiP/Transport/Cache/Emby source unchanged; iOS15 retained.
+
+Source/scope guard passed. First native run37352597958: nine retained carousel tests passed and Dock relative layout, accepted Home position, style, visibility, detail policy, native push/pop and root actions passed. Two fixture failures (hard-coded window safe inset and hostless keyboard) were corrected without product logic change. Application-hosted exact-source run **37353599612 /111910284160**, control **9f513a967555f068fd604cc9ff2b6603d900a79c**, now in progress. **Code written /CI not yet passed /IPA not yet produced /device pending /not stable**. Accepted overall baseline remains Build293. Do not merge/freeze from simulator-only evidence.
+
 ## Frozen / protected contracts
 
 - MPV remains the main playback engine; MDK is manual/experimental backup.
