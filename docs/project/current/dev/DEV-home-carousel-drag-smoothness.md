@@ -119,8 +119,12 @@ User permits lower Home content to use solid color below the Hero seam and asks 
 
 用户上传14.8s/30fps/510×1108的 `RPReplay_Final1791200921.mp4`；已分段抽帧检查快速连续切换、按住往返和慢拖。观察支持前景横移、背景基本原位渐变、拖动进度可逆和下方布局稳定。具体时间范围、文件身份与推断限制已写入 `HOME_CAROUSEL_REFACTOR_PLAN.md`。它不证明EX实际120FPS、内部常驻/框架/阈值，也不证明其settle中接管机制；立即接管是用户已确认的OnePlayer需求。无代码/Build变更。
 
+## 全页常驻主方案已选 — 2026-10-05
+
+用户认可有界全页预建常驻，以降低切换期间创建成本。实际项数沿用HomeModel最多6项，5页为示例。采用稳定节点+仅当前/目标运动更新，背景原位渐变/前景全宽横移、单底色和即时接管共同作为下一实现目标。具体实施顺序已写入 `HOME_CAROUSEL_REFACTOR_PLAN.md`。推荐按EX外观准备每页底色并随过渡变化，作为可逆默认设计，不要求额外用户裁决。尚未写代码/分配Build，不声明真机收益。
+
 ## Next exact action
 
-First rebuild the complete carousel requirement/acceptance matrix from current source and controlling real-device evidence: gesture acquisition and finger tracking; repeated swipes/reversal/settle takeover; automatic advance; tap-to-detail; artwork/foreground/persistent-backdrop appearance; Home vertical scroll/stretch/refresh interaction; image preparation/residency; activation/deactivation and data refresh; sustained smoothness on iPhone 15 Pro Max/iOS17 and MinOS15. Separate accepted behavior from implementation choices. The first requirement/long-frame matrix now exists in `HOME_CAROUSEL_REFACTOR_PLAN.md`. Next resolve the immediate-takeover state transitions, authoritative animation cancellation/completion identity, source-equivalent visual layers and resource bridge APIs, then develop the bounded real-content renderer A/B before code changes. The user has agreed to requirements-first refactoring and explicitly confirmed immediate settle takeover plus long-frame exclusion. Current work is requirements/architecture assessment; no code replacement has begun. Recommended scope: high-frequency movement/blending presentation; retain the input recognizer, acquisition, commit/cancel, full-width slide, artwork residency, visual masks/blur/foreground compositing and white-flash contracts. A stable UIKit/CALayer hierarchy consuming the same authority is a candidate, not a proven root-fix. First inspect actual presentation/animation handoff APIs and state ownership, and define one matched real-content comparison before implementation. Do not re-run rejected Pan-only/frame-latch/blur-only/residency-only guesses or the retired manual prolonged HUD protocol.
+进入具体实施核对：重新验证PR#289/分支/head与最新main及其他Active任务身份，确定同一任务的串行实现基线；核对稳定UIKit/CALayer呈现和现有资源组件的实际API/生命周期，落实单过渡owner的立即接管与有效完成身份。然后实现有界全部页面常驻、前景横移/背景混合和下方单底色，完成必要验证并连续推进至身份核验后的测试IPA。静态/实现阶段不把收益写成已真机通过。当前用户本轮询问下一步，已确认的设计选择不再重复请求批准。
 
-No six-chat export is necessary for current assessment. A handoff is needed only if an unrecorded experiment materially overlaps the proposed renderer boundary; request its exact source/Build, changed layer and device outcome, not all history.
+无须六份旧会话；只有真实未记录且会重复的新实现证据才补查。保留P0/Frozen与MinOS15；不得修改其他任务checkpoint或共享Poster资源链，除非核对证明确实必需并记录冲突边界。
