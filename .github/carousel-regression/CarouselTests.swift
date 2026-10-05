@@ -222,5 +222,12 @@ extension CarouselTests {
         XCTAssertEqual(colors[colors.count - 2].alpha, 0)
         XCTAssertEqual(colors.last!.alpha, 0)
         XCTAssertLessThanOrEqual(contrast.locations![contrast.locations!.count - 2].doubleValue, 0.90)
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 100, height: 100)).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 100, height: 80))
+            UIColor.blue.setFill(); context.fill(CGRect(x: 0, y: 80, width: 100, height: 20))
+        }
+        let sampled = V3HomeCarouselImageAnalysis.analyze(image)
+        XCTAssertGreaterThan(sampled.blue, 0.90)
+        XCTAssertLessThan(sampled.red, 0.10)
     }
 }
