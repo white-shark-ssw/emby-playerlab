@@ -4,7 +4,7 @@ import UIKit
 
 final class DockTests: XCTestCase {
     @MainActor private func fixture<V: View>(_ view: V) -> (UIWindow, UIHostingController<V>) {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 430, height: 932))
+        let window = UIWindow(frame: UIScreen.main.bounds)
         let host = UIHostingController(rootView: view)
         window.rootViewController = host
         window.makeKeyAndVisible()
@@ -51,7 +51,10 @@ final class DockTests: XCTestCase {
             XCTAssertEqual(oversized.maxY, plain.maxY, accuracy: 0.5)
             XCTAssertEqual(oversized.height, 40, accuracy: 0.5)
         }
-        XCTAssertEqual(plain.maxY, 932 - 34, accuracy: 0.5)
+        let (window, host) = fixture(HostProbe(oversized: false, navigationBar: false))
+        defer { window.isHidden = true }
+        let marker = find(host.view, identifier: "dock-probe")!
+        XCTAssertEqual(marker.convert(marker.bounds, to: window).maxY, window.bounds.maxY - window.safeAreaInsets.bottom, accuracy: 0.5)
     }
 
     @MainActor func testAllTabsAndMaterialStylesKeepIdenticalGeometry() {

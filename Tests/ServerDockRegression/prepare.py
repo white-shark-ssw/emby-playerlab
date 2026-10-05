@@ -64,22 +64,47 @@ final class RootActionProbe {
     var homeScrollToTopToken = 0
     var lastHomeTap = Date.distantPast
 ''' + action + '}\n')
+(target / 'DockRegressionHost.swift').write_text('''import UIKit
+@main final class DockRegressionAppDelegate: UIResponder, UIApplicationDelegate {
+    var window: UIWindow?
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        window.rootViewController = UIViewController()
+        window.makeKeyAndVisible()
+        self.window = window
+        return true
+    }
+}
+''')
 (target / 'project.yml').write_text('''name: ServerDockRegression
 options:
   deploymentTarget:
     iOS: "15.0"
 targets:
+  DockRegressionHost:
+    type: application
+    platform: iOS
+    sources: [DockRegressionHost.swift]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.oneplayer.dock-regression-host
+        SWIFT_VERSION: "5.0"
   ServerDockRegression:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: .
-        excludes: [project.yml]
+        excludes: [project.yml, DockRegressionHost.swift]
+    dependencies:
+      - target: DockRegressionHost
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.oneplayer.server-dock-regression
         SWIFT_VERSION: "5.0"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/DockRegressionHost.app/DockRegressionHost"
+        BUNDLE_LOADER: "$(TEST_HOST)"
 schemes:
   ServerDockRegression:
     build:
