@@ -1,141 +1,117 @@
-# DEV-home-carousel-drag-smoothness
+# DEV-home-carousel-drag-smoothness — session handoff
 
-- **Status:** Active — Build289 real-device rejected for bottom-Dock displacement; Build290 / 0.15.23 minimal Home-root layout correction is code-complete, CI/IPA verified, and awaiting target-device validation.
+- **Status:** Active — Build289 and Build290 are both target-device rejected; no current candidate is accepted or stable.
 - **Work ID:** `DEV-home-carousel-drag-smoothness`
-- **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / invalidation scope / progress publication
-- **Task:** Refactor the bounded Home carousel presentation: full-page residency, one transition authority, immediate visible-state takeover, fixed-position artwork blending/full-width foreground sliding, and a single lower-Home color surface.
-- **Executable development plan:** [HOME_CAROUSEL_DEVELOPMENT_PLAN.md](../../HOME_CAROUSEL_DEVELOPMENT_PLAN.md)
-- **Requirement/source/reference evidence:** [HOME_CAROUSEL_REFACTOR_PLAN.md](../../HOME_CAROUSEL_REFACTOR_PLAN.md)
-- **Scope of this checkpoint:** Build289 native presentation implementation, the 2026-10-05 target-device rejection, Build290 minimal Dock-layout correction, CI/package evidence, and the next exact real-device gate are recorded here.
+- **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / native presentation / Dock
+- **Task:** Fix the Home carousel's target-device tactile smoothness/visual continuity without regressing Home layout, Dock, vertical interaction, navigation, or protected playback/transport contracts.
+- **Read first:** `HOME_CAROUSEL_DEVELOPMENT_PLAN.md`, `HOME_CAROUSEL_REFACTOR_PLAN.md`, then this checkpoint. Current device evidence below supersedes older plan assumptions where they conflict.
 
-## Controlling baseline / identity
+## Latest authoritative real-device result — 2026-10-05
 
-- **Behavior foundation:** merged Build241 interaction contracts remain protected; Build289 introduced the bounded Home-private native presentation runtime.
-- **Current product branch:** `perf/home-carousel-progress-scope-build286`
-- **Draft PR:** #289 — open, unmerged.
-- **Build289 rejected source:** `0f5a1893988e20e0dcfe21d0395abe194c2340e6`, OnePlayer `0.15.22 / 289`; 2026-10-05 target-device recording shows the bottom Dock displaced below the visible screen.
-- **Current Build290 source:** `9e0bb371fe65c29524b92ac1892bab84b6684444`, OnePlayer `0.15.23 / 290`. Build289→Build290 delta is exactly AppIdentity plus one Home-root `.frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)` line.
-- **Build290 CI run / job:** `37325862505 / 111816942719` — success.
-- **Build290 artifact:** `OnePlayer-0.15.23-build290-home-carousel-dock-fix`, ID `11352810860`, digest `sha256:70806c4d5fed5ef48b3e71dea887f5f0867c55b4a962bde0cb4ff9c4d357904f`.
-- **Build290 IPA SHA-256:** `734e2f40fd3d6c694c79feb060d675128927cd0ff2c9c541791be1b1a5a1cf2e`; source ZIP SHA-256: `1a3d3b50abaf3707193da427ed3512d223fb0005e7fe33ef891486916ddf7de4`.
-- **Bundle / version / MinOS:** `com.embyplayerlab.app / 0.15.23 (290) / iOS15.0`.
-- **Target device:** iPhone 15 Pro Max / iOS 17.0.
-- **Evidence boundary:** Build289 is device-rejected; Build290 has Code written + CI passed + IPA produced/independently verified, but no Build290 real-device acceptance yet.
-- **Recording interpretation:** uploaded capture is 30 FPS; use it for qualitative layout/visual evidence, not numerical 120 Hz measurement.
+The latest user result is the highest-priority evidence:
 
-Build288 exact source `ce565996e37dcb750117c9de4607b23b673edce3` matches286 HomeCore/Hero/HeroScrollState and all carousel runtime/diagnostic blobs. User reports persistent drops, inability to sustain desired120FPS and a large competitor experience gap. This is qualitative target-device evidence, not a numerical frame trace or proof of zero improvement. Detail-navigation Build288 acceptance remains separate/frozen; PR#290 is closed unmerged with no distinct detail behavior to inherit.
+> Build290 carousel behavior has no improvement at all; the only visible change is that the bottom Dock moved from Build289's downward/offscreen displacement to an incorrect upward displacement.
 
-## Confirmed current requirements
+A second uploaded iPhone recording was analyzed in the handoff session: 9.17 seconds, 30 FPS, 510×1108 capture. It corroborates the Dock being visibly too high. Use the recording only for qualitative layout/visual evidence; never infer numerical 120 Hz cadence from a 30 FPS capture. The private recording itself was not copied into the public repository; this written result is the durable project evidence.
 
-1. Requirements-first bounded refactor; design avoidable long-frame work out of drag, settle and auto×vertical-inertia paths.
-2. All currently accepted carousel items (HomeModel cap6) prebuilt/resident; only current/target nodes consume motion. Do not create pages during each switch or copy full-screen textures/snapshots per page.
-3. Artwork remains near fixed position and blends; title/logo/metadata/overview slide full width. One progress/transition owner controls both.
-4. New horizontal input during settle immediately takes over the current visible state. Existing source rejects start when toID is present and dragging=false; old checkpoint wording “rapid takeover” was not proof that this requirement already worked.
-5. One opaque lower-Home base color and Hero seam gradient replace mandatory full-screen dynamic blur behind lower content. Per-item prepared color is the adopted reversible default; no per-frame image analysis.
-6. Preserve normal thresholds/tails, auto6s/0.62s, vertical stretch/crop/refresh, click suppression/system navigation and max-refresh lifecycle.
-7. Stable UIKit/CALayer presentation is the selected implementation direction to verify, not a proven performance cure. SwiftUI Home shell/content/navigation remain.
-8. Prepared bindings/resources are separate from motion. Existing async decode/cache/log persistence are not replaced without actual need. Cold resources use existing async placeholder behavior, never block gestures.
+This result supersedes the prior "Build290 target-device pending" status. **Build290 is real-device tested and rejected.**
 
-**Superseded constraints:** Build286's three clear-Hero residents, unchanged blur30 and scope-only diff were that experiment's guards. They do not constrain this approved refactor. Keep their history below; preserve visual compositing/white-flash effects rather than requiring old SwiftUI API text in a native renderer.
+## Current exact identity
 
-## Completed
+- Product branch: `perf/home-carousel-progress-scope-build286`
+- Draft PR: **#289**, open/unmerged.
+- Current PR/product head: **`9e0bb371fe65c29524b92ac1892bab84b6684444`**.
+- Current rejected package: **OnePlayer 0.15.23 / Build290**.
+- Build290 run/job: `37325862505 / 111816942719` — CI success.
+- Artifact: `OnePlayer-0.15.23-build290-home-carousel-dock-fix`, ID `11352810860`, digest `sha256:70806c4d5fed5ef48b3e71dea887f5f0867c55b4a962bde0cb4ff9c4d357904f`.
+- IPA SHA-256: `734e2f40fd3d6c694c79feb060d675128927cd0ff2c9c541791be1b1a5a1cf2e`.
+- Source ZIP SHA-256: `1a3d3b50abaf3707193da427ed3512d223fb0005e7fe33ef891486916ddf7de4`.
+- Bundle / MinOS: `com.embyplayerlab.app`, `0.15.23 (290)`, iOS 15.0.
+- Target device: iPhone 15 Pro Max / iOS 17.0.
+- Evidence: Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / result rejected ❌ / stable-frozen ❌.
 
-- Build289 bounded native presentation runtime implemented and packaged.
-- User target-device recording reviewed; Build289 rejected because the bottom Dock is pushed below the visible viewport.
-- Exact layout ownership traced without changing the Dock owner: the oversized native Home surface was allowed to determine the root `ZStack` layout extent.
-- Build290 minimal correction committed at exact source `9e0bb371fe65c29524b92ac1892bab84b6684444`; no speculative animation/network/cache/P0 changes added.
-- Build290 exact-source CI run/job `37325862505 / 111816942719` passed and artifact `11352810860` was independently downloaded and verified.
+Do **not** allocate Build291 or a new version until the next session completes the normal Build/candidate collision check.
 
-## Validation state
+## Build289 → Build290 facts
 
-| Evidence | Build289 | Build290 |
-|---|---|---|
-| Code written | yes | yes |
-| CI passed | yes | yes |
-| IPA produced + independently verified | yes | yes |
-| Real-device tested | **rejected — Dock offscreen** | pending |
-| Stable / frozen | no | no |
+Build289 exact source: `0f5a1893988e20e0dcfe21d0395abe194c2340e6`, OnePlayer 0.15.22 / Build289. It introduced the bounded Home-private native presentation runtime and was rejected on device after the bottom Dock moved below/offscreen.
 
-## Pending
+Build290 preserved that entire carousel runtime. Relative to Build289 it changed exactly:
 
-- Install Build290 on iPhone 15 Pro Max / iOS 17.0 and verify the bottom Dock is restored to the accepted position.
-- Recheck carousel slow/rapid/reversal/release/cancel/immediate-settle-takeover behavior, visual continuity, tap-to-detail and Home vertical scrolling.
-- Treat the 30 FPS recording qualitatively; do not claim a numerical 120 Hz result from it.
-- If further carousel defects remain, inspect exact Build290 source/state ownership and new device evidence before any additional code change.
+1. `Sources/Core/AppIdentity.swift`: 0.15.22 → 0.15.23.
+2. `Sources/UI/EmbyHomeCoreV3.swift`: added one root `.frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)` line.
 
-## Next exact action
+Build290 device evidence now shows that line did **not** restore the accepted Dock geometry; it moved the Dock too high. Therefore the line is not an accepted fix and D032's earlier pre-device correction wording is superseded by D033.
 
-Install and exercise Build290 (`0.15.23 / 290`, exact source `9e0bb371fe65c29524b92ac1892bab84b6684444`) on the target iPhone. First confirm Dock visibility/position, then run the existing Home carousel qualitative matrix. Build290 must not be described as resolved/stable until that target-device result exists. If the Dock is fixed but other carousel problems remain, use the new recording/log evidence to isolate the next issue; do not add speculative fixes from the current 30 FPS capture alone.
+## What the two rejected builds establish
 
-## Rejected / do not repeat
+1. **The current native presentation rewrite has not demonstrated a smoothness win.** Build290 uses the same Build289 carousel runtime, and the latest device test reports no carousel improvement.
+2. **The Home layout owner is still wrong.** Build289 let the oversized native surface affect the root layout and pushed the Dock down/offscreen. Build290 constrained the root `ZStack`, but the Dock then moved too high. Do not continue by guessing padding or another compensating offset.
+3. **Do not rewrite the Dock component yet.** The Dock owner itself was unchanged when Build289 introduced the regression. First reconcile Home root geometry, safe areas, the native surface's render extent, and the `.overlay(alignment: .bottom)` basis against the accepted pre-native layout.
+4. **Native/UIKit is not proven impossible.** The evidence rejects this implementation/result, not the entire framework. Do not claim a generic SwiftUI ceiling or a guaranteed native cure.
+5. **No P0/Frozen playback or transport module is implicated.** Shared Poster image infrastructure, Player/MPV/PiP, UnifiedTransport, playback Cache/Session, STRM→302→115/CDN and Seek contracts remain out of scope.
 
-Separate experiments showed blur-only removal, foreground reduction, standardPan/input cadence, frame latching and286 notification scope isolation insufficient. Simple native/SwiftUI probes can reach120; no generic framework ceiling or guaranteed native cure follows. TREE mode was session-sensitive; do not compare cross-launch readings as root-cause proof. Build284 was retired before device use; do not treat it as a pending gate. Do not add prediction/interpolation of finger positions, timers/watchdogs/retries, duplicate progress/current-page authority or unrelated refactors.
+## Exact source areas the next session must inspect before editing
 
-## Historical Build286 implementation and packaging — not current refactor constraints
+### Home layout / Dock ownership
 
-The following records describe only the existing286 candidate and its old guards. Current requirements and the executable development plan above take precedence for new implementation.
+Current Build290 `Sources/UI/EmbyHomeCoreV3.swift`:
 
-## Why this architecture A/B is justified
+- `GeometryReader` computes `viewportHeight = geometry.size.height + safeArea.top`.
+- Native `surfaceHeight = geometry.size.height + safeArea.top + safeArea.bottom`.
+- `V3HomeCarouselNativeSurface` is framed to `surfaceHeight` and offset by `-safeArea.top`.
+- Root `ZStack` is then constrained to `geometry.size.width × geometry.size.height`.
+- Dock remains `.overlay(alignment: .bottom)` with `serverDockBottomInset` in immersive mode.
 
-Build279 showed callback density / standard Pan alone is insufficient. Build281 showed device-max DisplayLink latching of latest real input is insufficient. Build282 showed simple `CADisplayLink → CALayer` and simple `@Published → SwiftUI` paths can sustain 120 on the same package/device while the real TREE path remains session-sensitive. Therefore neither generic SwiftUI capability nor input cadence alone explains the real presentation path.
+Accepted pre-native Build286 source `7e7b2ec944f5c0e74bc291e37683f1529e3d46b4` did **not** have the root `.frame(...)`; its backdrop used `geometry.size.height + safeArea.bottom` inside the same root `ZStack` and the same bottom Dock overlay. Compare these real definitions directly before any layout patch. Do not assume that preserving the Build289 native surface's safe-area extent is required if it conflicts with the accepted root/Dock layout contract.
 
-The real Build241/main architecture published `fromID`, `toID`, `progress` and `direction` through one parent `V3HomeCarouselTransitionState`. Both the full persistent backdrop and full Hero scopes observed that parent. Each progress sample therefore emitted the same broad object-level invalidation used for low-frequency transition semantics.
+### High-frequency carousel path
 
-The source does **not** prove every descendant is fully rasterized on each sample; SwiftUI can preserve identity and optimize rendering. It does prove that the high-frequency observation/evaluation boundary was wider than necessary.
+Inspect the real call path end-to-end before changing motion code:
 
-## Build286 exact implementation
+- `Sources/UI/EmbyHomeCarouselInteractionV3.swift` — sole UIKit horizontal gesture/input owner.
+- `Sources/UI/EmbyHomeCarouselStateV3.swift` — current runtime/transition state and settle token/generation ownership.
+- `Sources/UI/EmbyHomeCarouselNativePresentationV3.swift` — presentation bridge, resident pages, `applyVisualState`, `animateVisualState`, `interruptAndReadProgress`, geometry/layout work.
+- `Sources/UI/EmbyHomeHeroScrollStateV3.swift` — vertical Home/Hero scroll coupling.
+- `Sources/UI/EmbyHomeHeroV3.swift` and `Sources/UI/EmbyHomeCoreV3.swift` — native surface integration and remaining Home shell behavior.
 
-Build286 keeps one `V3HomeCarouselTransitionState` as the sole transition owner and keeps `transitionProgress` as the sole product-facing progress entry point.
+Concrete facts worth measuring, not assuming: resident foreground nodes are `UIHostingController<V3HomeCarouselForegroundStaticView>`; `applyVisualState` performs transforms/alpha and then calls `layoutVisiblePages()`, base-color update and indicator update on progress changes; `layoutVisiblePages()` recalculates artwork/foreground geometry for visible pages. These are inspection/profile leads only — not yet proven causes of the remaining roughness.
 
-Notification granularity only is changed:
+## Preserved interaction contracts
 
-1. parent semantic fields `fromID`, `toID`, `direction` remain `@Published`;
-2. the parent owns one nested `V3HomeCarouselProgressState` containing the single stored progress value;
-3. `transitionProgress` reads/writes `carouselTransitionState.progress.value`;
-4. parent `V3HomeCarouselTransitionScope` still rebuilds for semantic transition changes but no longer receives each progress object's `objectWillChange`;
-5. narrow progress-observing wrappers update only Hero artwork opacity, foreground page X offset, target persistent-backdrop opacity, page indicators and the existing tiny cadence probe.
+Do not regress the retained carousel contracts while investigating:
 
-There is no second progress value/owner and no added DisplayLink.
+- one UIKit horizontal interaction owner;
+- immediate input response, no debounce accumulation;
+- ordinary distance commit `>= 0.28`;
+- direction-aware fling commit `>= 500 pt/s`;
+- commit/cancel timing 0.22 / 0.18 s;
+- auto interval / auto settle 6 s / 0.62 s;
+- immediate new-gesture takeover during settle must remain a requirement;
+- vertical Home scroll/stretch/crop/refresh behavior;
+- tap-to-detail and system navigation ownership;
+- iOS 15.0 deployment priority.
 
-## Exact product scope / guards
+## Rejected / do not repeat without new contrary evidence
 
-Build286 base→product diff contains exactly five paths:
+- Build286 progress-publication-scope narrowing as the final solution.
+- Repeating blur-only removal, foreground reduction, generic callback-density/input-cadence changes, display-link frame latching or TREE-only conclusions as if they solved the problem.
+- Prediction/interpolation/synthetic finger positions, timer/watchdog/retry/fallback smoothing, hard step caps, duplicate current/progress owners.
+- More Dock `padding`, safe-area constants or arbitrary offsets merely to counter the latest visual displacement.
+- Treating CI/IPA success as runtime acceptance.
+- Treating the current native hierarchy / `UIViewPropertyAnimator` as already validated simply because the code is native.
+- Uploading private device recordings to the public repo as part of debugging evidence.
 
-- `Sources/Core/AppIdentity.swift`
-- `Sources/UI/EmbyHomeCarouselInteractionV3.swift`
-- `Sources/UI/EmbyHomeCarouselProgressPresentationV3.swift` (new)
-- `Sources/UI/EmbyHomeCarouselStateV3.swift`
-- `Sources/UI/EmbyHomeHeroV3.swift`
+## Next exact action for the new session
 
-`Sources/UI/EmbyHomeCoreV3.swift` remains exact blob `c7900bae5e608ae46c0cd476c1f08999be9baf0b`.
+1. Read `AGENTS.md`, `docs/automation/CHATGPT_NOTIFY_RULES.md`, `docs/project/START_HERE.md`, `CURRENT_WORK.md`, `CURRENT_WORK_DEV.md`, `MODULE_STATUS.md`, this checkpoint, and the two Home carousel plan/reference docs.
+2. Resume identity guard: confirm PR #289 is still Draft/open, branch is `perf/home-carousel-progress-scope-build286`, and head is `9e0bb371fe65c29524b92ac1892bab84b6684444`. If any identity moved, stop and reconcile docs before coding.
+3. Compare the exact Build290 Home root/safe-area/native-surface/Dock layout against Build286/Build288 pre-native Home layout. Establish the actual layout owner that preserves accepted Dock position without a compensating offset. Do not patch until that ownership is clear from source.
+4. Separately trace/profile the high-frequency horizontal path from UIKit touch delivery through runtime state/bridge to native transforms/layout. Determine whether the current native presentation is actually avoiding high-frequency layout/SwiftUI work or merely moving it behind `UIHostingController`/`layoutVisiblePages()`.
+5. Only after one concrete causal issue is established should the next session make the smallest source change. No broad second rewrite.
+6. After any important code/CI/device decision, update this checkpoint plus `PROJECT_STATE.md`, `MODULE_STATUS.md`, `TECHNICAL_DECISIONS.md`, and `BUILD_TEST_INDEX.md` in the same cycle.
+7. If a new candidate becomes justified, perform fresh Build/version collision checks and continue through CI/IPA to a target-device package before handing it back.
 
-Independent source-ZIP git-blob verification matched product commit blobs:
+## Handoff state
 
-- AppIdentity `e435b73ad030474af14e9199914af9429114fac2`
-- Interaction `bd5666d2c7e4d29bec6987fdb4a96f636d519e3f`
-- progress presentation `81da601c9860a29d38a6a26676cf27adb7727dd9`
-- carousel state `c7694568ee9bc3b6c9bbc0d529100d5327a48e7a`
-- Hero `99cf58a8ac908e064855cee42fcc4ffb636fcb55`
-- unchanged HomeCore `c7900bae5e608ae46c0cd476c1f08999be9baf0b`
-
-Static guards also preserve `.compositingGroup()`, `blur(radius: 30)`, three-slot Hero residency, `>=500 pt/s`, `>=0.28`, 0.22/0.18 animations, `CADisableMinimumFrameDurationOnPhone`, and iOS 15.0 target; Player/Transport/Session/Cache/MPV/PiP paths are excluded.
-
-## Packaging verification
-
-Run `33786964921`, job `100753960778` passed materialization, exact-scope guards, Xcode 16.4 Release compile, identity/MinOS validation, IPA packaging and artifact upload.
-
-Independent artifact re-download verified:
-
-- outer artifact ZIP SHA-256 equals GitHub digest `983c3cb1aa650f727266019b9a1ea834fad9c29266a043a775f9109c40f0c9f4`;
-- IPA SHA-256 equals recorded `5c26b36eb70117abbd27885f5b637827020f7fffcc949d79a45e5b9a19bc28b0`;
-- source ZIP SHA-256 equals recorded `ff975b72afcfc660542c112a2eb55e4c0f8669e11933bc4d368df7b3c7c8f68e`;
-- both archives pass integrity tests;
-- built Info.plist: `com.embyplayerlab.app`, `OnePlayer`, `0.15.19`, build `286`, `MinimumOSVersion=15.0`, `CADisableMinimumFrameDurationOnPhone=true`;
-- runtime Mach-O MinOS audit reports 15.0 and passes the required <=17.0 ceiling.
-
-## Explicitly preserved / excluded
-
-Preserved: single UIKit interaction owner; Build236 acquisition behavior; current/previous/next clear-Hero residency; page-level foreground `compositingGroup()`; full-width page movement; backdrop blur/blend; white-flash correction; max-refresh-through-settle; rapid takeover; `>=500 pt/s`; `>=0.28`; 0.22/0.18 settle; iOS 15.0 priority; Player / MPV / PiP / UnifiedTransport / playback Cache / Emby Session / STRM→302→115/CDN.
-
-Excluded: new DisplayLink/frame latch; timer/watchdog/retry/fallback; interpolation/prediction/synthetic positions; second progress owner/value; blur removal; residency reduction; gesture rewrite; unrelated Home/poster refactor.
-
+There is deliberately **no new patch** in this handoff turn. The newest evidence says the current candidate is rejected and the next safe move is diagnosis, not another guessed fix. PR #289 remains the active unmerged Home task container; Build290 remains useful only as a rejected test point and exact source baseline.
