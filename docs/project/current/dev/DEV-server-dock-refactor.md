@@ -8,8 +8,8 @@
 - **Baseline:** Accepted OnePlayer0.15.26/Build293 tested fa8ff44ff4a5384fd4603a64b33354f941764a8c; current main119ab10eee869488b97415746a0243f51953eba0. Recursive tree compared: all product/source blobs identical; only closeout docs differ.
 - **Working branch:** refactor/server-dock-build294
 - **PR:** Draft#291 https://github.com/white-shark-ssw/emby-playerlab/pull/291
-- **Product source head:**e689a5ee7c7bafbad0c24420f358f5947c5d68dc
-- **CI control branch:** ci/build294-server-dock-20261006; exact-source Dock/carousel regression+Release IPA started; run identity pending.
+- **Product source head:**855a1ce48c455a996a880a170fc00910a48b315a
+- **CI control:** ci/build294-server-dock-20261006 /a35dfd4c83cd51ad8be2a0b3a575a812afbb6a01; run37352597958/job111906893541. Exact source/scope and source export passed; native regressions in progress.
 - **Build candidate:** Reserve OnePlayer0.15.27/Build294; OnePlayer-0.15.27-build294-server-dock. Build index/current Active tasks/CI candidates checked:293 latest Home,283 Poster; no294 allocation observed.
 - **Evidence:** First implementation and local source/scope guard passed; native/Xcode/IPA/device pending.
 - **Files / modules in scope:** EmbyServerRootViewV3, new ServerDock component/host, HomeCore/Rows, ServerBrowse, SearchExperience, OnePlayerSettingsViews, ImmersiveUIComponents Dock environment/presentation; AppIdentity/changelog/targeted validation.
@@ -19,6 +19,6 @@
 - **Completed:** Repository/baseline/parallel guards; branch/task/candidate registered; independent typed Dock configuration/bar and fixed-viewport host implemented; page AnyView signatures removed; Search-only root overlay removed; shared bottom clearance; detail policy retained. Root action extraction and frozen source checks passed.
 - **Validation state:** Linux cannot run UIKit/Xcode locally. Use source/scope checks then macOS exact-source UIKit regressions + Release build/package/MinOS audit.
 - **Pending:** Finalize host design around native NavigationView roots and detail preference; implement; tests; draftPR; CI; artifact identity verification; documentation.
-- **Next exact action:** Publish reviewed product patch, create draft PR, run exact-source native Dock/carousel regressions and Release IPA workflow; inspect package identities then update current checkpoint.
+- **Next exact action:** Monitor exact-source run37352597958; inspect native Dock/carousel results and repair only evidence-backed failures. After passing native tests/Release, retrieve artifact and independently verify package/source/MinOS identities, then update authority documents and hand off for device testing.
 - **Rejected / do-not-repeat:** No page-local Dock padding patches, content-dependent Dock anchor, second tab/navigation owner, speculative timers/retries/fallbacks, unrelated carousel/performance refactors.
 - **Open questions / risks:** Hosting above navigation would leave Dock visible on destinations that previously hide it; avoid global visibility guesses. Actual geometry and keyboard must be verified in native tests and on iPhone15ProMax/iOS17.0.
