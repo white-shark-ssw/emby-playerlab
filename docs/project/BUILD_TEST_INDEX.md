@@ -519,3 +519,19 @@ Update this index when a build materially changes architectural understanding, b
 - Package identity verified: `com.embyplayerlab.app`, `0.15.22 (289)`, `MinimumOSVersion=15.0`; runtime Mach-O MinOS audit passes at 15.0.
 - Required next gate: iPhone 15 Pro Max / iOS 17.0 qualitative slow/rapid/reversal/release/cancel/settle-takeover and Home vertical-interaction testing. No real-device smoothness result is inferred from CI.
 - Evidence: **Code written ✅ / exact-scope guarded ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device tested ❌ / stable-frozen ❌**.
+
+
+## Build290 — Home native carousel Dock layout regression fix candidate
+
+- User real-device evidence on 2026-10-05 **rejects Build289** (`0.15.22 / 289`, exact source `0f5a1893988e20e0dcfe21d0395abe194c2340e6`): the uploaded target-device screen recording shows the Home bottom Dock pushed below the visible screen after the native carousel change. This is direct iPhone evidence and outranks the prior CI/IPA-only pending status.
+- The recording is 30 FPS capture evidence and is used qualitatively for layout/visual regression review; it is **not** treated as a numerical 120 Hz frame-pacing measurement. Other visible carousel-transition concerns remain pending target-device follow-up rather than being converted into speculative code changes.
+- Source inspection found the Dock owner unchanged. Build289 added a Home-private native surface sized to `geometry.size.height + topSafeArea + bottomSafeArea` and offset it upward while the Dock remained a `.bottom` overlay of the Home root `ZStack`. That oversized child could enlarge the Home root alignment rectangle and move the Dock overlay below the viewport, matching the recording.
+- Build290 applies the minimal ownership-preserving correction: constrain the Home root `ZStack` layout rectangle to `geometry.size.width × geometry.size.height` with top alignment, while leaving the oversized native surface free to render into the safe-area region. The Dock implementation itself is not changed.
+- Identity: **OnePlayer 0.15.23 / Build290**. Exact product source: **`9e0bb371fe65c29524b92ac1892bab84b6684444`** on Draft PR #289 / `perf/home-carousel-progress-scope-build286`.
+- Build289→Build290 source delta is exactly two files: `Sources/Core/AppIdentity.swift` (0.15.22→0.15.23) and `Sources/UI/EmbyHomeCoreV3.swift` (one root `.frame(width:height:alignment:)` line). No Player/MPV/PiP/Transport/Cache/Session/shared Poster-image code changed.
+- Dedicated Xcode 16.4 Release run/job: **`37325862505 / 111816942719`** — exact-source guard, dependency preparation, Release compile, identity/MinOS validation, IPA integrity packaging and artifact upload all passed.
+- Artifact: **`OnePlayer-0.15.23-build290-home-carousel-dock-fix`**, ID **`11352810860`**, digest **`sha256:70806c4d5fed5ef48b3e71dea887f5f0867c55b4a962bde0cb4ff9c4d357904f`**.
+- Independently downloaded artifact digest matches GitHub. IPA SHA-256: **`734e2f40fd3d6c694c79feb060d675128927cd0ff2c9c541791be1b1a5a1cf2e`**; source ZIP SHA-256: **`1a3d3b50abaf3707193da427ed3512d223fb0005e7fe33ef891486916ddf7de4`**; both match CI checksum files and IPA `unzip -t` passes.
+- Package identity verified: `com.embyplayerlab.app`, `0.15.23 (290)`, `MinimumOSVersion=15.0`; runtime app Mach-O MinOS audit passes at 15.0.
+- Required next gate: iPhone 15 Pro Max / iOS 17.0 real-device verification that the Dock is restored and that carousel slow/rapid/reversal/release/cancel/settle-takeover, visual continuity, tap-to-detail and Home vertical scrolling remain correct.
+- Evidence: **Code written ✅ / exact-scope guarded ✅ / CI passed ✅ / IPA produced+independently verified ✅ / Build289 real-device rejected ✅ / Build290 real-device tested ❌ / stable-frozen ❌**.
