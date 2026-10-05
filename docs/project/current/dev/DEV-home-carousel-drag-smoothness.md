@@ -1,14 +1,14 @@
 # DEV-home-carousel-drag-smoothness
 
-- **Status:** Active — Build291 reverse/title/Dock corrections user-confirmed; Build292 rapid swipe/fade native regressions+CI+IPA verified; target-device pending.
+- **Status:** Active — Build291 reverse/title/Dock corrections user-confirmed; Build292 user-reported stable120FPS; rapid-swipe flicker/color seam correction Build293 in validation.
 - **Work ID:** DEV-home-carousel-drag-smoothness
 - **Routing aliases / keywords:** 首页轮播 / 轮播图 / 轮播流畅度 / carousel / rapid swipe / 120fps / native presentation / Dock
 - **Working branch:** perf/home-carousel-progress-scope-build286
 - **Draft PR:** #289 — open/unmerged
-- **Current exact product head:** 23ed1864f63d4701509df98b72d15e67038f801a
+- **Current exact product head:** fa8ff44ff4a5384fd4603a64b33354f941764a8c
 - **Predecessor / device-positive geometry:** Build291 / dbeaa9d3472c85a5c238598da3aac41d8e49f43c
-- **Reserved candidate:** OnePlayer 0.15.25 / Build292 / home-carousel-rapid-fade
-- **CI control branch/head:** ci/build292-home-carousel-rapid-fade-20261005 / 8dc55421a62325a6611f54f337ffc9c56d4f9208
+- **Reserved candidate:** OnePlayer 0.15.26 / Build293 / home-carousel-handoff
+- **CI control branch/head:** ci/build293-home-carousel-handoff-20261005 / 4a26035ab17e0cf61b3f647055a13a0c745c4280
 - **CI workflow/run/job:** .github/workflows/build292-home-carousel-rapid-fade.yml / 37341422303 / 111869158278
 - **Target / MinOS:** iPhone 15 Pro Max / iOS 17.0; iOS 15.0
 
@@ -68,3 +68,9 @@ User confirms long frames repaired and stable120FPS on target device. New contin
 Reserve OnePlayer0.15.26/Build293/home-carousel-handoff exclusively; no duplicate checkpoint/Build index/branch/latest CI identity. Existing branch/PR#289 head23ed1864, maina1834c10 match. Poster/Aether/Search isolation unchanged. Runtime/input/HomeCore/fade geometry/performance path remain byte-identical to user-positive292 except targeted native alpha/base handoff and explicit seam coloring. iOS15/Frozen/P0 protected.
 
 Next exact action: publish candidate, actual-layer opacity/color takeover negative control against292 plus repeated handoffs and prior suite; exact-source Release/IPA/MinOS audit, independently verify and provide copyableHTTPS artifact. Code draft local, CI/IPA pending; flicker/seam device pending; preserve user-reported292120FPS outcome. Private recording stays outside GitHub.
+
+## Build293 — artwork/base-color presentation handoff; shared lower-edge floor
+
+2026-10-06: Build292 device feedback confirms stable120FPS and removal of long frames. Rapid continuous switching still flickers, and user reports artwork/content color mismatch. Recording4.93s/30fps is qualitative only;120FPS is user report. Build293 captures all actual artwork presentation opacities and actual base color before interrupting; preserves them across page rebasing/real finger motion; fades every captured outgoing page in the new tail, clears at settle. No second product progress owner. Source also used central80% image average for floor; now lower-edge18% sample carries image edge color downward, and clear-image/contrast overlays end at90% Hero height so its last strip and content share exactly one solid base. No new blur, per-progress layout, timer or SwiftUI invalidation.
+
+Product0.15.26/Build293 exact fa8ff44ff4a5384fd4603a64b33354f941764a8c (parent23ed1864), PR#289/branchperf/home-carousel-progress-scope-build286. CI4a26035ab17e0cf61b3f647055a13a0c745c4280/ci/build293-home-carousel-handoff-20261005. Delta exactly AppIdentity, NativePresentation, changelog. Runtime/input/HomeCore/Dock/vertical/shared images/Poster/detail/navigation/Frozen/P0 byte-identical to user-positive292; MinOS15. Tests compare actual layer alpha/base before/after four handoffs, retain outgoing pages, lower-edge sample orientation and common floor; prior eight regressions retained. Native/CI/IPA pending; user-reported292120FPS positive,293 flicker/color/performance device pending. Next exact action: complete10-test suite and292 negative control, exact-source Release/IPA/MinOS, independently verify handoff artifact.
