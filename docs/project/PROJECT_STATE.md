@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated 2026-09-02: Home Build282 manual TREE scope HUD comparison is no longer accepted for component attribution because the same installed package produced 120-FPS scope results in one app run and ~90 FPS after force-quit/relaunch. Build284 / 0.15.17 now tests a same-process REF↔TREE crossover with one continuous device-max DisplayLink; exact-source CI/IPA are verified and target-device crossover is pending. Poster Build283 remains a separate active line; Build216 remains the accepted packaged overall baseline; Search Build256 and all P0 playback/transport contracts remain protected._
+_Last updated 2026-10-05: Detail immersive navigation / still-viewer task is completed from Build288 / 0.15.21 target-device acceptance. Build287 dismiss-first ordering is rejected; Build288 restores Build286 detail behavior and only adds lifecycle diagnostics, and the user reports the opaque top bar/native back title no longer reproduced. PR #290 is closed unmerged because this task is stacked on the separate unmerged Home Build286 line and contains no distinct detail behavior fix to integrate. Build216 remains the accepted packaged overall baseline; Home/Poster/Aether remain separate active lines; Search Build256 and all P0 playback/transport contracts remain protected._
 
 ## Current accepted overall baseline
 
@@ -45,6 +45,17 @@ Build216 inherits all accepted/frozen player, PiP, transport, playback-cache, ep
 - **Build199**: Add/Edit Emby modern editor, same-server route selection, cached-first auto-start, local retained password and optional synchronizable Keychain password for iCloud; merged PR #256.
 - **Build213**: Favorites + Library 7-tab disk-backed warm presentation cache; cached-first after relaunch, live refresh remains authoritative, successful accepted state writes through, failed refresh retains old snapshot; target-device accepted through PR #260.
 - **Build216**: detail range-pill taps synchronously stop active native episode-row deceleration before the existing Build191 range-first selection and 0.32 s target scroll; target-device accepted and merged through PR #261.
+
+## Completed / frozen: Detail immersive navigation / still viewer — Build288 / 0.15.21
+
+Work `DEV-detail-immersive-still-viewer-nav` is complete. Build287 / 0.15.20 is permanently rejected by target-device evidence because its dismiss-first / clear-binding-in-dismiss-completion ordering made the opaque system top bar/native back title regression materially easier to trigger. Do not reintroduce that ordering without new contrary device evidence.
+
+Build288 exact source `ce565996e37dcb750117c9de4607b23b673edce3` restores the original Build286 still-viewer ordering and adds only narrow `StillViewer` lifecycle diagnostics plus AppIdentity. Xcode 16.4 run/job `37296666668 / 111719392128` passed; artifact `11340525765`; IPA SHA `f1100a6b2b344c6615ad20c2328cf096d52c84b46bf10a0402dad52ae5fa7eed`; source ZIP SHA `ea963fe5f8d7d0a9303a8dcef48ddc1b2fe2947b376b527988eb06a6655d8609`; built MinOS 15.0. On 2026-10-05 the user reports the previously reproduced top-bar regression did not appear in Build288 and explicitly accepted the task for completion.
+
+Evidence limitation is important: relative to Build286, Build288 does not contain a new detail/navigation behavior fix; it only removes the rejected Build287 ordering and adds diagnostics. Therefore no causal root-fix is claimed. The frozen product contract is the observed accepted behavior: normal detail scrolling and still-viewer use must retain transparent immersive navigation, native back-title leakage must not reappear, and UIKit remains the sole push/pop/interactive-pop owner. No timer, watchdog, delayed reapply, global `UINavigationBar.appearance()` mutation or second navigation owner is authorized.
+
+PR #290 is closed without merge. It is stacked on the separate unmerged Home Build286 branch, and merging its AppIdentity/diagnostics would not integrate a distinct detail behavior change. The accepted detail conclusion is recorded in project state/build evidence rather than silently pulling Home candidate code into `main`. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device accepted ✅ / task completed ✅ / behavior contract frozen ✅ / merged not required**.
+
 
 ## Active: Home carousel presented-performance diagnosis — Build284 / 0.15.17
 

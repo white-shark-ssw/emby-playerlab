@@ -34,6 +34,8 @@ UIKit may own host geometry; product code must not casually seize `CAMetalLayer.
 
 Native iOS push/pop and interactive-pop remain system-owned. Immersive appearance may adapt around navigation but must not replace that ownership.
 
+2026-10-05 detail still-viewer closeout: Build287's “dismiss UIKit host first, then clear the still-selection binding in dismissal completion” ordering is rejected by target-device evidence because it made the opaque top-bar/native-back-title regression materially easier to trigger. Build288 restored the prior Build286 ordering and was accepted on the target device without the reported regression recurring. This acceptance does not prove a causal root fix because Build288 adds no new detail behavior beyond reverting Build287 and adding diagnostics. Durable rule: retain system-owned navigation and the accepted Build286 detail/still-viewer ordering; do not add dismiss-first completion ordering, global navigation-bar appearance mutation, timer/watchdog/delayed reapply, or a second navigation state owner without new target-device evidence.
+
 ## D008 — PiP uses a visual bridge; MPV remains authority
 
 PiP is frozen at Build173 unless new real-device evidence or a materially better renderer-lifecycle approach appears. SampleBuffer is the native visual bridge; MPV remains playback/audio/time authority; background video suspension uses `vid=no`; PiP X = `pauseAndSuspend`; no periodic bridge catch-up loop is part of the frozen design.
