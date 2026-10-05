@@ -446,3 +446,16 @@ Two decisions follow. First, the root `.frame(...)` line is not an accepted Dock
 The next investigation should measure the actual high-frequency path rather than add another presentation rewrite: UIKit gesture delivery → `V3HomeCarouselRuntimeState` / transition state → presentation bridge → `V3HomeCarouselNativeView.applyVisualState` / settle. In the current source, `applyVisualState` still calls `layoutVisiblePages()` and color/indicator work on progress updates, and resident foreground pages are `UIHostingController`-backed. These are concrete call-path facts to inspect/profile, not a proven root cause. Compare against the pre-native Build286/Build288 Home root layout and the retained Build241 interaction contracts before modifying code.
 
 Evidence for Build290 remains: Code written ✅ / exact-source CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / result rejected ❌ / stable-frozen ❌. The 9.17-second second recording is 30 FPS and is used only as qualitative visual evidence; do not derive a numerical 120 Hz cadence from it.
+
+
+## D034 — Separate foreground base geometry from motion; preserve accepted Dock extent
+
+Apple UIView frame is undefined under a nonidentity transform; use bounds/center for base geometry. Resource updates must not apply a running animator's terminal model state. Layout extent and native render overscan have separate responsibilities. These source invariants do not imply real-device smoothness acceptance.
+
+### Build291 — source-backed carousel geometry correction (2026-10-05)
+
+Latest user recording/report adds reverse swipe motion and image-logo/text-title overlap to rejected Build290's Dock-up regression. Source establishes a concrete UIKit violation: transform was followed by frame=x0 layout on each move, cancelling base translation and superimposing foreground slots. Candidate uses bounds/center, removes ordinary progress page relayout, preserves in-flight animator during resource configure, and places native top overscan in an overlay of the accepted Build286 viewport+bottom-safe-area layout extent. Dock implementation remains unchanged.
+
+OnePlayer **0.15.24 / Build291**, exact product source **dbeaa9d3472c85a5c238598da3aac41d8e49f43c**, branch perf/home-carousel-progress-scope-build286 / Draft PR#289. Dedicated CI control **f7ea52f37fae6b3858c8366bd705299b33a29689** / ci/build291-home-carousel-geometry-20261005 includes real-source UIKit geometry/takeover tests, rejected-source negative control and exact-source Release/IPA packaging. Product delta from Build290 is four paths: AppIdentity, HomeCore, NativePresentation, changelog. No shared Poster/images, detail navigation, Player/MPV/PiP/Transport/Cache/Session or deployment changes.
+
+Evidence at reservation: **Code written / static scope reviewed; simulator/CI/IPA pending; real-device pending; not stable.** Build291 candidate is reserved exclusively to DEV-home-carousel-drag-smoothness. Motion/titles/Dock acceptance and final presented smoothness remain device gates; the 30fps recording is not a numerical 120Hz trace.
