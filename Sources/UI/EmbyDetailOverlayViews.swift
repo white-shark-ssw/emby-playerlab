@@ -63,13 +63,11 @@ struct EmbyStillViewerPresenter: UIViewControllerRepresentable {
     final class Coordinator {
         weak var host: UIViewController?
 
-        func dismiss(completion: (() -> Void)? = nil) {
-            guard let host else {
-                completion?()
-                return
-            }
+        func dismiss() {
+            guard let host else { return }
+            DiagnosticsLogger.shared.log("StillViewer", "event=dismiss-request")
+            host.dismiss(animated: false)
             self.host = nil
-            host.dismiss(animated: false, completion: completion)
         }
     }
 
@@ -92,15 +90,23 @@ struct EmbyStillViewerPresenter: UIViewControllerRepresentable {
         let binding = $selectedIndex
         let coordinator = context.coordinator
         let viewer = EmbyStillViewer(images: images, initialIndex: index, itemId: itemId, client: client) {
-            coordinator.dismiss { binding.wrappedValue = nil }
+            DiagnosticsLogger.shared.log("StillViewer", "event=close-request item=\(itemId)")
+            binding.wrappedValue = nil
+            coordinator.dismiss()
         }
         let host = UIHostingController(rootView: viewer)
         host.view.backgroundColor = .clear
         host.modalPresentationStyle = .overFullScreen
         coordinator.host = host
         DispatchQueue.main.async {
-            guard viewController.presentedViewController == nil else { return }
-            viewController.present(host, animated: false)
+            guard viewController.presentedViewController == nil else {
+                DiagnosticsLogger.shared.log("StillViewer", "event=present-skip reason=already-presented item=\(itemId)")
+                return
+            }
+            DiagnosticsLogger.shared.log("StillViewer", "event=present-request item=\(itemId) index=\(index)")
+            viewController.present(host, animated: false) {
+                DiagnosticsLogger.shared.log("StillViewer", "event=present-complete item=\(itemId) index=\(index)")
+            }
         }
     }
 }
