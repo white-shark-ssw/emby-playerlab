@@ -4,6 +4,7 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 
 | Milestone | Main purpose | Result / current meaning |
 |---|---|---|
+| **Build293 /0.15.26** | Native resident carousel / continuous takeover / shared floor | **User explicitly accepted on2026-10-06; native10/0, exact-source CI/IPA/MinOS15 verified; PR#289 merged. Completed/frozen carousel scope;292120FPS user-reported.** |
 | Build84 / 0.13.17 | MDK RecoveryIsolation | Protected app/exit lifecycle better; did not prove abnormal media solved. |
 | Build96 | MDK single-generation safety | Avoided unsafe same-process MDK generation rebuild after failure. |
 | Build111 / 0.13.44 | MDK Seek experiments | Real-device long-tail Seek remained worse than MPV. |
@@ -599,3 +600,16 @@ Product0.15.26/Build293 exact fa8ff44ff4a5384fd4603a64b33354f941764a8c (parent23
 - Scope from292 exactly AppIdentity, NativePresentation, changelog. Runtime/input/HomeCore/Dock/vertical/shared images/Poster/detail/navigation/Frozen/P0 byte-identical. No extra blur, timer, per-progress layout or second product-progress owner.
 - Evidence: **code written /10 native regressions passed /exact-source Release CI passed /IPA independently verified and supplied /Build293 real-device pending**. Build292 stable120FPS/removal of long frames is user-reported positive evidence, not inferred from30fps recording. Build291 reverse/title/Dock user-confirmed;289/290 rejected.
 - Next exact action: receive Build293 target-device rapid repeated swipe/reversal/takeover flicker and bottom hue/seam results, retained120FPS, title/Dock, vertical scroll/stretch/refresh and native detail navigation. Do not retune or rebuild before new evidence; no Build293 device acceptance or merge claim.
+
+## Build293 accepted / carousel task completed — 2026-10-06 (Asia/Shanghai)
+
+User's controlling target-device result: “目前测试没问题了，我认为轮播图重构这个任务可以验收通过进行收尾工作了”. This accepts the supplied **OnePlayer0.15.26 / Build293** carousel candidate, exact tested source **fa8ff44ff4a5384fd4603a64b33354f941764a8c**, on the project's iPhone15ProMax/iOS17.0 target. Build292 removal of long frames and stable120FPS remains user-reported performance evidence; Build293 has general explicit acceptance after flicker/color repair, without a new numerical frame trace.
+
+- **DEV-home-carousel-drag-smoothness completed / carousel interaction and native presentation stable/frozen at Build293.**
+- **PR#289 merged to main at f0a737519801ff55f18e31f9bdcf5f83c9097c17**. Merge preview preserves tested product bytes exactly; only authority/planning documents differ from tested source. No new code, Build, IPA or unnecessary retest generated for closeout.
+- Native resident pages/resources stay prepared outside movement; one UIKit gesture/runtime transition authority; foreground uses full-width translation, artwork blends in place. Release takeover reads actual foreground position, every artwork opacity and base color before stopping animation; preserve contributing outgoing pages across committed same-direction rebasing and fade all outgoing pages through the new tail.
+- Lower-edge sampled color plus artwork/contrast overlays ending by90% Hero height produce one solid Hero/content floor. Preserve accepted geometry/title/Dock, vertical scroll/stretch/refresh and native navigation. Do not restore transformed-frame writes, central-image hue mismatch, hidden contributing outgoing pages or opacity recomputation at acquisition.
+- Preserve0.28/500pt/s,0.22/0.18/0.62s,6s auto, iOS15.0, Frozen/P0. No new blur, timer/watchdog, second progress owner or high-frequency full-tree SwiftUI.
+- Validation: actual-source native **10 tests/0 failures**, Build292 negative **2 tests/22 expected assertions**; exact-source Release CI run/job **37345215494 /111882105262**, control **4a26035ab17e0cf61b3f647055a13a0c745c4280**, success. Verified artifact **11361570366**, digest **fe13e098eeb32b92b6e255784d0e742d7ffa2f5ac6225fcffe2daa1c61a87213**; IPA **8b57d565e0b7c93a12e43e65e3c2085350933097119ddf0b370f69d0df4f91bf**; sourceZIP **31b41a2ef631a99dbeb76926746fc87c5bff2c4e558ca0b193d2957aaaf447fc**. Info.plist+arm64 MinOS15.0, CADisableMinimumFrameDurationOnPhone=true.
+- Evidence: **Code written /CI passed /IPA independently verified /real-device accepted /stable-frozen for carousel scope /merged to main**. Historical pending/rejected records above remain dated history and are superseded by this acceptance.
+- Remove only this task's current checkpoint per DOCUMENTATION_POLICY; other task checkpoints unchanged. Reopen only with new concrete regression evidence; no remaining carousel test gate.

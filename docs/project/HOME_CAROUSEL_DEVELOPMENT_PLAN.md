@@ -1,14 +1,14 @@
 # 首页轮播模块开发计划
 
-> Latest controlling state (2026-10-06): Build291 reverse/title/Dock repairs are user-confirmed. Build292 has target-device feedback that long frames are repaired and120FPS is stable, but rapid consecutive switches flicker and artwork/content floor hue still differs. Build293 (0.15.26, exactfa8ff44ff4a5384fd4603a64b33354f941764a8c, PR#289) captures all actual artwork opacities/base color before animation interruption, retains contributing outgoing pages across rebasing, and fades them through the next tail. Lower-edge image sampling and both overlays ending by90% Hero height share the exact same solid content floor. Runtime/input/HomeCore/Dock/Frozen/P0 remain byte-identical to292; iOS15 preserved. Native ten-test suite and source-negative control pass; final CI/package evidence is in the task checkpoint and BUILD_TEST_INDEX. Build293 real-device flicker/colors/retained120FPS remain pending. Historical states below are superseded for implemented scope.
+> Latest controlling state (2026-10-06): **Completed / accepted / frozen at OnePlayer0.15.26/Build293**. User confirms testing has no remaining issue and authorizes closeout. Tested exactfa8ff44ff4a5384fd4603a64b33354f941764a8c; PR#289 merged atf0a737519801ff55f18e31f9bdcf5f83c9097c17. Native10/0, exact-source CI/IPA/MinOS15 verified. Build292120FPS is user-reported; no new numerical trace. Preserve resident pages, one UIKit/runtime authority, actual-position/opacity/base-color handoff, retained outgoing artwork and shared lower-edge floor. Other Frozen/P0 contracts preserved. Historical pending/unimplemented states below are superseded. Reopen only on new regression evidence.
 
 
-> Current implementation status (2026-10-06): Build289/290 were implemented and device rejected. Build291 source dbeaa9d3472c85a5c238598da3aac41d8e49f43c corrects the proved transform/frame and Dock-extent violations; native regressions, exact-source CI and IPA verification passed, target-device acceptance pending. The earlier pre-implementation statements below are historical planning context. Live identity and next action: [task checkpoint](current/dev/DEV-home-carousel-drag-smoothness.md).
+> Current implementation status (2026-10-06): Build289/290 were implemented and device rejected. Build291 source dbeaa9d3472c85a5c238598da3aac41d8e49f43c corrects the proved transform/frame and Dock-extent violations; native regressions, exact-source CI and IPA verification passed, target-device acceptance pending. The earlier pre-implementation statements below are historical planning context. Live identity and next action: [acceptance record](BUILD_TEST_INDEX.md).
 
 
 更新：2026-10-05。唯一任务：`DEV-home-carousel-drag-smoothness`。
 
-本文件供其他开发会话直接执行。需求/源码依据见 [需求与设计](HOME_CAROUSEL_REFACTOR_PLAN.md)，实时进度与分支身份见 [任务 checkpoint](current/dev/DEV-home-carousel-drag-smoothness.md)。本轮只整理计划；没有重构代码、新 Build、CI 或 IPA。
+本文件供其他开发会话直接执行。需求/源码依据见 [需求与设计](HOME_CAROUSEL_REFACTOR_PLAN.md)，实时进度与分支身份见 [验收记录](BUILD_TEST_INDEX.md)。本轮只整理计划；没有重构代码、新 Build、CI 或 IPA。
 
 ## 1. 目标与已确定范围
 
@@ -152,3 +152,16 @@
 给新会话的续接指令：
 
 `/dev 继续 DEV-home-carousel-drag-smoothness，按 docs/project/HOME_CAROUSEL_DEVELOPMENT_PLAN.md 执行开发，先核对当前任务身份与源码，再连续推进到身份核验后的测试IPA。`
+
+## Build293 accepted / carousel task completed — 2026-10-06 (Asia/Shanghai)
+
+User's controlling target-device result: “目前测试没问题了，我认为轮播图重构这个任务可以验收通过进行收尾工作了”. This accepts the supplied **OnePlayer0.15.26 / Build293** carousel candidate, exact tested source **fa8ff44ff4a5384fd4603a64b33354f941764a8c**, on the project's iPhone15ProMax/iOS17.0 target. Build292 removal of long frames and stable120FPS remains user-reported performance evidence; Build293 has general explicit acceptance after flicker/color repair, without a new numerical frame trace.
+
+- **DEV-home-carousel-drag-smoothness completed / carousel interaction and native presentation stable/frozen at Build293.**
+- **PR#289 merged to main at f0a737519801ff55f18e31f9bdcf5f83c9097c17**. Merge preview preserves tested product bytes exactly; only authority/planning documents differ from tested source. No new code, Build, IPA or unnecessary retest generated for closeout.
+- Native resident pages/resources stay prepared outside movement; one UIKit gesture/runtime transition authority; foreground uses full-width translation, artwork blends in place. Release takeover reads actual foreground position, every artwork opacity and base color before stopping animation; preserve contributing outgoing pages across committed same-direction rebasing and fade all outgoing pages through the new tail.
+- Lower-edge sampled color plus artwork/contrast overlays ending by90% Hero height produce one solid Hero/content floor. Preserve accepted geometry/title/Dock, vertical scroll/stretch/refresh and native navigation. Do not restore transformed-frame writes, central-image hue mismatch, hidden contributing outgoing pages or opacity recomputation at acquisition.
+- Preserve0.28/500pt/s,0.22/0.18/0.62s,6s auto, iOS15.0, Frozen/P0. No new blur, timer/watchdog, second progress owner or high-frequency full-tree SwiftUI.
+- Validation: actual-source native **10 tests/0 failures**, Build292 negative **2 tests/22 expected assertions**; exact-source Release CI run/job **37345215494 /111882105262**, control **4a26035ab17e0cf61b3f647055a13a0c745c4280**, success. Verified artifact **11361570366**, digest **fe13e098eeb32b92b6e255784d0e742d7ffa2f5ac6225fcffe2daa1c61a87213**; IPA **8b57d565e0b7c93a12e43e65e3c2085350933097119ddf0b370f69d0df4f91bf**; sourceZIP **31b41a2ef631a99dbeb76926746fc87c5bff2c4e558ca0b193d2957aaaf447fc**. Info.plist+arm64 MinOS15.0, CADisableMinimumFrameDurationOnPhone=true.
+- Evidence: **Code written /CI passed /IPA independently verified /real-device accepted /stable-frozen for carousel scope /merged to main**. Historical pending/rejected records above remain dated history and are superseded by this acceptance.
+- Remove only this task's current checkpoint per DOCUMENTATION_POLICY; other task checkpoints unchanged. Reopen only with new concrete regression evidence; no remaining carousel test gate.

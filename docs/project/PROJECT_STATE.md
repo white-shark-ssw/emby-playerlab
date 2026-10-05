@@ -1,25 +1,23 @@
 # OnePlayer Project State
 
-_Last updated 2026-10-06: Build291 reverse/title/Dock fixes user-confirmed; Build292 long frames repaired and stable120FPS user-reported. Build293 artwork/base handoff and common lower-edge floor passed10 native regressions, exact-source Release CI and independent IPA verification; Build293 device flicker/color/retained120FPS pending._
+_Last updated 2026-10-06: User explicitly accepted OnePlayer0.15.26/Build293 home-carousel reconstruction after testing. PR#289 merged to main; carousel interaction/native presentation is completed and stable/frozen. Build292120FPS is user-reported evidence._
 
 ## Current accepted overall baseline
 
-- Product: **OnePlayer 0.14.49 / Build216**
-- Canonical branch: `main` after PR #261 integration
-- Final merge PR: **#261**
-- Final merge commit: `f5ad126b7b47e9713b1949780a6507fb3f0ca50f`
-- Accepted/tested product source: `dc00cac9f35ee4a3b950e4bb030bb324baf90b18`
-- Dedicated standard MPV CI run/job: `33064051545 / 98489652724` — success
-- Artifact: `OnePlayer-0.14.49-build216-detail-range-inertia`; ID `9643031850`
-- Artifact digest: `sha256:9cbccc582be719b2daa10077293da2951f0cbce8016625128de8ef9d85b27f48`
-- IPA SHA-256: `e3054a53398e1df48134fecd8c30671e10ecaa8a93df5483936adcf10e055075`
-- Source ZIP SHA-256: `98e1b5b52ebe5d8b2e3fbf754d3dfb18d0ea082fd77bcd9e6905b0bcb56e0f6f`
-- Deployment Target / built MinOS: **iOS 15.0**
-- Target device: **iPhone 15 Pro Max / iOS 17.0**
-- Real-device result: **user reported Build216 acceptance on 2026-08-27**
-- Evidence: **Code written / CI passed / IPA produced / real-device accepted / stable/frozen for the detail episode-range inertia contract / merged to main**
+- Product: **OnePlayer0.15.26 / Build293** — home-carousel acceptance milestone
+- Canonical branch: **main**, PR **#289**, merge **f0a737519801ff55f18e31f9bdcf5f83c9097c17**
+- Accepted/tested product source: **fa8ff44ff4a5384fd4603a64b33354f941764a8c**
+- Dedicated exact-source CI run/job: **37345215494 /111882105262 — success**
+- Artifact: **OnePlayer-0.15.26-build293-home-carousel-handoff**, ID **11361570366**
+- Artifact digest: **sha256:fe13e098eeb32b92b6e255784d0e742d7ffa2f5ac6225fcffe2daa1c61a87213**
+- IPA SHA256: **8b57d565e0b7c93a12e43e65e3c2085350933097119ddf0b370f69d0df4f91bf**
+- SourceZIP SHA256: **31b41a2ef631a99dbeb76926746fc87c5bff2c4e558ca0b193d2957aaaf447fc**
+- Deployment Target / built MinOS: **iOS15.0**
+- Target device: **iPhone15ProMax /iOS17.0**
+- Real-device result: **user explicitly accepted Build293 carousel reconstruction on2026-10-06**
+- Evidence: **Code written /10 native tests passed /CI passed /IPA verified /real-device accepted /stable-frozen carousel scope /merged to main**
 
-Build216 inherits all accepted/frozen player, PiP, transport, playback-cache, episode-ordering, Build182 detail-presentation, Build191 detail-selection, Build195 player-episode and Build199 server-management contracts. Its only new stable runtime scope is stopping active detail episode-row native deceleration before the existing range selection/jump; the Build213 page-persistence milestone remains inherited and unchanged.
+Build293 inherits the accepted player/PiP/transport/cache/session/episode/detail/server-management contracts below. Its accepted carousel behavior uses resident native pages, one transition authority, continuous animation takeover and a shared solid lower-edge floor. This acceptance does not merge other Active tasks or infer a new frame trace; stable120FPS was explicitly reported for Build292. Build216 remains the historical accepted detail episode-range inertia milestone under Accepted product foundations.
 
 ## Frozen / protected contracts
 
@@ -44,6 +42,7 @@ Build216 inherits all accepted/frozen player, PiP, transport, playback-cache, ep
 - **Build195**: SeasonId-first player grouping + lazy very-large episode row; merged PR #258.
 - **Build199**: Add/Edit Emby modern editor, same-server route selection, cached-first auto-start, local retained password and optional synchronizable Keychain password for iCloud; merged PR #256.
 - **Build213**: Favorites + Library 7-tab disk-backed warm presentation cache; cached-first after relaunch, live refresh remains authoritative, successful accepted state writes through, failed refresh retains old snapshot; target-device accepted through PR #260.
+- **Build293**: native resident home carousel, continuous rapid takeover and shared lower-edge floor; user accepted0.15.26 on2026-10-06, PR#289 merged; iOS15 preserved.
 - **Build216**: detail range-pill taps synchronously stop active native episode-row deceleration before the existing Build191 range-first selection and 0.32 s target scroll; target-device accepted and merged through PR #261.
 
 ## Completed / frozen: Detail immersive navigation / still viewer — Build288 / 0.15.21
@@ -57,11 +56,11 @@ Evidence limitation is important: relative to Build286, Build288 does not contai
 PR #290 is closed without merge. It is stacked on the separate unmerged Home Build286 branch, and merging its AppIdentity/diagnostics would not integrate a distinct detail behavior change. The accepted detail conclusion is recorded in project state/build evidence rather than silently pulling Home candidate code into `main`. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device accepted ✅ / task completed ✅ / behavior contract frozen ✅ / merged not required**.
 
 
-## Active: Home carousel — Build292 stable120FPS user-positive; Build293 flicker/floor verified candidate
+## Completed / frozen: Home carousel — Build293 /0.15.26
 
-Build291 reverse/title/Dock fixes are user-confirmed. Build292 has user-reported stable120FPS and repaired long frames, but rapid switching flickers and bottom floor hue mismatch remains. Build293 exactfa8ff44ff4a5384fd4603a64b33354f941764a8c captures all actual artwork opacity/base-color endpoints during interruption and retains every contributing outgoing artwork across rebasing; next tail fades all outgoing pages. Lower-edge image sample and clear image/contrast endings by90% Hero height share one solid floor with content. Runtime/input/HomeCore/Dock/Frozen/P0 remain unchanged from292.
+User accepted the supplied Build293 on2026-10-06 after reporting testing has no remaining issue, and authorized closeout. Tested product fa8ff44ff4a5384fd4603a64b33354f941764a8c; PR#289 merged atf0a737519801ff55f18e31f9bdcf5f83c9097c17. Native10/0, exact-source Release CI37345215494 and independent IPA/MinOS15 verification are complete. Build292 long-frame removal and stable120FPS are user-reported; no new numerical frame trace is inferred from general293 acceptance.
 
-Draft PR#289 remains open/unmerged. Native10-test suite and Build292 negative control pass; exact-source Release CI and independently verified IPA complete (run37345215494, artifact11361570366). Build293 target-device flicker/color/retained120FPS pending. See verified handoff below and task checkpoint.
+Preserve resident pages, single UIKit/runtime transition authority, full-width foreground motion, actual-position/opacity/base-color takeover and contributing outgoing artwork, common lower-edge solid floor, accepted title/Dock/vertical/native navigation. No new timers/blur/second progress owner or transformed-frame writes. Task DEV-home-carousel-drag-smoothness completed; checkpoint removed. Reopen only on new regression evidence. Detailed source/artifact/acceptance identity is recorded below.
 
 ## Historical accepted interaction foundation: Home carousel — Build241 / 0.14.74
 
@@ -325,3 +324,16 @@ Product0.15.26/Build293 exact fa8ff44ff4a5384fd4603a64b33354f941764a8c (parent23
 - Scope from292 exactly AppIdentity, NativePresentation, changelog. Runtime/input/HomeCore/Dock/vertical/shared images/Poster/detail/navigation/Frozen/P0 byte-identical. No extra blur, timer, per-progress layout or second product-progress owner.
 - Evidence: **code written /10 native regressions passed /exact-source Release CI passed /IPA independently verified and supplied /Build293 real-device pending**. Build292 stable120FPS/removal of long frames is user-reported positive evidence, not inferred from30fps recording. Build291 reverse/title/Dock user-confirmed;289/290 rejected.
 - Next exact action: receive Build293 target-device rapid repeated swipe/reversal/takeover flicker and bottom hue/seam results, retained120FPS, title/Dock, vertical scroll/stretch/refresh and native detail navigation. Do not retune or rebuild before new evidence; no Build293 device acceptance or merge claim.
+
+## Build293 accepted / carousel task completed — 2026-10-06 (Asia/Shanghai)
+
+User's controlling target-device result: “目前测试没问题了，我认为轮播图重构这个任务可以验收通过进行收尾工作了”. This accepts the supplied **OnePlayer0.15.26 / Build293** carousel candidate, exact tested source **fa8ff44ff4a5384fd4603a64b33354f941764a8c**, on the project's iPhone15ProMax/iOS17.0 target. Build292 removal of long frames and stable120FPS remains user-reported performance evidence; Build293 has general explicit acceptance after flicker/color repair, without a new numerical frame trace.
+
+- **DEV-home-carousel-drag-smoothness completed / carousel interaction and native presentation stable/frozen at Build293.**
+- **PR#289 merged to main at f0a737519801ff55f18e31f9bdcf5f83c9097c17**. Merge preview preserves tested product bytes exactly; only authority/planning documents differ from tested source. No new code, Build, IPA or unnecessary retest generated for closeout.
+- Native resident pages/resources stay prepared outside movement; one UIKit gesture/runtime transition authority; foreground uses full-width translation, artwork blends in place. Release takeover reads actual foreground position, every artwork opacity and base color before stopping animation; preserve contributing outgoing pages across committed same-direction rebasing and fade all outgoing pages through the new tail.
+- Lower-edge sampled color plus artwork/contrast overlays ending by90% Hero height produce one solid Hero/content floor. Preserve accepted geometry/title/Dock, vertical scroll/stretch/refresh and native navigation. Do not restore transformed-frame writes, central-image hue mismatch, hidden contributing outgoing pages or opacity recomputation at acquisition.
+- Preserve0.28/500pt/s,0.22/0.18/0.62s,6s auto, iOS15.0, Frozen/P0. No new blur, timer/watchdog, second progress owner or high-frequency full-tree SwiftUI.
+- Validation: actual-source native **10 tests/0 failures**, Build292 negative **2 tests/22 expected assertions**; exact-source Release CI run/job **37345215494 /111882105262**, control **4a26035ab17e0cf61b3f647055a13a0c745c4280**, success. Verified artifact **11361570366**, digest **fe13e098eeb32b92b6e255784d0e742d7ffa2f5ac6225fcffe2daa1c61a87213**; IPA **8b57d565e0b7c93a12e43e65e3c2085350933097119ddf0b370f69d0df4f91bf**; sourceZIP **31b41a2ef631a99dbeb76926746fc87c5bff2c4e558ca0b193d2957aaaf447fc**. Info.plist+arm64 MinOS15.0, CADisableMinimumFrameDurationOnPhone=true.
+- Evidence: **Code written /CI passed /IPA independently verified /real-device accepted /stable-frozen for carousel scope /merged to main**. Historical pending/rejected records above remain dated history and are superseded by this acceptance.
+- Remove only this task's current checkpoint per DOCUMENTATION_POLICY; other task checkpoints unchanged. Reopen only with new concrete regression evidence; no remaining carousel test gate.
