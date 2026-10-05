@@ -1,6 +1,6 @@
 # DEV-detail-immersive-still-viewer-nav
 
-- **Status:** Active — Build287 target-device rejected; its dismissal-order behavior has been reverted. Build288 is now a diagnostic candidate that restores Build286 still-viewer behavior and adds narrow still-viewer lifecycle logging only.
+- **Status:** Active — Build287 target-device rejected; its dismissal-order behavior has been reverted. Build288 restores Build286 still-viewer behavior, adds narrow still-viewer lifecycle logging only, and is now CI/IPA-verified pending target-device diagnostics.
 - **Work ID:** `DEV-detail-immersive-still-viewer-nav`
 - **Routing aliases / keywords:** `详情页沉浸修复 / 详情页顶栏 / 剧照返回顶栏 / 沉浸式详情 / still viewer nav / immersive detail`
 - **Task:** 修复详情页进入/退出剧照查看后继续滚动时，透明沉浸式系统导航栏可能恢复为不透明系统顶栏并重新显示返回标题的问题。
@@ -23,6 +23,13 @@
 - **PR:** draft PR `#290`, stacked on exact Build286 only for test attribution.
 - **Rejected Build287 source:** `5b8806a0de63618e4f520b70f2e353952f327ecc` / OnePlayer `0.15.20 / Build287`.
 - **Current Build288 diagnostic source:** `ce565996e37dcb750117c9de4607b23b673edce3` / OnePlayer `0.15.21 / Build288`.
+- **Build288 CI control branch:** `ci/build288-detail-nav-diagnostics-20261005`.
+- **Build288 workflow control head:** `110091a3dedc4a1b74d9752799d856d05854e649`.
+- **Build288 Xcode 16.4 run / job:** `37296666668 / 111719392128` — success.
+- **Build288 artifact:** `OnePlayer-0.15.21-build288-detail-nav-diagnostics`, ID `11340525765`, digest `sha256:9bbc4b5636f446f882025531bf33ac9a6b99512963f560fa9039ca0c0e111449`.
+- **Build288 IPA SHA-256:** `f1100a6b2b344c6615ad20c2328cf096d52c84b46bf10a0402dad52ae5fa7eed`.
+- **Build288 source ZIP SHA-256:** `ea963fe5f8d7d0a9303a8dcef48ddc1b2fe2947b376b527988eb06a6655d8609`.
+- **Built identity:** `com.embyplayerlab.app / 0.15.21 (288) / MinimumOSVersion 15.0`; `CADisableMinimumFrameDurationOnPhone=true`.
 - **Target device:** iPhone 15 Pro Max / iOS 17.0。
 
 Build288 does not take ownership of Build286 Home work. Relative to exact Build286 product source, current Build288 changes only `Sources/Core/AppIdentity.swift` and `Sources/UI/EmbyDetailOverlayViews.swift`. `ImmersiveUIComponents.swift`, `EmbyMediaDetailView.swift`, `EmbyServerBrowseV3.swift`, all Home runtime files and all Player/Transport/Cache/Session paths remain unchanged.
@@ -62,6 +69,14 @@ The existing `NavigationVisual` diagnostics in `ImmersiveNavigationAppearanceVie
 
 No timer, watchdog, polling, delayed retry, notification refresh channel, global `UINavigationBar.appearance`, custom pop owner or duplicate navigation state is added.
 
+## Build288 CI / package evidence
+
+The dedicated Build288 workflow validated the exact Build286→Build288 two-file scope, confirmed the rejected Build287 completion-order code is absent, confirmed the original Build286 close ordering is restored, built Release with Xcode 16.4, validated OnePlayer identity / iOS 15.0 minimum OS, packaged the unsigned IPA, wrote the candidate manifest, and uploaded the artifact. All steps completed successfully.
+
+The downloaded artifact was independently rechecked: outer artifact digest matches GitHub; IPA and source ZIP pass archive integrity; embedded checksum files match; built Info.plist is `com.embyplayerlab.app / 0.15.21 (288) / MinimumOSVersion=15.0`; source snapshot contains the new `StillViewer` diagnostics, does not contain the Build287 dismissal-completion behavior, and preserves `close request → selectedStillIndex=nil → coordinator.dismiss()` ordering.
+
+This is **CI/package evidence only**, not a runtime repair result.
+
 ## Validation state
 
 - Build286 target-device regression: ✅
@@ -70,8 +85,9 @@ No timer, watchdog, polling, delayed retry, notification refresh channel, global
 - Build287 stable / frozen: ❌
 - Build288 code written: ✅
 - Build288 exact two-file product scope vs Build286: ✅
-- Build288 CI / IPA: pending
-- Build288 target-device diagnostic run: pending
+- Build288 CI passed: ✅
+- Build288 IPA produced + independently verified: ✅
+- Build288 target-device diagnostic run: pending ❌
 - Stable / frozen: ❌
 
 ## Parallel conflicts / frozen boundaries
@@ -79,12 +95,12 @@ No timer, watchdog, polling, delayed retry, notification refresh channel, global
 - `DEV-home-carousel-drag-smoothness`: Build288 remains stacked on exact Build286 only for test attribution; no Home source is modified.
 - `DEV-poster-grid-smoothness`: shared system-navigation principle exists, but Poster-owned `EmbyServerBrowseV3` / grid route state is unchanged.
 - `DEV-aether-multi-engine-comparison` and Search task: no source/state overlap.
-- Current main project records contain no Build288 allocation; Build288 is reserved to this task.
+- Build288 is reserved to this task.
 - D007 system-owned navigation, Build182/184/191/216, Player/MPV/PiP/Transport/Cache/Session remain protected.
 
 ## Next exact action
 
-Package Build288 from exact source `ce565996e37dcb750117c9de4607b23b673edce3`. On the target device, first test simple detail entry + small scroll before opening any still. Then open a still, close it once, and scroll again. Immediately export the fresh App log from that same run. Use the `StillViewer` timestamps together with existing `NavigationVisual` events to determine whether the appearance bridge restores/loses ownership during modal presentation or whether the top bar is being reset by a different lifecycle.
+Install Build288 on the target device. First enter a detail page and make the same small downward scroll **without opening any still**. If the opaque top bar appears, immediately export the App log and stop that run. Then start a fresh run: enter detail → open one still → close it once → make the same small scroll until the bug appears or clearly does not → immediately export that same-run App log. Correlate the new `StillViewer` timestamps with the existing `NavigationVisual` `destination-nav-appearance` / `destination-nav-restore` events to determine whether the appearance bridge loses ownership during modal presentation or whether a different detail/navigation lifecycle resets the bar.
 
 Do not make a second behavioral navigation fix until that fresh Build288 lifecycle evidence identifies the violated owner invariant.
 
