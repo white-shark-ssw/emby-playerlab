@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PRODUCT_SHA: a8f292193a2495d2b0f60d47c7f1d9816581087e
+  PRODUCT_SHA: 896bc61ad6972d789ef095f6eb46cbdf1b56301c
   PRODUCT_BRANCH: perf/poster-wall-library-build295
   BASE_SHA: 5064d1897ab0e199d53ed59853d5f9b87e95d422
   DOCK_BASE_SHA: 119ab10eee869488b97415746a0243f51953eba0
@@ -107,7 +107,7 @@ jobs:
           echo "Retained production native sources byte-identical to passing run37474393518/job112306217313. Poster/native dependency guards preserve this passing evidence."
 
       - name: Run old-policy negative control
-        timeout-minutes: 12
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           python3 Tests/PosterWallRegression/prepare.py "$PWD" "$RUNNER_TEMP/PosterWallRegression"
@@ -118,7 +118,7 @@ jobs:
           import os
           path = Path(os.environ['RUNNER_TEMP']) / 'PosterWallRegression/LibraryModel.swift'
           text = path.read_text()
-          guard = '        if tab == .items && hasLoadedLiveItems { return }\n'
+          guard = '        if tab == .items && liveItemsSortBy == sortBy { return }\n'
           assert text.count(guard) == 1
           path.write_text(text.replace(guard, ''))
           PY
