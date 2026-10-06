@@ -17,7 +17,15 @@ for name in pages:
         expected = expected.replace('    @Environment(\\.serverDockBottomInset) private var serverDockBottomInset\n', '')
         expected = expected.replace('                .overlay(alignment: .bottom) {\n                    if immersive { dock.padding(.bottom, serverDockBottomInset) }\n                    else { dock }\n                }\n', '')
         expected = expected.replace('            .navigationBarHidden(true)\n', '            .serverDockPage()\n            .navigationBarHidden(true)\n', 1)
-    assert current == expected, f'Unexpected non-Dock page behavior changed: {path}'
+    if name == 'EmbyServerBrowseV3.swift':
+        # Build295 deliberately replaces Library.items and its model, while every other page stays accepted.
+        boundary = 'private struct V3LibraryGenreCard'
+        assert current[current.index(boundary):] == expected[expected.index(boundary):], 'Non-pilot browse routes changed'
+        assert current.count('.serverDockPage()') == expected.count('.serverDockPage()')
+        assert current.count('.serverDockContentPadding()') == expected.count('.serverDockContentPadding()')
+        assert 'bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset)' in current
+    else:
+        assert current == expected, f'Unexpected non-Dock page behavior changed: {path}' 
 
 root = Path('Sources/UI/EmbyServerRootViewV3.swift').read_text()
 original = old('Sources/UI/EmbyServerRootViewV3.swift')
@@ -46,3 +54,4 @@ for directory in ['Sources/Player', 'Sources/Transport', 'Sources/Cache', 'Sourc
 for name in ['EmbyHomeCarouselNativePresentationV3.swift', 'EmbyHomeCarouselStateV3.swift', 'EmbyHomeCarouselInteractionV3.swift', 'EmbyHomeHeroV3.swift']:
     assert Path('Sources/UI', name).read_text() == old(f'Sources/UI/{name}'), f'Frozen carousel changed: {name}'
 print('Dock page changes limited to hosting/signatures/clearance; root actions and frozen source unchanged; iOS15 retained.')
+

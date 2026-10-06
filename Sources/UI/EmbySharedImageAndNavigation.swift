@@ -4,6 +4,7 @@ import Foundation
 import Combine
 import CoreImage
 import ImageIO
+import os
 
 final class EmbyDecodedImageRenderPool: @unchecked Sendable {
     static let shared = EmbyDecodedImageRenderPool()
@@ -58,7 +59,11 @@ private final class EmbyCachedImageLoader: ObservableObject {
 }
 
 enum EmbyImageDecoder {
+    private static let log = OSLog(subsystem: "com.embyplayerlab.app", category: "PosterImageDecode")
     static func decode(data: Data, url: URL) -> UIImage? {
+        let interval = OSSignpostID(log: log)
+        os_signpost(.begin, log: log, name: "ImageDecode", signpostID: interval)
+        defer { os_signpost(.end, log: log, name: "ImageDecode", signpostID: interval) }
         guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return UIImage(data: data) }
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         let pixelWidth = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue ?? 0

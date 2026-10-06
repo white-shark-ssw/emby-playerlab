@@ -298,6 +298,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     private let client: EmbyAPIClient
     private let pageSize = 60
     private var pageStates: [V3LibraryTab: V3LibraryPageState] = [:]
+    private var fetchGenerations: [V3LibraryTab: Int] = [:]
 
     init(library: LibraryItem, client: EmbyAPIClient) {
         self.library = library
@@ -369,7 +370,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         await restoreIfNeeded()
         guard tab.supportsSorting, key != sortBy else { return }
         sortBy = key
-        await fetchPage(tab: tab, reset: true)
+        await fetchPage(tab: tab, reset: true, supersede: true)
     }
 
     func refreshUserData(itemID: String) async {
@@ -410,17 +411,20 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         }
     }
 
-    private func fetchPage(tab: V3LibraryTab, reset: Bool) async {
-        guard !loadingTabs.contains(tab) else { return }
+    private func fetchPage(tab: V3LibraryTab, reset: Bool, supersede: Bool = false) async {
+        guard !loadingTabs.contains(tab) || supersede else { return }
+        let generation = (fetchGenerations[tab] ?? 0) + 1
+        fetchGenerations[tab] = generation
         var state = pageStates[tab] ?? V3LibraryPageState()
         guard reset || state.hasMore else { return }
         loadingTabs.insert(tab)
         errorMessages[tab] = nil
         let start = reset ? 0 : state.nextStartIndex
-        defer { loadingTabs.remove(tab); loadedTabs.insert(tab) }
+        defer { if fetchGenerations[tab] == generation { loadingTabs.remove(tab); loadedTabs.insert(tab) } }
         do {
             let query = spec(for: tab)
             let page = try await client.libraryHubItemsPage(parentId: library.id, limit: pageSize, startIndex: start, recursive: true, sortBy: sortBy, includeItemTypes: query.types, filters: query.filters)
+            guard fetchGenerations[tab] == generation else { return }
             let allowed = Set(query.types.map { $0.lowercased() })
             let filtered = page.items.filter { allowed.isEmpty || allowed.contains($0.type?.lowercased() ?? "") }
             if reset {
@@ -440,6 +444,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             loadedTabs.insert(tab)
             await persistSnapshot()
         } catch {
+            guard fetchGenerations[tab] == generation else { return }
             if !isEmbyRequestCancellation(error) { errorMessages[tab] = error.localizedDescription }
         }
     }
