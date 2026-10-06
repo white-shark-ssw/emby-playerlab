@@ -12,14 +12,14 @@ final class PosterMotionUITests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["--poster-return-ui"]; app.launch()
         let wall = app.collectionViews.firstMatch
         XCTAssertTrue(wall.waitForExistence(timeout: 10))
-        for _ in 0..<5 { wall.swipeUp(velocity: .fast) }
+        for _ in 0..<16 { wall.swipeUp(velocity: .fast) }
         let anchor = wall.cells.element(boundBy: 0).label
         let index = Int(anchor.split(separator: " ").last ?? "") ?? -1
-        XCTAssertGreaterThanOrEqual(index, 60, "Test must leave the first page: \(anchor)")
+        XCTAssertGreaterThanOrEqual(index, 120, "Test must leave the first two pages: \(anchor)")
         wall.cells.element(boundBy: 0).tap()
         XCTAssertTrue(app.navigationBars["Fixture Detail"].waitForExistence(timeout: 5))
         let before = fields(app.staticTexts["return-status"].label)
-        XCTAssertGreaterThan(Double(before["offset"] ?? "0") ?? 0, 4000)
+        XCTAssertGreaterThan(Double(before["offset"] ?? "0") ?? 0, 8000)
         if cancelPop {
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.005, dy: 0.55))
             let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.55))
