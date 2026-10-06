@@ -22,6 +22,15 @@ final class PosterWallTests: XCTestCase {
     private func drain() async { for _ in 0..<40 { await Task.yield() } }
     private func image(_ color: UIColor) -> UIImage { UIGraphicsImageRenderer(size: CGSize(width: 3, height: 3)).image { color.setFill(); $0.fill(CGRect(x: 0, y: 0, width: 3, height: 3)) } }
 
+    private func waitForRequests(_ count: Int, client: EmbyAPIClient) async -> Bool {
+        for _ in 0..<200 {
+            if client.requests.count >= count { return true }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("Production model did not reach the controlled network boundary")
+        return false
+    }
+
     private func page(_ id: String) -> EmbyItemPage {
         let data = try! JSONSerialization.data(withJSONObject: ["Items": [["Id": id, "Name": id, "Type": "Movie"]], "TotalRecordCount": 1])
         return try! JSONDecoder().decode(EmbyItemPage.self, from: data)
@@ -33,14 +42,14 @@ final class PosterWallTests: XCTestCase {
         await V3PagePersistentCache.shared.storeLibrarySnapshot(snapshot, client: source, libraryID: "lib")
         let model = V3LibraryBrowserViewModel(library: item("lib"), client: source)
         let loading = Task { await model.load(tab: .items) }
-        for _ in 0..<400 where source.requests.isEmpty { await Task.yield() }
+        guard await waitForRequests(1, client: source) else { return }
         XCTAssertEqual(model.items(for: .items).map(\.id), ["cached"])
         XCTAssertEqual(source.requests.count, 1)
         source.requests[0].continuation.resume(throwing: URLError(.notConnectedToInternet))
         await loading.value
         XCTAssertEqual(model.items(for: .items).map(\.id), ["cached"])
         let paging = Task { await model.loadNextPage(tab: .items) }
-        for _ in 0..<400 where source.requests.count < 2 { await Task.yield() }
+        guard await waitForRequests(2, client: source) else { return }
         XCTAssertEqual(source.requests[1].start, 660)
         source.requests[1].continuation.resume(returning: page("next")); await paging.value
         XCTAssertEqual(model.items(for: .items).map(\.id), ["cached", "next"])
@@ -50,9 +59,9 @@ final class PosterWallTests: XCTestCase {
         let source = client()
         let model = V3LibraryBrowserViewModel(library: item("lib"), client: source)
         let old = Task { await model.load(tab: .items) }
-        for _ in 0..<400 where source.requests.isEmpty { await Task.yield() }
+        guard await waitForRequests(1, client: source) else { return }
         let fresh = Task { await model.changeSort(to: "SortName", tab: .items) }
-        for _ in 0..<400 where source.requests.count < 2 { await Task.yield() }
+        guard await waitForRequests(2, client: source) else { return }
         XCTAssertEqual(source.requests[1].sort, "SortName")
         source.requests[1].continuation.resume(returning: page("fresh")); await fresh.value
         source.requests[0].continuation.resume(returning: page("stale")); await old.value
@@ -154,6 +163,7 @@ final class PosterWallTests: XCTestCase {
         controller.loadViewIfNeeded()
         controller.view.frame = CGRect(x: 0, y: 0, width: 430, height: 800)
         controller.update(make((0..<60).map { self.item(String($0)) }, 1))
+        controller.viewDidLayoutSubviews()
         controller.view.setNeedsLayout(); controller.view.layoutIfNeeded()
         let flow = controller.collection.collectionViewLayout as! UICollectionViewFlowLayout
         XCTAssertEqual(flow.itemSize.width, 126)
