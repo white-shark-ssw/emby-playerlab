@@ -41,6 +41,10 @@ P2: G01 Library.items alone uses complete native collection scroll host and fixe
 
 **Code written /8 poster +18 retained native regressions passed /Release CI passed /IPA independently verified /real-device pending /task Active /not stable /not merged.** Accepted overall baseline remains294;293carousel/294Dock/Search256/P0 preserved. P3–P6 await P2 target-device evidence.
 
+## Build296 exact-source regression pass / Release running — 2026-10-06
+
+Source **bfa5b56ee1e5737cf0fff9a2b7234505e8469dfb** /control **b904829dc6e24186e35c5cc595bf2d71893094f3**, run **37490702186 /job112362875963**: **12 actual-source unit tests/0 failures +1 actual native-gesture UI test/0 failures**, then dependency preparation succeeded and full Release build is in progress. Retained18 Dock/carousel dependencies still byte-identical to passing production-source20d52f7; current scope/whitespace/Frozen checks passed. This verifies the native inactive-refresh fix and real-refresh completion in simulator18.5, not target17 acceptance/FPS. Next: finish Release, audit package/source/MinOS, retrieve/save IPA, update durable docs and hand off. Do not stop at test/CI start; no IPA296 yet.
+
 ## Build296 same-source CI continuation — 2026-10-06
 
 Source **bfa5b56ee1e5737cf0fff9a2b7234505e8469dfb** /control **b904829dc6e24186e35c5cc595bf2d71893094f3** unchanged. Run37490079849/job112360189878 completed **12 units/0 failures**, then was cancelled during UI gesture execution after a same-control-SHA push run appeared; do not call this whole pipeline passed. Latest exact-source run **37490702186/job112362875963** already in progress. No new source/Build/candidate, no manual bypass or retained UI-test substitution. Follow latest run through13 total tests/Release/verified IPA.
