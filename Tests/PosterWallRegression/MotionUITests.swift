@@ -16,7 +16,9 @@ final class PosterMotionUITests: XCTestCase {
         let anchor = wall.cells.element(boundBy: 0).label
         let index = Int(anchor.split(separator: " ").last ?? "") ?? -1
         XCTAssertGreaterThanOrEqual(index, 120, "Test must leave the first two pages: \(anchor)")
-        wall.cells.element(boundBy: 0).tap()
+        // The leading visible row can be clipped beneath the native bar. Select the next full row
+        // without changing scroll offset; retain the leading anchor for the before/after comparison.
+        wall.cells.element(boundBy: 4).tap()
         XCTAssertTrue(app.navigationBars["Fixture Detail"].waitForExistence(timeout: 5))
         let before = fields(app.staticTexts["return-status"].label)
         XCTAssertGreaterThan(Double(before["offset"] ?? "0") ?? 0, 8000)
