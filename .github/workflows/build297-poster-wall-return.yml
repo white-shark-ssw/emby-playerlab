@@ -106,7 +106,8 @@ jobs:
           grep -F 'Executed 18 tests, with 0 failures' fixed-native-tests.log
           echo "Retained production native sources byte-identical to passing run37474393518/job112306217313. Poster/native dependency guards preserve this passing evidence."
 
-      - name: Run old-policy negative control then actual-source 16 units and 3 native UI tests
+      - name: Run old-policy negative control
+        timeout-minutes: 12
         run: |
           set -euo pipefail
           python3 Tests/PosterWallRegression/prepare.py "$PWD" "$RUNNER_TEMP/PosterWallRegression"
@@ -130,17 +131,31 @@ jobs:
           grep -E 'testSameLivePageReappearancePreservesItemsRevisionReplacementAndFrontier.*started' "$GITHUB_WORKSPACE/poster-return-negative.log"
           grep -F 'XCTAssertEqual failed' "$GITHUB_WORKSPACE/poster-return-negative.log"
           grep -E 'Executed 1 test, with [1-9][0-9]* failures' "$GITHUB_WORKSPACE/poster-return-negative.log"
-          cd "$GITHUB_WORKSPACE"
+          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+
+      - name: Run actual-source 16 unit tests
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
           python3 Tests/PosterWallRegression/prepare.py "$PWD" "$RUNNER_TEMP/PosterWallRegression"
           cd "$RUNNER_TEMP/PosterWallRegression"
           set +e
-          xcodebuild test -project PosterWallRegression.xcodeproj -scheme PosterWallRegression -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/poster-native-tests.log"
+          xcodebuild test -project PosterWallRegression.xcodeproj -scheme PosterWallRegression -only-testing:PosterWallRegression -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/poster-native-tests.log"
           status=${PIPESTATUS[0]}
           set -e
           test "$status" = 0
           grep -F 'Executed 16 tests, with 0 failures' "$GITHUB_WORKSPACE/poster-native-tests.log"
-          grep -F 'Executed 3 tests, with 0 failures' "$GITHUB_WORKSPACE/poster-native-tests.log"
-          cp "$GITHUB_WORKSPACE/poster-native-tests.log" "$GITHUB_WORKSPACE/poster-motion-ui-tests.log"
+      - name: Run actual-source 3 native UI tests
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/PosterWallRegression"
+          set +e
+          xcodebuild test -project PosterWallRegression.xcodeproj -scheme PosterMotionUITests -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/poster-motion-ui-tests.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" = 0
+          grep -F 'Executed 3 tests, with 0 failures' "$GITHUB_WORKSPACE/poster-motion-ui-tests.log"
 
       - name: Prepare project and dependencies
         run: |
@@ -179,7 +194,7 @@ jobs:
           fi
 
       - name: Upload Build297 compiler diagnostics
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: OnePlayer-0.15.30-build297-compiler-diagnostics
