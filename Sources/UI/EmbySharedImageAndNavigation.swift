@@ -313,7 +313,7 @@ enum EmbyImageContrastAnalyzer {
     }
 }
 
-private struct EmbyPosterDetailDestination: View {
+struct EmbyPosterDetailDestination: View {
     let item: LibraryItem
     let client: EmbyAPIClient
 

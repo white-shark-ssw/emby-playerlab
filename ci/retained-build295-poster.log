@@ -1,0 +1,26 @@
+2026-10-06T14:11:45.9683120Z Test Suite 'All tests' started at 2026-10-06 14:11:45.902.
+2026-10-06T14:11:45.9910910Z Test Suite 'PosterWallRegression.xctest' started at 2026-10-06 14:11:45.902.
+2026-10-06T14:11:46.0039780Z Test Suite 'PosterWallTests' started at 2026-10-06 14:11:45.902.
+2026-10-06T14:11:46.0153970Z Test Case '-[PosterWallRegression.PosterWallTests testCachedFirstFailurePreservesMetadataAndPagingFrontier]' started.
+2026-10-06T14:11:49.5073520Z Test Case '-[PosterWallRegression.PosterWallTests testCachedFirstFailurePreservesMetadataAndPagingFrontier]' passed (3.577 seconds).
+2026-10-06T14:11:49.5185400Z Test Case '-[PosterWallRegression.PosterWallTests testCancelledWorkRemainsInsideConcurrencyBudgetUntilItFinishes]' started.
+2026-10-06T14:11:49.7415040Z Test Case '-[PosterWallRegression.PosterWallTests testCancelledWorkRemainsInsideConcurrencyBudgetUntilItFinishes]' passed (0.012 seconds).
+2026-10-06T14:11:49.7416230Z Test Case '-[PosterWallRegression.PosterWallTests testFiveThousandVisitsAndFirstScreensAreBounded]' started.
+2026-10-06T14:11:49.7523700Z Test Case '-[PosterWallRegression.PosterWallTests testFiveThousandVisitsAndFirstScreensAreBounded]' passed (0.082 seconds).
+2026-10-06T14:11:49.7638510Z Test Case '-[PosterWallRegression.PosterWallTests testLibrarySnapshotRestoresMetadataAndPagingOffMainInOrder]' started.
+2026-10-06T14:12:04.5110870Z Test Case '-[PosterWallRegression.PosterWallTests testLibrarySnapshotRestoresMetadataAndPagingOffMainInOrder]' passed (14.927 seconds).
+2026-10-06T14:12:04.5225240Z Test Case '-[PosterWallRegression.PosterWallTests testNativeGeometryAppendAndReturnTopPreserveBusinessState]' started.
+2026-10-06T14:12:04.7360520Z Test Case '-[PosterWallRegression.PosterWallTests testNativeGeometryAppendAndReturnTopPreserveBusinessState]' passed (0.202 seconds).
+2026-10-06T14:12:04.7465620Z Test Case '-[PosterWallRegression.PosterWallTests testReuseTagAndSourceRejectDelayedImages]' started.
+2026-10-06T14:12:04.8114730Z Test Case '-[PosterWallRegression.PosterWallTests testReuseTagAndSourceRejectDelayedImages]' passed (0.054 seconds).
+2026-10-06T14:12:04.8224240Z Test Case '-[PosterWallRegression.PosterWallTests testSortGenerationRejectsOlderQueryAfterNewSortCompletes]' started.
+2026-10-06T14:12:05.5052950Z Test Case '-[PosterWallRegression.PosterWallTests testSortGenerationRejectsOlderQueryAfterNewSortCompletes]' passed (0.737 seconds).
+2026-10-06T14:12:05.5168420Z Test Case '-[PosterWallRegression.PosterWallTests testVisibleAndPrefetchShareTaskWithIndependentCancellation]' started.
+2026-10-06T14:12:05.5480050Z Test Case '-[PosterWallRegression.PosterWallTests testVisibleAndPrefetchShareTaskWithIndependentCancellation]' passed (0.003 seconds).
+2026-10-06T14:12:05.6113090Z Test Suite 'PosterWallTests' passed at 2026-10-06 14:12:05.500.
+2026-10-06T14:12:05.6792290Z 	 Executed 8 tests, with 0 failures (0 unexpected) in 19.595 (19.597) seconds
+2026-10-06T14:12:05.7018970Z Test Suite 'PosterWallRegression.xctest' passed at 2026-10-06 14:12:05.500.
+2026-10-06T14:12:05.7322890Z 	 Executed 8 tests, with 0 failures (0 unexpected) in 19.595 (19.598) seconds
+2026-10-06T14:12:05.7441870Z Test Suite 'All tests' passed at 2026-10-06 14:12:05.500.
+2026-10-06T14:12:05.7544090Z 	 Executed 8 tests, with 0 failures (0 unexpected) in 19.595 (19.599) seconds
+2026-10-06T14:12:12.3531570Z ** TEST SUCCEEDED **
