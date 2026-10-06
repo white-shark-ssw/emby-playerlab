@@ -6,11 +6,17 @@
 - Existing task/plan: [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md). Only G01 Library.items has migrated; other hosts remain gated.
 - Working branch: `perf/poster-wall-library-build295`; Draft/open/unmerged [PR292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main.
 - Current working branch head: **5064d1897ab0e199d53ed59853d5f9b87e95d422** (final project-document synchronization only; exact packaged runtime/test bytes unchanged). Exact package/test source: **bfa5b56ee1e5737cf0fff9a2b7234505e8469dfb**.
-- Current candidate: **OnePlayer0.15.29 /Build296 /poster-wall-motion-diagnostics /iOS15.0**. Target iPhone15ProMax/iOS17.0.
+- New reserved candidate: **OnePlayer0.15.30 /Build297 /poster-wall-return-section /iOS15.0**; implementation/CI/IPA pending. Last tested candidate: **OnePlayer0.15.29 /Build296 /poster-wall-motion-diagnostics /iOS15.0**. Target iPhone15ProMax/iOS17.0.
 - CI control: `ci/build296-poster-wall-motion-20261006`, **b904829dc6e24186e35c5cc595bf2d71893094f3**; workflow `.github/workflows/build296-poster-wall-motion.yml`; **run37490702186 /job112362875963 success**.
 - Artifact **11425443691**, digest **efcbbf9ac1de1cd175ba0603e4dcc7f156a4adc46a8cd79ba42caaaac7cfdabd**. Package/MinOS details below.
 - Previous Build295/0.15.28 source8ca3de65a8ca2927785bb194b6a3136b6d900e56 and IPA remain historical pilot evidence. User reports high FPS/refactor positive; abrupt stop was not accepted.
 - Base03d1bad260666c3f38ae3913d6828f393690673e; accepted overall294/Dock294, inherited accepted293carousel. Historical PR282/39014a03 untouched/open/unmerged; no stack merge. Aether235 separate; Search256 protected.
+
+## Build297 /0.15.30 — reserved Library return retention and detail-section diagnostics (2026-10-07 02:19 Asia/Shanghai)
+
+User authorizes checking/fixing Library deep detail-return reset, ~2s stills SECTION appearance latency, and remaining Library long-frame opportunities. Same task/branch/Draft PR292; identity guard feature5064d1897ab0e199d53ed59853d5f9b87e95d422 matches GitHub/PR; tested baseline296 exactbfa5b56ee1e5737cf0fff9a2b7234505e8469dfb. Main221c01d3924205ced0b6291b05b8dde72dc9c0a8 differs only in documents. Build297/0.15.30/candidate poster-wall-return-section reserved uniquely after index/other Active task check; iOS15, target15ProMax/17. Aether235 separate; accepted overall294/carousel293/Dock294/Search256/P0 protected.
+
+Plan: original model tracks successful in-session live Library.items load separately from disk-restored/failed loadedTabs; repeated host load preserves metadata/frontier/offset, initial cached-first live refresh and explicit refresh/sort preserved. Test actual source before/after including native deep push/pop. Stills SECTION diagnosis covers per-model load/task/upstream imageInfos/qualifying-count/publication/section appearance; no guessed bitmap concurrency tuning or claim root solved. Long-frame source review prioritizes avoiding diagnostic per-frame array copies and bounded stage timings; current296 supplied log has no>=25ms event, so do not claim measured hitch elimination. Continuous execution through exact-source regressions/Release/verified IPA. Code/tests/CI297 not yet produced; P2 Active/unaccepted.
 
 ## 2026-10-07 02:16 Asia/Shanghai — Stills latency clarification supersedes image-delay hypothesis
 
