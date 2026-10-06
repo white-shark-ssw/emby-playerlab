@@ -250,3 +250,8 @@ OnePlayer0.15.30 /Build297 /poster-wall-return-section; DEV-poster-grid-smoothne
 Independent CI control **c9a19fddf6a2e7f09812c3704759c35604ae263b**, ci/build297-poster-wall-return-20261007, .github/workflows/build297-poster-wall-return.yml; **run37512346668 /job112436442497 in progress**. Scope/Frozen/MinOS source guards passed; old-policy negative control then16 units+3 actual native UI tests and Release/package pending. No297 IPA/device result yet; retained18 Dock/carousel tests are byte-guarded historical evidence, not rerun. Accepted overall294/carousel293/Dock294/Search256/P0 and other host gates remain.
 
 Next exact action: inspect running CI tests, resolve actual failures; finish Release/package, retrieve and independently verify/save IPA. Do not stop at CI completion.
+
+
+## CI stage visibility correction — 2026-10-07
+
+Initial run37512346668/job112436442497 stayed in a combined negative+unit+UI step for ~15min with no readable live logs; superseded through same control concurrency, cancelled, never counted as passing. Product unchanged a8f292193a2495d2b0f60d47c7f1d9816581087e. New control **ffb26fa864108eb421630f438dd62dd4a311bdcf**, same ci/build297-poster-wall-return-20261007/workflow; **run37514237737 pending**. Split negative control (12min),16 units (10min),3 native UI (12min); preserve failure/cancellation logs. Next: read cancelled job log once available to identify actual stall, inspect split stages, correct actual failures if present, continue to verified IPA.297 not yet tested/packaged; P2 unaccepted.
