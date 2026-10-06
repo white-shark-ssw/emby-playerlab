@@ -2,9 +2,10 @@
 
 ## Status and current identity — 2026-10-06
 
-- **Active — P0/P1/P2 code complete; Release/IPA independently verified; awaiting target-device P2 acceptance.**
+- **Active — P0/P1/P2 code complete; Release/IPA independently verified; first-load inertial-stop device report under investigation; P2 not accepted.**
 - User explicitly requested development through a testable Library.items IPA. Read [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md), [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md), [POSTER_ENTRY_INDEX.md](../../POSTER_ENTRY_INDEX.md).
 - Working branch: `perf/poster-wall-library-build295`; Draft PR [#292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main.
+- Current working branch head: **79cfa987d599695bc6e54e6d68e1331f69ad7a08** (document synchronization with current main only; runtime/test bytes identical to package source). PR stays Draft/open/unmerged.
 - Exact package source: **8ca3de65a8ca2927785bb194b6a3136b6d900e56**. Base: **03d1bad260666c3f38ae3913d6828f393690673e**, accepted overall Build294 Dock / Build293 carousel.
 - Candidate: **OnePlayer0.15.28 / Build295 / poster-wall-library / iOS15.0**. Target: iPhone15ProMax / iOS17.0.
 - CI control: `ci/build295-poster-wall-library-20261006`, **38689808411cee237bbf56f85d14619b2e07446f**, workflow `.github/workflows/build295-poster-wall-library.yml`, run **37477868307 / job112317946251**. Control source is not package source.
@@ -40,9 +41,39 @@ P2: G01 Library.items alone uses complete native collection scroll host and fixe
 
 **Code written /8 poster +18 retained native regressions passed /Release CI passed /IPA independently verified /real-device pending /task Active /not stable /not merged.** Accepted overall baseline remains294;293carousel/294Dock/Search256/P0 preserved. P3–P6 await P2 target-device evidence.
 
+## Build296 implementation milestone
+
+Code written: bounded64 numeric motion ring, terminal-stationary frame sampling,4096 wall-event limit,2048 original-model page-event limit, UIKit drag/deceleration/geometry/append/footer/endRefreshing diagnostics. Only existing behavior is observed; no offset/inertia/page-size/prefetch/refresh semantic patch. Tests:11 actual-source unit regressions (existing8 plus3 diagnostic invariants) and1 real native-gesture UI regression with controlled delayed metadata; Xcode simulator execution pending. Actual AppIdentity is copied into harness. Protected18 Dock/carousel test inputs remain unchanged. Exact product SHA will be recorded on main after this commit; no new IPA yet.
+
 ## Next exact action
 
-Install the unsigned Build295 candidate using the existing signing workflow and perform the P2 target-device matrix above on iPhone15ProMax/iOS17.0 against accepted Build294. Record actual Build/cache/thermal state, frame p50/p95/p99/max and >=16.7/25/33.3ms counts plus memory. Return device log/visual evidence; locate any reproducible regression before G02–G15/Home rollout. No further implementation is blocked on routine approval, but P3–P6 stage gate requires P2 device evidence. Keep task Active/Draft and accepted baseline294; do not mark120FPS/stable or merge historical PR282.
+2026-10-06 23:04 (Asia/Shanghai): user authorizes the bounded diagnostic iteration and reports that Build295's refactor is relatively successful with FPS maintaining a high level; asks for further long-frame improvement. This is qualitative positive device feedback, not complete P2 acceptance or measured presented FPS. Build296 /0.15.29 /poster-wall-motion-diagnostics reserved for this same task/branch/PR after checking BUILD_TEST_INDEX, other checkpoints, all482 current branches and open PRs; no collision found. No new source or IPA exists yet. Next: implement read-only bounded event/frame-transition trace, run updated actual-source tests and exact-source Release, then deliver verified IPA. Do not alter inertia, paging quantity or unproven refresh/layout behavior.
+
+Log/video review confirms a sharp visual motion stop near5.8s and resumed movement on new touch near7.2s; current motion-gated trace cannot decide metadata boundary vs native deceleration interruption. Read the22:57 evidence review below. Do not request the same evidence again or claim a page/store event is time-aligned to the video. Next diagnostic must capture bounded offset/contentSize/legal-max/count/velocity/deceleration state at request/apply/batch/footer/real refresh transitions and native motion-end callbacks, with delayed-metadata native inertia tests. User requested inspection in this turn, so no runtime mutation/Build/CI. P2 remains unaccepted; preserve P0/Dock/carousel/Search and current unique identities.
+
+### 2026-10-06 22:57 (Asia/Shanghai) — Log/video confirms abrupt visual motion stop, cause still unresolved
+
+Evidence supplied: OnePlayer-App-1791298613.log and RPReplay_Final1791298610.mp4 (9.1s,510×1108,30fps). Observed video end-region: a fast upward content movement abruptly becomes stationary near5.8s, holds until approximately7.2s, then moves on a new visible touch. Frame-to-frame image phase correlation in the poster region supports roughly76px upward movement over the preceding33ms recorded-frame interval, then near-zero for~1.4s. This is recorded-image displacement, not native contentOffset or120Hz presented-FPS measurement; changes in image loading and30fps sampling limit interpretation. It is not ordinary observed smooth decay to zero. Additional content becomes reachable after the new touch, but the video cannot independently prove whether the current metadata edge moved during the stop.
+
+Log: restore180 items at14:56:28.425Z, then live page0 replaces180→60 at28.628Z. This session is not fully cache-empty; do not overrule the user's first-load experience report, but classify the captured cache state accurately. No Build/version header is present in the excerpt, so actual installed identity remains supplied-candidate295 contextual attribution, not an independently verified runtime header.
+
+Metadata HTTP request→native items apply:
+- StartIndex60:34.204→34.521Z,317ms,60→120,apply10.59ms.
+- StartIndex120:42.682→43.325Z,643ms,120→180,apply2.11ms.
+- StartIndex180:45.731→45.862Z,131ms,180→240,apply0.90ms.
+These intervals include response/filter/publication, not exact network latency. Snapshot total34.42/86.14/106.87/149.66ms all main_thread=0. No evidence that synchronous persistence caused a main-thread pause in this capture.
+
+Motion-gated CADisplayLink log:950 samples,p50/p95/p99~8.335ms,max20.745ms,one>=16.7ms,zero>=25/33.3ms. This does NOT prove displayed120FPS or rule out a stall at the moment isDecelerating becomes false, because sample logging is conditioned on dragging/decelerating. The video creation tag is14:57:13Z (later than the log's last14:56:51.684Z event), and no shared marker establishes absolute video→log time. Therefore do not assert that the5.8s stop coincides with a specific append/footer/store event.
+
+Narrowed diagnosis: distinguish actual current metadata-end arrival from deceleration termination during native update/layout/refresh-control work. Existing source calls endRefreshing on every nonloading representable update and toggles footer0/52 with invalidateLayout; these are audit candidates, not demonstrated causes. Existing telemetry has no contentSize/maxOffset/deceleration-end trace to decide. Next justified diagnostic should record bounded event snapshots at drag-end/deceleration-end, request/apply/batch completion, footer and real refresh transitions, plus offset/legal max/count/velocity; no per-frame string spam. Test actual inertia under delayed metadata and real native updates. Keep timers/artificial offset/inertia, arbitrary total-count placeholders and unmeasured prefetch changes out. User asked inspection; no runtime patch,Build orCI generated in this review. P2 not accepted; later adapters remain gated.
+
+### 2026-10-06 22:50 (Asia/Shanghai) — First-load Library inertial stop reported
+
+User tested the supplied candidate and reports that a first-loaded Library suddenly stops during inertial scrolling. It feels as if lower content has not loaded and the container has only the current height, without obvious boundary damping; the user explicitly labels that as a description, not a confirmed cause. Supplied candidate is Build295/source8ca3de65a8ca2927785bb194b6a3136b6d900e56; actual installed identity/timing/cache state await the App log. No video/log/offset or frame trace is supplied yet. This is new qualitative target-device issue evidence, not acceptance or a measured offset reversal.
+
+Source audit: fixed cell geometry/record count does not depend on image completion. Collection count equals acquired metadata, not server total; existing60-item sequential paging remains, and willDisplay triggers next page within the last9 items. Thus reaching the current loaded extent before metadata arrives is a plausible boundary-starvation hypothesis, not proven. Append uses performBatchUpdates; loading changes footer0/52 height and invalidateLayout; update also calls endRefreshing on nonloading updates. Their deceleration effect has not been measured, so no causal claim or patch is justified. loadingTabs stays set across awaited ordered persistence; this can delay eligibility for subsequent page requests but does not prove main-thread blocking. Current automated append test checks offset/geometry, not an actual cold/network-delayed inertial trajectory.
+
+Next evidence: reproduce with App log plus matching video; locate stop against last visible row/current loaded count, real offset/max/legal bounds, decelerating state, page request→metadata arrival→append/layout timing and frame gaps. User should note whether immediately dragging can continue below the stop. Existing PosterWall items/gap/frames and Library cache timings can begin correlation; if they cannot separate boundary/deceleration/layout, add only focused event diagnostics in a later explicitly justified iteration. Do not inflate arbitrary total-count slots, guess prefetch constants, add synthetic inertia/offset correction, or reopen carousel/Dock/P0. P2 experience is not accepted; P3–P6 remain gated.
 
 ## Historical accepted evidence and protected contracts
 

@@ -4,7 +4,7 @@ import sys
 repo = Path(sys.argv[1]).resolve()
 target = Path(sys.argv[2]).resolve()
 target.mkdir(parents=True, exist_ok=True)
-for path in ['Sources/UI/EmbyPosterWall.swift', 'Sources/UI/EmbyImagePreparation.swift', 'Sources/UI/EmbyPagePersistentCache.swift', 'Sources/Cache/EmbyImageDiskCache.swift', 'Sources/Models/EmbyModels.swift']:
+for path in ['Sources/Core/AppIdentity.swift', 'Sources/UI/EmbyPosterWall.swift', 'Sources/UI/EmbyImagePreparation.swift', 'Sources/UI/EmbyPagePersistentCache.swift', 'Sources/Cache/EmbyImageDiskCache.swift', 'Sources/Models/EmbyModels.swift']:
     (target / Path(path).name).write_text((repo / path).read_text())
 shared = (repo / 'Sources/UI/EmbySharedImageAndNavigation.swift').read_text()
 pool = shared[shared.index('final class EmbyDecodedImageRenderPool'):shared.index('@MainActor\nprivate final class EmbyCachedImageLoader')]
@@ -17,7 +17,6 @@ recommendations = (repo / 'Sources/Networking/EmbyLibraryHubAPI.swift').read_tex
 api = (repo / 'Sources/Networking/EmbyAPIClient.swift').read_text()
 image_url = api[api.index('    func imageURL('):api.index('    func setFavorite(')]
 (target / 'Services.swift').write_text('''import Foundation
-enum AppIdentity { static let ticksPerSecond: Double = 10_000_000 }
 final class DiagnosticsLogger {
     static let shared = DiagnosticsLogger()
     private let lock = NSLock()
@@ -40,16 +39,8 @@ text = services.read_text()
 text = text[:-2] + (Path(__file__).parent / 'APIStub.swift').read_text() + '}\n'
 services.write_text(text)
 (target / 'PosterTests.swift').write_text((Path(__file__).parent / 'PosterTests.swift').read_text())
-(target / 'Host.swift').write_text('''import UIKit
-@main final class AppDelegate: UIResponder, UIApplicationDelegate {
-    var window: UIWindow?
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = UIViewController(); window.makeKeyAndVisible(); self.window = window
-        return true
-    }
-}
-''')
+(target / 'Host.swift').write_text((Path(__file__).parent / 'MotionHost.swift').read_text())
+(target / 'MotionUITests.swift').write_text((Path(__file__).parent / 'MotionUITests.swift').read_text())
 (target / 'project.yml').write_text('''name: PosterWallRegression
 options:
   deploymentTarget:
@@ -58,7 +49,9 @@ targets:
   PosterHost:
     type: application
     platform: iOS
-    sources: [Host.swift]
+    sources:
+      - path: .
+        excludes: [project.yml, PosterTests.swift, MotionUITests.swift]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
@@ -69,7 +62,7 @@ targets:
     platform: iOS
     sources:
       - path: .
-        excludes: [project.yml, Host.swift]
+        excludes: [project.yml, Host.swift, MotionUITests.swift]
     dependencies:
       - target: PosterHost
     settings:
@@ -79,11 +72,30 @@ targets:
         SWIFT_VERSION: "5.0"
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PosterHost.app/PosterHost"
         BUNDLE_LOADER: "$(TEST_HOST)"
+  PosterMotionUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [MotionUITests.swift]
+    dependencies:
+      - target: PosterHost
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.oneplayer.poster-motion-ui
+        SWIFT_VERSION: "5.0"
+        TEST_TARGET_NAME: PosterHost
 schemes:
   PosterWallRegression:
     build:
       targets:
         PosterWallRegression: [test]
+        PosterMotionUITests: [test]
     test:
       targets: [PosterWallRegression]
+  PosterMotionUITests:
+    build:
+      targets:
+        PosterMotionUITests: [test]
+    test:
+      targets: [PosterMotionUITests]
 ''')

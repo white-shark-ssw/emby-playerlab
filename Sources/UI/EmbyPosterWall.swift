@@ -1,6 +1,26 @@
 import SwiftUI
 import UIKit
 
+// Numeric history only. It observes UIKit; it never drives offset, paging or gesture state.
+struct EmbyPosterMotionTrace {
+    struct Sample {
+        let time: Double
+        let offset: CGFloat
+        let maximum: CGFloat
+        let count: Int
+        let dragging: Bool
+        let decelerating: Bool
+    }
+    static let capacity = 64
+    private var storage: [Sample] = []
+    private var next = 0
+    var samples: [Sample] { storage.count < Self.capacity ? storage : Array(storage[next...] + storage[..<next]) }
+    mutating func append(_ sample: Sample) {
+        if storage.count < Self.capacity { storage.append(sample) } else { storage[next] = sample }
+        next = (next + 1) % Self.capacity
+    }
+}
+
 struct EmbyPosterRecord: Equatable {
     let id: String
     let name: String
@@ -171,6 +191,12 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     private var lastOffset: CGFloat = 0
     private var frameSamples: [Double] = []
     private var imageConfigurationCount = 0
+    private var lastMoving = false
+    private var motion = EmbyPosterMotionTrace()
+    private let traceID = String(UUID().uuidString.prefix(8))
+    private var traceSequence = 0
+    private var lastGeometry: [CGFloat] = []
+    private var lastApproachRevision: Int?
 
     override func loadView() {
         view = collection
@@ -186,6 +212,8 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         let refresh = UIRefreshControl()
         refresh.addTarget(self, action: #selector(refreshTriggered), for: .valueChanged)
         collection.refreshControl = refresh
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+        trace("created", detail: "source_version=\(AppIdentity.sourceVersion) build=\(build)")
         foregroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in self?.prepareFirstScreen() }
         pressureObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in self?.cancelPrefetch() }
     }
@@ -202,6 +230,8 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
             if let input { applyItems(input) }
         }
         prepareFirstScreen()
+        let geometry = [collection.contentSize.height, collection.bounds.height, collection.adjustedContentInset.top, collection.adjustedContentInset.bottom]
+        if geometry != lastGeometry { lastGeometry = geometry; trace("geometry") }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -215,11 +245,19 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     func update(_ value: EmbyPosterWall) {
         loadViewIfNeeded()
         let footerChanged = input?.isLoading != value.isLoading || input?.error != value.error || input?.hasLoaded != value.hasLoaded
+        let insetChanged = collection.contentInset.bottom != value.bottomPadding
+        if footerChanged || insetChanged { trace("update-before", detail: "next_loading=\(value.isLoading ? 1 : 0) next_revision=\(value.revision) next_count=\(value.items.count)") }
         input = value
         collection.contentInset.bottom = value.bottomPadding
         if width > 0 { applyItems(value) }
         if footerChanged { flow.invalidateLayout(); updateFooter() }
-        if !value.isLoading { collection.refreshControl?.endRefreshing() }
+        if !value.isLoading {
+            let observe = collection.refreshControl?.isRefreshing == true || collection.isDragging || collection.isDecelerating
+            if observe { trace("end-refresh-before") }
+            collection.refreshControl?.endRefreshing()
+            if observe { trace("end-refresh-after") }
+        }
+        if footerChanged || insetChanged { trace("update-after") }
         synchronizeActivity()
     }
 
@@ -228,6 +266,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         guard appliedRevision != value.revision || sourceIdentity != identity else { return }
         let started = CACurrentMediaTime()
         let old = records
+        trace("items-before", detail: "next_count=\(value.items.count) next_revision=\(value.revision)")
         let append = sourceIdentity == identity && appliedReplacement == value.replacement && value.items.count > old.count
         if sourceIdentity == identity && appliedReplacement == value.replacement && value.items.count == old.count {
             appliedRevision = value.revision
@@ -241,7 +280,12 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         items = value.items; records = next; appliedRevision = value.revision; sourceIdentity = identity
         if append {
             let paths = (old.count..<next.count).map { IndexPath(item: $0, section: 0) }
-            UIView.performWithoutAnimation { collection.performBatchUpdates { collection.insertItems(at: paths) } }
+            trace("batch-begin", detail: "old_count=\(old.count)")
+            UIView.performWithoutAnimation {
+                collection.performBatchUpdates({ collection.insertItems(at: paths) }) { [weak self] finished in
+                    self?.trace("batch-complete", detail: "finished=\(finished ? 1 : 0)")
+                }
+            }
         } else if sameIDs {
             for path in collection.indexPathsForVisibleItems where next[path.item] != old[path.item] {
                 (collection.cellForItem(at: path) as? EmbyPosterCell)?.configure(next[path.item])
@@ -253,6 +297,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         // Update image-demand membership on real data changes; ordinary SwiftUI updates do not scan items.
         if !append { cancelPrefetch(except: Set(next.compactMap(\.url))) }
         prepareFirstScreen()
+        trace("items-after", detail: "append=\(append ? 1 : 0) same_ids=\(sameIDs ? 1 : 0)")
         DiagnosticsLogger.shared.log("PosterWall", "event=items count=\(next.count) append=\(append ? 1 : 0) same_ids=\(sameIDs ? 1 : 0) apply_ms=\(String(format: "%.2f", (CACurrentMediaTime() - started) * 1000))")
     }
 
@@ -272,7 +317,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         } else if !active { displayLink?.invalidate(); displayLink = nil; lastFrame = 0 }
     }
 
-    @objc private func refreshTriggered() { input?.onRefresh() }
+    @objc private func refreshTriggered() { trace("refresh-triggered"); input?.onRefresh() }
 
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { records.count }
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
@@ -283,7 +328,10 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
         (cell as? EmbyPosterCell)?.activate()
         if let url = records[indexPath.item].url, let token = prefetch.removeValue(forKey: url) { preparation.cancel(token) }
-        if indexPath.item >= records.count - EmbyPosterGridMetrics.loadAheadItemCount { input?.onApproachingEnd() }
+        if indexPath.item >= records.count - EmbyPosterGridMetrics.loadAheadItemCount {
+            if lastApproachRevision != appliedRevision { lastApproachRevision = appliedRevision; trace("approaching-end", detail: "index=\(indexPath.item)") }
+            input?.onApproachingEnd()
+        }
     }
     func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell, forItemAt indexPath: IndexPath) { (cell as? EmbyPosterCell)?.deactivate() }
     func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath) -> Bool {
@@ -329,19 +377,49 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     }
 
     @objc private func frameTick(_ link: CADisplayLink) {
+        sampleFrame(at: link.timestamp)
+    }
+    func sampleFrame(at timestamp: CFTimeInterval) {
         let moving = collection.isDragging || collection.isDecelerating
         let offset = collection.contentOffset.y
-        if lastFrame > 0, moving {
-            let ms = (link.timestamp - lastFrame) * 1000
+        if moving || lastMoving {
+            motion.append(.init(time: timestamp, offset: offset, maximum: maximumOffset, count: records.count, dragging: collection.isDragging, decelerating: collection.isDecelerating))
+        }
+        if lastFrame > 0, moving || lastMoving {
+            let ms = (timestamp - lastFrame) * 1000
             frameSamples.append(ms)
             if ms >= 25 {
                 let inBounds = offset >= -collection.adjustedContentInset.top && offset <= max(-collection.adjustedContentInset.top, collection.contentSize.height - collection.bounds.height + collection.adjustedContentInset.bottom)
                 DiagnosticsLogger.shared.log("PosterWall", "event=gap ms=\(String(format: "%.2f", ms)) offset=\(String(format: "%.1f", offset)) delta=\(String(format: "%.1f", offset - lastOffset)) in_bounds=\(inBounds ? 1 : 0) dragging=\(collection.isDragging ? 1 : 0) demands=\(preparation.demandCount) tasks=\(preparation.activeTaskCount) pins=\(preparation.firstScreenCount)")
+                trace("gap-state", detail: "ms=\(ms)"); reportMotion("gap")
             }
             if frameSamples.count >= 1200 { reportFrames() }
         }
-        lastFrame = link.timestamp; lastOffset = offset
+        if lastMoving && !moving { trace("motion-stopped"); reportMotion("stopped") }
+        lastFrame = timestamp; lastOffset = offset; lastMoving = moving
     }
+
+    private var maximumOffset: CGFloat { max(-collection.adjustedContentInset.top, collection.contentSize.height - collection.bounds.height + collection.adjustedContentInset.bottom) }
+    private func trace(_ event: String, detail: String = "") {
+        guard traceSequence < 4096 else { return }
+        traceSequence += 1
+        let paths = collection.indexPathsForVisibleItems.map(\.item)
+        let velocity = collection.panGestureRecognizer.velocity(in: collection).y
+        let footer = records.isEmpty ? 132 : (input?.error != nil || input?.isLoading == true ? 52 : 0)
+        let numeric = String(format: "uptime=%.3f offset=%.2f size=%.2f viewport=%.2f top=%.2f bottom=%.2f max=%.2f remaining=%.2f pan_velocity=%.2f", ProcessInfo.processInfo.systemUptime, collection.contentOffset.y, collection.contentSize.height, collection.bounds.height, collection.adjustedContentInset.top, collection.adjustedContentInset.bottom, maximumOffset, maximumOffset - collection.contentOffset.y, velocity)
+        DiagnosticsLogger.shared.log("PosterWall", "event=\(event) wall=\(traceID) seq=\(traceSequence) \(numeric) count=\(records.count) revision=\(appliedRevision ?? -1) replacement=\(appliedReplacement ?? -1) loading=\(input?.isLoading == true ? 1 : 0) footer=\(footer) visible=\(paths.min() ?? -1):\(paths.max() ?? -1) dragging=\(collection.isDragging ? 1 : 0) decelerating=\(collection.isDecelerating ? 1 : 0) tracking=\(collection.isTracking ? 1 : 0) refreshing=\(collection.refreshControl?.isRefreshing == true ? 1 : 0) pan=\(collection.panGestureRecognizer.state.rawValue) \(detail)")
+    }
+    private func reportMotion(_ reason: String) {
+        guard traceSequence < 4096, let first = motion.samples.first else { return }
+        let values = motion.samples.map { String(format: "%.1f:%.1f:%.1f:%d:%d:%d", ($0.time - first.time) * 1000, $0.offset, $0.maximum, $0.count, $0.dragging ? 1 : 0, $0.decelerating ? 1 : 0) }.joined(separator: ",")
+        traceSequence += 1
+        DiagnosticsLogger.shared.log("PosterWall", "event=motion-tail wall=\(traceID) seq=\(traceSequence) reason=\(reason) first_uptime=\(first.time) columns=relative_ms:offset:max:count:drag:decel samples=\(values)")
+    }
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) { trace("drag-begin") }
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) { trace("drag-end", detail: "will_decelerate=\(decelerate ? 1 : 0)") }
+    func scrollViewWillBeginDecelerating(_ scrollView: UIScrollView) { trace("deceleration-begin") }
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { trace("deceleration-end"); reportMotion("delegate-end") }
+    func scrollViewDidScrollToTop(_ scrollView: UIScrollView) { trace("return-top") }
     private func reportFrames() {
         guard !frameSamples.isEmpty else { return }
         let values = frameSamples.sorted()

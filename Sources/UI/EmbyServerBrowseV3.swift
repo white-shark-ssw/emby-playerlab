@@ -299,6 +299,8 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     private let pageSize = 60
     private var pageStates: [V3LibraryTab: V3LibraryPageState] = [:]
     private var fetchGenerations: [V3LibraryTab: Int] = [:]
+    private let pageTraceID = String(UUID().uuidString.prefix(8))
+    private var pageTraceEvents = 0
 
     init(library: LibraryItem, client: EmbyAPIClient) {
         self.library = library
@@ -422,10 +424,22 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         loadingTabs.insert(tab)
         errorMessages[tab] = nil
         let start = reset ? 0 : state.nextStartIndex
-        defer { if fetchGenerations[tab] == generation { loadingTabs.remove(tab); loadedTabs.insert(tab) } }
+        let started = ProcessInfo.processInfo.systemUptime
+        let tracePage: (String) -> Void = { [self] stage in
+            guard tab == .items, pageTraceEvents < 2048 else { return }
+            pageTraceEvents += 1
+            let now = ProcessInfo.processInfo.systemUptime
+            DiagnosticsLogger.shared.log("PosterWall", "event=page-\(stage) model=\(pageTraceID) generation=\(generation) current=\(fetchGenerations[tab] == generation ? 1 : 0) uptime=\(now) elapsed_ms=\((now - started) * 1000) start=\(start) reset=\(reset ? 1 : 0) count=\(tabItems[tab]?.count ?? 0) revision=\(posterRevision) replacement=\(posterReplacement) loading=\(loadingTabs.contains(tab) ? 1 : 0) frontier=\(pageStates[tab]?.nextStartIndex ?? 0)")
+        }
+        tracePage("request")
+        defer {
+            if fetchGenerations[tab] == generation { loadingTabs.remove(tab); loadedTabs.insert(tab) }
+            tracePage("finish")
+        }
         do {
             let query = spec(for: tab)
             let page = try await client.libraryHubItemsPage(parentId: library.id, limit: pageSize, startIndex: start, recursive: true, sortBy: sortBy, includeItemTypes: query.types, filters: query.filters)
+            tracePage("response")
             guard fetchGenerations[tab] == generation else { return }
             let allowed = Set(query.types.map { $0.lowercased() })
             let filtered = page.items.filter { allowed.isEmpty || allowed.contains($0.type?.lowercased() ?? "") }
@@ -444,8 +458,11 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             }
             pageStates[tab] = state
             loadedTabs.insert(tab)
+            tracePage("published")
             await persistSnapshot()
+            tracePage("persisted")
         } catch {
+            tracePage("error")
             guard fetchGenerations[tab] == generation else { return }
             if !isEmbyRequestCancellation(error) { errorMessages[tab] = error.localizedDescription }
         }

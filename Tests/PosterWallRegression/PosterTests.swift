@@ -55,6 +55,57 @@ final class PosterWallTests: XCTestCase {
         XCTAssertEqual(model.items(for: .items).map(\.id), ["cached", "next"])
     }
 
+    func testMotionHistoryKeepsTerminalStationaryFrameInsideFixedBudget() {
+        var trace = EmbyPosterMotionTrace()
+        for index in 0..<5000 {
+            trace.append(.init(time: Double(index) / 120, offset: CGFloat(index), maximum: 6000, count: 120, dragging: false, decelerating: true))
+        }
+        trace.append(.init(time: 5000.0 / 120, offset: 4999, maximum: 6000, count: 120, dragging: false, decelerating: false))
+        XCTAssertEqual(trace.samples.count, 64)
+        XCTAssertEqual(trace.samples.first?.offset, 4937)
+        XCTAssertEqual(trace.samples.last?.offset, 4999)
+        XCTAssertEqual(trace.samples.last?.decelerating, false)
+        XCTAssertEqual(trace.samples.last?.count, 120)
+    }
+
+    func testDelayedMetadataTraceSeparatesResponsePublicationPersistenceAndFinish() async {
+        let source = client()
+        let model = V3LibraryBrowserViewModel(library: item("lib"), client: source)
+        let loading = Task { await model.load(tab: .items) }
+        guard await waitForRequests(1, client: source) else { return }
+        let marker = DiagnosticsLogger.shared.records().last { $0.contains("event=page-request") }!
+        let identity = marker.split(separator: " ").first { $0.hasPrefix("model=") }!
+        XCTAssertTrue(model.isLoading(tab: .items)); XCTAssertTrue(model.items(for: .items).isEmpty)
+        XCTAssertFalse(DiagnosticsLogger.shared.records().contains { $0.contains(String(identity)) && $0.contains("event=page-response") })
+        source.requests[0].continuation.resume(returning: page("first")); await loading.value
+        let events = DiagnosticsLogger.shared.records().filter { $0.contains(String(identity)) }
+        XCTAssertEqual(events.map { $0.split(separator: " ")[0] }, ["event=page-request", "event=page-response", "event=page-published", "event=page-persisted", "event=page-finish"])
+        XCTAssertTrue(events[2].contains("count=1")); XCTAssertTrue(events[2].contains("loading=1"))
+        XCTAssertTrue(events[3].contains("loading=1")); XCTAssertTrue(events[4].contains("loading=0"))
+        XCTAssertEqual(model.items(for: .items).map(\.id), ["first"])
+    }
+
+    func testNativeMotionEndDiagnosticsNeverChangeOffsetOrRequestMetadata() {
+        let source = client()
+        let controller = EmbyPosterWallController()
+        var requests = 0
+        controller.loadViewIfNeeded(); controller.view.frame = CGRect(x: 0, y: 0, width: 430, height: 800)
+        controller.update(EmbyPosterWall(items: (0..<120).map { item(String($0)) }, revision: 1, replacement: 1, client: source, isLoading: false, hasLoaded: true, error: nil, emptyText: "empty", bottomPadding: 86, isActive: true, onApproachingEnd: { requests += 1 }, onRefresh: { requests += 1 }, onSelect: { _ in }))
+        controller.viewDidLayoutSubviews(); controller.collection.layoutIfNeeded()
+        controller.collection.setContentOffset(CGPoint(x: 0, y: 600), animated: false)
+        let before = requests
+        controller.scrollViewWillBeginDragging(controller.collection)
+        controller.scrollViewDidEndDragging(controller.collection, willDecelerate: true)
+        controller.scrollViewWillBeginDecelerating(controller.collection)
+        controller.scrollViewDidEndDecelerating(controller.collection)
+        controller.sampleFrame(at: 100)
+        XCTAssertEqual(controller.collection.contentOffset.y, 600, accuracy: 0.5)
+        XCTAssertEqual(requests, before)
+        let messages = DiagnosticsLogger.shared.records()
+        XCTAssertTrue(messages.contains { $0.contains("event=deceleration-end") && $0.contains("offset=600.00") && $0.contains("count=120") && $0.contains("remaining=") })
+        controller.dispose()
+    }
+
     func testSortGenerationRejectsOlderQueryAfterNewSortCompletes() async {
         let source = client()
         let model = V3LibraryBrowserViewModel(library: item("lib"), client: source)
