@@ -92,7 +92,7 @@ schemes:
         PosterWallRegression: [test]
         PosterMotionUITests: [test]
     test:
-      targets: [PosterWallRegression]
+      targets: [PosterWallRegression, PosterMotionUITests]
   PosterMotionUITests:
     build:
       targets:

@@ -51,11 +51,15 @@ import UIKit
         let moving = wall.collection.isDecelerating
         let offset = wall.collection.contentOffset.y
         let height = wall.collection.contentSize.height
+        let traceStart = DiagnosticsLogger.shared.records().count
         count += 60; revision += 1; update(loading: false)
         wall.collection.layoutIfNeeded()
         let after = wall.collection.contentOffset.y
         let expanded = wall.collection.contentSize.height > height
-        status.text = "decel=\(moving ? 1 : 0) after_decel=\(wall.collection.isDecelerating ? 1 : 0) expanded=\(expanded ? 1 : 0) jump=\(abs(after - offset) < 1 ? 0 : 1) count=\(wall.collection.numberOfItems(inSection: 0))"
+        let stages = DiagnosticsLogger.shared.records().dropFirst(traceStart).filter { $0.contains("decelerating=") }.map { message in
+            message.split(separator: " ").filter { $0.hasPrefix("event=") || $0.hasPrefix("decelerating=") }.joined(separator: ":")
+        }.joined(separator: ",")
+        status.text = "decel=\(moving ? 1 : 0) after_decel=\(wall.collection.isDecelerating ? 1 : 0) expanded=\(expanded ? 1 : 0) jump=\(abs(after - offset) < 1 ? 0 : 1) count=\(wall.collection.numberOfItems(inSection: 0)) stages=\(stages)"
         status.accessibilityLabel = status.text
     }
 }
