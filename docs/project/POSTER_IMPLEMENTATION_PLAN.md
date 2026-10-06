@@ -178,3 +178,8 @@ POSTER_PRESENTATION_DESIGN.md、POSTER_IMPLEMENTATION_PLAN.md、POSTER_ENTRY_IND
 首屏准备、暖缓存重启和约第2000项回顶必须作为验收合同。
 不要新建重叠任务，不要只换容器，不要在普通中间节点等待“继续”。
 ```
+
+
+## Current execution — 2026-10-06
+
+P0 identity migration complete; P1/P2 Library.items source written on Draft PR292/Build295. Preliminary actual-source tests18 retained Dock/carousel +8 poster/cache/model passed (5fc27c6). Current final font/SF badge/display-scale source20d52f7 requires rerun native/Release/IPA identity verification; device pending. P3–P6 and other adapters remain unstarted. The historic planning-only wording above records the original plan turn; this session's user explicitly authorized implementation. Current task checkpoint owns exact live source/control/artifact identities and next action.
