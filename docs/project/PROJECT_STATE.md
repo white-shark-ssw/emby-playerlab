@@ -98,6 +98,10 @@ The active poster-smoothness task now profiles the shared 3×3 presentation also
 
 ## Active: Poster-heavy scrolling smoothness
 
+### 2026-10-06 — Complete shared wall + page adapters
+
+At the user's request, POSTER_PRESENTATION_DESIGN.md section2A now covers Library, Favorites-more, detail tag/genre, person works, typed search and actual recommendation/more grids. Many currently share only EmbyPosterGrid; proposed core adds the scroll/presentation/resource lifecycle while business models retain APIs,60/18/9+6 paging and routing. Source/query identity, actor/media/folder variants, native return and warm-cache coverage are explicit. Common3-column routes should precede special Home migration. Specific “more watching” routing and legacy search activation remain checks, not guessed APIs. This is source-grounded planning only, not new runtime or universal performance evidence.
+
 ### 2026-10-06 — Warm-cache and deep return-top contract clarified
 
 User defines first-download placeholders as fixed poster rectangle plus real movie name (IMG_8037.png), and requires normal disk-cached relaunch/revisit plus rapid status-bar return from around item2000 to render ready content without a reload breakpoint. See POSTER_PRESENTATION_DESIGN.md section6A: loaded metadata remains separate from bounded image/cell lifecycle, and the same preparation coordinator retains a finite current-page first-screen resource set in addition to local prefetch. Home adopts the same contract; no all-image/all-view residency inference about EX, no synchronous scroll-time disk I/O and no code/CI/IPA/device-result claim. Build294 remains accepted baseline.
