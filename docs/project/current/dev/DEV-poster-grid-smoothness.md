@@ -5,7 +5,7 @@
 - **Active — P0/P1/P2 code complete; Release/IPA independently verified; first-load inertial-stop device report under investigation; P2 not accepted.**
 - User explicitly requested development through a testable Library.items IPA. Read [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md), [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md), [POSTER_ENTRY_INDEX.md](../../POSTER_ENTRY_INDEX.md).
 - Working branch: `perf/poster-wall-library-build295`; Draft PR [#292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main.
-- Current working branch head /Build296 exact source: **5187b590e51770f05fd393709cbd66ddddc589b6**. PR stays Draft/open/unmerged.
+- Current working branch head /Build296 exact source: **77b292b619b8db77e68f5bfbf3ca49c254840323**. PR stays Draft/open/unmerged.
 - Exact package source: **8ca3de65a8ca2927785bb194b6a3136b6d900e56**. Base: **03d1bad260666c3f38ae3913d6828f393690673e**, accepted overall Build294 Dock / Build293 carousel.
 - Candidate: **OnePlayer0.15.28 / Build295 / poster-wall-library / iOS15.0**. Target: iPhone15ProMax / iOS17.0.
 - CI control: `ci/build295-poster-wall-library-20261006`, **38689808411cee237bbf56f85d14619b2e07446f**, workflow `.github/workflows/build295-poster-wall-library.yml`, run **37477868307 / job112317946251**. Control source is not package source.
@@ -40,6 +40,10 @@ P2: G01 Library.items alone uses complete native collection scroll host and fixe
 - Earlier whitespace/pixel-width syntax failures and full-app destination visibility error were corrected from actual CI evidence.
 
 **Code written /8 poster +18 retained native regressions passed /Release CI passed /IPA independently verified /real-device pending /task Active /not stable /not merged.** Accepted overall baseline remains294;293carousel/294Dock/Search256/P0 preserved. P3–P6 await P2 target-device evidence.
+
+## Build296 evidenced correction — 2026-10-06
+
+Stage-isolation run37488102803/job112353349125 at source5187b590e51770f05fd393709cbd66ddddc589b6: unit11/0; native UI1/1. Exact sequence: update-before decelerating1 → items-before1 → batch-begin1 → items-after1 → end-refresh-before1 → synchronous deceleration-end0 → end-refresh-after0 → update-after0. Location fixed: original controller called endRefreshing even when UIRefreshControl.isRefreshing was false. Native append/inset did not terminate the captured inertia. Minimal correction gates existing completion on !isLoading && isRefreshing; no inertia/offset/footer/page-size/image-budget change. New actual-control unit verifies real pull-refresh ends, inactive ordinary updates do not call completion. Source **77b292b619b8db77e68f5bfbf3ca49c254840323**, control **7cfdd6ca08c1dfa9e060cbcbf44937dffb851782**, tests now12 units +1 true native UI. Next: exact-source full tests/Release/IPA. Target iOS17 user stop and long-frame tail remain pending; simulator18.5 causality is not target-device acceptance.
 
 ## Build296 actual native reproduction — 2026-10-06
 
