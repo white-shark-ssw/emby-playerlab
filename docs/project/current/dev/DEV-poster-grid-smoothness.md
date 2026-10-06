@@ -5,7 +5,7 @@
 - **Active — Build296 exact-source regressions/Release/IPA independently verified; target-device inertia/long-frame retest pending; P2 not accepted.**
 - Existing task/plan: [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md). Only G01 Library.items has migrated; other hosts remain gated.
 - Working branch: `perf/poster-wall-library-build295`; Draft/open/unmerged [PR292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main.
-- Current source branch head: **bfa5b56ee1e5737cf0fff9a2b7234505e8469dfb** before final document-only synchronization. Exact package/test source remains this SHA; main checkpoint records subsequent live document-only head explicitly.
+- Current working branch head: **5064d1897ab0e199d53ed59853d5f9b87e95d422** (final project-document synchronization only; exact packaged runtime/test bytes unchanged). Exact package/test source: **bfa5b56ee1e5737cf0fff9a2b7234505e8469dfb**.
 - Current candidate: **OnePlayer0.15.29 /Build296 /poster-wall-motion-diagnostics /iOS15.0**. Target iPhone15ProMax/iOS17.0.
 - CI control: `ci/build296-poster-wall-motion-20261006`, **b904829dc6e24186e35c5cc595bf2d71893094f3**; workflow `.github/workflows/build296-poster-wall-motion.yml`; **run37490702186 /job112362875963 success**.
 - Artifact **11425443691**, digest **efcbbf9ac1de1cd175ba0603e4dcc7f156a4adc46a8cd79ba42caaaac7cfdabd**. Package/MinOS details below.
