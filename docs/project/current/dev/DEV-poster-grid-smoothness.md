@@ -6,9 +6,9 @@
 
 - Status: **Active / P1–P2 implemented; validation in progress**. User explicitly authorized implementation and continuous IPA delivery in this session.
 - Working branch: `perf/poster-wall-library-build295`; Draft PR **#292** (base main).
-- Exact product/source head: **fd437de731ea6bb98975f283c5a1d64bbb1fb614**; latest accepted source/base **03d1bad260666c3f38ae3913d6828f393690673e**, inheriting accepted Build294 Dock/Build293 carousel.
+- Exact product/source head: **fefdcaefa4cacdc04644aed06e2262292727829d**; latest accepted source/base **03d1bad260666c3f38ae3913d6828f393690673e**, inheriting accepted Build294 Dock/Build293 carousel.
 - Reserved candidate: **OnePlayer0.15.28 / Build295 / poster-wall-library**; iOS15.0. Aether235 remains separate; Search is Completed. No branch/Build collision found.
-- CI control branch `ci/build295-poster-wall-library-20261006`, head **34f4646b4f99d09df3c015101773ac492e6bd163**, workflow `.github/workflows/build295-poster-wall-library.yml`. Control source is not packaged source.
+- CI control branch `ci/build295-poster-wall-library-20261006`, head **6344db9c66dd8d792cc102dc304241d150ef8423**, workflow `.github/workflows/build295-poster-wall-library.yml`. Control source is not packaged source.
 - First run37473315597 failed before compilation on whitespace checks and is corrected. Normalized source5fc27c6 passed native Dock/carousel and8 poster tests on run37473502209; it is superseded by the current font/SF-badge/display-scale source. Run37474393518 confirms18 Dock/carousel tests pass on20d52f7 but poster compilation failed on one extra ')' in pixel-width call. Currentfd437de fixes that exact syntax. Final control34f4646 guards unchanged retained production native sources against20d52f7 and carries original18/0 log evidence, reruns8 poster tests and Release/IPA. No device success yet.
 - P1 ordered background Library restore/index construction/write implemented, with restoration gate before live publication. P2 fixed native cell/complete scroll host, shared independent URL consumers, suffix-only append, persistent NavigationLink, first-screen demand, refresh/footer and native return-top implemented. Limits start at4 active tasks,12 prefetch URLs per pilot,24 globally pinned URLs across up to2 first-screen demands; actual memory/target-device tail still unmeasured.
 - G01 Library.items is the only new adapter. G02–G15 and H01–H04 remain planned. Shared SwiftUI image loader now subscribes to the same preparation owner; original decoded/disk/decoder authorities retained. No P0/player/transport/Dock/carousel code changed.
@@ -149,6 +149,10 @@ User explicitly asks to review remaining gaps and prepare the existing task for 
 
 Identity audit at maindf4c7bf3cd4b8de51f392e9af930d12c42c26219: PR#282 still Draft/open/unmerged with branch head39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6. Other current task Aether is Active; Search checkpoint is Completed. All new code phases and new performance device checks remain pending. No new product branch, version/Build allocation, merge, CI or IPA.
 
+### Final static lifetime/visual audit
+
+Current source fefdcaefa4cacdc04644aed06e2262292727829d drops the completed restoration future after single cached publication so old pre-refresh metadata is not permanently retained. Native progress is a clipped artwork subview, matching the accepted SwiftUI rounded mask. This is the final static patch; only verified CI/device defects justify further code changes.8 poster regressions/Release rerun on this source; retained18 Dock/carousel dependencies remain byte-identical to passing20d52f7. CI control 6344db9c66dd8d792cc102dc304241d150ef8423.
+
 ## Completed / Validation state / Pending
 
 - Completed: P0 identity migration on accepted294 main; P1/P2 source and actual-source regression harness; dedicated Draft PR292 and exact-source CI control.
@@ -157,4 +161,4 @@ Identity audit at maindf4c7bf3cd4b8de51f392e9af930d12c42c26219: PR#282 still Dra
 
 ## Next exact action
 
-Continue CI on exact product **fd437de731ea6bb98975f283c5a1d64bbb1fb614** using control **34f4646b4f99d09df3c015101773ac492e6bd163**. Read failing job evidence before edits, fix only verified compiler/test defects, update durable identities if product changes, then rerun affected actual-source tests/Release packaging. Independently retrieve and verify the pilot IPA before handoff. User tests cold/warm scrolling/pagination, warm relaunch,~item2000 status-bar return-top, detail push/pop/interactive back, sort/refresh and Dock. Do not merge historical PR282 wholesale, reopen frozen carousel/Dock/Search/P0 or label generated IPA as device-tested.
+Continue CI on exact product **fefdcaefa4cacdc04644aed06e2262292727829d** using control **6344db9c66dd8d792cc102dc304241d150ef8423**. Read failing job evidence before edits, fix only verified compiler/test defects, update durable identities if product changes, then rerun affected actual-source tests/Release packaging. Independently retrieve and verify the pilot IPA before handoff. User tests cold/warm scrolling/pagination, warm relaunch,~item2000 status-bar return-top, detail push/pop/interactive back, sort/refresh and Dock. Do not merge historical PR282 wholesale, reopen frozen carousel/Dock/Search/P0 or label generated IPA as device-tested.
