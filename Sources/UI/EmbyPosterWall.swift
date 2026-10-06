@@ -251,11 +251,12 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         collection.contentInset.bottom = value.bottomPadding
         if width > 0 { applyItems(value) }
         if footerChanged { flow.invalidateLayout(); updateFooter() }
-        if !value.isLoading {
-            let observe = collection.refreshControl?.isRefreshing == true || collection.isDragging || collection.isDecelerating
-            if observe { trace("end-refresh-before") }
+        // UIKit ends deceleration even when endRefreshing is called on an inactive control.
+        // Only a real refresh owns this completion; ordinary paging must not stop native inertia.
+        if !value.isLoading, collection.refreshControl?.isRefreshing == true {
+            trace("end-refresh-before")
             collection.refreshControl?.endRefreshing()
-            if observe { trace("end-refresh-after") }
+            trace("end-refresh-after")
         }
         if footerChanged || insetChanged { trace("update-after") }
         synchronizeActivity()

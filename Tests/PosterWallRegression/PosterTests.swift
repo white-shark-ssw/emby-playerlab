@@ -106,6 +106,25 @@ final class PosterWallTests: XCTestCase {
         controller.dispose()
     }
 
+    func testOnlyRealRefreshCompletionEndsRefreshing() {
+        let source = client()
+        let controller = EmbyPosterWallController()
+        let value = EmbyPosterWall(items: [], revision: 1, replacement: 1, client: source, isLoading: false, hasLoaded: true, error: nil, emptyText: "empty", bottomPadding: 86, isActive: true, onApproachingEnd: {}, onRefresh: {}, onSelect: { _ in })
+        controller.loadViewIfNeeded()
+        let start = DiagnosticsLogger.shared.records().count
+        controller.update(value)
+        XCTAssertFalse(DiagnosticsLogger.shared.records().dropFirst(start).contains { $0.contains("event=end-refresh-before") })
+        controller.collection.refreshControl?.beginRefreshing()
+        XCTAssertEqual(controller.collection.refreshControl?.isRefreshing, true)
+        controller.update(value)
+        XCTAssertEqual(controller.collection.refreshControl?.isRefreshing, false)
+        XCTAssertTrue(DiagnosticsLogger.shared.records().dropFirst(start).contains { $0.contains("event=end-refresh-before") && $0.contains("refreshing=1") })
+        let finished = DiagnosticsLogger.shared.records().count
+        controller.update(value)
+        XCTAssertFalse(DiagnosticsLogger.shared.records().dropFirst(finished).contains { $0.contains("event=end-refresh-before") })
+        controller.dispose()
+    }
+
     func testSortGenerationRejectsOlderQueryAfterNewSortCompletes() async {
         let source = client()
         let model = V3LibraryBrowserViewModel(library: item("lib"), client: source)
