@@ -233,7 +233,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
             return
         }
         let newItems = append ? Array(value.items.dropFirst(old.count)) : value.items
-        let changed = newItems.map { EmbyPosterRecord(item: $0, client: value.client, pixelWidth: pixelWidth)) }
+        let changed = newItems.map { EmbyPosterRecord(item: $0, client: value.client, pixelWidth: pixelWidth) }
         let next = append ? old + changed : changed
         let sameIDs = !append && sourceIdentity == identity && next.map(\.id) == old.map(\.id)
         appliedReplacement = value.replacement
