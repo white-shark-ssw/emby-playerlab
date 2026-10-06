@@ -153,6 +153,10 @@ Identity audit at maindf4c7bf3cd4b8de51f392e9af930d12c42c26219: PR#282 still Dra
 
 Current source fefdcaefa4cacdc04644aed06e2262292727829d drops the completed restoration future after single cached publication so old pre-refresh metadata is not permanently retained. Native progress is a clipped artwork subview, matching the accepted SwiftUI rounded mask. This is the final static patch; only verified CI/device defects justify further code changes.8 poster regressions/Release rerun on this source; retained18 Dock/carousel dependencies remain byte-identical to passing20d52f7. CI control 6344db9c66dd8d792cc102dc304241d150ef8423.
 
+### Final native milestone — run37476373994
+
+Exact product **fefdcaefa4cacdc04644aed06e2262292727829d**, control **6344db9c66dd8d792cc102dc304241d150ef8423**, run **37476373994 / job112312892728**: source/MinOS/scope guards passed,8 actual-production poster/preparation/cache/model tests passed. Retained18 native Dock/carousel results (run37474393518/job112306217313) are byte-identity guarded on their full test production dependency set. Release build is in progress; IPA not produced or device-tested yet. Next exact action: inspect Release result, retrieve package and audit exact source/identity/digests/MinOS.
+
 ## Completed / Validation state / Pending
 
 - Completed: P0 identity migration on accepted294 main; P1/P2 source and actual-source regression harness; dedicated Draft PR292 and exact-source CI control.
