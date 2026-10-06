@@ -241,3 +241,12 @@ Actual production Library view/model/wall/Dock are now included in a native navi
 Next exact action: publish this implementation on the current guarded feature branch, record returned product SHA, run negative control then full16+3 tests and exact-source Release/package audit; retrieve/save verified IPA. Do not stop at CI start. Original log had no>=25ms gap; this candidate does not claim measured long-frame elimination or a stills latency root fix.
 
 Exact Build297 implementation/product source: **a8f292193a2495d2b0f60d47c7f1d9816581087e**. Next action: independent CI control, old-policy negative control,16 units+3 native UI tests, Release and verified IPA.
+
+
+## Build297 implementation and exact-source CI in progress — 2026-10-07
+
+OnePlayer0.15.30 /Build297 /poster-wall-return-section; DEV-poster-grid-smoothness Active, G01 only, Draft PR292 unmerged. Product **a8f292193a2495d2b0f60d47c7f1d9816581087e**; feature perf/poster-wall-library-build295. Successful live Library.items validity stays in the original model; normal reappearance retains metadata/revision/frontier, while disk-only/failed loads do not skip initial live refresh and explicit refresh/sort remain. This addresses proven296 same-model60-item reset; offset and native navigation owners unchanged. Stills SECTION latency remains unresolved: diagnostics-only per-model timeline records upstream waits/imageInfos publication/qualifying counts/section lifecycle, without reordering detail requests/cache/navigation. Four fixed Library work counters and full-slot scheduler scan avoidance add bounded evidence/one narrow optimization; supplied296 log had no>=25ms sampled gap, not proof all long frames absent or measured improvement.
+
+Independent CI control **c9a19fddf6a2e7f09812c3704759c35604ae263b**, ci/build297-poster-wall-return-20261007, .github/workflows/build297-poster-wall-return.yml; **run37512346668 /job112436442497 in progress**. Scope/Frozen/MinOS source guards passed; old-policy negative control then16 units+3 actual native UI tests and Release/package pending. No297 IPA/device result yet; retained18 Dock/carousel tests are byte-guarded historical evidence, not rerun. Accepted overall294/carousel293/Dock294/Search256/P0 and other host gates remain.
+
+Next exact action: inspect running CI tests, resolve actual failures; finish Release/package, retrieve and independently verify/save IPA. Do not stop at CI completion.
