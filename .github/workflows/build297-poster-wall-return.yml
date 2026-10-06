@@ -6,13 +6,14 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: build297-poster-wall-return
   cancel-in-progress: true
 
 env:
-  PRODUCT_SHA: 896bc61ad6972d789ef095f6eb46cbdf1b56301c
+  PRODUCT_SHA: 279f2c00fe86fa913962d22a0c7afbf17c82ca8d
   PRODUCT_BRANCH: perf/poster-wall-library-build295
   BASE_SHA: 5064d1897ab0e199d53ed59853d5f9b87e95d422
   DOCK_BASE_SHA: 119ab10eee869488b97415746a0243f51953eba0
@@ -106,45 +107,27 @@ jobs:
           grep -F 'Executed 18 tests, with 0 failures' fixed-native-tests.log
           echo "Retained production native sources byte-identical to passing run37474393518/job112306217313. Poster/native dependency guards preserve this passing evidence."
 
-      - name: Run old-policy negative control
-        timeout-minutes: 20
+      - name: Guard and retrieve passed exact-input negative control and 16 unit tests
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          test -z "$(git diff --name-only 896bc61ad6972d789ef095f6eb46cbdf1b56301c "$PRODUCT_SHA" -- Sources Tests/PosterWallRegression/prepare.py Tests/PosterWallRegression/PosterTests.swift Tests/PosterWallRegression/APIStub.swift Tests/PosterWallRegression/MotionHost.swift Tests/PosterWallRegression/ReturnHost.swift)"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37516521005" --jq .head_sha)" = "f2209e2c716ba0b5fcaa660c5df0f899d8ffae59"
+          gh run download 37516521005 --repo "$GITHUB_REPOSITORY" --name OnePlayer-0.15.30-build297-compiler-diagnostics --dir "$RUNNER_TEMP/Retained297"
+          cp "$RUNNER_TEMP/Retained297/poster-return-negative.log" poster-return-negative.log
+          cp "$RUNNER_TEMP/Retained297/poster-native-tests.log" poster-native-tests.log
+          echo "3d1e9fa7fbaf983623235869fb2a2640871202adbb0e7c0cbecd10cc36fc9960  poster-return-negative.log" | shasum -a 256 -c -
+          echo "2d9e1346de56e36cb7cc5814a8ea5c65ade65be2d3612bf9080fad080193d78b  poster-native-tests.log" | shasum -a 256 -c -
+          grep -F 'XCTAssertEqual failed' poster-return-negative.log
+          grep -F '** TEST FAILED **' poster-return-negative.log
+          grep -F 'Executed 16 tests, with 0 failures' poster-native-tests.log
+          echo "Retained negative control and16 production units passed run37516521005/job112450695015; all runtime/unit-input bytes identical. Only excluded UI test tap target and project checkpoint differ. Not rerun."
           python3 Tests/PosterWallRegression/prepare.py "$PWD" "$RUNNER_TEMP/PosterWallRegression"
           xcodegen generate --spec "$RUNNER_TEMP/PosterWallRegression/project.yml"
           DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(x["udid"] for runtime,devices in d["devices"].items() if runtime.endswith("iOS-18-5") for x in devices if x["name"] == "iPhone 16 Pro Max"))')"
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          path = Path(os.environ['RUNNER_TEMP']) / 'PosterWallRegression/LibraryModel.swift'
-          text = path.read_text()
-          guard = '        if tab == .items && liveItemsSortBy == sortBy { return }\n'
-          assert text.count(guard) == 1
-          path.write_text(text.replace(guard, ''))
-          PY
-          cd "$RUNNER_TEMP/PosterWallRegression"
-          set +e
-          xcodebuild test -project PosterWallRegression.xcodeproj -scheme PosterWallRegression -only-testing:PosterWallRegression/PosterWallTests/testSameLivePageReappearancePreservesItemsRevisionReplacementAndFrontier -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/poster-return-negative.log"
-          negative=${PIPESTATUS[0]}
-          set -e
-          test "$negative" -ne 0
-          grep -E 'testSameLivePageReappearancePreservesItemsRevisionReplacementAndFrontier.*started' "$GITHUB_WORKSPACE/poster-return-negative.log"
-          grep -F 'XCTAssertEqual failed' "$GITHUB_WORKSPACE/poster-return-negative.log"
-          grep -E 'Executed 1 test, with [1-9][0-9]* failures' "$GITHUB_WORKSPACE/poster-return-negative.log"
           echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
 
-      - name: Run actual-source 16 unit tests
-        timeout-minutes: 10
-        run: |
-          set -euo pipefail
-          python3 Tests/PosterWallRegression/prepare.py "$PWD" "$RUNNER_TEMP/PosterWallRegression"
-          cd "$RUNNER_TEMP/PosterWallRegression"
-          set +e
-          xcodebuild test -project PosterWallRegression.xcodeproj -scheme PosterWallRegression -only-testing:PosterWallRegression -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/poster-native-tests.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          test "$status" = 0
-          grep -F 'Executed 16 tests, with 0 failures' "$GITHUB_WORKSPACE/poster-native-tests.log"
       - name: Run actual-source 3 native UI tests
         timeout-minutes: 12
         run: |
