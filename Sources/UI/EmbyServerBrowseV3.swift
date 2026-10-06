@@ -306,13 +306,15 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         restoration = Task { await V3PagePersistentCache.shared.restoreLibrary(client: client, libraryID: library.id) }
     }
 
-    private let restoration: Task<(V3LibraryPersistentSnapshot, [String: Set<String>])?, Never>
-    private var didRestore = false
+    private var restoration: Task<(V3LibraryPersistentSnapshot, [String: Set<String>])?, Never>?
 
     private func restoreIfNeeded() async {
-        guard !didRestore else { return }
-        guard let (snapshot, seen) = await restoration.value, !didRestore else { didRestore = true; return }
-        didRestore = true
+        guard let task = restoration else { return }
+        let restored = await task.value
+        guard restoration != nil else { return }
+        // Drop the completed future so the pre-refresh metadata snapshot is not retained for the page lifetime.
+        restoration = nil
+        guard let (snapshot, seen) = restored else { return }
         posterReplacement += 1
         tabItems = Dictionary(uniqueKeysWithValues: snapshot.tabItems.compactMap { key, items in V3LibraryTab(rawValue: key).map { ($0, items) } })
         suggestionResumeItems = snapshot.suggestionResumeItems

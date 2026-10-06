@@ -47,7 +47,8 @@ final class EmbyPosterCell: UICollectionViewCell {
         progress.backgroundColor = .systemBlue
         badge.font = .systemFont(ofSize: 11, weight: .bold); badge.textColor = .white; badge.textAlignment = .center
         badge.clipsToBounds = true; badgeCheck.tintColor = .white; badgeCheck.contentMode = .scaleAspectFit
-        [artwork, placeholder, title, year, progress, badge].forEach(contentView.addSubview)
+        [artwork, placeholder, title, year, badge].forEach(contentView.addSubview)
+        artwork.addSubview(progress)
         badge.addSubview(badgeCheck)
         isAccessibilityElement = true; accessibilityTraits = .button
     }
