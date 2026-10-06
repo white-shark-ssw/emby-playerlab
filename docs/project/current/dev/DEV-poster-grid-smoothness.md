@@ -2,7 +2,7 @@
 
 ## Status and current identity — 2026-10-06
 
-- **Active — P0/P1/P2 code complete; Release/IPA independently verified; awaiting target-device P2 acceptance.**
+- **Active — P0/P1/P2 code complete; Release/IPA independently verified; first-load inertial-stop device report under investigation; P2 not accepted.**
 - User explicitly requested development through a testable Library.items IPA. Read [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md), [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md), [POSTER_ENTRY_INDEX.md](../../POSTER_ENTRY_INDEX.md).
 - Working branch: `perf/poster-wall-library-build295`; Draft PR [#292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main.
 - Current working branch head: **79cfa987d599695bc6e54e6d68e1331f69ad7a08** (document synchronization with current main only; runtime/test bytes identical to package source). PR stays Draft/open/unmerged.
@@ -43,7 +43,15 @@ P2: G01 Library.items alone uses complete native collection scroll host and fixe
 
 ## Next exact action
 
-Install the unsigned Build295 candidate using the existing signing workflow and perform the P2 target-device matrix above on iPhone15ProMax/iOS17.0 against accepted Build294. Record actual Build/cache/thermal state, frame p50/p95/p99/max and >=16.7/25/33.3ms counts plus memory. Return device log/visual evidence; locate any reproducible regression before G02–G15/Home rollout. No further implementation is blocked on routine approval, but P3–P6 stage gate requires P2 device evidence. Keep task Active/Draft and accepted baseline294; do not mark120FPS/stable or merge historical PR282.
+Correlate the new first-load inertial-stop report against the supplied Build295/source and real App log/video before further code or CI. Distinguish loaded-extent starvation from append/footer/refresh-control interrupting deceleration and a frame hitch; existing tests do not validate cold/network-delayed inertia. Obtain whether immediately dragging can continue and the last visible row. Implement only an evidenced fix/targeted diagnostic, then real-source regression and exact-source new unique candidate if runtime changes. G02–G15/Home remain gated; no stable/120FPS or acceptance claim.
+
+### 2026-10-06 22:50 (Asia/Shanghai) — First-load Library inertial stop reported
+
+User tested the supplied candidate and reports that a first-loaded Library suddenly stops during inertial scrolling. It feels as if lower content has not loaded and the container has only the current height, without obvious boundary damping; the user explicitly labels that as a description, not a confirmed cause. Supplied candidate is Build295/source8ca3de65a8ca2927785bb194b6a3136b6d900e56; actual installed identity/timing/cache state await the App log. No video/log/offset or frame trace is supplied yet. This is new qualitative target-device issue evidence, not acceptance or a measured offset reversal.
+
+Source audit: fixed cell geometry/record count does not depend on image completion. Collection count equals acquired metadata, not server total; existing60-item sequential paging remains, and willDisplay triggers next page within the last9 items. Thus reaching the current loaded extent before metadata arrives is a plausible boundary-starvation hypothesis, not proven. Append uses performBatchUpdates; loading changes footer0/52 height and invalidateLayout; update also calls endRefreshing on nonloading updates. Their deceleration effect has not been measured, so no causal claim or patch is justified. loadingTabs stays set across awaited ordered persistence; this can delay eligibility for subsequent page requests but does not prove main-thread blocking. Current automated append test checks offset/geometry, not an actual cold/network-delayed inertial trajectory.
+
+Next evidence: reproduce with App log plus matching video; locate stop against last visible row/current loaded count, real offset/max/legal bounds, decelerating state, page request→metadata arrival→append/layout timing and frame gaps. User should note whether immediately dragging can continue below the stop. Existing PosterWall items/gap/frames and Library cache timings can begin correlation; if they cannot separate boundary/deceleration/layout, add only focused event diagnostics in a later explicitly justified iteration. Do not inflate arbitrary total-count slots, guess prefetch constants, add synthetic inertia/offset correction, or reopen carousel/Dock/P0. P2 experience is not accepted; P3–P6 remain gated.
 
 ## Historical accepted evidence and protected contracts
 
