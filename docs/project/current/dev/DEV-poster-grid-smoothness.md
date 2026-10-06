@@ -120,6 +120,12 @@ CI / package evidence:
 - Never restore `targetTime / duration × fileSize`.
 - No timer/debounce/throttle/watchdog/retry/fallback/interpolation or unrelated refactor.
 
+### 2026-10-06 — Current poster entry inventory completed (source audit)
+
+See [POSTER_ENTRY_INDEX.md](../../POSTER_ENTRY_INDEX.md), audited against main408ccc865262673ab708c01b13f20328aeff8066. The current V3 poster routes contain9 reachable EmbyPosterGrid call sites plus1 legacy V3EmbySearchView call site not referenced by the current root. Inventory adds the Library category-cover wall, recursive mixed folder/media walls, all four Favorite more variants, multiple filter/person entry paths, history/single-server direct search and multi-server more, and the recommendation grid itself. Horizontal Home/Library suggestions/Favorite/Search rows are registered separately. Detail similar/cast rows and episode/still viewers have explicit existing scope boundaries; no speculative Character API, collection-children wall or separate recommendation-more destination is asserted.
+
+This is source reachability and design coverage only: all common-grid migrations and per-entry device checks are pending. No product source, Build, CI, IPA, frozen detail/carousel/Dock behavior or historical PR identity changed.
+
 ## Next exact action
 
 The requested overall design, including fixed image-placeholder+title semantics, warm-cache relaunch and bounded first-screen residency for deep return-to-top, is complete in [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md). Implementation must include section6A as a first-class acceptance contract, not treat visible warm-cache reloads as normal completion. When user authorizes implementation, first establish the installed Build for the latest report and recheck main/PR#282/other Active identities. Explicitly record any move from the old Build283 experimental branch to a latest-main development baseline; do not overwrite accepted Build293 carousel/Build294 Dock or assign a duplicate Build. Then follow the design's ordered stages: evidenced persistence/navigation contracts → native Library.items cell+shared preparation A/B → remaining Library adapters → all confirmed shared3-column poster routes (section2A) → Home/horizontal content adapter → identity-verified IPA → real-device validation.

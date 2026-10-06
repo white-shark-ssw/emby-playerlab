@@ -61,11 +61,11 @@ _2026-10-06，DEV-poster-grid-smoothness。状态：设计方案已整理；用�
 | 详情标签/类型的结果页 | EmbyDetailFilterResultsView | filter.name及isGenre、60条分页；只迁移该叶子结果页，不改Frozen详情Hero/播放器 |
 | 演职人员作品页 | EmbyPersonMediaView | 真实PersonId过滤与60条分页；角色名不能被擅自当成独立Character API |
 | 输入搜索的单服务器/“更多”结果 | V3GlobalSearchServerGridView | 来源服务器、term、18条分页和当前Search语义 |
-| 旧单服务器搜索调用点 | V3EmbySearchView | 已确认存在，但迁移前核对是否为当前真实路由，不能仅因文件存在就替换产品入口 |
+| 旧单服务器搜索调用点（历史实现） | V3EmbySearchView | 本轮审计已确认当前V3根导航未引用；不作为当前入口迁移或顺手删除 |
 | 当前搜索落地推荐网格 | V3EmbyGlobalSearchView.recommendationsSection | Random Items、初始9/+6、ExcludeItemIds及Dock生命周期；现有图片pin不能另留无上限第二预算 |
 | 首页/收藏等横向预览行 | 实际HomeRows/Favorites各section | 复用cell/图片能力，用横向布局适配；“更多”仍通向既有结果页 |
 
-用户说的“推荐页面的更多观看”须按实际导航调用定位具体目的页；现已确认推荐网格及多服务器搜索结果的“更多”调用，未声称存在一个猜出的同名API。实施前补完该路由登记；所有经过通用海报墙的实际目的页纳入迁移，不凭称呼重写推荐数据源。
+完整的当前入口/目的页/内容变体与关联范围已登记在[POSTER_ENTRY_INDEX.md](POSTER_ENTRY_INDEX.md)，包括库类别封面、递归文件夹、四种收藏“更多”、人物作品的多条入口、搜索历史/单服务器直接搜索/多服务器“更多”及推荐网格本身。当前V3海报路由共有9个可达EmbyPosterGrid调用点；旧V3EmbySearchView不是当前根导航入口。用户说的“推荐页面的更多观看”目前对应已查明的推荐网格与搜索结果“更多”；当前代码未见独立同名推荐“更多”目的页。详情“更多类似”是横向区标题，并非三列墙目的页。清单仅证明源码路由，不标成已迁移或真机通过。
 
 EmbyPosterGrid也被库类别封面/文件夹封面等使用，这些item并非都可直接进入影片详情。它们采用明确原生cell类型和页面点击回调，不通过“所有item都视为影片”兼容它们。细节如人物姓名、影片年份、进度/已观看角标可以是少量内容变体；保留既有已显示字段，不添加新的评分/角色能力。
 
