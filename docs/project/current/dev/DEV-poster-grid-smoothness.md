@@ -5,7 +5,7 @@
 - **Active — P0/P1/P2 code complete; Release/IPA independently verified; first-load inertial-stop device report under investigation; P2 not accepted.**
 - User explicitly requested development through a testable Library.items IPA. Read [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md), [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md), [POSTER_ENTRY_INDEX.md](../../POSTER_ENTRY_INDEX.md).
 - Working branch: `perf/poster-wall-library-build295`; Draft PR [#292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main.
-- Current working branch head /Build296 exact source: **77b292b619b8db77e68f5bfbf3ca49c254840323**. PR stays Draft/open/unmerged.
+- Current working branch head /Build296 exact source: **bfa5b56ee1e5737cf0fff9a2b7234505e8469dfb**. PR stays Draft/open/unmerged.
 - Exact package source: **8ca3de65a8ca2927785bb194b6a3136b6d900e56**. Base: **03d1bad260666c3f38ae3913d6828f393690673e**, accepted overall Build294 Dock / Build293 carousel.
 - Candidate: **OnePlayer0.15.28 / Build295 / poster-wall-library / iOS15.0**. Target: iPhone15ProMax / iOS17.0.
 - CI control: `ci/build295-poster-wall-library-20261006`, **38689808411cee237bbf56f85d14619b2e07446f**, workflow `.github/workflows/build295-poster-wall-library.yml`, run **37477868307 / job112317946251**. Control source is not package source.
@@ -40,6 +40,10 @@ P2: G01 Library.items alone uses complete native collection scroll host and fixe
 - Earlier whitespace/pixel-width syntax failures and full-app destination visibility error were corrected from actual CI evidence.
 
 **Code written /8 poster +18 retained native regressions passed /Release CI passed /IPA independently verified /real-device pending /task Active /not stable /not merged.** Accepted overall baseline remains294;293carousel/294Dock/Search256/P0 preserved. P3–P6 await P2 target-device evidence.
+
+## Build296 fixture correction / native fix pass — 2026-10-06
+
+Exact runtime source77b292b619b8db77e68f5bfbf3ca49c254840323, run37489099157/job112356775331: **1 real native inertia UI test/0 failures** after the isRefreshing completion guard. This is simulator iOS18.5 evidence only. Unit12 had4 failures: two original controlled-request2s startup deadlines elapsed with the newly active native/DNS/display-link host; new refresh fixture called beginRefreshing on an unattached zero-size scrollview and remained false. Do not call the whole suite passed. Tests now keep the old empty unit host unless explicit UI launch argument selects MotionHost, mount the real refresh controller in a real window, and use a10s bounded request boundary wait (not a latency assertion). Runtime fix/diagnostics unchanged; current exact sourcebfa5b56ee1e5737cf0fff9a2b7234505e8469dfb, controlb904829dc6e24186e35c5cc595bf2d71893094f3. Rerun12 units+1 true UI, full Release and verify IPA. No IPA296 yet.
 
 ## Build296 evidenced correction — 2026-10-06
 
