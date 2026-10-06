@@ -98,6 +98,16 @@ The active poster-smoothness task now profiles the shared 3×3 presentation also
 
 ## Active: Poster-heavy scrolling smoothness
 
+### 2026-10-06 — New cross-page poster-scroll report / baseline distinction
+
+User reports that poster-heavy pages, including Home and Library, do not sustain the desired120FPS and can visibly pause or appear to move backward for one frame during otherwise continuous upward/downward scrolling. This is new qualitative device evidence; the installed Build, an accompanying log/video and exact event timestamps were not supplied. Do not attribute it to Build283 or infer a measured interior contentOffset reversal.
+
+Read-only audit of current main **4acd00c935b7414b05eb791596cf4ee1d460d812** (accepted overall Build294) confirms Home uses vertical SwiftUI ScrollView/LazyVStack with nested horizontal ScrollView/LazyHStack rows, and Library paged poster tabs still use shared LazyVGrid. Library snapshot construction/JSON/atomic-write remains synchronous in that main source. The native Library items collection and ordered off-main persistence belong to **Build283 /39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6**, still-open Draft **PR#282**, not the accepted Build294 product. PR#282 head and checkpoint identity were rechecked and agree. Do not claim those old fixes already run in Build294 or that this report invalidates their narrowly accepted pagination result.
+
+The Build283 native experiment still hosts V3PosterCard through UIHostingController<AnyView>; same-ID representable updates reconfigure all visible hosts. These are verified structural facts, not proof of the present hitch's cause. Shared main image decoding already runs off-main and decoded/disk caches already exist; do not propose moving an already-background decoder as a new fix.
+
+Discussion direction, not an approved implementation decision: first identify the failing installed baseline and correlate frame/presentation gaps with real offset, legal bounds, cell work, image adoption, pagination and persistence. Evaluate a shared reusable native poster cell/image-adoption layer and grid/sectioned-row adapters through a small Library A/B before expanding to Home. Preserve existing cache authorities, navigation/pagination semantics, accepted Build293 carousel, Build294 Dock and iOS15/P0. Container replacement alone has already been insufficient historically. No code, branch, Build allocation, merge, CI or IPA change was made for this discussion.
+
 ### 2026-09-01 Build283 target-device result — navigation + pagination regression positive
 
 Build283 / OnePlayer 0.15.16 exact source `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6` has now been tested on the target device. The user confirms Library `.items` cover entry to detail is normal again, accepting the Build283 always-mounted hidden `NavigationLink` repair for the reported missing system push entrance animation. The user also reports no visible poster twitch in the accompanying pagination pass.
