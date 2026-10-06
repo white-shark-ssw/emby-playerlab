@@ -29,9 +29,23 @@ final class V3PagePersistentCache {
     static let shared = V3PagePersistentCache()
 
     private let fileManager = FileManager.default
+    private let writeQueue = DispatchQueue(label: "OnePlayer.PagePersistentCache.Write", qos: .utility)
     private let schemaVersion = 1
 
     private init() {}
+
+    /// Restore and writes share the ordered queue; decoding never runs on the UI actor.
+    func restoreLibrary(client: EmbyAPIClient, libraryID: String) async -> (V3LibraryPersistentSnapshot, [String: Set<String>])? {
+        await withCheckedContinuation { continuation in
+            writeQueue.async {
+                let start = ProcessInfo.processInfo.systemUptime
+                let snapshot = self.librarySnapshot(client: client, libraryID: libraryID)
+                let seen = snapshot?.tabItems.mapValues { Set($0.map(\.id)) } ?? [:]
+                DiagnosticsLogger.shared.log("PagePersistentCache", "event=library-restore items=\(snapshot?.tabItems["items"]?.count ?? 0) total_ms=\(self.format((ProcessInfo.processInfo.systemUptime - start) * 1000)) main_thread=\(Thread.isMainThread ? 1 : 0)")
+                continuation.resume(returning: snapshot.map { ($0, seen) })
+            }
+        }
+    }
 
     func librarySnapshot(client: EmbyAPIClient, libraryID: String) -> V3LibraryPersistentSnapshot? {
         guard let root = rootObject(scope: "library|\(libraryID)", client: client) else { return nil }
@@ -65,26 +79,36 @@ final class V3PagePersistentCache {
         }
     }
 
-    func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) {
-        var tabItemsObject: [String: Any] = [:]
-        for (key, items) in snapshot.tabItems { tabItemsObject[key] = items.map(libraryItemJSONObject) }
+    func storeLibrarySnapshot(_ snapshot: V3LibraryPersistentSnapshot, client: EmbyAPIClient, libraryID: String) async {
+        guard let url = cacheFileURL(scope: "library|\(libraryID)", client: client) else { return }
+        await withCheckedContinuation { continuation in
+            writeQueue.async {
+                let startedAt = ProcessInfo.processInfo.systemUptime
+                var tabItemsObject: [String: Any] = [:]
+                for (key, items) in snapshot.tabItems { tabItemsObject[key] = items.map(self.libraryItemJSONObject) }
 
-        var pageStatesObject: [String: Any] = [:]
-        for (key, state) in snapshot.pageStates { pageStatesObject[key] = ["NextStartIndex": state.nextStartIndex, "HasMore": state.hasMore] }
+                var pageStatesObject: [String: Any] = [:]
+                for (key, state) in snapshot.pageStates { pageStatesObject[key] = ["NextStartIndex": state.nextStartIndex, "HasMore": state.hasMore] }
 
-        let root: [String: Any] = [
-            "SchemaVersion": schemaVersion,
-            "TabItems": tabItemsObject,
-            "SuggestionResumeItems": snapshot.suggestionResumeItems.map(libraryItemJSONObject),
-            "SuggestionLatestItems": snapshot.suggestionLatestItems.map(libraryItemJSONObject),
-            "GenericSuggestionItems": snapshot.genericSuggestionItems.map(libraryItemJSONObject),
-            "RecommendationSections": snapshot.recommendationSections.map(recommendationSectionJSONObject),
-            "Genres": snapshot.genres.map(libraryItemJSONObject),
-            "FolderItems": snapshot.folderItems.map(libraryItemJSONObject),
-            "LoadedTabs": Array(snapshot.loadedTabs).sorted(),
-            "PageStates": pageStatesObject,
-        ]
-        store(root, scope: "library|\(libraryID)", client: client)
+                let root: [String: Any] = [
+                    "SchemaVersion": self.schemaVersion,
+                    "TabItems": tabItemsObject,
+                    "SuggestionResumeItems": snapshot.suggestionResumeItems.map(self.libraryItemJSONObject),
+                    "SuggestionLatestItems": snapshot.suggestionLatestItems.map(self.libraryItemJSONObject),
+                    "GenericSuggestionItems": snapshot.genericSuggestionItems.map(self.libraryItemJSONObject),
+                    "RecommendationSections": snapshot.recommendationSections.map(self.recommendationSectionJSONObject),
+                    "Genres": snapshot.genres.map(self.libraryItemJSONObject),
+                    "FolderItems": snapshot.folderItems.map(self.libraryItemJSONObject),
+                    "LoadedTabs": Array(snapshot.loadedTabs).sorted(),
+                    "PageStates": pageStatesObject,
+                ]
+                let objectDurationMs = (ProcessInfo.processInfo.systemUptime - startedAt) * 1000
+                self.store(root, url: url, scopeKind: "library")
+                let totalDurationMs = (ProcessInfo.processInfo.systemUptime - startedAt) * 1000
+                DiagnosticsLogger.shared.log("PagePersistentCache", "event=library-snapshot library_items=\(snapshot.tabItems["items"]?.count ?? 0) tab_items=\(snapshot.tabItems.values.reduce(0) { $0 + $1.count }) object_ms=\(self.format(objectDurationMs)) total_ms=\(self.format(totalDurationMs)) main_thread=\(Thread.isMainThread ? 1 : 0)")
+                continuation.resume()
+            }
+        }
     }
 
     func favoritesSnapshot(client: EmbyAPIClient) -> V3FavoritesPersistentSnapshot? {
@@ -126,13 +150,24 @@ final class V3PagePersistentCache {
 
     private func store(_ root: [String: Any], scope: String, client: EmbyAPIClient) {
         guard let url = cacheFileURL(scope: scope, client: client) else { return }
+        store(root, url: url, scopeKind: scope.hasPrefix("library|") ? "library" : "favorites")
+    }
+
+    private func store(_ root: [String: Any], url: URL, scopeKind: String) {
         do {
+            let serializationStartedAt = ProcessInfo.processInfo.systemUptime
             let data = try JSONSerialization.data(withJSONObject: root)
+            let serializationDurationMs = (ProcessInfo.processInfo.systemUptime - serializationStartedAt) * 1000
+            let writeStartedAt = ProcessInfo.processInfo.systemUptime
             try data.write(to: url, options: .atomic)
+            let writeDurationMs = (ProcessInfo.processInfo.systemUptime - writeStartedAt) * 1000
+            DiagnosticsLogger.shared.log("PagePersistentCache", "event=store scope=\(scopeKind) bytes=\(data.count) serialization_ms=\(format(serializationDurationMs)) write_ms=\(format(writeDurationMs)) main_thread=\(Thread.isMainThread ? 1 : 0)")
         } catch {
             DiagnosticsLogger.shared.log("PagePersistentCache", "disk write failed: \(error.localizedDescription)")
         }
     }
+
+    private func format(_ value: Double) -> String { String(format: "%.2f", value) }
 
     private func cacheFileURL(scope: String, client: EmbyAPIClient) -> URL? {
         guard let base = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
