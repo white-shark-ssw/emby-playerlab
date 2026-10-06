@@ -9,3 +9,8 @@
 - Actual-source16 units and3 native gesture/Library navigation tests planned, with an old load-policy negative control. Tests/Release/IPA not yet passed at source creation.
 - The return fixture reads the native transition coordinator's interactive cancellation result without installing a navigation delegate or driving the transition.
 - Target iPhone15ProMax/iOS17; built MinOS remains15.0. P2/device acceptance pending; accepted294 overall/293carousel/294Dock/Search256/P0 protected.
+
+
+## Verified handoff
+
+Exact packaged source279f2c00fe86fa913962d22a0c7afbf17c82ca8d; final run37518563236/job112457718586 successful.3 native UI/0 on final source;16 actual-source units+negative control passed896/run37516521005 and all inputs/log checksums guarded, not rerun.18 frozen native regressions retained, not rerun. Release/IPA/sourceZIP/version297/0.15.30/Info+arm64MinOS15 independently verified; artifact11438264634. Target-device/P2 acceptance, stills SECTION root and measured long-frame improvement remain pending; Draft PR292 unmerged.
