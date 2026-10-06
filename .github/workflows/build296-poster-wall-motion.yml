@@ -111,15 +111,17 @@ jobs:
           set -euo pipefail
           python3 Tests/PosterWallRegression/prepare.py "$PWD" "$RUNNER_TEMP/PosterWallRegression"
           xcodegen generate --spec "$RUNNER_TEMP/PosterWallRegression/project.yml"
+          xcrun simctl list devices available -j
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(x["udid"] for runtime,devices in d["devices"].items() if runtime.endswith("iOS-18-5") for x in devices if x["name"] == "iPhone 16 Pro Max"))')"
           cd "$RUNNER_TEMP/PosterWallRegression"
           set +e
-          xcodebuild test -project PosterWallRegression.xcodeproj -scheme PosterWallRegression -destination 'platform=iOS Simulator,name=iPhone 16 Pro Max' -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/poster-native-tests.log"
+          xcodebuild test -project PosterWallRegression.xcodeproj -scheme PosterWallRegression -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/poster-native-tests.log"
           status=${PIPESTATUS[0]}
           set -e
           test "$status" = 0
           grep -F 'Executed 11 tests, with 0 failures' "$GITHUB_WORKSPACE/poster-native-tests.log"
           set +e
-          xcodebuild test -project PosterWallRegression.xcodeproj -scheme PosterMotionUITests -destination 'platform=iOS Simulator,name=iPhone 16 Pro Max' -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/poster-motion-ui-tests.log"
+          xcodebuild test -project PosterWallRegression.xcodeproj -scheme PosterMotionUITests -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/poster-motion-ui-tests.log"
           status=${PIPESTATUS[0]}
           set -e
           test "$status" = 0
@@ -165,7 +167,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: OnePlayer-0.15.29-build295-compiler-diagnostics
+          name: OnePlayer-0.15.29-build296-compiler-diagnostics
           path: |
             compiler-errors.txt
             build.log
