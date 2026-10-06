@@ -83,8 +83,8 @@ struct EmbyMediaDetailView: View {
         .immersiveSystemNavigationAppearance()
         .nativeInteractivePop()
         .detailPagePresentation()
-        .onAppear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-appear item=\(model.item.id)") }
-        .onDisappear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-disappear item=\(model.item.id)") }
+        .onAppear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-appear item=\(model.item.id)"); model.loadTrace.mark("detail-appear", images: model.imageInfos.count, stills: model.stillImages.count) }
+        .onDisappear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-disappear item=\(model.item.id)"); model.loadTrace.mark("detail-disappear", images: model.imageInfos.count, stills: model.stillImages.count) }
         .task { await model.load() }
         .onReceive(NotificationCenter.default.publisher(for: EmbyUserDataChange.notification)) { notification in
             guard let source = notification.object as? EmbyAPIClient, source === client,
@@ -856,6 +856,7 @@ struct EmbyMediaDetailView: View {
                     .padding(.horizontal, 20)
                 }
             }
+            .onAppear { model.loadTrace.sectionAppeared(images: model.imageInfos.count, stills: model.stillImages.count) }
         }
     }
 
@@ -1063,6 +1064,7 @@ private struct EmbyDetailPosterCard: View {
 
 @MainActor
 final class EmbyMediaDetailViewModel: ObservableObject {
+    let loadTrace = EmbyDetailLoadTrace()
     @Published var item: LibraryItem
     @Published var episodes: [LibraryItem] = []
     @Published var seasons: [LibraryItem] = []
@@ -1101,6 +1103,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         self.syncedFavorite = item.isFavorite
         self.syncedPlayed = item.isPlayed
 
+        loadTrace.mark("warm-restore-before")
         if let warm = EmbyMediaDetailWarmCache.shared.snapshot(client: client, itemID: item.id) {
             episodes = warm.episodes
             seasons = warm.seasons
@@ -1109,6 +1112,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
             applyInitialEpisodeSelection()
             DiagnosticsLogger.shared.log("EmbyDetailWarmCache", "hit item=\(item.id) episodes=\(episodes.count) seasons=\(seasons.count) images=\(imageInfos.count) similar=\(similarItems.count)")
         }
+        loadTrace.mark("warm-restore-after", images: imageInfos.count, stills: stillImages.count)
     }
 
     var isSeries: Bool { item.type?.caseInsensitiveCompare("Series") == .orderedSame }
@@ -1333,34 +1337,50 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     }
 
     func load() async {
-        guard !hasLoaded else { return }
+        loadTrace.mark("task-enter", images: imageInfos.count, stills: stillImages.count)
+        guard !hasLoaded else { loadTrace.mark("task-skip", images: imageInfos.count, stills: stillImages.count); return }
+        defer { loadTrace.mark("task-finish", images: imageInfos.count, stills: stillImages.count) }
         errorMessage = nil
         do {
+            loadTrace.mark("item-before")
             let refreshed = try await client.libraryItem(itemId: item.id)
+            loadTrace.mark("item-after")
             item = refreshed
             if favoriteSyncTask == nil { syncedFavorite = refreshed.isFavorite; desiredFavorite = refreshed.isFavorite }
             if playedSyncTask == nil { syncedPlayed = refreshed.isPlayed; desiredPlayed = refreshed.isPlayed }
 
             if refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame {
                 isLoadingEpisodes = true
+                loadTrace.mark("episodes-before")
                 do { episodes = try await client.seriesEpisodes(seriesId: refreshed.id) }
                 catch { if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription } }
+                loadTrace.mark("episodes-after")
+                loadTrace.mark("seasons-before")
                 do { seasons = try await client.seriesSeasons(seriesId: refreshed.id) }
                 catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "seasons failed: \(error.localizedDescription)") } }
+                loadTrace.mark("seasons-after")
                 isLoadingEpisodes = false
                 applyInitialEpisodeSelection()
                 logEpisodeDiagnostics(seriesID: refreshed.id)
             }
 
+            loadTrace.mark("media-before")
             await loadMediaMetadata(for: primaryPlayableItem)
+            loadTrace.mark("media-after")
 
+            loadTrace.mark("images-before", images: imageInfos.count, stills: stillImages.count)
             do { imageInfos = try await client.imageInfos(itemId: refreshed.id) }
             catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "image info failed: \(error.localizedDescription)") } }
+            loadTrace.mark("images-published", images: imageInfos.count, stills: stillImages.count)
 
             let similarTypes = refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame ? ["Series"] : ["Movie", "Video"]
+            loadTrace.mark("similar-before")
             do { similarItems = try await client.similarItems(itemId: refreshed.id, includeItemTypes: similarTypes) }
             catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "similar items failed: \(error.localizedDescription)") } }
+            loadTrace.mark("similar-after")
+            loadTrace.mark("warm-store-before")
             storeWarmPresentation()
+            loadTrace.mark("warm-store-after")
             hasLoaded = true
         } catch {
             if isEmbyRequestCancellation(error) { return }

@@ -102,6 +102,7 @@ final class EmbyImagePreparation {
 
     private func pump() {
         var available = concurrencyLimit - activeTaskCount
+        guard available > 0 else { return }
         let pending = entries.filter { !$0.value.completed && $0.value.task == nil }
             .sorted { priority($0.value) > priority($1.value) }
         for (url, entry) in pending where available > 0 {

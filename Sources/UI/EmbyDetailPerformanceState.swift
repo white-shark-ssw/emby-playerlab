@@ -2,6 +2,30 @@ import SwiftUI
 import Combine
 import Foundation
 
+// One bounded timeline per real detail model. Appearance markers are lifecycle evidence, not presented FPS.
+@MainActor
+final class EmbyDetailLoadTrace {
+    private let identity = String(UUID().uuidString.prefix(8))
+    private let created = ProcessInfo.processInfo.systemUptime
+    private var appeared: Double?
+    private var events = 0
+    private var sectionReported = false
+
+    func mark(_ event: String, images: Int = 0, stills: Int = 0) {
+        guard events < 64 else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        if event == "detail-appear", appeared == nil { appeared = now }
+        events += 1
+        DiagnosticsLogger.shared.log("DetailLoad", "event=\(event) model=\(identity) seq=\(events) uptime=\(now) created_ms=\((now - created) * 1000) appear_ms=\(appeared.map { (now - $0) * 1000 } ?? -1) images=\(images) stills=\(stills) main_thread=\(Thread.isMainThread ? 1 : 0)")
+    }
+
+    func sectionAppeared(images: Int, stills: Int) {
+        guard !sectionReported else { return }
+        sectionReported = true
+        mark("stills-section-appear", images: images, stills: stills)
+    }
+}
+
 final class EmbyDetailHeroScrollState: ObservableObject {
     @Published private(set) var rawMinY: CGFloat = 0
 

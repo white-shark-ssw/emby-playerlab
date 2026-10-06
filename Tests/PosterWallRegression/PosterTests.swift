@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import SwiftUI
 
 @MainActor
 private final class ImageGate {
@@ -35,6 +36,75 @@ final class PosterWallTests: XCTestCase {
     private func page(_ id: String) -> EmbyItemPage {
         let data = try! JSONSerialization.data(withJSONObject: ["Items": [["Id": id, "Name": id, "Type": "Movie"]], "TotalRecordCount": 1])
         return try! JSONDecoder().decode(EmbyItemPage.self, from: data)
+    }
+
+    private func page(start: Int, total: Int = 660) -> EmbyItemPage {
+        let items = (start..<(start + 60)).map { ["Id": String($0), "Name": "Movie \($0)", "Type": "Movie"] }
+        let data = try! JSONSerialization.data(withJSONObject: ["Items": items, "TotalRecordCount": total])
+        return try! JSONDecoder().decode(EmbyItemPage.self, from: data)
+    }
+
+    func testSameLivePageReappearancePreservesItemsRevisionReplacementAndFrontier() async {
+        let source = client()
+        source.automaticLibraryPages = true
+        let model = V3LibraryBrowserViewModel(library: item("lib"), client: source)
+        await model.load(tab: .items)
+        await model.loadNextPage(tab: .items)
+        let revision = model.posterRevision, replacement = model.posterReplacement
+        for _ in 0..<3 { await model.load(tab: .items) }
+        XCTAssertEqual(source.requests.count, 2)
+        XCTAssertEqual(model.items(for: .items).map(\.id), (0..<120).map(String.init))
+        XCTAssertEqual(model.posterRevision, revision); XCTAssertEqual(model.posterReplacement, replacement)
+        await model.loadNextPage(tab: .items)
+        XCTAssertEqual(source.requests[2].start, 120)
+        await model.refresh(tab: .items)
+        XCTAssertEqual(source.requests[3].start, 0)
+        await model.changeSort(to: "SortName", tab: .items)
+        XCTAssertEqual(source.requests[4].start, 0); XCTAssertEqual(source.requests[4].sort, "SortName")
+        await model.load(tab: .items); XCTAssertEqual(source.requests.count, 5)
+    }
+
+    func testFailedInitialLiveLoadCanRetryDespiteLoadedTabs() async {
+        let source = client()
+        let model = V3LibraryBrowserViewModel(library: item("lib"), client: source)
+        let first = Task { await model.load(tab: .items) }
+        guard await waitForRequests(1, client: source) else { return }
+        source.requests[0].continuation.resume(throwing: URLError(.notConnectedToInternet)); await first.value
+        XCTAssertTrue(model.hasLoaded(tab: .items))
+        let retry = Task { await model.load(tab: .items) }
+        guard await waitForRequests(2, client: source) else { return }
+        XCTAssertEqual(source.requests[1].start, 0)
+        source.requests[1].continuation.resume(returning: page(start: 0)); await retry.value
+        await model.load(tab: .items); XCTAssertEqual(source.requests.count, 2)
+    }
+
+    func testDetailTimelineIsPerModelBoundedAndSectionAppearanceIsNotImageCompletion() {
+        let start = DiagnosticsLogger.shared.records().count
+        let trace = EmbyDetailLoadTrace()
+        trace.mark("detail-appear")
+        trace.mark("images-published", images: 4, stills: 2)
+        trace.sectionAppeared(images: 4, stills: 2)
+        trace.sectionAppeared(images: 4, stills: 2)
+        for _ in 0..<100 { trace.mark("task-enter") }
+        let records = Array(DiagnosticsLogger.shared.records().dropFirst(start))
+        XCTAssertEqual(records.count, 64)
+        XCTAssertEqual(records.filter { $0.contains("event=stills-section-appear") }.count, 1)
+        XCTAssertTrue(records[2].contains("stills=2"))
+        XCTAssertTrue(records.allSatisfy { $0.contains("main_thread=1") && !$0.contains("http") })
+        let other = EmbyDetailLoadTrace(); other.mark("detail-appear")
+        let firstID = records[0].split(separator: " ").first { $0.hasPrefix("model=") }
+        let otherID = DiagnosticsLogger.shared.records().last!.split(separator: " ").first { $0.hasPrefix("model=") }
+        XCTAssertNotEqual(firstID, otherID)
+    }
+
+    func testWorkCountersStayFixedAndResetWithoutChangingPresentation() {
+        var trace = EmbyPosterWorkTrace()
+        for _ in 0..<5000 { trace.record(.configure, milliseconds: 0.5) }
+        trace.record(.layout, milliseconds: 9)
+        XCTAssertEqual(trace.costs.count, 4)
+        XCTAssertEqual(trace.costs[0].count, 5000); XCTAssertEqual(trace.costs[0].total, 2500)
+        XCTAssertEqual(trace.costs[2].overBudget, 1)
+        trace.reset(); XCTAssertTrue(trace.costs.allSatisfy { $0.count == 0 && $0.total == 0 })
     }
 
     func testCachedFirstFailurePreservesMetadataAndPagingFrontier() async {

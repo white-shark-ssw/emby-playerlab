@@ -299,6 +299,9 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     private let pageSize = 60
     private var pageStates: [V3LibraryTab: V3LibraryPageState] = [:]
     private var fetchGenerations: [V3LibraryTab: Int] = [:]
+    // Disk restoration and failed requests also populate loadedTabs; only a successful live response
+    // makes this page's ordinary reappearance safe to skip. Explicit refresh/sort keep their reset path.
+    private var hasLoadedLiveItems = false
     private let pageTraceID = String(UUID().uuidString.prefix(8))
     private var pageTraceEvents = 0
 
@@ -345,6 +348,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     func load(tab: V3LibraryTab) async {
         await restoreIfNeeded()
         guard !isLoading(tab: tab) else { return }
+        if tab == .items && hasLoadedLiveItems { return }
         switch tab {
         case .items, .trailers, .collections, .favorites: await fetchPage(tab: tab, reset: true)
         case .suggestions: await loadSuggestions(force: true)
@@ -458,6 +462,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             }
             pageStates[tab] = state
             loadedTabs.insert(tab)
+            if tab == .items { hasLoadedLiveItems = true }
             tracePage("published")
             await persistSnapshot()
             tracePage("persisted")

@@ -3,7 +3,7 @@ import Foundation
 
 enum AppIdentity {
     static let clientName = "OnePlayer"
-    static let sourceVersion = "0.15.29"
+    static let sourceVersion = "0.15.30"
     static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.15.29"
     static let ticksPerSecond: Double = 10_000_000
 

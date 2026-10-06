@@ -1,6 +1,25 @@
 import SwiftUI
 import UIKit
 
+// Four fixed counters, recorded at work boundaries. No per-cell log strings or unbounded samples.
+struct EmbyPosterWorkTrace {
+    enum Stage: Int, CaseIterable { case configure, imageAdopt, layout, apply }
+    struct Cost {
+        var count = 0
+        var total = 0.0
+        var maximum = 0.0
+        var overBudget = 0
+    }
+    private(set) var costs = Array(repeating: Cost(), count: Stage.allCases.count)
+    mutating func record(_ stage: Stage, milliseconds: Double) {
+        costs[stage.rawValue].count += 1
+        costs[stage.rawValue].total += milliseconds
+        costs[stage.rawValue].maximum = max(costs[stage.rawValue].maximum, milliseconds)
+        if milliseconds >= 8.33 { costs[stage.rawValue].overBudget += 1 }
+    }
+    mutating func reset() { costs = Array(repeating: Cost(), count: Stage.allCases.count) }
+}
+
 // Numeric history only. It observes UIKit; it never drives offset, paging or gesture state.
 struct EmbyPosterMotionTrace {
     struct Sample {
@@ -51,6 +70,7 @@ final class EmbyPosterCell: UICollectionViewCell {
     private var subscription: UUID?
     private var bindingGeneration = 0
     private let preparation: EmbyImagePreparation
+    var onWork: ((EmbyPosterWorkTrace.Stage, Double) -> Void)?
 
     override init(frame: CGRect) { preparation = .shared; super.init(frame: frame); install() }
     init(preparation: EmbyImagePreparation) { self.preparation = preparation; super.init(frame: .zero); install() }
@@ -94,6 +114,8 @@ final class EmbyPosterCell: UICollectionViewCell {
     }
 
     func configure(_ value: EmbyPosterRecord) {
+        let started = CACurrentMediaTime()
+        defer { onWork?(.configure, (CACurrentMediaTime() - started) * 1000) }
         if record == value { activate(); return }
         let requestChanged = record?.id != value.id || record?.url != value.url
         if requestChanged { deactivate(); artwork.image = value.url.flatMap(preparation.readyImage) }
@@ -116,7 +138,9 @@ final class EmbyPosterCell: UICollectionViewCell {
         subscription = preparation.subscribe(url, priority: .visible) { [weak self] image in
             guard let self, self.bindingGeneration == generation, self.record?.id == value.id, self.record?.url == url else { return }
             // Target-image adoption only: no snapshot, layout invalidation, crossfade or business publication.
+            let started = CACurrentMediaTime()
             self.artwork.image = image; self.placeholder.isHidden = image != nil
+            self.onWork?(.imageAdopt, (CACurrentMediaTime() - started) * 1000)
         }
     }
 
@@ -197,6 +221,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     private var traceSequence = 0
     private var lastGeometry: [CGFloat] = []
     private var lastApproachRevision: Int?
+    private var work = EmbyPosterWorkTrace()
 
     override func loadView() {
         view = collection
@@ -219,6 +244,8 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     }
 
     override func viewDidLayoutSubviews() {
+        let started = CACurrentMediaTime()
+        defer { work.record(.layout, milliseconds: (CACurrentMediaTime() - started) * 1000) }
         super.viewDidLayoutSubviews()
         let newWidth = floor((view.bounds.width - 28 - 24) / 3)
         guard newWidth > 0 else { return }
@@ -236,9 +263,11 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated); visible = true; synchronizeActivity(); prepareFirstScreen()
+        trace("view-appear")
     }
 
     override func viewWillDisappear(_ animated: Bool) {
+        trace("view-disappear")
         super.viewWillDisappear(animated); visible = false; synchronizeActivity(); cancelPrefetch(); reportFrames()
     }
 
@@ -266,6 +295,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         let identity = "\(value.client.baseURL.absoluteString)|\(value.client.userId ?? "")"
         guard appliedRevision != value.revision || sourceIdentity != identity else { return }
         let started = CACurrentMediaTime()
+        defer { work.record(.apply, milliseconds: (CACurrentMediaTime() - started) * 1000) }
         let old = records
         trace("items-before", detail: "next_count=\(value.items.count) next_revision=\(value.revision)")
         let append = sourceIdentity == identity && appliedReplacement == value.replacement && value.items.count > old.count
@@ -323,6 +353,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { records.count }
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: EmbyPosterCell.reuseID, for: indexPath) as! EmbyPosterCell
+        cell.onWork = { [weak self] stage, milliseconds in self?.work.record(stage, milliseconds: milliseconds) }
         cell.configure(records[indexPath.item]); imageConfigurationCount += 1
         return cell
     }
@@ -422,6 +453,11 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { trace("deceleration-end"); reportMotion("delegate-end") }
     func scrollViewDidScrollToTop(_ scrollView: UIScrollView) { trace("return-top") }
     private func reportFrames() {
+        for stage in EmbyPosterWorkTrace.Stage.allCases {
+            let cost = work.costs[stage.rawValue]
+            if cost.count > 0 { trace("work", detail: "stage=\(stage) calls=\(cost.count) total_ms=\(cost.total) max_ms=\(cost.maximum) ge8_33=\(cost.overBudget)") }
+        }
+        work.reset()
         guard !frameSamples.isEmpty else { return }
         let values = frameSamples.sorted()
         let percentile: (Double) -> Double = { values[min(values.count - 1, Int(Double(values.count - 1) * $0))] }
