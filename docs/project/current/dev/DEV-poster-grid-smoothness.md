@@ -2,12 +2,13 @@
 
 ## Status
 
-**2026-10-06 current phase: overall poster-presentation design prepared; implementation not started.** See [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md). Earlier Build283 remains the exact historical test candidate below; no branch identity or Build has been reassigned. The latest Home/Library qualitative report has no supplied installed Build/log. User approved preparation-first design discussion, not runtime verification.
+**Active — 2026-10-06 current phase: design, full entry inventory and executable handoff plan completed; new reconstruction implementation not started.** Read [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md), [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md) and [POSTER_ENTRY_INDEX.md](../../POSTER_ENTRY_INDEX.md). This turn authorizes plan/document updates only. Historical Build283 identity is retained below; no new branch/Build/CI/IPA or runtime acceptance has been created. Latest accepted overall product is Build294; the newly reported performance behavior has no supplied installed Build/log.
 
-**Active — Build283 / OnePlayer 0.15.16 is now target-device positive for both intended regression surfaces. The user confirms Library `.items` cover entry to detail has the normal system entrance animation again, accepting the always-mounted hidden `NavigationLink` repair. The accompanying `OnePlayer-App-1788197938.log` also confirms Build280's off-main pagination fix survives unchanged: one continuous 60→660 native Library session runs at 118.34 Hz with p50/p95/p99 8.33/8.70/17.85 ms, max 25.02 ms, exactly one >=25 ms frame and zero >=33.3 ms frames while all persistence remains `main_thread=0` and snapshot total grows to 208.87 ms. The user reports no visible twitch. No additional code change is justified from this log. The broader historical fixed-item/non-pagination poster tail is not globally frozen by this single pagination session, and native interactive swipe-back has not been explicitly rechecked in the latest device report.**
+**Historical candidate evidence — Build283 / OnePlayer 0.15.16 is target-device positive for both intended regression surfaces. The user confirms Library `.items` cover entry to detail has the normal system entrance animation again, accepting the always-mounted hidden `NavigationLink` repair. The accompanying `OnePlayer-App-1788197938.log` also confirms Build280's off-main pagination fix survives unchanged: one continuous 60→660 native Library session runs at 118.34 Hz with p50/p95/p99 8.33/8.70/17.85 ms, max 25.02 ms, exactly one >=25 ms frame and zero >=33.3 ms frames while all persistence remains `main_thread=0` and snapshot total grows to 208.87 ms. The user reports no visible twitch. No additional code change is justified from this log. The broader historical fixed-item/non-pagination poster tail is not globally frozen by this single pagination session, and native interactive swipe-back has not been explicitly rechecked in the latest device report.**
 
 - **Work ID:** `DEV-poster-grid-smoothness`
-- **Routing aliases / keywords:** 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / poster grid smoothness
+- **Routing aliases / keywords:** 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / 海报墙重构 / 海报墙抽象 / poster grid smoothness
+- **Identity note:** The following branch/PR/source/candidate describe the historical unmerged experiment. Latest-main reconstruction will have its own explicitly recorded identity in this same Work ID after implementation is authorized; it has not been allocated in this planning turn.
 - **Working branch:** `perf/poster-grid-offmain-persistence-build280`
 - **Draft PR:** #282
 - **Current exact product source:** `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6`
@@ -15,7 +16,7 @@
 - **Current candidate:** OnePlayer **0.15.16 / Build283**
 - **Target device:** iPhone 15 Pro Max / iOS 17.0
 - **Deployment Target / built MinOS:** iOS 15.0
-- **Build identity guard:** Build282 / 0.15.15 is occupied by the parallel Home task; Build283 / 0.15.16 is Poster.
+- **Build identity guard:** Historical Build282 / 0.15.15 belongs to Home and Build283 / 0.15.16 to Poster. Home carousel is now completed/frozen at Build293 and Dock at Build294. Re-query all allocations before assigning a new candidate; do not reuse historical identities.
 
 ### 2026-10-06 — New cross-page poster-scroll report / baseline distinction
 
@@ -113,7 +114,7 @@ CI / package evidence:
 - Build280 off-main ordered Library persistence and Build213 cached-first/write-through semantics.
 - Native iOS push/pop and interactive pop remain system-owned.
 - Search Build256 accepted semantics.
-- Home carousel independent task/branch/candidate.
+- Accepted Build293 Home carousel (completed/frozen) and Build294 Dock; preserve their existing state/layout owners.
 - Player / MPV / PiP / UnifiedTransport / Range/206 / playback Session Cache / Emby Resume/progress.
 - STRM → HTTP 302 → 115/CDN client-direct path; NAS never relays media bytes.
 - Deployment Target remains iOS 15.0.
@@ -126,8 +127,21 @@ See [POSTER_ENTRY_INDEX.md](../../POSTER_ENTRY_INDEX.md), audited against main40
 
 This is source reachability and design coverage only: all common-grid migrations and per-entry device checks are pending. No product source, Build, CI, IPA, frozen detail/carousel/Dock behavior or historical PR identity changed.
 
+### 2026-10-06 — Executable implementation/handoff plan completed
+
+User explicitly asks to review remaining gaps and prepare the existing task for a new implementation session. [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md) now defines baseline/branch migration, real source owners, background metadata restoration ordering, image consumer/generation contracts, one vertical host including embedded Search recommendations, active-page status-bar scroll-to-top, native interaction/accessibility, global first-screen memory accounting, P0–P6 deliverables and stage gates, actual-source tests, per-entry device matrix, exact-source packaging and rollback.
+
+Identity audit at maindf4c7bf3cd4b8de51f392e9af930d12c42c26219: PR#282 still Draft/open/unmerged with branch head39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6. Other current task Aether is Active; Search checkpoint is Completed. All new code phases and new performance device checks remain pending. No new product branch, version/Build allocation, merge, CI or IPA.
+
+## Completed / Validation state / Pending
+
+- **Completed:** Overall design; source-audited G01–G15/H01–H05 entry inventory; implementation plan and copyable new-session instruction; historical/current baseline distinction; identity guard read.
+- **Validation state:** Repository/doc links and source ownership audited; historical Build283 evidence retained only in its stated scope. New native cells/preparation/host integration: not written. New CI/IPA: none. New warm-restart/deep-return/120FPS device acceptance: none.
+- **Pending:** Plan P0–P6. Library pilot is the first testable deliverable; other routes/Home remain planned. New branch/base/head/PR/candidate and measured window/concurrency settings are not allocated. Old interactive-pop explicit check remains pending.
+
 ## Next exact action
 
-The requested overall design, including fixed image-placeholder+title semantics, warm-cache relaunch and bounded first-screen residency for deep return-to-top, is complete in [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md). Implementation must include section6A as a first-class acceptance contract, not treat visible warm-cache reloads as normal completion. When user authorizes implementation, first establish the installed Build for the latest report and recheck main/PR#282/other Active identities. Explicitly record any move from the old Build283 experimental branch to a latest-main development baseline; do not overwrite accepted Build293 carousel/Build294 Dock or assign a duplicate Build. Then follow the design's ordered stages: evidenced persistence/navigation contracts → native Library.items cell+shared preparation A/B → remaining Library adapters → all confirmed shared3-column poster routes (section2A) → Home/horizontal content adapter → identity-verified IPA → real-device validation.
+Planning handoff is complete; no product code or packaging was requested in this turn. The next operational action requires the new session's explicit implementation instruction and is given below.
 
-This turn does not require a new code change, branch, CI or IPA. New qualitative symptom is not proof of an interior scroll-offset reversal or a particular root cause. The old Build283 native interactive edge-swipe-back closeout gate remains unreported; do not infer it passed or merge the historical stack wholesale.
+In a new session explicitly instructed to implement: select this exact Work ID; read the linked plan first; recheck current main, historical PR#282 and other task/candidate identities. Execute P0 and explicitly record latest-main branch migration while preserving the old experimental identity. Then execute P1/P2 continuously through meaningful actual-source verification, exact-source Release CI and identity-verified Library.items pilot IPA. Use the plan's startup instruction; missing installed Build for the old report limits attribution, not source-grounded implementation under new authorization. After the user supplies the pilot's necessary real-device results, proceed through remaining Library and all G routes, then H01–H04/Home, and final matrix. Do not label design/native container/CI as solved120FPS, merge the historical stack wholesale, or reopen accepted carousel/Dock/Search/P0.
+
