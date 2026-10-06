@@ -37,6 +37,14 @@ Visible image placeholders are distinct from metadata paging. The proposal prese
 
 Evidence: **design written /source+task identity audited /no product code /no new CI or IPA /new performance behavior not device-tested**.
 
+### 2026-10-06 — Clarified placeholder and warm-cache return experience
+
+User reports EX visibly uses a placeholder only for first network downloads; disk-cached normal revisits, relaunch and deep (~item2000) status-bar return to top feel already loaded. IMG_8037.png confirms the intended placeholder: fixed poster rectangle plus actual movie name (existing badges may remain), not whole-card blank skeleton. EX's virtual-list implementation is unknown and no all-image residency or measured FPS inference is made.
+
+Updated [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md), section6A: retain loaded metadata independently of image/cell eviction; represent current page's first-screen prepared resources as bounded demand within the same image coordinator, so distant return-to-top is covered even after local prefetch has moved far away. Prepared first-screen images should stay ready during normal browsing; no duplicate disk/decoded cache, bitmap copies, metadata reset or return-top refresh. Warm process relaunch prepares the first screen from disk early rather than synchronously reading on scroll. Home follows the same contract while accepted carousel/Dock stay owned by existing components.
+
+Warm-cache normal revisits and deep return-top must not show a perceptible reload/placeholder breakpoint; image reread/decode remains real asynchronous work and must be scheduled ahead, not claimed zero-cost because it is cached. This is an acceptance requirement/design update, not an implemented/tested guarantee. No new product source, branch, Build, CI or IPA.
+
 ## Accepted pagination-persistence result
 
 Build278 proved synchronous full-Library persistence caused the pagination-adjacent severe-frame family: snapshot totals 38.31→94.66 ms paired with 49.96→108.33 ms display gaps, correlation ≈0.991.
@@ -108,6 +116,6 @@ CI / package evidence:
 
 ## Next exact action
 
-The requested overall design is complete in [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md). When user authorizes implementation, first establish the installed Build for the latest report and recheck main/PR#282/other Active identities. Explicitly record any move from the old Build283 experimental branch to a latest-main development baseline; do not overwrite accepted Build293 carousel/Build294 Dock or assign a duplicate Build. Then follow the design's ordered stages: evidenced persistence/navigation contracts → native Library.items cell+shared preparation A/B → remaining Library adapters → Home content adapter → remaining shared poster pages → identity-verified IPA → real-device validation.
+The requested overall design, including fixed image-placeholder+title semantics, warm-cache relaunch and bounded first-screen residency for deep return-to-top, is complete in [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md). Implementation must include section6A as a first-class acceptance contract, not treat visible warm-cache reloads as normal completion. When user authorizes implementation, first establish the installed Build for the latest report and recheck main/PR#282/other Active identities. Explicitly record any move from the old Build283 experimental branch to a latest-main development baseline; do not overwrite accepted Build293 carousel/Build294 Dock or assign a duplicate Build. Then follow the design's ordered stages: evidenced persistence/navigation contracts → native Library.items cell+shared preparation A/B → remaining Library adapters → Home content adapter → remaining shared poster pages → identity-verified IPA → real-device validation.
 
 This turn does not require a new code change, branch, CI or IPA. New qualitative symptom is not proof of an interior scroll-offset reversal or a particular root cause. The old Build283 native interactive edge-swipe-back closeout gate remains unreported; do not infer it passed or merge the historical stack wholesale.

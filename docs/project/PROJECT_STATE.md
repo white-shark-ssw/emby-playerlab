@@ -98,6 +98,10 @@ The active poster-smoothness task now profiles the shared 3×3 presentation also
 
 ## Active: Poster-heavy scrolling smoothness
 
+### 2026-10-06 — Warm-cache and deep return-top contract clarified
+
+User defines first-download placeholders as fixed poster rectangle plus real movie name (IMG_8037.png), and requires normal disk-cached relaunch/revisit plus rapid status-bar return from around item2000 to render ready content without a reload breakpoint. See POSTER_PRESENTATION_DESIGN.md section6A: loaded metadata remains separate from bounded image/cell lifecycle, and the same preparation coordinator retains a finite current-page first-screen resource set in addition to local prefetch. Home adopts the same contract; no all-image/all-view residency inference about EX, no synchronous scroll-time disk I/O and no code/CI/IPA/device-result claim. Build294 remains accepted baseline.
+
 ### 2026-10-06 — Preparation-first poster design prepared
 
 User confirmed the preparation/residency principle shared with accepted carousel reconstruction and requested the overall plan. See [POSTER_PRESENTATION_DESIGN.md](POSTER_PRESENTATION_DESIGN.md). Proposed scope is reusable native fixed-layout cells, shared bounded image preparation using existing caches, targeted updates and Library/Home layout adapters. Preserve existing metadata paging, Build293 carousel, Build294 Dock, Search/navigation/page-cache and iOS15/P0. A full5000-item sparse scrolling extent is not silently substituted for current sequential paging. Library implementation should precede Home migration. Main/PR#282/task identities audited; this turn changes design documents only, with no new code/CI/IPA or performance claim. Build294 remains accepted overall baseline; new symptom's installed Build still needs attribution before device diagnosis.
