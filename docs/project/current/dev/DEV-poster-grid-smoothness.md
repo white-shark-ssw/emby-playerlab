@@ -41,6 +41,10 @@ P2: G01 Library.items alone uses complete native collection scroll host and fixe
 
 **Code written /8 poster +18 retained native regressions passed /Release CI passed /IPA independently verified /real-device pending /task Active /not stable /not merged.** Accepted overall baseline remains294;293carousel/294Dock/Search256/P0 preserved. P3–P6 await P2 target-device evidence.
 
+## Build296 same-source CI continuation — 2026-10-06
+
+Source **bfa5b56ee1e5737cf0fff9a2b7234505e8469dfb** /control **b904829dc6e24186e35c5cc595bf2d71893094f3** unchanged. Run37490079849/job112360189878 completed **12 units/0 failures**, then was cancelled during UI gesture execution after a same-control-SHA push run appeared; do not call this whole pipeline passed. Latest exact-source run **37490702186/job112362875963** already in progress. No new source/Build/candidate, no manual bypass or retained UI-test substitution. Follow latest run through13 total tests/Release/verified IPA.
+
 ## Build296 fixture correction / native fix pass — 2026-10-06
 
 Exact runtime source77b292b619b8db77e68f5bfbf3ca49c254840323, run37489099157/job112356775331: **1 real native inertia UI test/0 failures** after the isRefreshing completion guard. This is simulator iOS18.5 evidence only. Unit12 had4 failures: two original controlled-request2s startup deadlines elapsed with the newly active native/DNS/display-link host; new refresh fixture called beginRefreshing on an unattached zero-size scrollview and remained false. Do not call the whole suite passed. Tests now keep the old empty unit host unless explicit UI launch argument selects MotionHost, mount the real refresh controller in a real window, and use a10s bounded request boundary wait (not a latency assertion). Runtime fix/diagnostics unchanged; current exact sourcebfa5b56ee1e5737cf0fff9a2b7234505e8469dfb, controlb904829dc6e24186e35c5cc595bf2d71893094f3. Rerun12 units+1 true UI, full Release and verify IPA. No IPA296 yet.
