@@ -1,59 +1,50 @@
 # DEV-poster-grid-smoothness
 
-## Status
+## Status and current identity — 2026-10-06
 
-**2026-10-06 implementation authorized:** User selected this Work ID and requested P0–P2 continuous execution to an identity-verified Library.items pilot IPA. Resume guard passed: historical PR#282/head39014a03 agree; Aether uses a distinct branch/Build235, Search is Completed. New working branch `perf/poster-wall-library-build295` starts at current main `03d1bad260666c3f38ae3913d6828f393690673e`, inheriting accepted Build294/293. Reserved OnePlayer **0.15.28 / Build295 / poster-wall-library** (no matching branch/candidate; current index maximum294). Historical branch/PR283 remains untouched; no wholesale stack merge. Scope P1 ordered Library persistence/background restoration + P2 native Library.items cell/preparation/host; G02–G15/Home await pilot device evidence. PR not created yet. Next exact action: inspect production cell/image/paging contracts; implement P1/P2, test actual source, open dedicated PR, exact-source CI/package/identity audit. P1/P2 draft source now written: ordered Library restore+write queue, cached-first restoration gate, fixed UIKit cell/collection, bounded shared consumer scheduler and first-screen demand, persistent native navigation link. Actual-source regression harness written (production cell/controller/preparation/cache/model, controlled network completion only); static diff reviewed; native compile/tests and Release CI/IPA/device pending. Source milestone d86871c7d71266ada1820490df550aaf98a193cf is durably saved. Shared scheduler retains cancelled operations inside its4-task budget; append prepares only suffix; sort generations reject old replies. Next exact action: review lifetime/append/generation contracts, run actual-source native tests and exact-source Release packaging.
+- **Active — P0/P1/P2 code complete; Release/IPA independently verified; awaiting target-device P2 acceptance.**
+- User explicitly requested development through a testable Library.items IPA. Read [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md), [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md), [POSTER_ENTRY_INDEX.md](../../POSTER_ENTRY_INDEX.md).
+- Working branch: `perf/poster-wall-library-build295`; Draft PR [#292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main.
+- Exact package source: **8ca3de65a8ca2927785bb194b6a3136b6d900e56**. Base: **03d1bad260666c3f38ae3913d6828f393690673e**, accepted overall Build294 Dock / Build293 carousel.
+- Candidate: **OnePlayer0.15.28 / Build295 / poster-wall-library / iOS15.0**. Target: iPhone15ProMax / iOS17.0.
+- CI control: `ci/build295-poster-wall-library-20261006`, **38689808411cee237bbf56f85d14619b2e07446f**, workflow `.github/workflows/build295-poster-wall-library.yml`, run **37477868307 / job112317946251**. Control source is not package source.
+- Historical PR282 / branch `perf/poster-grid-offmain-persistence-build280` / Build283 source39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6 stays untouched/open/unmerged. Extracted ordered Library persistence and persistent navigation activation; no whole-stack merge.
+- Aether235 remains separate; Search completed256, carousel293 and Dock294 frozen.
 
+## Completed and validation
 
-**Active — 2026-10-06 current phase: design, full entry inventory and executable handoff plan completed; new reconstruction implementation not started.** Read [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md), [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md) and [POSTER_ENTRY_INDEX.md](../../POSTER_ENTRY_INDEX.md). This turn authorizes plan/document updates only. Historical Build283 identity is retained below; no new branch/Build/CI/IPA or runtime acceptance has been created. Latest accepted overall product is Build294; the newly reported performance behavior has no supplied installed Build/log.
+P1: original Library cache owner performs metadata read/JSON/index construction and ordered snapshot construction/JSON/atomic writes on a serial utility queue. Cached restore publishes once before live requests; refresh failure preserves cache/frontier. Completed restoration future is released; stale sort replies are generation rejected.
 
-**Historical candidate evidence — Build283 / OnePlayer 0.15.16 is target-device positive for both intended regression surfaces. The user confirms Library `.items` cover entry to detail has the normal system entrance animation again, accepting the always-mounted hidden `NavigationLink` repair. The accompanying `OnePlayer-App-1788197938.log` also confirms Build280's off-main pagination fix survives unchanged: one continuous 60→660 native Library session runs at 118.34 Hz with p50/p95/p99 8.33/8.70/17.85 ms, max 25.02 ms, exactly one >=25 ms frame and zero >=33.3 ms frames while all persistence remains `main_thread=0` and snapshot total grows to 208.87 ms. The user reports no visible twitch. No additional code change is justified from this log. The broader historical fixed-item/non-pagination poster tail is not globally frozen by this single pagination session, and native interactive swipe-back has not been explicitly rechecked in the latest device report.**
+P2: G01 Library.items alone uses complete native collection scroll host and fixed UIKit image/title/year/badge/progress cell; suffix-only append, targeted image adoption, original60 paging, refresh/footer, native return-top and always-mounted NavigationLink. Existing disk/decoded/ImageIO remain sole cache authorities. Shared visible/prefetch/first-screen consumers use bounded preparation:4 active operations including cancellation until completion,12 pilot prefetch URLs,24 first-screen URLs across at most2 page demands. Dynamic Type/SF badge/display-scale and clipped progress retained. These are initial budgets, not measured app memory limits.
 
-- **Work ID:** `DEV-poster-grid-smoothness`
-- **Routing aliases / keywords:** 首页流畅度 / 3×3页面流畅度 / 3列海报流畅度 / 库页流畅度 / 海报网格优化 / 海报墙重构 / 海报墙抽象 / poster grid smoothness
-- **Identity note:** The following branch/PR/source/candidate describe the historical unmerged experiment. Latest-main reconstruction will have its own explicitly recorded identity in this same Work ID after implementation is authorized; it has not been allocated in this planning turn.
-- **Working branch:** `perf/poster-grid-offmain-persistence-build280`
-- **Draft PR:** #282
-- **Current exact product source:** `39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6`
-- **Direct parent:** Build280 `531d7f53c55e1e3cff44069e9bce3193ac94749a`
-- **Current candidate:** OnePlayer **0.15.16 / Build283**
-- **Target device:** iPhone 15 Pro Max / iOS 17.0
-- **Deployment Target / built MinOS:** iOS 15.0
-- **Build identity guard:** Historical Build282 / 0.15.15 belongs to Home and Build283 / 0.15.16 to Poster. Home carousel is now completed/frozen at Build293 and Dock at Build294. Re-query all allocations before assigning a new candidate; do not reuse historical identities.
+- Actual production poster cell/preparation/cache/model **8 tests/0 failures** passed sourcefefdcaefa4cacdc04644aed06e2262292727829d, run37476373994/job112312892728.
+- Actual Dock/carousel **18 tests/0 failures** passed source20d52f7706d9abf914facf50359df8ccb336fd09, run37474393518/job112306217313.
+- Current CI guards all test dependency bytes. Sole change since the eight-test source: existing EmbyPosterDetailDestination private→internal, correcting the full Release compiler visibility error. Full app Release is rerun; no untested unit-input change.
+- Source scope/whitespace/MinOS and protected native source guards passed. Earlier whitespace and pixel-width syntax failures corrected; Release visibility failure corrected from actual compiler evidence.
+- **IPA produced and independently verified; target-device pending. Simulator tests do not prove120FPS.**
+- G02–G15/H01–H04 scroll hosts remain unstarted. Shared image subscriptions do not imply host migration.
 
-### 2026-10-06 — New cross-page poster-scroll report / baseline distinction
+## Build295 — Library.items pilot verified handoff (2026-10-06)
 
-User reports that poster-heavy pages, including Home and Library, do not sustain the desired120FPS and can visibly pause or appear to move backward for one frame during otherwise continuous upward/downward scrolling. This is new qualitative device evidence; the installed Build, an accompanying log/video and exact event timestamps were not supplied. Do not attribute it to Build283 or infer a measured interior contentOffset reversal.
+- Candidate: **OnePlayer0.15.28 / Build295 / poster-wall-library**; `perf/poster-wall-library-build295` / Draft [PR292](https://github.com/white-shark-ssw/emby-playerlab/pull/292).
+- Exact package source: **8ca3de65a8ca2927785bb194b6a3136b6d900e56**; base03d1bad260666c3f38ae3913d6828f393690673e (accepted294/293). Later project-document synchronization is not packaged source.
+- Exact-source Release CI: [run37477868307](https://github.com/white-shark-ssw/emby-playerlab/actions/runs/37477868307) / job112317946251 **success**; control branch `ci/build295-poster-wall-library-20261006`, control **38689808411cee237bbf56f85d14619b2e07446f**.
+- Actual production poster cell/preparation/cache/model **8 tests /0 failures** passed sourcefefdcaefa4cacdc04644aed06e2262292727829d, run37476373994/job112312892728. Actual native Dock/carousel **18 tests /0 failures** passed source20d52f7706d9abf914facf50359df8ccb336fd09, run37474393518/job112306217313. Final CI byte-guards all dependencies and carries original logs; only private→internal detail-destination access changed since eight-test source, and full Release compile passed.
+- Artifact: [OnePlayer-0.15.28-build295-poster-wall-library](https://github.com/white-shark-ssw/emby-playerlab/actions/runs/37477868307/artifacts/11419727577), ID **11419727577**; digest/downloaded ZIP SHA256 **69c1fed42d8172337a27bf48722d6c80214c39134b1df37e9df827a60445588d**.
+- IPA: `OnePlayer-0.15.28-build295-poster-wall-library-unsigned.ipa`, **18713591 bytes**; SHA256 **a5bd7e5a23918ee81df47c6fd4ece34b359d56b6c62fbcc89c826abc44461b5c**.
+- Exact source ZIP SHA256: **b3ab04d969cd0f58df8f1eafd8673427d0aee222c7e35d6c9e7ec33c18b2742d**; git archive comment equals exact package source.
+- Independently verified ZIP integrity/checksums, bundle **com.embyplayerlab.app**, version **0.15.28**, Build **295**, Info.plist MinOS **15.0**, arm64 Mach-O MinOS **15.0.0**, CADisableMinimumFrameDurationOnPhone=true. Embedded runtime compatibility audit **OK**.
+- Scope: G01 Library.items complete native scroll host/cell, target-image adoption, shared bounded preparation/first-screen demand, background cached-first metadata restoration and ordered snapshot writes, original60 paging and system navigation activation. G02–G15/H01–H04 hosts unstarted.
+- Device matrix pending: both G01 entrances; cold/disk-warm/memory-warm scrolling; paging/failure; warm relaunch;~item2000 return-top; push/pop/interactive back; sort/refresh; Dock; resource/frame-tail sampling. Fixture5000-visit bounds are not a5000-item device acceptance.
+- Earlier whitespace/pixel-width syntax failures and full-app destination visibility error were corrected from actual CI evidence.
 
-Read-only audit of current main **4acd00c935b7414b05eb791596cf4ee1d460d812** (accepted overall Build294) confirms Home uses vertical SwiftUI ScrollView/LazyVStack with nested horizontal ScrollView/LazyHStack rows, and Library paged poster tabs still use shared LazyVGrid. Library snapshot construction/JSON/atomic-write remains synchronous in that main source. The native Library items collection and ordered off-main persistence belong to **Build283 /39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6**, still-open Draft **PR#282**, not the accepted Build294 product. PR#282 head and checkpoint identity were rechecked and agree. Do not claim those old fixes already run in Build294 or that this report invalidates their narrowly accepted pagination result.
+**Code written /8 poster +18 retained native regressions passed /Release CI passed /IPA independently verified /real-device pending /task Active /not stable /not merged.** Accepted overall baseline remains294;293carousel/294Dock/Search256/P0 preserved. P3–P6 await P2 target-device evidence.
 
-The Build283 native experiment still hosts V3PosterCard through UIHostingController<AnyView>; same-ID representable updates reconfigure all visible hosts. These are verified structural facts, not proof of the present hitch's cause. Shared main image decoding already runs off-main and decoded/disk caches already exist; do not propose moving an already-background decoder as a new fix.
+## Next exact action
 
-Discussion direction, not an approved implementation decision: first identify the failing installed baseline and correlate frame/presentation gaps with real offset, legal bounds, cell work, image adoption, pagination and persistence. Evaluate a shared reusable native poster cell/image-adoption layer and grid/sectioned-row adapters through a small Library A/B before expanding to Home. Preserve existing cache authorities, navigation/pagination semantics, accepted Build293 carousel, Build294 Dock and iOS15/P0. Container replacement alone has already been insufficient historically. No code, branch, Build allocation, merge, CI or IPA change was made for this discussion.
+Install the unsigned Build295 candidate using the existing signing workflow and perform the P2 target-device matrix above on iPhone15ProMax/iOS17.0 against accepted Build294. Record actual Build/cache/thermal state, frame p50/p95/p99/max and >=16.7/25/33.3ms counts plus memory. Return device log/visual evidence; locate any reproducible regression before G02–G15/Home rollout. No further implementation is blocked on routine approval, but P3–P6 stage gate requires P2 device evidence. Keep task Active/Draft and accepted baseline294; do not mark120FPS/stable or merge historical PR282.
 
-### 2026-10-06 — Overall design prepared
-
-User confirmed the carousel-style preparation/residency principle and requested an overall poster design. The detailed proposal is [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md): native reusable fixed-layout cells, one shared request/preparation coordinator using existing caches, UIKit prefetch, bounded readiness window, target-item updates, ordered off-main Library persistence and separate Library/Home adapters. Home's accepted carousel and Dock remain owned by their existing components.
-
-This authorizes design/planning in this turn, not implementation/branch migration/merge/Build allocation. Main planning baseline4ec7b816f1d2efd7069de3e300d12f4e4042889b retains accepted Build294 product behavior. PR#282 remains Draft/open at39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6 and was rechecked. Other Active task Aether is outside this scope; Search checkpoint is Completed and its accepted semantics are protected.
-
-Visible image placeholders are distinct from metadata paging. The proposal preserves current sequential60-item Library paging; a5000-item full sparse extent with arbitrary jumps would require separate range-loading semantics and is not silently included. Preparation-window/concurrency values are measurement choices, not verified EX constants. Image decoding already runs off-main in main; the new work is earlier/shared preparation and lighter native adoption, not pretending a new background decoder is needed.
-
-Evidence: **design written /source+task identity audited /no product code /no new CI or IPA /new performance behavior not device-tested**.
-
-### 2026-10-06 — Clarified placeholder and warm-cache return experience
-
-User reports EX visibly uses a placeholder only for first network downloads; disk-cached normal revisits, relaunch and deep (~item2000) status-bar return to top feel already loaded. IMG_8037.png confirms the intended placeholder: fixed poster rectangle plus actual movie name (existing badges may remain), not whole-card blank skeleton. EX's virtual-list implementation is unknown and no all-image residency or measured FPS inference is made.
-
-Updated [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md), section6A: retain loaded metadata independently of image/cell eviction; represent current page's first-screen prepared resources as bounded demand within the same image coordinator, so distant return-to-top is covered even after local prefetch has moved far away. Prepared first-screen images should stay ready during normal browsing; no duplicate disk/decoded cache, bitmap copies, metadata reset or return-top refresh. Warm process relaunch prepares the first screen from disk early rather than synchronously reading on scroll. Home follows the same contract while accepted carousel/Dock stay owned by existing components.
-
-Warm-cache normal revisits and deep return-top must not show a perceptible reload/placeholder breakpoint; image reread/decode remains real asynchronous work and must be scheduled ahead, not claimed zero-cost because it is cached. This is an acceptance requirement/design update, not an implemented/tested guarantee. No new product source, branch, Build, CI or IPA.
-
-### 2026-10-06 — Shared-wall scope explicitly expanded
-
-User asks whether the poster wall can be abstracted across Library, Favorites-more, tag/filter results, person/role results, typed search and recommendation/more routes. Source audit confirms many already use EmbyPosterGrid, but outer ScrollView, card/loaders and page-state wrappers remain separate. [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md) section2A now defines complete shared presentation ownership plus page data/navigation adapters, real call-site coverage, query/source identity and lifecycle constraints.
-
-Confirmed adapters include V3LibraryBrowserView, V3LibraryGenreGridView, V3FavoriteCategoryGridView, EmbyDetailFilterResultsView, EmbyPersonMediaView, V3GlobalSearchServerGridView and V3EmbyGlobalSearchView.recommendationsSection. Legacy V3EmbySearchView and the user's “推荐页面的更多观看” wording require actual live-route confirmation before implementation; no invented target API. Preserve60/18/9+6 paging, Person vs media/folder navigation, native return, shared budget and accepted Search semantics. Generic3-column routes should migrate after the Library core pilot and before the special Home adapter. Planning only; no implementation/Build/CI/IPA change.
+## Historical accepted evidence and protected contracts
 
 ## Accepted pagination-persistence result
 
@@ -135,16 +126,4 @@ This is source reachability and design coverage only: all common-grid migrations
 User explicitly asks to review remaining gaps and prepare the existing task for a new implementation session. [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md) now defines baseline/branch migration, real source owners, background metadata restoration ordering, image consumer/generation contracts, one vertical host including embedded Search recommendations, active-page status-bar scroll-to-top, native interaction/accessibility, global first-screen memory accounting, P0–P6 deliverables and stage gates, actual-source tests, per-entry device matrix, exact-source packaging and rollback.
 
 Identity audit at maindf4c7bf3cd4b8de51f392e9af930d12c42c26219: PR#282 still Draft/open/unmerged with branch head39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6. Other current task Aether is Active; Search checkpoint is Completed. All new code phases and new performance device checks remain pending. No new product branch, version/Build allocation, merge, CI or IPA.
-
-## Completed / Validation state / Pending
-
-- **Completed:** Overall design; source-audited G01–G15/H01–H05 entry inventory; implementation plan and copyable new-session instruction; historical/current baseline distinction; identity guard read.
-- **Validation state:** Repository/doc links and source ownership audited; historical Build283 evidence retained only in its stated scope. New native cells/preparation/host integration: not written. New CI/IPA: none. New warm-restart/deep-return/120FPS device acceptance: none.
-- **Pending:** Plan P0–P6. Library pilot is the first testable deliverable; other routes/Home remain planned. New branch/base/head/PR/candidate and measured window/concurrency settings are not allocated. Old interactive-pop explicit check remains pending.
-
-## Next exact action
-
-Planning handoff is complete; no product code or packaging was requested in this turn. The next operational action requires the new session's explicit implementation instruction and is given below.
-
-In a new session explicitly instructed to implement: select this exact Work ID; read the linked plan first; recheck current main, historical PR#282 and other task/candidate identities. Execute P0 and explicitly record latest-main branch migration while preserving the old experimental identity. Then execute P1/P2 continuously through meaningful actual-source verification, exact-source Release CI and identity-verified Library.items pilot IPA. Use the plan's startup instruction; missing installed Build for the old report limits attribution, not source-grounded implementation under new authorization. After the user supplies the pilot's necessary real-device results, proceed through remaining Library and all G routes, then H01–H04/Home, and final matrix. Do not label design/native container/CI as solved120FPS, merge the historical stack wholesale, or reopen accepted carousel/Dock/Search/P0.
 

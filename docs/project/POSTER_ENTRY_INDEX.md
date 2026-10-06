@@ -1,6 +1,6 @@
 # 海报墙入口清单
 
-_2026-10-06。DEV-poster-grid-smoothness；源码审计基线：main 408ccc865262673ab708c01b13f20328aeff8066。只登记当前路由与拟迁移范围，未实施重构，未进行本轮真机验收。整体合同见 [POSTER_PRESENTATION_DESIGN.md](POSTER_PRESENTATION_DESIGN.md)，执行阶段/交付与新会话指令见 [POSTER_IMPLEMENTATION_PLAN.md](POSTER_IMPLEMENTATION_PLAN.md)。_
+_2026-10-06。DEV-poster-grid-smoothness；源码审计基线：main 408ccc865262673ab708c01b13f20328aeff8066。只登记当前路由与拟迁移范围，G01库内容页已实施P1/P2试点，其他宿主待迁移；本轮真机验收待完成。整体合同见 [POSTER_PRESENTATION_DESIGN.md](POSTER_PRESENTATION_DESIGN.md)，执行阶段/交付与新会话指令见 [POSTER_IMPLEMENTATION_PLAN.md](POSTER_IMPLEMENTATION_PLAN.md)。_
 
 ## 1. 清点口径
 
@@ -8,11 +8,11 @@ _2026-10-06。DEV-poster-grid-smoothness；源码审计基线：main 408ccc86526
 
 在已审计的当前 V3 海报路由中，EmbyPosterGrid 有 **9 个可达调用点**，覆盖多种 tab、收藏类型和递归文件夹；另有 1 个旧 V3EmbySearchView 调用点，未被当前根导航引用。不能把“调用点数量”当成“用户入口数量”。
 
-## 2. 通用三列海报墙：全部待迁移、待逐入口验证
+## 2. 通用三列海报墙：逐入口迁移与验证
 
 | 编号 | 用户入口 | 当前展示目的地 | 必须保留 |
 |---|---|---|---|
-| G01 | 首页“我的媒体”库卡片；首页各库最新区“更多” | V3LibraryBrowserView.pagedPosterTab 的内容 tab | 电影/节目/视频随库类型；library scope、排序、60 条分页、Library 快照 |
+| G01 | 首页“我的媒体”库卡片；首页各库最新区“更多” | V3LibraryBrowserView.nativeItemsTab → EmbyPosterWall（Build295试点） | 电影/节目/视频随库类型；library scope、排序、60 条分页、Library 快照 |
 | G02 | 库页切换“预告片” | 同一 pagedPosterTab | 预告片类型过滤与原排序/分页 |
 | G03 | 库页切换“合集” | 同一 pagedPosterTab | BoxSet 合集封面及原点击目的地；不推定存在另一个合集内部影片墙 |
 | G04 | 库页切换“我的收藏” | 同一 pagedPosterTab | 当前库范围的收藏过滤；与 Dock 收藏页区分页面身份 |
@@ -53,7 +53,7 @@ G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件
 
 ## 5. 每条入口的交付记录
 
-实施后逐行填写“已接入 / 构建验证 / 真机验证 / 待验证”；现在所有 G 项仍为待迁移。共享核心完成不等于全部入口完成。
+实施后逐行填写“已接入 / 构建验证 / 真机验证 / 待验证”；G01已写入Build295独立试点，8项生产海报回归/18项Dock轮播回归通过、Release CI/IPA已独立核验、真机待验收；G02–G15仍待迁移。共享核心完成不等于全部入口完成。
 
 每个适配器至少检查：首次无图时固定海报框 + 已有名称；磁盘暖缓存提前准备；详情 push/pop 返回后保持数据与位置；深处回顶时已准备首屏直接呈现；分页追加不改变旧项位置；排序/筛选/来源变化不收到旧回调；无更多、空结果、图片失败和已有内容下的追加失败。G08 还检查父子文件夹往返；G10/G12 检查人物目的地；G13/G14/H04 检查跨服务器相同 item.id；G15 检查追加推荐、关闭推荐和离开 Search 的既有生命周期。
 
@@ -63,7 +63,7 @@ G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件
 
 | 入口范围 | 计划阶段 | 产品接入 / 构建 / 真机 |
 |---|---|---|
-| G01 Library.items | P2 首个闭环 | 未开始 / 未验证 / 未验证 |
+| G01 Library.items | P2 首个闭环 | 已接入 / 自动回归/Release/IPA通过 / 未验证 |
 | G02–G08 Library其余入口 | P3 | 未开始 / 未验证 / 未验证 |
 | G09–G15 其他三列墙 | P4；G15含搜索落地宿主 | 未开始 / 未验证 / 未验证 |
 | H01–H04 首页及其他横向行 | P5；必要宿主可在P4接入 | 未开始 / 未验证 / 未验证 |
@@ -82,3 +82,7 @@ G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件
 - [EmbyEpisodePickerView](../../Sources/UI/EmbyEpisodePickerView.swift)、[PlayerEpisodeSelection](../../Sources/UI/PlayerEpisodeSelection.swift)、[EmbyDetailOverlayViews](../../Sources/UI/EmbyDetailOverlayViews.swift)：相关页面的实际布局边界。
 
 以上行号只对应本清单的审计基线，不应作为后续源码不变的假设。
+
+### G01 pilot state (2026-10-06)
+
+perf/poster-wall-library-build295 / Draft PR292 / OnePlayer0.15.28 Build295：G01两条入口共用完整EmbyPosterWall宿主。8项生产cell/preparation/cache/model回归通过，18项Dock/轮播回归保留并核对真实依赖。Release CI成功，IPA独立核验完成；准确身份见BUILD_TEST_INDEX与当前checkpoint。首次无图、磁盘暖/内存暖、分页、~item2000回顶、暖重启、push/pop/侧滑返回及Dock均待真机验证；G02–G15/H01–H04未迁移。现有SwiftUI图片消费者共享prepare订阅，不代表这些滚动宿主已迁移。

@@ -1,6 +1,6 @@
 # 海报墙重构开发计划
 
-_2026-10-06（Asia/Shanghai）。任务：DEV-poster-grid-smoothness。用户要求完善方案并交给新会话实施；本轮只编写计划。所有产品代码阶段、候选分配、CI/IPA及新体验真机验收均未开始。_
+_2026-10-06。DEV-poster-grid-smoothness 已按用户授权执行：P0完成，P1/P2 Library.items试点已实现并通过生产源码回归；Release/IPA已独立核验，真机验收待完成。P3–P6保留原阶段门槛。_
 
 ## 1. 接手入口与资料分工
 
@@ -11,18 +11,18 @@ _2026-10-06（Asia/Shanghai）。任务：DEV-poster-grid-smoothness。用户要
 2. 本计划：实施顺序、检查与交付条件。
 3. [POSTER_ENTRY_INDEX.md](POSTER_ENTRY_INDEX.md)：G01–G15 / H01–H05 真实入口、内容变体和覆盖状态。
 
-checkpoint 保存当前身份/完成项/待办；本计划不是另一个 checkpoint。实施授权以新会话用户指令为准；当前没有授权本会话改产品代码。新会话收到“按计划开发”后，应按仓库纪律连续推进到对应阶段的可测试 IPA，不在普通代码/提交/CI中间节点停等“继续”。
+checkpoint 保存当前身份/完成项/待办；本计划不是另一个 checkpoint。实施授权以新会话用户指令为准；当前用户已授权按计划开发；应按仓库纪律连续推进到P2可测试 IPA，不在普通代码/提交/CI中间节点停等“继续”。
 
 ## 2. 基线、历史代码与身份迁移
 
 | 身份 | 当前已核实状态 | 实施用途 |
 |---|---|---|
-| 当前文档 main | df4c7bf3cd4b8de51f392e9af930d12c42c26219 | 本计划审计基线；代码仍为已验收整体 Build294，接手时重新核对 head |
+| 计划制定时文档 main | df4c7bf3cd4b8de51f392e9af930d12c42c26219 | 本计划审计基线；代码仍为已验收整体 Build294，接手时重新核对 head |
 | 已验收整体产品 | OnePlayer0.15.27 / Build294，ca60a034d68d451bc0f93f5681465398131d54c5 | 保护最新 Dock 与继承的 Build293 轮播 |
 | 历史 Poster 候选 | OnePlayer0.15.16 / Build283，39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6 | 分支 perf/poster-grid-offmain-persistence-build280；Draft PR#282 仍 open/unmerged，base 为 diag/poster-grid-persistence-frame-tail-build278 |
 | 其他当前任务 | Aether Active：feat/aether-multi-engine-comparison，Build235；Search checkpoint Completed，Build256 合同保留 | 不复用它们的分支、候选或状态；海报不接入 Player/Transport/Aether |
 
-本轮重新核对 PR#282 与真实分支 head 一致；没有修改其身份。尚未分配新分支、Build、version 或 IPA candidate。**不要把下一 Build 预写为295**；实施时再查询最新索引、Active checkpoint、PR/CI候选。
+本轮重新核对 PR#282 与真实分支 head 一致；没有修改其身份。实施时已重新查询最新索引、Active checkpoint、PR/CI候选并分配独立 perf/poster-wall-library-build295 / PR292 / OnePlayer0.15.28 / Build295。历史身份保持不变。
 
 实施基线采用接手时最新且包含已验收 Build294 的产品源码。在同一 Work ID 下明确记录从旧实验分支迁往最新基线的原因、新 branch/base/head/PR 和旧身份保留关系；记录新事实后才推进。发现真实身份冲突先解决，不悄悄改成猜测值。不直接合并历史 PR stack，也不覆盖新 Home/Dock 文件。
 
@@ -99,7 +99,7 @@ G15推荐网格嵌在搜索落地页内：搜索历史、推荐标题/网格/foo
 
 ## 7. 分阶段开发与通过条件
 
-所有代码阶段当前状态均为“未开始”；本轮只完成源码/身份复核与计划。以下通过条件是将来要执行的验证，不是已通过记录。
+P0已完成；P1/P2代码和生产源码自动回归已完成，Release/IPA核验已完成，目标机A/B待完成。P3–P6未开始。以下阶段门槛仍有效；自动验证不代替真机性能验收。
 
 | 阶段 | 范围和产物 | 进入下一阶段前的条件 |
 |---|---|---|
@@ -178,3 +178,7 @@ POSTER_PRESENTATION_DESIGN.md、POSTER_IMPLEMENTATION_PLAN.md、POSTER_ENTRY_IND
 首屏准备、暖缓存重启和约第2000项回顶必须作为验收合同。
 不要新建重叠任务，不要只换容器，不要在普通中间节点等待“继续”。
 ```
+
+## Current execution — 2026-10-06
+
+P0身份迁移完成；P1后台Library恢复/有序持久化和P2 Library.items完整原生宿主/固定cell/共享准备/首屏需求/目标项更新已实现。8项生产海报回归和18项Dock/轮播回归通过并按依赖逐字核对保留；准确源码、CI和交付身份由当前任务checkpoint及BUILD_TEST_INDEX记录。P2可测试IPA已交付并独立核验，目标机验收待完成；P3–P6和其余入口未开始。Build294仍为已验收整体基线。
