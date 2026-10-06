@@ -5,7 +5,7 @@
 - **Active — P0/P1/P2 code complete; Release/IPA independently verified; first-load inertial-stop device report under investigation; P2 not accepted.**
 - User explicitly requested development through a testable Library.items IPA. Read [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md), [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md), [POSTER_ENTRY_INDEX.md](../../POSTER_ENTRY_INDEX.md).
 - Working branch: `perf/poster-wall-library-build295`; Draft PR [#292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main.
-- Current working branch head /Build296 exact source: **cc06bba2602608d88f2f4171792f50aeca71f362**. PR stays Draft/open/unmerged.
+- Current working branch head /Build296 exact source: **5187b590e51770f05fd393709cbd66ddddc589b6**. PR stays Draft/open/unmerged.
 - Exact package source: **8ca3de65a8ca2927785bb194b6a3136b6d900e56**. Base: **03d1bad260666c3f38ae3913d6828f393690673e**, accepted overall Build294 Dock / Build293 carousel.
 - Candidate: **OnePlayer0.15.28 / Build295 / poster-wall-library / iOS15.0**. Target: iPhone15ProMax / iOS17.0.
 - CI control: `ci/build295-poster-wall-library-20261006`, **38689808411cee237bbf56f85d14619b2e07446f**, workflow `.github/workflows/build295-poster-wall-library.yml`, run **37477868307 / job112317946251**. Control source is not package source.
@@ -40,6 +40,10 @@ P2: G01 Library.items alone uses complete native collection scroll host and fixe
 - Earlier whitespace/pixel-width syntax failures and full-app destination visibility error were corrected from actual CI evidence.
 
 **Code written /8 poster +18 retained native regressions passed /Release CI passed /IPA independently verified /real-device pending /task Active /not stable /not merged.** Accepted overall baseline remains294;293carousel/294Dock/Search256/P0 preserved. P3–P6 await P2 target-device evidence.
+
+## Build296 actual native reproduction — 2026-10-06
+
+Source cc06bba2602608d88f2f4171792f50aeca71f362, run37486519229/job112347834140/control0f003b754c4441fbe8f8348f77af983b453c48d4: **11 actual-source unit tests/0 failures**, but **1 actual native-gesture UI test/1 failure**. Controlled metadata is released asynchronously from the true production deceleration-begin event, with no second touch. Result: before decel=1, after_decel=0, expanded=1, jump=0, count120. This proves this simulator's original native update interrupts inertia; it is not yet proof of the iOS17 device's precise root cause. No guessed production patch yet. Updated test-only host now exposes each production trace stage to isolate the operation; combined unit/UI invocation avoids redundant simulator setup. Exact current source 5187b590e51770f05fd393709cbd66ddddc589b6, CI run37488102803/job112353349125, control175a7dcd3ec1cf62738a8b9e957df89bf08078d7. Next: locate the first true→false deceleration stage, apply only evidence-backed owner correction, rerun actual tests and Release/IPA. No IPA296 yet.
 
 ## Build296 implementation milestone
 
