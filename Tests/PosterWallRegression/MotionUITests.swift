@@ -4,7 +4,7 @@ final class PosterMotionUITests: XCTestCase {
     func testRealNativeDecelerationAcceptsDelayedMetadataAppendWithoutOffsetJump() {
         var observedInertia = false
         for _ in 0..<3 {
-            let app = XCUIApplication(); app.launch()
+            let app = XCUIApplication(); app.launchArguments = ["--poster-motion-ui"]; app.launch()
             let wall = app.collectionViews["poster-wall"]
             XCTAssertTrue(wall.waitForExistence(timeout: 10))
             wall.swipeUp(velocity: .fast)

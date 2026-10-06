@@ -23,7 +23,8 @@ final class PosterWallTests: XCTestCase {
     private func image(_ color: UIColor) -> UIImage { UIGraphicsImageRenderer(size: CGSize(width: 3, height: 3)).image { color.setFill(); $0.fill(CGRect(x: 0, y: 0, width: 3, height: 3)) } }
 
     private func waitForRequests(_ count: Int, client: EmbyAPIClient) async -> Bool {
-        for _ in 0..<200 {
+        // Cold simulator/utility-queue startup exceeded the old2s fixture deadline; this is not a latency assertion.
+        for _ in 0..<1000 {
             if client.requests.count >= count { return true }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -111,6 +112,9 @@ final class PosterWallTests: XCTestCase {
         let controller = EmbyPosterWallController()
         let value = EmbyPosterWall(items: [], revision: 1, replacement: 1, client: source, isLoading: false, hasLoaded: true, error: nil, emptyText: "empty", bottomPadding: 86, isActive: true, onApproachingEnd: {}, onRefresh: {}, onSelect: { _ in })
         controller.loadViewIfNeeded()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 430, height: 800))
+        window.rootViewController = controller; window.makeKeyAndVisible()
+        controller.view.layoutIfNeeded()
         let start = DiagnosticsLogger.shared.records().count
         controller.update(value)
         XCTAssertFalse(DiagnosticsLogger.shared.records().dropFirst(start).contains { $0.contains("event=end-refresh-before") })
@@ -122,7 +126,7 @@ final class PosterWallTests: XCTestCase {
         let finished = DiagnosticsLogger.shared.records().count
         controller.update(value)
         XCTAssertFalse(DiagnosticsLogger.shared.records().dropFirst(finished).contains { $0.contains("event=end-refresh-before") })
-        controller.dispose()
+        controller.dispose(); window.isHidden = true
     }
 
     func testSortGenerationRejectsOlderQueryAfterNewSortCompletes() async {
