@@ -43,6 +43,8 @@ P2: G01 Library.items alone uses complete native collection scroll host and fixe
 
 ## Next exact action
 
+2026-10-06 23:04 (Asia/Shanghai): user authorizes the bounded diagnostic iteration and reports that Build295's refactor is relatively successful with FPS maintaining a high level; asks for further long-frame improvement. This is qualitative positive device feedback, not complete P2 acceptance or measured presented FPS. Build296 /0.15.29 /poster-wall-motion-diagnostics reserved for this same task/branch/PR after checking BUILD_TEST_INDEX, other checkpoints, all482 current branches and open PRs; no collision found. No new source or IPA exists yet. Next: implement read-only bounded event/frame-transition trace, run updated actual-source tests and exact-source Release, then deliver verified IPA. Do not alter inertia, paging quantity or unproven refresh/layout behavior.
+
 Log/video review confirms a sharp visual motion stop near5.8s and resumed movement on new touch near7.2s; current motion-gated trace cannot decide metadata boundary vs native deceleration interruption. Read the22:57 evidence review below. Do not request the same evidence again or claim a page/store event is time-aligned to the video. Next diagnostic must capture bounded offset/contentSize/legal-max/count/velocity/deceleration state at request/apply/batch/footer/real refresh transitions and native motion-end callbacks, with delayed-metadata native inertia tests. User requested inspection in this turn, so no runtime mutation/Build/CI. P2 remains unaccepted; preserve P0/Dock/carousel/Search and current unique identities.
 
 ### 2026-10-06 22:57 (Asia/Shanghai) — Log/video confirms abrupt visual motion stop, cause still unresolved
