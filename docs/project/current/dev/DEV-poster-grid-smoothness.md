@@ -5,20 +5,12 @@
 - **Active — Build296 exact-source regressions/Release/IPA independently verified; Build296 device inertia positive in supplied session; deep detail-return data/position regression confirmed; still-image latency unresolved; P2 not accepted.**
 - Existing task/plan: [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md). Only G01 Library.items has migrated; other hosts remain gated.
 - Working branch: `perf/poster-wall-library-build295`; Draft/open/unmerged [PR292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main.
-- Current working branch head: **5064d1897ab0e199d53ed59853d5f9b87e95d422** (final project-document synchronization only; exact packaged runtime/test bytes unchanged). Exact package/test source: **bfa5b56ee1e5737cf0fff9a2b7234505e8469dfb**.
-- New reserved candidate: **OnePlayer0.15.30 /Build297 /poster-wall-return-section /iOS15.0**; implementation/CI/IPA pending. Last tested candidate: **OnePlayer0.15.29 /Build296 /poster-wall-motion-diagnostics /iOS15.0**. Target iPhone15ProMax/iOS17.0.
+- Current working branch head: **a8f292193a2495d2b0f60d47c7f1d9816581087e** (Build297 implementation; exact-source CI pending). Exact package/test source: **bfa5b56ee1e5737cf0fff9a2b7234505e8469dfb**.
+- New reserved candidate: **OnePlayer0.15.30 /Build297 /poster-wall-return-section /iOS15.0**; implementation written; CI/IPA pending. Last tested candidate: **OnePlayer0.15.29 /Build296 /poster-wall-motion-diagnostics /iOS15.0**. Target iPhone15ProMax/iOS17.0.
 - CI control: `ci/build296-poster-wall-motion-20261006`, **b904829dc6e24186e35c5cc595bf2d71893094f3**; workflow `.github/workflows/build296-poster-wall-motion.yml`; **run37490702186 /job112362875963 success**.
 - Artifact **11425443691**, digest **efcbbf9ac1de1cd175ba0603e4dcc7f156a4adc46a8cd79ba42caaaac7cfdabd**. Package/MinOS details below.
 - Previous Build295/0.15.28 source8ca3de65a8ca2927785bb194b6a3136b6d900e56 and IPA remain historical pilot evidence. User reports high FPS/refactor positive; abrupt stop was not accepted.
 - Base03d1bad260666c3f38ae3913d6828f393690673e; accepted overall294/Dock294, inherited accepted293carousel. Historical PR282/39014a03 untouched/open/unmerged; no stack merge. Aether235 separate; Search256 protected.
-
-## Build297 implementation ready for exact-source CI — 2026-10-07
-
-Original model now distinguishes successful in-session live Library.items data from disk-restored/failed loadedTabs. Ordinary load returns after live success; successful paging/refresh/sort also establishes live validity. Cached-first first live fetch and initial failure retry remain. No offset writes, physics or paging-policy changes. Detail delta is mechanically verified diagnostics-only: per-model64 event timeline from warm restoration/task/upstream waits to imageInfos/qualifying stills publication, section appearance and warm store. Original detail request/cache/navigation order unchanged. Library four fixed work counters track configure/image-adopt/layout/apply; appearance geometry added. Shared scheduler skips a pointless pending scan/sort only when available slots<=0; existing4 operation/12 prefetch/24 first-screen/cache/cancellation contracts retained.
-
-Actual production Library view/model/wall/Dock are now included in a native navigation harness with60-item network pages; only non-pilot cards/tabs and the detail leaf are fixtures.16 units (retained12 plus reappearance/frontier/real refresh+sort, failed-initial retry, bounded detail trace and work counters);3 real UI tests (retained inertia, deep push/pop, cancelled system pop then back). Old ordinary-load policy will be exercised as a narrow negative control. Static detail request/cache/navigation delta/whitespace and source-owner guard passed. Runtime tests/Release297 pending; no IPA/target-device/fix claim.
-
-Next exact action: publish this implementation on the current guarded feature branch, record returned product SHA, run negative control then full16+3 tests and exact-source Release/package audit; retrieve/save verified IPA. Do not stop at CI start. Original log had no>=25ms gap; this candidate does not claim measured long-frame elimination or a stills latency root fix.
 
 ## Build297 /0.15.30 — reserved Library return retention and detail-section diagnostics (2026-10-07 02:19 Asia/Shanghai)
 
@@ -239,3 +231,35 @@ User explicitly asks to review remaining gaps and prepare the existing task for 
 
 Identity audit at maindf4c7bf3cd4b8de51f392e9af930d12c42c26219: PR#282 still Draft/open/unmerged with branch head39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6. Other current task Aether is Active; Search checkpoint is Completed. All new code phases and new performance device checks remain pending. No new product branch, version/Build allocation, merge, CI or IPA.
 
+
+## Build297 implementation ready for exact-source CI — 2026-10-07
+
+Original model now distinguishes successful in-session live Library.items data from disk-restored/failed loadedTabs. Ordinary load returns after live success; successful paging/refresh/sort also establishes live validity. Cached-first first live fetch and initial failure retry remain. No offset writes, physics or paging-policy changes. Detail delta is mechanically verified diagnostics-only: per-model64 event timeline from warm restoration/task/upstream waits to imageInfos/qualifying stills publication, section appearance and warm store. Original detail request/cache/navigation order unchanged. Library four fixed work counters track configure/image-adopt/layout/apply; appearance geometry added. Shared scheduler skips a pointless pending scan/sort only when available slots<=0; existing4 operation/12 prefetch/24 first-screen/cache/cancellation contracts retained.
+
+Actual production Library view/model/wall/Dock are now included in a native navigation harness with60-item network pages; only non-pilot cards/tabs and the detail leaf are fixtures.16 units (retained12 plus reappearance/frontier/real refresh+sort, failed-initial retry, bounded detail trace and work counters);3 real UI tests (retained inertia, deep push/pop, cancelled system pop then back). Old ordinary-load policy will be exercised as a narrow negative control. Static detail request/cache/navigation delta/whitespace and source-owner guard passed. Runtime tests/Release297 pending; no IPA/target-device/fix claim.
+
+Next exact action: publish this implementation on the current guarded feature branch, record returned product SHA, run negative control then full16+3 tests and exact-source Release/package audit; retrieve/save verified IPA. Do not stop at CI start. Original log had no>=25ms gap; this candidate does not claim measured long-frame elimination or a stills latency root fix.
+
+Exact Build297 implementation/product source: **a8f292193a2495d2b0f60d47c7f1d9816581087e**. Next action: independent CI control, old-policy negative control,16 units+3 native UI tests, Release and verified IPA.
+
+
+## Build297 implementation and exact-source CI in progress — 2026-10-07
+
+OnePlayer0.15.30 /Build297 /poster-wall-return-section; DEV-poster-grid-smoothness Active, G01 only, Draft PR292 unmerged. Product **a8f292193a2495d2b0f60d47c7f1d9816581087e**; feature perf/poster-wall-library-build295. Successful live Library.items validity stays in the original model; normal reappearance retains metadata/revision/frontier, while disk-only/failed loads do not skip initial live refresh and explicit refresh/sort remain. This addresses proven296 same-model60-item reset; offset and native navigation owners unchanged. Stills SECTION latency remains unresolved: diagnostics-only per-model timeline records upstream waits/imageInfos publication/qualifying counts/section lifecycle, without reordering detail requests/cache/navigation. Four fixed Library work counters and full-slot scheduler scan avoidance add bounded evidence/one narrow optimization; supplied296 log had no>=25ms sampled gap, not proof all long frames absent or measured improvement.
+
+Independent CI control **c9a19fddf6a2e7f09812c3704759c35604ae263b**, ci/build297-poster-wall-return-20261007, .github/workflows/build297-poster-wall-return.yml; **run37512346668 /job112436442497 in progress**. Scope/Frozen/MinOS source guards passed; old-policy negative control then16 units+3 actual native UI tests and Release/package pending. No297 IPA/device result yet; retained18 Dock/carousel tests are byte-guarded historical evidence, not rerun. Accepted overall294/carousel293/Dock294/Search256/P0 and other host gates remain.
+
+Next exact action: inspect running CI tests, resolve actual failures; finish Release/package, retrieve and independently verify/save IPA. Do not stop at CI completion.
+
+
+## CI stage visibility correction — 2026-10-07
+
+Initial run37512346668/job112436442497 stayed in a combined negative+unit+UI step for ~15min with no readable live logs; superseded through same control concurrency, cancelled, never counted as passing. Product unchanged a8f292193a2495d2b0f60d47c7f1d9816581087e. New control **ffb26fa864108eb421630f438dd62dd4a311bdcf**, same ci/build297-poster-wall-return-20261007/workflow; **run37514237737 pending**. Split negative control (12min),16 units (10min),3 native UI (12min); preserve failure/cancellation logs. Next: read cancelled job log once available to identify actual stall, inspect split stages, correct actual failures if present, continue to verified IPA.297 not yet tested/packaged; P2 unaccepted.
+
+
+Cancelled initial CI log inspected: narrow old-policy negative control DID complete before cancellation: one actual-source unit/7 expected assertion failures, test13.624s, nonzero xcodebuild with TEST FAILED. Removing only live-load guard reproduced count120→60, extra start0 requests/revisions/replacement and lost frontier. First cold test infrastructure phase reported569.038s; full corrected compilation completed around18:47:09Z, subsequent full runtime suite was cancelled before results. Do not count full16+3 as passed or infer app latency from simulator startup. Current split run37514237737/job112443595027, controlffb26fa864108eb421630f438dd62dd4a311bdcf, producta8f292193a2495d2b0f60d47c7f1d9816581087e; inspect separated stages then Release/verifiedIPA.
+
+
+## Query-validity and real cancellation proof refinement
+
+Build297 live validity now records the successful request's original sort key; ordinary Library.items load skips only when it matches current shared sortBy. A failed new sort and a sort changed through another paged tab must receive the current query's first successful load. Extended existing production-model regression exercises both paths without changing paging/cache/generation owners. Native return fixture observes UIViewController.transitionCoordinator interactive cancellation (no delegate/progress owner); UI assertion requires that result, not merely a detail bar remaining visible. Detail diagnostics and scheduler budgets unchanged. Earlier a8 source passed old-policy negative control and16 units in run37514237737/job112443595027;3 UI still in progress, Release/IPA not passed. New refinement requires final exact-source validation; next action record new product SHA and rerun affected negative/unit/UI then Release/verifiedIPA. Ring history is expanded only at diagnostic dump, not copied every frame; ordinary append already maps only new records. No fictitious full-remap/per-frame-copy optimization.

@@ -299,9 +299,9 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     private let pageSize = 60
     private var pageStates: [V3LibraryTab: V3LibraryPageState] = [:]
     private var fetchGenerations: [V3LibraryTab: Int] = [:]
-    // Disk restoration and failed requests also populate loadedTabs; only a successful live response
+    // Disk restoration and failed requests also populate loadedTabs; only a successful live response for this sort
     // makes this page's ordinary reappearance safe to skip. Explicit refresh/sort keep their reset path.
-    private var hasLoadedLiveItems = false
+    private var liveItemsSortBy: String?
     private let pageTraceID = String(UUID().uuidString.prefix(8))
     private var pageTraceEvents = 0
 
@@ -348,7 +348,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     func load(tab: V3LibraryTab) async {
         await restoreIfNeeded()
         guard !isLoading(tab: tab) else { return }
-        if tab == .items && hasLoadedLiveItems { return }
+        if tab == .items && liveItemsSortBy == sortBy { return }
         switch tab {
         case .items, .trailers, .collections, .favorites: await fetchPage(tab: tab, reset: true)
         case .suggestions: await loadSuggestions(force: true)
@@ -442,7 +442,8 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         }
         do {
             let query = spec(for: tab)
-            let page = try await client.libraryHubItemsPage(parentId: library.id, limit: pageSize, startIndex: start, recursive: true, sortBy: sortBy, includeItemTypes: query.types, filters: query.filters)
+            let requestedSortBy = sortBy
+            let page = try await client.libraryHubItemsPage(parentId: library.id, limit: pageSize, startIndex: start, recursive: true, sortBy: requestedSortBy, includeItemTypes: query.types, filters: query.filters)
             tracePage("response")
             guard fetchGenerations[tab] == generation else { return }
             let allowed = Set(query.types.map { $0.lowercased() })
@@ -462,7 +463,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             }
             pageStates[tab] = state
             loadedTabs.insert(tab)
-            if tab == .items { hasLoadedLiveItems = true }
+            if tab == .items { liveItemsSortBy = requestedSortBy }
             tracePage("published")
             await persistSnapshot()
             tracePage("persisted")

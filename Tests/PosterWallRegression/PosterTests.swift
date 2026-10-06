@@ -62,6 +62,24 @@ final class PosterWallTests: XCTestCase {
         await model.changeSort(to: "SortName", tab: .items)
         XCTAssertEqual(source.requests[4].start, 0); XCTAssertEqual(source.requests[4].sort, "SortName")
         await model.load(tab: .items); XCTAssertEqual(source.requests.count, 5)
+        // Failed new-sort data must not inherit the old successful query's reappearance validity.
+        source.automaticLibraryPages = false
+        let failedIndex = source.requests.count
+        let failedSort = Task { await model.changeSort(to: "Runtime", tab: .items) }
+        guard await waitForRequests(failedIndex + 1, client: source) else { return }
+        source.requests[failedIndex].continuation.resume(throwing: URLError(.notConnectedToInternet))
+        await failedSort.value
+        source.automaticLibraryPages = true
+        await model.load(tab: .items)
+        XCTAssertEqual(source.requests.count, 7)
+        XCTAssertEqual(source.requests.last?.sort, "Runtime")
+        await model.load(tab: .items); XCTAssertEqual(source.requests.count, 7)
+        // The sort key is shared by paged tabs; another tab's successful query is not Library.items data.
+        await model.changeSort(to: "DatePlayed", tab: .trailers)
+        await model.load(tab: .items)
+        XCTAssertEqual(source.requests.count, 9)
+        XCTAssertEqual(source.requests.last?.sort, "DatePlayed")
+        await model.load(tab: .items); XCTAssertEqual(source.requests.count, 9)
     }
 
     func testFailedInitialLiveLoadCanRetryDespiteLoadedTabs() async {

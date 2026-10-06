@@ -25,6 +25,8 @@ final class PosterMotionUITests: XCTestCase {
             let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.55))
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.4)
             XCTAssertTrue(app.navigationBars["Fixture Detail"].exists, "The partial system pop must actually cancel")
+            let cancelled = fields(app.staticTexts["return-status"].label)
+            XCTAssertGreaterThan(Int(cancelled["cancelled"] ?? "0") ?? 0, Int(before["cancelled"] ?? "0") ?? 0, "The system transition coordinator must confirm an interactive cancellation")
         }
         app.navigationBars["Fixture Detail"].buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.navigationBars["Fixture Library"].waitForExistence(timeout: 5))
