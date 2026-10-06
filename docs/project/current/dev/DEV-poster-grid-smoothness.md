@@ -43,7 +43,23 @@ P2: G01 Library.items alone uses complete native collection scroll host and fixe
 
 ## Next exact action
 
-Correlate the new first-load inertial-stop report against the supplied Build295/source and real App log/video before further code or CI. Distinguish loaded-extent starvation from append/footer/refresh-control interrupting deceleration and a frame hitch; existing tests do not validate cold/network-delayed inertia. Obtain whether immediately dragging can continue and the last visible row. Implement only an evidenced fix/targeted diagnostic, then real-source regression and exact-source new unique candidate if runtime changes. G02–G15/Home remain gated; no stable/120FPS or acceptance claim.
+Log/video review confirms a sharp visual motion stop near5.8s and resumed movement on new touch near7.2s; current motion-gated trace cannot decide metadata boundary vs native deceleration interruption. Read the22:57 evidence review below. Do not request the same evidence again or claim a page/store event is time-aligned to the video. Next diagnostic must capture bounded offset/contentSize/legal-max/count/velocity/deceleration state at request/apply/batch/footer/real refresh transitions and native motion-end callbacks, with delayed-metadata native inertia tests. User requested inspection in this turn, so no runtime mutation/Build/CI. P2 remains unaccepted; preserve P0/Dock/carousel/Search and current unique identities.
+
+### 2026-10-06 22:57 (Asia/Shanghai) — Log/video confirms abrupt visual motion stop, cause still unresolved
+
+Evidence supplied: OnePlayer-App-1791298613.log and RPReplay_Final1791298610.mp4 (9.1s,510×1108,30fps). Observed video end-region: a fast upward content movement abruptly becomes stationary near5.8s, holds until approximately7.2s, then moves on a new visible touch. Frame-to-frame image phase correlation in the poster region supports roughly76px upward movement over the preceding33ms recorded-frame interval, then near-zero for~1.4s. This is recorded-image displacement, not native contentOffset or120Hz presented-FPS measurement; changes in image loading and30fps sampling limit interpretation. It is not ordinary observed smooth decay to zero. Additional content becomes reachable after the new touch, but the video cannot independently prove whether the current metadata edge moved during the stop.
+
+Log: restore180 items at14:56:28.425Z, then live page0 replaces180→60 at28.628Z. This session is not fully cache-empty; do not overrule the user's first-load experience report, but classify the captured cache state accurately. No Build/version header is present in the excerpt, so actual installed identity remains supplied-candidate295 contextual attribution, not an independently verified runtime header.
+
+Metadata HTTP request→native items apply:
+- StartIndex60:34.204→34.521Z,317ms,60→120,apply10.59ms.
+- StartIndex120:42.682→43.325Z,643ms,120→180,apply2.11ms.
+- StartIndex180:45.731→45.862Z,131ms,180→240,apply0.90ms.
+These intervals include response/filter/publication, not exact network latency. Snapshot total34.42/86.14/106.87/149.66ms all main_thread=0. No evidence that synchronous persistence caused a main-thread pause in this capture.
+
+Motion-gated CADisplayLink log:950 samples,p50/p95/p99~8.335ms,max20.745ms,one>=16.7ms,zero>=25/33.3ms. This does NOT prove displayed120FPS or rule out a stall at the moment isDecelerating becomes false, because sample logging is conditioned on dragging/decelerating. The video creation tag is14:57:13Z (later than the log's last14:56:51.684Z event), and no shared marker establishes absolute video→log time. Therefore do not assert that the5.8s stop coincides with a specific append/footer/store event.
+
+Narrowed diagnosis: distinguish actual current metadata-end arrival from deceleration termination during native update/layout/refresh-control work. Existing source calls endRefreshing on every nonloading representable update and toggles footer0/52 with invalidateLayout; these are audit candidates, not demonstrated causes. Existing telemetry has no contentSize/maxOffset/deceleration-end trace to decide. Next justified diagnostic should record bounded event snapshots at drag-end/deceleration-end, request/apply/batch completion, footer and real refresh transitions, plus offset/legal max/count/velocity; no per-frame string spam. Test actual inertia under delayed metadata and real native updates. Keep timers/artificial offset/inertia, arbitrary total-count placeholders and unmeasured prefetch changes out. User asked inspection; no runtime patch,Build orCI generated in this review. P2 not accepted; later adapters remain gated.
 
 ### 2026-10-06 22:50 (Asia/Shanghai) — First-load Library inertial stop reported
 
