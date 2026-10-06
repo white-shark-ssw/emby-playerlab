@@ -2,7 +2,7 @@
 
 ## Status and current identity — 2026-10-06
 
-- **Active — P0/P1/P2 code complete; Release/IPA validation in progress; real-device acceptance pending.**
+- **Active — P0/P1/P2 code complete; Release/IPA independently verified; awaiting target-device P2 acceptance.**
 - User explicitly requested development through a testable Library.items IPA. Read [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md), [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md), [POSTER_ENTRY_INDEX.md](../../POSTER_ENTRY_INDEX.md).
 - Working branch: `perf/poster-wall-library-build295`; Draft PR [#292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main.
 - Exact package source: **8ca3de65a8ca2927785bb194b6a3136b6d900e56**. Base: **03d1bad260666c3f38ae3913d6828f393690673e**, accepted overall Build294 Dock / Build293 carousel.
@@ -21,12 +21,28 @@ P2: G01 Library.items alone uses complete native collection scroll host and fixe
 - Actual Dock/carousel **18 tests/0 failures** passed source20d52f7706d9abf914facf50359df8ccb336fd09, run37474393518/job112306217313.
 - Current CI guards all test dependency bytes. Sole change since the eight-test source: existing EmbyPosterDetailDestination private→internal, correcting the full Release compiler visibility error. Full app Release is rerun; no untested unit-input change.
 - Source scope/whitespace/MinOS and protected native source guards passed. Earlier whitespace and pixel-width syntax failures corrected; Release visibility failure corrected from actual compiler evidence.
-- **IPA not yet produced or device-tested. Simulator tests do not prove120FPS.**
+- **IPA produced and independently verified; target-device pending. Simulator tests do not prove120FPS.**
 - G02–G15/H01–H04 scroll hosts remain unstarted. Shared image subscriptions do not imply host migration.
+
+## Build295 — Library.items pilot verified handoff (2026-10-06)
+
+- Candidate: **OnePlayer0.15.28 / Build295 / poster-wall-library**; `perf/poster-wall-library-build295` / Draft [PR292](https://github.com/white-shark-ssw/emby-playerlab/pull/292).
+- Exact package source: **8ca3de65a8ca2927785bb194b6a3136b6d900e56**; base03d1bad260666c3f38ae3913d6828f393690673e (accepted294/293). Later project-document synchronization is not packaged source.
+- Exact-source Release CI: [run37477868307](https://github.com/white-shark-ssw/emby-playerlab/actions/runs/37477868307) / job112317946251 **success**; control branch `ci/build295-poster-wall-library-20261006`, control **38689808411cee237bbf56f85d14619b2e07446f**.
+- Actual production poster cell/preparation/cache/model **8 tests /0 failures** passed sourcefefdcaefa4cacdc04644aed06e2262292727829d, run37476373994/job112312892728. Actual native Dock/carousel **18 tests /0 failures** passed source20d52f7706d9abf914facf50359df8ccb336fd09, run37474393518/job112306217313. Final CI byte-guards all dependencies and carries original logs; only private→internal detail-destination access changed since eight-test source, and full Release compile passed.
+- Artifact: [OnePlayer-0.15.28-build295-poster-wall-library](https://github.com/white-shark-ssw/emby-playerlab/actions/runs/37477868307/artifacts/11419727577), ID **11419727577**; digest/downloaded ZIP SHA256 **69c1fed42d8172337a27bf48722d6c80214c39134b1df37e9df827a60445588d**.
+- IPA: `OnePlayer-0.15.28-build295-poster-wall-library-unsigned.ipa`, **18713591 bytes**; SHA256 **a5bd7e5a23918ee81df47c6fd4ece34b359d56b6c62fbcc89c826abc44461b5c**.
+- Exact source ZIP SHA256: **b3ab04d969cd0f58df8f1eafd8673427d0aee222c7e35d6c9e7ec33c18b2742d**; git archive comment equals exact package source.
+- Independently verified ZIP integrity/checksums, bundle **com.embyplayerlab.app**, version **0.15.28**, Build **295**, Info.plist MinOS **15.0**, arm64 Mach-O MinOS **15.0.0**, CADisableMinimumFrameDurationOnPhone=true. Embedded runtime compatibility audit **OK**.
+- Scope: G01 Library.items complete native scroll host/cell, target-image adoption, shared bounded preparation/first-screen demand, background cached-first metadata restoration and ordered snapshot writes, original60 paging and system navigation activation. G02–G15/H01–H04 hosts unstarted.
+- Device matrix pending: both G01 entrances; cold/disk-warm/memory-warm scrolling; paging/failure; warm relaunch;~item2000 return-top; push/pop/interactive back; sort/refresh; Dock; resource/frame-tail sampling. Fixture5000-visit bounds are not a5000-item device acceptance.
+- Earlier whitespace/pixel-width syntax failures and full-app destination visibility error were corrected from actual CI evidence.
+
+**Code written /8 poster +18 retained native regressions passed /Release CI passed /IPA independently verified /real-device pending /task Active /not stable /not merged.** Accepted overall baseline remains294;293carousel/294Dock/Search256/P0 preserved. P3–P6 await P2 target-device evidence.
 
 ## Next exact action
 
-Inspect run37477868307 Release result, fix only evidenced defects, retrieve artifact and independently verify exact source ZIP, package SHA-256, Bundle/version/build, Info.plist and arm64 MinOS15.0. Deliver P2 testable IPA. Then target-device A/B: both G01 entry paths, cold/disk-warm/memory-warm scrolling, sequential paging, warm relaunch,~item2000 status-bar return-top, detail push/pop/interactive back, sort/refresh and Dock. Record frame-tail/memory evidence before P3–P6 rollout; do not mark task complete/stable or merge historical PR282.
+Install the unsigned Build295 candidate using the existing signing workflow and perform the P2 target-device matrix above on iPhone15ProMax/iOS17.0 against accepted Build294. Record actual Build/cache/thermal state, frame p50/p95/p99/max and >=16.7/25/33.3ms counts plus memory. Return device log/visual evidence; locate any reproducible regression before G02–G15/Home rollout. No further implementation is blocked on routine approval, but P3–P6 stage gate requires P2 device evidence. Keep task Active/Draft and accepted baseline294; do not mark120FPS/stable or merge historical PR282.
 
 ## Historical accepted evidence and protected contracts
 

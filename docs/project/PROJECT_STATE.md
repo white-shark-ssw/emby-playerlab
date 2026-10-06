@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated 2026-10-06: User accepted OnePlayer0.15.27/Build294 independent Dock reconstruction. PR#291 merged; Dock task completed and stable/frozen. Accepted Build293 carousel and P0 contracts remain protected._
+_Last updated2026-10-06: Build295 Library.items P1/P2 pilot is CI/IPA independently verified and awaits target-device acceptance. Accepted overall baseline remains Build294; carousel293/Dock294 frozen._
 
 ## Current accepted overall baseline
 
@@ -378,10 +378,8 @@ User's controlling target-device result: “目前测试没问题了，我认为
 
 At the user's request, [POSTER_IMPLEMENTATION_PLAN.md](POSTER_IMPLEMENTATION_PLAN.md) now gives the existing DEV-poster-grid-smoothness task a source-grounded P0–P6 rollout, Library.items pilot IPA first, latest-main identity migration, metadata restore ordering, image/scroll/first-screen ownership, per-entry device coverage and exact-source handoff/rollback. [POSTER_ENTRY_INDEX.md](POSTER_ENTRY_INDEX.md) explicitly marks G/H migrations unstarted; checkpoint points to the next implementation session. PR#282 remains Draft/open/unmerged at39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6. Accepted overall Build294, carousel293 and Dock294 are unchanged. No product code, new branch/Build, CI/IPA or new device performance evidence in this turn.
 
-## Build295 Library poster-wall pilot — implementation (2026-10-06)
+## Build295 Library.items pilot — verified candidate (2026-10-06)
 
-DEV-poster-grid-smoothness has explicitly moved from historical unmerged Build283/PR282 to accepted Build294 main **03d1bad260666c3f38ae3913d6828f393690673e**. Current independent branch **perf/poster-wall-library-build295 / Draft PR#292**, exact source **20d52f7706d9abf914facf50359df8ccb336fd09**, reserved **OnePlayer0.15.28 / Build295 / poster-wall-library / MinOS15.0**. Only Library.items is migrated: complete native collection host and fixed UIKit cell, independent shared bounded image subscriptions and first-screen demand, target-cell adoption/suffix append, persistent native navigation activation. Library restoration/index construction and ordered snapshot work run off-main before live refresh; stale sort replies are generation-rejected. Existing cache schema/frontier and60 paging remain.
+P0身份迁移完成；P1后台Library恢复/有序持久化与P2完整原生宿主/固定cell/共享有界准备/首屏需求已实现。独立 `perf/poster-wall-library-build295` / Draft PR292，OnePlayer0.15.28 / Build295；包源码 **8ca3de65a8ca2927785bb194b6a3136b6d900e56**，基线03d1bad260666c3f38ae3913d6828f393690673e。8项生产海报回归与18项Dock/轮播回归通过并按真实依赖逐字核对，Release run37477868307/job112317946251成功，IPA/源码/版本/校验和/Info与arm64 MinOS15.0已独立核验。完整身份见 [BUILD_TEST_INDEX.md](BUILD_TEST_INDEX.md) 和当前checkpoint。
 
-Shared image preparation reuses existing disk/decoded/ImageIO authorities; initial budgets4 active preparations (cancelled work counted until completion),12 pilot prefetch URLs,24 globally retained first-screen URLs across2 page demands. These are starting limits, not full-app memory or EX measurements. Retained18 Dock/carousel production tests and new production poster/cache/model tests are being run via exact-source CI. First preflight run failed whitespace before compilation and is corrected. **Code written; native tests/Release CI/IPA identity/device acceptance pending**. No120FPS/stable claim. Other G routes/Home wait for pilot device evidence; Build294 remains accepted overall baseline. P0/player/transport/PiP/native navigation ownership, accepted293 carousel/294Dock/Search and iOS15 retained. See current task checkpoint for live CI identities and next action.
-
-Preliminary5fc27c6 native suites passed (18 retained Dock/carousel +8 poster/cache/model regressions) on37473502209. Final source20d52f7 retains Dynamic Type/SF badge and display-scale request changes and will rerun native suites; Release/package/device pending.
+G01两条入口仍待目标机冷/暖滚动、分页、重启、~item2000回顶、push/pop/侧滑返回、排序/刷新/Dock和内存/长帧尾部验收。G02–G15/H01–H04宿主未迁移；共享图片订阅不代表入口迁移。任务Active，PR保持Draft/unmerged，已验收整体基线294不变。没有120FPS或稳定结论；293轮播/294Dock/Search256及P0保持保护。

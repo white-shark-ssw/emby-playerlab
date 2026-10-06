@@ -53,7 +53,7 @@ G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件
 
 ## 5. 每条入口的交付记录
 
-实施后逐行填写“已接入 / 构建验证 / 真机验证 / 待验证”；G01已写入Build295独立试点，原生初步测试通过、最终CI/IPA/真机待核实；G02–G15仍待迁移。共享核心完成不等于全部入口完成。
+实施后逐行填写“已接入 / 构建验证 / 真机验证 / 待验证”；G01已写入Build295独立试点，8项生产海报回归/18项Dock轮播回归通过、Release CI/IPA已独立核验、真机待验收；G02–G15仍待迁移。共享核心完成不等于全部入口完成。
 
 每个适配器至少检查：首次无图时固定海报框 + 已有名称；磁盘暖缓存提前准备；详情 push/pop 返回后保持数据与位置；深处回顶时已准备首屏直接呈现；分页追加不改变旧项位置；排序/筛选/来源变化不收到旧回调；无更多、空结果、图片失败和已有内容下的追加失败。G08 还检查父子文件夹往返；G10/G12 检查人物目的地；G13/G14/H04 检查跨服务器相同 item.id；G15 检查追加推荐、关闭推荐和离开 Search 的既有生命周期。
 
@@ -63,7 +63,7 @@ G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件
 
 | 入口范围 | 计划阶段 | 产品接入 / 构建 / 真机 |
 |---|---|---|
-| G01 Library.items | P2 首个闭环 | 未开始 / 未验证 / 未验证 |
+| G01 Library.items | P2 首个闭环 | 已接入 / 自动回归/Release/IPA通过 / 未验证 |
 | G02–G08 Library其余入口 | P3 | 未开始 / 未验证 / 未验证 |
 | G09–G15 其他三列墙 | P4；G15含搜索落地宿主 | 未开始 / 未验证 / 未验证 |
 | H01–H04 首页及其他横向行 | P5；必要宿主可在P4接入 | 未开始 / 未验证 / 未验证 |
@@ -83,7 +83,6 @@ G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件
 
 以上行号只对应本清单的审计基线，不应作为后续源码不变的假设。
 
-
 ### G01 pilot state (2026-10-06)
 
-P1/P2 code written on perf/poster-wall-library-build295 / Draft PR292 / OnePlayer0.15.28 Build295. Actual production native/preparation/cache/model preliminary suite8/0 and retained Dock/carousel18/0 passed on source5fc27c6. Final source20d52f7 fonts/SF badge/display-scale native tests+Release+IPA pending. Both G01 entry paths, cold/disk-warm/memory-warm, pagination,~item2000 return-top, relaunch, native push/pop/interactive back and Dock remain device-pending. Shared preparation now serves existing SwiftUI image consumers; this does not migrate their scroll hosts or mark G02–G15/H01–H04 complete.
+perf/poster-wall-library-build295 / Draft PR292 / OnePlayer0.15.28 Build295：G01两条入口共用完整EmbyPosterWall宿主。8项生产cell/preparation/cache/model回归通过，18项Dock/轮播回归保留并核对真实依赖。Release CI成功，IPA独立核验完成；准确身份见BUILD_TEST_INDEX与当前checkpoint。首次无图、磁盘暖/内存暖、分页、~item2000回顶、暖重启、push/pop/侧滑返回及Dock均待真机验证；G02–G15/H01–H04未迁移。现有SwiftUI图片消费者共享prepare订阅，不代表这些滚动宿主已迁移。
