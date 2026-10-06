@@ -26,6 +26,7 @@ final class EmbyPosterCell: UICollectionViewCell {
     private let year = UILabel()
     private let progress = UIView()
     private let badge = UILabel()
+    private let badgeCheck = UIImageView(image: UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .bold)))
     private(set) var record: EmbyPosterRecord?
     private var subscription: UUID?
     private var bindingGeneration = 0
@@ -40,14 +41,20 @@ final class EmbyPosterCell: UICollectionViewCell {
         artwork.backgroundColor = .secondarySystemBackground
         artwork.layer.cornerRadius = 10; artwork.layer.cornerCurve = .continuous
         placeholder.tintColor = .tertiaryLabel; placeholder.contentMode = .scaleAspectFit
-        title.font = .systemFont(ofSize: 15); title.textColor = .label
-        year.font = .systemFont(ofSize: 12); year.textColor = .secondaryLabel
+        title.font = .preferredFont(forTextStyle: .subheadline); title.textColor = .label
+        year.font = .preferredFont(forTextStyle: .caption1); year.textColor = .secondaryLabel
         title.lineBreakMode = .byTruncatingTail; year.lineBreakMode = .byTruncatingTail
         progress.backgroundColor = .systemBlue
         badge.font = .systemFont(ofSize: 11, weight: .bold); badge.textColor = .white; badge.textAlignment = .center
-        badge.clipsToBounds = true
+        badge.clipsToBounds = true; badgeCheck.tintColor = .white; badgeCheck.contentMode = .scaleAspectFit
         [artwork, placeholder, title, year, progress, badge].forEach(contentView.addSubview)
+        badge.addSubview(badgeCheck)
         isAccessibilityElement = true; accessibilityTraits = .button
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        title.font = .preferredFont(forTextStyle: .subheadline); year.font = .preferredFont(forTextStyle: .caption1)
     }
 
     override func layoutSubviews() {
@@ -62,6 +69,7 @@ final class EmbyPosterCell: UICollectionViewCell {
         let badgeWidth = max(24, ceil(badge.intrinsicContentSize.width) + 12)
         badge.frame = CGRect(x: width - badgeWidth - 5, y: 5, width: badgeWidth, height: badgeWidth)
         badge.layer.cornerRadius = badgeWidth / 2
+        badgeCheck.frame = badge.bounds.insetBy(dx: 6, dy: 6)
     }
 
     func configure(_ value: EmbyPosterRecord) {
@@ -72,7 +80,8 @@ final class EmbyPosterCell: UICollectionViewCell {
         title.text = value.name; year.text = value.year; year.isHidden = value.year == nil
         progress.isHidden = value.progress <= 0
         badge.isHidden = value.unplayed <= 0 && !value.played
-        badge.text = value.unplayed > 0 ? String(value.unplayed) : "✓"
+        badge.text = value.unplayed > 0 ? String(value.unplayed) : nil
+        badgeCheck.isHidden = value.unplayed > 0
         badge.backgroundColor = value.unplayed > 0 ? .systemBlue : .systemGreen
         placeholder.isHidden = artwork.image != nil
         accessibilityLabel = [value.name, value.year].compactMap { $0 }.joined(separator: ", ")
@@ -151,6 +160,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     private var prefetch: [URL: UUID] = [:]
     private let firstScreenOwner = UUID()
     private let preparation = EmbyImagePreparation.shared
+    private var pixelWidth = 0
     private var width: CGFloat = 0
     private var visible = false
     private var foregroundObserver: NSObjectProtocol?
@@ -183,8 +193,9 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         super.viewDidLayoutSubviews()
         let newWidth = floor((view.bounds.width - 28 - 24) / 3)
         guard newWidth > 0 else { return }
-        if width != newWidth {
-            width = newWidth
+        let newPixelWidth = min(440, max(1, Int(ceil(newWidth * view.traitCollection.displayScale))))
+        if width != newWidth || pixelWidth != newPixelWidth {
+            width = newWidth; pixelWidth = newPixelWidth
             flow.itemSize = CGSize(width: width, height: floor(width / EmbyPosterGridMetrics.posterAspectRatio) + 42)
             appliedRevision = nil; appliedReplacement = nil
             if let input { applyItems(input) }
@@ -222,7 +233,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
             return
         }
         let newItems = append ? Array(value.items.dropFirst(old.count)) : value.items
-        let changed = newItems.map { EmbyPosterRecord(item: $0, client: value.client, pixelWidth: min(440, max(1, Int(ceil(width * view.traitCollection.displayScale))))) }
+        let changed = newItems.map { EmbyPosterRecord(item: $0, client: value.client, pixelWidth: pixelWidth)) }
         let next = append ? old + changed : changed
         let sameIDs = !append && sourceIdentity == identity && next.map(\.id) == old.map(\.id)
         appliedReplacement = value.replacement
