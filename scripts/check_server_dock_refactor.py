@@ -25,7 +25,7 @@ for name in pages:
         assert current.count('.serverDockContentPadding()') == expected.count('.serverDockContentPadding()')
         assert 'bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset)' in current
     else:
-        assert current == expected, f'Unexpected non-Dock page behavior changed: {path}' 
+        assert current == expected, f'Unexpected non-Dock page behavior changed: {path}'
 
 root = Path('Sources/UI/EmbyServerRootViewV3.swift').read_text()
 original = old('Sources/UI/EmbyServerRootViewV3.swift')
@@ -54,4 +54,3 @@ for directory in ['Sources/Player', 'Sources/Transport', 'Sources/Cache', 'Sourc
 for name in ['EmbyHomeCarouselNativePresentationV3.swift', 'EmbyHomeCarouselStateV3.swift', 'EmbyHomeCarouselInteractionV3.swift', 'EmbyHomeHeroV3.swift']:
     assert Path('Sources/UI', name).read_text() == old(f'Sources/UI/{name}'), f'Frozen carousel changed: {name}'
 print('Dock page changes limited to hosting/signatures/clearance; root actions and frozen source unchanged; iOS15 retained.')
-

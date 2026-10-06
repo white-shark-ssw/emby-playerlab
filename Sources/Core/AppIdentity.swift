@@ -26,4 +26,3 @@ enum AppIdentity {
         return value
     }
 }
-
