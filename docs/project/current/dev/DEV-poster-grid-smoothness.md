@@ -1,18 +1,33 @@
 # DEV-poster-grid-smoothness
 
-## Status and current identity — 2026-10-06
+## Status and current identity — 2026-10-07 (Asia/Shanghai)
 
-- **Active — P0/P1/P2 code complete; Release/IPA independently verified; first-load inertial-stop device report under investigation; P2 not accepted.**
-- User explicitly requested development through a testable Library.items IPA. Read [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md), [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md), [POSTER_ENTRY_INDEX.md](../../POSTER_ENTRY_INDEX.md).
-- Working branch: `perf/poster-wall-library-build295`; Draft PR [#292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main.
-- Current working branch head /Build296 exact source: **bfa5b56ee1e5737cf0fff9a2b7234505e8469dfb**. PR stays Draft/open/unmerged.
-- Exact package source: **8ca3de65a8ca2927785bb194b6a3136b6d900e56**. Base: **03d1bad260666c3f38ae3913d6828f393690673e**, accepted overall Build294 Dock / Build293 carousel.
-- Candidate: **OnePlayer0.15.28 / Build295 / poster-wall-library / iOS15.0**. Target: iPhone15ProMax / iOS17.0.
-- CI control: `ci/build295-poster-wall-library-20261006`, **38689808411cee237bbf56f85d14619b2e07446f**, workflow `.github/workflows/build295-poster-wall-library.yml`, run **37477868307 / job112317946251**. Control source is not package source.
-- Historical PR282 / branch `perf/poster-grid-offmain-persistence-build280` / Build283 source39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6 stays untouched/open/unmerged. Extracted ordered Library persistence and persistent navigation activation; no whole-stack merge.
-- Aether235 remains separate; Search completed256, carousel293 and Dock294 frozen.
+- **Active — Build296 exact-source regressions/Release/IPA independently verified; target-device inertia/long-frame retest pending; P2 not accepted.**
+- Existing task/plan: [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md). Only G01 Library.items has migrated; other hosts remain gated.
+- Working branch: `perf/poster-wall-library-build295`; Draft/open/unmerged [PR292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main.
+- Current source branch head: **bfa5b56ee1e5737cf0fff9a2b7234505e8469dfb** before final document-only synchronization. Exact package/test source remains this SHA; main checkpoint records subsequent live document-only head explicitly.
+- Current candidate: **OnePlayer0.15.29 /Build296 /poster-wall-motion-diagnostics /iOS15.0**. Target iPhone15ProMax/iOS17.0.
+- CI control: `ci/build296-poster-wall-motion-20261006`, **b904829dc6e24186e35c5cc595bf2d71893094f3**; workflow `.github/workflows/build296-poster-wall-motion.yml`; **run37490702186 /job112362875963 success**.
+- Artifact **11425443691**, digest **efcbbf9ac1de1cd175ba0603e4dcc7f156a4adc46a8cd79ba42caaaac7cfdabd**. Package/MinOS details below.
+- Previous Build295/0.15.28 source8ca3de65a8ca2927785bb194b6a3136b6d900e56 and IPA remain historical pilot evidence. User reports high FPS/refactor positive; abrupt stop was not accepted.
+- Base03d1bad260666c3f38ae3913d6828f393690673e; accepted overall294/Dock294, inherited accepted293carousel. Historical PR282/39014a03 untouched/open/unmerged; no stack merge. Aether235 separate; Search256 protected.
 
-## Completed and validation
+## Build296 /0.15.29 — Library inactive-refresh inertia correction and bounded tail diagnostics (2026-10-07 Asia/Shanghai)
+
+- Task DEV-poster-grid-smoothness; G01 Library.items only; same perf/poster-wall-library-build295 /Draft PR292. Product exact source **bfa5b56ee1e5737cf0fff9a2b7234505e8469dfb**; baseline03d1bad260666c3f38ae3913d6828f393690673e (accepted overall294/Dock294, inherited carousel293). Main changes before final packaging were project documents only.
+- User feedback2026-10-06 23:04: refactor relatively successful, FPS maintains a high level; asks to improve long frames. Qualitative positive Build295 result, not full P2 acceptance or presented120FPS measurement.
+- Actual native fast-swipe/controlled metadata test reproduced on iOS18.5: deceleration stays1 through append; inactive endRefreshing synchronously triggers deceleration-end0. Source5187b590e51770f05fd393709cbd66ddddc589b6, run37488102803/job112353349125. Actual count120, content expanded, offset did not jump. This is simulator causal evidence, not independent proof of the earlier video's iOS17 timing/root cause.
+- Small owner fix: call existing endRefreshing only when loading finishes AND UIRefreshControl.isRefreshing is true. Real pull-refresh completion preserved. No inertia/offset/footer/page-size/load-ahead/image-budget changes, placeholder-total slots, timers or retries.
+- Bound diagnostics:64 numeric frames, including first stationary frame after motion; native drag/deceleration endpoints; count/revision/loading/footer/geometry/legal boundary; append begin/completion; real refresh; model request/response/publication/persistence/finish. Wall4096/model2048 event caps. No per-frame strings. SourceVersion/package Build logged at wall creation; no new source URL/user ID traces.
+- Exact-source CI **[run37490702186](https://github.com/white-shark-ssw/emby-playerlab/actions/runs/37490702186) /job112362875963 success**; control **b904829dc6e24186e35c5cc595bf2d71893094f3**, branch ci/build296-poster-wall-motion-20261006, workflow .github/workflows/build296-poster-wall-motion.yml. **12 actual production-source units/0 failures +1 real native-gesture UI test/0 failures**. Actual18 native Dock/carousel tests remain byte-guarded against source20d52f7706d9abf914facf50359df8ccb336fd09/run37474393518/job112306217313; original logs retained. Not described as rerun.
+- Release compile, scope/whitespace/Frozen guards, package identity and MinOS audit passed. Artifact **[OnePlayer-0.15.29-build296-poster-wall-motion-diagnostics](https://github.com/white-shark-ssw/emby-playerlab/actions/runs/37490702186/artifacts/11425443691)**, ID **11425443691**, ZIP digest/downloaded SHA256 **efcbbf9ac1de1cd175ba0603e4dcc7f156a4adc46a8cd79ba42caaaac7cfdabd**.
+- IPA `OnePlayer-0.15.29-build296-poster-wall-motion-diagnostics-unsigned.ipa`, **18724844 bytes**, SHA256 **c9379f6a592feece2a158f9ee8bf2a29bd60f28409b5c607b0ac56fc4639af1d**. Exact source ZIP SHA256 **d4fc1ab9015750870e013da09cfbc8cf82b7be73d95c6322dcf912c2a68c959b**; git archive comment equals package source.
+- Independent verification: ZIP integrity/checksums, bundle **com.embyplayerlab.app**, version **0.15.29**, Build **296**, Info MinOS **15.0**, arm64 Mach-O MinOS **15.0.0**, CADisableMinimumFrameDurationOnPhone=true; embedded compatibility audit **OK**. Downloadable IPA saved separately; no temporary signed URL in project docs.
+- Earlier CI: initial named/latest simulator destination failed before tests, corrected to actual iOS18.5 UDID; native UI failures exposed the cause; first refresh/control-request unit fixture failures were corrected by empty unit-host isolation, actual window attachment and bounded10s test-only boundary wait. Same-source run37490079849 was cancelled after12 unit passes when a duplicate same-control push run appeared; final run above completed the entire pipeline. No failed/cancelled run is claimed as success.
+- **Code written /12+1 regressions passed /exact-source Release CI passed /IPA independently verified /Build296 target-device pending /task Active /not stable /not merged.** P2 awaits iPhone15ProMax/iOS17 initial-load inertia and long-frame log/video, plus remaining cache/navigation/deep return-top matrix. G02–G15/H01–H04 unstarted and gated; accepted overall baseline294 remains. Protect293carousel/294Dock/Search256/P0.
+
+
+## Completed and validation — historical Build295 pilot
 
 P1: original Library cache owner performs metadata read/JSON/index construction and ordered snapshot construction/JSON/atomic writes on a serial utility queue. Cached restore publishes once before live requests; refresh failure preserves cache/frontier. Completed restoration future is released; stale sort replies are generation rejected.
 
@@ -67,9 +82,11 @@ Code written: bounded64 numeric motion ring, terminal-stationary frame sampling,
 
 ## Next exact action
 
-2026-10-06 23:04 (Asia/Shanghai): user authorizes the bounded diagnostic iteration and reports that Build295's refactor is relatively successful with FPS maintaining a high level; asks for further long-frame improvement. This is qualitative positive device feedback, not complete P2 acceptance or measured presented FPS. Build296 /0.15.29 /poster-wall-motion-diagnostics reserved for this same task/branch/PR after checking BUILD_TEST_INDEX, other checkpoints, all482 current branches and open PRs; no collision found. Code written; tests/Release/IPA pending. Next: run updated actual-source tests and exact-source Release, then deliver verified IPA. Do not alter inertia, paging quantity or unproven refresh/layout behavior.
+Install/sign the verified **Build296/0.15.29** IPA and repeat the user's first-loaded Library continuous fast upward swipes. At an abrupt stop, wait briefly then drag again; export App log and matching video from this same Build/session. New trace includes package identity, native motion end, legal boundary/contentSize/count, append/footer/real-refresh state and numeric tail. First compare against Build295; collect no-recording frame p50/p95/p99/max and>=16.7/25/33.3 counts for long-frame work, with cache/thermal/low-power context. Do not infer presented FPS or claim all device stops solved from simulator pass. Keep current P2 cache/deep-return-top/navigation/Dock matrix pending; do not roll out G02–G15/H01–H04, merge/freeze or alter P0 until relevant acceptance. Source/CI/package complete; normal handoff is user runtime testing, not another build/continue request.
 
-Log/video review confirms a sharp visual motion stop near5.8s and resumed movement on new touch near7.2s; current motion-gated trace cannot decide metadata boundary vs native deceleration interruption. Read the22:57 evidence review below. Do not request the same evidence again or claim a page/store event is time-aligned to the video. Next diagnostic must capture bounded offset/contentSize/legal-max/count/velocity/deceleration state at request/apply/batch/footer/real refresh transitions and native motion-end callbacks, with delayed-metadata native inertia tests. Historical inspection turn made no runtime mutation/Build/CI; current user now authorized the Build296 diagnostic iteration. P2 remains unaccepted; preserve P0/Dock/carousel/Search and current unique identities.
+### 2026-10-06 23:04 — User positive FPS feedback and continuation authorization
+
+User considers Build295 refactor relatively successful and reports high FPS maintained; requests further long-frame optimization. This is qualitative positive device evidence, not complete acceptance or120Hz presentation measurement. User authorized proceeding; iteration delivered Build296 with the evidenced inactive-refresh correction and bounded attribution above.
 
 ### 2026-10-06 22:57 (Asia/Shanghai) — Log/video confirms abrupt visual motion stop, cause still unresolved
 
