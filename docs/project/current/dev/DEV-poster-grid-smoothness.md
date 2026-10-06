@@ -2,6 +2,8 @@
 
 ## Status
 
+**2026-10-06 current phase: overall poster-presentation design prepared; implementation not started.** See [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md). Earlier Build283 remains the exact historical test candidate below; no branch identity or Build has been reassigned. The latest Home/Library qualitative report has no supplied installed Build/log. User approved preparation-first design discussion, not runtime verification.
+
 **Active — Build283 / OnePlayer 0.15.16 is now target-device positive for both intended regression surfaces. The user confirms Library `.items` cover entry to detail has the normal system entrance animation again, accepting the always-mounted hidden `NavigationLink` repair. The accompanying `OnePlayer-App-1788197938.log` also confirms Build280's off-main pagination fix survives unchanged: one continuous 60→660 native Library session runs at 118.34 Hz with p50/p95/p99 8.33/8.70/17.85 ms, max 25.02 ms, exactly one >=25 ms frame and zero >=33.3 ms frames while all persistence remains `main_thread=0` and snapshot total grows to 208.87 ms. The user reports no visible twitch. No additional code change is justified from this log. The broader historical fixed-item/non-pagination poster tail is not globally frozen by this single pagination session, and native interactive swipe-back has not been explicitly rechecked in the latest device report.**
 
 - **Work ID:** `DEV-poster-grid-smoothness`
@@ -24,6 +26,16 @@ Read-only audit of current main **4acd00c935b7414b05eb791596cf4ee1d460d812** (ac
 The Build283 native experiment still hosts V3PosterCard through UIHostingController<AnyView>; same-ID representable updates reconfigure all visible hosts. These are verified structural facts, not proof of the present hitch's cause. Shared main image decoding already runs off-main and decoded/disk caches already exist; do not propose moving an already-background decoder as a new fix.
 
 Discussion direction, not an approved implementation decision: first identify the failing installed baseline and correlate frame/presentation gaps with real offset, legal bounds, cell work, image adoption, pagination and persistence. Evaluate a shared reusable native poster cell/image-adoption layer and grid/sectioned-row adapters through a small Library A/B before expanding to Home. Preserve existing cache authorities, navigation/pagination semantics, accepted Build293 carousel, Build294 Dock and iOS15/P0. Container replacement alone has already been insufficient historically. No code, branch, Build allocation, merge, CI or IPA change was made for this discussion.
+
+### 2026-10-06 — Overall design prepared
+
+User confirmed the carousel-style preparation/residency principle and requested an overall poster design. The detailed proposal is [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md): native reusable fixed-layout cells, one shared request/preparation coordinator using existing caches, UIKit prefetch, bounded readiness window, target-item updates, ordered off-main Library persistence and separate Library/Home adapters. Home's accepted carousel and Dock remain owned by their existing components.
+
+This authorizes design/planning in this turn, not implementation/branch migration/merge/Build allocation. Main planning baseline4ec7b816f1d2efd7069de3e300d12f4e4042889b retains accepted Build294 product behavior. PR#282 remains Draft/open at39014a03e2681aed3647bdd6d7d7b1c82b8cc4f6 and was rechecked. Other Active task Aether is outside this scope; Search checkpoint is Completed and its accepted semantics are protected.
+
+Visible image placeholders are distinct from metadata paging. The proposal preserves current sequential60-item Library paging; a5000-item full sparse extent with arbitrary jumps would require separate range-loading semantics and is not silently included. Preparation-window/concurrency values are measurement choices, not verified EX constants. Image decoding already runs off-main in main; the new work is earlier/shared preparation and lighter native adoption, not pretending a new background decoder is needed.
+
+Evidence: **design written /source+task identity audited /no product code /no new CI or IPA /new performance behavior not device-tested**.
 
 ## Accepted pagination-persistence result
 
@@ -96,6 +108,6 @@ CI / package evidence:
 
 ## Next exact action
 
-**2026-10-06 discussion update:** establish the installed Build for the new Home/Library report and capture the exact fixed-item versus pagination symptom before implementation. Reconcile accepted Build294 source with the still-unmerged Build283 experiment; preserve all old accepted sub-contracts. A shared native poster presentation refactor is a proposal, not a selected or tested architecture. No new Build is reserved. The earlier Build283 closeout gate below remains historical/pending and must not be silently inferred as passed.
+The requested overall design is complete in [POSTER_PRESENTATION_DESIGN.md](../../POSTER_PRESENTATION_DESIGN.md). When user authorizes implementation, first establish the installed Build for the latest report and recheck main/PR#282/other Active identities. Explicitly record any move from the old Build283 experimental branch to a latest-main development baseline; do not overwrite accepted Build293 carousel/Build294 Dock or assign a duplicate Build. Then follow the design's ordered stages: evidenced persistence/navigation contracts → native Library.items cell+shared preparation A/B → remaining Library adapters → Home content adapter → remaining shared poster pages → identity-verified IPA → real-device validation.
 
-**No product-code change is justified from the current log.** Leave the accepted pagination-persistence and detail-push repair unchanged. If PR #282 is to leave Draft/merge, explicitly spot-check native interactive edge swipe-back once because that previously stated gate has not been reported in the latest device result. If a distinct visible poster hitch reappears later, capture that exact fixed-item/non-pagination session and resume from its evidence rather than reopening persistence, pagination or scroll physics speculatively.
+This turn does not require a new code change, branch, CI or IPA. New qualitative symptom is not proof of an interior scroll-offset reversal or a particular root cause. The old Build283 native interactive edge-swipe-back closeout gate remains unreported; do not infer it passed or merge the historical stack wholesale.

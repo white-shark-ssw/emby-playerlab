@@ -98,6 +98,10 @@ The active poster-smoothness task now profiles the shared 3×3 presentation also
 
 ## Active: Poster-heavy scrolling smoothness
 
+### 2026-10-06 — Preparation-first poster design prepared
+
+User confirmed the preparation/residency principle shared with accepted carousel reconstruction and requested the overall plan. See [POSTER_PRESENTATION_DESIGN.md](POSTER_PRESENTATION_DESIGN.md). Proposed scope is reusable native fixed-layout cells, shared bounded image preparation using existing caches, targeted updates and Library/Home layout adapters. Preserve existing metadata paging, Build293 carousel, Build294 Dock, Search/navigation/page-cache and iOS15/P0. A full5000-item sparse scrolling extent is not silently substituted for current sequential paging. Library implementation should precede Home migration. Main/PR#282/task identities audited; this turn changes design documents only, with no new code/CI/IPA or performance claim. Build294 remains accepted overall baseline; new symptom's installed Build still needs attribution before device diagnosis.
+
 ### 2026-10-06 — New cross-page poster-scroll report / baseline distinction
 
 User reports that poster-heavy pages, including Home and Library, do not sustain the desired120FPS and can visibly pause or appear to move backward for one frame during otherwise continuous upward/downward scrolling. This is new qualitative device evidence; the installed Build, an accompanying log/video and exact event timestamps were not supplied. Do not attribute it to Build283 or infer a measured interior contentOffset reversal.
