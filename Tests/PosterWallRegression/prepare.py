@@ -21,7 +21,8 @@ final class DiagnosticsLogger {
     static let shared = DiagnosticsLogger()
     private let lock = NSLock()
     private var messages: [String] = []
-    func log(_ category: String, _ message: String) { lock.lock(); messages.append(message); lock.unlock() }
+    var onRecord: ((String) -> Void)?
+    func log(_ category: String, _ message: String) { lock.lock(); messages.append(message); lock.unlock(); onRecord?(message) }
     func records() -> [String] { lock.lock(); defer { lock.unlock() }; return messages }
 }
 final class EmbyAPIClient {

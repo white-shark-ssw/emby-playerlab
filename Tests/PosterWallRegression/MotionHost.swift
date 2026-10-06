@@ -25,6 +25,11 @@ import UIKit
         view.addSubview(release); view.addSubview(status)
         addChild(wall); view.addSubview(wall.view); wall.didMove(toParent: self)
         wall.collection.accessibilityIdentifier = "poster-wall"
+        DiagnosticsLogger.shared.onRecord = { [weak self] message in
+            if message.contains("event=deceleration-begin") {
+                DispatchQueue.main.async { self?.releaseMetadata() }
+            }
+        }
         update(loading: true)
     }
     override func viewDidLayoutSubviews() {
@@ -42,6 +47,7 @@ import UIKit
         wall.update(EmbyPosterWall(items: items, revision: revision, replacement: 1, client: client, isLoading: loading, hasLoaded: true, error: nil, emptyText: "empty", bottomPadding: 86, isActive: true, onApproachingEnd: {}, onRefresh: {}, onSelect: { _ in }))
     }
     @objc private func releaseMetadata() {
+        guard count == 60 else { return }
         let moving = wall.collection.isDecelerating
         let offset = wall.collection.contentOffset.y
         let height = wall.collection.contentSize.height

@@ -8,7 +8,8 @@ final class PosterMotionUITests: XCTestCase {
             let wall = app.collectionViews["poster-wall"]
             XCTAssertTrue(wall.waitForExistence(timeout: 10))
             wall.swipeUp(velocity: .fast)
-            app.buttons["release-metadata"].tap()
+            // The controlled metadata gate opens on the real production delegate's deceleration-begin event.
+            // No second automated touch or XCTest quiescence wait can terminate the ongoing gesture first.
             let status = app.staticTexts["motion-status"].label
             XCTAssertTrue(status.contains("expanded=1"), status)
             XCTAssertTrue(status.contains("jump=0"), status)
