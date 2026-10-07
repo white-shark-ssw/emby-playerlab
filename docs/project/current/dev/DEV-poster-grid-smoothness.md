@@ -1,18 +1,20 @@
 # DEV-poster-grid-smoothness
 
-## Current identity — 2026-10-07 (Asia/Shanghai)
+## Current identity — Build298 reserved /2026-10-07 22:21 Asia/Shanghai
 
-- **Active — Build297 partial device evidence reviewed; application-side PlaybackInfo gate confirmed; Library return retention positive in captured session; measured long-frame gain and full P2 acceptance pending.**
-- Plan: [POSTER_IMPLEMENTATION_PLAN.md](../../POSTER_IMPLEMENTATION_PLAN.md); G01 Library.items only, other hosts gated.
-- Branch **perf/poster-wall-library-build295**; Draft/open/unmerged [PR292](https://github.com/white-shark-ssw/emby-playerlab/pull/292), base main. Current working branch head **5f85b22683269d397da6b2ea2c61b12c31b21ca4** (final documents only); exact packaged/runtime/test source **279f2c00fe86fa913962d22a0c7afbf17c82ca8d**, byte-identical at the synchronized head.
-- Candidate **OnePlayer0.15.30 /Build297 /poster-wall-return-section /iOS15.0**; target iPhone15ProMax/iOS17. Exact-source CI control **a1ef6de2b36d33a77bf2203d7940fce7e8620b77**, run37518563236/job112457718586 success; artifact11438264634; independent package details below.
-- 16 actual-source units passed896/run37516521005 and all inputs/log checksum guarded at final source;3 real UI tests pass at final source.18 frozen Dock/carousel retained, not rerun.297 partial device log/video reviewed below; full matrix/acceptance pending.
-- Last device-tested296/bfa: user reported no sudden stop in supplied session; deep return reset confirmed; movie stills metadata fast in3 captured cases but section presentation unmeasured. Accepted overall294/carousel293/Dock294/Search256/P0 remain; Aether235 separate. No merge/freeze/other host rollout.
+- **Active — user authorizes implementing the confirmed detail loading/cancellation/persistence fixes and continuing through a verified test IPA.**
+- Same Work ID/Plan/G01 Library.items; no other poster host rollout. Draft/open/unmerged PR292, branch **perf/poster-wall-library-build295**; real PR/branch head **5f85b22683269d397da6b2ea2c61b12c31b21ca4**, latest main **ccc743fe5bf0ff5f3c4e55fbe4a8e5d881b114c2** (documents only since final297 source).
+- Last device-tested/package source **279f2c00fe86fa913962d22a0c7afbf17c82ca8d**, OnePlayer0.15.30/297; partial device review below. Seven captured returns retain original wall/data/offset; no full P2 acceptance.
+- Uniquely reserved candidate **OnePlayer0.15.31 /Build298 /detail-independent-loading /iOS15.0** after BUILD_TEST_INDEX, all other Active checkpoints and current branch candidates checked; Aether235 independent, Search256 completed. No298 source/CI/IPA exists yet.
+- Scope: original detail model bounded independent content publication and cancellation; existing warm cache owner ordered off-main JSON/disk persistence; bounded Library full-apply substage evidence before a further performance patch. Preserve item/series/episode selection dependencies and real playback/session reuse; native navigation, cache identity/restoration, accepted294/carousel293/Dock294/Search256/P0 remain protected.
 
 ## Next exact action
 
-Current user request is diagnosis, not implementation. Report confirmed serial PlaybackInfo→Images/Similar gate, cancellation→empty warm-cache reuse, synchronous detail persistence4.44–15.98ms and initial840-record Library apply9.03ms; keep first-presented/hitch evidence limits. After user authorizes a fix, implement bounded independent detail content publication in the original model, correct cancellation/cache validity and off-main ordered disk persistence without changing playback/session/navigation/Frozen/P0 owners; profile full Library apply substages before choosing its narrow patch. Add actual-source delayed-PlaybackInfo/cancellation/partial-failure regressions, allocate a unique next candidate only after identity/collision guards, then continue through verified IPA. No new candidate/runtime change in this analysis turn. Full P2/other-host gates remain.
+Implement three bounded structured detail branches after the refreshed item: presentation Images and Similar independent of PlaybackInfo, series episode/season dependencies retained for primary media selection. Cancellation must not publish/store partial snapshots or mark success; ordinary partial failures retain valid prior cache. Keep immediate in-memory warm snapshot publication, move immutable snapshot object construction/JSON serialization/atomic writes onto one ordered queue within the existing cache owner; test queue order/route isolation and no-main disk work. Use actual production model/cache tests with a delayed PlaybackInfo boundary and cancellation/partial-failure fixtures. Profile840-record full apply with bounded substages; do not invent a full-remap append bug. Then commit exact source, run affected regressions/Release, independently verify and directly attach298 IPA without intermediate continue. Full P2 matrix and other-host/Frozen gates remain.
 
+## Completed / Validation / Pending — current298
+
+Identity/collision guards passed. Confirmed297 evidence retained below. Runtime298 patch, new regressions, CI/Release/artifact retrieval and package/source/MinOS checks pending; not device-tested/stable/merged.
 
 ## Build297 device evidence — 2026-10-07 22:12 Asia/Shanghai
 
