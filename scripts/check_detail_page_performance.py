@@ -3,6 +3,10 @@ from pathlib import Path
 detail = Path('Sources/UI/EmbyMediaDetailView.swift').read_text()
 state = Path('Sources/UI/EmbyDetailPerformanceState.swift').read_text()
 project = Path('project.yml').read_text()
+model = detail[detail.index('@MainActor\nfinal class EmbyMediaDetailViewModel'):detail.index('private struct EmbyDetailRemoteImage')]
+assert model.count('private var hasCompleteWarmPresentation = false') == 1
+assert detail.count('private var hasCompleteWarmPresentation = false') == 1
+assert 'let refreshed = try await client.libraryItem(itemId: itemID)\n            try Task.checkCancellation()' in model
 
 # High-frequency native scroll offset belongs to the Hero-only observable scope, not root @State.
 assert '@State private var heroRawScrollMinY' not in detail

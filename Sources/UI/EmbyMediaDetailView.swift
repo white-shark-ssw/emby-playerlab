@@ -996,7 +996,6 @@ private final class EmbyDetailFilterResultsViewModel: ObservableObject {
     private var isFetching = false
     private var seenItemIDs = Set<String>()
     private(set) var hasLoaded = false
-    private var hasCompleteWarmPresentation = false
 
     init(filter: EmbyDetailFilter, client: EmbyAPIClient) {
         self.filter = filter
@@ -1094,6 +1093,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     private let client: EmbyAPIClient
     private let initialEpisodeID: String?
     private(set) var hasLoaded = false
+    private var hasCompleteWarmPresentation = false
 
     init(item: LibraryItem, client: EmbyAPIClient, initialEpisodeID: String? = nil) {
         self.item = item
@@ -1587,6 +1587,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     func refreshPlaybackUserData(itemID: String) async {
         do {
             let refreshed = try await client.libraryItem(itemId: itemID)
+            try Task.checkCancellation()
             if item.id == itemID {
                 item = refreshed
                 hasPlaybackPositionOverride = false
@@ -1603,7 +1604,6 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                 hasPlaybackPositionOverride = false
                 playbackPositionOverrideTicks = nil
             }
-            try Task.checkCancellation()
             if hasCompleteWarmPresentation { await storeWarmPresentation() }
             DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refreshed item=\(itemID) positionTicks=\(refreshed.userData?.playbackPositionTicks ?? 0) selectedResumeTarget=\(selectedEpisodeID ?? item.id) override=\(hasPlaybackPositionOverride)")
         } catch {

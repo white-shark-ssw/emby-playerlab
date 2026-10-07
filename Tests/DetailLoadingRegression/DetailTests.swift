@@ -156,5 +156,11 @@ final class DetailLoadingTests: XCTestCase {
         XCTAssertNotNil(bound.selectedSource)
         await bound.refreshPlaybackUserData(itemID: "movie")
         XCTAssertEqual(EmbyMediaDetailWarmCache.shared.snapshot(client: source, itemID: "movie")?.similarItems.first?.id, "similar")
+        source.paused = ["item"]
+        source.responses["item"] = data(["Id": "movie", "Name": "Late cancelled refresh", "Type": "Movie"])
+        let refresh = Task { await bound.refreshPlaybackUserData(itemID: "movie") }
+        guard await waitUntil({ !source.pending.isEmpty }) else { source.finishAll(); await refresh.value; return }
+        refresh.cancel(); source.finish("item"); await refresh.value
+        XCTAssertEqual(bound.item.name, "Fresh")
     }
 }
