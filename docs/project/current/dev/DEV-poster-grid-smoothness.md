@@ -517,3 +517,8 @@ Production-source extraction/leaf scope guards passed on Linux; new9 query/front
 ## Build301 exact-source CI started
 
 Product source **83a239dc259651755315d52e9028d159830d9960**, CI control **ff949150c67b183aefae761bf878c2b583a8af99**, branch ci/build301-poster-results-adapters-20261008, run **37679733748 /job112992327395**. Product-head lease, exact allowed diff/whitespace, P3/Dock/main detail/P4 leaf business/source guards and retained18 native input guards passed; macOS simulator preparation running.37 poster +10 detail +8 native UI/Release/package pending. No301 IPA/device claim yet. Next exact action: monitor this exact run, inspect real failed logs if needed, fix only proven errors, then continue through verified IPA handoff. Do not reuse300 IPA as301.
+
+
+## Build301 unit checkpoint — run37679733748/job112992327395
+
+Fresh10 detail/cache and37 poster/Library/P4 result units completed/success (47 total). New9 result tests cover four Favorite types60, raw frontier/dedup, actualPersonId/missingId, genre/tag flag andname60, chosen Search term/types18 and error policy, cancellation/fetch guard/no-total paging, actual fields/reuse, source/query identity and native append offset/refresh availability.8 native UI tests running; full Release/package/identity/MinOS/IPA still pending. No runtime/long-frame acceptance inferred. Next exact action: finish these native UI tests and Release; inspect any actual failure, then independently verify and hand off301IPA.
