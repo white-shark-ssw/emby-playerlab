@@ -1,0 +1,288 @@
+name: Build298 Independent Detail Loading Regression and IPA
+
+on:
+  push:
+    branches: [ci/build298-detail-loading-20261007]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: build298-poster-wall-return
+  cancel-in-progress: true
+
+env:
+  PRODUCT_SHA: 13f9da6fa4afc5344291e47489c9496b0bc1560e
+  PRODUCT_BRANCH: perf/poster-wall-library-build295
+  BASE_SHA: 5f85b22683269d397da6b2ea2c61b12c31b21ca4
+  DOCK_BASE_SHA: 119ab10eee869488b97415746a0243f51953eba0
+  VERSION: 0.15.31
+  BUILD_NUMBER: 298
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout control branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout and guard exact product source
+        run: |
+          set -euo pipefail
+          git fetch origin "$PRODUCT_BRANCH"
+          test "$(git rev-parse "origin/$PRODUCT_BRANCH")" = "$PRODUCT_SHA"
+          git checkout --detach "$PRODUCT_SHA"
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+
+          changed="$(git diff --name-only "$BASE_SHA" "$PRODUCT_SHA" | sort)"
+          expected="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyDetailPerformanceState.swift Sources/UI/EmbyMediaDetailView.swift Sources/UI/EmbyPosterWall.swift Tests/DetailLoadingRegression/DetailTests.swift Tests/DetailLoadingRegression/Services.swift Tests/DetailLoadingRegression/prepare.py docs/changelog/CHANGELOG_v0_15_31_build298.md docs/project/BUILD_TEST_INDEX.md docs/project/MODULE_STATUS.md docs/project/PROJECT_STATE.md docs/project/TECHNICAL_DECISIONS.md docs/project/current/dev/DEV-poster-grid-smoothness.md scripts/check_detail_page_performance.py | sort)"
+          test "$changed" = "$expected"
+          git diff --check "$BASE_SHA" "$PRODUCT_SHA"
+          python3 scripts/check_server_dock_refactor.py "$DOCK_BASE_SHA"
+          python3 scripts/check_detail_page_performance.py
+          grep -F 'static let sourceVersion = "0.15.31"' Sources/Core/AppIdentity.swift
+          ! grep -F 'page.foregroundController.view.frame =' Sources/UI/EmbyHomeCarouselNativePresentationV3.swift
+          grep -F 'if foreground.center != center' Sources/UI/EmbyHomeCarouselNativePresentationV3.swift
+          grep -F 'if pagePairChanged { layoutPages() }' Sources/UI/EmbyHomeCarouselNativePresentationV3.swift
+          grep -F 'directionalVelocity >= 500' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'distanceProgress >= 0.28 || velocityCommit' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'duration: 0.22' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'duration: 0.18' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'duration: 0.62' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'timeIntervalSince(lastSettledAt) >= 6' Sources/UI/EmbyHomeCarouselStateV3.swift
+          grep -F 'iOS: "15.0"' project.yml
+          grep -F 'deploymentTarget: "15.0"' project.yml
+
+      - name: Export exact source snapshot
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          SOURCE_ZIP="OnePlayer-${VERSION}-build${BUILD_NUMBER}-detail-independent-loading-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" "$PRODUCT_SHA"
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Inject package identity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          import re
+          from pathlib import Path
+          version = "0.15.31"
+          build = "298"
+          info_path = Path("Config/Info.plist")
+          with info_path.open("rb") as handle:
+              info = plistlib.load(handle)
+          info["CFBundleShortVersionString"] = version
+          info["CFBundleVersion"] = build
+          with info_path.open("wb") as handle:
+              plistlib.dump(info, handle, sort_keys=False)
+          project_path = Path("project.yml")
+          project = project_path.read_text()
+          project = re.sub(r'MARKETING_VERSION: "[^"]+"', f'MARKETING_VERSION: "{version}"', project)
+          project = re.sub(r'CURRENT_PROJECT_VERSION: "[^"]+"', f'CURRENT_PROJECT_VERSION: "{build}"', project)
+          project_path.write_text(project)
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcodegen --version
+          pod --version
+
+      - name: Guard retained native Dock and carousel evidence
+        run: |
+          set -euo pipefail
+          test -z "$(git diff --name-only 20d52f7706d9abf914facf50359df8ccb336fd09 "$PRODUCT_SHA" -- Tests/ServerDockRegression Sources/UI/ServerDock.swift Sources/UI/EmbyHomeCarouselNativePresentationV3.swift Sources/UI/EmbyHomeCarouselStateV3.swift Sources/UI/EmbyHomeCoreV3.swift Sources/UI/ImmersiveUIComponents.swift Sources/UI/EmbyServerRootViewV3.swift)"
+          git show "$GITHUB_SHA:ci/retained-build295-native.log" > fixed-native-tests.log
+          grep -F 'Executed 18 tests, with 0 failures' fixed-native-tests.log
+          echo "Retained production native sources byte-identical to passing run37474393518/job112306217313. Poster/native dependency guards preserve this passing evidence."
+
+      - name: Prepare actual-source regression harnesses and simulator
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          python3 Tests/PosterWallRegression/prepare.py "$PWD" "$RUNNER_TEMP/PosterWallRegression"
+          python3 Tests/DetailLoadingRegression/prepare.py "$PWD" "$RUNNER_TEMP/DetailLoadingRegression"
+          xcodegen generate --spec "$RUNNER_TEMP/PosterWallRegression/project.yml"
+          xcodegen generate --spec "$RUNNER_TEMP/DetailLoadingRegression/project.yml"
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(x["udid"] for runtime,devices in d["devices"].items() if runtime.endswith("iOS-18-5") for x in devices if x["name"] == "iPhone 16 Pro Max"))')"
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+
+      - name: Run actual-source 10 detail model and cache tests
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/DetailLoadingRegression"
+          set +e
+          xcodebuild test -project DetailLoadingRegression.xcodeproj -scheme DetailLoadingRegression -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/detail-loading-tests.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" = 0
+          grep -F 'Executed 10 tests, with 0 failures' "$GITHUB_WORKSPACE/detail-loading-tests.log"
+
+      - name: Prove serial-loading negative control and restore exact harness
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          cp "$RUNNER_TEMP/DetailLoadingRegression/DetailModel.swift" "$RUNNER_TEMP/DetailModel-passed.swift"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          path = Path(os.environ['RUNNER_TEMP']) / 'DetailLoadingRegression/DetailModel.swift'
+          text = path.read_text()
+          current = """            async let imagesComplete = loadImages(for: refreshed)
+                      async let similarComplete = loadSimilar(for: refreshed)
+                      async let episodesComplete = loadEpisodesAndMedia(for: refreshed)
+                      let complete = try await (imagesComplete, similarComplete, episodesComplete)"""
+          previous = """            let episodesComplete = try await loadEpisodesAndMedia(for: refreshed)
+                      let imagesComplete = try await loadImages(for: refreshed)
+                      let similarComplete = try await loadSimilar(for: refreshed)
+                      let complete = (imagesComplete, similarComplete, episodesComplete)"""
+          assert text.count(current) == 1
+          path.write_text(text.replace(current, previous))
+          PY
+          cd "$RUNNER_TEMP/DetailLoadingRegression"
+          set +e
+          xcodebuild test -project DetailLoadingRegression.xcodeproj -scheme DetailLoadingRegression -only-testing:DetailLoadingRegression/DetailLoadingTests/testDelayedPlaybackInfoDoesNotBlockStillsOrSimilarPublication -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/detail-loading-negative.log"
+          negative=${PIPESTATUS[0]}
+          set -e
+          test "$negative" -ne 0
+          grep -F 'Production load did not reach controlled boundary' "$GITHUB_WORKSPACE/detail-loading-negative.log"
+          grep -E 'Executed 1 test, with [1-9][0-9]* failures' "$GITHUB_WORKSPACE/detail-loading-negative.log"
+          cd "$GITHUB_WORKSPACE"
+          python3 Tests/DetailLoadingRegression/prepare.py "$PWD" "$RUNNER_TEMP/DetailLoadingRegression"
+          cmp "$RUNNER_TEMP/DetailModel-passed.swift" "$RUNNER_TEMP/DetailLoadingRegression/DetailModel.swift"
+
+      - name: Run actual-source 16 Library poster unit tests
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/PosterWallRegression"
+          set +e
+          xcodebuild test -project PosterWallRegression.xcodeproj -scheme PosterWallRegression -only-testing:PosterWallRegression -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/poster-native-tests.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" = 0
+          grep -F 'Executed 16 tests, with 0 failures' "$GITHUB_WORKSPACE/poster-native-tests.log"
+
+      - name: Run actual-source 3 native UI tests
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/PosterWallRegression"
+          set +e
+          xcodebuild test -project PosterWallRegression.xcodeproj -scheme PosterMotionUITests -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/poster-motion-ui-tests.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" = 0
+          grep -F 'Executed 3 tests, with 0 failures' "$GITHUB_WORKSPACE/poster-motion-ui-tests.log"
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned app
+        run: |
+          set -uo pipefail
+          rm -rf build
+          set +e
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            grep -n -E '(^|[[:space:]])error:|SwiftCompile|CompileSwift' build.log | tail -n 240 > compiler-errors.txt || true
+            echo '===== Build298 compiler diagnostics ====='
+            cat compiler-errors.txt
+            exit "$status"
+          fi
+
+      - name: Upload Build298 compiler diagnostics
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.31-build298-compiler-diagnostics
+          path: |
+            compiler-errors.txt
+            build.log
+            fixed-native-tests.log
+            poster-native-tests.log
+            detail-loading-tests.log
+            detail-loading-negative.log
+            poster-motion-ui-tests.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Validate identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version "$VERSION" --build "$BUILD_NUMBER" --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" 15.0 17.0 min-os-report.log build.log
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-${VERSION}-build${BUILD_NUMBER}-detail-independent-loading-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload Build298 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.31-build298-detail-independent-loading
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            fixed-native-tests.log
+            poster-native-tests.log
+            detail-loading-tests.log
+            detail-loading-negative.log
+            poster-motion-ui-tests.log
+            built-info-plist.log
+            min-os-report.log
+            package.log
+            build.log
+          if-no-files-found: error
+          retention-days: 30
+
