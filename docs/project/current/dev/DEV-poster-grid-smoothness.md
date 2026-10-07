@@ -1,28 +1,24 @@
 # DEV-poster-grid-smoothness
 
-## Current identity — Build298 implemented /exact-source CI in progress — 2026-10-07
+## Current identity — Build298 detail regressions passed /Release continuation — 2026-10-07
 
-- **Active — user authorizes implementing the confirmed detail loading/cancellation/persistence fixes and continuing through a verified test IPA.**
-- Same Work ID/Plan/G01 Library.items; no other poster host rollout. Draft/open/unmerged PR292, branch **perf/poster-wall-library-build295**; current exact product/PR head **07f2f7c97953aba5e7f3ffde867632215c52c211**; baseline feature5f85b22683269d397da6b2ea2c61b12c31b21ca4, main reservationaedbbd415f7edf0f8a0977cf35f361d807562a75. Main has project-document changes only.
-- Last device-tested/package source **279f2c00fe86fa913962d22a0c7afbf17c82ca8d**, OnePlayer0.15.30/297; partial device review below. Seven captured returns retain original wall/data/offset; no full P2 acceptance.
-- Uniquely reserved candidate **OnePlayer0.15.31 /Build298 /detail-independent-loading /iOS15.0** after BUILD_TEST_INDEX, all other Active checkpoints and current branch candidates checked; Aether235 independent, Search256 completed. Runtime candidate committed at07f2f7c97953aba5e7f3ffde867632215c52c211. CI control **bf532c401cc93d0b8238c9ec577df00ac6380ea9**, branchci/build298-detail-loading-20261007, workflow.github/workflows/build298-detail-loading.yml; **run37640130451 /job112856553734 in progress**. Scope/Frozen/iOS15 source guards passed; runtime tests/Release/IPA pending.
-- Scope: original detail model bounded independent content publication and cancellation; existing warm cache owner ordered off-main JSON/disk persistence; bounded Library full-apply substage evidence before a further performance patch. Preserve item/series/episode selection dependencies and real playback/session reuse; native navigation, cache identity/restoration, accepted294/carousel293/Dock294/Search256/P0 remain protected.
+- Active/G01 Library.items only; Draft/open/unmerged PR292; feature **perf/poster-wall-library-build295**, current exact product/head **07f2f7c97953aba5e7f3ffde867632215c52c211**. Last device-tested297/source279f2c00fe86fa913962d22a0c7afbf17c82ca8d; accepted294/carousel293/Dock294/Search256/P0 protected. Plan remains POSTER_IMPLEMENTATION_PLAN.md; other hosts gated.
+- Unique candidate **OnePlayer0.15.31 /Build298 /detail-independent-loading /iOS15.0**, target15ProMax/17. Aether235 separate. Product unchanged since the passing detail tests.
+- Final continuation CI control **3f3c5434bc7ff7e3bd84776dffd0d2febd35aae0**, ci/build298-detail-loading-20261007 /workflow.github/workflows/build298-detail-loading.yml; **run37641282109 /job112860627713 in progress**.
+
+## Completed / Validation / Pending
+
+Original detail model uses three bounded structured children after fresh item data: Images and Similar publish independently of media; Series episodes→seasons→initial selection remains before PlaybackInfo. Cancellation rejects late results, keeps cancelled loads retryable and never stores incomplete presentation. Ordinary partial presentation failure preserves prior complete cache; user-data refresh persists only a complete baseline and rejects late cancellation before UI publication. Existing cache owner keeps immediate memory and ordered serial-utility JSON construction/serialization/atomic disk writes. Library full-apply substage timings added without changing offset/physics/paging or claiming full-apply optimization. Real playback/session flags and60s click reuse untouched.
+
+**10 actual-source detail/model/cache tests passed** at product07f2/run37640130451/job112856553734. Serial media-first negative control failed1 test/1 expected boundary failure, proving delayed media blocks presentation under the old order. That overall run failed only because its CI grep expected plural 'failures' while XCTest emitted singular 'failure'; no false whole-run success. Diagnostic artifact11492186405/digest8e500d036d4452ac946d627e347556775318705e6cf886b53e56a37cd3bcf4b4 was retrieved independently and ZIP/checksums verified. Original detail log SHA3f5482170678d3c51015872e81192cb83b7b480df8cd3c771d64a7a609f77b49; negative log SHAcc88cb213733df08912450da0c47a2b752e21d21e9daf4673a21989f79585b64. Final continuation guards exact product/runtime/test bytes, original run control identity and both logs before retaining these results; not rerun. Fresh actual-source harness generated, earlier mutation never affected product source.
+
+Early run37638790452 was superseded/cancelled during compile after test-only Box/cache visibility correction; run37639134833 failed compile because completeness flag was placed in the separate filter model. Both corrected, scoped source guard added, passing final10 tests include cancelled user-data late response; no passing claim for those early runs.
+
+16 Library units and3 native inertia/deep push-pop/coordinator-proven cancelled-pop UI tests will rerun; original18 Dock/carousel evidence byte-guarded and retained, not rerun. Full Release/artifact/IPA/source/MinOS checks pending. No new target-device result, measured latency/FPS/long-frame gain, P2 acceptance, Stable/frozen or merge claim.
 
 ## Next exact action
 
-Follow actual-source run37640130451: execute10 detail/cache units, prove serial media-first loading fails the independent-publication negative control, regenerate/compare exact model harness, rerun16 Library units and3 native navigation/inertia UI tests, then full Release/iOS15 packaging. Resolve actual failures; do not stop at CI start. Retrieve and independently verify archive/source/package/MinOS/digests, save and directly attach Build298 IPA. Original18 Dock/carousel evidence is source-byte-guarded retained evidence, not rerun. Target-device timing/long-frame gain and full P2 matrix remain pending.
-
-## Test harness visibility correction
-
-Initial product13f9/control dcc/run37638790452 was superseded/cancelled during detail compilation after static review found the test-only visibility lift must include nested Box as well as NSCache. Corrected generator now consistently lifts those two types; production cache/runtime bytes unchanged. Final exact source07f2f7c97953aba5e7f3ffde867632215c52c211 and controlbf532c401cc93d0b8238c9ec577df00ac6380ea9 are the current candidate; no prior pass asserted.
-
-## Actual compile failure corrected
-
-Run37639134833/job112853442714 failed detail-model compilation before executing tests: hasCompleteWarmPresentation was accidentally declared in the separate filter-results model. It is now placed only in the original detail model; a scoped source assertion prevents repeating the error. User-data cancellation is checked before publication and covered by the existing session/user-data unit. Prior failed/cancelled runs are not passing evidence. Final product07f2f7c97953aba5e7f3ffde867632215c52c211/controlbf532c401cc93d0b8238c9ec577df00ac6380ea9/run37640130451 are current; full10+negative+16+3/Release/IPA pending.
-
-## Completed / Validation / Pending — current298
-
-Identity/collision guards passed. Runtime298 patch and ten actual-source model/cache regression fixtures written; harness preparation and updated detail performance source checks pass locally (no local Xcode/Swift execution). Original16 Library units and3 UI fixtures unchanged; new bounded wall substage timing requires rerunning affected poster checks. CI/Release/artifact retrieval and package/source/MinOS checks pending; not device-tested/stable/merged.
+Follow run37641282109 through evidence retrieval,16+3 affected poster tests and full Release/iOS15 audit. Resolve actual failures. Retrieve final artifact, verify digests/source07f2/package0.15.31(298)/MinOS15, save and directly attach the IPA; do not stop at CI/commit. Then target-device test cold detail sections, rapid back/re-entry, Series/selection/playback/session reuse, deep Library return and bounded long-frame logs. Full P2 and other-host gates remain.
 
 ## Build297 device evidence — 2026-10-07 22:12 Asia/Shanghai
 
