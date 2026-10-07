@@ -736,4 +736,3 @@ No repeat test is required merely to round1560/1620 up to2000 for this captured 
 ## Build300 implementation pending CI — P3 G02–G08
 
 OnePlayer0.15.33 /Build300 /poster-library-adapters. Production code and actual-source regressions written; Linux harness extraction/demand URL/detail checks passed, Swift tests/Release/IPA pending. Exact implementation source is the containing feature commit; resolve head. New7 adapter units and3 native UI cases added to21+3 prior poster/native coverage;10 detail tests scheduled fresh,18 untouched Dock/carousel tests retain explicit guarded evidence. G01 accepted within Build299 device evidence; new adapters not device-tested, P4/P5/P6 remain pending.
-
