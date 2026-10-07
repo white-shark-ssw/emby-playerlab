@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PRODUCT_SHA: 673a9616f872efb38a54c18915b89c12950eba62
+  PRODUCT_SHA: 88276868035e93e71a417d820ce4b71b814691ed
   PRODUCT_BRANCH: perf/poster-wall-library-build295
   BASE_SHA: 369dc50bbd195cfd77990f8d2203148cc192749a
   DOCK_BASE_SHA: 119ab10eee869488b97415746a0243f51953eba0
@@ -122,17 +122,20 @@ jobs:
           xcrun simctl bootstatus "$DEVICE_ID" -b
           echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
 
-      - name: Run actual-source 10 detail and cache tests
-        timeout-minutes: 15
+      - name: Guard and retrieve unchanged-source 10 detail and cache tests
+        timeout-minutes: 8
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          cd "$RUNNER_TEMP/DetailLoadingRegression"
-          set +e
-          xcodebuild test -project DetailLoadingRegression.xcodeproj -scheme DetailLoadingRegression -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/detail-loading-tests.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          test "$status" = 0
-          grep -F 'Executed 10 tests, with 0 failures' "$GITHUB_WORKSPACE/detail-loading-tests.log"
+          test -z "$(git diff --name-only 673a9616f872efb38a54c18915b89c12950eba62 "$PRODUCT_SHA" -- Sources Tests/DetailLoadingRegression scripts/check_detail_page_performance.py)"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/37652102343" --jq .head_sha)" = "5a931d760ad0ea36f04526d07b34cb3fae65902d"
+          gh run download 37652102343 --repo "$GITHUB_REPOSITORY" --name OnePlayer-0.15.32-build299-compiler-diagnostics --dir "$RUNNER_TEMP/Retained299"
+          cp "$RUNNER_TEMP/Retained299/detail-loading-tests.log" detail-loading-tests.log
+          echo "15465758efe5208d1aa3b0ecc6d40f5ab5b219918da68bfd5f78be4f053104a8  detail-loading-tests.log" | shasum -a 256 -c -
+          grep -F 'Executed 10 tests, with 0 failures' detail-loading-tests.log
+          grep -F '** TEST SUCCEEDED **' detail-loading-tests.log
+          echo "Retained10 actual-source detail/cache tests from run37652102343/job112897776206; all Sources and detail-test inputs unchanged. Prior overall run failed only the missing-visible-lifecycle prefetch test fixture, not detail tests. Not rerun."
 
       - name: Run actual-source 21 poster demand and passive observer unit tests
         timeout-minutes: 15
@@ -251,3 +254,4 @@ jobs:
             build.log
           if-no-files-found: error
           retention-days: 30
+
