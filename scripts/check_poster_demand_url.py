@@ -12,6 +12,8 @@ assert 'retainedRequests[key] ?? EmbyPosterImageRequest' in record
 assert 'first.isResolved ? first : next' in apply
 assert 'cancelPrefetch(except: Set(next.compactMap { $0.imageRequest.resolvedURL }))' in apply
 assert 'next.compactMap(\\.url)' not in apply
+cancel = wall[wall.index('    func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt'):wall.index('    private func cancelPrefetch(')]
+assert '.imageRequest.resolvedURL' in cancel and 'records[path.item].url' not in cancel
 assert 'collection.performBatchUpdates' in apply
 assert 'numberOfItemsInSection section: Int) -> Int { records.count }' in wall
 diagnostics = Path('Sources/UI/EmbyDetailScrollDiagnostics.swift').read_text()

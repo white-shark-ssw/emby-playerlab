@@ -420,7 +420,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     }
     func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
         for path in indexPaths where path.item < records.count {
-            guard let url = records[path.item].url, let token = prefetch.removeValue(forKey: url) else { continue }
+            guard let url = records[path.item].imageRequest.resolvedURL, let token = prefetch.removeValue(forKey: url) else { continue }
             preparation.cancel(token)
         }
     }

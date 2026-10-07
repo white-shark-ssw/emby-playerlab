@@ -55,6 +55,9 @@ final class PosterWallTests: XCTestCase {
         XCTAssertEqual(controller.collectionView(controller.collection, numberOfItemsInSection: 0), 2000)
         XCTAssertLessThanOrEqual(controller.records.filter { $0.imageRequest.isResolved }.count, 40)
         XCTAssertFalse(controller.records[1999].imageRequest.isResolved)
+        let resolvedBeforeCancellation = controller.records.filter { $0.imageRequest.isResolved }.count
+        controller.collectionView(controller.collection, cancelPrefetchingForItemsAt: (0..<2000).map { IndexPath(item: $0, section: 0) })
+        XCTAssertEqual(controller.records.filter { $0.imageRequest.isResolved }.count, resolvedBeforeCancellation)
         let height = controller.collection.contentSize.height
         XCTAssertGreaterThan(height, 100000)
         let last = controller.records[1999]
