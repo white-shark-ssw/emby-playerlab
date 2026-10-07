@@ -1,6 +1,6 @@
 # 海报墙重构开发计划
 
-_2026-10-06。DEV-poster-grid-smoothness 已按用户授权执行：P0完成，P1/P2 Library.items试点已实现并通过生产源码回归；Release/IPA已独立核验，真机验收待完成。P3–P6保留原阶段门槛。_
+_2026-10-08。P0完成，P1/P2 Library.items试点已实现并通过生产源码回归；Build299 Release/IPA已核验。重启前后/1560缓存全应用/1560与1620深处回顶有正向真机日志及用户无明显卡顿反馈，本轮G01长帧调优结束；未覆盖的大规模/交互/资源项目仍列入P6，其他宿主未迁移，P3–P6保留阶段门槛。_
 
 ## 1. 接手入口与资料分工
 
@@ -196,3 +196,25 @@ P0身份迁移完成；P1后台Library恢复/有序持久化和P2 Library.items�
 - Independent verification: ZIP integrity/checksums, bundle **com.embyplayerlab.app**, version **0.15.29**, Build **296**, Info MinOS **15.0**, arm64 Mach-O MinOS **15.0.0**, CADisableMinimumFrameDurationOnPhone=true; embedded compatibility audit **OK**. Downloadable IPA saved separately; no temporary signed URL in project docs.
 - Earlier CI: initial named/latest simulator destination failed before tests, corrected to actual iOS18.5 UDID; native UI failures exposed the cause; first refresh/control-request unit fixture failures were corrected by empty unit-host isolation, actual window attachment and bounded10s test-only boundary wait. Same-source run37490079849 was cancelled after12 unit passes when a duplicate same-control push run appeared; final run above completed the entire pipeline. No failed/cancelled run is claimed as success.
 - **Code written /12+1 regressions passed /exact-source Release CI passed /IPA independently verified /Build296 target-device pending /task Active /not stable /not merged.** P2 awaits iPhone15ProMax/iOS17 initial-load inertia and long-frame log/video, plus remaining cache/navigation/deep return-top matrix. G02–G15/H01–H04 unstarted and gated; accepted overall baseline294 remains. Protect293carousel/294Dock/Search256/P0.
+
+
+## Build299 restart-before/after device evidence — Library long-frame iteration closed (2026-10-08 02:29 Asia/Shanghai)
+
+User explicitly identifies the first attachment as before restarting and the second as after restarting, and reports: “目前没有可感知的明显卡顿”. Combined with measured Library evidence, the current G01 long-frame tuning iteration can close at unchanged OnePlayer0.15.32/299. This is scope-limited positive real-device feedback, not a statement of sustained presented120FPS, a causal controlled A/B improvement, explicit acceptance/merge of the entire poster reconstruction or validation of unmigrated hosts. Detail behavior remains user-tolerated and outside current tuning.
+
+| Log | Captured span (UTC) | Library movement samples | Maximum interval | >=25 / >=33.3ms | Maximum acquired count |
+|---|---|---:|---:|---:|---:|
+| OnePlayer-App-1791397610.log (before restart) |18:25:47.664–18:26:48.725 (61.061s)|3753 in6 batches|16.6705000ms|0 /0|1560|
+| OnePlayer-App-1791397728.log (after restart) |18:27:23.381–18:28:47.479 (84.098s)|4260 in6 batches|16.6703333ms|0 /0|1620|
+
+First log1010 lines/SHA256 **070582e4da52bdf4a08e86f8c6779097c278dc951c37d920b5a0a93955ef9b3d**; second1281 lines/SHA256 **73decc91b3d36ea5c48a66f48942a9bf8ae10a9532472878de613866a1875970**. Created walls confirm0.15.32/299. Two new logs total **8013** movement intervals and no gap event; including the preceding5033 sample gives13046 intervals across19 batches/0 >=25/33.3ms, but these distinct captures are not one continuous controlled experiment. Before-restart batch p99 maximum8.3352501ms; after-restart p99 maximum16.6703333ms in a small51-sample batch, most other batches8.335ms. CADisplayLink movement-only coverage is not actual presented FPS or all rendering.
+
+**Large cached-first entry is now observed:** after restart, original PagePersistentCache restores1560 items in238.44ms with main_thread=0. The native1560-record full application takes1.66ms, records1.2045417ms, native-submit0.0827083ms, cached membership0.0217083ms and first-screen demand0.3305417ms. This is real measured current-source work below8.33ms, not proof disk images were immediately presented or a controlled percentage gain over298. Its initial live query subsequently replaces cached data with first60 before native appearance, as the original cached-first/live-refresh policy requires; do not misreport that initial query as a same-model detail-pop reset.
+
+Before restart28 applications/max logged1.75ms (complete work counter1.7853751ms); after restart29/max2.08ms (counter2.0953333ms). Records max0.6726667/1.2045417ms; configure max0.6378334/0.6308750ms; image-adopt0.2412082/0.2078334ms; controller-layout0.5912083/0.2010834ms; all recorded work stages0 >=8.33ms. Native-submit excludes deferred layout/rendering. Existing bounded shared image budgets/metadata geometry/suffix append/ordered persistence/native physics remain unchanged.
+
+**Deep return and top evidence:** first log six native hide/reappear pairs retain exact offset/count/revision/replacement; second twelve pairs also retain them. Examples125298.33/1560 before restart and89860.00/1140 after restart. At18:26:47.661 return-top reports offset0/count1560/revision27; at18:28:47.479 offset0/count1620/revision28. No reset page query or item application is recorded at either top action, and item count/frontier remains present. Second top event is the last log line, so subsequent presented-image timing is not independently covered; no cancelled interactive-pop transition outcome, explicit sort/refresh, pressure/thermal or bitmap-network reuse proof is invented.
+
+**Decision and handoff:** keep exact tested/package source **44cdd845f3e822dde0215d0a47f180fbb73544a8**, artifact11498169109/IPA SHA2565c8e5e8863389752444d1ead3fb901c281c9c7bdc9eb760d13dc6f42b78aebcf/MinOS15.0. Existing final CI37654986230 success and21 fresh poster+3 fresh native UI /10 retained exact-input detail tests /18 separate retained Dock/carousel evidence remain unchanged. No justified new runtime patch,300 allocation, CI rerun or IPA; documentation only. Resume GitHub facts before this update: mainf226c95474792ba22d428422c19edabaf6a6d17a; feature/PR292 ab92828515f26ef5bb09198f1cd7a7cdbca777e8, Draft/open/unmerged.
+
+No repeat test is required merely to round1560/1620 up to2000 for this captured Library tuning decision. Planned~2000/5000-scale, resource-pressure/bitmap first-presented timing and uncovered interaction scenarios remain truthfully listed as broader P6 coverage, not marked passed or removed from the plan. G01 current long-frame tuning ends with positive device feedback; entire DEV-poster-grid-smoothness stays Active because P3 G02–G08, P4 G09–G15 and P5 H01–H04 are still unimplemented. Next planned implementation is the P3 Library adapter audit within original business/paging/type/navigation owners, after restoring scope beyond this Library-only tuning iteration. Do not merge/remove the checkpoint or call all hosts stable from these two logs. Protect accepted294/carousel293/Dock294/Search256/P0.

@@ -1,6 +1,6 @@
 # 海报墙入口清单
 
-_2026-10-06。DEV-poster-grid-smoothness；源码审计基线：main 408ccc865262673ab708c01b13f20328aeff8066。只登记当前路由与拟迁移范围，G01库内容页已实施P1/P2试点，其他宿主待迁移；本轮真机验收待完成。整体合同见 [POSTER_PRESENTATION_DESIGN.md](POSTER_PRESENTATION_DESIGN.md)，执行阶段/交付与新会话指令见 [POSTER_IMPLEMENTATION_PLAN.md](POSTER_IMPLEMENTATION_PLAN.md)。_
+_2026-10-06。DEV-poster-grid-smoothness；源码审计基线：main 408ccc865262673ab708c01b13f20328aeff8066。只登记当前路由与拟迁移范围，G01库内容页已实施P1/P2试点，其他宿主待迁移；Build299 G01重启/深处回顶/长帧有正向真机反馈，未覆盖项与其他宿主仍待验证。整体合同见 [POSTER_PRESENTATION_DESIGN.md](POSTER_PRESENTATION_DESIGN.md)，执行阶段/交付与新会话指令见 [POSTER_IMPLEMENTATION_PLAN.md](POSTER_IMPLEMENTATION_PLAN.md)。_
 
 ## 1. 清点口径
 
@@ -59,11 +59,11 @@ G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件
 
 图片缓存可共用，但不同结果页是否有重启后的元数据快照由原业务合同决定，不能把 Library 的 cached-first 恢复承诺自动扩展到搜索/人物结果。首屏图片需求与预取需求计入同一有限预算；搜索现有 recommendationPosterImages 的 pin 必须一并核查。
 
-### 当前迁移进度（2026-10-06）
+### 当前迁移进度（2026-10-08）
 
 | 入口范围 | 计划阶段 | 产品接入 / 构建 / 真机 |
 |---|---|---|
-| G01 Library.items | P2 首个闭环 | 已接入 / 自动回归/Release/IPA通过 / 未验证 |
+| G01 Library.items | P2 首个闭环 | 已接入 / Build299实际源码回归/Release/IPA通过 / 重启前后8013运动采样0 >=25ms；1560缓存apply1.66ms；深处返回与1560/1620回顶保留，用户无明显卡顿。本轮长帧调优结束，其他交互/资源/约2000与5000规模未全测 |
 | G02–G08 Library其余入口 | P3 | 未开始 / 未验证 / 未验证 |
 | G09–G15 其他三列墙 | P4；G15含搜索落地宿主 | 未开始 / 未验证 / 未验证 |
 | H01–H04 首页及其他横向行 | P5；必要宿主可在P4接入 | 未开始 / 未验证 / 未验证 |
@@ -86,3 +86,25 @@ G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件
 ### G01 pilot state (2026-10-06)
 
 perf/poster-wall-library-build295 / Draft PR292 / OnePlayer0.15.28 Build295：G01两条入口共用完整EmbyPosterWall宿主。8项生产cell/preparation/cache/model回归通过，18项Dock/轮播回归保留并核对真实依赖。Release CI成功，IPA独立核验完成；准确身份见BUILD_TEST_INDEX与当前checkpoint。首次无图、磁盘暖/内存暖、分页、~item2000回顶、暖重启、push/pop/侧滑返回及Dock均待真机验证；G02–G15/H01–H04未迁移。现有SwiftUI图片消费者共享prepare订阅，不代表这些滚动宿主已迁移。
+
+
+## Build299 restart-before/after device evidence — Library long-frame iteration closed (2026-10-08 02:29 Asia/Shanghai)
+
+User explicitly identifies the first attachment as before restarting and the second as after restarting, and reports: “目前没有可感知的明显卡顿”. Combined with measured Library evidence, the current G01 long-frame tuning iteration can close at unchanged OnePlayer0.15.32/299. This is scope-limited positive real-device feedback, not a statement of sustained presented120FPS, a causal controlled A/B improvement, explicit acceptance/merge of the entire poster reconstruction or validation of unmigrated hosts. Detail behavior remains user-tolerated and outside current tuning.
+
+| Log | Captured span (UTC) | Library movement samples | Maximum interval | >=25 / >=33.3ms | Maximum acquired count |
+|---|---|---:|---:|---:|---:|
+| OnePlayer-App-1791397610.log (before restart) |18:25:47.664–18:26:48.725 (61.061s)|3753 in6 batches|16.6705000ms|0 /0|1560|
+| OnePlayer-App-1791397728.log (after restart) |18:27:23.381–18:28:47.479 (84.098s)|4260 in6 batches|16.6703333ms|0 /0|1620|
+
+First log1010 lines/SHA256 **070582e4da52bdf4a08e86f8c6779097c278dc951c37d920b5a0a93955ef9b3d**; second1281 lines/SHA256 **73decc91b3d36ea5c48a66f48942a9bf8ae10a9532472878de613866a1875970**. Created walls confirm0.15.32/299. Two new logs total **8013** movement intervals and no gap event; including the preceding5033 sample gives13046 intervals across19 batches/0 >=25/33.3ms, but these distinct captures are not one continuous controlled experiment. Before-restart batch p99 maximum8.3352501ms; after-restart p99 maximum16.6703333ms in a small51-sample batch, most other batches8.335ms. CADisplayLink movement-only coverage is not actual presented FPS or all rendering.
+
+**Large cached-first entry is now observed:** after restart, original PagePersistentCache restores1560 items in238.44ms with main_thread=0. The native1560-record full application takes1.66ms, records1.2045417ms, native-submit0.0827083ms, cached membership0.0217083ms and first-screen demand0.3305417ms. This is real measured current-source work below8.33ms, not proof disk images were immediately presented or a controlled percentage gain over298. Its initial live query subsequently replaces cached data with first60 before native appearance, as the original cached-first/live-refresh policy requires; do not misreport that initial query as a same-model detail-pop reset.
+
+Before restart28 applications/max logged1.75ms (complete work counter1.7853751ms); after restart29/max2.08ms (counter2.0953333ms). Records max0.6726667/1.2045417ms; configure max0.6378334/0.6308750ms; image-adopt0.2412082/0.2078334ms; controller-layout0.5912083/0.2010834ms; all recorded work stages0 >=8.33ms. Native-submit excludes deferred layout/rendering. Existing bounded shared image budgets/metadata geometry/suffix append/ordered persistence/native physics remain unchanged.
+
+**Deep return and top evidence:** first log six native hide/reappear pairs retain exact offset/count/revision/replacement; second twelve pairs also retain them. Examples125298.33/1560 before restart and89860.00/1140 after restart. At18:26:47.661 return-top reports offset0/count1560/revision27; at18:28:47.479 offset0/count1620/revision28. No reset page query or item application is recorded at either top action, and item count/frontier remains present. Second top event is the last log line, so subsequent presented-image timing is not independently covered; no cancelled interactive-pop transition outcome, explicit sort/refresh, pressure/thermal or bitmap-network reuse proof is invented.
+
+**Decision and handoff:** keep exact tested/package source **44cdd845f3e822dde0215d0a47f180fbb73544a8**, artifact11498169109/IPA SHA2565c8e5e8863389752444d1ead3fb901c281c9c7bdc9eb760d13dc6f42b78aebcf/MinOS15.0. Existing final CI37654986230 success and21 fresh poster+3 fresh native UI /10 retained exact-input detail tests /18 separate retained Dock/carousel evidence remain unchanged. No justified new runtime patch,300 allocation, CI rerun or IPA; documentation only. Resume GitHub facts before this update: mainf226c95474792ba22d428422c19edabaf6a6d17a; feature/PR292 ab92828515f26ef5bb09198f1cd7a7cdbca777e8, Draft/open/unmerged.
+
+No repeat test is required merely to round1560/1620 up to2000 for this captured Library tuning decision. Planned~2000/5000-scale, resource-pressure/bitmap first-presented timing and uncovered interaction scenarios remain truthfully listed as broader P6 coverage, not marked passed or removed from the plan. G01 current long-frame tuning ends with positive device feedback; entire DEV-poster-grid-smoothness stays Active because P3 G02–G08, P4 G09–G15 and P5 H01–H04 are still unimplemented. Next planned implementation is the P3 Library adapter audit within original business/paging/type/navigation owners, after restoring scope beyond this Library-only tuning iteration. Do not merge/remove the checkpoint or call all hosts stable from these two logs. Protect accepted294/carousel293/Dock294/Search256/P0.
