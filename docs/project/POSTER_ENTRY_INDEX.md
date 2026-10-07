@@ -64,7 +64,7 @@ G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件
 | 入口范围 | 计划阶段 | 产品接入 / 构建 / 真机 |
 |---|---|---|
 | G01 Library.items | P2 首个闭环 | 已接入 / Build299实际源码回归/Release/IPA通过 / 重启前后8013运动采样0 >=25ms；1560缓存apply1.66ms；深处返回与1560/1620回顶保留，用户无明显卡顿。本轮长帧调优结束，其他交互/资源/约2000与5000规模未全测 |
-| G02–G08 Library其余入口 | P3 | 未开始 / 未验证 / 未验证 |
+| G02–G08 Library其余入口 | P3 | 原生适配已写 / Build300 CI与IPA待完成 / 未真机验证 |
 | G09–G15 其他三列墙 | P4；G15含搜索落地宿主 | 未开始 / 未验证 / 未验证 |
 | H01–H04 首页及其他横向行 | P5；必要宿主可在P4接入 | 未开始 / 未验证 / 未验证 |
 | H05 冻结详情关联行 | 关联审计/保护回归 | 不自动纳入宿主改造；无本轮验证 |
@@ -108,3 +108,10 @@ Before restart28 applications/max logged1.75ms (complete work counter1.7853751ms
 **Decision and handoff:** keep exact tested/package source **44cdd845f3e822dde0215d0a47f180fbb73544a8**, artifact11498169109/IPA SHA2565c8e5e8863389752444d1ead3fb901c281c9c7bdc9eb760d13dc6f42b78aebcf/MinOS15.0. Existing final CI37654986230 success and21 fresh poster+3 fresh native UI /10 retained exact-input detail tests /18 separate retained Dock/carousel evidence remain unchanged. No justified new runtime patch,300 allocation, CI rerun or IPA; documentation only. Resume GitHub facts before this update: mainf226c95474792ba22d428422c19edabaf6a6d17a; feature/PR292 ab92828515f26ef5bb09198f1cd7a7cdbca777e8, Draft/open/unmerged.
 
 No repeat test is required merely to round1560/1620 up to2000 for this captured Library tuning decision. Planned~2000/5000-scale, resource-pressure/bitmap first-presented timing and uncovered interaction scenarios remain truthfully listed as broader P6 coverage, not marked passed or removed from the plan. G01 current long-frame tuning ends with positive device feedback; entire DEV-poster-grid-smoothness stays Active because P3 G02–G08, P4 G09–G15 and P5 H01–H04 are still unimplemented. Next planned implementation is the P3 Library adapter audit within original business/paging/type/navigation owners, after restoring scope beyond this Library-only tuning iteration. Do not merge/remove the checkpoint or call all hosts stable from these two logs. Protect accepted294/carousel293/Dock294/Search256/P0.
+
+## Build300 P3 implementation milestone — 2026-10-08
+
+Code written locally for G02–G08: per-query native adapters and persistent system links; genre own primary image/title-only card, mixed folder/media row heights and folder badge; original Episode/detail destination reused. Original Library query owner now publishes per-tab revision/replacement and distinguishes successful same-page reappearance from explicit tab switching.60/raw frontier/filter/sort and existing nonpaged child-folder API remain. Native G01 view/root/actions, Library suggestions, Favorites/Search suffix, detail/playback and image budgets protected. New adapters require production-source7 regression cases plus3 new native navigation UI cases; existing21 poster+3 native UI and10 detail tests remain applicable. Linux source/harness checks only at this milestone; no Swift/CI/IPA result yet.
+
+Next exact action: commit these scoped production/test/checker changes, then exact-source macOS CI (28 poster/adapter units +6 native UI +10 detail;18 unchanged-input Dock/carousel evidence retained), Release/package, independent identity verification and file handoff. Source head is the implementation commit containing this milestone; resolve via feature branch before resuming.
+

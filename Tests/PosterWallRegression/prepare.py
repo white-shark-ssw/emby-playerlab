@@ -45,10 +45,16 @@ final class EmbyAPIClient {
 ''' + image_url + '}\n')
 browse = (repo / 'Sources/UI/EmbyServerBrowseV3.swift').read_text()
 tabs = browse[browse.index('private enum V3LibraryTab'):browse.index('struct V3LibraryBrowserView: View')].replace('private enum V3LibraryTab', 'enum V3LibraryTab')
-model = browse[browse.index('@MainActor\nprivate final class V3LibraryBrowserViewModel'):browse.index('private struct V3LibraryGenreCard')].replace('private final class V3LibraryBrowserViewModel', 'final class V3LibraryBrowserViewModel')
+model = browse[browse.index('@MainActor\nprivate final class V3LibraryBrowserViewModel'):browse.index('private enum V3LibraryPosterDestination')].replace('private final class V3LibraryBrowserViewModel', 'final class V3LibraryBrowserViewModel')
 (target / 'LibraryModel.swift').write_text('import SwiftUI\nimport Combine\n' + tabs + model)
 view = browse[browse.index('struct V3LibraryBrowserView: View'):browse.index('@MainActor\nprivate final class V3LibraryBrowserViewModel')]
 (target / 'LibraryView.swift').write_text('import SwiftUI\nimport Combine\nimport UIKit\n' + view)
+# Compile every P3 adapter and both original result models; only access levels change for cross-file tests.
+adapters = browse[browse.index('private enum V3LibraryPosterDestination'):browse.index('struct V3EmbyFavoritesView:')]
+for name in ['enum V3LibraryPosterDestination', 'struct V3LibraryPosterPage', 'struct V3LibraryGenreGridView', 'final class V3LibraryGenreGridViewModel', 'struct V3LibraryFolderBrowserView', 'final class V3LibraryFolderBrowserViewModel', 'func v3LibraryIsBrowsableFolder']:
+    assert adapters.count('private ' + name) == 1, name
+    adapters = adapters.replace('private ' + name, name)
+(target / 'LibraryAdapters.swift').write_text('import SwiftUI\nimport UIKit\n' + adapters)
 (target / 'ServerDock.swift').write_text((repo / 'Sources/UI/ServerDock.swift').read_text())
 detail = (repo / 'Sources/UI/EmbyDetailPerformanceState.swift').read_text()
 trace = detail[detail.index('// One bounded timeline'):detail.index('final class EmbyDetailHeroScrollState')]
@@ -58,6 +64,7 @@ text = services.read_text()
 text = text[:-2] + (Path(__file__).parent / 'APIStub.swift').read_text() + '}\n'
 services.write_text(text)
 (target / 'PosterTests.swift').write_text((Path(__file__).parent / 'PosterTests.swift').read_text())
+(target / 'LibraryAdapterTests.swift').write_text((Path(__file__).parent / 'LibraryAdapterTests.swift').read_text())
 (target / 'Host.swift').write_text((Path(__file__).parent / 'MotionHost.swift').read_text())
 (target / 'ReturnHost.swift').write_text((Path(__file__).parent / 'ReturnHost.swift').read_text())
 (target / 'MotionUITests.swift').write_text((Path(__file__).parent / 'MotionUITests.swift').read_text())
@@ -71,7 +78,7 @@ targets:
     platform: iOS
     sources:
       - path: .
-        excludes: [project.yml, PosterTests.swift, MotionUITests.swift]
+        excludes: [project.yml, PosterTests.swift, LibraryAdapterTests.swift, MotionUITests.swift]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

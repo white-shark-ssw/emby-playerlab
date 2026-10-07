@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 41672)
+Total output lines: 799
+
 # OnePlayer Build / Test Index
 
 ## Build300 reservation — P3 Library adapters /2026-10-08
@@ -352,70 +355,7 @@ Update this index when a build materially changes architectural understanding, b
 - lifecycle: restore valid disk presentation snapshot first → render warm content → existing page/tab entry live refresh → accepted fresh state replaces visible owner state → atomically persist that accepted snapshot.
 - failed refresh does not erase a valid visible/disk snapshot.
 - necessary Library pagination frontier (`nextStartIndex` / `hasMore` / restored seen IDs) is restored with cached content.
-- Library `sortBy` is not persisted by page cache; `selectedTab`, scroll restoration, Favorites root-session retention and Search/Genre/Person persistence remain outside this milestone.
-- cache identity is `baseURL + userId + scope (+ library.id)`: safely isolated; a later same-server route change may cause a benign warm-cache miss rather than cross-route data leakage.
-- standard MPV run/job: **`33052588518` / `98451457434` — success**.
-- artifact: `OnePlayer-0.14.46-build213-page-cache`; ID **`9638292306`**; digest **`sha256:e65a3ce06d53cc499a84f86a9cd32978824f1de4899bf2afe310727a2566731c`**.
-- IPA SHA-256: **`a8c2d1753db33f41a5b07ce22c4706eb102cf5d905f1aaeee8f54d689b176fc8`**.
-- source ZIP SHA-256: **`3a59bc8fb8dc55a83abd8adf76841db47640df8944f39920969b06bd55927051`**.
-- built `MinimumOSVersion=15.0`; target device iPhone 15 Pro Max / iOS 17.0.
-- target-device result: **user reported “验收通过” on 2026-08-27**.
-- evidence: **Code written ✅ / CI passed ✅ / IPA produced ✅ / real-device accepted ✅ / first milestone stable ✅ / merged to main ✅**.
-
-
-## Build242 diagnostic-only result — 2026-08-29
-
-- Identity: OnePlayer 0.14.75 / Build242; exact source `3bf163d2c443520c0f22bba9b49902928fa36ca8`; run/job `33247895006 / 99088437546`; artifact `9713463258`; IPA SHA-256 `9c08ed8965e5e9e99bf4a17768cc8d124209c3b42e9e48d8d78fba720415e5d4`; MinOS 15.0.
-- Purpose: whole-carousel Home-performance attribution by intentionally disabling persistent backdrop, Hero carousel rendering/interaction, preload, auto-advance and carousel-owned Hero scroll updates.
-- Target-device result: user reports Home vertical-scroll difference versus Build241 feels small / not obvious.
-- Final classification: **real-device diagnostic tested only; not a product candidate, not stable, not an inheritance baseline.** The user explicitly reports the diagnostic modifications made Build242 unsuitable/broken as normal carousel behavior. Never supersede Build241 with Build242.
-- Retained conclusion only: disabling the whole carousel presentation stack did not produce a clear Home vertical-scroll improvement, so the whole carousel stack is not demonstrated to be a major Home-wide performance bottleneck.
-
-## Home-carousel final main integration — 2026-08-29
-
-- Final real-device behavior authority: **Build241 / OnePlayer 0.14.74**.
-- Clean integration PR: **#262**, merged commit `75d9f53d0984ee7f32e7e3fa02cd9bf8794b56e3`.
-- Integration scope: exactly five Build241 runtime files, no Build242 diagnostic behavior and no wholesale merge of the diverged historical Build241 branch.
-- Exact final main blob identities: cadence `c5ec51991d9a629cfb39785efeb597f3c51375ef`; interaction `144be65ba3fa5618d39591c5f67747024dc5ff0c`; state `e18fc8724170f2a7e613ac93beedf54c3b8d47e8`; core `c7900bae5e608ae46c0cd476c1f08999be9baf0b`; Hero `ab2ab5d80a59e174622dca0006c0f3aad4111a54`.
-- Independent integration compile run/job: `33248884259 / 99090990039` — success; exact blob/contract checks passed; Release generic-iOS compile passed; built MinOS 15.0.
-- Evidence discipline: integration CI does not create a new target-device acceptance identity. Build241 itself supplies the real-device acceptance; the carousel module is now stable/frozen.
-
-
-### Build247 / 0.14.80 — Search startup recommendation warm candidate
-
-- Build246 target-device evidence: Dock still rises with keyboard; recommendation entry/later posters remain slow; returned-type whitelist must be explicit; recommendation load-more still twitches. Build246 is real-device tested and rejected as final.
-- exact CI product source: `5f693d82041bbb59d3fe481aa708b22a5feda42d`.
-- Search-only architecture: server-root owns the visible Search Dock; returned recommendation items are hard-filtered to `Movie`/`Series`; app startup restore begins one bounded 60-item recommendation/poster warm; Search consumes the same task; recommendation grid is fixed and performs no active-scroll load-more. Existing persistent image disk cache and decoded pool remain the cache authorities.
-- run/job: `33258792907 / 99117036605` — success.
-- artifact: `OnePlayer-0.14.80-Build247-Search`; ID `9716657082`; digest `sha256:9628b0c608488edbfc5af477199e847e5a35b119d4ab96edbecd036cbde4bfd1`.
-- IPA SHA-256: `952b2daeef4bc01fe62476611c6620cf7ce79d3905d87bd82336e4650d0d69b0`.
-- source ZIP SHA-256: `44494de6213883b8bee16b6e99336b33073ed38b17a53062f9be7a2cff22b73d`.
-- independent package verification: bundle `com.embyplayerlab.app`; OnePlayer `0.14.80 (247)`; `MinimumOSVersion=15.0`; IPA `unzip -t` passed.
-- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
-
-
-### Build248 / 0.14.81 — Search Dock alignment + bounded 3×3 recommendation warm
-
-- Build247 target-device result: root-owned Search Dock rendered too low/outside the screen; recommendation wall remained on spinner. Build247 is rejected as final.
-- exact CI product source: `dc601099ded1074fafc0c7a4e000b8c6fd4c7338`.
-- runtime delta: compensate the root Search overlay by `geometry.safeAreaInsets.bottom`; recommendation preload limit 60→9; each Suggestions request limit is only the remaining visible slots; returned item type remains hard-whitelisted to Movie/Series; no recommendation load-more.
-- run/job: `33259763303 / 99119574495` — success.
-- artifact: `OnePlayer-0.14.81-Build248-Search`; ID `9716945819`; digest `sha256:b15d327e7f628188e9df6a500ff0e26227a149a60a03b6bd1595c9aa82fffd2a`.
-- IPA SHA-256: `8eb734bb26b77f377314223acbf7306da72ac9254a20586bfc443d59fea940c5`.
-- source ZIP SHA-256: `94ce1911d3981d8f5ad53bc59a8a7413a1ddf54a54c1a97e49642b1b909f1bec`.
-- independently verified package: `com.embyplayerlab.app`, `0.14.81 (248)`, `MinimumOSVersion=15.0`, IPA `unzip -t` passed.
-- evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
-
-
-### Build249 / 0.14.82 — Search recommendation CollectionType traversal candidate
-
-- Build248 target-device: Search Dock position/keyboard behavior accepted; recommendation wall still spins.
-- uploaded log `OnePlayer-App-1788018797.log`: Suggestions requests advance sequentially across parent libraries about every 2.4–2.7 s; not a single hung HTTP call.
-- exact CI product source: `f49ed220367de1ffbf9e9a5aba097d2ce160dac7`.
-- runtime delta: query only `movies`/`tvshows`/`mixed` UserViews; map to Movie/Series request type; keep final actual-type Movie/Series whitelist, 9-item cap, startup warm, existing image caches and no recommendation load-more; add preload diagnostics.
-- run/job: `33261820598 / 99124950794` — success.
-- artifact: `OnePlayer-0.14.82-Build249-Search`; ID `9717502081`; digest `sha256:3cc924d6733cb4590361fa255d85ef2c31f879f07538e11523a6e246da487510`.
-- IPA SHA-256: `0c62d51d488197b55dbfb98ab104c48404dd0caac77d786523f753c75acbb7a0`.
+- Library `sortBy` is not persisted by page cache; `selectedTab`, scroll restoration, Favorites root-session…1672 tokens truncated…SHA-256: `0c62d51d488197b55dbfb98ab104c48404dd0caac77d786523f753c75acbb7a0`.
 - independently verified package: `com.embyplayerlab.app`, `0.14.82 (249)`, `MinimumOSVersion=15.0`, IPA `unzip -t` passed.
 - evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device pending / not stable.**
 
@@ -792,3 +732,8 @@ Before restart28 applications/max logged1.75ms (complete work counter1.7853751ms
 **Decision and handoff:** keep exact tested/package source **44cdd845f3e822dde0215d0a47f180fbb73544a8**, artifact11498169109/IPA SHA2565c8e5e8863389752444d1ead3fb901c281c9c7bdc9eb760d13dc6f42b78aebcf/MinOS15.0. Existing final CI37654986230 success and21 fresh poster+3 fresh native UI /10 retained exact-input detail tests /18 separate retained Dock/carousel evidence remain unchanged. No justified new runtime patch,300 allocation, CI rerun or IPA; documentation only. Resume GitHub facts before this update: mainf226c95474792ba22d428422c19edabaf6a6d17a; feature/PR292 ab92828515f26ef5bb09198f1cd7a7cdbca777e8, Draft/open/unmerged.
 
 No repeat test is required merely to round1560/1620 up to2000 for this captured Library tuning decision. Planned~2000/5000-scale, resource-pressure/bitmap first-presented timing and uncovered interaction scenarios remain truthfully listed as broader P6 coverage, not marked passed or removed from the plan. G01 current long-frame tuning ends with positive device feedback; entire DEV-poster-grid-smoothness stays Active because P3 G02–G08, P4 G09–G15 and P5 H01–H04 are still unimplemented. Next planned implementation is the P3 Library adapter audit within original business/paging/type/navigation owners, after restoring scope beyond this Library-only tuning iteration. Do not merge/remove the checkpoint or call all hosts stable from these two logs. Protect accepted294/carousel293/Dock294/Search256/P0.
+
+## Build300 implementation pending CI — P3 G02–G08
+
+OnePlayer0.15.33 /Build300 /poster-library-adapters. Production code and actual-source regressions written; Linux harness extraction/demand URL/detail checks passed, Swift tests/Release/IPA pending. Exact implementation source is the containing feature commit; resolve head. New7 adapter units and3 native UI cases added to21+3 prior poster/native coverage;10 detail tests scheduled fresh,18 untouched Dock/carousel tests retain explicit guarded evidence. G01 accepted within Build299 device evidence; new adapters not device-tested, P4/P5/P6 remain pending.
+

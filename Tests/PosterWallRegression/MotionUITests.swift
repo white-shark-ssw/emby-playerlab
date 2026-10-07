@@ -45,6 +45,87 @@ final class PosterMotionUITests: XCTestCase {
     func testProductionLibraryDeepNativePushPopRetainsPositionAndFrontier() { checkReturn(cancelPop: false) }
     func testCancelledSystemPopThenBackRetainsProductionLibrary() { checkReturn(cancelPop: true) }
 
+    func testLibraryPagedTabsDeepNativeReturnKeepsTheirOwnFrontiers() {
+        for title in ["预告片", "合集", "我的收藏"] {
+            let app = XCUIApplication(); app.launchArguments = ["--poster-return-ui"]; app.launch()
+            XCTAssertTrue(app.collectionViews.firstMatch.waitForExistence(timeout: 10))
+            app.scrollViews.firstMatch.swipeLeft()
+            app.buttons[title].tap()
+            let wall = app.collectionViews.firstMatch
+            for _ in 0..<16 { wall.swipeUp(velocity: .fast) }
+            let anchor = wall.cells.element(boundBy: 0).label
+            wall.cells.element(boundBy: 4).tap()
+            XCTAssertTrue(app.navigationBars["Fixture Detail"].waitForExistence(timeout: 5))
+            let before = fields(app.staticTexts["return-status"].label)
+            XCTAssertGreaterThan(Double(before["offset"] ?? "0") ?? 0, 8000)
+            app.navigationBars["Fixture Detail"].buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(app.navigationBars["Fixture Library"].waitForExistence(timeout: 5))
+            let after = fields(app.staticTexts["return-status"].label)
+            XCTAssertEqual(after["requests"], before["requests"]); XCTAssertEqual(after["wall"], before["wall"]); XCTAssertEqual(after["count"], before["count"])
+            XCTAssertEqual(Double(after["offset"] ?? "-1") ?? -1, Double(before["offset"] ?? "-2") ?? -2, accuracy: 1)
+            XCTAssertEqual(wall.cells.element(boundBy: 0).label, anchor)
+            app.terminate()
+        }
+    }
+
+    func testGenreCoverOpensOriginalGenreResultsAndBothLevelsReturnWithoutReload() {
+        let app = XCUIApplication(); app.launchArguments = ["--poster-return-ui"]; app.launch()
+        XCTAssertTrue(app.collectionViews.firstMatch.waitForExistence(timeout: 10))
+        app.scrollViews.firstMatch.swipeLeft(); app.buttons["类别"].tap()
+        let cover = app.collectionViews.firstMatch.cells["Fixture Genre"]
+        XCTAssertTrue(cover.waitForExistence(timeout: 5)); cover.tap()
+        XCTAssertTrue(app.navigationBars["Fixture Genre"].waitForExistence(timeout: 5))
+        let wall = app.collectionViews.firstMatch
+        for _ in 0..<10 { wall.swipeUp(velocity: .fast) }
+        wall.cells.element(boundBy: 4).tap()
+        XCTAssertTrue(app.navigationBars["Fixture Detail"].waitForExistence(timeout: 5))
+        let before = fields(app.staticTexts["return-status"].label)
+        app.navigationBars["Fixture Detail"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Fixture Genre"].waitForExistence(timeout: 5))
+        let after = fields(app.staticTexts["return-status"].label)
+        XCTAssertEqual(after["requests"], before["requests"]); XCTAssertEqual(after["wall"], before["wall"])
+        XCTAssertEqual(Double(after["offset"] ?? "-1") ?? -1, Double(before["offset"] ?? "-2") ?? -2, accuracy: 1)
+        app.navigationBars["Fixture Genre"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Fixture Library"].waitForExistence(timeout: 5))
+        XCTAssertEqual(fields(app.staticTexts["return-status"].label)["genres"], "1")
+        XCTAssertTrue(app.collectionViews.firstMatch.cells["Fixture Genre"].exists)
+        app.terminate()
+    }
+
+    func testMixedFolderRootAndRecursiveNativeDestinationsRetainAllParents() {
+        let app = XCUIApplication(); app.launchArguments = ["--poster-return-ui"]; app.launch()
+        XCTAssertTrue(app.collectionViews.firstMatch.waitForExistence(timeout: 10))
+        app.scrollViews.firstMatch.swipeLeft(); app.buttons["文件夹"].tap()
+        let root = app.collectionViews.firstMatch
+        XCTAssertTrue(root.cells["Folder lib-child"].waitForExistence(timeout: 5))
+        root.cells["Movie 4"].tap()
+        XCTAssertTrue(app.navigationBars["Fixture Detail"].waitForExistence(timeout: 5))
+        app.navigationBars["Fixture Detail"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Fixture Library"].waitForExistence(timeout: 5))
+        root.cells["Folder lib-child"].tap()
+        XCTAssertTrue(app.navigationBars["Folder lib-child"].waitForExistence(timeout: 5))
+        app.collectionViews.firstMatch.cells["Folder lib-child-child"].tap()
+        XCTAssertTrue(app.navigationBars["Folder lib-child-child"].waitForExistence(timeout: 5))
+        let wall = app.collectionViews.firstMatch
+        for _ in 0..<8 { wall.swipeUp(velocity: .fast) }
+        wall.cells.element(boundBy: 4).tap()
+        XCTAssertTrue(app.navigationBars["Fixture Detail"].waitForExistence(timeout: 5))
+        let before = fields(app.staticTexts["return-status"].label)
+        app.navigationBars["Fixture Detail"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Folder lib-child-child"].waitForExistence(timeout: 5))
+        let after = fields(app.staticTexts["return-status"].label)
+        XCTAssertEqual(after["folders"], "3"); XCTAssertEqual(after["folders"], before["folders"]); XCTAssertEqual(after["wall"], before["wall"])
+        XCTAssertEqual(Double(after["offset"] ?? "-1") ?? -1, Double(before["offset"] ?? "-2") ?? -2, accuracy: 1)
+        app.navigationBars["Folder lib-child-child"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Folder lib-child"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.collectionViews.firstMatch.cells["Folder lib-child-child"].exists)
+        app.navigationBars["Folder lib-child"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Fixture Library"].waitForExistence(timeout: 5))
+        XCTAssertEqual(fields(app.staticTexts["return-status"].label)["folders"], "3")
+        XCTAssertTrue(root.cells["Folder lib-child"].exists)
+        app.terminate()
+    }
+
     func testRealNativeDecelerationAcceptsDelayedMetadataAppendWithoutOffsetJump() {
         var observedInertia = false
         for _ in 0..<3 {

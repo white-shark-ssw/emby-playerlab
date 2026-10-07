@@ -66,6 +66,19 @@ final class EmbyPosterImageRequest: Equatable {
     static func == (lhs: EmbyPosterImageRequest, rhs: EmbyPosterImageRequest) -> Bool { lhs.key == rhs.key }
 }
 
+enum EmbyPosterCardKind { case media, genre, folder
+    var textHeight: CGFloat { self == .media ? 42 : 24 }
+    var placeholder: String { self == .genre ? "rectangle.stack.fill" : (self == .folder ? "folder.fill" : "play.rectangle") }
+}
+
+enum EmbyPosterWallContent { case media, genres, folders
+    func kind(for item: LibraryItem) -> EmbyPosterCardKind {
+        if self == .genres { return .genre }
+        if self == .folders, ["folder", "collectionfolder"].contains(item.type?.lowercased() ?? "") { return .folder }
+        return .media
+    }
+}
+
 struct EmbyPosterRecord: Equatable {
     let id: String
     let name: String
@@ -75,15 +88,17 @@ struct EmbyPosterRecord: Equatable {
     let progress: Double
     let unplayed: Int
     let played: Bool
+    let kind: EmbyPosterCardKind
 
-    init(item: LibraryItem, client: EmbyAPIClient, pixelWidth: Int, sourceIdentity: String? = nil, retainedRequests: [EmbyPosterImageRequestKey: EmbyPosterImageRequest] = [:]) {
+    init(item: LibraryItem, client: EmbyAPIClient, pixelWidth: Int, sourceIdentity: String? = nil, retainedRequests: [EmbyPosterImageRequestKey: EmbyPosterImageRequest] = [:], kind: EmbyPosterCardKind = .media) {
+        self.kind = kind
         id = "\(sourceIdentity ?? "\(client.baseURL.absoluteString)|\(client.userId ?? "")")|\(item.id)"
-        name = item.name; year = item.productionYear.map(String.init)
-        let tag = item.preferredPrimaryImageTag.flatMap { $0.isEmpty ? nil : $0 }
+        name = item.name; year = kind == .media ? item.productionYear.map(String.init) : nil
+        let tag = (kind == .media ? item.preferredPrimaryImageTag : item.primaryImageTag).flatMap { $0.isEmpty ? nil : $0 }
         let token = client.accessToken.flatMap { $0.isEmpty ? nil : $0 }
-        let key = EmbyPosterImageRequestKey(baseURL: client.baseURL, accessToken: token, itemID: item.preferredPrimaryImageItemId, tag: tag, pixelWidth: pixelWidth)
+        let key = EmbyPosterImageRequestKey(baseURL: client.baseURL, accessToken: token, itemID: kind == .media ? item.preferredPrimaryImageItemId : item.id, tag: tag, pixelWidth: pixelWidth)
         imageRequest = retainedRequests[key] ?? EmbyPosterImageRequest(key: key, client: client)
-        progress = item.playbackProgress; unplayed = item.userData?.unplayedItemCount ?? 0; played = item.isPlayed
+        progress = kind == .media ? item.playbackProgress : 0; unplayed = kind == .media ? item.userData?.unplayedItemCount ?? 0 : 0; played = kind == .media && item.isPlayed
     }
 }
 
@@ -95,6 +110,8 @@ final class EmbyPosterCell: UICollectionViewCell {
     private let year = UILabel()
     private let progress = UIView()
     private let badge = UILabel()
+    private let folderBadge = UIView()
+    private let folderIcon = UIImageView(image: UIImage(systemName: "folder.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)))
     private let badgeCheck = UIImageView(image: UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .bold)))
     private(set) var record: EmbyPosterRecord?
     private var subscription: UUID?
@@ -119,6 +136,9 @@ final class EmbyPosterCell: UICollectionViewCell {
         badge.clipsToBounds = true; badgeCheck.tintColor = .white; badgeCheck.contentMode = .scaleAspectFit
         [artwork, placeholder, title, year, badge].forEach(contentView.addSubview)
         artwork.addSubview(progress)
+        folderBadge.backgroundColor = UIColor.black.withAlphaComponent(0.55); folderBadge.layer.cornerRadius = 7; folderBadge.layer.cornerCurve = .continuous
+        folderIcon.tintColor = .white; folderIcon.contentMode = .scaleAspectFit
+        folderBadge.addSubview(folderIcon); artwork.addSubview(folderBadge); folderBadge.isHidden = true
         badge.addSubview(badgeCheck)
         isAccessibilityElement = true; accessibilityTraits = .button
     }
@@ -141,6 +161,8 @@ final class EmbyPosterCell: UICollectionViewCell {
         badge.frame = CGRect(x: width - badgeWidth - 5, y: 5, width: badgeWidth, height: badgeWidth)
         badge.layer.cornerRadius = badgeWidth / 2
         badgeCheck.frame = badge.bounds.insetBy(dx: 6, dy: 6)
+        folderBadge.frame = CGRect(x: 6, y: 6, width: 28, height: 26)
+        folderIcon.frame = folderBadge.bounds.insetBy(dx: 6, dy: 6)
     }
 
     func configure(_ value: EmbyPosterRecord) {
@@ -149,7 +171,9 @@ final class EmbyPosterCell: UICollectionViewCell {
         if record == value { activate(); return }
         let requestChanged = record?.id != value.id || record?.url != value.url
         if requestChanged { deactivate(); artwork.image = value.url.flatMap(preparation.readyImage) }
+        if record?.kind != value.kind { placeholder.image = UIImage(systemName: value.kind.placeholder) }
         record = value
+        folderBadge.isHidden = value.kind != .folder
         title.text = value.name; year.text = value.year; year.isHidden = value.year == nil
         progress.isHidden = value.progress <= 0
         badge.isHidden = value.unplayed <= 0 && !value.played
@@ -208,6 +232,8 @@ struct EmbyPosterWall: UIViewControllerRepresentable {
     let revision: Int
     let replacement: Int
     let client: EmbyAPIClient
+    var content: EmbyPosterWallContent = .media
+    var queryIdentity: String = ""
     let isLoading: Bool
     let hasLoaded: Bool
     let error: String?
@@ -282,7 +308,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         let newPixelWidth = min(440, max(1, Int(ceil(newWidth * view.traitCollection.displayScale))))
         if width != newWidth || pixelWidth != newPixelWidth {
             width = newWidth; pixelWidth = newPixelWidth
-            flow.itemSize = CGSize(width: width, height: floor(width / EmbyPosterGridMetrics.posterAspectRatio) + 42)
+            flow.itemSize = CGSize(width: width, height: floor(width / EmbyPosterGridMetrics.posterAspectRatio) + (input?.content == .genres ? 24 : 42))
             appliedRevision = nil; appliedReplacement = nil
             if let input { applyItems(input) }
         }
@@ -307,6 +333,10 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         let insetChanged = collection.contentInset.bottom != value.bottomPadding
         if footerChanged || insetChanged { trace("update-before", detail: "next_loading=\(value.isLoading ? 1 : 0) next_revision=\(value.revision) next_count=\(value.items.count)") }
         input = value
+        let itemHeight = floor(width / EmbyPosterGridMetrics.posterAspectRatio) + (value.content == .genres ? 24 : 42)
+        if width > 0, flow.itemSize.height != itemHeight {
+            flow.itemSize.height = itemHeight
+        }
         collection.contentInset.bottom = value.bottomPadding
         if width > 0 { applyItems(value) }
         if footerChanged { flow.invalidateLayout(); updateFooter() }
@@ -322,7 +352,8 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     }
 
     private func applyItems(_ value: EmbyPosterWall) {
-        let identity = "\(value.client.baseURL.absoluteString)|\(value.client.userId ?? "")"
+        let baseIdentity = "\(value.client.baseURL.absoluteString)|\(value.client.userId ?? "")"
+        let identity = value.queryIdentity.isEmpty && value.content == .media ? baseIdentity : "\(baseIdentity)|\(value.queryIdentity)|\(value.content)"
         guard appliedRevision != value.revision || sourceIdentity != identity else { return }
         let started = CACurrentMediaTime()
         defer { work.record(.apply, milliseconds: (CACurrentMediaTime() - started) * 1000) }
@@ -335,7 +366,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         }
         let newItems = append ? Array(value.items.dropFirst(old.count)) : value.items
         let retainedRequests = append ? [:] : Dictionary(old.map { ($0.imageRequest.key, $0.imageRequest) }, uniquingKeysWith: { first, next in first.isResolved ? first : next })
-        let changed = newItems.map { EmbyPosterRecord(item: $0, client: value.client, pixelWidth: pixelWidth, sourceIdentity: identity, retainedRequests: retainedRequests) }
+        let changed = newItems.map { EmbyPosterRecord(item: $0, client: value.client, pixelWidth: pixelWidth, sourceIdentity: identity, retainedRequests: retainedRequests, kind: value.content.kind(for: $0)) }
         let next = append ? old + changed : changed
         let sameIDs = !append && sourceIdentity == identity && next.map(\.id) == old.map(\.id)
         let recordsFinished = CACurrentMediaTime()
@@ -370,7 +401,8 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
 
     private func prepareFirstScreen() {
         guard width > 0, view.bounds.height > 0 else { return }
-        let count = min(18, (Int(ceil(view.bounds.height / (flow.itemSize.height + flow.minimumLineSpacing))) + 1) * 3)
+        let rowHeight = input?.content == .media ? flow.itemSize.height : floor(width / EmbyPosterGridMetrics.posterAspectRatio) + 24
+        let count = min(18, (Int(ceil(view.bounds.height / (rowHeight + flow.minimumLineSpacing))) + 1) * 3)
         preparation.setFirstScreen(owner: firstScreenOwner, urls: records.prefix(count).compactMap(\.url))
     }
 
@@ -387,6 +419,13 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     @objc private func refreshTriggered() { trace("refresh-triggered"); input?.onRefresh() }
 
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { records.count }
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+        guard input?.content != .media else { return flow.itemSize }
+        // The old three-column HStack reserved the tallest card in each mixed folder row.
+        let start = (indexPath.item / 3) * 3
+        let textHeight = records[start..<min(start + 3, records.count)].map { $0.kind.textHeight }.max() ?? 24
+        return CGSize(width: width, height: floor(width / EmbyPosterGridMetrics.posterAspectRatio) + textHeight)
+    }
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: EmbyPosterCell.reuseID, for: indexPath) as! EmbyPosterCell
         cell.onWork = { [weak self] stage, milliseconds in self?.work.record(stage, milliseconds: milliseconds) }

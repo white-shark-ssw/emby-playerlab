@@ -18,11 +18,12 @@ for name in pages:
         expected = expected.replace('                .overlay(alignment: .bottom) {\n                    if immersive { dock.padding(.bottom, serverDockBottomInset) }\n                    else { dock }\n                }\n', '')
         expected = expected.replace('            .navigationBarHidden(true)\n', '            .serverDockPage()\n            .navigationBarHidden(true)\n', 1)
     if name == 'EmbyServerBrowseV3.swift':
-        # Build295 deliberately replaces Library.items and its model, while every other page stays accepted.
-        boundary = 'private struct V3LibraryGenreCard'
-        assert current[current.index(boundary):] == expected[expected.index(boundary):], 'Non-pilot browse routes changed'
+        # P3 migrates only Library adapters; Favorites/Search and the Dock still keep accepted contracts.
+        p3 = 'private struct V3LibraryPosterPage' in current
+        boundary = 'struct V3EmbyFavoritesView:' if p3 else 'private struct V3LibraryGenreCard'
+        assert current[current.index(boundary):] == expected[expected.index(boundary):], 'Browse routes outside migrated Library changed'
         assert current.count('.serverDockPage()') == expected.count('.serverDockPage()')
-        assert current.count('.serverDockContentPadding()') == expected.count('.serverDockContentPadding()')
+        assert current.count('.serverDockContentPadding()') == expected.count('.serverDockContentPadding()') - (5 if p3 else 0)
         assert 'bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset)' in current
     else:
         assert current == expected, f'Unexpected non-Dock page behavior changed: {path}'

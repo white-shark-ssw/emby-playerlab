@@ -1,8 +1,8 @@
 import SwiftUI
 import UIKit
 
-// Production Library view/model/wall/Dock are compiled unchanged. Only non-pilot destinations and
-// non-pilot tab cards are fixtures. Pages use the requested60-item boundary, with no synthetic offset.
+// Production Library/P3 views, models, wall and Dock are compiled unchanged (visibility only).
+// The terminal detail and untouched horizontal cards are fixtures; native navigation is real.
 @MainActor final class LibraryReturnHost: UIViewController {
     private let client = EmbyAPIClient(baseURL: URL(string: "https://\(UUID().uuidString).example.test")!)
     private let status = UILabel()
@@ -28,7 +28,7 @@ import UIKit
                 if message.hasPrefix("event=view-appear ") { self.appearances += 1 }
                 if message == "event=test-pop-cancel" { self.cancelledPops += 1 }
                 else { self.lastGeometry = message.split(separator: " ").filter { $0.hasPrefix("wall=") || $0.hasPrefix("offset=") || $0.hasPrefix("count=") }.joined(separator: " ") }
-                self.status.text = "requests=\(self.client.requests.count) appear=\(self.appearances) cancelled=\(self.cancelledPops) \(self.lastGeometry)"
+                self.status.text = "requests=\(self.client.requests.count) folders=\(self.client.folderRequests.count) genres=\(self.client.genreRequests.count) appear=\(self.appearances) cancelled=\(self.cancelledPops) \(self.lastGeometry)"
             }
         }
     }
@@ -80,17 +80,5 @@ struct V3PosterCard: View {
 }
 struct V3LandscapeCard: View {
     let item: LibraryItem; let client: EmbyAPIClient
-    var body: some View { EmptyView() }
-}
-struct V3LibraryGenreGridView: View {
-    let library: LibraryItem; let genre: LibraryItem; let client: EmbyAPIClient
-    var body: some View { EmptyView() }
-}
-struct V3LibraryGenreCard: View {
-    let item: LibraryItem; let client: EmbyAPIClient
-    var body: some View { EmptyView() }
-}
-struct V3LibraryFolderGrid: View {
-    let items: [LibraryItem]; let client: EmbyAPIClient
     var body: some View { EmptyView() }
 }
