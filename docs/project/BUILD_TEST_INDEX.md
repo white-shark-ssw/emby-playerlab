@@ -1,5 +1,9 @@
 # OnePlayer Build / Test Index
 
+## Build300 reservation — P3 Library adapters /2026-10-08
+
+OnePlayer0.15.33 /Build300 /poster-library-adapters /iOS15.0 is reserved by DEV-poster-grid-smoothness on perf/poster-wall-library-build295 /Draft PR292. Source baseline is tested29944cdd845f3e822dde0215d0a47f180fbb73544a8; no new IPA/CI claim. User accepted G01 and authorized P3 G02–G08. Other Active Aether235 and current CI/branches checked for collisions; P4/P5/P6 remain pending.
+
 This is a milestone index, not a list of every experiment. Evidence levels remain distinct: Code written → CI passed → IPA produced → real-device tested → stable/frozen.
 
 | Milestone | Main purpose | Result / current meaning |
