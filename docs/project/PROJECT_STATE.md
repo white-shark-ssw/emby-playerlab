@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated2026-10-07: Build297 Library return candidate UI/Release/IPA independently verified; target-device pending. Accepted overall294/carousel293/Dock294 unchanged._
+_Last updated2026-10-07: Build297 partial device evidence reviewed; serial detail PlaybackInfo gate confirmed, Library return retention positive in captured session; full P2 acceptance pending. Accepted overall294/carousel293/Dock294 unchanged._
 
 ## Current accepted overall baseline
 
@@ -474,3 +474,10 @@ Independent CI control **c9a19fddf6a2e7f09812c3704759c35604ae263b**, ci/build297
 - IPA **OnePlayer-0.15.30-build297-poster-wall-return-section-unsigned.ipa**, **18736181 bytes**, SHA256 **5b95620f75595eace36e0c4c7f1e5dbdd612ebab14f50249fc13e323ca8fcc8d**. Exact-source ZIP SHA256 **885ee124fcb1477192aca6e44476177276b4d1ed063b4948a466369e1f9d2520**, git-archive comment **279f2c00fe86fa913962d22a0c7afbf17c82ca8d**. Downloaded files/ZIP integrity/checksums independently verified; saved IPA handoff available without temporary signed URL in documents.
 - Bundle **com.embyplayerlab.app**, OnePlayer **0.15.30 (297)**, Info MinOS **15.0**, arm64 Mach-O MinOS **15.0.0**, CADisableMinimumFrameDurationOnPhone=true; embedded compatibility audit **OK**.
 - **Code written /16 retained exact-input units +3 final native UI passed /Release CI passed /IPA independently verified /297 target-device pending /Active /P2 not accepted /not stable /not merged.** Next exact action: sign/install297 on iPhone15ProMax/iOS17; repeat cold/live/cached-first/deep detail return and cancelled-pop, real refresh/sort, stills SECTION~2s case with matching App log/video, and no-recording long-frame sample with cache/thermal/low-power context. Attribute DetailLoad publication→section lifecycle and PosterWall work costs; retain native/Frozen/P0 and G02–G15/H01–H04 gates.
+
+
+## Build297 partial device review — 2026-10-07 22:12 Asia/Shanghai
+
+Exact tested product0.15.30/297/source279f2c00; user log OnePlayer-App-1791382200.log and12.233s/30fps recording. Application-side serial dependency confirmed: PlaybackInfo await1530–2563ms holds Images/Similar; stills publication→section lifecycle6–34ms. Video shows cast/tags first, late stills/Similar/media sections. Service-internal cause and first-presented-frame timing remain unmeasured; this is not thumbnail-download latency and not a claim of seconds-long main-thread blocking. Five complete movie samples; two early-dismissed loads store incomplete empty snapshots, with same-item empty warm-cache re-hit observed. Seven Library detail returns retain wall/count/revision/offset in this session. Nine Library movement batches/6665 intervals: p99~8.335ms,max16.670ms,>=25/33.3=0; not detail/presented-FPS coverage or controlled gain comparison. Initial840-record main apply9.030ms; synchronous detail warm-store4.44–15.98ms (actual JSON/atomic-write path on main) are evidenced optimization targets, not proved rendered hitches. Warm-store happens after publication, not the seconds-delay root.
+
+Analysis/documents only; no runtime/Build/CI/IPA change or global acceptance. Proposed next after fix authorization: independent bounded detail content publication away from PlaybackInfo, preserve item/series dependencies/playback reuse/native/P0; propagate cancellation and retain only valid cache snapshots; off-main ordered disk persistence within existing cache owner, and narrow initial full-apply substage profiling. DEV-poster-grid-smoothness Active/P2 unaccepted, PR292 Draft/unmerged, G01 only; accepted294/carousel293/Dock294/Search256/P0 unchanged. Detailed source/timing/evidence in the task checkpoint.
