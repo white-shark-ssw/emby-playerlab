@@ -462,3 +462,7 @@ Next exact action: commit these scoped production/test/checker changes, then exa
 ## Build300 exact source / CI checkpoint
 
 Product/test source **cfe1b84c816bae1c37b07e7ac007da972c0b3510**, feature perf/poster-wall-library-build295 /Draft PR292. CI control **f9457201956df18c36e6fd63d5a30250a5abdea2**, branch ci/build300-poster-library-adapters-20261008, workflow build300-poster-library-adapters.yml. Reserved0.15.33/300/poster-library-adapters/iOS15.0. First run37671394292/job112963747765 failed source whitespace check only (extra document EOF blank lines); corrected document-only source descendant; no Swift or package result from that run. Continue exact-source macOS tests/Release/package, retrieve/verify IPA and hand off file. Do not stop at this checkpoint.
+
+## Build300 regression checkpoint — run37671589976/job112964410869
+
+Exact product **cfe1b84c816bae1c37b07e7ac007da972c0b3510** (runtime fe87eae9; last correction document-only), control **f9457201956df18c36e6fd63d5a30250a5abdea2**. Source/frozen/Dock guards and fresh simulator preparation passed. **28 poster/adapter units +10 detail/cache tests passed**.6 native UI tests are running; Release/package/Artifact/IPA retrieval still pending.18 prior Dock/carousel tests explicitly byte-guarded/retained, not rerun. Continue this same CI to verified IPA file; no real-device acceptance of P3 yet.
