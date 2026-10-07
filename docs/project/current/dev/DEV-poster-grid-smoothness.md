@@ -522,3 +522,8 @@ Product source **83a239dc259651755315d52e9028d159830d9960**, CI control **ff9491
 ## Build301 unit checkpoint — run37679733748/job112992327395
 
 Fresh10 detail/cache and37 poster/Library/P4 result units completed/success (47 total). New9 result tests cover four Favorite types60, raw frontier/dedup, actualPersonId/missingId, genre/tag flag andname60, chosen Search term/types18 and error policy, cancellation/fetch guard/no-total paging, actual fields/reuse, source/query identity and native append offset/refresh availability.8 native UI tests running; full Release/package/identity/MinOS/IPA still pending. No runtime/long-frame acceptance inferred. Next exact action: finish these native UI tests and Release; inspect any actual failure, then independently verify and hand off301IPA.
+
+
+## Build301 native UI checkpoint — 55 fresh tests passed
+
+Run37679733748/job112992327395: all10 detail/cache +37 poster/result units +8 native UI steps completed/success (55 fresh tests,0 failures). Two new native table cases cover favorite Movie/Series/Episode, Person works, genre/tag and Search leaf deep returns, plus Person more→production works→fixture detail→both parents. Existing6 G01/P3/inertia/cancelled-pop cases rerun. Terminal detail fixture and production destination byte guard remain explicitly distinguished. Release dependency preparation running; Build/identity/MinOS/package/artifact independent verification and real-device testing pending. Next exact action: complete Release/package, retrieve actual artifact and verify source/IPA/MinOS, save and hand off actual301 IPA. No long-frame/FPS or whole-task stability claim.
