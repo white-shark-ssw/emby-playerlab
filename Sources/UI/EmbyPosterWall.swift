@@ -307,6 +307,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         let changed = newItems.map { EmbyPosterRecord(item: $0, client: value.client, pixelWidth: pixelWidth) }
         let next = append ? old + changed : changed
         let sameIDs = !append && sourceIdentity == identity && next.map(\.id) == old.map(\.id)
+        let recordsFinished = CACurrentMediaTime()
         appliedReplacement = value.replacement
         items = value.items; records = next; appliedRevision = value.revision; sourceIdentity = identity
         if append {
@@ -325,11 +326,14 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
             cancelPrefetch()
             UIView.performWithoutAnimation { collection.reloadData() }
         }
+        let nativeFinished = CACurrentMediaTime()
         // Update image-demand membership on real data changes; ordinary SwiftUI updates do not scan items.
         if !append { cancelPrefetch(except: Set(next.compactMap(\.url))) }
+        let membershipFinished = CACurrentMediaTime()
         prepareFirstScreen()
+        let firstScreenFinished = CACurrentMediaTime()
         trace("items-after", detail: "append=\(append ? 1 : 0) same_ids=\(sameIDs ? 1 : 0)")
-        DiagnosticsLogger.shared.log("PosterWall", "event=items count=\(next.count) append=\(append ? 1 : 0) same_ids=\(sameIDs ? 1 : 0) apply_ms=\(String(format: "%.2f", (CACurrentMediaTime() - started) * 1000))")
+        DiagnosticsLogger.shared.log("PosterWall", "event=items count=\(next.count) append=\(append ? 1 : 0) same_ids=\(sameIDs ? 1 : 0) apply_ms=\(String(format: "%.2f", (CACurrentMediaTime() - started) * 1000)) records_ms=\((recordsFinished - started) * 1000) native_submit_ms=\((nativeFinished - recordsFinished) * 1000) membership_ms=\((membershipFinished - nativeFinished) * 1000) first_screen_ms=\((firstScreenFinished - membershipFinished) * 1000)")
     }
 
     private func prepareFirstScreen() {

@@ -996,6 +996,7 @@ private final class EmbyDetailFilterResultsViewModel: ObservableObject {
     private var isFetching = false
     private var seenItemIDs = Set<String>()
     private(set) var hasLoaded = false
+    private var hasCompleteWarmPresentation = false
 
     init(filter: EmbyDetailFilter, client: EmbyAPIClient) {
         self.filter = filter
@@ -1331,61 +1332,110 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         episodeScrollTargetID = target.id
     }
 
-    private func storeWarmPresentation() {
+    private func storeWarmPresentation() async {
         let snapshot = EmbyMediaDetailWarmSnapshot(episodes: episodes, seasons: seasons, imageInfos: imageInfos, similarItems: similarItems)
-        EmbyMediaDetailWarmCache.shared.store(snapshot, client: client, itemID: item.id)
+        await EmbyMediaDetailWarmCache.shared.store(snapshot, client: client, itemID: item.id)
     }
 
     func load() async {
         loadTrace.mark("task-enter", images: imageInfos.count, stills: stillImages.count)
         guard !hasLoaded else { loadTrace.mark("task-skip", images: imageInfos.count, stills: stillImages.count); return }
-        defer { loadTrace.mark("task-finish", images: imageInfos.count, stills: stillImages.count) }
+        defer { isLoadingEpisodes = false; loadTrace.mark("task-finish", images: imageInfos.count, stills: stillImages.count) }
         errorMessage = nil
         do {
             loadTrace.mark("item-before")
             let refreshed = try await client.libraryItem(itemId: item.id)
+            try Task.checkCancellation()
             loadTrace.mark("item-after")
             item = refreshed
             if favoriteSyncTask == nil { syncedFavorite = refreshed.isFavorite; desiredFavorite = refreshed.isFavorite }
             if playedSyncTask == nil { syncedPlayed = refreshed.isPlayed; desiredPlayed = refreshed.isPlayed }
 
-            if refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame {
-                isLoadingEpisodes = true
-                loadTrace.mark("episodes-before")
-                do { episodes = try await client.seriesEpisodes(seriesId: refreshed.id) }
-                catch { if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription } }
-                loadTrace.mark("episodes-after")
-                loadTrace.mark("seasons-before")
-                do { seasons = try await client.seriesSeasons(seriesId: refreshed.id) }
-                catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "seasons failed: \(error.localizedDescription)") } }
-                loadTrace.mark("seasons-after")
-                isLoadingEpisodes = false
-                applyInitialEpisodeSelection()
-                logEpisodeDiagnostics(seriesID: refreshed.id)
+            // Independent presentation requests must not wait for PlaybackInfo or episode selection.
+            async let imagesComplete = loadImages(for: refreshed)
+            async let similarComplete = loadSimilar(for: refreshed)
+            async let episodesComplete = loadEpisodesAndMedia(for: refreshed)
+            let complete = try await (imagesComplete, similarComplete, episodesComplete)
+            try Task.checkCancellation()
+            if complete.0 && complete.1 && complete.2 {
+                hasCompleteWarmPresentation = true
+                loadTrace.mark("warm-store-before")
+                await storeWarmPresentation()
+                loadTrace.mark("warm-store-after")
+                try Task.checkCancellation()
             }
-
-            loadTrace.mark("media-before")
-            await loadMediaMetadata(for: primaryPlayableItem)
-            loadTrace.mark("media-after")
-
-            loadTrace.mark("images-before", images: imageInfos.count, stills: stillImages.count)
-            do { imageInfos = try await client.imageInfos(itemId: refreshed.id) }
-            catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "image info failed: \(error.localizedDescription)") } }
-            loadTrace.mark("images-published", images: imageInfos.count, stills: stillImages.count)
-
-            let similarTypes = refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame ? ["Series"] : ["Movie", "Video"]
-            loadTrace.mark("similar-before")
-            do { similarItems = try await client.similarItems(itemId: refreshed.id, includeItemTypes: similarTypes) }
-            catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "similar items failed: \(error.localizedDescription)") } }
-            loadTrace.mark("similar-after")
-            loadTrace.mark("warm-store-before")
-            storeWarmPresentation()
-            loadTrace.mark("warm-store-after")
             hasLoaded = true
         } catch {
-            if isEmbyRequestCancellation(error) { return }
+            if isEmbyRequestCancellation(error) || Task.isCancelled { return }
             hasLoaded = true
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadEpisodesAndMedia(for refreshed: LibraryItem) async throws -> Bool {
+        var complete = true
+        if refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame {
+            isLoadingEpisodes = true
+            loadTrace.mark("episodes-before")
+            do {
+                let loaded = try await client.seriesEpisodes(seriesId: refreshed.id)
+                try Task.checkCancellation()
+                episodes = loaded
+            } catch {
+                if isEmbyRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
+                complete = false; errorMessage = error.localizedDescription
+            }
+            loadTrace.mark("episodes-after")
+            loadTrace.mark("seasons-before")
+            do {
+                let loaded = try await client.seriesSeasons(seriesId: refreshed.id)
+                try Task.checkCancellation()
+                seasons = loaded
+            } catch {
+                if isEmbyRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
+                complete = false; DiagnosticsLogger.shared.log("EmbyDetail", "seasons failed: \(error.localizedDescription)")
+            }
+            loadTrace.mark("seasons-after")
+            isLoadingEpisodes = false
+            applyInitialEpisodeSelection()
+            logEpisodeDiagnostics(seriesID: refreshed.id)
+        }
+
+        try Task.checkCancellation()
+        loadTrace.mark("media-before")
+        try await loadMediaMetadata(for: primaryPlayableItem)
+        loadTrace.mark("media-after")
+        return complete
+    }
+
+    private func loadImages(for refreshed: LibraryItem) async throws -> Bool {
+        loadTrace.mark("images-before", images: imageInfos.count, stills: stillImages.count)
+        do {
+            let loaded = try await client.imageInfos(itemId: refreshed.id)
+            try Task.checkCancellation()
+            imageInfos = loaded
+            loadTrace.mark("images-published", images: imageInfos.count, stills: stillImages.count)
+            return true
+        } catch {
+            if isEmbyRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
+            DiagnosticsLogger.shared.log("EmbyDetail", "image info failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func loadSimilar(for refreshed: LibraryItem) async throws -> Bool {
+        let similarTypes = refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame ? ["Series"] : ["Movie", "Video"]
+        loadTrace.mark("similar-before")
+        do {
+            let loaded = try await client.similarItems(itemId: refreshed.id, includeItemTypes: similarTypes)
+            try Task.checkCancellation()
+            similarItems = loaded
+            loadTrace.mark("similar-after")
+            return true
+        } catch {
+            if isEmbyRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
+            DiagnosticsLogger.shared.log("EmbyDetail", "similar items failed: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -1437,7 +1487,8 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         for (index, episode) in tail.enumerated() { DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) sampleLast[\(index)]=\(sample(episode))") }
     }
 
-    private func loadMediaMetadata(for mediaItem: LibraryItem?) async {
+    private func loadMediaMetadata(for mediaItem: LibraryItem?) async throws {
+        try Task.checkCancellation()
         guard let mediaItem else {
             mediaSources = []
             mediaMetadataItem = nil
@@ -1447,12 +1498,14 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         }
         do {
             let info = try await client.playbackInfo(itemId: mediaItem.id)
+            try Task.checkCancellation()
             mediaSources = info.mediaSources
             mediaMetadataItem = mediaItem
             mediaPlaySessionId = info.playSessionId
             mediaPlaybackInfoLoadedAt = Date()
         } catch {
-            if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "media metadata failed: \(error.localizedDescription)") }
+            if isEmbyRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
+            DiagnosticsLogger.shared.log("EmbyDetail", "media metadata failed: \(error.localizedDescription)")
         }
     }
 
@@ -1550,7 +1603,8 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                 hasPlaybackPositionOverride = false
                 playbackPositionOverrideTicks = nil
             }
-            storeWarmPresentation()
+            try Task.checkCancellation()
+            if hasCompleteWarmPresentation { await storeWarmPresentation() }
             DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refreshed item=\(itemID) positionTicks=\(refreshed.userData?.playbackPositionTicks ?? 0) selectedResumeTarget=\(selectedEpisodeID ?? item.id) override=\(hasPlaybackPositionOverride)")
         } catch {
             if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refresh failed item=\(itemID): \(error.localizedDescription)") }

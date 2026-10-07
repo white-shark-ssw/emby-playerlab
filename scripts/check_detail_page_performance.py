@@ -20,8 +20,16 @@ assert 'let seasons: [LibraryItem]' in state
 assert 'let imageInfos: [EmbyImageInfo]' in state
 assert 'let similarItems: [LibraryItem]' in state
 assert 'let refreshed = try await client.libraryItem(itemId: item.id)' in detail
-assert 'episodes = try await client.seriesEpisodes(seriesId: refreshed.id)' in detail
-assert 'imageInfos = try await client.imageInfos(itemId: refreshed.id)' in detail
+assert 'let loaded = try await client.seriesEpisodes(seriesId: refreshed.id)' in detail
+assert 'let loaded = try await client.imageInfos(itemId: refreshed.id)' in detail
+assert 'async let imagesComplete = loadImages(for: refreshed)' in detail
+assert 'async let similarComplete = loadSimilar(for: refreshed)' in detail
+assert 'async let episodesComplete = loadEpisodesAndMedia(for: refreshed)' in detail
+assert 'if complete.0 && complete.1 && complete.2' in detail
+assert 'if hasCompleteWarmPresentation { await storeWarmPresentation() }' in detail
+assert 'try Task.checkCancellation()' in detail
+assert 'private let writeQueue = DispatchQueue(label: "OnePlayer.DetailPresentation.Write", qos: .utility)' in state
+assert 'writeQueue.async' in state
 
 # The same presentation snapshot survives process death through Library/Caches, while NSCache remains the hot path.
 assert 'NSCache<NSString, Box>()' in state
