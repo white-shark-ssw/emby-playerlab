@@ -142,3 +142,24 @@ All rows use exactsource cfe1b84c /passing run37671589976 and verified0.15.33/30
 | G08 Recursive folders | V3LibraryFolderBrowserView → mixed wall /exactparentId,nonpaged,one model/page | original folder owner parent/no-paging/return/failure unit; at least two child levels and terminal detail pop,parent/root returns UI |
 
 Normal3-column card/year/progress/badge and native geometry cases remain in prior21 poster tests. No image budget change, P4/P5 migration or300 device long-frame claim is implied.
+
+## Build301 partial P4 G09–G14 implementation — pending macOS validation
+
+OnePlayer0.15.34 /Build301 /poster-results-adapters; same task/feature/Draft PR292. Shared EmbyPosterResultsPage owns one native vertical wall and one resident system selection/link; original models still own60 Favorites/Person/filter and18 Search paging, raw frontier, dedup and error policy. Explicit Person own-image/name-only and plain-media preferred-image/name/year-only variants preserve original fields/heights (24/40); standard media42 unchanged. Original missing PersonId message, Episode destination, actual selected server client/term and Dock clearance retained. No new pull-to-refresh on previously non-refreshable leaves. G01/P3 source, Favorites preview, Search root/direct/history/multi-server/recommendations and detail source outside the filter leaf are byte-guarded unchanged. P0/carousel/Dock/root Search lifetime/image budgets unchanged.
+
+Production-source extraction/leaf scope guards passed on Linux; new9 query/frontier/variant/native units and2 table-driven native UI tests are written but not yet run (planned37 poster units +10 detail units +8 native UI;18 Dock/carousel retained exact-input evidence). Terminal detail is a fixture, production destination bytes protected. CI/Release/IPA and all301 real-device evidence pending. G15 recommendation single landing host and unbounded second pin removal explicitly pending, along with P5 and broad P6. No301 FPS/long-frame or stable claim.
+
+| P4 entry | Build301 source state | Automated/device state |
+| --- | --- | --- |
+| G09 Movie/Series/Episode more | Native adapter; original60/types/Episode route | Source guarded; tests/CI/device pending |
+| G10 Person more | Native Person variant→original works page | Query and two-level native test written; pending run/device |
+| G11 genre/tag two original entry paths | Shared native filter leaf; name/isGenre60 unchanged | Both flags tested at original model; entry paths frozen; pending run/device |
+| G12 detail cast/favorite preview/Person more | Native Person works; originalPersonId60 | All entry constructors byte-protected; missingId/query/native tests written; pending run/device |
+| G13 direct/history | Shared native18 Search results | Original initiating paths unchanged; query/native tests written; pending run/device |
+| G14 multi-server more | Same native18 result leaf with actual section client/term | Section route frozen; cross-server/query identity tests written; pending run/device |
+| G15 recommendation9/+6 | Unchanged, NOT migrated | Single landing host and second-pin removal pending |
+
+
+## Build301 exact-source CI started
+
+Product source **83a239dc259651755315d52e9028d159830d9960**, CI control **ff949150c67b183aefae761bf878c2b583a8af99**, branch ci/build301-poster-results-adapters-20261008, run **37679733748 /job112992327395**. Product-head lease, exact allowed diff/whitespace, P3/Dock/main detail/P4 leaf business/source guards and retained18 native input guards passed; macOS simulator preparation running.37 poster +10 detail +8 native UI/Release/package pending. No301 IPA/device claim yet. Next exact action: monitor this exact run, inspect real failed logs if needed, fix only proven errors, then continue through verified IPA handoff. Do not reuse300 IPA as301.

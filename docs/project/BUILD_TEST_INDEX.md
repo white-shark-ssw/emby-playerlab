@@ -820,3 +820,14 @@ User explicitly accepted the current G01 Library performance and authorized the 
 ## Build301 reserved — partial P4 G09–G14
 
 OnePlayer0.15.34 / Build301 / poster-results-adapters reserved for DEV-poster-grid-smoothness / perf/poster-wall-library-build295 / Draft PR292. Resume head741c3bd9c3908726b2992070e992423e02c89273, baseline verified300 exactcfe1b84c816bae1c37b07e7ac007da972c0b3510. Scope Favorites more/Person/detail filter leaves/direct+history+multi-server full Search results; preserve60/18. G15 correct landing host/pin removal remains next stage with P5/P6 pending. Implementation, CI and IPA pending; no301 device/performance claim. Aether235 isolated, Search256 data/lifetime, Dock294/carousel293/main detail/P0 protected.
+
+## Build301 partial P4 G09–G14 implementation — pending macOS validation
+
+OnePlayer0.15.34 /Build301 /poster-results-adapters; same task/feature/Draft PR292. Shared EmbyPosterResultsPage owns one native vertical wall and one resident system selection/link; original models still own60 Favorites/Person/filter and18 Search paging, raw frontier, dedup and error policy. Explicit Person own-image/name-only and plain-media preferred-image/name/year-only variants preserve original fields/heights (24/40); standard media42 unchanged. Original missing PersonId message, Episode destination, actual selected server client/term and Dock clearance retained. No new pull-to-refresh on previously non-refreshable leaves. G01/P3 source, Favorites preview, Search root/direct/history/multi-server/recommendations and detail source outside the filter leaf are byte-guarded unchanged. P0/carousel/Dock/root Search lifetime/image budgets unchanged.
+
+Production-source extraction/leaf scope guards passed on Linux; new9 query/frontier/variant/native units and2 table-driven native UI tests are written but not yet run (planned37 poster units +10 detail units +8 native UI;18 Dock/carousel retained exact-input evidence). Terminal detail is a fixture, production destination bytes protected. CI/Release/IPA and all301 real-device evidence pending. G15 recommendation single landing host and unbounded second pin removal explicitly pending, along with P5 and broad P6. No301 FPS/long-frame or stable claim.
+
+
+## Build301 exact-source CI started
+
+Product source **83a239dc259651755315d52e9028d159830d9960**, CI control **ff949150c67b183aefae761bf878c2b583a8af99**, branch ci/build301-poster-results-adapters-20261008, run **37679733748 /job112992327395**. Product-head lease, exact allowed diff/whitespace, P3/Dock/main detail/P4 leaf business/source guards and retained18 native input guards passed; macOS simulator preparation running.37 poster +10 detail +8 native UI/Release/package pending. No301 IPA/device claim yet. Next exact action: monitor this exact run, inspect real failed logs if needed, fix only proven errors, then continue through verified IPA handoff. Do not reuse300 IPA as301.
