@@ -151,10 +151,26 @@ Production-source extraction/leaf scope guards passed on Linux; new9 query/front
 
 | P4 entry | Build301 source state | Automated/device state |
 | --- | --- | --- |
-| G09 Movie/Series/Episode more | Native adapter; original60/types/Episode route | Source guarded; tests/CI/device pending |
-| G10 Person more | Native Person variant→original works page | Query and two-level native test written; pending run/device |
-| G11 genre/tag two original entry paths | Shared native filter leaf; name/isGenre60 unchanged | Both flags tested at original model; entry paths frozen; pending run/device |
-| G12 detail cast/favorite preview/Person more | Native Person works; originalPersonId60 | All entry constructors byte-protected; missingId/query/native tests written; pending run/device |
-| G13 direct/history | Shared native18 Search results | Original initiating paths unchanged; query/native tests written; pending run/device |
-| G14 multi-server more | Same native18 result leaf with actual section client/term | Section route frozen; cross-server/query identity tests written; pending run/device |
+| G09 Movie/Series/Episode more | Native adapter; original60/types/Episode route | 60/types source and media native leaf tests/Release passed; device pending |
+| G10 Person more | Native Person variant→original works page | Query and two-level native UI/Release passed; device pending |
+| G11 genre/tag two original entry paths | Shared native filter leaf; name/isGenre60 unchanged | Both flags/native leaf/Release passed; entry paths frozen; device pending |
+| G12 detail cast/favorite preview/Person more | Native Person works; originalPersonId60 | Entry constructors guarded; missingId/query/works native UI/Release passed; device pending |
+| G13 direct/history | Shared native18 Search results | Initiating paths frozen; query/native leaf/Release passed; product entry/device pending |
+| G14 multi-server more | Same native18 result leaf with actual section client/term | Section route frozen; cross-source/query identity and leaf/Release passed; multi-server device pending |
 | G15 recommendation9/+6 | Unchanged, NOT migrated | Single landing host and second-pin removal pending |
+
+
+## Build301 exact-source CI started
+
+Product source **83a239dc259651755315d52e9028d159830d9960**, CI control **ff949150c67b183aefae761bf878c2b583a8af99**, branch ci/build301-poster-results-adapters-20261008, run **37679733748 /job112992327395**. Product-head lease, exact allowed diff/whitespace, P3/Dock/main detail/P4 leaf business/source guards and retained18 native input guards passed; macOS simulator preparation running.37 poster +10 detail +8 native UI/Release/package pending. No301 IPA/device claim yet. Next exact action: monitor this exact run, inspect real failed logs if needed, fix only proven errors, then continue through verified IPA handoff. Do not reuse300 IPA as301.
+
+
+## Build301 P4 G09–G14 verified IPA handoff — 2026-10-08
+
+**Exact product/test/package source:** 83a239dc259651755315d52e9028d159830d9960. CI controlff949150c67b183aefae761bf878c2b583a8af99, branch ci/build301-poster-results-adapters-20261008, run37679733748/job112992327395 independently confirmed completed/success. Fresh **37 poster/adapter units +10 detail/cache units +8 native UI tests /55 total /0 failures**;18 unchanged-input Dock/carousel regressions explicitly byte-guarded and retained, not rerun. Full Release/package/identity/embedded MinOS passed. Independent download verifies ZIP integrity, archive source comment, actual production/test bytes, checksums, bundle/version/build and arm64 LC minimum OS. No failed301 run or fabricated device evidence.
+
+**Artifact:** OnePlayer-0.15.34-build301-poster-results-adapters, ID11509478670, ZIP23004275bytes, SHA256 **bd98c7ad2fda045042ca0682a2df2d1eb774de96297a8b4f55f5f50fbf145c4a**. IPA OnePlayer-0.15.34-build301-poster-results-adapters-unsigned.ipa, **18733102bytes**, SHA256 **b02bb528ef75898d34d403f44e720df0b424ae9505dcb9568540361807f731ac**. Source ZIP SHA256 **6dfaab9e3d33ddb4cbc52c811c3837ac186c6ede8639f20e7cece7afd15b1e01**. Bundlecom.embyplayerlab.app /version0.15.34 /Build301 /Info MinOS15.0 /arm64 MinOS15.0.0 /CADisableMinimumFrameDurationOnPhone=true. Actual IPA saved for direct file handoff; unsigned, sign-install required. No temporary URL or upload path retained. Closing commits change project documents only; exact packaged source stays83a239dc.
+
+**Coverage:** G09 Movie/Series/Episode favorite more, G10 Person more, G11 genre/tag filter leaf, G12 person works, G13 direct/history full Search result leaf and G14 server-section more share native results adapter. Original60/18 providers, types/filter/PersonId/term/client, raw frontier/dedup/error policies unchanged. Native UI exercises deep returns across media/person/filter/search leaf variants and Person more→production works→fixture detail→both parents. Terminal detail is a fixture: production Episode→Series/detail destination bytes are protected, not claimed exercised through a real terminal detail in that harness. Original G11 two entry paths, G12 three entry paths, G13 direct/history and G14 section-client paths are source-guarded; full product entry/device scenarios remain pending. G01/P3, main detail outside filter leaf, Search root/recommendations/lifetime, Favorites previews, image budgets, Dock/carousel/P0 source unchanged.
+
+**State and next action:** Code written /55 fresh regressions passed /Release CI passed /IPA produced+independently verified /301 real-device testing pending /not whole-task Stable, frozen or merged. G01 accepted only within documented299 scope. G15 is NOT migrated: Search history/recommendation/footer must join one vertical native host, preserve9/+6/random/exclusions/6pt and Dock destruction/re-entry, remove second unbounded image pin. P5 H01–H04 horizontal/Home follows; H05 detail horizontal remains audit-only. P6 broad2000/5000/pressure/background/resources and uncovered interaction/target-device matrix remain. No Build302 identity allocated. Resume current source/branch/PR and candidate collision before next implementation; keep Aether235 isolated. Handoff301 for Favorites/Person/filter/Search deep return/paging/actual Episode+server routes, then continue G15 rather than restarting accepted Library tuning. No301 FPS or long-frame improvement claimed.
