@@ -72,6 +72,7 @@ final class PosterWallTests: XCTestCase {
         var values = (0..<2000).map { item(String($0)) }
         func value(_ revision: Int) -> EmbyPosterWall { EmbyPosterWall(items: values, revision: revision, replacement: revision, client: source, isLoading: false, hasLoaded: true, error: nil, emptyText: "empty", bottomPadding: 86, isActive: true, onApproachingEnd: {}, onRefresh: {}, onSelect: { _ in }) }
         controller.update(value(1))
+        controller.viewDidAppear(false)
         controller.collectionView(controller.collection, prefetchItemsAt: [IndexPath(item: 30, section: 0), IndexPath(item: 31, section: 0)])
         let unchanged = controller.records[30].imageRequest, changed = controller.records[31].imageRequest
         let retainedToken = controller.prefetch[unchanged.url!], removedURL = changed.url!
