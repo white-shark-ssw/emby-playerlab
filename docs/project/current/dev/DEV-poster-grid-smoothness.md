@@ -1,5 +1,15 @@
 # DEV-poster-grid-smoothness
 
+## P3 active milestone — 2026-10-08
+
+User explicitly accepts the current Library page and authorizes continuing the remaining plan. G01 is accepted within the documented Build299 device coverage; P6 scale/resource/remaining-interaction gaps remain. Resume guard confirmed feature b44cc9ae2cc314590f28a24e85c6dbdd32129ccd /Draft PR292 open/unmerged, canonical main24260a61f15454de5c88341b91354ba7ad5918b6; both are document-only descendants of exact tested299 runtime44cdd845f3e822dde0215d0a47f180fbb73544a8.
+
+**Reserved candidate:** OnePlayer0.15.33 /Build300 /poster-library-adapters /iOS15.0, same feature and PR. Build index, Active Aether235 checkpoint and current CI/branches were checked; no300/0.15.33/candidate collision. Aether runtime files/owners do not overlap this scope. No Build300 implementation or validation claim yet.
+
+**Scope:** P3 G02–G08 only: trailers, collections, Library favorites, genre covers/results, mixed folder root and recursive folder browsers. Keep original queries,60 paging/raw frontier and non-paged folder contract; type-specific native destinations, original cards and native push/pop. G01 runtime and accepted detail behavior protected, shared wall changes limited to currently needed genre/folder presentation. H02 suggestions remains P5. P4/P5/P6 pending.
+
+**Next exact action:** implement audited adapters in EmbyServerBrowseV3 plus minimal shared-wall variants; add production-source model/card/navigation regression; commit and continue through exact-source macOS CI/Release, download/independently verify IPA and deliver the file. No pause at ordinary code/CI checkpoints. Runtime acceptance of new adapters requires user testing.
+
 ## Current identity — Build299 positive restart/top device evidence; current Library tuning closed — 2026-10-08
 
 - Active/G01 only; feature perf/poster-wall-library-build295 /Draft PR292 open/unmerged. Exact tested/package source **44cdd845f3e822dde0215d0a47f180fbb73544a8**; feature closing updates are document-only descendants. Candidate OnePlayer0.15.32 /Build299 /poster-demand-url /iOS15.0. Aether235 separate; accepted294/carousel293/Dock294/Search256/P0 and other-host gates protected.
