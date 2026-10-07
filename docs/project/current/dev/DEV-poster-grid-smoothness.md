@@ -1,6 +1,17 @@
 # DEV-poster-grid-smoothness
 
-## Current identity — P3 verified Build300 IPA; G01 accepted, full task Active
+## Current identity — P4 G09–G14 Build301 reserved
+
+- Status: Active; Build300 verified handoff retained. P4 G09–G14 source audit complete; implementation / CI / IPA pending.
+- Work ID / routing aliases: DEV-poster-grid-smoothness / 海报墙 / 库页海报 / 海报网格流畅度
+- Working branch: perf/poster-wall-library-build295; Draft PR292 open/unmerged. Resume verified head 741c3bd9c3908726b2992070e992423e02c89273; main0bb2b9508c1f9df585d9de2bca2bed876c5e0905 documents only; exact Build300 package cfe1b84c816bae1c37b07e7ac007da972c0b3510.
+- Unique candidate reserved: OnePlayer0.15.34 / Build301 / poster-results-adapters / iOS15.0. Index, other Active Aether235 and CI matching refs checked, no301 collision. Search256 Completed; runtime/P0/Dock/carousel untouched.
+- Scope: G09 favorite Movie/Series/Episode more, G10 Person more, G11 genre/tag filter leaf only, G12 person works, G13 direct/history Search full results, G14 multi-server more. Original60/18 queries, Person/Episode routes, leaf-only name/year appearance and model ownership preserved. Do not reopen detail main loading/Hero/playback.
+- G15 recommendation9/+6 and single landing host remains pending; current Search pin not removed in this partial stage. P5 horizontal/Home and P6 broader device/scale/resource matrix pending. P3 awaits device testing; G01 accepted within299 logs only.
+- Completed: resume/source/collision audit; no runtime patch or new test/IPA claim yet.
+- Next exact action: implement shared native result-page adapter and explicit plain-media/Person cell variants against300; extend actual-source query/navigation tests, then continue exact-source macOS CI/Release/artifact independent verification and direct IPA handoff without intermediate stop.
+
+## Previous identity — P3 verified Build300 IPA; G01 accepted, full task Active
 
 - **Status:** Active; P3 code/CI/IPA complete, new adapters awaiting device testing; P4/P5/P6 pending.
 - **Work ID / aliases:** DEV-poster-grid-smoothness /海报墙/库页海报/海报网格流畅度/DEV-poster-grid-smoothness.
