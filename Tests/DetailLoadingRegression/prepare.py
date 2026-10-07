@@ -12,7 +12,7 @@ filters = detail[detail.index('struct EmbyDetailFilter:'):detail.index('private 
 (target / 'DetailModel.swift').write_text('import SwiftUI\nimport Combine\nimport UIKit\n' + ranges + filters + model)
 state = (repo / 'Sources/UI/EmbyDetailPerformanceState.swift').read_text()
 # Visibility only: tests instantiate an isolated production cache and inspect its actual disk path/queue.
-for old, new in [('private init()', 'init()'), ('private let cache =', 'let cache ='), ('private let writeQueue =', 'let writeQueue ='), ('private func key(', 'func key('), ('private func cacheFileURL(', 'func cacheFileURL(')]:
+for old, new in [('private init()', 'init()'), ('private final class Box:', 'final class Box:'), ('private let cache =', 'let cache ='), ('private let writeQueue =', 'let writeQueue ='), ('private func key(', 'func key('), ('private func cacheFileURL(', 'func cacheFileURL(')]:
     assert state.count(old) == 1, old
     state = state.replace(old, new)
 (target / 'DetailState.swift').write_text(state)
