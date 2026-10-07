@@ -1,6 +1,19 @@
 # DEV-poster-grid-smoothness
 
-## P3 active milestone — 2026-10-08
+## Current identity — P3 verified Build300 IPA; G01 accepted, full task Active
+
+- **Status:** Active; P3 code/CI/IPA complete, new adapters awaiting device testing; P4/P5/P6 pending.
+- **Work ID / aliases:** DEV-poster-grid-smoothness /海报墙/库页海报/海报网格流畅度/DEV-poster-grid-smoothness.
+- **Working branch / PR:** perf/poster-wall-library-build295 /Draft PR292 open/unmerged.
+- **Exact package/test source:** cfe1b84c816bae1c37b07e7ac007da972c0b3510; closing feature updates are document-only descendants.
+- **Build/candidate:** OnePlayer0.15.33 /Build300 /poster-library-adapters /iOS15.0. CI controlf9457201956df18c36e6fd63d5a30250a5abdea2 /run37671589976 /job112964410869 completed/success. Artifact11506615484; independent IPA checks passed and file saved for handoff.
+- **Completed:** accepted G01 within Build299 device evidence; P3 G02–G08 shared native adapters, card variants, original query/route owners;28+10+6 fresh regressions,18 exact-input retained Dock/carousel tests; full Release/IPA verified.
+- **Pending:** P3 device coverage; P4 G09–G15; P5 H01–H04; P6 final scale/resource/interaction matrix. Whole task not stable/frozen/merged; Aether235/P0/frozen hosts protected.
+- **Next exact action:** hand off verified300 for new Library routes and continue P4 source audit from this branch; inspect current heads and candidate collision before allocating any future build. See closing milestone for complete evidence and runtime matrix.
+
+## Historical checkpoints
+
+## P3 reservation milestone (historical) — 2026-10-08
 
 User explicitly accepts the current Library page and authorizes continuing the remaining plan. G01 is accepted within the documented Build299 device coverage; P6 scale/resource/remaining-interaction gaps remain. Resume guard confirmed feature b44cc9ae2cc314590f28a24e85c6dbdd32129ccd /Draft PR292 open/unmerged, canonical main24260a61f15454de5c88341b91354ba7ad5918b6; both are document-only descendants of exact tested299 runtime44cdd845f3e822dde0215d0a47f180fbb73544a8.
 
@@ -457,3 +470,28 @@ No repeat test is required merely to round1560/1620 up to2000 for this captured 
 Code written locally for G02–G08: per-query native adapters and persistent system links; genre own primary image/title-only card, mixed folder/media row heights and folder badge; original Episode/detail destination reused. Original Library query owner now publishes per-tab revision/replacement and distinguishes successful same-page reappearance from explicit tab switching.60/raw frontier/filter/sort and existing nonpaged child-folder API remain. Native G01 view/root/actions, Library suggestions, Favorites/Search suffix, detail/playback and image budgets protected. New adapters require production-source7 regression cases plus3 new native navigation UI cases; existing21 poster+3 native UI and10 detail tests remain applicable. Linux source/harness checks only at this milestone; no Swift/CI/IPA result yet.
 
 Next exact action: commit these scoped production/test/checker changes, then exact-source macOS CI (28 poster/adapter units +6 native UI +10 detail;18 unchanged-input Dock/carousel evidence retained), Release/package, independent identity verification and file handoff. Source head is the implementation commit containing this milestone; resolve via feature branch before resuming.
+
+
+## Build300 exact source / CI checkpoint
+
+Product/test source **cfe1b84c816bae1c37b07e7ac007da972c0b3510**, feature perf/poster-wall-library-build295 /Draft PR292. CI control **f9457201956df18c36e6fd63d5a30250a5abdea2**, branch ci/build300-poster-library-adapters-20261008, workflow build300-poster-library-adapters.yml. Reserved0.15.33/300/poster-library-adapters/iOS15.0. First run37671394292/job112963747765 failed source whitespace check only (extra document EOF blank lines); corrected document-only source descendant; no Swift or package result from that run. Continue exact-source macOS tests/Release/package, retrieve/verify IPA and hand off file. Do not stop at this checkpoint.
+
+## Build300 regression checkpoint — run37671589976/job112964410869
+
+Exact product **cfe1b84c816bae1c37b07e7ac007da972c0b3510** (runtime fe87eae9; last correction document-only), control **f9457201956df18c36e6fd63d5a30250a5abdea2**. Source/frozen/Dock guards and fresh simulator preparation passed. **28 poster/adapter units +10 detail/cache tests passed**.6 native UI tests are running; Release/package/Artifact/IPA retrieval still pending.18 prior Dock/carousel tests explicitly byte-guarded/retained, not rerun. Continue this same CI to verified IPA file; no real-device acceptance of P3 yet.
+
+## Build300 native UI checkpoint — 2026-10-08
+
+Run37671589976/job112964410869: source guards, **28 poster/adapter units,10 detail/cache tests and6 native UI tests all passed**. Native UI includes previous G01 deep return, coordinator-confirmed cancelled pop and real inertia append, plus P3 paged-tab return, genre cover/result routing and mixed recursive folders. Terminal detail is a test fixture; original production detail destination is byte-protected.18 Dock/carousel tests retained under exact-input guard, not rerun. CI is preparing full Release dependencies/package. Exactsource cfe1b84c816bae1c37b07e7ac007da972c0b3510/controlf9457201956df18c36e6fd63d5a30250a5abdea2. Next: finish Release, retrieve Artifact, independently verify IPA and file handoff. No P3 device acceptance or Stable claim.
+
+## Build300 P3 verified IPA handoff — 2026-10-08
+
+User explicitly accepted the current G01 Library performance and authorized the remaining poster plan. P3 G02–G08 is implemented on perf/poster-wall-library-build295 /Draft PR292 open/unmerged: Library trailers, collections, favorites, genre covers/results and mixed recursive folders use the shared native wall. Original library scope/types/filters/sort,60-item raw server frontier/dedup, nonpaged parent-folder API and type-specific system destinations preserved. Ordinary same-page successful reappearance retains metadata; explicit tab switching/refresh/sort keeps original reload/reset. Genre and folder own primary images/title-only/icon cards and tallest mixed-row geometry retained. Accepted G01 view/root, Library suggestions, Favorites/Search suffix, detail/cache/playback/P0, image preparation budgets and frozen Dock/carousel byte-protected.
+
+**Exact tested/package source:** cfe1b84c816bae1c37b07e7ac007da972c0b3510 (runtime implementation fe87eae9eadb09f959194bd45a54aba81596229d; last correction document-only). Final CI control f9457201956df18c36e6fd63d5a30250a5abdea2, branch ci/build300-poster-library-adapters-20261008, workflow build300-poster-library-adapters.yml; run37671589976/job112964410869 independently confirmed **completed/success**. Fresh **28 poster/adapter units +10 detail/cache tests +6 native UI tests**, zero failures; prior18 Dock/carousel actual-source tests explicitly byte-guarded/retained, not rerun. Native UI includes G01 deep return, coordinator-confirmed cancelled pop, real inertia append, P3 three paged-tab deep returns, genre cover/results and recursive mixed folders. Terminal detail is a fixture; production detail destination is byte-protected. Full Release/package/identity/MinOS steps passed. First run37671394292 failed only document trailing blank lines before Swift tests; corrected, no passing or IPA claim for that run.
+
+**Artifact:** OnePlayer-0.15.33-build300-poster-library-adapters, ID11506615484, ZIP SHA256 **0fc8414efa2196663eb88c377798057dc7977f8710c87ea72c09520069395255**, size22997853bytes. IPA OnePlayer-0.15.33-build300-poster-library-adapters-unsigned.ipa, **18752866bytes**, SHA256 **7ca5581668577888faeb0e88b2a229e13baf4c32673f697f3bdb5fb02a2944d0**. Source ZIP SHA256 **c0ac34e6a7bd9edb8126f2f3afb4fe046971265da84c7d6b6af9382e530a017f**; git archive comment matches exact source cfe1b84c. Independent download checks ZIP integrity, checksums, production/test byte comparisons, bundle **com.embyplayerlab.app**, version **0.15.33**, Build **300**, Info MinOS **15.0**, arm64 Mach-O MinOS **15.0.0**, runtime compatibility audit and CADisableMinimumFrameDurationOnPhone=true. Actual IPA file saved for direct handoff; unsigned/sign-install required. No temporary URL or upload path retained.
+
+**State:** Code written /44 fresh regressions passed /Release CI passed /IPA produced+independently verified /P3 real-device testing pending /not whole-task Stable, frozen or merged. G01 accepted only within documented Build299 before/after-restart1560/1620 coverage; no300 FPS/long-frame gain claimed. Main changes in this cycle are documents only, not runtime synchronization.
+
+**Next exact action:** runtime handoff for P3 (prioritize genre results, three paged tabs, mixed root and at least two folder levels; native pop/side-swipe return,refresh/sort and first/append/error states). Next development stage is P4 G09–G15: Favorites more Movie/Series/Episode/Person, detail filters/person works, direct/history/multi-server more Search and recommendations with correct landing host. P5 H01–H04 horizontal hosts follows; H05 remains protected audit-only. P6 broader~2000/5000/resource/pressure/background/uncovered interactions and final matrix remain. No Build301 identity allocated. Keep Aether235 isolated; resume current branch/PR/exact-source facts rather than assuming main is runtime baseline.
