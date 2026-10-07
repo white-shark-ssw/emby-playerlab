@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PRODUCT_SHA: 13f9da6fa4afc5344291e47489c9496b0bc1560e
+  PRODUCT_SHA: c2283af615d358f570a8954e13ecb4f6e4f2e9a7
   PRODUCT_BRANCH: perf/poster-wall-library-build295
   BASE_SHA: 5f85b22683269d397da6b2ea2c61b12c31b21ca4
   DOCK_BASE_SHA: 119ab10eee869488b97415746a0243f51953eba0
