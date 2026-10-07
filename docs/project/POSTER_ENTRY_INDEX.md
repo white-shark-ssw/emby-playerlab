@@ -126,3 +126,19 @@ User explicitly accepted the current G01 Library performance and authorized the 
 **State:** Code written /44 fresh regressions passed /Release CI passed /IPA produced+independently verified /P3 real-device testing pending /not whole-task Stable, frozen or merged. G01 accepted only within documented Build299 before/after-restart1560/1620 coverage; no300 FPS/long-frame gain claimed. Main changes in this cycle are documents only, not runtime synchronization.
 
 **Next exact action:** runtime handoff for P3 (prioritize genre results, three paged tabs, mixed root and at least two folder levels; native pop/side-swipe return,refresh/sort and first/append/error states). Next development stage is P4 G09–G15: Favorites more Movie/Series/Episode/Person, detail filters/person works, direct/history/multi-server more Search and recommendations with correct landing host. P5 H01–H04 horizontal hosts follows; H05 remains protected audit-only. P6 broader~2000/5000/resource/pressure/background/uncovered interactions and final matrix remain. No Build301 identity allocated. Keep Aether235 isolated; resume current branch/PR/exact-source facts rather than assuming main is runtime baseline.
+
+## Build300 P3 per-entry implementation and automated coverage
+
+All rows use exactsource cfe1b84c /passing run37671589976 and verified0.15.33/300 IPA. Each new entry still awaits real-device testing; automation below does not establish performance acceptance.
+
+| Entry | Native adapter / preserved contract | Actual-source automatic coverage |
+|---|---|---|
+| G02 Library trailers | pagedPosterTab → V3LibraryPosterPage /Trailer,library scope,60 paging | controlled raw frontier/dedup/type/scope unit; dedicated Trailer loop in deep native return UI |
+| G03 Library collections | same adapter /BoxSet and original detail destination | BoxSet query/filter/frontier unit; superseded-sort/refresh unit; dedicated BoxSet native return loop |
+| G04 Library favorites | same adapter /library expected types +IsFavorite | scope/filter/frontier unit; dedicated Library favorites native return loop; Dock Favorites suffix byte-protected |
+| G05 Genre covers | genresTab → genre-card wall /own primary image,title only,genre-result destination | cover query/retry/reappearance unit; own-image/no-media-badge/reuse unit; cover→genre-result→cover native UI |
+| G06 Genre results | V3LibraryGenreGridView → media wall /library+genre.name,SortName Ascending,60 paging | actual genre model query/raw dedup/failed-append+retry unit; scrolled detail-pop geometry/frontier UI |
+| G07 Mixed folder root | foldersTab → mixed wall /Folder/CollectionFolder→child;media→unchanged detail destination | root parent query/reappearance unit; kind/mixed-row geometry unit; root media/detail and folder-child native UI |
+| G08 Recursive folders | V3LibraryFolderBrowserView → mixed wall /exactparentId,nonpaged,one model/page | original folder owner parent/no-paging/return/failure unit; at least two child levels and terminal detail pop,parent/root returns UI |
+
+Normal3-column card/year/progress/badge and native geometry cases remain in prior21 poster tests. No image budget change, P4/P5 migration or300 device long-frame claim is implied.
