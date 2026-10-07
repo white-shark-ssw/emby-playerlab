@@ -40,19 +40,49 @@ struct EmbyPosterMotionTrace {
     }
 }
 
+struct EmbyPosterImageRequestKey: Hashable {
+    let baseURL: URL
+    let accessToken: String?
+    let itemID: String
+    let tag: String?
+    let pixelWidth: Int
+}
+
+// The native wall/cells access this record-owned URL memo on the main thread. Image storage stays in the shared preparation/cache owners.
+final class EmbyPosterImageRequest: Equatable {
+    let key: EmbyPosterImageRequestKey
+    private let client: EmbyAPIClient
+    private(set) var isResolved = false
+    private(set) var resolvedURL: URL?
+
+    init(key: EmbyPosterImageRequestKey, client: EmbyAPIClient) { self.key = key; self.client = client }
+    var url: URL? {
+        if !isResolved {
+            resolvedURL = client.imageURL(itemId: key.itemID, maxWidth: key.pixelWidth, tag: key.tag)
+            isResolved = true
+        }
+        return resolvedURL
+    }
+    static func == (lhs: EmbyPosterImageRequest, rhs: EmbyPosterImageRequest) -> Bool { lhs.key == rhs.key }
+}
+
 struct EmbyPosterRecord: Equatable {
     let id: String
     let name: String
     let year: String?
-    let url: URL?
+    let imageRequest: EmbyPosterImageRequest
+    var url: URL? { imageRequest.url }
     let progress: Double
     let unplayed: Int
     let played: Bool
 
-    init(item: LibraryItem, client: EmbyAPIClient, pixelWidth: Int) {
-        id = "\(client.baseURL.absoluteString)|\(client.userId ?? "")|\(item.id)"
+    init(item: LibraryItem, client: EmbyAPIClient, pixelWidth: Int, sourceIdentity: String? = nil, retainedRequests: [EmbyPosterImageRequestKey: EmbyPosterImageRequest] = [:]) {
+        id = "\(sourceIdentity ?? "\(client.baseURL.absoluteString)|\(client.userId ?? "")")|\(item.id)"
         name = item.name; year = item.productionYear.map(String.init)
-        url = client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: pixelWidth, tag: item.preferredPrimaryImageTag)
+        let tag = item.preferredPrimaryImageTag.flatMap { $0.isEmpty ? nil : $0 }
+        let token = client.accessToken.flatMap { $0.isEmpty ? nil : $0 }
+        let key = EmbyPosterImageRequestKey(baseURL: client.baseURL, accessToken: token, itemID: item.preferredPrimaryImageItemId, tag: tag, pixelWidth: pixelWidth)
+        imageRequest = retainedRequests[key] ?? EmbyPosterImageRequest(key: key, client: client)
         progress = item.playbackProgress; unplayed = item.userData?.unplayedItemCount ?? 0; played = item.isPlayed
     }
 }
@@ -304,7 +334,8 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
             return
         }
         let newItems = append ? Array(value.items.dropFirst(old.count)) : value.items
-        let changed = newItems.map { EmbyPosterRecord(item: $0, client: value.client, pixelWidth: pixelWidth) }
+        let retainedRequests = append ? [:] : Dictionary(old.map { ($0.imageRequest.key, $0.imageRequest) }, uniquingKeysWith: { first, next in first.isResolved ? first : next })
+        let changed = newItems.map { EmbyPosterRecord(item: $0, client: value.client, pixelWidth: pixelWidth, sourceIdentity: identity, retainedRequests: retainedRequests) }
         let next = append ? old + changed : changed
         let sameIDs = !append && sourceIdentity == identity && next.map(\.id) == old.map(\.id)
         let recordsFinished = CACurrentMediaTime()
@@ -328,7 +359,8 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         }
         let nativeFinished = CACurrentMediaTime()
         // Update image-demand membership on real data changes; ordinary SwiftUI updates do not scan items.
-        if !append { cancelPrefetch(except: Set(next.compactMap(\.url))) }
+        // A retained prefetch URL is already materialized; membership must not resolve the entire library.
+        if !append { cancelPrefetch(except: Set(next.compactMap { $0.imageRequest.resolvedURL })) }
         let membershipFinished = CACurrentMediaTime()
         prepareFirstScreen()
         let firstScreenFinished = CACurrentMediaTime()

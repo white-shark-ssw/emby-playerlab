@@ -44,6 +44,105 @@ final class PosterWallTests: XCTestCase {
         return try! JSONDecoder().decode(EmbyItemPage.self, from: data)
     }
 
+    func testTwoThousandItemsKeepFullGeometryWithBoundedURLDemandAndDeepAccess() {
+        let source = client()
+        let controller = EmbyPosterWallController()
+        controller.loadViewIfNeeded(); controller.view.frame = CGRect(x: 0, y: 0, width: 430, height: 800)
+        controller.viewDidLayoutSubviews()
+        let values = (0..<2000).map { item(String($0)) }
+        let value = EmbyPosterWall(items: values, revision: 1, replacement: 1, client: source, isLoading: false, hasLoaded: true, error: nil, emptyText: "empty", bottomPadding: 86, isActive: true, onApproachingEnd: {}, onRefresh: {}, onSelect: { _ in })
+        controller.update(value); controller.collection.layoutIfNeeded()
+        XCTAssertEqual(controller.collectionView(controller.collection, numberOfItemsInSection: 0), 2000)
+        XCTAssertLessThanOrEqual(controller.records.filter { $0.imageRequest.isResolved }.count, 40)
+        XCTAssertFalse(controller.records[1999].imageRequest.isResolved)
+        let height = controller.collection.contentSize.height
+        XCTAssertGreaterThan(height, 100000)
+        let last = controller.records[1999]
+        XCTAssertEqual(last.url, source.imageURL(itemId: "1999", maxWidth: last.imageRequest.key.pixelWidth, tag: "v1"))
+        XCTAssertTrue(last.imageRequest.isResolved)
+        XCTAssertEqual(controller.collection.contentSize.height, height)
+        XCTAssertTrue(controller.records[1999].imageRequest === last.imageRequest)
+        controller.dispose()
+    }
+
+    func testReplacementRetainsMaterializedRequestsAndPrefetchOnlyForUnchangedKeys() {
+        let source = client()
+        let controller = EmbyPosterWallController()
+        controller.loadViewIfNeeded(); controller.view.frame = CGRect(x: 0, y: 0, width: 430, height: 800); controller.viewDidLayoutSubviews()
+        var values = (0..<2000).map { item(String($0)) }
+        func value(_ revision: Int) -> EmbyPosterWall { EmbyPosterWall(items: values, revision: revision, replacement: revision, client: source, isLoading: false, hasLoaded: true, error: nil, emptyText: "empty", bottomPadding: 86, isActive: true, onApproachingEnd: {}, onRefresh: {}, onSelect: { _ in }) }
+        controller.update(value(1))
+        controller.collectionView(controller.collection, prefetchItemsAt: [IndexPath(item: 30, section: 0), IndexPath(item: 31, section: 0)])
+        let unchanged = controller.records[30].imageRequest, changed = controller.records[31].imageRequest
+        let retainedToken = controller.prefetch[unchanged.url!], removedURL = changed.url!
+        XCTAssertNotNil(retainedToken); XCTAssertNotNil(controller.prefetch[removedURL])
+        values[31] = item("31", tag: "v2")
+        controller.update(value(2))
+        XCTAssertTrue(controller.records[30].imageRequest === unchanged)
+        XCTAssertEqual(controller.prefetch[unchanged.url!], retainedToken)
+        XCTAssertNil(controller.prefetch[removedURL])
+        XCTAssertFalse(controller.records[31].imageRequest === changed)
+        XCTAssertFalse(controller.records[31].imageRequest.isResolved)
+        XCTAssertFalse(controller.records[1999].imageRequest.isResolved)
+        XCTAssertNotEqual(controller.records[31].url, removedURL)
+        controller.dispose()
+    }
+
+    func testDemandRequestIdentityAndURLMatchActualAPIForRoutesTokensTagsAndWidths() {
+        for base in ["https://example.invalid/emby", "https://example.invalid/代理?old=query"] {
+            for token in [nil, "", "test +/&?token"] as [String?] {
+                let source = EmbyAPIClient(baseURL: URL(string: base)!, accessToken: token)
+                for width in [300, 700] {
+                    let value = item("电影/a?#", tag: "tag +/&?")
+                    let record = EmbyPosterRecord(item: value, client: source, pixelWidth: width)
+                    let equivalent = EmbyPosterRecord(item: value, client: source, pixelWidth: width)
+                    XCTAssertEqual(record, equivalent)
+                    XCTAssertFalse(record.imageRequest.isResolved); XCTAssertFalse(equivalent.imageRequest.isResolved)
+                    XCTAssertEqual(record.url, source.imageURL(itemId: value.preferredPrimaryImageItemId, maxWidth: width, tag: value.preferredPrimaryImageTag))
+                    XCTAssertEqual(record.url, record.imageRequest.resolvedURL)
+                    XCTAssertNotEqual(record.imageRequest.key, EmbyPosterRecord(item: value, client: source, pixelWidth: width + 1).imageRequest.key)
+                    XCTAssertNotEqual(record.imageRequest.key, EmbyPosterRecord(item: item(value.id, tag: "new"), client: source, pixelWidth: width).imageRequest.key)
+                }
+            }
+        }
+    }
+
+    func testActualEagerBaselineVersusDemandRecordPreparationMeasurement() {
+        let source = client(), values = (0..<2000).map { item(String($0)) }
+        let identity = "\(source.baseURL.absoluteString)|\(source.userId ?? "")"
+        let oldStart = CACurrentMediaTime()
+        let eager = values.map { EagerRecordBaseline(item: $0, client: source, pixelWidth: 300) }
+        let eagerMS = (CACurrentMediaTime() - oldStart) * 1000
+        let newStart = CACurrentMediaTime()
+        let demand = values.map { EmbyPosterRecord(item: $0, client: source, pixelWidth: 300, sourceIdentity: identity) }
+        let demandMS = (CACurrentMediaTime() - newStart) * 1000
+        XCTAssertEqual(eager.map(\.id), demand.map(\.id)); XCTAssertEqual(eager.map(\.name), demand.map(\.name))
+        XCTAssertEqual(eager.compactMap(\.url).count, 2000)
+        XCTAssertEqual(demand.filter { $0.imageRequest.isResolved }.count, 0)
+        for index in [0, 17, 1999] { XCTAssertEqual(eager[index].url, demand[index].url) }
+        print("POSTER_RECORD_PREPARATION count=2000 eager_ms=\(eagerMS) demand_ms=\(demandMS) main_thread=\(Thread.isMainThread ? 1 : 0)")
+        // Simulator timings are diagnostic, not a flaky speed assertion or a device FPS claim.
+    }
+
+    func testDetailScrollObservationReadsNativeExtentWithoutTakingGestureOrOffsetOwnership() {
+        let controller = UIViewController(), scroll = UIScrollView()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 430, height: 800))
+        controller.view = scroll; window.rootViewController = controller; window.makeKeyAndVisible()
+        scroll.contentSize = CGSize(width: 430, height: 1800); scroll.contentOffset.y = 200
+        let probe = EmbyDetailScrollDiagnostics.Probe(), observer = EmbyDetailScrollDiagnostics.Coordinator()
+        scroll.addSubview(probe)
+        let enabled = scroll.panGestureRecognizer.isEnabled, delegate = scroll.delegate
+        let start = DiagnosticsLogger.shared.records().count
+        observer.attach(probe); observer.stop()
+        XCTAssertEqual(scroll.contentOffset.y, 200); XCTAssertEqual(scroll.contentSize.height, 1800)
+        XCTAssertEqual(scroll.panGestureRecognizer.isEnabled, enabled); XCTAssertTrue(scroll.delegate === delegate)
+        let records = Array(DiagnosticsLogger.shared.records().dropFirst(start))
+        XCTAssertTrue(records.contains { $0.contains("event=attach") && $0.contains("content_height=1800.0") && $0.contains("enabled=1") })
+        XCTAssertTrue(records.contains { $0.contains("event=finish") })
+        XCTAssertTrue(probe.gestureRecognizers?.isEmpty ?? true)
+        window.isHidden = true
+    }
+
     func testSameLivePageReappearancePreservesItemsRevisionReplacementAndFrontier() async {
         let source = client()
         source.automaticLibraryPages = true

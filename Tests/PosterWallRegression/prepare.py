@@ -1,11 +1,23 @@
 from pathlib import Path
 import sys
+import subprocess
 
 repo = Path(sys.argv[1]).resolve()
 target = Path(sys.argv[2]).resolve()
 target.mkdir(parents=True, exist_ok=True)
 for path in ['Sources/Core/AppIdentity.swift', 'Sources/UI/EmbyPosterWall.swift', 'Sources/UI/EmbyImagePreparation.swift', 'Sources/UI/EmbyPagePersistentCache.swift', 'Sources/Cache/EmbyImageDiskCache.swift', 'Sources/Models/EmbyModels.swift']:
     (target / Path(path).name).write_text((repo / path).read_text())
+# Visibility only: tests inspect demand materialization and retained production prefetch tokens.
+wall = target / 'EmbyPosterWall.swift'
+text = wall.read_text()
+for old, new in [('private var records:', 'private(set) var records:'), ('private var prefetch:', 'private(set) var prefetch:')]:
+    assert text.count(old) == 1, old
+    text = text.replace(old, new)
+wall.write_text(text)
+(target / 'EmbyDetailScrollDiagnostics.swift').write_text((repo / 'Sources/UI/EmbyDetailScrollDiagnostics.swift').read_text())
+baseline = (Path(sys.argv[3]) / 'Sources/UI/EmbyPosterWall.swift').read_text() if len(sys.argv) > 3 else subprocess.check_output(['git', '-C', str(repo), 'show', '07f2f7c97953aba5e7f3ffde867632215c52c211:Sources/UI/EmbyPosterWall.swift'], text=True)
+baseline_record = baseline[baseline.index('struct EmbyPosterRecord:'):baseline.index('final class EmbyPosterCell:')]
+(target / 'EagerRecordBaseline.swift').write_text('import UIKit\n' + baseline_record.replace('EmbyPosterRecord', 'EagerRecordBaseline'))
 shared = (repo / 'Sources/UI/EmbySharedImageAndNavigation.swift').read_text()
 pool = shared[shared.index('final class EmbyDecodedImageRenderPool'):shared.index('@MainActor\nprivate final class EmbyCachedImageLoader')]
 decoder = shared[shared.index('enum EmbyImageDecoder'):shared.index('private final class EmbyPosterNavigationGate')]
@@ -28,8 +40,8 @@ final class DiagnosticsLogger {
 final class EmbyAPIClient {
     let baseURL: URL
     let userId: String?
-    let accessToken: String? = nil
-    init(baseURL: URL, userId: String = "test") { self.baseURL = baseURL; self.userId = userId }
+    let accessToken: String?
+    init(baseURL: URL, userId: String = "test", accessToken: String? = nil) { self.baseURL = baseURL; self.userId = userId; self.accessToken = accessToken }
 ''' + image_url + '}\n')
 browse = (repo / 'Sources/UI/EmbyServerBrowseV3.swift').read_text()
 tabs = browse[browse.index('private enum V3LibraryTab'):browse.index('struct V3LibraryBrowserView: View')].replace('private enum V3LibraryTab', 'enum V3LibraryTab')

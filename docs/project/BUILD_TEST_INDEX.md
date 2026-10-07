@@ -4,7 +4,8 @@ This is a milestone index, not a list of every experiment. Evidence levels remai
 
 | Milestone | Main purpose | Result / current meaning |
 |---|---|---|
-| **Build298 /0.15.31** | Independent detail publication/cancellation and off-main ordered warm persistence | **10 detail tests retained/hash-guarded +16 Library+3 native UI pass; Release/package steps passed, source07f2f7c9 /artifact11493400048 /IPA independently verified /MinOS15. Target-device/P2 pending; Draft PR292 unmerged.** |
+| **Build299 /0.15.32** | Demand-only poster URL materialization and bounded passive detail scroll evidence | **Allocated/implementation written; CI/Release/IPA pending; target-device pending. Same Draft PR292; G01 only, iOS15.** |
+| **Build298 /0.15.31** | Independent detail publication/cancellation and off-main ordered warm persistence | **10 detail tests retained/hash-guarded +16 Library+3 native UI pass; Release/package steps passed, source07f2f7c9 /artifact11493400048 /IPA independently verified /MinOS15. Partial device log reviewed: independent section publication/off-main writes observed; first-second scroll issue unresolved; full P2 pending. Draft PR292 unmerged.** |
 | **Build297 /0.15.30** | Library query retention on return; section/work diagnostics | **Final3 native UI/0,16 exact-input units retained+guarded, Release/IPA/MinOS15 independently verified; source279f2c00, run37518563236, artifact11438264634. Partial device log/video reviewed: serial detail gate confirmed, seven Library return pairs retained; full P2 pending. Draft PR292 unmerged.** |
 | **Build293 /0.15.26** | Native resident carousel / continuous takeover / shared floor | **User explicitly accepted on2026-10-06; native10/0, exact-source CI/IPA/MinOS15 verified; PR#289 merged. Completed/frozen carousel scope;292120FPS user-reported.** |
 | Build84 / 0.13.17 | MDK RecoveryIsolation | Protected app/exit lifecycle better; did not prove abnormal media solved. |

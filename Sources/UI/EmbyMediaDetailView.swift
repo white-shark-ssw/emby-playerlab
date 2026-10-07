@@ -63,6 +63,7 @@ struct EmbyMediaDetailView: View {
                             heroScrollState.update(value)
                         }
                     )
+                    .background(EmbyDetailScrollDiagnostics().frame(width: 0, height: 0))
                 }
                 .frame(width: geometry.size.width, height: viewportHeight)
                 .background(Color.clear)
@@ -332,7 +333,9 @@ struct EmbyMediaDetailView: View {
 
     private func updateHeroImageMetrics(_ image: UIImage) {
         if heroSourceSize != image.size { heroSourceSize = image.size }
+        let contrastStarted = CACurrentMediaTime()
         let prefersLight = EmbyImageContrastAnalyzer.prefersLightForeground(for: image)
+        DiagnosticsLogger.shared.log("DetailWork", "event=hero-contrast ms=\((CACurrentMediaTime() - contrastStarted) * 1000) main_thread=\(Thread.isMainThread ? 1 : 0)")
         if heroUsesLightForeground != prefersLight {
             withAnimation(.easeOut(duration: 0.18)) { heroUsesLightForeground = prefersLight }
         }
