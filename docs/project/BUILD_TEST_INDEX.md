@@ -800,3 +800,7 @@ OnePlayer0.15.33 /Build300 /poster-library-adapters. Production code and actual-
 ## Build300 regression checkpoint — run37671589976/job112964410869
 
 Exact product **cfe1b84c816bae1c37b07e7ac007da972c0b3510** (runtime fe87eae9; last correction document-only), control **f9457201956df18c36e6fd63d5a30250a5abdea2**. Source/frozen/Dock guards and fresh simulator preparation passed. **28 poster/adapter units +10 detail/cache tests passed**.6 native UI tests are running; Release/package/Artifact/IPA retrieval still pending.18 prior Dock/carousel tests explicitly byte-guarded/retained, not rerun. Continue this same CI to verified IPA file; no real-device acceptance of P3 yet.
+
+## Build300 native UI checkpoint — 2026-10-08
+
+Run37671589976/job112964410869: source guards, **28 poster/adapter units,10 detail/cache tests and6 native UI tests all passed**. Native UI includes previous G01 deep return, coordinator-confirmed cancelled pop and real inertia append, plus P3 paged-tab return, genre cover/result routing and mixed recursive folders. Terminal detail is a test fixture; original production detail destination is byte-protected.18 Dock/carousel tests retained under exact-input guard, not rerun. CI is preparing full Release dependencies/package. Exactsource cfe1b84c816bae1c37b07e7ac007da972c0b3510/controlf9457201956df18c36e6fd63d5a30250a5abdea2. Next: finish Release, retrieve Artifact, independently verify IPA and file handoff. No P3 device acceptance or Stable claim.
