@@ -55,6 +55,19 @@ for name in ['enum V3LibraryPosterDestination', 'struct V3LibraryPosterPage', 's
     assert adapters.count('private ' + name) == 1, name
     adapters = adapters.replace('private ' + name, name)
 (target / 'LibraryAdapters.swift').write_text('import SwiftUI\nimport UIKit\n' + adapters)
+# P4 production leaves/models and shared navigation adapter; access levels only are changed.
+favorite = browse[browse.index('private struct V3FavoriteCategoryGridView:'):browse.index('private struct V3FavoritePersonLink:')]
+search = (repo / 'Sources/UI/EmbySearchExperienceV3.swift').read_text()
+search = search[search.index('private struct V3GlobalSearchServerGridView:'):]
+detail_leaf = (repo / 'Sources/UI/EmbyMediaDetailView.swift').read_text()
+detail_leaf = detail_leaf[detail_leaf.index('struct EmbyDetailFilter:'):detail_leaf.index('@MainActor\nfinal class EmbyMediaDetailViewModel')]
+person = (repo / 'Sources/UI/EmbyPersonMediaView.swift').read_text()
+results = favorite + search + detail_leaf + person.replace('import SwiftUI\n', '').replace('import UIKit\n', '')
+for name in ['struct V3FavoriteCategoryGridView', 'final class V3FavoriteCategoryGridViewModel', 'struct V3GlobalSearchServerGridView', 'final class V3GlobalSearchServerGridViewModel', 'struct EmbyDetailFilterResultsView', 'final class EmbyDetailFilterResultsViewModel', 'final class EmbyPersonMediaViewModel']:
+    assert results.count('private ' + name) == 1, name
+    results = results.replace('private ' + name, name)
+(target / 'ResultLeaves.swift').write_text('import SwiftUI\nimport UIKit\n' + results)
+(target / 'EmbyPosterResultsPage.swift').write_text((repo / 'Sources/UI/EmbyPosterResultsPage.swift').read_text())
 (target / 'ServerDock.swift').write_text((repo / 'Sources/UI/ServerDock.swift').read_text())
 detail = (repo / 'Sources/UI/EmbyDetailPerformanceState.swift').read_text()
 trace = detail[detail.index('// One bounded timeline'):detail.index('final class EmbyDetailHeroScrollState')]
@@ -65,6 +78,7 @@ text = text[:-2] + (Path(__file__).parent / 'APIStub.swift').read_text() + '}\n'
 services.write_text(text)
 (target / 'PosterTests.swift').write_text((Path(__file__).parent / 'PosterTests.swift').read_text())
 (target / 'LibraryAdapterTests.swift').write_text((Path(__file__).parent / 'LibraryAdapterTests.swift').read_text())
+(target / 'ResultAdapterTests.swift').write_text((Path(__file__).parent / 'ResultAdapterTests.swift').read_text())
 (target / 'Host.swift').write_text((Path(__file__).parent / 'MotionHost.swift').read_text())
 (target / 'ReturnHost.swift').write_text((Path(__file__).parent / 'ReturnHost.swift').read_text())
 (target / 'MotionUITests.swift').write_text((Path(__file__).parent / 'MotionUITests.swift').read_text())
@@ -78,7 +92,7 @@ targets:
     platform: iOS
     sources:
       - path: .
-        excludes: [project.yml, PosterTests.swift, LibraryAdapterTests.swift, MotionUITests.swift]
+        excludes: [project.yml, PosterTests.swift, LibraryAdapterTests.swift, ResultAdapterTests.swift, MotionUITests.swift]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

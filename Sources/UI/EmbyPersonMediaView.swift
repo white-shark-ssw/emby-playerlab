@@ -13,28 +13,10 @@ struct EmbyPersonMediaView: View {
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                if model.isInitialLoading && model.items.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
-                } else if let itemId = person.itemId, !itemId.isEmpty {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
-                        guard model.hasMore else { return }
-                        Task { await model.loadNextPage() }
-                    }) { item in
-                        EmbyPosterDetailLink(item: item, client: client) { EmbyPersonResultPoster(item: item, client: client) }
-                    }
-                } else {
-                    Text("该演职人员缺少 Emby PersonId，暂时无法按人物精确筛选。")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .padding(20)
-                }
-
-                if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
-            }
-            .padding(.bottom, 24)
-        }
+        EmbyPosterResultsPage(items: model.items, revision: model.posterRevision, replacement: model.posterReplacement, client: client, content: .plainMedia, queryIdentity: "person|\(person.itemId ?? "")", isLoading: model.isInitialLoading, hasLoaded: model.hasLoaded, error: model.errorMessage, emptyText: person.itemId?.isEmpty == false ? "暂无作品" : "该演职人员缺少 Emby PersonId，暂时无法按人物精确筛选。", bottomPadding: 24, onApproachingEnd: {
+            guard model.hasMore else { return }
+            Task { await model.loadNextPage() }
+        })
         .navigationTitle(person.name)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
@@ -43,27 +25,6 @@ struct EmbyPersonMediaView: View {
     }
 }
 
-private struct EmbyPersonResultPoster: View {
-    @Environment(\.embyPosterGridCellWidth) private var gridCellWidth
-    let item: LibraryItem
-    let client: EmbyAPIClient
-
-    private var width: CGFloat { gridCellWidth ?? 118 }
-    private var height: CGFloat { floor(width / EmbyPosterGridMetrics.posterAspectRatio) }
-    private var imageMaxWidth: Int { min(440, max(1, Int(ceil(width * UIScreen.main.scale)))) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            EmbyCachedRemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: imageMaxWidth, tag: item.preferredPrimaryImageTag), contentMode: .fill)
-                .frame(width: width, height: height)
-                .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            Text(item.name).font(.subheadline).lineLimit(1).frame(width: width, height: 20, alignment: .leading)
-            Text(item.productionYear.map(String.init) ?? " ").font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: width, height: 16, alignment: .leading).opacity(item.productionYear == nil ? 0 : 1)
-        }
-        .frame(width: width, alignment: .leading)
-    }
-}
 
 @MainActor
 private final class EmbyPersonMediaViewModel: ObservableObject {
@@ -78,12 +39,15 @@ private final class EmbyPersonMediaViewModel: ObservableObject {
     private var isFetching = false
     private var seenItemIDs = Set<String>()
     private(set) var hasLoaded = false
+    private(set) var posterRevision = 0
+    private(set) var posterReplacement = 0
 
     init(person: EmbyPerson, client: EmbyAPIClient) { self.person = person; self.client = client }
 
     func reload() async {
         guard !isFetching else { return }
         items = []
+        posterReplacement += 1; posterRevision += 1
         seenItemIDs.removeAll(keepingCapacity: true)
         nextStartIndex = 0
         hasMore = true
@@ -111,7 +75,7 @@ private final class EmbyPersonMediaViewModel: ObservableObject {
         do {
             let page = try await client.personMediaItems(personId: personId, limit: pageSize, startIndex: start)
             let newItems = page.items.filter { seenItemIDs.insert($0.id).inserted }
-            if !newItems.isEmpty { items.append(contentsOf: newItems) }
+            if !newItems.isEmpty { items.append(contentsOf: newItems); posterRevision += 1 }
             nextStartIndex = start + page.items.count
             if let total = page.totalRecordCount { hasMore = nextStartIndex < total }
             else { hasMore = page.items.count == pageSize }

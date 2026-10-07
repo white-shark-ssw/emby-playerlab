@@ -66,13 +66,17 @@ final class EmbyPosterImageRequest: Equatable {
     static func == (lhs: EmbyPosterImageRequest, rhs: EmbyPosterImageRequest) -> Bool { lhs.key == rhs.key }
 }
 
-enum EmbyPosterCardKind { case media, genre, folder
-    var textHeight: CGFloat { self == .media ? 42 : 24 }
+enum EmbyPosterCardKind { case media, plainMedia, person, genre, folder
+    var hasYear: Bool { self == .media || self == .plainMedia }
+    var textHeight: CGFloat { self == .media ? 42 : (self == .plainMedia ? 40 : 24) }
     var placeholder: String { self == .genre ? "rectangle.stack.fill" : (self == .folder ? "folder.fill" : "play.rectangle") }
 }
 
-enum EmbyPosterWallContent { case media, genres, folders
+enum EmbyPosterWallContent { case media, plainMedia, people, genres, folders
+    var textHeight: CGFloat { self == .plainMedia ? 40 : (self == .genres || self == .people ? 24 : 42) }
     func kind(for item: LibraryItem) -> EmbyPosterCardKind {
+        if self == .plainMedia { return .plainMedia }
+        if self == .people { return .person }
         if self == .genres { return .genre }
         if self == .folders, ["folder", "collectionfolder"].contains(item.type?.lowercased() ?? "") { return .folder }
         return .media
@@ -93,10 +97,10 @@ struct EmbyPosterRecord: Equatable {
     init(item: LibraryItem, client: EmbyAPIClient, pixelWidth: Int, sourceIdentity: String? = nil, retainedRequests: [EmbyPosterImageRequestKey: EmbyPosterImageRequest] = [:], kind: EmbyPosterCardKind = .media) {
         self.kind = kind
         id = "\(sourceIdentity ?? "\(client.baseURL.absoluteString)|\(client.userId ?? "")")|\(item.id)"
-        name = item.name; year = kind == .media ? item.productionYear.map(String.init) : nil
-        let tag = (kind == .media ? item.preferredPrimaryImageTag : item.primaryImageTag).flatMap { $0.isEmpty ? nil : $0 }
+        name = item.name; year = kind.hasYear ? item.productionYear.map(String.init) : nil
+        let tag = (kind.hasYear ? item.preferredPrimaryImageTag : item.primaryImageTag).flatMap { $0.isEmpty ? nil : $0 }
         let token = client.accessToken.flatMap { $0.isEmpty ? nil : $0 }
-        let key = EmbyPosterImageRequestKey(baseURL: client.baseURL, accessToken: token, itemID: kind == .media ? item.preferredPrimaryImageItemId : item.id, tag: tag, pixelWidth: pixelWidth)
+        let key = EmbyPosterImageRequestKey(baseURL: client.baseURL, accessToken: token, itemID: kind.hasYear ? item.preferredPrimaryImageItemId : item.id, tag: tag, pixelWidth: pixelWidth)
         imageRequest = retainedRequests[key] ?? EmbyPosterImageRequest(key: key, client: client)
         progress = kind == .media ? item.playbackProgress : 0; unplayed = kind == .media ? item.userData?.unplayedItemCount ?? 0 : 0; played = kind == .media && item.isPlayed
     }
@@ -155,7 +159,7 @@ final class EmbyPosterCell: UICollectionViewCell {
         artwork.frame = CGRect(x: 0, y: 0, width: width, height: height)
         placeholder.frame = CGRect(x: (width - 28) / 2, y: (height - 28) / 2, width: 28, height: 28)
         title.frame = CGRect(x: 0, y: height + 4, width: width, height: 20)
-        year.frame = CGRect(x: 0, y: height + 26, width: width, height: 16)
+        year.frame = CGRect(x: 0, y: height + (record?.kind == .plainMedia ? 24 : 26), width: width, height: 16)
         progress.frame = CGRect(x: 0, y: height - 3, width: width * CGFloat(record?.progress ?? 0), height: 3)
         let badgeWidth = max(24, ceil(badge.intrinsicContentSize.width) + 12)
         badge.frame = CGRect(x: width - badgeWidth - 5, y: 5, width: badgeWidth, height: badgeWidth)
@@ -234,6 +238,7 @@ struct EmbyPosterWall: UIViewControllerRepresentable {
     let client: EmbyAPIClient
     var content: EmbyPosterWallContent = .media
     var queryIdentity: String = ""
+    var allowsRefresh: Bool = true
     let isLoading: Bool
     let hasLoaded: Bool
     let error: String?
@@ -308,7 +313,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         let newPixelWidth = min(440, max(1, Int(ceil(newWidth * view.traitCollection.displayScale))))
         if width != newWidth || pixelWidth != newPixelWidth {
             width = newWidth; pixelWidth = newPixelWidth
-            flow.itemSize = CGSize(width: width, height: floor(width / EmbyPosterGridMetrics.posterAspectRatio) + (input?.content == .genres ? 24 : 42))
+            flow.itemSize = CGSize(width: width, height: floor(width / EmbyPosterGridMetrics.posterAspectRatio) + (input?.content.textHeight ?? 42))
             appliedRevision = nil; appliedReplacement = nil
             if let input { applyItems(input) }
         }
@@ -333,7 +338,8 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         let insetChanged = collection.contentInset.bottom != value.bottomPadding
         if footerChanged || insetChanged { trace("update-before", detail: "next_loading=\(value.isLoading ? 1 : 0) next_revision=\(value.revision) next_count=\(value.items.count)") }
         input = value
-        let itemHeight = floor(width / EmbyPosterGridMetrics.posterAspectRatio) + (value.content == .genres ? 24 : 42)
+        if !value.allowsRefresh, collection.refreshControl != nil { collection.refreshControl = nil }
+        let itemHeight = floor(width / EmbyPosterGridMetrics.posterAspectRatio) + value.content.textHeight
         if width > 0, flow.itemSize.height != itemHeight {
             flow.itemSize.height = itemHeight
         }
@@ -401,7 +407,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
 
     private func prepareFirstScreen() {
         guard width > 0, view.bounds.height > 0 else { return }
-        let rowHeight = input?.content == .media ? flow.itemSize.height : floor(width / EmbyPosterGridMetrics.posterAspectRatio) + 24
+        let rowHeight = input?.content == .folders ? floor(width / EmbyPosterGridMetrics.posterAspectRatio) + 24 : flow.itemSize.height
         let count = min(18, (Int(ceil(view.bounds.height / (rowHeight + flow.minimumLineSpacing))) + 1) * 3)
         preparation.setFirstScreen(owner: firstScreenOwner, urls: records.prefix(count).compactMap(\.url))
     }

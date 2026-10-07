@@ -21,9 +21,19 @@ for name in pages:
         # P3 migrates only Library adapters; Favorites/Search and the Dock still keep accepted contracts.
         p3 = 'private struct V3LibraryPosterPage' in current
         boundary = 'struct V3EmbyFavoritesView:' if p3 else 'private struct V3LibraryGenreCard'
-        assert current[current.index(boundary):] == expected[expected.index(boundary):], 'Browse routes outside migrated Library changed'
+        def without_more(text):
+            start = text.index('private struct V3FavoriteCategoryGridView:')
+            end = text.index('private struct V3FavoritePersonLink:')
+            return text[:start] + text[end:]
+        assert without_more(current[current.index(boundary):]) == without_more(expected[expected.index(boundary):]), 'Browse routes outside migrated result leaves changed'
         assert current.count('.serverDockPage()') == expected.count('.serverDockPage()')
-        assert current.count('.serverDockContentPadding()') == expected.count('.serverDockContentPadding()') - (5 if p3 else 0)
+        assert current.count('.serverDockContentPadding()') == expected.count('.serverDockContentPadding()') - (6 if p3 else 0)
+        assert 'bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset)' in current
+    elif name == 'EmbySearchExperienceV3.swift':
+        boundary = 'private struct V3GlobalSearchServerGridView:'
+        assert current[:current.index(boundary)] == expected[:expected.index(boundary)], 'Search root/query/recommendations/lifetime changed'
+        assert current.count('.serverDockPage()') == expected.count('.serverDockPage()')
+        assert current.count('.serverDockContentPadding()') == expected.count('.serverDockContentPadding()') - 1
         assert 'bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset)' in current
     else:
         assert current == expected, f'Unexpected non-Dock page behavior changed: {path}'

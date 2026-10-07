@@ -11,7 +11,11 @@ browse = Path(browse_path).read_text()
 original = old(browse_path)
 assert browse[:browse.index('    private func pagedPosterTab(')] == original[:original.index('    private func pagedPosterTab(')], 'Accepted G01/root navigation changed'
 boundary = 'struct V3EmbyFavoritesView:'
-assert browse[browse.index(boundary):] == original[original.index(boundary):], 'P4/P5 Favorites/old Search changed'
+def without_favorite_more(text):
+    start = text.index('private struct V3FavoriteCategoryGridView:')
+    end = text.index('private struct V3FavoritePersonLink:')
+    return text[:start] + text[end:]
+assert without_favorite_more(browse[browse.index(boundary):]) == without_favorite_more(original[original.index(boundary):]), 'P5 Favorites/old Search changed'
 suggestions = '    private var suggestionsTab:'
 end = '    private var genresTab:'
 assert browse[browse.index(suggestions):browse.index(end)] == original[original.index(suggestions):original.index(end)], 'P5 Library suggestions changed'
@@ -32,6 +36,6 @@ assert 'if tab == .items && liveItemsSortBy == sortBy { return }' in browse
 # Preserve the actual providers, P0/transport/cache, detail destinations, image budgets and frozen hosts.
 for directory in ['Sources/Player', 'Sources/Transport', 'Sources/Cache', 'Sources/Emby', 'Sources/Networking', 'Sources/Models']:
     assert not subprocess.check_output(['git', 'diff', baseline, '--name-only', '--', directory], text=True).strip(), directory
-for path in ['Sources/UI/EmbySharedImageAndNavigation.swift', 'Sources/UI/EmbyImagePreparation.swift', 'Sources/UI/EmbyPagePersistentCache.swift', 'Sources/UI/EmbyMediaDetailView.swift', 'Sources/UI/EmbyDetailPerformanceState.swift', 'Sources/UI/EmbyDetailScrollDiagnostics.swift', 'Sources/UI/ServerDock.swift', 'Sources/UI/ImmersiveUIComponents.swift', 'Sources/UI/EmbyHomeCarouselNativePresentationV3.swift', 'Sources/UI/EmbyHomeCarouselStateV3.swift', 'Sources/UI/EmbyServerRootViewV3.swift']:
+for path in ['Sources/UI/EmbySharedImageAndNavigation.swift', 'Sources/UI/EmbyImagePreparation.swift', 'Sources/UI/EmbyPagePersistentCache.swift', 'Sources/UI/EmbyDetailPerformanceState.swift', 'Sources/UI/EmbyDetailScrollDiagnostics.swift', 'Sources/UI/ServerDock.swift', 'Sources/UI/ImmersiveUIComponents.swift', 'Sources/UI/EmbyHomeCarouselNativePresentationV3.swift', 'Sources/UI/EmbyHomeCarouselStateV3.swift', 'Sources/UI/EmbyServerRootViewV3.swift']:
     assert Path(path).read_text() == old(path), path
 print('P3 Library adapters scoped; accepted G01 view, queries, details, frozen hosts and P0 source preserved')

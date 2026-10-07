@@ -534,6 +534,7 @@ struct V3EmbyGlobalSearchView: View {
 }
 
 private struct V3GlobalSearchServerGridView: View {
+    @Environment(\.serverDockBottomInset) private var dockBottomInset
     let serverName: String
     let term: String
     let client: EmbyAPIClient
@@ -547,23 +548,10 @@ private struct V3GlobalSearchServerGridView: View {
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                if model.isInitialLoading && model.items.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
-                } else {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
-                        guard model.hasMore else { return }
-                        Task { await model.loadNextPage() }
-                    }) { item in
-                        EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) }
-                    }
-                }
-                if let errorMessage = model.errorMessage { Text(errorMessage).font(.footnote).foregroundColor(.red).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
-            }
-            .padding(.top, 8)
-            .serverDockContentPadding()
-        }
+        EmbyPosterResultsPage(items: model.items, revision: model.posterRevision, replacement: 0, client: client, queryIdentity: "search|\(term)", isLoading: model.isInitialLoading, hasLoaded: model.hasLoaded, error: model.errorMessage, emptyText: "未找到相关内容", bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), onApproachingEnd: {
+            guard model.hasMore else { return }
+            Task { await model.loadNextPage() }
+        })
         .navigationTitle(serverName)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(false)
@@ -581,6 +569,7 @@ private final class V3GlobalSearchServerGridViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     private(set) var hasMore = true
     private(set) var hasLoaded = false
+    private(set) var posterRevision = 0
     private let term: String
     private let client: EmbyAPIClient
     private let pageSize = 18
@@ -601,7 +590,7 @@ private final class V3GlobalSearchServerGridViewModel: ObservableObject {
         do {
             let page = try await client.searchPosterItemsPage(term: term, limit: pageSize, startIndex: start, includeItemTypes: includeItemTypes)
             let newItems = page.items.filter { seenItemIDs.insert($0.id).inserted }
-            if !newItems.isEmpty { items.append(contentsOf: newItems) }
+            if !newItems.isEmpty { items.append(contentsOf: newItems); posterRevision += 1 }
             nextStartIndex = start + page.items.count
             if let total = page.totalRecordCount { hasMore = nextStartIndex < total }
             else { hasMore = page.items.count == pageSize }

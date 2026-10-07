@@ -15,7 +15,7 @@ import UIKit
         client.automaticLibraryPages = true
         let data = try! JSONSerialization.data(withJSONObject: ["Id": "lib", "Name": "Fixture Library", "Type": "CollectionFolder", "CollectionType": "movies"])
         let item = try! JSONDecoder().decode(LibraryItem.self, from: data)
-        let host = UIHostingController(rootView: NavigationView { V3LibraryBrowserView(library: item, client: client) }.navigationViewStyle(.stack))
+        let host = UIHostingController(rootView: NavigationView { root(item) }.navigationViewStyle(.stack))
         addChild(host); view.addSubview(host.view); host.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([host.view.topAnchor.constraint(equalTo: view.topAnchor), host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor), host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
         host.didMove(toParent: self)
@@ -28,9 +28,19 @@ import UIKit
                 if message.hasPrefix("event=view-appear ") { self.appearances += 1 }
                 if message == "event=test-pop-cancel" { self.cancelledPops += 1 }
                 else { self.lastGeometry = message.split(separator: " ").filter { $0.hasPrefix("wall=") || $0.hasPrefix("offset=") || $0.hasPrefix("count=") }.joined(separator: " ") }
-                self.status.text = "requests=\(self.client.requests.count) folders=\(self.client.folderRequests.count) genres=\(self.client.genreRequests.count) appear=\(self.appearances) cancelled=\(self.cancelledPops) \(self.lastGeometry)"
+                self.status.text = "requests=\(self.client.requests.count) results=\(self.client.resultRequests.count) favorites=\(self.client.resultRequests.filter { $0.kind == "favorite" }.count) folders=\(self.client.folderRequests.count) genres=\(self.client.genreRequests.count) appear=\(self.appearances) cancelled=\(self.cancelledPops) \(self.lastGeometry)"
             }
         }
+    }
+    @ViewBuilder private func root(_ item: LibraryItem) -> some View {
+        if ProcessInfo.processInfo.arguments.contains("--poster-result-ui") {
+            switch ProcessInfo.processInfo.arguments.last ?? "" {
+            case "person": EmbyPersonMediaView(person: EmbyPerson(itemId: "actual-person", name: "Fixture Results", role: "Role", type: "Actor", primaryImageTag: nil), client: client)
+            case "genre", "tag": EmbyDetailFilterResultsView(filter: EmbyDetailFilter(name: "Fixture Results", isGenre: ProcessInfo.processInfo.arguments.last == "genre"), client: client)
+            case "search": V3GlobalSearchServerGridView(serverName: "Fixture Results", term: "actual query", client: client)
+            default: V3FavoriteCategoryGridView(title: "Fixture Results", includeItemType: ProcessInfo.processInfo.arguments.last ?? "Movie", client: client, isPeople: ProcessInfo.processInfo.arguments.last == "Person")
+            }
+        } else { V3LibraryBrowserView(library: item, client: client) }
     }
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()

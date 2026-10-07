@@ -811,6 +811,7 @@ struct V3EmbyFavoritesView: View {
 }
 
 private struct V3FavoriteCategoryGridView: View {
+    @Environment(\.serverDockBottomInset) private var dockBottomInset
     let title: String
     let includeItemType: String
     let client: EmbyAPIClient
@@ -826,24 +827,10 @@ private struct V3FavoriteCategoryGridView: View {
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                if model.isInitialLoading && model.items.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
-                } else {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
-                        guard model.hasMore else { return }
-                        Task { await model.loadNextPage() }
-                    }) { item in
-                        if isPeople { V3FavoritePersonLink(item: item, client: client, width: nil) }
-                        else { EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) } }
-                    }
-                }
-                if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
-            }
-            .padding(.top, 8)
-            .serverDockContentPadding()
-        }
+        EmbyPosterResultsPage(items: model.items, revision: model.posterRevision, replacement: model.posterReplacement, client: client, content: isPeople ? .people : .media, queryIdentity: "favorite|\(includeItemType)", isLoading: model.isInitialLoading, hasLoaded: model.hasLoaded, error: model.errorMessage, emptyText: "暂无收藏", bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), onApproachingEnd: {
+            guard model.hasMore else { return }
+            Task { await model.loadNextPage() }
+        })
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
@@ -866,12 +853,15 @@ private final class V3FavoriteCategoryGridViewModel: ObservableObject {
     private var isFetching = false
     private var seenItemIDs = Set<String>()
     private(set) var hasLoaded = false
+    private(set) var posterRevision = 0
+    private(set) var posterReplacement = 0
 
     init(includeItemType: String, client: EmbyAPIClient) { self.includeItemType = includeItemType; self.client = client }
 
     func reload() async {
         guard !isFetching else { return }
         items = []
+        posterReplacement += 1; posterRevision += 1
         seenItemIDs.removeAll(keepingCapacity: true)
         nextStartIndex = 0
         hasMore = true
@@ -898,7 +888,7 @@ private final class V3FavoriteCategoryGridViewModel: ObservableObject {
         do {
             let page = try await client.favoriteBrowsePage(includeItemTypes: [includeItemType], limit: pageSize, startIndex: start)
             let newItems = page.items.filter { seenItemIDs.insert($0.id).inserted }
-            if !newItems.isEmpty { items.append(contentsOf: newItems) }
+            if !newItems.isEmpty { items.append(contentsOf: newItems); posterRevision += 1 }
             nextStartIndex = start + page.items.count
             if let total = page.totalRecordCount { hasMore = nextStartIndex < total }
             else { hasMore = page.items.count == pageSize }

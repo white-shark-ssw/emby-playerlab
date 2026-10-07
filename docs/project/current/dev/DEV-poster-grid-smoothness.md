@@ -2,14 +2,14 @@
 
 ## Current identity — P4 G09–G14 Build301 reserved
 
-- Status: Active; Build300 verified handoff retained. P4 G09–G14 source audit complete; implementation / CI / IPA pending.
+- Status: Active; Build300 verified handoff retained. P4 G09–G14 implementation written; CI / IPA pending.
 - Work ID / routing aliases: DEV-poster-grid-smoothness / 海报墙 / 库页海报 / 海报网格流畅度
 - Working branch: perf/poster-wall-library-build295; Draft PR292 open/unmerged. Resume verified head 741c3bd9c3908726b2992070e992423e02c89273; main0bb2b9508c1f9df585d9de2bca2bed876c5e0905 documents only; exact Build300 package cfe1b84c816bae1c37b07e7ac007da972c0b3510.
 - Unique candidate reserved: OnePlayer0.15.34 / Build301 / poster-results-adapters / iOS15.0. Index, other Active Aether235 and CI matching refs checked, no301 collision. Search256 Completed; runtime/P0/Dock/carousel untouched.
 - Scope: G09 favorite Movie/Series/Episode more, G10 Person more, G11 genre/tag filter leaf only, G12 person works, G13 direct/history Search full results, G14 multi-server more. Original60/18 queries, Person/Episode routes, leaf-only name/year appearance and model ownership preserved. Do not reopen detail main loading/Hero/playback.
 - G15 recommendation9/+6 and single landing host remains pending; current Search pin not removed in this partial stage. P5 horizontal/Home and P6 broader device/scale/resource matrix pending. P3 awaits device testing; G01 accepted within299 logs only.
-- Completed: resume/source/collision audit; no runtime patch or new test/IPA claim yet.
-- Next exact action: implement shared native result-page adapter and explicit plain-media/Person cell variants against300; extend actual-source query/navigation tests, then continue exact-source macOS CI/Release/artifact independent verification and direct IPA handoff without intermediate stop.
+- Completed: resume/source/collision audit; G09–G14 implementation and9 actual-source units/2 table native UI tests written; Linux extraction and leaf/query/frozen-source guards pass. Swift tests/Release/IPA/device validation pending.
+- Next exact action: commit scoped actual-source G09–G14 implementation/tests, run exact-source macOS37 poster+10 detail+8 native UI tests and full Release; independently verify artifact/source/IPA/MinOS, save and hand off actual IPA without intermediate stop. Exact implementation source is containing feature commit; resolve before CI.
 
 ## Previous identity — P3 verified Build300 IPA; G01 accepted, full task Active
 
@@ -506,3 +506,9 @@ User explicitly accepted the current G01 Library performance and authorized the 
 **State:** Code written /44 fresh regressions passed /Release CI passed /IPA produced+independently verified /P3 real-device testing pending /not whole-task Stable, frozen or merged. G01 accepted only within documented Build299 before/after-restart1560/1620 coverage; no300 FPS/long-frame gain claimed. Main changes in this cycle are documents only, not runtime synchronization.
 
 **Next exact action:** runtime handoff for P3 (prioritize genre results, three paged tabs, mixed root and at least two folder levels; native pop/side-swipe return,refresh/sort and first/append/error states). Next development stage is P4 G09–G15: Favorites more Movie/Series/Episode/Person, detail filters/person works, direct/history/multi-server more Search and recommendations with correct landing host. P5 H01–H04 horizontal hosts follows; H05 remains protected audit-only. P6 broader~2000/5000/resource/pressure/background/uncovered interactions and final matrix remain. No Build301 identity allocated. Keep Aether235 isolated; resume current branch/PR/exact-source facts rather than assuming main is runtime baseline.
+
+## Build301 partial P4 G09–G14 implementation — pending macOS validation
+
+OnePlayer0.15.34 /Build301 /poster-results-adapters; same task/feature/Draft PR292. Shared EmbyPosterResultsPage owns one native vertical wall and one resident system selection/link; original models still own60 Favorites/Person/filter and18 Search paging, raw frontier, dedup and error policy. Explicit Person own-image/name-only and plain-media preferred-image/name/year-only variants preserve original fields/heights (24/40); standard media42 unchanged. Original missing PersonId message, Episode destination, actual selected server client/term and Dock clearance retained. No new pull-to-refresh on previously non-refreshable leaves. G01/P3 source, Favorites preview, Search root/direct/history/multi-server/recommendations and detail source outside the filter leaf are byte-guarded unchanged. P0/carousel/Dock/root Search lifetime/image budgets unchanged.
+
+Production-source extraction/leaf scope guards passed on Linux; new9 query/frontier/variant/native units and2 table-driven native UI tests are written but not yet run (planned37 poster units +10 detail units +8 native UI;18 Dock/carousel retained exact-input evidence). Terminal detail is a fixture, production destination bytes protected. CI/Release/IPA and all301 real-device evidence pending. G15 recommendation single landing host and unbounded second pin removal explicitly pending, along with P5 and broad P6. No301 FPS/long-frame or stable claim.

@@ -45,6 +45,57 @@ final class PosterMotionUITests: XCTestCase {
     func testProductionLibraryDeepNativePushPopRetainsPositionAndFrontier() { checkReturn(cancelPop: false) }
     func testCancelledSystemPopThenBackRetainsProductionLibrary() { checkReturn(cancelPop: true) }
 
+    func testP4MediaPersonFilterAndSearchLeavesDeepReturnKeepOriginalOwners() {
+        for kind in ["Movie", "Series", "Episode", "person", "genre", "tag", "search"] {
+            let app = XCUIApplication(); app.launchArguments = ["--poster-result-ui", kind]; app.launch()
+            let wall = app.collectionViews.firstMatch
+            XCTAssertTrue(wall.waitForExistence(timeout: 10))
+            for _ in 0..<8 { wall.swipeUp(velocity: .fast) }
+            let anchor = wall.cells.element(boundBy: 0).label
+            wall.cells.element(boundBy: 4).tap()
+            XCTAssertTrue(app.navigationBars["Fixture Detail"].waitForExistence(timeout: 5), kind)
+            let before = fields(app.staticTexts["return-status"].label)
+            XCTAssertGreaterThan(Double(before["offset"] ?? "0") ?? 0, 2000, kind)
+            app.navigationBars["Fixture Detail"].buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(app.navigationBars["Fixture Results"].waitForExistence(timeout: 5), kind)
+            let after = fields(app.staticTexts["return-status"].label)
+            XCTAssertEqual(after["results"], before["results"], kind); XCTAssertEqual(after["wall"], before["wall"], kind); XCTAssertEqual(after["count"], before["count"], kind)
+            XCTAssertEqual(Double(after["offset"] ?? "-1") ?? -1, Double(before["offset"] ?? "-2") ?? -2, accuracy: 1, kind)
+            XCTAssertEqual(wall.cells.element(boundBy: 0).label, anchor, kind)
+            app.terminate()
+        }
+    }
+
+    func testFavoritePersonMoreUsesProductionWorksDestinationAndBothParentsReturn() {
+        let app = XCUIApplication(); app.launchArguments = ["--poster-result-ui", "Person"]; app.launch()
+        let wall = app.collectionViews.firstMatch
+        XCTAssertTrue(wall.waitForExistence(timeout: 10))
+        for _ in 0..<6 { wall.swipeUp(velocity: .fast) }
+        let anchor = wall.cells.element(boundBy: 0).label
+        let parent = fields(app.staticTexts["return-status"].label)
+        let personName = wall.cells.element(boundBy: 4).label
+        wall.cells.element(boundBy: 4).tap()
+        XCTAssertTrue(app.navigationBars[personName].waitForExistence(timeout: 5))
+        let works = app.collectionViews.firstMatch
+        for _ in 0..<6 { works.swipeUp(velocity: .fast) }
+        works.cells.element(boundBy: 4).tap()
+        XCTAssertTrue(app.navigationBars["Fixture Detail"].waitForExistence(timeout: 5))
+        let before = fields(app.staticTexts["return-status"].label)
+        app.navigationBars["Fixture Detail"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars[personName].waitForExistence(timeout: 5))
+        let after = fields(app.staticTexts["return-status"].label)
+        XCTAssertEqual(after["results"], before["results"]); XCTAssertEqual(after["wall"], before["wall"])
+        XCTAssertEqual(Double(after["offset"] ?? "-1") ?? -1, Double(before["offset"] ?? "-2") ?? -2, accuracy: 1)
+        app.navigationBars[personName].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Fixture Results"].waitForExistence(timeout: 5))
+        let returned = fields(app.staticTexts["return-status"].label)
+        XCTAssertEqual(returned["favorites"], parent["favorites"]); XCTAssertEqual(returned["wall"], parent["wall"])
+        // The works request is separate; returning must not re-query the original Person favorites page.
+        XCTAssertTrue(wall.cells[personName].exists)
+        XCTAssertEqual(wall.cells.element(boundBy: 0).label, anchor)
+        app.terminate()
+    }
+
     func testLibraryPagedTabsDeepNativeReturnKeepsTheirOwnFrontiers() {
         for title in ["预告片", "合集", "我的收藏"] {
             let app = XCUIApplication(); app.launchArguments = ["--poster-return-ui"]; app.launch()

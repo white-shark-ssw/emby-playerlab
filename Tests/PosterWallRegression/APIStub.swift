@@ -35,6 +35,26 @@
         return try (folderResponses[parentId] ?? .success([])).get()
     }
     func libraryItem(itemId: String) async throws -> LibraryItem { throw URLError(.badServerResponse) }
+    struct ResultRequest {
+        let kind: String; let value: String; let isGenre: Bool; let types: [String]; let limit: Int; let start: Int
+        let continuation: CheckedContinuation<EmbyItemPage, Error>
+    }
+    @MainActor var resultRequests: [ResultRequest] = []
+    @MainActor func resultPage(kind: String, value: String, isGenre: Bool = false, types: [String] = [], limit: Int, start: Int) async throws -> EmbyItemPage {
+        try await withCheckedThrowingContinuation { continuation in
+            resultRequests.append(ResultRequest(kind: kind, value: value, isGenre: isGenre, types: types, limit: limit, start: start, continuation: continuation))
+            if automaticLibraryPages {
+                let type = types.first ?? "Movie"
+                let items = (start..<min(start + limit, 660)).map { ["Id": String($0), "Name": "\(type) \($0)", "Type": type] }
+                let data = try! JSONSerialization.data(withJSONObject: ["Items": items, "TotalRecordCount": 660])
+                continuation.resume(returning: try! JSONDecoder().decode(EmbyItemPage.self, from: data))
+            }
+        }
+    }
+    @MainActor func favoriteBrowsePage(includeItemTypes: [String], limit: Int, startIndex: Int) async throws -> EmbyItemPage { try await resultPage(kind: "favorite", value: "", types: includeItemTypes, limit: limit, start: startIndex) }
+    @MainActor func personMediaItems(personId: String, limit: Int, startIndex: Int) async throws -> EmbyItemPage { try await resultPage(kind: "person", value: personId, limit: limit, start: startIndex) }
+    @MainActor func detailItems(filter: String, isGenre: Bool, limit: Int, startIndex: Int) async throws -> EmbyItemPage { try await resultPage(kind: "filter", value: filter, isGenre: isGenre, limit: limit, start: startIndex) }
+    @MainActor func searchPosterItemsPage(term: String, limit: Int, startIndex: Int, includeItemTypes: [String]) async throws -> EmbyItemPage { try await resultPage(kind: "search", value: term, types: includeItemTypes, limit: limit, start: startIndex) }
 
 }
 
