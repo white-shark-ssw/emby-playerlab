@@ -99,7 +99,7 @@ G15推荐网格嵌在搜索落地页内：搜索历史、推荐标题/网格/foo
 
 ## 7. 分阶段开发与通过条件
 
-P0已完成；P1/P2代码和生产源码自动回归已完成，Release/IPA核验已完成，目标机A/B待完成。用户已验收当前G01覆盖并授权继续；P3 G02–G08原生适配、实际源码回归、Release/IPA独立核验已完成，新入口待真机验证。P4–P6仍待推进。以下阶段门槛仍有效；自动验证不代替真机性能验收。
+P0已完成；P1/P2代码和生产源码自动回归已完成，Release/IPA核验已完成，目标机A/B待完成。用户已验收当前G01覆盖并授权继续；P3 G02–G08原生适配、实际源码回归、Release/IPA独立核验已完成，新入口待真机验证。P4 G09–G14已完成代码/55项新回归/Release及核验IPA，真机待验证；G15/P5/P6仍待推进。以下阶段门槛仍有效；自动验证不代替真机性能验收。
 
 | 阶段 | 范围和产物 | 进入下一阶段前的条件 |
 |---|---|---|
@@ -247,3 +247,14 @@ Production-source extraction/leaf scope guards passed on Linux; new9 query/front
 ## Build301 exact-source CI started
 
 Product source **83a239dc259651755315d52e9028d159830d9960**, CI control **ff949150c67b183aefae761bf878c2b583a8af99**, branch ci/build301-poster-results-adapters-20261008, run **37679733748 /job112992327395**. Product-head lease, exact allowed diff/whitespace, P3/Dock/main detail/P4 leaf business/source guards and retained18 native input guards passed; macOS simulator preparation running.37 poster +10 detail +8 native UI/Release/package pending. No301 IPA/device claim yet. Next exact action: monitor this exact run, inspect real failed logs if needed, fix only proven errors, then continue through verified IPA handoff. Do not reuse300 IPA as301.
+
+
+## Build301 P4 G09–G14 verified IPA handoff — 2026-10-08
+
+**Exact product/test/package source:** 83a239dc259651755315d52e9028d159830d9960. CI controlff949150c67b183aefae761bf878c2b583a8af99, branch ci/build301-poster-results-adapters-20261008, run37679733748/job112992327395 independently confirmed completed/success. Fresh **37 poster/adapter units +10 detail/cache units +8 native UI tests /55 total /0 failures**;18 unchanged-input Dock/carousel regressions explicitly byte-guarded and retained, not rerun. Full Release/package/identity/embedded MinOS passed. Independent download verifies ZIP integrity, archive source comment, actual production/test bytes, checksums, bundle/version/build and arm64 LC minimum OS. No failed301 run or fabricated device evidence.
+
+**Artifact:** OnePlayer-0.15.34-build301-poster-results-adapters, ID11509478670, ZIP23004275bytes, SHA256 **bd98c7ad2fda045042ca0682a2df2d1eb774de96297a8b4f55f5f50fbf145c4a**. IPA OnePlayer-0.15.34-build301-poster-results-adapters-unsigned.ipa, **18733102bytes**, SHA256 **b02bb528ef75898d34d403f44e720df0b424ae9505dcb9568540361807f731ac**. Source ZIP SHA256 **6dfaab9e3d33ddb4cbc52c811c3837ac186c6ede8639f20e7cece7afd15b1e01**. Bundlecom.embyplayerlab.app /version0.15.34 /Build301 /Info MinOS15.0 /arm64 MinOS15.0.0 /CADisableMinimumFrameDurationOnPhone=true. Actual IPA saved for direct file handoff; unsigned, sign-install required. No temporary URL or upload path retained. Closing commits change project documents only; exact packaged source stays83a239dc.
+
+**Coverage:** G09 Movie/Series/Episode favorite more, G10 Person more, G11 genre/tag filter leaf, G12 person works, G13 direct/history full Search result leaf and G14 server-section more share native results adapter. Original60/18 providers, types/filter/PersonId/term/client, raw frontier/dedup/error policies unchanged. Native UI exercises deep returns across media/person/filter/search leaf variants and Person more→production works→fixture detail→both parents. Terminal detail is a fixture: production Episode→Series/detail destination bytes are protected, not claimed exercised through a real terminal detail in that harness. Original G11 two entry paths, G12 three entry paths, G13 direct/history and G14 section-client paths are source-guarded; full product entry/device scenarios remain pending. G01/P3, main detail outside filter leaf, Search root/recommendations/lifetime, Favorites previews, image budgets, Dock/carousel/P0 source unchanged.
+
+**State and next action:** Code written /55 fresh regressions passed /Release CI passed /IPA produced+independently verified /301 real-device testing pending /not whole-task Stable, frozen or merged. G01 accepted only within documented299 scope. G15 is NOT migrated: Search history/recommendation/footer must join one vertical native host, preserve9/+6/random/exclusions/6pt and Dock destruction/re-entry, remove second unbounded image pin. P5 H01–H04 horizontal/Home follows; H05 detail horizontal remains audit-only. P6 broad2000/5000/pressure/background/resources and uncovered interaction/target-device matrix remain. No Build302 identity allocated. Resume current source/branch/PR and candidate collision before next implementation; keep Aether235 isolated. Handoff301 for Favorites/Person/filter/Search deep return/paging/actual Episode+server routes, then continue G15 rather than restarting accepted Library tuning. No301 FPS or long-frame improvement claimed.
