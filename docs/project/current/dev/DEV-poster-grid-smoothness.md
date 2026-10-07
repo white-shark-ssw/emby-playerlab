@@ -1,20 +1,20 @@
 # DEV-poster-grid-smoothness
 
-## Current identity — Build298 reserved /2026-10-07 22:21 Asia/Shanghai
+## Current identity — Build298 implemented /exact-source CI in progress — 2026-10-07
 
 - **Active — user authorizes implementing the confirmed detail loading/cancellation/persistence fixes and continuing through a verified test IPA.**
-- Same Work ID/Plan/G01 Library.items; no other poster host rollout. Draft/open/unmerged PR292, branch **perf/poster-wall-library-build295**; real PR/branch head **5f85b22683269d397da6b2ea2c61b12c31b21ca4**, latest main **ccc743fe5bf0ff5f3c4e55fbe4a8e5d881b114c2** (documents only since final297 source).
+- Same Work ID/Plan/G01 Library.items; no other poster host rollout. Draft/open/unmerged PR292, branch **perf/poster-wall-library-build295**; current exact product/PR head **13f9da6fa4afc5344291e47489c9496b0bc1560e**; baseline feature5f85b22683269d397da6b2ea2c61b12c31b21ca4, main reservationaedbbd415f7edf0f8a0977cf35f361d807562a75. Main has project-document changes only.
 - Last device-tested/package source **279f2c00fe86fa913962d22a0c7afbf17c82ca8d**, OnePlayer0.15.30/297; partial device review below. Seven captured returns retain original wall/data/offset; no full P2 acceptance.
-- Uniquely reserved candidate **OnePlayer0.15.31 /Build298 /detail-independent-loading /iOS15.0** after BUILD_TEST_INDEX, all other Active checkpoints and current branch candidates checked; Aether235 independent, Search256 completed. No298 source/CI/IPA exists yet.
+- Uniquely reserved candidate **OnePlayer0.15.31 /Build298 /detail-independent-loading /iOS15.0** after BUILD_TEST_INDEX, all other Active checkpoints and current branch candidates checked; Aether235 independent, Search256 completed. Runtime candidate committed at13f9da6fa4afc5344291e47489c9496b0bc1560e. CI control **dcc29c352250c0f7f32a2747aee8d616b5ad2a1a**, branchci/build298-detail-loading-20261007, workflow.github/workflows/build298-detail-loading.yml; **run37638790452 /job112851927886 in progress**. Scope/Frozen/iOS15 source guards passed; runtime tests/Release/IPA pending.
 - Scope: original detail model bounded independent content publication and cancellation; existing warm cache owner ordered off-main JSON/disk persistence; bounded Library full-apply substage evidence before a further performance patch. Preserve item/series/episode selection dependencies and real playback/session reuse; native navigation, cache identity/restoration, accepted294/carousel293/Dock294/Search256/P0 remain protected.
 
 ## Next exact action
 
-Implement three bounded structured detail branches after the refreshed item: presentation Images and Similar independent of PlaybackInfo, series episode/season dependencies retained for primary media selection. Cancellation must not publish/store partial snapshots or mark success; ordinary partial failures retain valid prior cache. Keep immediate in-memory warm snapshot publication, move immutable snapshot object construction/JSON serialization/atomic writes onto one ordered queue within the existing cache owner; test queue order/route isolation and no-main disk work. Use actual production model/cache tests with a delayed PlaybackInfo boundary and cancellation/partial-failure fixtures. Profile840-record full apply with bounded substages; do not invent a full-remap append bug. Then commit exact source, run affected regressions/Release, independently verify and directly attach298 IPA without intermediate continue. Full P2 matrix and other-host/Frozen gates remain.
+Follow actual-source run37638790452: execute10 detail/cache units, prove serial media-first loading fails the independent-publication negative control, regenerate/compare exact model harness, rerun16 Library units and3 native navigation/inertia UI tests, then full Release/iOS15 packaging. Resolve actual failures; do not stop at CI start. Retrieve and independently verify archive/source/package/MinOS/digests, save and directly attach Build298 IPA. Original18 Dock/carousel evidence is source-byte-guarded retained evidence, not rerun. Target-device timing/long-frame gain and full P2 matrix remain pending.
 
 ## Completed / Validation / Pending — current298
 
-Identity/collision guards passed. Confirmed297 evidence retained below. Runtime298 patch, new regressions, CI/Release/artifact retrieval and package/source/MinOS checks pending; not device-tested/stable/merged.
+Identity/collision guards passed. Runtime298 patch and ten actual-source model/cache regression fixtures written; harness preparation and updated detail performance source checks pass locally (no local Xcode/Swift execution). Original16 Library units and3 UI fixtures unchanged; new bounded wall substage timing requires rerunning affected poster checks. CI/Release/artifact retrieval and package/source/MinOS checks pending; not device-tested/stable/merged.
 
 ## Build297 device evidence — 2026-10-07 22:12 Asia/Shanghai
 
