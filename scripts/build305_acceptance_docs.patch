@@ -1,0 +1,66 @@
+--- a/docs/project/PROJECT_STATE.md
++++ b/docs/project/PROJECT_STATE.md
+@@ -1,6 +1,6 @@
+ # OnePlayer Project State
+ 
+-_Last updated2026-10-08: 用户明确验收海报墙任务。当前接受产品为OnePlayer0.15.36/Build303；资料已归档，PR292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`; merged tree `0e895c4eec596e4bed3906148bcdca7e18237ad6` matches the accepted Build303 source in every non-document file. 任务级通过与各项日志测量范围分别记录，跨线路图片缓存共享暂缓。_
++_Last updated 2026-10-09: Build305 / 0.15.38 的 Library 递归媒体查询修复已获目标真机确认并通过 PR #293 合并；该任务本身已完成。由于同一 Build305 会话立即暴露 Home → 详情/库页 → 返回时已加载海报图片被清空后重新采用的新回归，当前 **accepted overall baseline 仍保持 Build303**，新问题由独立 `DEV-home-return-poster-retention` / Build306 处理。_
+ 
+ ## Current accepted overall baseline — Build303
+ 
+@@ -8,6 +8,16 @@
+ - Evidence: Code written /84fresh+10retained regressions /Release CI passed /IPA independently verified and delivered /user runtime log reviewed /explicit task accepted /poster Stable-frozen. PR292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`; merged tree `0e895c4eec596e4bed3906148bcdca7e18237ad6` matches the accepted Build303 source in every non-document file.
+ - Scope: G01–G15/H01–H04 native poster hosts; original query/frontier/navigation/cache ownership retained;293carousel/294Dock/P0 remain protected. Unmeasured resource/full-entry scenarios are not declared tested. Cross-route image-cache sharing remains deferred.
+ 
++## Accepted feature milestone — Build305 / 0.15.38 Library media-only root
++
++- Product source: `3476a3d9a8976ef483bb9d9e2317d0d2e442f8bb`; CI run/job `37832789044 / 113502123244` success; 53 tests / 0 failures; artifact `11574533261`; IPA SHA-256 `f843cd2ace20f9aa15f447c8d98e4935211a033b65e4493dd649fde30b9e53d4`; MinOS 15.0.
++- Target-device result on 2026-10-09: user explicitly confirmed the prior Folder/intermediate-page problem is fixed.
++- Durable contract: explicit `includeItemTypes` remains authoritative; only recursive Library-content requests with an empty type scope default to `Movie,Series,Video`; non-recursive Folder browsing remains unrestricted and retains the existing Folder owner/path.
++- Build304 routing remains only a bounded safety path if a browsable Folder legitimately reaches the root; no client-side Folder flattening, second loader or detail-internal workaround is part of the accepted design.
++- PR #293 merged at `91b705ca3b62064957169ea8bd2dff71ccc1e180`.
++- Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / feature task accepted ✅ / merged ✅**.
++- This is a feature milestone, not a promotion of Build305 to accepted overall baseline, because the separate Home-return poster-retention regression was reported immediately afterward and remains Active under Build306.
++
+ Historical dated entries below preserve their original evidence levels; the current poster-task status is Completed / stable-frozen at Build303, accepted on 2026-10-08 and merged through PR #292. They are not pending work for this completed task.
+--- a/docs/project/MODULE_STATUS.md
++++ b/docs/project/MODULE_STATUS.md
+@@ -17,6 +17,7 @@
+ | Home carousel interaction / presentation cadence | **Completed / frozen — Build293 accepted and merged** | User accepted OnePlayer0.15.26/Build293 on2026-10-06 after testing. Exactfa8ff44ff4a5384fd4603a64b33354f941764a8c; PR#289 mergef0a737519801ff55f18e31f9bdcf5f83c9097c17. Native10/0, exact-source CI/IPA/MinOS15 verified. Preserve resident pages, single gesture/runtime authority, actual-layer takeover/outgoing artwork, shared lower-edge floor, title/Dock/vertical/navigation. Build292120FPS is user-reported. Reopen only on new regression evidence. |
+ | Search page / multi-Emby search | **Stable at Build256 / merged to main** | Build256 / OnePlayer 0.14.89 is target-device accepted and PR #264 merged at `647c1f66e5836fcd20a23a57600211488eeafb3d`. Accepted initial 9 + incremental +6 Random Items/`ExcludeItemIds`, detail-return lifetime, Dock-away reset and Dock/keyboard behavior remain protected. Build303's accepted native poster presentation retains these Search semantics; reopen only on new regression evidence or an explicit requirement. |
+ | Poster 3-column / poster-heavy scroll smoothness | **Completed /stable-frozen — Build303 user accepted** | 用户2026-10-08明确验收；G01–G15/H01–H04代码、84fresh/10retained、Release/IPA/MinOS15核验与已记录真机证据齐全。精确源码0b5ce25b；PR292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`; merged tree `0e895c4eec596e4bed3906148bcdca7e18237ad6` matches the accepted Build303 source in every non-document file. 未覆盖资源/入口项不追认测试通过；跨线路图片缓存共享暂缓；293/294/P0保护。 |
++| Library recursive media-only content / Folder routing | **Stable — Build305 target-device accepted / merged** | Build305 / 0.15.38 exact source `3476a3d9a8976ef483bb9d9e2317d0d2e442f8bb`; CI `37832789044 / 113502123244`, 53/0; artifact `11574533261`; IPA SHA-256 `f843cd2ace20f9aa15f447c8d98e4935211a033b65e4493dd649fde30b9e53d4`; MinOS15. User confirmed the prior Folder/intermediate-page issue fixed on 2026-10-09; PR#293 merged `91b705ca3b62064957169ea8bd2dff71ccc1e180`. Recursive empty-scope Library content defaults to Movie/Series/Video; explicit scopes and non-recursive Folder browsing remain authoritative. Separate Home-return poster retention regression is not part of this module's acceptance. |
+ | Favorites / library page persistent presentation cache | **Stable at Build213 / merged to main** | Build213 / 0.14.46 was accepted on iPhone 15 Pro Max / iOS 17.0. Favorites + Library 7 tabs presentation data restores from `Library/Caches/OnePlayer/PagePresentation` before live refresh; accepted fresh state writes through atomically, refresh failure preserves the prior visible/disk snapshot, and necessary paging frontier is restored with cached content. `sortBy` remains a Preference concern; `selectedTab`, scroll restoration, Favorites root session retention and Search/Genre/Person expansion remain outside this milestone. Cache identity is safely route-scoped by `baseURL + userId + scope (+ library.id)`; a same-server URL change may cause a benign cache miss but cannot cross user/server data. No Player/MPV/PiP, UnifiedTransport, playback Session Cache, Home-carousel or shared poster-image owner changes. PR #260 merged at `2303505ad4403182f5315d33c54f402903c809d2`. |
+--- a/docs/project/BUILD_TEST_INDEX.md
++++ b/docs/project/BUILD_TEST_INDEX.md
+@@ -3,6 +3,17 @@
+ ## Latest accepted overall baseline — Build303 /0.15.36
+ 
+ OnePlayer 0.15.36 / Build303 was explicitly accepted on 2026-10-08. DEV-poster-grid-smoothness is Completed / stable-frozen; PR #292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`, and its checkpoint was removed in `c4a22edf753b9a59df3d34ef5e46b943bb7c5341`. Accepted source `0b5ce25bcec0a4d0240891913ad17114b02cf10e`; CI run37754814214 passed with84 fresh tests and10 retained unchanged UI checks. Artifact11540607336 and the delivered IPA were independently verified; MinOS15.0. Unmeasured entry/resource/scale scenarios remain evidence limits, not pending acceptance blockers. Cross-route image-cache sharing is deferred.
++
++## Accepted feature milestone — Build305 / 0.15.38
++
++`DEV-meaningless-detail-routing` is complete for its scoped Library-content problem. Exact product source `3476a3d9a8976ef483bb9d9e2317d0d2e442f8bb`; dedicated CI `37832789044 / 113502123244` passed with 53 tests / 0 failures; artifact `11574533261`, digest `sha256:9ae178b9492534d0357bfcf3a7ddc8fcada49b1a49380019ef76dbc53b040b53`; IPA SHA-256 `f843cd2ace20f9aa15f447c8d98e4935211a033b65e4493dd649fde30b9e53d4`; source ZIP SHA-256 `a6ef12cff823c2d9b959635e079176cd1d18dc11ab535b3151c255bbf9a4ca11`; MinOS 15.0.
++
++Target-device 2026-10-09: user explicitly confirmed the prior Folder/intermediate-page issue fixed. Accepted query contract: recursive empty-scope Library content uses `Movie,Series,Video`; explicit scopes remain unchanged; non-recursive Folder browsing remains unrestricted. PR #293 merged at `91b705ca3b62064957169ea8bd2dff71ccc1e180`.
++
++Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / scoped task accepted ✅ / merged ✅**.
++
++Build305 is **not** promoted to accepted overall baseline because the same device session exposed a separate Home-return poster-artwork blank/reload regression. That work is Active as `DEV-home-return-poster-retention` / reserved Build306.
+ 
+ Historical dated entries below preserve their original evidence levels; the current poster-task status is Completed / stable-frozen at Build303, accepted on 2026-10-08 and merged through PR #292. They are not pending work for this completed task.
+--- a/docs/project/TECHNICAL_DECISIONS.md
++++ b/docs/project/TECHNICAL_DECISIONS.md
+@@ -48,6 +48,12 @@
+ 
+ Canonical series order comes from `GET /Shows/{SeriesId}/Episodes`; OnePlayer preserves Emby's returned order. `SeasonId` is season-membership authority, not a second in-season sort owner. Do not add title/file/date/item-ID/artificial-number fallback sorting. Build178 was accepted and merged through PR #254.
+ 
++## D011A — Recursive Library content is media-only; Folder browsing remains explicit
++
++For normal Library content, an empty caller-supplied type scope is normalized only when the request is recursive: `Movie,Series,Video`. Explicit `includeItemTypes` values remain authoritative. Dedicated Folder browsing remains the existing non-recursive path and is intentionally not forced media-only.
++
++This decision comes from Build304/305 target-device evidence for movie libraries where one physical Folder contains multiple videos. Client-side Folder flattening, global Folder suppression, a second loader, or hiding Folder behavior inside detail UI are rejected. Build305 / 0.15.38 was target-device accepted for this scoped behavior on 2026-10-09 and merged through PR #293.
++
+ ## D012 — Home-carousel keeps one UIKit owner; full-width page slots use acquisition-relative render motion
+ 
+ Retain Build198 lifecycle ownership and Build208 full-width `pageStep = width`. Horizontal acquisition remains UIKit-owned; vertical acquisition yields to the Home `UIScrollView`; predicted touch stays release-only; one `V3HomeCarouselTransitionState` remains the high-frequency owner; first↔last modulo ownership and settle/cancel semantics remain unchanged. Do not add a second SwiftUI owner, timer, watchdog, retry, interpolation, debounce or throttle.
