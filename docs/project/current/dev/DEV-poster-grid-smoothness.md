@@ -1,5 +1,17 @@
 # DEV-poster-grid-smoothness
 
+## Current identity — P5 H01–H04 implementation next; Build303 reserved
+
+- Status: Active; user authorized continuing existing task.302 IPA delivered, target-device302 pending. Cache decoupling deferred.
+- Work ID / aliases: DEV-poster-grid-smoothness / 海报墙 / 库页海报 / 海报网格流畅度
+- Branch / PR: perf/poster-wall-library-build295 / Draft PR292 open/unmerged. This is a docs-only reservation descendant of verified e0a14ab149331a2b3ad6e82442c2e57f73e6f3a1; resolve branch ref before resuming.
+- Baseline tested source: dced392bbf2e3960539890121cf7d6e9d8f80e86 / Build302 /0.15.35. New unique candidate303 /0.15.36 /poster-sections /MinOS15.0; CI/IPA not yet produced.
+- Completed: G01 tuning and P3/P4 code/CI/verified IPA; P5 definitions/call-site/state-owner audit. Accepted overall294 unchanged.
+- Pending: implement H01–H04 native vertical/row adapters and real-source regression; P6 device/resources/scale.
+- Next exact action: implement P5 with original metadata/navigation/source owners, unchanged293carousel/294Dock and high-frequency Hero bridge/refresh/top; validate, exact-source CI/Release and independently verified actual IPA. No intermediate continue gate. Protect G01/P3/P4/detail/H05/P0/image budgets and Aether235 isolation.
+
+## Previous milestones
+
 ## Current identity — P4 G09–G15 verified Build302 IPA; task Active
 
 - Status: Active. P4 all three-column hosts now code/CI/verified IPA complete; target-device302 and remaining P3/P4 paths pending. P5/P6 remain pending. User prioritizes poster completion; nontrivial cross-route cache identity/migration deferred.
@@ -610,3 +622,11 @@ Dedicated run37733627914/job113168149767: fresh44 poster/adapter/Search units +1
 **Scope and evidence:** P4 G09–G15 code is now complete. G15 history/recommendation title/grid/footer share one native vertical collection; reusable horizontal history chips retain actions,6pt grid insets, legacy requested pixel width and poster/name/year/play-state fields. Original9/+6/random/exclusions/duplicate/short/error/generation/query/history/server-selection/Dock lifecycle preserved. Removed unbounded recommendation UIImage dictionary and detached extra warm-download path; existing disk/decoded/preparation owners and4/12/24/64+96MiB budgets remain. Source guards protect G01/P3/P4 leaves, frozen detail/H05, original Search fields/menu/direct/history/multi-server routes/root actions, Home293/Dock294/P0. Seven new actual-source units and two native UI cases cover recommendations/append/deep native return/history clear/direct leaf/toggle and keyboard Dock. Production Search root/model/preloader/wall/header/Dock are compiled; network/session and terminal detail are explicit fixtures. Device302 result/presented FPS/first-presented bitmap timing are not measured.
 
 **Cache priority and next action:** User requested cache decoupling only if simple, prioritizing the poster task. It requires stable server identity propagation plus legacy disk-data compatibility, so is explicitly deferred;302 retains existing route/URL keys and does not claim LAN/WAN cache sharing fixed. Task remains Active/Draft PR292 unmerged/not whole-task Stable/frozen. G01 tuning accepted only within recorded299/301 scope;301 partial positive logs do not prove every P3/P4 path. Hand off302 for actual Search landing cold/warm9/+6, deep detail/history return, clear/toggle/keyboard/Dock and Search exit/re-entry tests. Development next is **P5 H01–H04 native section/horizontal hosts**: retain Home Hero scroll bridge/refresh/top/Dock and293carousel, Library suggestion providers, Favorite media/Person destinations, multi-server actual client/term; P6 broad2000/5000/resource/pressure/background/uncovered matrix remains. H05 audit-only. Recheck fresh heads/PR/collision before allocating303; **no Build303 allocated**. Aether235 stays isolated, accepted overall294 unchanged.
+
+## Build303 P5 candidate reservation — 2026-10-08
+
+User explicitly requested continuous poster-task development;302 verified IPA already handed off,302 device result pending. Resume identity rechecked: feature/PR292 e0a14ab149331a2b3ad6e82442c2e57f73e6f3a1 Draft/open/unmerged; main efc6995a50850043f3cbbf3dc0a32ae4f5d6f828 docs-only, accepted overall294 runtime. Active Aether235 has separate Player/Transport scope; Search256 Completed. Build index and ci/build303 refs checked; reserve **OnePlayer0.15.36 /Build303 /poster-sections /iOS15.0** uniquely for this task.
+
+P5 source audit confirms H01 Home, H02 Library suggestions, H03 Favorites root and H04 multi-server Search use SwiftUI vertical/horizontal trees. Planned scoped change: shared native vertical section host and reusable native horizontal rows, standard poster/person cells plus original landscape/library tile fields/specifications; native header/more callbacks return to original page navigation/model. Home mounts unchanged Hero interaction and existing high-frequency offset/refresh bridge in a finite top host, preserving293carousel/294Dock/refresh/top/safe-area. No per-card SwiftUI host or new metadata/API/cache owner. G01/P3/P4 leaves, main detail/H05/P0 and image4/12/24/64+96MiB budgets remain protected. Cache identity migration remains deferred.
+
+No303 implementation/CI/IPA/device success yet. Next exact action: implement/test H01–H04 real-source section adapters, inspect fixed geometry/prefetch/return/query/source lifecycle, then one exact-source macOS Release/CI and verified actual303 IPA without an intermediate continue gate. P6 resource/scale/uncovered target-device validation remains pending; full task Active/not Stable/frozen/merged.
