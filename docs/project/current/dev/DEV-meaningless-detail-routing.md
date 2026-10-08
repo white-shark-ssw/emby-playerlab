@@ -1,110 +1,103 @@
 # DEV-meaningless-detail-routing
 
-- **Status**: Active
+- **Status**: Completed — Build305 target-device accepted for the Folder/media-only Library-content issue; PR #293 pending merge
 - **Work ID**: `DEV-meaningless-detail-routing`
 - **Routing aliases / keywords**: `优化无意义详情页` / `无意义详情页` / `Folder详情页` / `文件夹详情` / `detail routing`
-- **Task**: 避免 Library 根海报墙中的可浏览 `Folder` / `CollectionFolder` 被推入媒体详情页，改为复用现有文件夹子项浏览页。
+- **Task**: 让 Library 正常内容页只展示媒体对象；Folder / CollectionFolder 保留在现有文件夹浏览路径，不再作为普通电影内容卡制造无意义详情/中间层。
 
 ## User intent / acceptance criteria
 
-- 用户真机 Build303 日志中连续进入 3 个详情对象，第二个对象出现截图所示的空洞页面：只有标题、`Folder` 类型文字和详情页标准按钮，没有有意义的媒体内容。
-- Library 根海报墙点击可浏览 `Folder` / `CollectionFolder` 时不应进入 `EmbyMediaDetailView`。
-- 这类对象应复用现有 `V3LibraryFolderBrowserView` 展示其子项；嵌套文件夹仍沿既有 folder browser 继续进入。
-- `Movie` / `Series` 等真实媒体继续走现有 `EmbyPosterDetailDestination`，`Episode` 的 series destination 特例保持不变。
-- 不改播放器、Transport、Cache、Emby Session、详情页内部实现、Build303 已验收海报墙滚动合同。
+- Build303 原问题：Library 根海报墙中的 item `180310` 以 `Folder` 进入通用媒体详情，形成只有标题、`Folder` 和详情按钮的空壳详情。
+- Build304 把该对象改为进入已有 Folder browser；用户真机确认空壳详情消失，但点击同一张卡会进入该 Folder，并看到其中 2 个视频。用户明确指出这仍不是目标体验。
+- 对“单文件夹多视频”这类电影库结构，正常 `.items` 内容页应直接来自递归媒体查询，不应把承载媒体的 Folder 当作内容卡。
+- `.folders` tab / nested folder browser 继续保留真实 Folder 浏览语义。
+- Movie / Series / Video 正常详情、Episode 特例、Build303 海报墙滚动合同、Player/Transport/Cache/Emby/P0 全部保持不变。
 
-## Baseline
+## Baseline / runtime evidence
 
-- Accepted product baseline: OnePlayer `0.15.36 / Build303`。
-- Runtime evidence: 用户提供的 Build303 真机日志，第二次详情加载无 `PlaybackInfo` 请求且最终 `images=0`；截图明确显示对象类型为 `Folder`。
-- Base branch: `main`。
-- Main before task checkpoint: `a2720e55200a813bfe82a9280edaf8e6c483cefa`。
-- Task branch base after checkpoint creation: `28f50007bfeb9b20e4b42bc8ea0458c5eb925962`。
-- Relevant source state: Library 根 `nativePosterNavigationLink` 原先把所有 `nativePosterSelection` 直接交给 `EmbyPosterDetailDestination`；同文件已经有 `v3LibraryIsBrowsableFolder`、`V3LibraryFolderBrowserView` 与 folder child owner。
+- Accepted overall baseline before this task: OnePlayer `0.15.36 / Build303`, exact product source `0b5ce25bcec0a4d0240891913ad17114b02cf10e`.
+- Working branch: `feat/meaningless-detail-routing`.
+- PR: `#293`, open / unmerged at the moment of this checkpoint.
+- Build304 exact tested source: `d5b36d98efcbe426d91a750735e2780c5b723576`.
+- Build304 CI run/job: `37828043577 / 113485873035`, success; artifact `11573665346`; IPA SHA-256 `6b2766d272836a6f0798b1b6a6a41081d28f32c80ef97999fc04601210b3f5e7`; MinOS 15.0.
+- Build304 target-device log `OnePlayer-App-1791487069.log` proved the fresh Library root request for library `145113` was recursive but had no `IncludeItemTypes`, while selecting root Folder `180310` performed the existing non-recursive folder-child query and published exactly 2 child media items.
+- Build305 target-device result on 2026-10-09 is now highest-priority evidence for this task: the user explicitly reports **“刚才的问题修复了”**. The former unwanted Folder/intermediate-page behavior is therefore accepted for the tested device path.
 
-## Working branch / PR / head commit
+## Build304 result
 
-- Branch: `feat/meaningless-detail-routing`。
-- PR: `#293` — `Route library Folder items to existing folder browser`。
-- Current implementation head: `3053e99579ea013916d48d3fe41bd3e17e30f2a1`。
+- Product: OnePlayer `0.15.37 / Build304`.
+- Code written ✅ / 53 tests 0 failures ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅.
+- Device result: empty Folder detail shell is gone, but the unwanted Folder card remains and opens a 2-video intermediate folder page.
+- Final UX: **rejected**. Stable/frozen: **no**.
 
-## Build candidate
+## Build305 accepted result
 
-- Reserved candidate: OnePlayer `0.15.37 / Build304`。
-- Uniqueness check: `BUILD_TEST_INDEX.md`、其他 Active checkpoints 与仓库搜索未发现 Build304 / 0.15.37 占用。
+- Product: OnePlayer `0.15.38 / Build305`.
+- Exact product source: `3476a3d9a8976ef483bb9d9e2317d0d2e442f8bb`.
+- Dedicated CI control: `ci/build305-meaningless-detail-routing-20261009` at `611ec8599ef1cddb21aaac08a69b504ba5b02a61`.
+- CI run/job: `37832789044 / 113502123244` — success.
+- Actual-source regression: 53 tests / 0 failures.
+- Release generic-iOS build: success on Xcode 16.4.
+- Artifact: `OnePlayer-0.15.38-build305-meaningless-detail-routing`, ID `11574533261`, digest `sha256:9ae178b9492534d0357bfcf3a7ddc8fcada49b1a49380019ef76dbc53b040b53`.
+- IPA: `OnePlayer-0.15.38-build305-meaningless-detail-routing-unsigned.ipa`, SHA-256 `f843cd2ace20f9aa15f447c8d98e4935211a033b65e4493dd649fde30b9e53d4`.
+- Source ZIP SHA-256: `a6ef12cff823c2d9b959635e079176cd1d18dc11ab535b3151c255bbf9a4ca11`; archive comment equals exact product SHA.
+- Bundle identity independently verified: `com.embyplayerlab.app`, `0.15.38 / 305`, display name `OnePlayer`.
+- Info.plist MinOS `15.0`; CI embedded Mach-O minimum-OS audit passed.
+- Exact implementation is in `Sources/Networking/EmbyLibraryHubAPI.swift` rather than broad UI restructuring:
+  - explicit `includeItemTypes` stays authoritative and unchanged;
+  - when `libraryHubItemsPage` is `recursive == true` and the caller supplies an empty type scope, it uses `Movie,Series,Video`;
+  - `libraryFolderChildren` continues to call the same API with `recursive: false`, so dedicated folder browsing remains unrestricted and unchanged.
+- Build304 root Folder routing remains as a bounded safety path if an actual Folder legitimately reaches that root; `EmbyPosterDetailDestination` remains unchanged.
+- Target-device acceptance: **yes for this task** — user reports the previously discussed problem is fixed on Build305.
 
-## Evidence
+## Separate newly reported issue — not attributed to this task
 
-- Build303 真机日志记录了 3 次详情生命周期；第二次对应 item `180310`，详情 model 进入 media 阶段后立即结束，没有发起 `PlaybackInfo`，Images/Similar 返回后仍无详情图片。
-- 用户截图显示第二个页面的类型文案为 `Folder`，且页面没有有意义的媒体详情。
-- 真实源码确认问题入口是 Library 根原生海报墙：`nativePosterNavigationLink` 原先不区分 `Folder`，而 `.folders` tab / nested folder path 已正确复用 `V3LibraryFolderBrowserView`。
-- `Tests/PosterWallRegression/LibraryAdapterTests.swift` 已覆盖 `Folder` / `CollectionFolder` 分类与 folder owner 子项加载语义。
-- 实现 diff 从 task branch base 到首个路由 commit 只有 `Sources/UI/EmbyServerBrowseV3.swift` 4 additions / 2 deletions；没有改动共享详情 destination 或 P0 模块。
+- In the same Build305 device session, the user reports a separate Home presentation problem: after opening a Home detail or entering a Library page and returning, already-loaded Home poster artwork visibly blanks/reloads.
+- Exact source comparison from accepted Build303 (`0b5ce25b...`) to Build305 product (`3476a3d9...`) shows `EmbyPosterSections.swift`, `EmbyHomeCoreV3.swift` and the Home poster-presentation owner were **not changed by DEV-meaningless-detail-routing**; the product-source differences are AppIdentity, the Library networking normalization and the bounded Library Folder route plus task guards/docs.
+- Therefore this checkpoint does **not** claim Build305 caused the Home return artwork behavior. It is routed to a separate development task with its own branch/Build and shared-poster Frozen-scope evidence.
 
 ## Files / modules in scope
 
-- `Sources/UI/EmbyServerBrowseV3.swift` — 仅 Library 根 `nativePosterNavigationLink` 的 Folder destination 分支。
-- `scripts/check_library_poster_adapters.py` — 只允许上述精确路由例外，其余 accepted root/navigation guard 保持冻结。
-- `Sources/Core/AppIdentity.swift` — Build304 candidate source version `0.15.37`。
-- 本任务 checkpoint / candidate 文档。
+- `Sources/UI/EmbyServerBrowseV3.swift` — Build304's already-tested root Folder destination branch only.
+- `Sources/Networking/EmbyLibraryHubAPI.swift` — one exact recursive-empty-scope normalization for Library hub items.
+- `scripts/check_library_poster_adapters.py` — exact source guard permitting only the Build304 route plus the Build305 query normalization; folder child semantics explicitly guarded.
+- `Sources/Core/AppIdentity.swift` — `0.15.38` candidate identity.
+- candidate changelog / checkpoint / CI control workflow.
 
-## State owner / shared dependencies
+## State owner / Frozen protection
 
-- Library 根原生海报墙仍由现有 `nativePosterSelection` / system `NavigationLink` 拥有选择与 push 状态。
-- 文件夹子项继续由现有 `V3LibraryFolderBrowserViewModel` 拥有，并继续调用 `libraryFolderChildren(parentId: folder.id)`。
-- 非 Folder 媒体继续进入现有 `EmbyPosterDetailDestination`；没有新增第二套 detail destination、folder loader、缓存或导航状态。
-
-## Frozen / do-not-touch
-
-- MPV / Player / UnifiedTransport / Cache / Emby Session / STRM→302→115/CDN P0 合同。
-- Build303 已验收的 3 列海报墙滚动/分页行为。
-- `EmbySharedImageAndNavigation.swift` / `EmbyPosterDetailDestination`。
-- `EmbyMediaDetailView` 内部详情渲染、详情 still viewer / immersive 行为。
-- 原生 system navigation push/pop 原则。
-- iOS deployment target 15.0。
-
-## Parallel conflicts checked against
-
-- `DEV-aether-multi-engine-comparison`: Active；作用域为 Player/Transport/Aether，本任务不修改这些文件或状态所有者，无源码重叠。
-- `DEV-search-page-optimization`: Completed；其 Build256 搜索基线保持受保护，本任务不修改 Search。
-- 未发现另一个 Active task 占用 Library root folder routing 或 Build304。
-
-## Completed
-
-- 读取用户日志并确认 3 次详情访问中的第二次是无媒体信息的 `Folder` 详情。
-- 读取真实定义、调用点、root selection owner、现有 folder browser owner 与 regression tests。
-- 在 `feat/meaningless-detail-routing` 上完成最小路由修改：Library 根选中 `Folder` / `CollectionFolder` 时复用 `V3LibraryFolderBrowserView`，其它 item 行为不变。
-- 更新 `check_library_poster_adapters.py`：先断言精确的新 Folder route，再仅把这一精确片段归一化后继续执行原 accepted-root 对比，避免放宽其它冻结范围。
-- `AppIdentity.sourceVersion` 更新为 `0.15.37`，保留 iOS 15.0 与其它产品合同。
-- 创建 PR #293。
+- Library root selection remains system `NavigationLink` owned.
+- Folder children remain solely owned by `V3LibraryFolderBrowserViewModel` and `libraryFolderChildren(parentId:)`.
+- No second loader, retry, fallback, timer, watchdog, duplicate cache or navigation state.
+- MPV, Player, UnifiedTransport, Session Cache, Emby Session, STRM→302→115/CDN, detail internals, native navigation ownership and iOS 15.0 deployment target remain protected and unchanged by this task.
 
 ## Validation state
 
-- Code written: **yes** — implementation head `3053e99579ea013916d48d3fe41bd3e17e30f2a1`。
-- CI passed: pending。
-- IPA produced: no。
-- Real-device tested: Build303 仅复现问题；Build304 修复尚未真机验证。
-- Stable / frozen: no。
+- Build304: Code written ✅ / CI passed ✅ / IPA produced ✅ / real-device tested ✅ / final UX rejected ❌ / stable-frozen ❌.
+- Build305: Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device tested ✅ / reported Folder/media-only UX accepted ✅.
+- Stable/frozen: task behavior accepted; durable project docs + PR merge still pending in this checkpoint.
 
-## Pending
+## Completed
 
-- 核验 PR #293 exact diff 并等待/修复 PR CI。
-- CI 通过后记录 Build304 candidate 的 CI 证据；若当前 GitHub 能力有合法 Build304 package 路径则继续出 IPA，否则明确停在 CI 证据层。
-- 用户真机验证：原截图 Folder 点击后进入子项浏览；Movie/Series/Episode 详情行为无回归；嵌套 Folder 继续可浏览。
+- Re-read the Build304 target-device log and confirmed the remaining failure was a fresh live unrestricted recursive Library root query, not a cache-only artifact.
+- Inspected actual Build304 `libraryHubItemsPage` implementation and every source call site.
+- Confirmed a conditional media-only default can be applied only to recursive empty-scope requests while leaving `recursive: false` folder browsing untouched.
+- Implemented Build305 query normalization and version identity.
+- Tightened the regression guard to require the exact networking substitution and reject any other Networking change.
+- Build305 exact-source guard, 53-test regression suite, dependencies, Release build, identity/MinOS validation, packaging and artifact upload all passed.
+- Independently downloaded and verified artifact digest, packaged checksums, IPA/source ZIP integrity, exact source archive comment, bundle identity/version/build and MinOS 15.0.
+- Received target-device acceptance for the original Folder/media-only Library-content problem on 2026-10-09.
 
-## Next exact action
+## Pending / Next exact action
 
-1. 核验 PR #293 仅包含 root Folder route、精确 regression guard 与 candidate identity 三类预期变化。
-2. 检查 PR CI；失败则按真实日志最小修复，成功则更新 checkpoint / project evidence。
-3. 在不制造临时 speculative build infrastructure 的前提下继续到可获得的最高 package 证据层，然后交付真机测试。
+1. Move the accepted Build305 conclusion into durable project state / build index / module status.
+2. Reconcile PR #293 with latest `main`, merge the accepted task, then remove only this task checkpoint.
+3. Continue the newly reported Home-return artwork issue only under its own task/branch; do not mix it into this completed Library-routing task.
 
 ## Rejected / do-not-repeat
 
-- 不修改 `EmbyPosterDetailDestination` 做全局 Folder 特判：当前证据已经定位到 Library 根 native selection，而且其它入口并未证明有同类问题。
-- 不在 `EmbyMediaDetailView` 内针对 Folder 堆叠隐藏按钮/空状态补丁；这里是 destination 类型路由错误，不是详情内部展示问题。
-- 不新增另一套文件夹 API loader、导航状态、fallback、retry、timer 或 watchdog。
-
-## Open questions / risks
-
-- 当前真机证据只证明 Library 根这一入口存在问题；不要把修复范围未经证据扩大到 Search/Home/Favorites 等所有通用详情入口。
-- 旧 Library adapter guard 把 root navigation 视为 accepted 范围；本任务通过精确字符串归一化只允许这一个已确认的 Folder route 变化，不能进一步放宽。
+- Build304 routing-only solution is insufficient for the stated UX.
+- Do not hide Folder UI inside `EmbyMediaDetailView`; the root query is the evidence-backed owner of the unwanted card.
+- Do not enumerate/flatten every Folder client-side; the existing recursive server query can return media directly when given the correct type scope.
+- Do not globally force folder browsing to media-only; non-recursive folder queries are intentionally preserved.
+- Do not add speculative fallback/retry/timer/watchdog or a second content owner.

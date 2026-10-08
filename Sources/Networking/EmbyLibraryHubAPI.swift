@@ -36,7 +36,8 @@ extension EmbyAPIClient {
             URLQueryItem(name: "SortBy", value: sortBy),
             URLQueryItem(name: "SortOrder", value: sortOrder),
         ]
-        if !includeItemTypes.isEmpty { query.append(URLQueryItem(name: "IncludeItemTypes", value: includeItemTypes.joined(separator: ","))) }
+        let effectiveItemTypes = includeItemTypes.isEmpty && recursive ? ["Movie", "Series", "Video"] : includeItemTypes
+        if !effectiveItemTypes.isEmpty { query.append(URLQueryItem(name: "IncludeItemTypes", value: effectiveItemTypes.joined(separator: ","))) }
         if !filters.isEmpty { query.append(URLQueryItem(name: "Filters", value: filters.joined(separator: ","))) }
         if !genres.isEmpty { query.append(URLQueryItem(name: "Genres", value: genres.joined(separator: "|"))) }
         return try await libraryHubRequest(path: "Users/\(try libraryHubUserID())/Items", query: query)

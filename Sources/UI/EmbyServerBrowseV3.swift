@@ -133,8 +133,10 @@ struct V3LibraryBrowserView: View {
     // Keep the link mounted before selection, so native taps produce false → true system activation.
     private var nativePosterNavigationLink: some View {
         NavigationLink(destination: Group {
-            if let item = nativePosterSelection { EmbyPosterDetailDestination(item: item, client: client) }
-            else { EmptyView() }
+            if let item = nativePosterSelection {
+                if v3LibraryIsBrowsableFolder(item) { V3LibraryFolderBrowserView(folder: item, client: client) }
+                else { EmbyPosterDetailDestination(item: item, client: client) }
+            } else { EmptyView() }
         }, isActive: Binding(get: { nativePosterSelection != nil }, set: { if !$0 { nativePosterSelection = nil } })) { EmptyView() }
             .frame(width: 0, height: 0).hidden()
     }
