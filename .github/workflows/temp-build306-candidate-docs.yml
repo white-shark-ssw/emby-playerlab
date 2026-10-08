@@ -1,0 +1,74 @@
+name: Apply Build306 Candidate Docs
+
+on:
+  push:
+    branches:
+      - fix/home-return-poster-retention-build306
+    paths:
+      - .github/workflows/temp-build306-candidate-docs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build306 branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/home-return-poster-retention-build306
+          fetch-depth: 0
+      - name: Update durable candidate state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          state = Path('docs/project/PROJECT_STATE.md')
+          s = state.read_text()
+          lines = s.splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith('_Last updated'):
+                  lines[i] = '_Last updated 2026-10-09: Build305 Library media-only routing remains target-device accepted/merged. The separate Home-return poster-retention regression now has a verified **Build306 / 0.15.39 candidate** (54/0 regression, Release/IPA/MinOS verified), but Build306 is **not real-device accepted** yet; accepted overall baseline therefore remains Build303 until target-device validation.'_n' if False else '_Last updated 2026-10-09: Build305 Library media-only routing remains target-device accepted/merged. The separate Home-return poster-retention regression now has a verified **Build306 / 0.15.39 candidate** (54/0 regression, Release/IPA/MinOS verified), but Build306 is **not real-device accepted** yet; accepted overall baseline therefore remains Build303 until target-device validation._'
+                  break
+          s = '\n'.join(lines) + '\n'
+          marker = 'Historical dated entries below preserve their original evidence levels;'
+          section = '''## Current candidate — Build306 / 0.15.39 Home return poster retention\n\n- Exact tested source: `20dac5ce21e7d3261794dc62827b90fa07b048fb`; PR #294 remains open / unmerged.\n- CI run/job `37839047724 / 113523454935` passed; actual-source PosterWall regression **54 / 0**; Release generic-iOS build, identity validation and embedded runtime Mach-O MinOS audit passed.\n- Artifact `11577437579`, digest `sha256:dce68eb07b7f8dc469051e68fdae3eb33b28e6e4cd835739b9404034a92fa8cc`; IPA SHA-256 `414dac7cfb8026bd42219251b6f700d53733bb6680540d4b1b58e822368f2b15`; source ZIP SHA-256 `443c44566e0e3a33bdcbec8e4a4a9b4ba2a5437d51238f3d304fd28dc7189111`; bundle/version/build `com.embyplayerlab.app`, `0.15.39 / 306`, MinOS 15.0.\n- Candidate behavior: temporary shared poster-page suspension cancels image demand but preserves currently displayed artwork/card binding; true row/cell reuse remains destructive and still releases artwork. No second cache/state owner, Home metadata reload, navigation replacement or Player/Transport/Cache/Emby change.\n- Evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device Build306 test ❌ pending / stable-frozen ❌**.\n- Acceptance target: both Home → detail → back and Home → Library → back must return with existing poster artwork resident and no black/blank reload sweep.\n\n'''
+          if '## Current candidate — Build306 / 0.15.39 Home return poster retention' not in s:
+              s = s.replace(marker, section + marker, 1)
+          state.write_text(s)
+
+          module = Path('docs/project/MODULE_STATUS.md')
+          s = module.read_text()
+          row = '| Home poster temporary navigation suspension | **Active — Build306 CI/IPA verified, device pending** | Build305 device evidence shows Home→detail/library→back clears visible artwork while text/layout stays resident. Build306 exact source `20dac5ce21e7d3261794dc62827b90fa07b048fb` separates temporary `suspend()` from true destructive reuse; 54/0 regression, CI `37839047724 / 113523454935`, artifact `11577437579`, IPA SHA-256 `414dac7cfb8026bd42219251b6f700d53733bb6680540d4b1b58e822368f2b15`, MinOS15 verified. This narrowly reopens only the shared poster suspension lifecycle; Build303 poster geometry/pagination/scroll contracts remain frozen. PR#294 open/unmerged; target-device acceptance pending. |\n'
+          if 'Home poster temporary navigation suspension' not in s:
+              anchor = '| Poster 3-column / poster-heavy scroll smoothness |'
+              pos = s.find(anchor)
+              end = s.find('\n', pos)
+              if pos < 0 or end < 0: raise SystemExit('MODULE_STATUS poster anchor missing')
+              s = s[:end+1] + row + s[end+1:]
+          module.write_text(s)
+
+          index = Path('docs/project/BUILD_TEST_INDEX.md')
+          s = index.read_text()
+          marker = 'Historical dated entries below preserve their original evidence levels;'
+          section = '''## Candidate — Build306 / 0.15.39 Home return poster retention\n\n- Exact tested product source: `20dac5ce21e7d3261794dc62827b90fa07b048fb`.\n- Dedicated CI run/job: `37839047724 / 113523454935` — success.\n- Actual-source PosterWall regression: **54 tests / 0 failures**.\n- Artifact: `OnePlayer-0.15.39-build306-home-return-poster-retention`, ID `11577437579`, digest `sha256:dce68eb07b7f8dc469051e68fdae3eb33b28e6e4cd835739b9404034a92fa8cc`.\n- IPA SHA-256: `414dac7cfb8026bd42219251b6f700d53733bb6680540d4b1b58e822368f2b15`. Source ZIP SHA-256: `443c44566e0e3a33bdcbec8e4a4a9b4ba2a5437d51238f3d304fd28dc7189111`; archive comment equals exact product source.\n- Bundle/version/build: `com.embyplayerlab.app`, `0.15.39 / 306`; Info.plist MinOS 15.0 and embedded runtime Mach-O audit passed. Downloaded artifact ZIP/IPA/source checksums and ZIP integrity independently reverified.\n- Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device Build306 validation pending ❌ / stable-frozen ❌**.\n- Do not merge PR #294 or promote Build306 to accepted overall baseline until Home→detail→back and Home→Library→back both pass on the target device.\n\n'''
+          if '## Candidate — Build306 / 0.15.39 Home return poster retention' not in s:
+              s = s.replace(marker, section + marker, 1)
+          index.write_text(s)
+
+          decisions = Path('docs/project/TECHNICAL_DECISIONS.md')
+          s = decisions.read_text()
+          section = '''## D011B — Temporary poster-page suspension is not cell reuse\n\nSystem-owned push/pop may temporarily make the shared poster page inactive while its already-present cells remain the presentation state to restore. That temporary page suspension may cancel visible image subscriptions and prefetch demand and persist scroll offsets, but it must **not** call destructive `prepareForReuse()` on the currently visible poster children or clear their displayed UIImage/card binding. True row removal, query/source replacement, offscreen `didEndDisplaying`, row reuse and child-cell reuse keep the existing destructive release semantics.\n\nThis distinction is deliberately inside the existing `EmbyPosterSectionsController` / `EmbyPosterHorizontalRow` owner. Do not solve return blanking by forcing Home metadata refresh, adding a second image cache/state owner, delaying rebind with a timer/watchdog, disabling real offscreen reuse, or replacing native navigation. Build306 is the first implementation/CI proof of this decision; real-device acceptance is still pending, so this decision remains candidate-level until target-device confirmation.\n\n'''
+          if '## D011B — Temporary poster-page suspension is not cell reuse' not in s:
+              s = s.replace('## D012 — Home-carousel', section + '## D012 — Home-carousel', 1)
+          decisions.write_text(s)
+          PY
+          rm .github/workflows/temp-build306-candidate-docs.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: record verified Build306 candidate baseline"
+          git push origin HEAD:fix/home-return-poster-retention-build306
