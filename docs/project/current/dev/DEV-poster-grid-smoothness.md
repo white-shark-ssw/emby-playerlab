@@ -9,7 +9,7 @@
 - Scope: P4 G15 Search history/recommendation/title/footer in one native vertical host, recommendation6pt insets,9/+6/random/exclusions preserved, remove unbounded recommendation UIImage dictionary and parallel warm-download path; shared demand budgets and old server/user/route keys preserved.
 - Owners: existing V3GlobalSearchViewModel/Preloader remain metadata/query owners; EmbyPosterWall owns native presentation; existing Search root/Dock owns fresh-on-entry/destruction and navigation. No automatic startup recommendation load.
 - Protected: G01/P3/G09–G14 business/queries and source leaves, main detail/H05, player/transport/cache/P0, native navigation,293carousel/294Dock/Search256 lifecycle. Aether branch/candidate untouched.
-- Completed:302 G15 code and exact-source Linux/CI scope, query/root/Frozen/P0/iOS15 guards. macOS44+10+10 tests/Release/IPA/device pending.
+- Completed:302 G15 code, source guards and54 fresh actual-source units passed;10 native UI/Release/IPA/device pending.
 - Pending: implement/test actual-source native header/append/pop/history/toggle/cancellation/bounded demand, fresh CI/Release/identity/IPA; P5 H01–H04 and broad P6/missing301 device paths remain. Full task not Stable/frozen/completed/merged.
 - Next exact action: publish this actual implementation, run exact-source macOS44 poster units+10 detail+10 native UI, retain guarded18 Dock/carousel, then Release/MinOS/package and independently verified actual302 IPA. Fix only proven failures; continue without intermediate continue gate.
 
@@ -578,3 +578,7 @@ Linux exact-source G15/business/root/preloader/protected-source guards, P4 adapt
 ## Build302 exact-source CI started
 
 Product source **dced392bbf2e3960539890121cf7d6e9d8f80e86**, control **b0eae8007acd160c158653cae84828bd4d2e98f2**, branch ci/build302-poster-search-landing-20261008, workflow build302-poster-search-landing.yml, dedicated **run37733627914 /job113168149767**. Product lease,23-path scope/whitespace, exact G15 business/root/preloader guards, original Dock/P3/P4/detail/demand/iOS15 guards and retained18 native input guard completed/success. Actual-source harness/simulator preparation running;44 poster+10 detail+10 native UI/Release/package/IPA/device pending. Legacy unrelated invalid workflow runs on this CI branch are not the dedicated302 run. Next: monitor this exact source/run, inspect real failure logs if needed, fix proven errors, finish Release and independently verified actual IPA. Cache migration deferred per user priority; P5/P6 remain pending.
+
+## Build302 unit validation checkpoint
+
+Run37733627914/job113168149767: fresh44 poster/Library/result/Search landing units and10 detail/cache units completed/success (54/0). Seven new units exercise actual Search model/preloader/query9/+6/exclusions, original duplicate/short/error/fetch-guard/cancellation policy, no startup/return refetch, history changes, native6pt/header/append/offset and retained pixel request spec. Ten native UI tests running; Release/package/identity/MinOS/artifact/IPA and target-device validation remain pending. Productdced392bbf2e3960539890121cf7d6e9d8f80e86/controlb0eae8007acd160c158653cae84828bd4d2e98f2 unchanged. Next: inspect native UI result, fix real failures, finish Release and independently verified IPA handoff; no presented-FPS or whole-task Stable claim.
