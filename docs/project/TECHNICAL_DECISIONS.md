@@ -813,3 +813,7 @@ H01–H04 implementation is complete: Home, Library suggestions, Favorites previ
 ## P5 refresh completion owner — Build303
 
 Normal Home/Library suggestions pass initial-spinner-only loading flags; existing metadata therefore cannot determine whether an async pull refresh finished. The native section refresh control ends only when the original page async task invokes its completion callback. Native unit and physical pull UI passed. Immersive Home retains its original owned-refresh coordinator; no second refresh/model/Hero offset owner, artificial inertia or offset correction is added.
+
+## Build303 partial runtime log review — 2026-10-08 18:52 Asia/Shanghai
+
+User supplied OnePlayer-App-1791456675.log, confirmed0.15.36/303. Home22 sections and two Library suggestion hosts5/6 sections recorded23 nonoverlapping motion batches/9834 delivered display-link intervals, max18.044ms, >=25/>=33.3 counts0. Single configure/imageAdopt max0.903/0.327ms, section apply max6.421ms. Home native return-top offset0 and two Home→Library→Home roundtrips retained519.667/532pt. This is positive captured H01/H02 motion evidence, not presented-FPS or full-entry acceptance. No detail/favorites/multi-server Search, refresh lifecycle, pressure/background or broad-scale coverage in this log. User has not explicitly accepted303. Keep303 unchanged; no evidence-backed new patch/Build/CI. Task Active/Draft/unmerged; cache route identity migration deferred.
