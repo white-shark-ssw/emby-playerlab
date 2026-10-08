@@ -4,6 +4,16 @@
 
 OnePlayer 0.15.36 / Build303 was explicitly accepted on 2026-10-08. DEV-poster-grid-smoothness is Completed / stable-frozen; PR #292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`, and its checkpoint was removed in `c4a22edf753b9a59df3d34ef5e46b943bb7c5341`. Accepted source `0b5ce25bcec0a4d0240891913ad17114b02cf10e`; CI run37754814214 passed with84 fresh tests and10 retained unchanged UI checks. Artifact11540607336 and the delivered IPA were independently verified; MinOS15.0. Unmeasured entry/resource/scale scenarios remain evidence limits, not pending acceptance blockers. Cross-route image-cache sharing is deferred.
 
+## Accepted feature milestone — Build305 / 0.15.38
+
+`DEV-meaningless-detail-routing` is complete for its scoped Library-content problem. Exact product source `3476a3d9a8976ef483bb9d9e2317d0d2e442f8bb`; dedicated CI `37832789044 / 113502123244` passed with 53 tests / 0 failures; artifact `11574533261`, digest `sha256:9ae178b9492534d0357bfcf3a7ddc8fcada49b1a49380019ef76dbc53b040b53`; IPA SHA-256 `f843cd2ace20f9aa15f447c8d98e4935211a033b65e4493dd649fde30b9e53d4`; source ZIP SHA-256 `a6ef12cff823c2d9b959635e079176cd1d18dc11ab535b3151c255bbf9a4ca11`; MinOS 15.0.
+
+Target-device 2026-10-09: user explicitly confirmed the prior Folder/intermediate-page issue fixed. Accepted query contract: recursive empty-scope Library content uses `Movie,Series,Video`; explicit scopes remain unchanged; non-recursive Folder browsing remains unrestricted. PR #293 merged at `91b705ca3b62064957169ea8bd2dff71ccc1e180`.
+
+Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / scoped task accepted ✅ / merged ✅**.
+
+Build305 is **not** promoted to accepted overall baseline because the same device session exposed a separate Home-return poster-artwork blank/reload regression. That work is Active as `DEV-home-return-poster-retention` / reserved Build306.
+
 Historical dated entries below preserve their original evidence levels; the current poster-task status is Completed / stable-frozen at Build303, accepted on 2026-10-08 and merged through PR #292. They are not pending work for this completed task.
 
 ## Historical Build300 reservation — P3 Library adapters /2026-10-08

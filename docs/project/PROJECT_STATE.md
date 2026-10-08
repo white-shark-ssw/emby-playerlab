@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated2026-10-08: 用户明确验收海报墙任务。当前接受产品为OnePlayer0.15.36/Build303；资料已归档，PR292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`; merged tree `0e895c4eec596e4bed3906148bcdca7e18237ad6` matches the accepted Build303 source in every non-document file. 任务级通过与各项日志测量范围分别记录，跨线路图片缓存共享暂缓。_
+_Last updated 2026-10-09: Build305 / 0.15.38 的 Library 递归媒体查询修复已获目标真机确认并通过 PR #293 合并；该任务本身已完成。由于同一 Build305 会话立即暴露 Home → 详情/库页 → 返回时已加载海报图片被清空后重新采用的新回归，当前 **accepted overall baseline 仍保持 Build303**，新问题由独立 `DEV-home-return-poster-retention` / Build306 处理。_
 
 ## Current accepted overall baseline — Build303
 
@@ -9,6 +9,16 @@ _Last updated2026-10-08: 用户明确验收海报墙任务。当前接受产品�
 - Artifact **11540607336**; IPA SHA256 **b3ebb081dcbe1e20de02565faaa6e5f4d67891922c6f0d55248bf7cd959842de**; MinOS **15.0**.
 - Evidence: Code written /84fresh+10retained regressions /Release CI passed /IPA independently verified and delivered /user runtime log reviewed /explicit task accepted /poster Stable-frozen. PR292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`; merged tree `0e895c4eec596e4bed3906148bcdca7e18237ad6` matches the accepted Build303 source in every non-document file.
 - Scope: G01–G15/H01–H04 native poster hosts; original query/frontier/navigation/cache ownership retained;293carousel/294Dock/P0 remain protected. Unmeasured resource/full-entry scenarios are not declared tested. Cross-route image-cache sharing remains deferred.
+
+## Accepted feature milestone — Build305 / 0.15.38 Library media-only root
+
+- Product source: `3476a3d9a8976ef483bb9d9e2317d0d2e442f8bb`; CI run/job `37832789044 / 113502123244` success; 53 tests / 0 failures; artifact `11574533261`; IPA SHA-256 `f843cd2ace20f9aa15f447c8d98e4935211a033b65e4493dd649fde30b9e53d4`; MinOS 15.0.
+- Target-device result on 2026-10-09: user explicitly confirmed the prior Folder/intermediate-page problem is fixed.
+- Durable contract: explicit `includeItemTypes` remains authoritative; only recursive Library-content requests with an empty type scope default to `Movie,Series,Video`; non-recursive Folder browsing remains unrestricted and retains the existing Folder owner/path.
+- Build304 routing remains only a bounded safety path if a browsable Folder legitimately reaches the root; no client-side Folder flattening, second loader or detail-internal workaround is part of the accepted design.
+- PR #293 merged at `91b705ca3b62064957169ea8bd2dff71ccc1e180`.
+- Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / feature task accepted ✅ / merged ✅**.
+- This is a feature milestone, not a promotion of Build305 to accepted overall baseline, because the separate Home-return poster-retention regression was reported immediately afterward and remains Active under Build306.
 
 Historical dated entries below preserve their original evidence levels; the current poster-task status is Completed / stable-frozen at Build303, accepted on 2026-10-08 and merged through PR #292. They are not pending work for this completed task.
 
