@@ -37,9 +37,20 @@ assert adapters.count('sortBy: "SortName", sortOrder: "Ascending", includeItemTy
 assert 'nextStartIndex = start + page.items.count' in adapters
 assert 'if tab == .items && liveItemsSortBy == sortBy { return }' in browse
 
+networking_path = 'Sources/Networking/EmbyLibraryHubAPI.swift'
+networking = Path(networking_path).read_text()
+original_networking = old(networking_path)
+old_unscoped_filter = '        if !includeItemTypes.isEmpty { query.append(URLQueryItem(name: "IncludeItemTypes", value: includeItemTypes.joined(separator: ","))) }'
+new_recursive_media_filter = '        let effectiveItemTypes = includeItemTypes.isEmpty && recursive ? ["Movie", "Series", "Video"] : includeItemTypes\n        if !effectiveItemTypes.isEmpty { query.append(URLQueryItem(name: "IncludeItemTypes", value: effectiveItemTypes.joined(separator: ","))) }'
+assert networking.count(new_recursive_media_filter) == 1, 'Recursive Library media-only filter missing or duplicated'
+assert networking.replace(new_recursive_media_filter, old_unscoped_filter, 1) == original_networking, 'EmbyLibraryHubAPI changed outside recursive media-only filter'
+assert 'libraryHubItemsPage(parentId: parentId, limit: limit, recursive: false, sortBy: "SortName", sortOrder: "Ascending")' in networking, 'Folder child browsing must remain non-recursive and unrestricted'
+
 # Preserve the actual providers, P0/transport/cache, detail destinations, image budgets and frozen hosts.
-for directory in ['Sources/Player', 'Sources/Transport', 'Sources/Cache', 'Sources/Emby', 'Sources/Networking', 'Sources/Models']:
+for directory in ['Sources/Player', 'Sources/Transport', 'Sources/Cache', 'Sources/Emby', 'Sources/Models']:
     assert not subprocess.check_output(['git', 'diff', baseline, '--name-only', '--', directory], text=True).strip(), directory
+networking_changes = subprocess.check_output(['git', 'diff', baseline, '--name-only', '--', 'Sources/Networking'], text=True).splitlines()
+assert networking_changes == [networking_path], f'Unexpected Networking changes: {networking_changes}'
 for path in ['Sources/UI/EmbySharedImageAndNavigation.swift', 'Sources/UI/EmbyImagePreparation.swift', 'Sources/UI/EmbyPagePersistentCache.swift', 'Sources/UI/EmbyDetailPerformanceState.swift', 'Sources/UI/EmbyDetailScrollDiagnostics.swift', 'Sources/UI/ServerDock.swift', 'Sources/UI/ImmersiveUIComponents.swift', 'Sources/UI/EmbyHomeCarouselNativePresentationV3.swift', 'Sources/UI/EmbyHomeCarouselStateV3.swift', 'Sources/UI/EmbyServerRootViewV3.swift']:
     assert Path(path).read_text() == old(path), path
-print('P3 Library adapters scoped; root Folder routing added while accepted G01 view, queries, details, frozen hosts and P0 source remain preserved')
+print('P3 Library adapters scoped; root Folder routing retained, recursive unscoped Library queries are media-only, folder browsing remains unrestricted, and accepted G01/details/frozen P0 source remain preserved')
