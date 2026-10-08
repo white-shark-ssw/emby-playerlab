@@ -1,10 +1,25 @@
 # DEV-poster-grid-smoothness
 
+## Current identity — Build302 Search landing host implementation; task Active
+
+- Status: Active. User prioritizes finishing poster work; cache decoupling only if simple. Source audit confirms stable server identity propagation plus existing disk-data reuse requires broader work, so cross-route cache correction is deferred; no cache migration in302.
+- Work ID / routing aliases: DEV-poster-grid-smoothness / 海报墙 / 库页海报 / 海报网格流畅度
+- Working branch / PR: perf/poster-wall-library-build295 /Draft PR292 open/unmerged; pre302 head248929ba0fb32b1030b6f49c45dc7d46302b4e10. Latest verified reservation head0c27281761c50f1a0005bcf1d2d85c9d5f3aec3b (docs-only); resolve branch ref before implementation. Accepted overall294 remains unchanged.
+- Baseline: tested301 source83a239dc259651755315d52e9028d159830d9960 /0.15.34/301. New unique reserved candidate **OnePlayer0.15.35 /Build302 /poster-search-landing /iOS15.0**. Existing CI/build302 refs empty; BUILD_TEST_INDEX and active Aether235 checked, no collision.
+- Scope: P4 G15 Search history/recommendation/title/footer in one native vertical host, recommendation6pt insets,9/+6/random/exclusions preserved, remove unbounded recommendation UIImage dictionary and parallel warm-download path; shared demand budgets and old server/user/route keys preserved.
+- Owners: existing V3GlobalSearchViewModel/Preloader remain metadata/query owners; EmbyPosterWall owns native presentation; existing Search root/Dock owns fresh-on-entry/destruction and navigation. No automatic startup recommendation load.
+- Protected: G01/P3/G09–G14 business/queries and source leaves, main detail/H05, player/transport/cache/P0, native navigation,293carousel/294Dock/Search256 lifecycle. Aether branch/candidate untouched.
+- Completed:302 scope/source audit and candidate reservation. No302 code/CI/Release/IPA/device claim yet.
+- Pending: implement/test actual-source native header/append/pop/history/toggle/cancellation/bounded demand, fresh CI/Release/identity/IPA; P5 H01–H04 and broad P6/missing301 device paths remain. Full task not Stable/frozen/completed/merged.
+- Next exact action: implement G15 host and remove duplicate recommendation image ownership; run source guards, macOS actual-source/native tests and Release, then independently verify302 source/artifact/IPA and hand off actual IPA without intermediate continue gate.
+
+## Previous milestones
+
 ## Current identity — Build301 partial positive device feedback; route-cache issue recorded; task Active
 
 - Status: Active; G09–G14 code/CI/verified IPA complete; Build301 user feedback positive within logged paths, remaining target-device coverage pending. Cross-route poster cache reuse needs a scoped correction. G15/P5/P6 remain pending; G01 accepted within documented coverage.
 - Work ID / routing aliases: DEV-poster-grid-smoothness / 海报墙 / 库页海报 / 海报网格流畅度
-- Working branch / PR: perf/poster-wall-library-build295 /Draft PR292 open/unmerged. Latest verified working head 248929ba0fb32b1030b6f49c45dc7d46302b4e10 (docs-only review descendant of tested83a239dc); resolve GitHub ref before resuming. No runtime merge to main.
+- Working branch / PR: perf/poster-wall-library-build295 /Draft PR292 open/unmerged. Last verified pre-review head faaea7c11d891094f54895635eb470e01e23e605; latest working head is this docs-only review descendant, resolve GitHub ref before resuming. No runtime merge to main.
 - Exact tested/package source: **83a239dc259651755315d52e9028d159830d9960**. OnePlayer0.15.34 /Build301 /poster-results-adapters /iOS15.0.
 - Exact CI: controlff949150c67b183aefae761bf878c2b583a8af99 /run37679733748 /job112992327395 completed/success;55 fresh regressions (37+10+8),18 retained guarded Dock/carousel; full Release/IPA/MinOS independently verified.
 - Artifact11509478670 /SHA256bd98c7ad2fda045042ca0682a2df2d1eb774de96297a8b4f55f5f50fbf145c4a; IPA SHA256b02bb528ef75898d34d403f44e720df0b424ae9505dcb9568540361807f731ac; actual file saved for direct handoff. 301 partial positive device evidence recorded below; not all-entry accepted or whole-task Stable/frozen.
