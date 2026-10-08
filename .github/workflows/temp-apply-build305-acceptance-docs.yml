@@ -1,0 +1,34 @@
+name: Apply Build305 Acceptance Docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp-apply-build305-acceptance-docs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply durable acceptance docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check scripts/build305_acceptance_docs.patch
+          git apply scripts/build305_acceptance_docs.patch
+          rm docs/project/current/dev/DEV-meaningless-detail-routing.md
+          rm scripts/build305_acceptance_docs.patch .github/workflows/temp-apply-build305-acceptance-docs.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/project/PROJECT_STATE.md docs/project/MODULE_STATUS.md docs/project/BUILD_TEST_INDEX.md docs/project/TECHNICAL_DECISIONS.md docs/project/current/dev/DEV-meaningless-detail-routing.md scripts/build305_acceptance_docs.patch .github/workflows/temp-apply-build305-acceptance-docs.yml
+          git commit -m "docs: close out accepted Build305 Library routing"
+          git push origin HEAD:main
