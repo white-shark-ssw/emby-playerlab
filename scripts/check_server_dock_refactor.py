@@ -17,7 +17,27 @@ for name in pages:
         expected = expected.replace('    @Environment(\\.serverDockBottomInset) private var serverDockBottomInset\n', '')
         expected = expected.replace('                .overlay(alignment: .bottom) {\n                    if immersive { dock.padding(.bottom, serverDockBottomInset) }\n                    else { dock }\n                }\n', '')
         expected = expected.replace('            .navigationBarHidden(true)\n', '            .serverDockPage()\n            .navigationBarHidden(true)\n', 1)
-    assert current == expected, f'Unexpected non-Dock page behavior changed: {path}'
+    if name == 'EmbyServerBrowseV3.swift':
+        # P3 migrates only Library adapters; Favorites/Search and the Dock still keep accepted contracts.
+        p3 = 'private struct V3LibraryPosterPage' in current
+        boundary = 'struct V3EmbyFavoritesView:' if p3 else 'private struct V3LibraryGenreCard'
+        def without_more(text):
+            start = text.index('private struct V3FavoriteCategoryGridView:')
+            end = text.index('private struct V3FavoritePersonLink:')
+            return text[:start] + text[end:]
+        assert without_more(current[current.index(boundary):]) == without_more(expected[expected.index(boundary):]), 'Browse routes outside migrated result leaves changed'
+        assert current.count('.serverDockPage()') == expected.count('.serverDockPage()')
+        assert current.count('.serverDockContentPadding()') == expected.count('.serverDockContentPadding()') - (6 if p3 else 0)
+        assert 'bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset)' in current
+    elif name == 'EmbySearchExperienceV3.swift':
+        boundary = 'private struct V3GlobalSearchServerGridView:'
+        if 'EmbyPosterSearchLanding(' not in current:
+            assert current[:current.index(boundary)] == expected[:expected.index(boundary)], 'Search root/query/recommendations/lifetime changed'
+        assert current.count('.serverDockPage()') == expected.count('.serverDockPage()')
+        assert current.count('.serverDockContentPadding()') == expected.count('.serverDockContentPadding()') - (2 if 'EmbyPosterSearchLanding(' in current else 1)
+        assert 'bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset)' in current
+    else:
+        assert current == expected, f'Unexpected non-Dock page behavior changed: {path}'
 
 root = Path('Sources/UI/EmbyServerRootViewV3.swift').read_text()
 original = old('Sources/UI/EmbyServerRootViewV3.swift')

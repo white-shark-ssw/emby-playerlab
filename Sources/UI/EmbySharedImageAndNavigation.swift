@@ -4,9 +4,11 @@ import Foundation
 import Combine
 import CoreImage
 import ImageIO
+import os
 
 final class EmbyDecodedImageRenderPool: @unchecked Sendable {
     static let shared = EmbyDecodedImageRenderPool()
+    static let didClear = Notification.Name("EmbyDecodedImageRenderPool.didClear")
     private let cache = NSCache<NSURL, UIImage>()
 
     private init() {
@@ -21,83 +23,47 @@ final class EmbyDecodedImageRenderPool: @unchecked Sendable {
         cache.setObject(image, forKey: url as NSURL, cost: cost)
     }
 
-    func clear() { cache.removeAllObjects() }
+    func clear() { cache.removeAllObjects(); NotificationCenter.default.post(name: Self.didClear, object: nil) }
 }
 
+@MainActor
 private final class EmbyCachedImageLoader: ObservableObject {
     @Published var image: UIImage?
     @Published var isLoading = false
     private var currentURL: URL?
-    private var task: Task<Void, Never>?
+    private var subscription: UUID?
 
     func load(_ url: URL?) {
         guard currentURL != url || image == nil else { return }
+        cancel()
         currentURL = url
-        task?.cancel()
-        guard let url else {
-            image = nil
-            isLoading = false
-            return
-        }
-        if let rendered = EmbyDecodedImageRenderPool.shared.image(for: url) {
-            image = rendered
-            isLoading = false
-            return
-        }
         image = nil
+        guard let url else { isLoading = false; return }
         isLoading = true
-        task = Task { [weak self] in
-            do {
-                var data = await EmbyImageDiskCache.shared.data(for: url)
-                if let cachedData = data {
-                    let cachedImage = await Task.detached(priority: .utility) { EmbyImageDecoder.decode(data: cachedData, url: url) }.value
-                    if let cachedImage {
-                        guard !Task.isCancelled else { return }
-                        EmbyDecodedImageRenderPool.shared.store(cachedImage, for: url)
-                        await MainActor.run {
-                            guard self?.currentURL == url else { return }
-                            self?.image = cachedImage
-                            self?.isLoading = false
-                        }
-                        return
-                    }
-                    await EmbyImageDiskCache.shared.remove(url)
-                    data = nil
-                }
-
-                if data == nil {
-                    let response = try await URLSession.shared.data(from: url)
-                    data = response.0
-                    await EmbyImageDiskCache.shared.store(response.0, for: url)
-                }
-                guard !Task.isCancelled, let data else { return }
-                let loaded = await Task.detached(priority: .utility) { EmbyImageDecoder.decode(data: data, url: url) }.value
-                guard !Task.isCancelled, let loaded else { return }
-                EmbyDecodedImageRenderPool.shared.store(loaded, for: url)
-                await MainActor.run {
-                    guard self?.currentURL == url else { return }
-                    self?.image = loaded
-                    self?.isLoading = false
-                }
-            } catch {
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    guard self?.currentURL == url else { return }
-                    self?.isLoading = false
-                }
-            }
+        subscription = EmbyImagePreparation.shared.subscribe(url, priority: .visible) { [weak self] image in
+            guard let self, self.currentURL == url else { return }
+            self.image = image
+            self.isLoading = false
         }
     }
 
+    deinit {
+        if let subscription { Task { @MainActor in EmbyImagePreparation.shared.cancel(subscription) } }
+    }
+
     func cancel() {
-        task?.cancel()
-        task = nil
+        if let subscription { EmbyImagePreparation.shared.cancel(subscription) }
+        subscription = nil
         if image == nil { isLoading = false }
     }
 }
 
-private enum EmbyImageDecoder {
+enum EmbyImageDecoder {
+    private static let log = OSLog(subsystem: "com.embyplayerlab.app", category: "PosterImageDecode")
     static func decode(data: Data, url: URL) -> UIImage? {
+        let interval = OSSignpostID(log: log)
+        os_signpost(.begin, log: log, name: "ImageDecode", signpostID: interval)
+        defer { os_signpost(.end, log: log, name: "ImageDecode", signpostID: interval) }
         guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return UIImage(data: data) }
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         let pixelWidth = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue ?? 0
@@ -347,7 +313,7 @@ enum EmbyImageContrastAnalyzer {
     }
 }
 
-private struct EmbyPosterDetailDestination: View {
+struct EmbyPosterDetailDestination: View {
     let item: LibraryItem
     let client: EmbyAPIClient
 

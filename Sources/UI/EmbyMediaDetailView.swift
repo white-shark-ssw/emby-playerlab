@@ -63,6 +63,7 @@ struct EmbyMediaDetailView: View {
                             heroScrollState.update(value)
                         }
                     )
+                    .background(EmbyDetailScrollDiagnostics().frame(width: 0, height: 0))
                 }
                 .frame(width: geometry.size.width, height: viewportHeight)
                 .background(Color.clear)
@@ -83,8 +84,8 @@ struct EmbyMediaDetailView: View {
         .immersiveSystemNavigationAppearance()
         .nativeInteractivePop()
         .detailPagePresentation()
-        .onAppear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-appear item=\(model.item.id)") }
-        .onDisappear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-disappear item=\(model.item.id)") }
+        .onAppear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-appear item=\(model.item.id)"); model.loadTrace.mark("detail-appear", images: model.imageInfos.count, stills: model.stillImages.count) }
+        .onDisappear { DiagnosticsLogger.shared.log("NavigationRace", "event=detail-disappear item=\(model.item.id)"); model.loadTrace.mark("detail-disappear", images: model.imageInfos.count, stills: model.stillImages.count) }
         .task { await model.load() }
         .onReceive(NotificationCenter.default.publisher(for: EmbyUserDataChange.notification)) { notification in
             guard let source = notification.object as? EmbyAPIClient, source === client,
@@ -332,7 +333,9 @@ struct EmbyMediaDetailView: View {
 
     private func updateHeroImageMetrics(_ image: UIImage) {
         if heroSourceSize != image.size { heroSourceSize = image.size }
+        let contrastStarted = CACurrentMediaTime()
         let prefersLight = EmbyImageContrastAnalyzer.prefersLightForeground(for: image)
+        DiagnosticsLogger.shared.log("DetailWork", "event=hero-contrast ms=\((CACurrentMediaTime() - contrastStarted) * 1000) main_thread=\(Thread.isMainThread ? 1 : 0)")
         if heroUsesLightForeground != prefersLight {
             withAnimation(.easeOut(duration: 0.18)) { heroUsesLightForeground = prefersLight }
         }
@@ -856,6 +859,7 @@ struct EmbyMediaDetailView: View {
                     .padding(.horizontal, 20)
                 }
             }
+            .onAppear { model.loadTrace.sectionAppeared(images: model.imageInfos.count, stills: model.stillImages.count) }
         }
     }
 
@@ -957,23 +961,10 @@ private struct EmbyDetailFilterResultsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                if model.isInitialLoading && model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.top, 44) }
-                else {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
-                        guard model.hasMore else { return }
-                        Task { await model.loadNextPage() }
-                    }) { item in
-                        EmbyPosterDetailLink(item: item, client: client) {
-                            EmbyDetailPosterCard(item: item, client: client)
-                        }
-                    }
-                }
-                if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
-            }
-            .padding(.bottom, 86)
-        }
+        EmbyPosterResultsPage(items: model.items, revision: model.posterRevision, replacement: model.posterReplacement, client: client, content: .plainMedia, queryIdentity: "detail-filter|\(filter.id)", isLoading: model.isInitialLoading, hasLoaded: model.hasLoaded, error: model.errorMessage, emptyText: "暂无相关内容", bottomPadding: 86, onApproachingEnd: {
+            guard model.hasMore else { return }
+            Task { await model.loadNextPage() }
+        })
         .navigationBarHidden(false)
         .navigationTitle(filter.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -995,6 +986,8 @@ private final class EmbyDetailFilterResultsViewModel: ObservableObject {
     private var isFetching = false
     private var seenItemIDs = Set<String>()
     private(set) var hasLoaded = false
+    private(set) var posterRevision = 0
+    private(set) var posterReplacement = 0
 
     init(filter: EmbyDetailFilter, client: EmbyAPIClient) {
         self.filter = filter
@@ -1004,6 +997,7 @@ private final class EmbyDetailFilterResultsViewModel: ObservableObject {
     func reload() async {
         guard !isFetching else { return }
         items = []
+        posterReplacement += 1; posterRevision += 1
         seenItemIDs.removeAll(keepingCapacity: true)
         nextStartIndex = 0
         hasMore = true
@@ -1029,7 +1023,7 @@ private final class EmbyDetailFilterResultsViewModel: ObservableObject {
         do {
             let page = try await client.detailItems(filter: filter.name, isGenre: filter.isGenre, limit: pageSize, startIndex: start)
             let newItems = page.items.filter { seenItemIDs.insert($0.id).inserted }
-            if !newItems.isEmpty { items.append(contentsOf: newItems) }
+            if !newItems.isEmpty { items.append(contentsOf: newItems); posterRevision += 1 }
             nextStartIndex = start + page.items.count
             if let total = page.totalRecordCount { hasMore = nextStartIndex < total }
             else { hasMore = page.items.count == pageSize }
@@ -1039,30 +1033,10 @@ private final class EmbyDetailFilterResultsViewModel: ObservableObject {
     }
 }
 
-private struct EmbyDetailPosterCard: View {
-    @Environment(\.embyPosterGridCellWidth) private var gridCellWidth
-    let item: LibraryItem
-    let client: EmbyAPIClient
-    private var width: CGFloat { gridCellWidth ?? 118 }
-    private var height: CGFloat { floor(width / EmbyPosterGridMetrics.posterAspectRatio) }
-    private var imageMaxWidth: Int { min(440, max(1, Int(ceil(width * UIScreen.main.scale)))) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            EmbyDetailRemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: imageMaxWidth, tag: item.preferredPrimaryImageTag), contentMode: .fill)
-                .frame(width: width, height: height)
-                .clipped()
-                .background(Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            Text(item.name).font(.subheadline).lineLimit(1).frame(width: width, height: 20, alignment: .leading)
-            Text(item.productionYear.map(String.init) ?? " ").font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: width, height: 16, alignment: .leading).opacity(item.productionYear == nil ? 0 : 1)
-        }
-        .frame(width: width, alignment: .leading)
-    }
-}
 
 @MainActor
 final class EmbyMediaDetailViewModel: ObservableObject {
+    let loadTrace = EmbyDetailLoadTrace()
     @Published var item: LibraryItem
     @Published var episodes: [LibraryItem] = []
     @Published var seasons: [LibraryItem] = []
@@ -1091,6 +1065,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     private let client: EmbyAPIClient
     private let initialEpisodeID: String?
     private(set) var hasLoaded = false
+    private var hasCompleteWarmPresentation = false
 
     init(item: LibraryItem, client: EmbyAPIClient, initialEpisodeID: String? = nil) {
         self.item = item
@@ -1101,6 +1076,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         self.syncedFavorite = item.isFavorite
         self.syncedPlayed = item.isPlayed
 
+        loadTrace.mark("warm-restore-before")
         if let warm = EmbyMediaDetailWarmCache.shared.snapshot(client: client, itemID: item.id) {
             episodes = warm.episodes
             seasons = warm.seasons
@@ -1109,6 +1085,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
             applyInitialEpisodeSelection()
             DiagnosticsLogger.shared.log("EmbyDetailWarmCache", "hit item=\(item.id) episodes=\(episodes.count) seasons=\(seasons.count) images=\(imageInfos.count) similar=\(similarItems.count)")
         }
+        loadTrace.mark("warm-restore-after", images: imageInfos.count, stills: stillImages.count)
     }
 
     var isSeries: Bool { item.type?.caseInsensitiveCompare("Series") == .orderedSame }
@@ -1327,45 +1304,110 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         episodeScrollTargetID = target.id
     }
 
-    private func storeWarmPresentation() {
+    private func storeWarmPresentation() async {
         let snapshot = EmbyMediaDetailWarmSnapshot(episodes: episodes, seasons: seasons, imageInfos: imageInfos, similarItems: similarItems)
-        EmbyMediaDetailWarmCache.shared.store(snapshot, client: client, itemID: item.id)
+        await EmbyMediaDetailWarmCache.shared.store(snapshot, client: client, itemID: item.id)
     }
 
     func load() async {
-        guard !hasLoaded else { return }
+        loadTrace.mark("task-enter", images: imageInfos.count, stills: stillImages.count)
+        guard !hasLoaded else { loadTrace.mark("task-skip", images: imageInfos.count, stills: stillImages.count); return }
+        defer { isLoadingEpisodes = false; loadTrace.mark("task-finish", images: imageInfos.count, stills: stillImages.count) }
         errorMessage = nil
         do {
+            loadTrace.mark("item-before")
             let refreshed = try await client.libraryItem(itemId: item.id)
+            try Task.checkCancellation()
+            loadTrace.mark("item-after")
             item = refreshed
             if favoriteSyncTask == nil { syncedFavorite = refreshed.isFavorite; desiredFavorite = refreshed.isFavorite }
             if playedSyncTask == nil { syncedPlayed = refreshed.isPlayed; desiredPlayed = refreshed.isPlayed }
 
-            if refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame {
-                isLoadingEpisodes = true
-                do { episodes = try await client.seriesEpisodes(seriesId: refreshed.id) }
-                catch { if !isEmbyRequestCancellation(error) { errorMessage = error.localizedDescription } }
-                do { seasons = try await client.seriesSeasons(seriesId: refreshed.id) }
-                catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "seasons failed: \(error.localizedDescription)") } }
-                isLoadingEpisodes = false
-                applyInitialEpisodeSelection()
-                logEpisodeDiagnostics(seriesID: refreshed.id)
+            // Independent presentation requests must not wait for PlaybackInfo or episode selection.
+            async let imagesComplete = loadImages(for: refreshed)
+            async let similarComplete = loadSimilar(for: refreshed)
+            async let episodesComplete = loadEpisodesAndMedia(for: refreshed)
+            let complete = try await (imagesComplete, similarComplete, episodesComplete)
+            try Task.checkCancellation()
+            if complete.0 && complete.1 && complete.2 {
+                hasCompleteWarmPresentation = true
+                loadTrace.mark("warm-store-before")
+                await storeWarmPresentation()
+                loadTrace.mark("warm-store-after")
+                try Task.checkCancellation()
             }
-
-            await loadMediaMetadata(for: primaryPlayableItem)
-
-            do { imageInfos = try await client.imageInfos(itemId: refreshed.id) }
-            catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "image info failed: \(error.localizedDescription)") } }
-
-            let similarTypes = refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame ? ["Series"] : ["Movie", "Video"]
-            do { similarItems = try await client.similarItems(itemId: refreshed.id, includeItemTypes: similarTypes) }
-            catch { if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "similar items failed: \(error.localizedDescription)") } }
-            storeWarmPresentation()
             hasLoaded = true
         } catch {
-            if isEmbyRequestCancellation(error) { return }
+            if isEmbyRequestCancellation(error) || Task.isCancelled { return }
             hasLoaded = true
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadEpisodesAndMedia(for refreshed: LibraryItem) async throws -> Bool {
+        var complete = true
+        if refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame {
+            isLoadingEpisodes = true
+            loadTrace.mark("episodes-before")
+            do {
+                let loaded = try await client.seriesEpisodes(seriesId: refreshed.id)
+                try Task.checkCancellation()
+                episodes = loaded
+            } catch {
+                if isEmbyRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
+                complete = false; errorMessage = error.localizedDescription
+            }
+            loadTrace.mark("episodes-after")
+            loadTrace.mark("seasons-before")
+            do {
+                let loaded = try await client.seriesSeasons(seriesId: refreshed.id)
+                try Task.checkCancellation()
+                seasons = loaded
+            } catch {
+                if isEmbyRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
+                complete = false; DiagnosticsLogger.shared.log("EmbyDetail", "seasons failed: \(error.localizedDescription)")
+            }
+            loadTrace.mark("seasons-after")
+            isLoadingEpisodes = false
+            applyInitialEpisodeSelection()
+            logEpisodeDiagnostics(seriesID: refreshed.id)
+        }
+
+        try Task.checkCancellation()
+        loadTrace.mark("media-before")
+        try await loadMediaMetadata(for: primaryPlayableItem)
+        loadTrace.mark("media-after")
+        return complete
+    }
+
+    private func loadImages(for refreshed: LibraryItem) async throws -> Bool {
+        loadTrace.mark("images-before", images: imageInfos.count, stills: stillImages.count)
+        do {
+            let loaded = try await client.imageInfos(itemId: refreshed.id)
+            try Task.checkCancellation()
+            imageInfos = loaded
+            loadTrace.mark("images-published", images: imageInfos.count, stills: stillImages.count)
+            return true
+        } catch {
+            if isEmbyRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
+            DiagnosticsLogger.shared.log("EmbyDetail", "image info failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func loadSimilar(for refreshed: LibraryItem) async throws -> Bool {
+        let similarTypes = refreshed.type?.caseInsensitiveCompare("Series") == .orderedSame ? ["Series"] : ["Movie", "Video"]
+        loadTrace.mark("similar-before")
+        do {
+            let loaded = try await client.similarItems(itemId: refreshed.id, includeItemTypes: similarTypes)
+            try Task.checkCancellation()
+            similarItems = loaded
+            loadTrace.mark("similar-after")
+            return true
+        } catch {
+            if isEmbyRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
+            DiagnosticsLogger.shared.log("EmbyDetail", "similar items failed: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -1417,7 +1459,8 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         for (index, episode) in tail.enumerated() { DiagnosticsLogger.shared.log("EpisodeDiagnostic", "series=\(seriesID) sampleLast[\(index)]=\(sample(episode))") }
     }
 
-    private func loadMediaMetadata(for mediaItem: LibraryItem?) async {
+    private func loadMediaMetadata(for mediaItem: LibraryItem?) async throws {
+        try Task.checkCancellation()
         guard let mediaItem else {
             mediaSources = []
             mediaMetadataItem = nil
@@ -1427,12 +1470,14 @@ final class EmbyMediaDetailViewModel: ObservableObject {
         }
         do {
             let info = try await client.playbackInfo(itemId: mediaItem.id)
+            try Task.checkCancellation()
             mediaSources = info.mediaSources
             mediaMetadataItem = mediaItem
             mediaPlaySessionId = info.playSessionId
             mediaPlaybackInfoLoadedAt = Date()
         } catch {
-            if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "media metadata failed: \(error.localizedDescription)") }
+            if isEmbyRequestCancellation(error) || Task.isCancelled { throw CancellationError() }
+            DiagnosticsLogger.shared.log("EmbyDetail", "media metadata failed: \(error.localizedDescription)")
         }
     }
 
@@ -1514,6 +1559,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
     func refreshPlaybackUserData(itemID: String) async {
         do {
             let refreshed = try await client.libraryItem(itemId: itemID)
+            try Task.checkCancellation()
             if item.id == itemID {
                 item = refreshed
                 hasPlaybackPositionOverride = false
@@ -1530,7 +1576,7 @@ final class EmbyMediaDetailViewModel: ObservableObject {
                 hasPlaybackPositionOverride = false
                 playbackPositionOverrideTicks = nil
             }
-            storeWarmPresentation()
+            if hasCompleteWarmPresentation { await storeWarmPresentation() }
             DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refreshed item=\(itemID) positionTicks=\(refreshed.userData?.playbackPositionTicks ?? 0) selectedResumeTarget=\(selectedEpisodeID ?? item.id) override=\(hasPlaybackPositionOverride)")
         } catch {
             if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("EmbyDetail", "playback userdata refresh failed item=\(itemID): \(error.localizedDescription)") }

@@ -35,7 +35,7 @@ final class V3GlobalSearchViewModel: ObservableObject {
     private var searchGeneration = 0
     private var recommendationGeneration = 0
     private var isLoadingMoreRecommendations = false
-    private var recommendationPosterImages: [String: UIImage] = [:]
+    private(set) var recommendationRevision = 0
     private var hasStoredServerSelection: Bool
 
     init() {
@@ -157,6 +157,7 @@ final class V3GlobalSearchViewModel: ObservableObject {
             let items = try await V3SearchRecommendationPreloader.shared.recommendations(for: session, client: client)
             guard generation == recommendationGeneration, recommendationsEnabled else { return }
             recommendationItems = items
+            recommendationRevision += 1
             hasMoreRecommendations = items.count >= V3SearchRecommendationPolicy.preloadLimit
         } catch {
             guard generation == recommendationGeneration else { return }
@@ -178,6 +179,7 @@ final class V3GlobalSearchViewModel: ObservableObject {
             let existingIDs = Set(recommendationItems.map(\.id))
             let newItems = batch.filter { !existingIDs.contains($0.id) }
             recommendationItems.append(contentsOf: newItems)
+            if !newItems.isEmpty { recommendationRevision += 1 }
             hasMoreRecommendations = batch.count == V3SearchRecommendationPolicy.loadMoreLimit && newItems.count == batch.count
             DiagnosticsLogger.shared.log("Search", "recommendation load-more appended=\(newItems.count) total=\(recommendationItems.count) hasMore=\(hasMoreRecommendations)")
         } catch {
@@ -185,9 +187,6 @@ final class V3GlobalSearchViewModel: ObservableObject {
             if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Search", "recommendation load-more failed: \(error.localizedDescription)") }
         }
     }
-
-    func recommendationPosterImage(for itemID: String) -> UIImage? { recommendationPosterImages[itemID] }
-    func pinRecommendationPosterImage(_ image: UIImage, for itemID: String) { recommendationPosterImages[itemID] = image }
 
     private func recordHistory(_ term: String) {
         history.removeAll { $0.caseInsensitiveCompare(term) == .orderedSame }
@@ -201,51 +200,8 @@ final class V3GlobalSearchViewModel: ObservableObject {
 }
 
 
-private struct V3SearchRecommendationPosterCard: View {
-    @Environment(\.embyPosterGridCellWidth) private var gridCellWidth
-    let item: LibraryItem
-    let client: EmbyAPIClient
-    let pinnedImage: UIImage?
-    let onImageLoaded: (UIImage) -> Void
-
-    private var resolvedWidth: CGFloat { gridCellWidth ?? 118 }
-    private var posterHeight: CGFloat { floor(resolvedWidth / EmbyPosterGridMetrics.posterAspectRatio) }
-    private var posterImageMaxWidth: Int { V3SearchRecommendationPolicy.posterImageMaxWidth }
-    private var yearText: String { item.productionYear.map(String.init) ?? " " }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ZStack(alignment: .bottomLeading) {
-                Group {
-                    if let pinnedImage { Image(uiImage: pinnedImage).resizable().aspectRatio(contentMode: .fill) }
-                    else {
-                        EmbyCachedRemoteImage(url: client.imageURL(itemId: item.preferredPrimaryImageItemId, maxWidth: posterImageMaxWidth, tag: item.preferredPrimaryImageTag), contentMode: .fill, onImageLoaded: onImageLoaded)
-                    }
-                }
-                .frame(width: resolvedWidth, height: posterHeight)
-                .clipped()
-                if item.playbackProgress > 0 { GeometryReader { proxy in VStack { Spacer(); Rectangle().fill(Color.blue).frame(width: proxy.size.width * item.playbackProgress, height: 3) } } }
-                if let count = item.userData?.unplayedItemCount, count > 0 {
-                    VStack { HStack { Spacer(); Text("\(count)").font(.caption2.weight(.bold)).foregroundColor(.white).padding(6).background(Color.blue).clipShape(Circle()) }; Spacer() }.padding(5)
-                } else if item.isPlayed {
-                    VStack { HStack { Spacer(); Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundColor(.white).padding(6).background(Color.green).clipShape(Circle()) }; Spacer() }.padding(5)
-                }
-            }
-            .frame(width: resolvedWidth, height: posterHeight)
-            .background(Color(uiColor: .secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name).font(.subheadline).lineLimit(1).frame(width: resolvedWidth, height: 20, alignment: .leading)
-                Text(yearText).font(.caption).foregroundColor(.secondary).lineLimit(1).frame(width: resolvedWidth, height: 16, alignment: .leading).opacity(item.productionYear == nil ? 0 : 1)
-            }
-            .frame(width: resolvedWidth, height: 38, alignment: .topLeading)
-        }
-        .frame(width: resolvedWidth, alignment: .leading)
-    }
-}
-
 struct V3EmbyGlobalSearchView: View {
+    @Environment(\.serverDockBottomInset) private var dockBottomInset
     @EnvironmentObject private var sessionStore: SessionStore
     let currentSession: EmbySession
     let currentClient: EmbyAPIClient
@@ -254,6 +210,9 @@ struct V3EmbyGlobalSearchView: View {
     @State private var searchText = ""
     @State private var showClearHistoryAlert = false
     @State private var directSearchDestination: V3GlobalSearchServerResult?
+    @State private var previewItem: LibraryItem?
+    @State private var previewClient: EmbyAPIClient?
+    @State private var previewMore: V3GlobalSearchServerResult?
     @FocusState private var searchFieldFocused: Bool
 
     init(currentSession: EmbySession, currentClient: EmbyAPIClient, model: V3GlobalSearchViewModel, onClose: @escaping () -> Void) {
@@ -401,99 +360,38 @@ struct V3EmbyGlobalSearchView: View {
     }
 
     private var searchLanding: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 24) {
-                if !model.history.isEmpty { searchHistorySection }
-                if model.recommendationsEnabled && (model.isLoadingRecommendations || !model.recommendationItems.isEmpty) { recommendationsSection }
-            }
-            .serverDockContentPadding()
-        }
-    }
-
-    private var searchHistorySection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("搜索历史").font(.system(size: 20, weight: .bold))
-                Spacer()
-                Button { showClearHistoryAlert = true } label: { Image(systemName: "trash").font(.system(size: 19)).foregroundColor(.blue).frame(width: 30, height: 30) }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("清除搜索历史")
-            }
-            .padding(.horizontal, 16)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(model.history, id: \.self) { term in
-                        Button {
-                            searchText = term
-                            submitSearch(term)
-                        } label: {
-                            Text(term).font(.system(size: 13)).foregroundColor(.primary).lineLimit(1)
-                                .padding(.horizontal, 12).frame(height: 26)
-                                .background(Color(uiColor: .secondarySystemBackground)).clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-        }
-    }
-
-    private var recommendationsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("推荐观看").font(.system(size: 20, weight: .bold)).padding(.horizontal, 16)
-            if model.isLoadingRecommendations && model.recommendationItems.isEmpty {
-                ProgressView().frame(maxWidth: .infinity).padding(.top, 18)
-            } else {
-                EmbyPosterGrid(items: model.recommendationItems, horizontalPadding: 6) { item in
-                    EmbyPosterDetailLink(item: item, client: currentClient) {
-                        V3SearchRecommendationPosterCard(item: item, client: currentClient, pinnedImage: model.recommendationPosterImage(for: item.id)) { image in
-                            model.pinRecommendationPosterImage(image, for: item.id)
-                        }
-                        .onAppear {
-                            guard model.hasMoreRecommendations, item.id == model.recommendationItems.last?.id else { return }
-                            Task { await model.loadMoreRecommendations(client: currentClient) }
-                        }
-                    }
-                }
-            }
-        }
+        EmbyPosterSearchLanding(items: model.recommendationItems, revision: model.recommendationRevision, history: model.history, recommendationsEnabled: model.recommendationsEnabled, isLoading: model.isLoadingRecommendations, client: currentClient, bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isActive: directSearchDestination == nil, onHistory: { term in
+            searchText = term
+            submitSearch(term)
+        }, onClearHistory: { showClearHistoryAlert = true }, onApproachingEnd: {
+            guard model.hasMoreRecommendations else { return }
+            Task { await model.loadMoreRecommendations(client: currentClient) }
+        })
     }
 
     private var searchResults: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: 30) {
-                ForEach(model.serverResults) { result in serverResultSection(result) }
-                if model.isSearching { ProgressView().frame(maxWidth: .infinity).padding(.top, model.serverResults.isEmpty ? 34 : 0) }
-                else if model.serverResults.isEmpty { Text("未找到相关内容").font(.subheadline).foregroundColor(.secondary).frame(maxWidth: .infinity).padding(.top, 34) }
-            }
-            .serverDockContentPadding()
+        EmbyPosterSections(sections: searchPosterSections, queryIdentity: "multi-search|\(model.currentTerm)", sectionGap: 30, bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isLoading: model.isSearching, emptyText: "未找到相关内容", isActive: directSearchDestination == nil && previewItem == nil && previewMore == nil, top: EmptyView())
+            .background(searchPreviewNavigation)
+    }
+
+    private var searchPosterSections: [EmbyPosterSection] {
+        model.serverResults.map { result in
+            EmbyPosterSection(id: result.id, title: result.session.serverName, items: result.items, client: result.client, width: horizontalPosterWidth, spacing: EmbyPosterGridMetrics.columnSpacing, onMore: { previewMore = result }, onSelect: { item in
+                previewClient = result.client; previewItem = item
+            })
         }
     }
 
-    private func serverResultSection(_ result: V3GlobalSearchServerResult) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(result.session.serverName).font(.system(size: 20, weight: .bold)).lineLimit(1)
-                Spacer()
-                NavigationLink(destination: V3GlobalSearchServerGridView(serverName: result.session.serverName, term: model.currentTerm, client: result.client)) {
-                    Text("更多").font(.system(size: 16)).foregroundColor(.blue)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 16)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: EmbyPosterGridMetrics.columnSpacing) {
-                    ForEach(result.items) { item in
-                        EmbyPosterDetailLink(item: item, client: result.client) { V3PosterCard(item: item, client: result.client, width: horizontalPosterWidth) }
-                            .frame(width: horizontalPosterWidth, alignment: .topLeading)
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
+    private var searchPreviewNavigation: some View {
+        ZStack {
+            NavigationLink(isActive: Binding(get: { previewItem != nil }, set: { if !$0 { previewItem = nil; previewClient = nil } })) {
+                if let item = previewItem, let client = previewClient { EmbyPosterDetailDestination(item: item, client: client) } else { EmptyView() }
+            } label: { EmptyView() }
+            NavigationLink(isActive: Binding(get: { previewMore != nil }, set: { if !$0 { previewMore = nil } })) {
+                if let result = previewMore { V3GlobalSearchServerGridView(serverName: result.session.serverName, term: model.currentTerm, client: result.client) } else { EmptyView() }
+            } label: { EmptyView() }
         }
+        .frame(width: 0, height: 0).hidden().allowsHitTesting(false)
     }
 
     private var directSearchLink: some View {
@@ -534,6 +432,7 @@ struct V3EmbyGlobalSearchView: View {
 }
 
 private struct V3GlobalSearchServerGridView: View {
+    @Environment(\.serverDockBottomInset) private var dockBottomInset
     let serverName: String
     let term: String
     let client: EmbyAPIClient
@@ -547,23 +446,10 @@ private struct V3GlobalSearchServerGridView: View {
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                if model.isInitialLoading && model.items.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
-                } else {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
-                        guard model.hasMore else { return }
-                        Task { await model.loadNextPage() }
-                    }) { item in
-                        EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) }
-                    }
-                }
-                if let errorMessage = model.errorMessage { Text(errorMessage).font(.footnote).foregroundColor(.red).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
-            }
-            .padding(.top, 8)
-            .serverDockContentPadding()
-        }
+        EmbyPosterResultsPage(items: model.items, revision: model.posterRevision, replacement: 0, client: client, queryIdentity: "search|\(term)", isLoading: model.isInitialLoading, hasLoaded: model.hasLoaded, error: model.errorMessage, emptyText: "未找到相关内容", bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), onApproachingEnd: {
+            guard model.hasMore else { return }
+            Task { await model.loadNextPage() }
+        })
         .navigationTitle(serverName)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(false)
@@ -581,6 +467,7 @@ private final class V3GlobalSearchServerGridViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     private(set) var hasMore = true
     private(set) var hasLoaded = false
+    private(set) var posterRevision = 0
     private let term: String
     private let client: EmbyAPIClient
     private let pageSize = 18
@@ -601,7 +488,7 @@ private final class V3GlobalSearchServerGridViewModel: ObservableObject {
         do {
             let page = try await client.searchPosterItemsPage(term: term, limit: pageSize, startIndex: start, includeItemTypes: includeItemTypes)
             let newItems = page.items.filter { seenItemIDs.insert($0.id).inserted }
-            if !newItems.isEmpty { items.append(contentsOf: newItems) }
+            if !newItems.isEmpty { items.append(contentsOf: newItems); posterRevision += 1 }
             nextStartIndex = start + page.items.count
             if let total = page.totalRecordCount { hasMore = nextStartIndex < total }
             else { hasMore = page.items.count == pageSize }

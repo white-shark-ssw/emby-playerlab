@@ -1,6 +1,6 @@
 # 海报墙入口清单
 
-_2026-10-08。真实路由审计入口不变；G01接受当前调优，G02–G15及H01–H04代码/CI/实际构建包完成，Build303独立核验通过。Build303实际IPA已交付，执行环境交付阻塞已解除；最新首页/两个库建议页9834个运动间隔均无>=25ms事件；逐入口真机与P6规模/资源仍待验证，H05保护审计。整体合同与执行阶段仍由设计和计划定义。_
+_2026-10-08 18:58。用户明确验收本任务；G01–G15/H01–H04计划实现完成，OnePlayer0.15.36/Build303为正式接受基线。PR292 integration pending. 原计划的未独立覆盖规模/资源/入口测试保留为证据边界，不虚标通过、不继续阻塞已接受任务；跨线路图片缓存共享暂缓，H05保留原合同。_
 
 ## 1. 清点口径
 
@@ -258,3 +258,9 @@ H01–H04 implementation is complete: Home, Library suggestions, Favorites previ
 **State/next:** G01 accepted tuning, P3 G02–G08/P4 G09–G15/P5 H01–H04 code/CI/actual artifact complete; Task Active, Draft PR292 open/unmerged/not whole-task Stable/frozen. Main remains documents only; accepted overall294 unchanged, Aether235 isolated. After delivering this exact303 actualIPA, prioritize target15ProMax/iOS17 Home carousel on/off, vertical/horizontal mixed scrolling, refresh/top/detail return, Library suggestions, Favorites media/Person/more, multi-server client/term and prior Search landing lifecycle. Generic section UI Hero is a fixed visual fixture; production Home compiles in Release, actual device remains unverified. P6 broader2000/5000/resource pressure/background/first-presented bitmap and uncovered entry matrix remains. H05 audit-only. Cross-Wi-Fi/cellular cache identity migration remains deferred per user priority.
 
 **Closing branch identity:** feature/PR292 head 354f71741c668ef4a10642cf69fb3dc6da723796, documents-only descendant of tested/package source0b5ce25bcec0a4d0240891913ad17114b02cf10e. Closing changes are seven project documents plus the303 changelog; no runtime changed. Main closing update contains only the seven project documents. Actual final IPA extraction, local byte verification and persistent file delivery preparation completed on2026-10-08; target-device/P6 acceptance remains pending.
+
+## 海报墙任务验收通过 — 2026-10-08 18:58 Asia/Shanghai
+
+用户明确裁决：**“那么该任务可以验收通过了”**。DEV-poster-grid-smoothness按交付的OnePlayer0.15.36/Build303正式完成，G01–G15及H01–H04共享原生海报展示、按需图片准备和导航/分页合同成为当前接受基线；H05详情横向区保留原合同。此前用户已接受G01调优、301部分结果页测试，最新303日志9834个运动间隔max18.044ms且>=25/33.3为0。此裁决是任务级验收，不把未独立测量的5000项/内存压力/后台恢复/所有入口矩阵追认成测试通过；保留这些证据限制，不继续作为本任务Active阻塞项。
+
+接受包精确源码0b5ce25bcec0a4d0240891913ad17114b02cf10e；run37754814214/job113236645278成功，84项本轮回归与10项保留导航证据，Release及独立包/源码/MinOS15.0核验通过。Artifact11540607336，IPASHA256b3ebb081dcbe1e20de02565faaa6e5f4d67891922c6f0d55248bf7cd959842de。PR292 integration pending. 合并前完整Git树核对：main从共同基线只改7份项目资料；feature的所有非docs文件均与已验收精确源码一致。仅解决同步文档差异，不改变运行时代码/测试依赖，无需另出IPA或重跑未变化输入。跨Wi-Fi/流量线路图片缓存共享按用户原决定暂缓，作为后续问题保留，不宣称已解决。不影响独立Aether235任务及播放器/传输/P0、293轮播、294Dock冻结合同。

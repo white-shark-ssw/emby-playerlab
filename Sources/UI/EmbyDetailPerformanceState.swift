@@ -2,6 +2,30 @@ import SwiftUI
 import Combine
 import Foundation
 
+// One bounded timeline per real detail model. Appearance markers are lifecycle evidence, not presented FPS.
+@MainActor
+final class EmbyDetailLoadTrace {
+    private let identity = String(UUID().uuidString.prefix(8))
+    private let created = ProcessInfo.processInfo.systemUptime
+    private var appeared: Double?
+    private var events = 0
+    private var sectionReported = false
+
+    func mark(_ event: String, images: Int = 0, stills: Int = 0) {
+        guard events < 64 else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        if event == "detail-appear", appeared == nil { appeared = now }
+        events += 1
+        DiagnosticsLogger.shared.log("DetailLoad", "event=\(event) model=\(identity) seq=\(events) uptime=\(now) created_ms=\((now - created) * 1000) appear_ms=\(appeared.map { (now - $0) * 1000 } ?? -1) images=\(images) stills=\(stills) main_thread=\(Thread.isMainThread ? 1 : 0)")
+    }
+
+    func sectionAppeared(images: Int, stills: Int) {
+        guard !sectionReported else { return }
+        sectionReported = true
+        mark("stills-section-appear", images: images, stills: stills)
+    }
+}
+
 final class EmbyDetailHeroScrollState: ObservableObject {
     @Published private(set) var rawMinY: CGFloat = 0
 
@@ -40,6 +64,7 @@ final class EmbyMediaDetailWarmCache {
 
     private let cache = NSCache<NSString, Box>()
     private let fileManager = FileManager.default
+    private let writeQueue = DispatchQueue(label: "OnePlayer.DetailPresentation.Write", qos: .utility)
     private let schemaVersion = 1
 
     private init() {}
@@ -52,10 +77,17 @@ final class EmbyMediaDetailWarmCache {
         return snapshot
     }
 
-    func store(_ snapshot: EmbyMediaDetailWarmSnapshot, client: EmbyAPIClient, itemID: String) {
+    @MainActor
+    func store(_ snapshot: EmbyMediaDetailWarmSnapshot, client: EmbyAPIClient, itemID: String) async {
         let cacheKey = key(client: client, itemID: itemID)
         cache.setObject(Box(snapshot), forKey: cacheKey as NSString)
-        storeDiskSnapshot(snapshot, forKey: cacheKey)
+        // Memory remains immediate; immutable snapshots reach disk in enqueue order off the UI actor.
+        await withCheckedContinuation { continuation in
+            writeQueue.async {
+                self.storeDiskSnapshot(snapshot, forKey: cacheKey)
+                continuation.resume()
+            }
+        }
     }
 
     private func key(client: EmbyAPIClient, itemID: String) -> String {
@@ -78,6 +110,7 @@ final class EmbyMediaDetailWarmCache {
     }
 
     private func storeDiskSnapshot(_ snapshot: EmbyMediaDetailWarmSnapshot, forKey key: String) {
+        let started = ProcessInfo.processInfo.systemUptime
         guard let url = cacheFileURL(forKey: key) else { return }
         let root: [String: Any] = [
             "SchemaVersion": schemaVersion,
@@ -86,9 +119,13 @@ final class EmbyMediaDetailWarmCache {
             "ImageInfos": snapshot.imageInfos.map(imageInfoJSONObject),
             "SimilarItems": snapshot.similarItems.map(libraryItemJSONObject),
         ]
+        let objectFinished = ProcessInfo.processInfo.systemUptime
         do {
             let data = try JSONSerialization.data(withJSONObject: root)
+            let serialized = ProcessInfo.processInfo.systemUptime
             try data.write(to: url, options: .atomic)
+            let written = ProcessInfo.processInfo.systemUptime
+            DiagnosticsLogger.shared.log("EmbyDetailWarmCache", "event=disk-store images=\(snapshot.imageInfos.count) similar=\(snapshot.similarItems.count) object_ms=\((objectFinished - started) * 1000) serialization_ms=\((serialized - objectFinished) * 1000) write_ms=\((written - serialized) * 1000) total_ms=\((written - started) * 1000) main_thread=\(Thread.isMainThread ? 1 : 0)")
         } catch {
             DiagnosticsLogger.shared.log("EmbyDetailWarmCache", "disk write failed: \(error.localizedDescription)")
         }

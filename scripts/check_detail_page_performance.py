@@ -3,6 +3,10 @@ from pathlib import Path
 detail = Path('Sources/UI/EmbyMediaDetailView.swift').read_text()
 state = Path('Sources/UI/EmbyDetailPerformanceState.swift').read_text()
 project = Path('project.yml').read_text()
+model = detail[detail.index('@MainActor\nfinal class EmbyMediaDetailViewModel'):detail.index('private struct EmbyDetailRemoteImage')]
+assert model.count('private var hasCompleteWarmPresentation = false') == 1
+assert detail.count('private var hasCompleteWarmPresentation = false') == 1
+assert 'let refreshed = try await client.libraryItem(itemId: itemID)\n            try Task.checkCancellation()' in model
 
 # High-frequency native scroll offset belongs to the Hero-only observable scope, not root @State.
 assert '@State private var heroRawScrollMinY' not in detail
@@ -20,8 +24,16 @@ assert 'let seasons: [LibraryItem]' in state
 assert 'let imageInfos: [EmbyImageInfo]' in state
 assert 'let similarItems: [LibraryItem]' in state
 assert 'let refreshed = try await client.libraryItem(itemId: item.id)' in detail
-assert 'episodes = try await client.seriesEpisodes(seriesId: refreshed.id)' in detail
-assert 'imageInfos = try await client.imageInfos(itemId: refreshed.id)' in detail
+assert 'let loaded = try await client.seriesEpisodes(seriesId: refreshed.id)' in detail
+assert 'let loaded = try await client.imageInfos(itemId: refreshed.id)' in detail
+assert 'async let imagesComplete = loadImages(for: refreshed)' in detail
+assert 'async let similarComplete = loadSimilar(for: refreshed)' in detail
+assert 'async let episodesComplete = loadEpisodesAndMedia(for: refreshed)' in detail
+assert 'if complete.0 && complete.1 && complete.2' in detail
+assert 'if hasCompleteWarmPresentation { await storeWarmPresentation() }' in detail
+assert 'try Task.checkCancellation()' in detail
+assert 'private let writeQueue = DispatchQueue(label: "OnePlayer.DetailPresentation.Write", qos: .utility)' in state
+assert 'writeQueue.async' in state
 
 # The same presentation snapshot survives process death through Library/Caches, while NSCache remains the hot path.
 assert 'NSCache<NSString, Box>()' in state

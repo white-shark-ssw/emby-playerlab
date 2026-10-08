@@ -4,6 +4,7 @@ import UIKit
 
 struct V3EmbyHomeView: View {
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.serverDockBottomInset) var dockBottomInset
     let session: EmbySession
     let client: EmbyAPIClient
     let refreshToken: Int
@@ -24,6 +25,8 @@ struct V3EmbyHomeView: View {
     @State var heroScrollState: V3HomeHeroScrollState
     @State var isHomeRefreshing = false
     @State var isHomeActive = false
+    @State var posterDetailItem: LibraryItem?
+    @State var posterLibrary: LibraryItem?
     private let carouselTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     init(session: EmbySession, client: EmbyAPIClient, refreshToken: Int, scrollToTopToken: Int, onClose: @escaping () -> Void, onCarouselActiveChanged: @escaping (Bool) -> Void) {
@@ -127,73 +130,49 @@ struct V3EmbyHomeView: View {
     }
 
     private func homeScroll(width: CGFloat, viewportHeight: CGFloat, immersive: Bool) -> some View {
-        ScrollViewReader { proxy in
-            let heroTrackingLimit = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + min(132, viewportHeight * 0.16) + 24
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    Group {
-                        if immersive { immersiveCarouselHero(width: width, viewportHeight: viewportHeight) }
-                        else { Color.clear.frame(height: 1) }
-                    }
-                    .id("v3-home-top")
+        let heroTrackingLimit = AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + min(132, viewportHeight * 0.16) + 24
+        let heroHeight = immersive ? AdaptiveHeroRevealMetrics.detailForegroundBaseHeight(width: width, viewportHeight: viewportHeight) + V3HomeCarouselNativeLayout.displayHeightAdjustment(displayRange: carouselDisplayRange, viewportHeight: viewportHeight) : 1
+        return EmbyPosterSections(sections: homePosterSections, queryIdentity: "home|\(session.serverId)|\(session.user.id)", topHeight: heroHeight, topPadding: immersive ? 2 : 18, sectionGap: 24, bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isLoading: model.isLoading && model.libraries.isEmpty, error: model.errorMessage, isActive: isHomeActive && posterDetailItem == nil && posterLibrary == nil && !isCarouselDetailPresented, scrollToTopToken: scrollToTopToken, onRefresh: immersive ? nil : { completion in Task { await refreshHome(); completion() } }, onHomeOffset: { value in
+            guard immersive, isHomeActive else { return }
+            heroScrollState.update(max(-heroTrackingLimit, value))
+        }, onHomeRefresh: immersive ? { completion in Task { await refreshHome(); completion() } } : nil, top: Group {
+            if immersive { immersiveCarouselHero(width: width, viewportHeight: viewportHeight) }
+            else { Color.clear.frame(height: 1) }
+        })
+        .frame(width: width)
+        .background(Color.clear)
+        .background(homePosterNavigation)
+        .onChange(of: refreshToken) { _ in Task { await refreshHome() } }
+    }
 
-                    VStack(alignment: .leading, spacing: 24) {
-                        if model.isLoading && model.libraries.isEmpty {
-                            ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
-                        } else {
-                            if !model.visibleLibraries.isEmpty {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    sectionTitle("我的媒体")
-                                    libraryRow
-                                }
-                            }
-                            if !model.resumeItems.isEmpty {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    sectionTitle("继续观看")
-                                    landscapeRow(model.resumeItems)
-                                }
-                            }
-                            ForEach(model.visibleLibraries) { library in
-                                if let items = model.latestByLibrary[library.id], !items.isEmpty {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        HStack(spacing: 8) {
-                                            sectionTitle(library.name)
-                                            Spacer()
-                                            NavigationLink("更多", destination: V3LibraryBrowserView(library: library, client: client))
-                                                .font(.subheadline).foregroundColor(.blue).padding(.trailing, 16)
-                                        }
-                                        posterRow(items)
-                                    }
-                                }
-                            }
-                            if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
-                        }
-                    }
-                    .padding(.top, immersive ? 2 : 18)
-                    .serverDockContentPadding()
-                }
-                .frame(width: width)
-                .background(
-                    ZStack {
-                        V3HomeScrollOffsetObserver { value in
-                            guard immersive, isHomeActive else { return }
-                            let clampedValue = max(-heroTrackingLimit, value)
-                            heroScrollState.update(clampedValue)
-                        }
-                        if immersive {
-                            V3HomeOwnedRefreshControl { completion in Task { await refreshHome(); completion() } }
-                        } else {
-                            V3HomeRefreshControlStyler(immersive: false)
-                        }
-                    }
-                )
-            }
-            .modifier(V3HomeRefreshModifier(immersive: immersive, action: refreshHome))
-            .frame(width: width)
-            .background(Color.clear)
-            .onChange(of: refreshToken) { _ in Task { await refreshHome() } }
-            .onChange(of: scrollToTopToken) { _ in withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("v3-home-top", anchor: .top) } }
+    private var homePosterSections: [EmbyPosterSection] {
+        var sections: [EmbyPosterSection] = []
+        if !model.visibleLibraries.isEmpty {
+            sections.append(EmbyPosterSection(id: "libraries", title: "我的媒体", items: model.visibleLibraries, client: client, style: .library, titleGap: 8, onSelect: { posterLibrary = $0 }))
         }
+        if !model.resumeItems.isEmpty {
+            sections.append(EmbyPosterSection(id: "resume", title: "继续观看", items: model.resumeItems, client: client, style: .landscape, titleGap: 8, onSelect: { posterDetailItem = $0 }))
+        }
+        for library in model.visibleLibraries {
+            if let items = model.latestByLibrary[library.id], !items.isEmpty {
+                sections.append(EmbyPosterSection(id: "latest|\(library.id)", title: library.name, items: items, client: client, titleGap: 8, onMore: { posterLibrary = library }, onSelect: { posterDetailItem = $0 }))
+            }
+        }
+        return sections
+    }
+
+    private var homePosterNavigation: some View {
+        ZStack {
+            NavigationLink(isActive: Binding(get: { posterLibrary != nil }, set: { if !$0 { posterLibrary = nil } })) {
+                if let library = posterLibrary { V3LibraryBrowserView(library: library, client: client) }
+                else { EmptyView() }
+            } label: { EmptyView() }
+            NavigationLink(isActive: Binding(get: { posterDetailItem != nil }, set: { if !$0 { posterDetailItem = nil } })) {
+                if let item = posterDetailItem { EmbyPosterDetailDestination(item: item, client: client) }
+                else { EmptyView() }
+            } label: { EmptyView() }
+        }
+        .frame(width: 0, height: 0).hidden().allowsHitTesting(false)
     }
 
     @MainActor

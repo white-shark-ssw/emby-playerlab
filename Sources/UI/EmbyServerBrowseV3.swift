@@ -40,6 +40,9 @@ struct V3LibraryBrowserView: View {
     let client: EmbyAPIClient
     @StateObject private var model: V3LibraryBrowserViewModel
     @State private var selectedTab = V3LibraryTab.items
+    @State private var nativePosterSelection: LibraryItem?
+    @State private var suggestionSelection: LibraryItem?
+    @Environment(\.serverDockBottomInset) private var dockBottomInset
 
     init(library: LibraryItem, client: EmbyAPIClient) {
         self.library = library
@@ -105,7 +108,8 @@ struct V3LibraryBrowserView: View {
     @ViewBuilder
     private var tabContent: some View {
         switch selectedTab {
-        case .items, .trailers, .collections, .favorites:
+        case .items: nativeItemsTab
+        case .trailers, .collections, .favorites:
             pagedPosterTab(selectedTab)
         case .suggestions:
             suggestionsTab
@@ -116,93 +120,74 @@ struct V3LibraryBrowserView: View {
         }
     }
 
+    private var nativeItemsTab: some View {
+        EmbyPosterWall(items: model.items(for: .items), revision: model.posterRevision, replacement: model.posterReplacement, client: client,
+            isLoading: model.isLoading(tab: .items), hasLoaded: model.hasLoaded(tab: .items), error: model.errorMessage(for: .items),
+            emptyText: "暂无\(contentTitle)内容", bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isActive: nativePosterSelection == nil,
+            onApproachingEnd: { if model.hasMore(tab: .items) { Task { await model.loadNextPage(tab: .items) } } },
+            onRefresh: { Task { await model.refresh(tab: .items) } },
+            onSelect: { item in if nativePosterSelection == nil { nativePosterSelection = item } })
+            .background(nativePosterNavigationLink)
+    }
+
+    // Keep the link mounted before selection, so native taps produce false → true system activation.
+    private var nativePosterNavigationLink: some View {
+        NavigationLink(destination: Group {
+            if let item = nativePosterSelection { EmbyPosterDetailDestination(item: item, client: client) }
+            else { EmptyView() }
+        }, isActive: Binding(get: { nativePosterSelection != nil }, set: { if !$0 { nativePosterSelection = nil } })) { EmptyView() }
+            .frame(width: 0, height: 0).hidden()
+    }
+
     private func pagedPosterTab(_ tab: V3LibraryTab) -> some View {
-        let items = model.items(for: tab)
-        return ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                if model.isLoading(tab: tab) && items.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
-                } else if model.hasLoaded(tab: tab) && items.isEmpty {
-                    emptyState(text: tab == .favorites ? "这个媒体库还没有收藏内容" : "暂无\(tab.title(contentTitle: contentTitle))内容")
-                } else {
-                    EmbyPosterGrid(items: items, onApproachingEnd: {
-                        guard model.hasMore(tab: tab) else { return }
-                        Task { await model.loadNextPage(tab: tab) }
-                    }) { item in
-                        EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) }
-                    }
-                }
-                if let error = model.errorMessage(for: tab) { errorText(error) }
-            }
-            .padding(.top, 8)
-            .serverDockContentPadding()
-        }
-        .refreshable { await model.refresh(tab: tab) }
+        V3LibraryPosterPage(items: model.items(for: tab), revision: model.revision(for: tab), replacement: model.replacement(for: tab), client: client,
+            queryIdentity: "\(library.id)|\(tab.rawValue)", isLoading: model.isLoading(tab: tab), hasLoaded: model.hasLoaded(tab: tab), error: model.errorMessage(for: tab),
+            emptyText: tab == .favorites ? "这个媒体库还没有收藏内容" : "暂无\(tab.title(contentTitle: contentTitle))内容",
+            onApproachingEnd: { if model.hasMore(tab: tab) { Task { await model.loadNextPage(tab: tab) } } },
+            onRefresh: { Task { await model.refresh(tab: tab) } })
+            .id(tab)
     }
 
     private var suggestionsTab: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: 28) {
-                if model.isLoading(tab: .suggestions) && !model.hasSuggestionContent {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
-                } else if model.hasLoaded(tab: .suggestions) && !model.hasSuggestionContent {
-                    emptyState(text: "暂无建议内容")
-                } else {
-                    if !model.suggestionResumeItems.isEmpty { suggestionSectionTitle("继续观看"); landscapeRow(model.suggestionResumeItems) }
-                    if !model.suggestionLatestItems.isEmpty { suggestionSectionTitle(model.latestSuggestionTitle); posterRow(model.suggestionLatestItems) }
-                    ForEach(model.recommendationSections) { section in
-                        suggestionSectionTitle(model.title(for: section))
-                        posterRow(section.items)
-                    }
-                    if model.recommendationSections.isEmpty && !model.genericSuggestionItems.isEmpty { suggestionSectionTitle("推荐"); posterRow(model.genericSuggestionItems) }
-                }
-                if let error = model.errorMessage(for: .suggestions) { errorText(error) }
-            }
-            .padding(.top, 8)
-            .serverDockContentPadding()
+        EmbyPosterSections(sections: suggestionPosterSections, queryIdentity: "suggestions|\(library.id)", topPadding: 8, sectionGap: 28, bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isLoading: model.isLoading(tab: .suggestions) && !model.hasSuggestionContent, emptyText: model.hasLoaded(tab: .suggestions) ? "暂无建议内容" : nil, error: model.errorMessage(for: .suggestions), isActive: suggestionSelection == nil, onRefresh: { completion in Task { await model.refresh(tab: .suggestions); completion() } }, top: EmptyView())
+            .background(
+                NavigationLink(isActive: Binding(get: { suggestionSelection != nil }, set: { if !$0 { suggestionSelection = nil } })) {
+                    if let item = suggestionSelection { EmbyPosterDetailDestination(item: item, client: client) }
+                    else { EmptyView() }
+                } label: { EmptyView() }
+                .hidden()
+            )
+    }
+
+    private var suggestionPosterSections: [EmbyPosterSection] {
+        var sections: [EmbyPosterSection] = []
+        if !model.suggestionResumeItems.isEmpty {
+            sections.append(EmbyPosterSection(id: "resume", title: "继续观看", items: model.suggestionResumeItems, client: client, style: .landscape, titleGap: 28, onSelect: { suggestionSelection = $0 }))
         }
-        .refreshable { await model.refresh(tab: .suggestions) }
+        if !model.suggestionLatestItems.isEmpty {
+            sections.append(EmbyPosterSection(id: "latest", title: model.latestSuggestionTitle, items: model.suggestionLatestItems, client: client, titleGap: 28, onSelect: { suggestionSelection = $0 }))
+        }
+        for section in model.recommendationSections {
+            sections.append(EmbyPosterSection(id: "recommendation|\(section.id)", title: model.title(for: section), items: section.items, client: client, titleGap: 28, onSelect: { suggestionSelection = $0 }))
+        }
+        if model.recommendationSections.isEmpty && !model.genericSuggestionItems.isEmpty {
+            sections.append(EmbyPosterSection(id: "generic", title: "推荐", items: model.genericSuggestionItems, client: client, titleGap: 28, onSelect: { suggestionSelection = $0 }))
+        }
+        return sections
     }
 
     private var genresTab: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                if model.isLoading(tab: .genres) && model.genres.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
-                } else if model.hasLoaded(tab: .genres) && model.genres.isEmpty {
-                    emptyState(text: "这个媒体库暂无类别")
-                } else {
-                    EmbyPosterGrid(items: model.genres) { genre in
-                        NavigationLink(destination: V3LibraryGenreGridView(library: library, genre: genre, client: client)) {
-                            V3LibraryGenreCard(item: genre, client: client)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                if let error = model.errorMessage(for: .genres) { errorText(error) }
-            }
-            .padding(.top, 8)
-            .serverDockContentPadding()
-        }
-        .refreshable { await model.refresh(tab: .genres) }
+        V3LibraryPosterPage(items: model.genres, revision: model.genreRevision, replacement: model.genreRevision, client: client,
+            destination: .genre(library: library), queryIdentity: "\(library.id)|genres", isLoading: model.isLoading(tab: .genres), hasLoaded: model.hasLoaded(tab: .genres),
+            error: model.errorMessage(for: .genres), emptyText: "这个媒体库暂无类别", onRefresh: { Task { await model.refresh(tab: .genres) } })
+            .id(V3LibraryTab.genres)
     }
 
     private var foldersTab: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                if model.isLoading(tab: .folders) && model.folderItems.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
-                } else if model.hasLoaded(tab: .folders) && model.folderItems.isEmpty {
-                    emptyState(text: "这个媒体库暂无文件夹内容")
-                } else {
-                    V3LibraryFolderGrid(items: model.folderItems, client: client)
-                }
-                if let error = model.errorMessage(for: .folders) { errorText(error) }
-            }
-            .padding(.top, 8)
-            .serverDockContentPadding()
-        }
-        .refreshable { await model.refresh(tab: .folders) }
+        V3LibraryPosterPage(items: model.folderItems, revision: model.folderRevision, replacement: model.folderRevision, client: client,
+            destination: .folders, queryIdentity: "\(library.id)|folders", isLoading: model.isLoading(tab: .folders), hasLoaded: model.hasLoaded(tab: .folders),
+            error: model.errorMessage(for: .folders), emptyText: "这个媒体库暂无文件夹内容", onRefresh: { Task { await model.refresh(tab: .folders) } })
+            .id(V3LibraryTab.folders)
     }
 
     private var sortMenu: some View {
@@ -224,26 +209,6 @@ struct V3LibraryBrowserView: View {
         Button { Task { await model.changeSort(to: key, tab: selectedTab) } } label: { if model.sortBy == key { Label(title, systemImage: "checkmark") } else { Text(title) } }
     }
 
-    private func suggestionSectionTitle(_ title: String) -> some View { Text(title).font(.system(size: 20, weight: .bold)).padding(.horizontal, 16) }
-
-    private func landscapeRow(_ items: [LibraryItem]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 12) {
-                ForEach(items) { item in EmbyPosterDetailLink(item: item, client: client) { V3LandscapeCard(item: item, client: client) }.frame(width: 212, alignment: .leading) }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
-    private func posterRow(_ items: [LibraryItem]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(alignment: .top, spacing: 12) {
-                ForEach(items) { item in EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: 118) }.frame(width: 118, alignment: .leading) }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
     private func emptyState(text: String) -> some View {
         VStack(spacing: 10) {
             Image(systemName: "rectangle.stack").font(.system(size: 28)).foregroundColor(.secondary)
@@ -258,13 +223,22 @@ struct V3LibraryBrowserView: View {
 
 @MainActor
 private final class V3LibraryBrowserViewModel: ObservableObject {
-    @Published private var tabItems: [V3LibraryTab: [LibraryItem]] = [:]
+    @Published private var tabItems: [V3LibraryTab: [LibraryItem]] = [:] { didSet { posterRevision += 1 } }
+    private(set) var posterRevision = 0
+    private(set) var posterReplacement = 0
     @Published var suggestionResumeItems: [LibraryItem] = []
     @Published var suggestionLatestItems: [LibraryItem] = []
     @Published var genericSuggestionItems: [LibraryItem] = []
     @Published var recommendationSections: [EmbyLibraryRecommendationSection] = []
-    @Published var genres: [LibraryItem] = []
-    @Published var folderItems: [LibraryItem] = []
+    @Published var genres: [LibraryItem] = [] { didSet { genreRevision += 1 } }
+    @Published var folderItems: [LibraryItem] = [] { didSet { folderRevision += 1 } }
+    private(set) var genreRevision = 0
+    private(set) var folderRevision = 0
+    private var tabRevisions: [V3LibraryTab: Int] = [:]
+    private var tabReplacements: [V3LibraryTab: Int] = [:]
+    private var liveTabSortBy: [V3LibraryTab: String] = [:]
+    private var liveCoverTabs = Set<V3LibraryTab>()
+    private var lastRequestedTab: V3LibraryTab?
     @Published var sortBy = "DateCreated"
     @Published private var loadingTabs = Set<V3LibraryTab>()
     @Published private var loadedTabs = Set<V3LibraryTab>()
@@ -274,11 +248,30 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     private let client: EmbyAPIClient
     private let pageSize = 60
     private var pageStates: [V3LibraryTab: V3LibraryPageState] = [:]
+    private var fetchGenerations: [V3LibraryTab: Int] = [:]
+    // Disk restoration and failed requests also populate loadedTabs; only a successful live response for this sort
+    // makes this page's ordinary reappearance safe to skip. Explicit refresh/sort keep their reset path.
+    private var liveItemsSortBy: String?
+    private let pageTraceID = String(UUID().uuidString.prefix(8))
+    private var pageTraceEvents = 0
 
     init(library: LibraryItem, client: EmbyAPIClient) {
         self.library = library
         self.client = client
-        guard let snapshot = V3PagePersistentCache.shared.librarySnapshot(client: client, libraryID: library.id) else { return }
+        restoration = Task { await V3PagePersistentCache.shared.restoreLibrary(client: client, libraryID: library.id) }
+    }
+
+    private var restoration: Task<(V3LibraryPersistentSnapshot, [String: Set<String>])?, Never>?
+
+    private func restoreIfNeeded() async {
+        guard let task = restoration else { return }
+        let restored = await task.value
+        guard restoration != nil else { return }
+        // Drop the completed future so the pre-refresh metadata snapshot is not retained for the page lifetime.
+        restoration = nil
+        guard let (snapshot, seen) = restored else { return }
+        posterReplacement += 1
+        for tab in [V3LibraryTab.trailers, .collections, .favorites] { tabRevisions[tab, default: 0] += 1; tabReplacements[tab, default: 0] += 1 }
         tabItems = Dictionary(uniqueKeysWithValues: snapshot.tabItems.compactMap { key, items in V3LibraryTab(rawValue: key).map { ($0, items) } })
         suggestionResumeItems = snapshot.suggestionResumeItems
         suggestionLatestItems = snapshot.suggestionLatestItems
@@ -290,13 +283,15 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         loadedTabs = Set(snapshot.loadedTabs.compactMap(V3LibraryTab.init(rawValue:)))
         for (rawTab, persisted) in snapshot.pageStates {
             guard let tab = V3LibraryTab(rawValue: rawTab) else { continue }
-            let items = tabItems[tab] ?? []
-            pageStates[tab] = V3LibraryPageState(nextStartIndex: persisted.nextStartIndex, hasMore: persisted.hasMore, isFetching: false, hasLoaded: loadedTabs.contains(tab), seenItemIDs: Set(items.map(\.id)))
+            pageStates[tab] = V3LibraryPageState(nextStartIndex: persisted.nextStartIndex, hasMore: persisted.hasMore, isFetching: false, hasLoaded: loadedTabs.contains(tab), seenItemIDs: seen[rawTab] ?? [])
         }
     }
 
     var hasSuggestionContent: Bool { !suggestionResumeItems.isEmpty || !suggestionLatestItems.isEmpty || !genericSuggestionItems.isEmpty || !recommendationSections.isEmpty }
     var latestSuggestionTitle: String { library.collectionType?.caseInsensitiveCompare("tvshows") == .orderedSame ? "最新剧集" : "最新电影" }
+
+    func revision(for tab: V3LibraryTab) -> Int { tab == .items ? posterRevision : tabRevisions[tab] ?? 0 }
+    func replacement(for tab: V3LibraryTab) -> Int { tab == .items ? posterReplacement : tabReplacements[tab] ?? 0 }
 
     func items(for tab: V3LibraryTab) -> [LibraryItem] { tabItems[tab] ?? [] }
     func isLoading(tab: V3LibraryTab) -> Bool { loadingTabs.contains(tab) }
@@ -305,7 +300,13 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     func hasMore(tab: V3LibraryTab) -> Bool { pageStates[tab]?.hasMore ?? false }
 
     func load(tab: V3LibraryTab) async {
+        await restoreIfNeeded()
         guard !isLoading(tab: tab) else { return }
+        let samePage = lastRequestedTab == tab
+        lastRequestedTab = tab
+        if tab == .items && liveItemsSortBy == sortBy { return }
+        // A push/pop keeps this successful query, while an explicit tab switch retains its original reload.
+        if samePage && (liveTabSortBy[tab] == sortBy || liveCoverTabs.contains(tab)) { return }
         switch tab {
         case .items, .trailers, .collections, .favorites: await fetchPage(tab: tab, reset: true)
         case .suggestions: await loadSuggestions(force: true)
@@ -315,6 +316,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     }
 
     func refresh(tab: V3LibraryTab) async {
+        await restoreIfNeeded()
         guard !isLoading(tab: tab) else { return }
         switch tab {
         case .items, .trailers, .collections, .favorites: await fetchPage(tab: tab, reset: true)
@@ -325,23 +327,26 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     }
 
     func loadNextPage(tab: V3LibraryTab) async {
+        await restoreIfNeeded()
         guard [.items, .trailers, .collections, .favorites].contains(tab), hasLoaded(tab: tab), hasMore(tab: tab), !isLoading(tab: tab) else { return }
         await fetchPage(tab: tab, reset: false)
     }
 
     func changeSort(to key: String, tab: V3LibraryTab) async {
+        await restoreIfNeeded()
         guard tab.supportsSorting, key != sortBy else { return }
         sortBy = key
-        await fetchPage(tab: tab, reset: true)
+        await fetchPage(tab: tab, reset: true, supersede: true)
     }
 
     func refreshUserData(itemID: String) async {
+        await restoreIfNeeded()
         guard !loadedTabs.isEmpty else { return }
         do {
             let refreshed = try await client.libraryItem(itemId: itemID)
             replaceEverywhere(refreshed)
             if let seriesID = refreshed.seriesId, seriesID != refreshed.id, let refreshedSeries = try? await client.libraryItem(itemId: seriesID) { replaceEverywhere(refreshedSeries) }
-            persistSnapshot()
+            await persistSnapshot()
         } catch {
             if !isEmbyRequestCancellation(error) { DiagnosticsLogger.shared.log("Library", "userdata refresh failed item=\(itemID): \(error.localizedDescription)") }
         }
@@ -372,22 +377,40 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         }
     }
 
-    private func fetchPage(tab: V3LibraryTab, reset: Bool) async {
-        guard !loadingTabs.contains(tab) else { return }
+    private func fetchPage(tab: V3LibraryTab, reset: Bool, supersede: Bool = false) async {
+        guard !loadingTabs.contains(tab) || supersede else { return }
+        let generation = (fetchGenerations[tab] ?? 0) + 1
+        fetchGenerations[tab] = generation
         var state = pageStates[tab] ?? V3LibraryPageState()
         guard reset || state.hasMore else { return }
         loadingTabs.insert(tab)
         errorMessages[tab] = nil
         let start = reset ? 0 : state.nextStartIndex
-        defer { loadingTabs.remove(tab); loadedTabs.insert(tab) }
+        let started = ProcessInfo.processInfo.systemUptime
+        let tracePage: (String) -> Void = { [self] stage in
+            guard tab == .items, pageTraceEvents < 2048 else { return }
+            pageTraceEvents += 1
+            let now = ProcessInfo.processInfo.systemUptime
+            DiagnosticsLogger.shared.log("PosterWall", "event=page-\(stage) model=\(pageTraceID) generation=\(generation) current=\(fetchGenerations[tab] == generation ? 1 : 0) uptime=\(now) elapsed_ms=\((now - started) * 1000) start=\(start) reset=\(reset ? 1 : 0) count=\(tabItems[tab]?.count ?? 0) revision=\(posterRevision) replacement=\(posterReplacement) loading=\(loadingTabs.contains(tab) ? 1 : 0) frontier=\(pageStates[tab]?.nextStartIndex ?? 0)")
+        }
+        tracePage("request")
+        defer {
+            if fetchGenerations[tab] == generation { loadingTabs.remove(tab); loadedTabs.insert(tab) }
+            tracePage("finish")
+        }
         do {
             let query = spec(for: tab)
-            let page = try await client.libraryHubItemsPage(parentId: library.id, limit: pageSize, startIndex: start, recursive: true, sortBy: sortBy, includeItemTypes: query.types, filters: query.filters)
+            let requestedSortBy = sortBy
+            let page = try await client.libraryHubItemsPage(parentId: library.id, limit: pageSize, startIndex: start, recursive: true, sortBy: requestedSortBy, includeItemTypes: query.types, filters: query.filters)
+            tracePage("response")
+            guard fetchGenerations[tab] == generation else { return }
             let allowed = Set(query.types.map { $0.lowercased() })
             let filtered = page.items.filter { allowed.isEmpty || allowed.contains($0.type?.lowercased() ?? "") }
             if reset {
                 var seen = Set<String>()
                 let unique = filtered.filter { seen.insert($0.id).inserted }
+                if tab == .items { posterReplacement += 1 }
+                else { tabReplacements[tab, default: 0] += 1 }
                 tabItems[tab] = unique
                 state = V3LibraryPageState(nextStartIndex: page.items.count, hasMore: page.totalRecordCount.map { page.items.count < $0 } ?? (page.items.count == pageSize), isFetching: false, hasLoaded: true, seenItemIDs: seen)
             } else {
@@ -399,8 +422,14 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             }
             pageStates[tab] = state
             loadedTabs.insert(tab)
-            persistSnapshot()
+            if tab == .items { liveItemsSortBy = requestedSortBy }
+            else { tabRevisions[tab, default: 0] += 1; liveTabSortBy[tab] = requestedSortBy }
+            tracePage("published")
+            await persistSnapshot()
+            tracePage("persisted")
         } catch {
+            tracePage("error")
+            guard fetchGenerations[tab] == generation else { return }
             if !isEmbyRequestCancellation(error) { errorMessages[tab] = error.localizedDescription }
         }
     }
@@ -423,7 +452,7 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         if let latest { suggestionLatestItems = latest; didUpdate = true }
         if let generic { genericSuggestionItems = generic; didUpdate = true }
         if let recommendations { recommendationSections = recommendations; didUpdate = true }
-        if didUpdate { loadedTabs.insert(.suggestions); persistSnapshot() }
+        if didUpdate { loadedTabs.insert(.suggestions); await persistSnapshot() }
     }
 
     private var suggestionResumeTypes: [String] {
@@ -450,8 +479,9 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         defer { loadingTabs.remove(.genres); loadedTabs.insert(.genres) }
         do {
             genres = try await client.libraryGenres(parentId: library.id, includeItemTypes: expectedItemTypes)
+            liveCoverTabs.insert(.genres)
             loadedTabs.insert(.genres)
-            persistSnapshot()
+            await persistSnapshot()
         } catch { if !isEmbyRequestCancellation(error) { errorMessages[.genres] = error.localizedDescription } }
     }
 
@@ -462,12 +492,13 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
         defer { loadingTabs.remove(.folders); loadedTabs.insert(.folders) }
         do {
             folderItems = try await client.libraryFolderChildren(parentId: library.id)
+            liveCoverTabs.insert(.folders)
             loadedTabs.insert(.folders)
-            persistSnapshot()
+            await persistSnapshot()
         } catch { if !isEmbyRequestCancellation(error) { errorMessages[.folders] = error.localizedDescription } }
     }
 
-    private func persistSnapshot() {
+    private func persistSnapshot() async {
         let persistedItems = Dictionary(uniqueKeysWithValues: tabItems.map { ($0.key.rawValue, $0.value) })
         let persistedStates = Dictionary(uniqueKeysWithValues: pageStates.map { ($0.key.rawValue, V3PersistedPageState(nextStartIndex: $0.value.nextStartIndex, hasMore: $0.value.hasMore)) })
         let snapshot = V3LibraryPersistentSnapshot(
@@ -482,13 +513,15 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
             loadedTabs: Set(loadedTabs.map(\.rawValue)),
             pageStates: persistedStates
         )
-        V3PagePersistentCache.shared.storeLibrarySnapshot(snapshot, client: client, libraryID: library.id)
+        await V3PagePersistentCache.shared.storeLibrarySnapshot(snapshot, client: client, libraryID: library.id)
     }
 
     private func replaceEverywhere(_ refreshed: LibraryItem) {
         for tab in [V3LibraryTab.items, .trailers, .collections, .favorites] {
             guard var values = tabItems[tab], let index = values.firstIndex(where: { $0.id == refreshed.id }) else { continue }
             values[index] = refreshed
+            if tab == .items { posterReplacement += 1 }
+            else { tabReplacements[tab, default: 0] += 1; tabRevisions[tab, default: 0] += 1 }
             tabItems[tab] = values
         }
         if let index = suggestionResumeItems.firstIndex(where: { $0.id == refreshed.id }) { suggestionResumeItems[index] = refreshed }
@@ -505,23 +538,49 @@ private final class V3LibraryBrowserViewModel: ObservableObject {
     }
 }
 
-private struct V3LibraryGenreCard: View {
-    @Environment(\.embyPosterGridCellWidth) private var gridCellWidth
-    let item: LibraryItem
+private enum V3LibraryPosterDestination {
+    case media
+    case genre(library: LibraryItem)
+    case folders
+
+    var content: EmbyPosterWallContent {
+        switch self { case .media: return .media; case .genre: return .genres; case .folders: return .folders }
+    }
+}
+
+// Each result page owns one persistent system link and one native wall; it owns no query or image cache.
+private struct V3LibraryPosterPage: View {
+    let items: [LibraryItem]
+    let revision: Int
+    let replacement: Int
     let client: EmbyAPIClient
-    private var width: CGFloat { gridCellWidth ?? 118 }
-    private var height: CGFloat { floor(width / EmbyPosterGridMetrics.posterAspectRatio) }
+    var destination: V3LibraryPosterDestination = .media
+    let queryIdentity: String
+    let isLoading: Bool
+    let hasLoaded: Bool
+    let error: String?
+    let emptyText: String
+    var onApproachingEnd: () -> Void = {}
+    let onRefresh: () -> Void
+    @State private var selection: LibraryItem?
+    @Environment(\.serverDockBottomInset) private var dockBottomInset
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            EmbyCachedRemoteImage(url: client.imageURL(itemId: item.id, maxWidth: max(1, Int(ceil(width * UIScreen.main.scale))), tag: item.primaryImageTag), contentMode: .fill, placeholderSystemImage: "rectangle.stack.fill", showsLoadingIndicator: false)
-                .frame(width: width, height: height)
-                .clipped()
-                .background(Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            Text(item.name).font(.subheadline).foregroundColor(.primary).lineLimit(1).frame(width: width, height: 20, alignment: .leading)
-        }
-        .frame(width: width, alignment: .leading)
+        EmbyPosterWall(items: items, revision: revision, replacement: replacement, client: client, content: destination.content, queryIdentity: queryIdentity,
+            isLoading: isLoading, hasLoaded: hasLoaded, error: error, emptyText: emptyText,
+            bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isActive: selection == nil,
+            onApproachingEnd: onApproachingEnd, onRefresh: onRefresh, onSelect: { if selection == nil { selection = $0 } })
+            .background(NavigationLink(destination: Group {
+                if let item = selection {
+                    switch destination {
+                    case .genre(let library): V3LibraryGenreGridView(library: library, genre: item, client: client)
+                    case .folders:
+                        if v3LibraryIsBrowsableFolder(item) { V3LibraryFolderBrowserView(folder: item, client: client) }
+                        else { EmbyPosterDetailDestination(item: item, client: client) }
+                    case .media: EmbyPosterDetailDestination(item: item, client: client)
+                    }
+                } else { EmptyView() }
+            }, isActive: Binding(get: { selection != nil }, set: { if !$0 { selection = nil } })) { EmptyView() }.frame(width: 0, height: 0).hidden())
     }
 }
 
@@ -539,32 +598,23 @@ private struct V3LibraryGenreGridView: View {
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                if model.isLoading && model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.top, 44) }
-                else {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: { guard model.hasMore else { return }; Task { await model.loadNextPage() } }) { item in
-                        EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) }
-                    }
-                }
-                if let error = model.errorMessage { Text(error).foregroundColor(.red).font(.footnote).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
-            }
-            .padding(.top, 8)
-            .serverDockContentPadding()
-        }
+        V3LibraryPosterPage(items: model.items, revision: model.posterRevision, replacement: model.posterReplacement, client: client,
+            queryIdentity: "\(library.id)|genre|\(genre.name)", isLoading: model.isLoading, hasLoaded: model.hasLoaded, error: model.errorMessage, emptyText: "这个类别暂无内容",
+            onApproachingEnd: { if model.hasMore { Task { await model.loadNextPage() } } }, onRefresh: { Task { await model.refresh() } })
         .navigationTitle(genre.name)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .serverDockPage()
         .nativeInteractivePop()
-        .refreshable { await model.refresh() }
         .onAppear { if !model.hasLoaded { Task { await model.refresh() } } }
     }
 }
 
 @MainActor
 private final class V3LibraryGenreGridViewModel: ObservableObject {
-    @Published var items: [LibraryItem] = []
+    @Published var items: [LibraryItem] = [] { didSet { posterRevision += 1 } }
+    private(set) var posterRevision = 0
+    private(set) var posterReplacement = 0
     @Published var isLoading = false
     @Published var errorMessage: String?
     private(set) var hasMore = true
@@ -586,6 +636,7 @@ private final class V3LibraryGenreGridViewModel: ObservableObject {
         do {
             let page = try await client.libraryHubItemsPage(parentId: library.id, limit: pageSize, startIndex: 0, recursive: true, sortBy: "SortName", sortOrder: "Ascending", includeItemTypes: expectedTypes, genres: [genre.name])
             var refreshedSeen = Set<String>()
+            posterReplacement += 1
             items = page.items.filter { refreshedSeen.insert($0.id).inserted }
             seen = refreshedSeen
             nextStartIndex = page.items.count
@@ -619,45 +670,6 @@ private final class V3LibraryGenreGridViewModel: ObservableObject {
 
 private func v3LibraryIsBrowsableFolder(_ item: LibraryItem) -> Bool { ["folder", "collectionfolder"].contains(item.type?.lowercased() ?? "") }
 
-private struct V3LibraryFolderGrid: View {
-    let items: [LibraryItem]
-    let client: EmbyAPIClient
-
-    var body: some View {
-        EmbyPosterGrid(items: items) { item in
-            if v3LibraryIsBrowsableFolder(item) {
-                NavigationLink(destination: V3LibraryFolderBrowserView(folder: item, client: client)) { V3LibraryFolderCard(item: item, client: client) }.buttonStyle(.plain)
-            } else {
-                EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) }
-            }
-        }
-    }
-}
-
-private struct V3LibraryFolderCard: View {
-    @Environment(\.embyPosterGridCellWidth) private var gridCellWidth
-    let item: LibraryItem
-    let client: EmbyAPIClient
-    private var width: CGFloat { gridCellWidth ?? 118 }
-    private var height: CGFloat { floor(width / EmbyPosterGridMetrics.posterAspectRatio) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ZStack(alignment: .topLeading) {
-                EmbyCachedRemoteImage(url: client.imageURL(itemId: item.id, maxWidth: max(1, Int(ceil(width * UIScreen.main.scale))), tag: item.primaryImageTag), contentMode: .fill, placeholderSystemImage: "folder.fill", showsLoadingIndicator: false)
-                    .frame(width: width, height: height)
-                    .clipped()
-                Image(systemName: "folder.fill").font(.caption.weight(.semibold)).foregroundColor(.white).padding(6).background(Color.black.opacity(0.55)).clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous)).padding(6)
-            }
-            .frame(width: width, height: height)
-            .background(Color(uiColor: .secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            Text(item.name).font(.subheadline).foregroundColor(.primary).lineLimit(1).frame(width: width, height: 20, alignment: .leading)
-        }
-        .frame(width: width, alignment: .leading)
-    }
-}
-
 private struct V3LibraryFolderBrowserView: View {
     let folder: LibraryItem
     let client: EmbyAPIClient
@@ -670,28 +682,22 @@ private struct V3LibraryFolderBrowserView: View {
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                if model.isLoading && model.items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.top, 44) }
-                else { V3LibraryFolderGrid(items: model.items, client: client) }
-                if let error = model.errorMessage { Text(error).foregroundColor(.red).font(.footnote).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
-            }
-            .padding(.top, 8)
-            .serverDockContentPadding()
-        }
+        V3LibraryPosterPage(items: model.items, revision: model.posterRevision, replacement: model.posterRevision, client: client,
+            destination: .folders, queryIdentity: "folder|\(folder.id)", isLoading: model.isLoading, hasLoaded: model.hasLoaded, error: model.errorMessage,
+            emptyText: "这个文件夹暂无内容", onRefresh: { Task { await model.load(force: true) } })
         .navigationTitle(folder.name)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .serverDockPage()
         .nativeInteractivePop()
-        .refreshable { await model.load(force: true) }
         .onAppear { if !model.hasLoaded { Task { await model.load() } } }
     }
 }
 
 @MainActor
 private final class V3LibraryFolderBrowserViewModel: ObservableObject {
-    @Published var items: [LibraryItem] = []
+    @Published var items: [LibraryItem] = [] { didSet { posterRevision += 1 } }
+    private(set) var posterRevision = 0
     @Published var isLoading = false
     @Published var errorMessage: String?
     private(set) var hasLoaded = false
@@ -711,9 +717,13 @@ private final class V3LibraryFolderBrowserViewModel: ObservableObject {
 }
 
 struct V3EmbyFavoritesView: View {
+    @Environment(\.serverDockBottomInset) private var dockBottomInset
     let client: EmbyAPIClient
     let onClose: () -> Void
     @StateObject private var model: V3FavoritesViewModel
+    @State private var selectedItem: LibraryItem?
+    @State private var selectedPerson: LibraryItem?
+    @State private var selectedCategory: String?
 
     init(client: EmbyAPIClient, onClose: @escaping () -> Void) {
         self.client = client
@@ -723,73 +733,44 @@ struct V3EmbyFavoritesView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 28) {
-                    V3PageHeader(title: "收藏", onClose: onClose)
-                    favoriteMediaSection("电影", items: model.sections.movies, includeItemType: "Movie")
-                    favoriteMediaSection("剧集", items: model.sections.series, includeItemType: "Series")
-                    favoriteMediaSection("集", items: model.sections.episodes, includeItemType: "Episode")
-                    favoritePeopleSection
-                    if model.isLoading { ProgressView().frame(maxWidth: .infinity) }
-                    if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
-                }
-                .serverDockContentPadding()
-            }
-            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-            .serverDockPage()
-            .refreshable { await model.load() }
-            .onAppear { Task { await model.load() } }
-            .navigationBarHidden(true)
+            EmbyPosterSections(sections: favoritePosterSections, queryIdentity: "favorites", topHeight: V3ServerHeaderMetrics.controlHeight + V3ServerHeaderMetrics.bottomPadding, topPadding: 28, sectionGap: 28, bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isLoading: model.isLoading, error: model.errorMessage, isActive: selectedItem == nil && selectedPerson == nil && selectedCategory == nil, onRefresh: { completion in Task { await model.load(); completion() } }, top: V3PageHeader(title: "收藏", onClose: onClose))
+                .background(favoritePosterNavigation)
+                .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+                .serverDockPage()
+                .onAppear { Task { await model.load() } }
+                .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
 
-    @ViewBuilder
-    private func favoriteMediaSection(_ title: String, items: [LibraryItem], includeItemType: String) -> some View {
-        if !items.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                favoriteSectionHeader(title: title, includeItemType: includeItemType, isPeople: false)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: 12) {
-                        ForEach(items.prefix(20)) { item in
-                            EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: 118) }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                }
-            }
+    private var favoritePosterSections: [EmbyPosterSection] {
+        var sections: [EmbyPosterSection] = []
+        for (type, title, items) in [("Movie", "电影", model.sections.movies), ("Series", "剧集", model.sections.series), ("Episode", "集", model.sections.episodes), ("Person", "演员", model.sections.people)] where !items.isEmpty {
+            sections.append(EmbyPosterSection(id: type, title: title, items: Array(items.prefix(20)), client: client, style: type == "Person" ? .person : .poster, onMore: { selectedCategory = type }, onSelect: { item in
+                if type == "Person" { selectedPerson = item } else { selectedItem = item }
+            }))
         }
+        return sections
     }
 
-    @ViewBuilder
-    private var favoritePeopleSection: some View {
-        if !model.sections.people.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                favoriteSectionHeader(title: "演员", includeItemType: "Person", isPeople: true)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: 12) {
-                        ForEach(model.sections.people.prefix(20)) { person in V3FavoritePersonLink(item: person, client: client, width: 118) }
-                    }
-                    .padding(.horizontal, 16)
-                }
-            }
+    private var favoritePosterNavigation: some View {
+        ZStack {
+            NavigationLink(isActive: Binding(get: { selectedItem != nil }, set: { if !$0 { selectedItem = nil } })) {
+                if let item = selectedItem { EmbyPosterDetailDestination(item: item, client: client) } else { EmptyView() }
+            } label: { EmptyView() }
+            NavigationLink(isActive: Binding(get: { selectedPerson != nil }, set: { if !$0 { selectedPerson = nil } })) {
+                if let item = selectedPerson { EmbyPersonMediaView(person: EmbyPerson(itemId: item.id, name: item.name, role: nil, type: item.type, primaryImageTag: item.primaryImageTag), client: client) } else { EmptyView() }
+            } label: { EmptyView() }
+            NavigationLink(isActive: Binding(get: { selectedCategory != nil }, set: { if !$0 { selectedCategory = nil } })) {
+                if let type = selectedCategory { V3FavoriteCategoryGridView(title: type == "Movie" ? "电影" : (type == "Series" ? "剧集" : (type == "Episode" ? "集" : "演员")), includeItemType: type, client: client, isPeople: type == "Person") } else { EmptyView() }
+            } label: { EmptyView() }
         }
-    }
-
-    private func favoriteSectionHeader(title: String, includeItemType: String, isPeople: Bool) -> some View {
-        HStack {
-            Text(title).font(.system(size: 20, weight: .bold))
-            Spacer()
-            NavigationLink(destination: V3FavoriteCategoryGridView(title: title, includeItemType: includeItemType, client: client, isPeople: isPeople)) {
-                Text("更多").font(.system(size: 16, weight: .regular)).foregroundColor(.blue)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
+        .frame(width: 0, height: 0).hidden().allowsHitTesting(false)
     }
 }
 
 private struct V3FavoriteCategoryGridView: View {
+    @Environment(\.serverDockBottomInset) private var dockBottomInset
     let title: String
     let includeItemType: String
     let client: EmbyAPIClient
@@ -805,24 +786,10 @@ private struct V3FavoriteCategoryGridView: View {
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                if model.isInitialLoading && model.items.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
-                } else {
-                    EmbyPosterGrid(items: model.items, onApproachingEnd: {
-                        guard model.hasMore else { return }
-                        Task { await model.loadNextPage() }
-                    }) { item in
-                        if isPeople { V3FavoritePersonLink(item: item, client: client, width: nil) }
-                        else { EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: nil) } }
-                    }
-                }
-                if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, EmbyPosterGridMetrics.horizontalPadding) }
-            }
-            .padding(.top, 8)
-            .serverDockContentPadding()
-        }
+        EmbyPosterResultsPage(items: model.items, revision: model.posterRevision, replacement: model.posterReplacement, client: client, content: isPeople ? .people : .media, queryIdentity: "favorite|\(includeItemType)", isLoading: model.isInitialLoading, hasLoaded: model.hasLoaded, error: model.errorMessage, emptyText: "暂无收藏", bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), onApproachingEnd: {
+            guard model.hasMore else { return }
+            Task { await model.loadNextPage() }
+        })
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
@@ -845,12 +812,15 @@ private final class V3FavoriteCategoryGridViewModel: ObservableObject {
     private var isFetching = false
     private var seenItemIDs = Set<String>()
     private(set) var hasLoaded = false
+    private(set) var posterRevision = 0
+    private(set) var posterReplacement = 0
 
     init(includeItemType: String, client: EmbyAPIClient) { self.includeItemType = includeItemType; self.client = client }
 
     func reload() async {
         guard !isFetching else { return }
         items = []
+        posterReplacement += 1; posterRevision += 1
         seenItemIDs.removeAll(keepingCapacity: true)
         nextStartIndex = 0
         hasMore = true
@@ -877,7 +847,7 @@ private final class V3FavoriteCategoryGridViewModel: ObservableObject {
         do {
             let page = try await client.favoriteBrowsePage(includeItemTypes: [includeItemType], limit: pageSize, startIndex: start)
             let newItems = page.items.filter { seenItemIDs.insert($0.id).inserted }
-            if !newItems.isEmpty { items.append(contentsOf: newItems) }
+            if !newItems.isEmpty { items.append(contentsOf: newItems); posterRevision += 1 }
             nextStartIndex = start + page.items.count
             if let total = page.totalRecordCount { hasMore = nextStartIndex < total }
             else { hasMore = page.items.count == pageSize }
