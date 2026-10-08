@@ -1,13 +1,13 @@
 # DEV-poster-grid-smoothness
 
-## Current identity — Build303 P5 80 fresh regressions passed; UI/Release/IPA next
+## Current identity — Build303 P5 all92 fresh regressions passed; Release/IPA next
 
 - Status: Active; user authorized continuing existing task.302 IPA delivered, target-device302 pending. Cache decoupling deferred.
 - Work ID / aliases: DEV-poster-grid-smoothness / 海报墙 / 库页海报 / 海报网格流畅度
 - Branch / PR: perf/poster-wall-library-build295 / Draft PR292 open/unmerged; verified working/tested source 1fdca1f8f2765bd1660330945e167dedecf5e418. CI control 69121d5b5156745b91e86299f86ce1916e1ac8c0 / dedicated run 37751337210 /job113225034414 in progress.
 - Baseline tested source: dced392bbf2e3960539890121cf7d6e9d8f80e86 / Build302 /0.15.35. New unique candidate303 /0.15.36 /poster-sections /MinOS15.0; CI/IPA not yet produced.
 - Completed: G01 tuning and P3/P4 code/CI/verified IPA; P5 definitions/call-site/state-owner audit. Accepted overall294 unchanged.
-- Validation:52 poster+10 detail+18 fresh Dock/carousel passed;12 native UI in progress. Pending Release/MinOS/identity/actual303 IPA and P6 device/resources/scale.
+- Validation:52 poster+10 detail+12 native UI+18 fresh Dock/carousel passed (92/0); Release/dependencies in progress. Pending MinOS/identity/actual303 IPA and P6 device/resources/scale.
 - Next exact action: publish this scoped P5 implementation, then exact-source macOS CI/Release and independently verified actual IPA. No intermediate continue gate. Protect G01/P3/P4/detail/H05/P0/image budgets and Aether235 isolation.
 
 ## Previous milestones
@@ -644,3 +644,7 @@ Product source **1fdca1f8f2765bd1660330945e167dedecf5e418**, CI control **69121d
 ## Build303 native unit milestone — 80 fresh regressions passed
 
 Dedicated run37751337210/job113225034414 on control69121d5b5156745b91e86299f86ce1916e1ac8c0 against exact product1fdca1f8f2765bd1660330945e167dedecf5e418: source/scope/whitespace/iOS15 guards passed; fresh18 production Dock/carousel +10 detail/cache +52 poster/adapter/Search/P5 units completed/success (80 total). Includes original variants/specs/source identity, same publication/geometry/request-memo/native return, row reuse/offset/latest callback, query replacement, shared12prefetch cap, first-screen/task cap, actual Home offset/owned-refresh coordinators and wide-cell stale-image binding. Twelve native UI tests in progress; full Release/package/IPA/device not yet passed. Continue this actual job through UI/Release/identity/package and verified file handoff.
+
+## Build303 all92 fresh regressions passed; Release/package next
+
+Run37751337210/job113225034414 completed all test steps successfully on exact product1fdca1f8f2765bd1660330945e167dedecf5e418 /control69121d5b5156745b91e86299f86ce1916e1ac8c0:52poster/adapter/Search/P5 +10detail/cache +12native UI +18freshDock/carousel =92,0failures. New native UI cases cover reusable vertical/horizontal mixed layout, deep native detail return and product top command; actual Favorites root preview→detail,Movie more→grid and Person→works. Original ten Library/P3/P4/Search/native inertia/pop cases rerun. Section UI's Hero visual is explicitly fixed fixture; Home production root/model/Carousel source awaits full app Release and actual device coverage, not implied by fixture. Full original Home viewport/nativeCarousel and bridge sources remain byte-guarded; actual offset/owned-refresh coordinators passed native units. Release/dependencies in progress; no actual303 IPA yet. Continue directly through Release, package and independent source/Artifact/IPA/MinOS identity check.
