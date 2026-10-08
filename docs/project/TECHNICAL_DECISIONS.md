@@ -814,6 +814,14 @@ H01–H04 implementation is complete: Home, Library suggestions, Favorites previ
 
 Normal Home/Library suggestions pass initial-spinner-only loading flags; existing metadata therefore cannot determine whether an async pull refresh finished. The native section refresh control ends only when the original page async task invokes its completion callback. Native unit and physical pull UI passed. Immersive Home retains its original owned-refresh coordinator; no second refresh/model/Hero offset owner, artificial inertia or offset correction is added.
 
+**Closing branch identity:** feature/PR292 head 354f71741c668ef4a10642cf69fb3dc6da723796, documents-only descendant of tested/package source0b5ce25bcec0a4d0240891913ad17114b02cf10e. Closing changes are seven project documents plus the303 changelog; no runtime changed. Main closing update contains only the seven project documents. Actual final IPA extraction, local byte verification and persistent file delivery preparation completed on2026-10-08; target-device/P6 acceptance remains pending.
+
 ## Build303 partial runtime log review — 2026-10-08 18:52 Asia/Shanghai
 
 User supplied OnePlayer-App-1791456675.log, confirmed0.15.36/303. Home22 sections and two Library suggestion hosts5/6 sections recorded23 nonoverlapping motion batches/9834 delivered display-link intervals, max18.044ms, >=25/>=33.3 counts0. Single configure/imageAdopt max0.903/0.327ms, section apply max6.421ms. Home native return-top offset0 and two Home→Library→Home roundtrips retained519.667/532pt. This is positive captured H01/H02 motion evidence, not presented-FPS or full-entry acceptance. No detail/favorites/multi-server Search, refresh lifecycle, pressure/background or broad-scale coverage in this log. User has not explicitly accepted303. Keep303 unchanged; no evidence-backed new patch/Build/CI. Task Active/Draft/unmerged; cache route identity migration deferred.
+
+## 海报墙任务验收通过 — 2026-10-08 18:58 Asia/Shanghai
+
+用户明确裁决：**“那么该任务可以验收通过了”**。DEV-poster-grid-smoothness按交付的OnePlayer0.15.36/Build303正式完成，G01–G15及H01–H04共享原生海报展示、按需图片准备和导航/分页合同成为当前接受基线；H05详情横向区保留原合同。此前用户已接受G01调优、301部分结果页测试，最新303日志9834个运动间隔max18.044ms且>=25/33.3为0。此裁决是任务级验收，不把未独立测量的5000项/内存压力/后台恢复/所有入口矩阵追认成测试通过；保留这些证据限制，不继续作为本任务Active阻塞项。
+
+接受包精确源码0b5ce25bcec0a4d0240891913ad17114b02cf10e；run37754814214/job113236645278成功，84项本轮回归与10项保留导航证据，Release及独立包/源码/MinOS15.0核验通过。Artifact11540607336，IPASHA256b3ebb081dcbe1e20de02565faaa6e5f4d67891922c6f0d55248bf7cd959842de。PR292 integration pending. 合并前完整Git树核对：main从共同基线只改7份项目资料；feature的所有非docs文件均与已验收精确源码一致。仅解决同步文档差异，不改变运行时代码/测试依赖，无需另出IPA或重跑未变化输入。跨Wi-Fi/流量线路图片缓存共享按用户原决定暂缓，作为后续问题保留，不宣称已解决。不影响独立Aether235任务及播放器/传输/P0、293轮播、294Dock冻结合同。

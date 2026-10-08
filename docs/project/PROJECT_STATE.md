@@ -1,8 +1,16 @@
 # OnePlayer Project State
 
-_Last updated2026-10-08: G01 long-frame tuning accepted in recorded scope; P3/P4/P5 production adapters complete, Build303 actual artifact independently verified. Direct IPA attachment blocked by execution-service outage; P6/device acceptance pending. Accepted overall294 unchanged._
+_Last updated2026-10-08: 用户明确验收海报墙任务。当前接受产品为OnePlayer0.15.36/Build303；资料已归档，PR292 integration pending. 任务级通过与各项日志测量范围分别记录，跨线路图片缓存共享暂缓。_
 
-## Current accepted overall baseline
+## Current accepted overall baseline — Build303
+
+- Product: **OnePlayer0.15.36 /Build303**, accepted on2026-10-08 by explicit user task acceptance.
+- Tested/package source: **0b5ce25bcec0a4d0240891913ad17114b02cf10e**; CI **37754814214 /113236645278 success**.
+- Artifact **11540607336**; IPA SHA256 **b3ebb081dcbe1e20de02565faaa6e5f4d67891922c6f0d55248bf7cd959842de**; MinOS **15.0**.
+- Evidence: Code written /84fresh+10retained regressions /Release CI passed /IPA independently verified and delivered /user runtime log reviewed /explicit task accepted /poster Stable-frozen. PR292 integration pending.
+- Scope: G01–G15/H01–H04 native poster hosts; original query/frontier/navigation/cache ownership retained;293carousel/294Dock/P0 remain protected. Unmeasured resource/full-entry scenarios are not declared tested. Cross-route image-cache sharing remains deferred.
+
+## Previous accepted overall baseline — Build294
 
 - Product: **OnePlayer0.15.27 / Build294** — independent server Dock acceptance milestone
 - Canonical branch: **main**, PR **#291**, merge **cbea35bbdca027cf734a17370a93da106c545863**
@@ -686,6 +694,14 @@ H01–H04 implementation is complete: Home, Library suggestions, Favorites previ
 
 **State/next:** G01 accepted tuning, P3 G02–G08/P4 G09–G15/P5 H01–H04 code/CI/actual artifact complete; Task Active, Draft PR292 open/unmerged/not whole-task Stable/frozen. Main remains documents only; accepted overall294 unchanged, Aether235 isolated. After delivering this exact303 actualIPA, prioritize target15ProMax/iOS17 Home carousel on/off, vertical/horizontal mixed scrolling, refresh/top/detail return, Library suggestions, Favorites media/Person/more, multi-server client/term and prior Search landing lifecycle. Generic section UI Hero is a fixed visual fixture; production Home compiles in Release, actual device remains unverified. P6 broader2000/5000/resource pressure/background/first-presented bitmap and uncovered entry matrix remains. H05 audit-only. Cross-Wi-Fi/cellular cache identity migration remains deferred per user priority.
 
+**Closing branch identity:** feature/PR292 head 354f71741c668ef4a10642cf69fb3dc6da723796, documents-only descendant of tested/package source0b5ce25bcec0a4d0240891913ad17114b02cf10e. Closing changes are seven project documents plus the303 changelog; no runtime changed. Main closing update contains only the seven project documents. Actual final IPA extraction, local byte verification and persistent file delivery preparation completed on2026-10-08; target-device/P6 acceptance remains pending.
+
 ## Build303 partial runtime log review — 2026-10-08 18:52 Asia/Shanghai
 
 User supplied OnePlayer-App-1791456675.log, confirmed0.15.36/303. Home22 sections and two Library suggestion hosts5/6 sections recorded23 nonoverlapping motion batches/9834 delivered display-link intervals, max18.044ms, >=25/>=33.3 counts0. Single configure/imageAdopt max0.903/0.327ms, section apply max6.421ms. Home native return-top offset0 and two Home→Library→Home roundtrips retained519.667/532pt. This is positive captured H01/H02 motion evidence, not presented-FPS or full-entry acceptance. No detail/favorites/multi-server Search, refresh lifecycle, pressure/background or broad-scale coverage in this log. User has not explicitly accepted303. Keep303 unchanged; no evidence-backed new patch/Build/CI. Task Active/Draft/unmerged; cache route identity migration deferred.
+
+## 海报墙任务验收通过 — 2026-10-08 18:58 Asia/Shanghai
+
+用户明确裁决：**“那么该任务可以验收通过了”**。DEV-poster-grid-smoothness按交付的OnePlayer0.15.36/Build303正式完成，G01–G15及H01–H04共享原生海报展示、按需图片准备和导航/分页合同成为当前接受基线；H05详情横向区保留原合同。此前用户已接受G01调优、301部分结果页测试，最新303日志9834个运动间隔max18.044ms且>=25/33.3为0。此裁决是任务级验收，不把未独立测量的5000项/内存压力/后台恢复/所有入口矩阵追认成测试通过；保留这些证据限制，不继续作为本任务Active阻塞项。
+
+接受包精确源码0b5ce25bcec0a4d0240891913ad17114b02cf10e；run37754814214/job113236645278成功，84项本轮回归与10项保留导航证据，Release及独立包/源码/MinOS15.0核验通过。Artifact11540607336，IPASHA256b3ebb081dcbe1e20de02565faaa6e5f4d67891922c6f0d55248bf7cd959842de。PR292 integration pending. 合并前完整Git树核对：main从共同基线只改7份项目资料；feature的所有非docs文件均与已验收精确源码一致。仅解决同步文档差异，不改变运行时代码/测试依赖，无需另出IPA或重跑未变化输入。跨Wi-Fi/流量线路图片缓存共享按用户原决定暂缓，作为后续问题保留，不宣称已解决。不影响独立Aether235任务及播放器/传输/P0、293轮播、294Dock冻结合同。
