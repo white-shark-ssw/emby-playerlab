@@ -1,6 +1,6 @@
 # OnePlayer Project State
 
-_Last updated 2026-10-09: Build305 / 0.15.38 的 Library 递归媒体查询修复已获目标真机确认并通过 PR #293 合并；该任务本身已完成。由于同一 Build305 会话立即暴露 Home → 详情/库页 → 返回时已加载海报图片被清空后重新采用的新回归，当前 **accepted overall baseline 仍保持 Build303**，新问题由独立 `DEV-home-return-poster-retention` / Build306 处理。_
+_Last updated 2026-10-09: Build305 Library media-only routing remains target-device accepted/merged. The separate Home-return poster-retention regression now has a verified **Build306 / 0.15.39 candidate** (54/0 regression, Release/IPA/MinOS verified), but Build306 is **not real-device accepted** yet; accepted overall baseline therefore remains Build303 until target-device validation._
 
 ## Current accepted overall baseline — Build303
 
@@ -19,6 +19,15 @@ _Last updated 2026-10-09: Build305 / 0.15.38 的 Library 递归媒体查询修�
 - PR #293 merged at `91b705ca3b62064957169ea8bd2dff71ccc1e180`.
 - Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / feature task accepted ✅ / merged ✅**.
 - This is a feature milestone, not a promotion of Build305 to accepted overall baseline, because the separate Home-return poster-retention regression was reported immediately afterward and remains Active under Build306.
+
+## Current candidate — Build306 / 0.15.39 Home return poster retention
+
+- Exact tested source: `20dac5ce21e7d3261794dc62827b90fa07b048fb`; PR #294 remains open / unmerged.
+- CI run/job `37839047724 / 113523454935` passed; actual-source PosterWall regression **54 / 0**; Release generic-iOS build, identity validation and embedded runtime Mach-O MinOS audit passed.
+- Artifact `11577437579`, digest `sha256:dce68eb07b7f8dc469051e68fdae3eb33b28e6e4cd835739b9404034a92fa8cc`; IPA SHA-256 `414dac7cfb8026bd42219251b6f700d53733bb6680540d4b1b58e822368f2b15`; source ZIP SHA-256 `443c44566e0e3a33bdcbec8e4a4a9b4ba2a5437d51238f3d304fd28dc7189111`; bundle/version/build `com.embyplayerlab.app`, `0.15.39 / 306`, MinOS 15.0.
+- Candidate behavior: temporary shared poster-page suspension cancels image demand but preserves currently displayed artwork/card binding; true row/cell reuse remains destructive and still releases artwork. No second cache/state owner, Home metadata reload, navigation replacement or Player/Transport/Cache/Emby change.
+- Evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device Build306 test ❌ pending / stable-frozen ❌**.
+- Acceptance target: both Home → detail → back and Home → Library → back must return with existing poster artwork resident and no black/blank reload sweep.
 
 Historical dated entries below preserve their original evidence levels; the current poster-task status is Completed / stable-frozen at Build303, accepted on 2026-10-08 and merged through PR #292. They are not pending work for this completed task.
 

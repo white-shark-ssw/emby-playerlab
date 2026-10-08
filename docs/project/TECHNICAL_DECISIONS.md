@@ -66,6 +66,12 @@ For normal Library content, an empty caller-supplied type scope is normalized on
 
 This decision comes from Build304/305 target-device evidence for movie libraries where one physical Folder contains multiple videos. Client-side Folder flattening, global Folder suppression, a second loader, or hiding Folder behavior inside detail UI are rejected. Build305 / 0.15.38 was target-device accepted for this scoped behavior on 2026-10-09 and merged through PR #293.
 
+## D011B — Temporary poster-page suspension is not cell reuse
+
+System-owned push/pop may temporarily make the shared poster page inactive while its already-present cells remain the presentation state to restore. That temporary page suspension may cancel visible image subscriptions and prefetch demand and persist scroll offsets, but it must **not** call destructive `prepareForReuse()` on the currently visible poster children or clear their displayed UIImage/card binding. True row removal, query/source replacement, offscreen `didEndDisplaying`, row reuse and child-cell reuse keep the existing destructive release semantics.
+
+This distinction is deliberately inside the existing `EmbyPosterSectionsController` / `EmbyPosterHorizontalRow` owner. Do not solve return blanking by forcing Home metadata refresh, adding a second image cache/state owner, delaying rebind with a timer/watchdog, disabling real offscreen reuse, or replacing native navigation. Build306 is the first implementation/CI proof of this decision; real-device acceptance is still pending, so this decision remains candidate-level until target-device confirmation.
+
 ## D012 — Home-carousel keeps one UIKit owner; full-width page slots use acquisition-relative render motion
 
 Retain Build198 lifecycle ownership and Build208 full-width `pageStep = width`. Horizontal acquisition remains UIKit-owned; vertical acquisition yields to the Home `UIScrollView`; predicted touch stays release-only; one `V3HomeCarouselTransitionState` remains the high-frequency owner; first↔last modulo ownership and settle/cancel semantics remain unchanged. Do not add a second SwiftUI owner, timer, watchdog, retry, interpolation, debounce or throttle.
