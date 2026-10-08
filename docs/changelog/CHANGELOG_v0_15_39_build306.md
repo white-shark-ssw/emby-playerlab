@@ -8,4 +8,15 @@ Build306 makes one lifecycle distinction in the existing shared poster owner. Te
 
 A regression covers poster, landscape and library row styles: temporary suspension must retain the same visible UIImage across suspend/reactivate, while true deactivation must still release it. App identity advances to `0.15.39`; Deployment Target remains iOS 15.0. No Home metadata loader, native navigation, carousel runtime, Player, Transport, Cache or Emby Session change.
 
-Evidence at this checkpoint: **Code written ✅ / exact diff inspected ✅ / Build306 CI pending / IPA pending / target-device validation pending / stable-frozen ❌.**
+Verified Build306 candidate baseline:
+- exact tested product source: `20dac5ce21e7d3261794dc62827b90fa07b048fb`;
+- dedicated CI run/job: `37839047724 / 113523454935` — success;
+- actual-source PosterWall regression: **54 tests / 0 failures**;
+- Release generic-iOS build and identity/MinOS validation: success on Xcode 16.4;
+- artifact `OnePlayer-0.15.39-build306-home-return-poster-retention`, ID `11577437579`, digest `sha256:dce68eb07b7f8dc469051e68fdae3eb33b28e6e4cd835739b9404034a92fa8cc`;
+- IPA SHA-256 `414dac7cfb8026bd42219251b6f700d53733bb6680540d4b1b58e822368f2b15`;
+- source ZIP SHA-256 `443c44566e0e3a33bdcbec8e4a4a9b4ba2a5437d51238f3d304fd28dc7189111`, archive comment equals the exact product source;
+- bundle `com.embyplayerlab.app`, version/build `0.15.39 / 306`, display name `OnePlayer`, Info.plist MinOS `15.0`; embedded runtime Mach-O minimum-OS audit passed;
+- downloaded artifact ZIP digest, IPA/source ZIP checksums and ZIP integrity independently reverified after CI.
+
+Evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / Build306 target-device validation pending ❌ / stable-frozen ❌.**
