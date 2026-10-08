@@ -1,6 +1,6 @@
 # DEV-meaningless-detail-routing
 
-- **Status**: Active — Build304 target-device rejected for final UX; Build305 candidate in progress
+- **Status**: Active — Build304 target-device rejected for final UX; Build305 IPA ready for target-device validation
 - **Work ID**: `DEV-meaningless-detail-routing`
 - **Routing aliases / keywords**: `优化无意义详情页` / `无意义详情页` / `Folder详情页` / `文件夹详情` / `detail routing`
 - **Task**: 让 Library 正常内容页只展示媒体对象；Folder / CollectionFolder 保留在现有文件夹浏览路径，不再作为普通电影内容卡制造无意义详情/中间层。
@@ -34,9 +34,18 @@
 
 ## Build305 candidate
 
-- Reserved product: OnePlayer `0.15.38 / Build305`.
-- Build305 collision check: no existing Build305 allocation found; parallel Aether task remains Build235.
-- Exact implementation direction is now in `Sources/Networking/EmbyLibraryHubAPI.swift` rather than broad UI restructuring:
+- Product: OnePlayer `0.15.38 / Build305`.
+- Exact product source: `3476a3d9a8976ef483bb9d9e2317d0d2e442f8bb`.
+- Dedicated CI control: `ci/build305-meaningless-detail-routing-20261009` at `611ec8599ef1cddb21aaac08a69b504ba5b02a61`.
+- CI run/job: `37832789044 / 113502123244` — success.
+- Actual-source regression: 53 tests / 0 failures.
+- Release generic-iOS build: success on Xcode 16.4.
+- Artifact: `OnePlayer-0.15.38-build305-meaningless-detail-routing`, ID `11574533261`, digest `sha256:9ae178b9492534d0357bfcf3a7ddc8fcada49b1a49380019ef76dbc53b040b53`.
+- IPA: `OnePlayer-0.15.38-build305-meaningless-detail-routing-unsigned.ipa`, SHA-256 `f843cd2ace20f9aa15f447c8d98e4935211a033b65e4493dd649fde30b9e53d4`.
+- Source ZIP SHA-256: `a6ef12cff823c2d9b959635e079176cd1d18dc11ab535b3151c255bbf9a4ca11`; archive comment equals exact product SHA.
+- Bundle identity independently verified: `com.embyplayerlab.app`, `0.15.38 / 305`, display name `OnePlayer`.
+- Info.plist MinOS `15.0`; CI embedded Mach-O minimum-OS audit passed.
+- Exact implementation is in `Sources/Networking/EmbyLibraryHubAPI.swift` rather than broad UI restructuring:
   - explicit `includeItemTypes` stays authoritative and unchanged;
   - when `libraryHubItemsPage` is `recursive == true` and the caller supplies an empty type scope, it uses `Movie,Series,Video`;
   - `libraryFolderChildren` continues to call the same API with `recursive: false`, so dedicated folder browsing remains unrestricted and unchanged.
@@ -56,12 +65,12 @@
 - Library root selection remains system `NavigationLink` owned.
 - Folder children remain solely owned by `V3LibraryFolderBrowserViewModel` and `libraryFolderChildren(parentId:)`.
 - No second loader, retry, fallback, timer, watchdog, duplicate cache or navigation state.
-- Do not touch MPV, Player, UnifiedTransport, Session Cache, Emby Session, STRM→302→115/CDN, detail internals, native navigation ownership, or iOS 15.0 deployment target.
+- MPV, Player, UnifiedTransport, Session Cache, Emby Session, STRM→302→115/CDN, detail internals, native navigation ownership and iOS 15.0 deployment target remain protected and unchanged by this candidate.
 
 ## Validation state
 
 - Build304: Code written ✅ / CI passed ✅ / IPA produced ✅ / real-device tested ✅ / final UX rejected ❌ / stable-frozen ❌.
-- Build305: Code written ✅ / CI pending / IPA pending / real-device pending / stable-frozen ❌.
+- Build305: Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device pending ❌ / stable-frozen ❌.
 
 ## Completed
 
@@ -70,14 +79,14 @@
 - Confirmed a conditional media-only default can be applied only to recursive empty-scope requests while leaving `recursive: false` folder browsing untouched.
 - Implemented Build305 query normalization and version identity.
 - Tightened the regression guard to require the exact networking substitution and reject any other Networking change.
-- Added Build305 changelog.
+- Build305 exact-source guard, 53-test regression suite, dependencies, Release build, identity/MinOS validation, packaging and artifact upload all passed.
+- Independently downloaded and verified artifact digest, packaged checksums, IPA/source ZIP integrity, exact source archive comment, bundle identity/version/build and MinOS 15.0.
 
 ## Pending / Next exact action
 
-1. Run Build305 exact-source regression/Release CI and fix only evidence-backed failures.
-2. Package and independently verify Build305 IPA, source identity, bundle version/build and MinOS 15.0.
-3. Hand Build305 to the user for target-device validation.
-4. Target-device acceptance: the former `180310` Folder card must disappear from the normal content page; its contained media should remain discoverable by the recursive media query; the dedicated Folder tab must still browse folders normally.
+1. Hand Build305 IPA to the user for target-device validation.
+2. Target-device acceptance: the former `180310` Folder card must disappear from the normal content page; its contained media should remain discoverable by the recursive media query; the dedicated Folder tab must still browse folders normally.
+3. If accepted, update durable project state/build index, merge PR #293, and close this task. If rejected, use the new device log as higher-priority evidence before any further code change.
 
 ## Rejected / do-not-repeat
 
