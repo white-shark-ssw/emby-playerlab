@@ -1,6 +1,44 @@
 import XCTest
 
 final class PosterMotionUITests: XCTestCase {
+    func testNativeSectionRowsDeepReturnAndProductTopCommand() {
+        let app = XCUIApplication(); app.launchArguments = ["--poster-sections-ui"]; app.launch()
+        let wall = app.collectionViews["poster-sections"]
+        XCTAssertTrue(wall.waitForExistence(timeout: 10))
+        for _ in 0..<4 { wall.swipeUp(velocity: .fast) }
+        let row = app.collectionViews["poster-horizontal"].firstMatch
+        XCTAssertTrue(row.exists); row.swipeLeft(velocity: .fast)
+        let anchor = row.cells.element(boundBy: 1).label
+        row.cells.element(boundBy: 1).tap()
+        XCTAssertTrue(app.navigationBars["Fixture Detail"].waitForExistence(timeout: 5))
+        app.navigationBars["Fixture Detail"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["Section Fixture"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.collectionViews["poster-horizontal"].firstMatch.cells.element(boundBy: 1).label, anchor)
+        app.buttons["回顶"].tap(); XCTAssertTrue(app.staticTexts["Hero fixture"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.collectionViews.matching(identifier: "poster-sections").count, 1)
+        app.terminate()
+    }
+
+    func testProductionFavoritesPreviewPersonAndMoreDestinations() {
+        let app = XCUIApplication(); app.launchArguments = ["--poster-sections-ui", "favorites"]; app.launch()
+        let wall = app.collectionViews["poster-sections"]
+        XCTAssertTrue(wall.waitForExistence(timeout: 10)); XCTAssertTrue(app.staticTexts["电影"].exists)
+        app.collectionViews["poster-horizontal"].firstMatch.cells.element(boundBy: 1).tap()
+        XCTAssertTrue(app.navigationBars["Fixture Detail"].waitForExistence(timeout: 5))
+        app.navigationBars["Fixture Detail"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.staticTexts["收藏"].waitForExistence(timeout: 5))
+        app.buttons["更多"].firstMatch.tap()
+        XCTAssertTrue(app.collectionViews["poster-wall"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["电影"].exists)
+        app.navigationBars["电影"].buttons.element(boundBy: 0).tap()
+        for _ in 0..<3 { wall.swipeUp(velocity: .fast) }
+        let person = app.collectionViews["poster-horizontal"].cells.matching(NSPredicate(format: "label BEGINSWITH 'Person '")).firstMatch
+        XCTAssertTrue(person.waitForExistence(timeout: 5)); person.tap()
+        XCTAssertTrue(app.collectionViews["poster-wall"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars.matching(NSPredicate(format: "identifier BEGINSWITH 'Person '")).firstMatch.exists)
+        app.terminate()
+    }
+
     private func fields(_ text: String) -> [String: String] {
         Dictionary(uniqueKeysWithValues: text.split(separator: " ").compactMap { part in
             let pieces = part.split(separator: "=", maxSplits: 1)

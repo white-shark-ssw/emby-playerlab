@@ -34,6 +34,10 @@
         }
         return try (folderResponses[parentId] ?? .success([])).get()
     }
+    @MainActor func favoriteBrowseItems(includeItemTypes: [String]) async throws -> [LibraryItem] {
+        let values = includeItemTypes.flatMap { type in (0..<20).map { ["Id": "\(type)-\($0)", "Name": "\(type) \($0)", "Type": type] } }
+        return try JSONDecoder().decode([LibraryItem].self, from: JSONSerialization.data(withJSONObject: values))
+    }
     func libraryItem(itemId: String) async throws -> LibraryItem { throw URLError(.badServerResponse) }
     struct ResultRequest {
         let kind: String; let value: String; let isGenre: Bool; let types: [String]; let limit: Int; let start: Int

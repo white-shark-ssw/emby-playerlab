@@ -9,6 +9,10 @@ for path in ['Sources/Core/AppIdentity.swift', 'Sources/UI/EmbyPosterWall.swift'
     (target / Path(path).name).write_text((repo / path).read_text())
 for path in ['Sources/UI/EmbyPosterSearchLanding.swift', 'Sources/UI/EmbySearchRecommendationPreloader.swift']:
     (target / Path(path).name).write_text((repo / path).read_text())
+for path in ['Sources/UI/EmbyPosterSections.swift', 'Sources/UI/EmbyHomeScrollOffsetObserverV3.swift', 'Sources/UI/EmbyHomeRefreshControlStylerV3.swift']:
+    (target / Path(path).name).write_text((repo / path).read_text())
+shared_cards = (repo / 'Sources/UI/EmbyServerSharedV3.swift').read_text()
+(target / 'RowSubtitle.swift').write_text('import Foundation\n' + shared_cards[shared_cards.index('func v3MediaSubtitle('):])
 # Visibility only: tests inspect demand materialization and retained production prefetch tokens.
 wall = target / 'EmbyPosterWall.swift'
 text = wall.read_text()
@@ -57,6 +61,11 @@ for name in ['enum V3LibraryPosterDestination', 'struct V3LibraryPosterPage', 's
     assert adapters.count('private ' + name) == 1, name
     adapters = adapters.replace('private ' + name, name)
 (target / 'LibraryAdapters.swift').write_text('import SwiftUI\nimport UIKit\n' + adapters)
+favorites_root = browse[browse.index('struct V3EmbyFavoritesView:'):browse.index('private struct V3FavoriteCategoryGridView:')]
+favorites_model = browse[browse.index('private struct V3FavoriteSections'):browse.index('private enum V3SearchDefaults')]
+(target / 'FavoritesRoot.swift').write_text('import SwiftUI\n' + favorites_root + favorites_model)
+header = shared_cards[shared_cards.index('enum V3ServerHeaderMetrics'):shared_cards.index('struct V3LibraryTile:')]
+(target / 'PageHeader.swift').write_text('import SwiftUI\n' + header)
 # P4 production leaves/models and shared navigation adapter; access levels only are changed.
 favorite = browse[browse.index('private struct V3FavoriteCategoryGridView:'):browse.index('private struct V3FavoritePersonLink:')]
 search = (repo / 'Sources/UI/EmbySearchExperienceV3.swift').read_text()
@@ -86,6 +95,8 @@ services.write_text(text)
 (target / 'SearchLandingHost.swift').write_text((Path(__file__).parent / 'SearchLandingHost.swift').read_text())
 (target / 'Host.swift').write_text((Path(__file__).parent / 'MotionHost.swift').read_text())
 (target / 'ReturnHost.swift').write_text((Path(__file__).parent / 'ReturnHost.swift').read_text())
+(target / 'SectionTests.swift').write_text((Path(__file__).parent / 'SectionTests.swift').read_text())
+(target / 'SectionHost.swift').write_text((Path(__file__).parent / 'SectionHost.swift').read_text())
 (target / 'MotionUITests.swift').write_text((Path(__file__).parent / 'MotionUITests.swift').read_text())
 (target / 'project.yml').write_text('''name: PosterWallRegression
 options:
@@ -97,7 +108,7 @@ targets:
     platform: iOS
     sources:
       - path: .
-        excludes: [project.yml, PosterTests.swift, LibraryAdapterTests.swift, ResultAdapterTests.swift, SearchLandingTests.swift, MotionUITests.swift]
+        excludes: [project.yml, PosterTests.swift, LibraryAdapterTests.swift, ResultAdapterTests.swift, SearchLandingTests.swift, SectionTests.swift, MotionUITests.swift]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

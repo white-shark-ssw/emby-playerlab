@@ -41,6 +41,7 @@ struct V3LibraryBrowserView: View {
     @StateObject private var model: V3LibraryBrowserViewModel
     @State private var selectedTab = V3LibraryTab.items
     @State private var nativePosterSelection: LibraryItem?
+    @State private var suggestionSelection: LibraryItem?
     @Environment(\.serverDockBottomInset) private var dockBottomInset
 
     init(library: LibraryItem, client: EmbyAPIClient) {
@@ -148,27 +149,31 @@ struct V3LibraryBrowserView: View {
     }
 
     private var suggestionsTab: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: 28) {
-                if model.isLoading(tab: .suggestions) && !model.hasSuggestionContent {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
-                } else if model.hasLoaded(tab: .suggestions) && !model.hasSuggestionContent {
-                    emptyState(text: "暂无建议内容")
-                } else {
-                    if !model.suggestionResumeItems.isEmpty { suggestionSectionTitle("继续观看"); landscapeRow(model.suggestionResumeItems) }
-                    if !model.suggestionLatestItems.isEmpty { suggestionSectionTitle(model.latestSuggestionTitle); posterRow(model.suggestionLatestItems) }
-                    ForEach(model.recommendationSections) { section in
-                        suggestionSectionTitle(model.title(for: section))
-                        posterRow(section.items)
-                    }
-                    if model.recommendationSections.isEmpty && !model.genericSuggestionItems.isEmpty { suggestionSectionTitle("推荐"); posterRow(model.genericSuggestionItems) }
-                }
-                if let error = model.errorMessage(for: .suggestions) { errorText(error) }
-            }
-            .padding(.top, 8)
-            .serverDockContentPadding()
+        EmbyPosterSections(sections: suggestionPosterSections, queryIdentity: "suggestions|\(library.id)", topPadding: 8, sectionGap: 28, bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isLoading: model.isLoading(tab: .suggestions) && !model.hasSuggestionContent, emptyText: model.hasLoaded(tab: .suggestions) ? "暂无建议内容" : nil, error: model.errorMessage(for: .suggestions), isActive: suggestionSelection == nil, onRefresh: { Task { await model.refresh(tab: .suggestions) } }, top: EmptyView())
+            .background(
+                NavigationLink(isActive: Binding(get: { suggestionSelection != nil }, set: { if !$0 { suggestionSelection = nil } })) {
+                    if let item = suggestionSelection { EmbyPosterDetailDestination(item: item, client: client) }
+                    else { EmptyView() }
+                } label: { EmptyView() }
+                .hidden()
+            )
+    }
+
+    private var suggestionPosterSections: [EmbyPosterSection] {
+        var sections: [EmbyPosterSection] = []
+        if !model.suggestionResumeItems.isEmpty {
+            sections.append(EmbyPosterSection(id: "resume", title: "继续观看", items: model.suggestionResumeItems, client: client, style: .landscape, titleGap: 28, onSelect: { suggestionSelection = $0 }))
         }
-        .refreshable { await model.refresh(tab: .suggestions) }
+        if !model.suggestionLatestItems.isEmpty {
+            sections.append(EmbyPosterSection(id: "latest", title: model.latestSuggestionTitle, items: model.suggestionLatestItems, client: client, titleGap: 28, onSelect: { suggestionSelection = $0 }))
+        }
+        for section in model.recommendationSections {
+            sections.append(EmbyPosterSection(id: "recommendation|\(section.id)", title: model.title(for: section), items: section.items, client: client, titleGap: 28, onSelect: { suggestionSelection = $0 }))
+        }
+        if model.recommendationSections.isEmpty && !model.genericSuggestionItems.isEmpty {
+            sections.append(EmbyPosterSection(id: "generic", title: "推荐", items: model.genericSuggestionItems, client: client, titleGap: 28, onSelect: { suggestionSelection = $0 }))
+        }
+        return sections
     }
 
     private var genresTab: some View {
@@ -202,26 +207,6 @@ struct V3LibraryBrowserView: View {
 
     private func sortButton(_ title: String, key: String) -> some View {
         Button { Task { await model.changeSort(to: key, tab: selectedTab) } } label: { if model.sortBy == key { Label(title, systemImage: "checkmark") } else { Text(title) } }
-    }
-
-    private func suggestionSectionTitle(_ title: String) -> some View { Text(title).font(.system(size: 20, weight: .bold)).padding(.horizontal, 16) }
-
-    private func landscapeRow(_ items: [LibraryItem]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 12) {
-                ForEach(items) { item in EmbyPosterDetailLink(item: item, client: client) { V3LandscapeCard(item: item, client: client) }.frame(width: 212, alignment: .leading) }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
-    private func posterRow(_ items: [LibraryItem]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(alignment: .top, spacing: 12) {
-                ForEach(items) { item in EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: 118) }.frame(width: 118, alignment: .leading) }
-            }
-            .padding(.horizontal, 16)
-        }
     }
 
     private func emptyState(text: String) -> some View {
@@ -732,9 +717,13 @@ private final class V3LibraryFolderBrowserViewModel: ObservableObject {
 }
 
 struct V3EmbyFavoritesView: View {
+    @Environment(\.serverDockBottomInset) private var dockBottomInset
     let client: EmbyAPIClient
     let onClose: () -> Void
     @StateObject private var model: V3FavoritesViewModel
+    @State private var selectedItem: LibraryItem?
+    @State private var selectedPerson: LibraryItem?
+    @State private var selectedCategory: String?
 
     init(client: EmbyAPIClient, onClose: @escaping () -> Void) {
         self.client = client
@@ -744,69 +733,39 @@ struct V3EmbyFavoritesView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 28) {
-                    V3PageHeader(title: "收藏", onClose: onClose)
-                    favoriteMediaSection("电影", items: model.sections.movies, includeItemType: "Movie")
-                    favoriteMediaSection("剧集", items: model.sections.series, includeItemType: "Series")
-                    favoriteMediaSection("集", items: model.sections.episodes, includeItemType: "Episode")
-                    favoritePeopleSection
-                    if model.isLoading { ProgressView().frame(maxWidth: .infinity) }
-                    if let error = model.errorMessage { Text(error).font(.footnote).foregroundColor(.red).padding(.horizontal, 16) }
-                }
-                .serverDockContentPadding()
-            }
-            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-            .serverDockPage()
-            .refreshable { await model.load() }
-            .onAppear { Task { await model.load() } }
-            .navigationBarHidden(true)
+            EmbyPosterSections(sections: favoritePosterSections, queryIdentity: "favorites", topHeight: V3ServerHeaderMetrics.controlHeight + V3ServerHeaderMetrics.bottomPadding, topPadding: 28, sectionGap: 28, bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isLoading: model.isLoading, error: model.errorMessage, isActive: selectedItem == nil && selectedPerson == nil && selectedCategory == nil, onRefresh: { Task { await model.load() } }, top: V3PageHeader(title: "收藏", onClose: onClose))
+                .background(favoritePosterNavigation)
+                .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+                .serverDockPage()
+                .onAppear { Task { await model.load() } }
+                .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
 
-    @ViewBuilder
-    private func favoriteMediaSection(_ title: String, items: [LibraryItem], includeItemType: String) -> some View {
-        if !items.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                favoriteSectionHeader(title: title, includeItemType: includeItemType, isPeople: false)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: 12) {
-                        ForEach(items.prefix(20)) { item in
-                            EmbyPosterDetailLink(item: item, client: client) { V3PosterCard(item: item, client: client, width: 118) }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                }
-            }
+    private var favoritePosterSections: [EmbyPosterSection] {
+        var sections: [EmbyPosterSection] = []
+        for (type, title, items) in [("Movie", "电影", model.sections.movies), ("Series", "剧集", model.sections.series), ("Episode", "集", model.sections.episodes), ("Person", "演员", model.sections.people)] where !items.isEmpty {
+            sections.append(EmbyPosterSection(id: type, title: title, items: Array(items.prefix(20)), client: client, style: type == "Person" ? .person : .poster, onMore: { selectedCategory = type }, onSelect: { item in
+                if type == "Person" { selectedPerson = item } else { selectedItem = item }
+            }))
         }
+        return sections
     }
 
-    @ViewBuilder
-    private var favoritePeopleSection: some View {
-        if !model.sections.people.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                favoriteSectionHeader(title: "演员", includeItemType: "Person", isPeople: true)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: 12) {
-                        ForEach(model.sections.people.prefix(20)) { person in V3FavoritePersonLink(item: person, client: client, width: 118) }
-                    }
-                    .padding(.horizontal, 16)
-                }
-            }
+    private var favoritePosterNavigation: some View {
+        ZStack {
+            NavigationLink(isActive: Binding(get: { selectedItem != nil }, set: { if !$0 { selectedItem = nil } })) {
+                if let item = selectedItem { EmbyPosterDetailDestination(item: item, client: client) } else { EmptyView() }
+            } label: { EmptyView() }
+            NavigationLink(isActive: Binding(get: { selectedPerson != nil }, set: { if !$0 { selectedPerson = nil } })) {
+                if let item = selectedPerson { EmbyPersonMediaView(person: EmbyPerson(itemId: item.id, name: item.name, role: nil, type: item.type, primaryImageTag: item.primaryImageTag), client: client) } else { EmptyView() }
+            } label: { EmptyView() }
+            NavigationLink(isActive: Binding(get: { selectedCategory != nil }, set: { if !$0 { selectedCategory = nil } })) {
+                if let type = selectedCategory { V3FavoriteCategoryGridView(title: type == "Movie" ? "电影" : (type == "Series" ? "剧集" : (type == "Episode" ? "集" : "演员")), includeItemType: type, client: client, isPeople: type == "Person") } else { EmptyView() }
+            } label: { EmptyView() }
         }
-    }
-
-    private func favoriteSectionHeader(title: String, includeItemType: String, isPeople: Bool) -> some View {
-        HStack {
-            Text(title).font(.system(size: 20, weight: .bold))
-            Spacer()
-            NavigationLink(destination: V3FavoriteCategoryGridView(title: title, includeItemType: includeItemType, client: client, isPeople: isPeople)) {
-                Text("更多").font(.system(size: 16, weight: .regular)).foregroundColor(.blue)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
+        .frame(width: 0, height: 0).hidden().allowsHitTesting(false)
     }
 }
 

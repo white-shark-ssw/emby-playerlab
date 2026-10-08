@@ -4,7 +4,8 @@ import UIKit
     var window: UIWindow?
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         let window = UIWindow(frame: UIScreen.main.bounds)
-        if ProcessInfo.processInfo.arguments.contains("--poster-search-ui") { window.rootViewController = SearchLandingHost() }
+        if ProcessInfo.processInfo.arguments.contains("--poster-sections-ui") { window.rootViewController = SectionHost() }
+        else if ProcessInfo.processInfo.arguments.contains("--poster-search-ui") { window.rootViewController = SearchLandingHost() }
         else if ProcessInfo.processInfo.arguments.contains("--poster-return-ui") || ProcessInfo.processInfo.arguments.contains("--poster-result-ui") { window.rootViewController = LibraryReturnHost() }
         else { window.rootViewController = ProcessInfo.processInfo.arguments.contains("--poster-motion-ui") ? MotionHost() : UIViewController() }
         window.makeKeyAndVisible(); self.window = window

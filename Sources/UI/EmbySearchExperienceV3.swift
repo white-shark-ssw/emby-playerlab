@@ -210,6 +210,9 @@ struct V3EmbyGlobalSearchView: View {
     @State private var searchText = ""
     @State private var showClearHistoryAlert = false
     @State private var directSearchDestination: V3GlobalSearchServerResult?
+    @State private var previewItem: LibraryItem?
+    @State private var previewClient: EmbyAPIClient?
+    @State private var previewMore: V3GlobalSearchServerResult?
     @FocusState private var searchFieldFocused: Bool
 
     init(currentSession: EmbySession, currentClient: EmbyAPIClient, model: V3GlobalSearchViewModel, onClose: @escaping () -> Void) {
@@ -367,38 +370,28 @@ struct V3EmbyGlobalSearchView: View {
     }
 
     private var searchResults: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: 30) {
-                ForEach(model.serverResults) { result in serverResultSection(result) }
-                if model.isSearching { ProgressView().frame(maxWidth: .infinity).padding(.top, model.serverResults.isEmpty ? 34 : 0) }
-                else if model.serverResults.isEmpty { Text("未找到相关内容").font(.subheadline).foregroundColor(.secondary).frame(maxWidth: .infinity).padding(.top, 34) }
-            }
-            .serverDockContentPadding()
+        EmbyPosterSections(sections: searchPosterSections, queryIdentity: "multi-search|\(model.currentTerm)", sectionGap: 30, bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isLoading: model.isSearching, emptyText: "未找到相关内容", isActive: directSearchDestination == nil && previewItem == nil && previewMore == nil, top: EmptyView())
+            .background(searchPreviewNavigation)
+    }
+
+    private var searchPosterSections: [EmbyPosterSection] {
+        model.serverResults.map { result in
+            EmbyPosterSection(id: result.id, title: result.session.serverName, items: result.items, client: result.client, width: horizontalPosterWidth, spacing: EmbyPosterGridMetrics.columnSpacing, onMore: { previewMore = result }, onSelect: { item in
+                previewClient = result.client; previewItem = item
+            })
         }
     }
 
-    private func serverResultSection(_ result: V3GlobalSearchServerResult) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(result.session.serverName).font(.system(size: 20, weight: .bold)).lineLimit(1)
-                Spacer()
-                NavigationLink(destination: V3GlobalSearchServerGridView(serverName: result.session.serverName, term: model.currentTerm, client: result.client)) {
-                    Text("更多").font(.system(size: 16)).foregroundColor(.blue)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 16)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: EmbyPosterGridMetrics.columnSpacing) {
-                    ForEach(result.items) { item in
-                        EmbyPosterDetailLink(item: item, client: result.client) { V3PosterCard(item: item, client: result.client, width: horizontalPosterWidth) }
-                            .frame(width: horizontalPosterWidth, alignment: .topLeading)
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
+    private var searchPreviewNavigation: some View {
+        ZStack {
+            NavigationLink(isActive: Binding(get: { previewItem != nil }, set: { if !$0 { previewItem = nil; previewClient = nil } })) {
+                if let item = previewItem, let client = previewClient { EmbyPosterDetailDestination(item: item, client: client) } else { EmptyView() }
+            } label: { EmptyView() }
+            NavigationLink(isActive: Binding(get: { previewMore != nil }, set: { if !$0 { previewMore = nil } })) {
+                if let result = previewMore { V3GlobalSearchServerGridView(serverName: result.session.serverName, term: model.currentTerm, client: result.client) } else { EmptyView() }
+            } label: { EmptyView() }
         }
+        .frame(width: 0, height: 0).hidden().allowsHitTesting(false)
     }
 
     private var directSearchLink: some View {
