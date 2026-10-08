@@ -1,0 +1,21 @@
+2026-10-06T13:59:16.5989490Z Test Case '-[ServerDockRegression.CarouselTests testAnimationReleaseMovesInSameDirectionAndInterruptIsContinuous]' passed (1.118 seconds).
+2026-10-06T13:59:17.0266750Z Test Case '-[ServerDockRegression.CarouselTests testArtworkAndBaseColorRemainContinuousAcrossAnimationInterruptionAndRebase]' passed (0.543 seconds).
+2026-10-06T13:59:18.8678030Z Test Case '-[ServerDockRegression.CarouselTests testArtworkAndContrastEndInTheSameSolidFloorBeforeContentBoundary]' passed (1.806 seconds).
+2026-10-06T13:59:18.8721060Z Test Case '-[ServerDockRegression.CarouselTests testArtworkMaskFadesAcrossHeroBoundaryIntoSolidBase]' passed (0.023 seconds).
+2026-10-06T13:59:19.6728600Z Test Case '-[ServerDockRegression.CarouselTests testConsecutiveCommittedSwipesAdvanceWithoutSettlingOrPositionJump]' passed (0.799 seconds).
+2026-10-06T13:59:19.6953560Z Test Case '-[ServerDockRegression.CarouselTests testFollowAndReversePreservePageSpacingAndBaseCenter]' passed (0.023 seconds).
+2026-10-06T13:59:20.0776550Z Test Case '-[ServerDockRegression.CarouselTests testRebasedTakeoverCanCancelOrReverseWithoutOldCompletion]' passed (0.388 seconds).
+2026-10-06T13:59:20.6538050Z Test Case '-[ServerDockRegression.CarouselTests testRuntimeTakeoverReverseAndOldCompletionCannotSettle]' passed (0.586 seconds).
+2026-10-06T13:59:20.8765300Z Test Case '-[ServerDockRegression.CarouselTests testVerticalLayoutAndResourceArrivalDoNotUndoTranslation]' passed (0.012 seconds).
+2026-10-06T13:59:21.6494710Z Test Case '-[ServerDockRegression.DockTests testActualDetailPreferenceUsesSharedDockHost]' passed (0.982 seconds).
+2026-10-06T13:59:24.2273940Z Test Case '-[ServerDockRegression.DockTests testAllTabsAndMaterialStylesKeepIdenticalGeometry]' passed (2.578 seconds).
+2026-10-06T13:59:24.2696170Z Test Case '-[ServerDockRegression.DockTests testContentClearanceIncludesDockAndPhysicalBottomInset]' passed (0.002 seconds).
+2026-10-06T13:59:25.3320420Z Test Case '-[ServerDockRegression.DockTests testHomeMatchesAcceptedBuild293DockPositionWithCarouselOnAndOff]' passed (1.102 seconds).
+2026-10-06T13:59:27.7510620Z Test Case '-[ServerDockRegression.DockTests testNativePushHidesPageDockAndPopRestoresItsPosition]' passed (2.413 seconds).
+2026-10-06T13:59:29.0490850Z Test Case '-[ServerDockRegression.DockTests testOversizedContentAndNativeNavigationBarCannotMoveDock]' passed (1.292 seconds).
+2026-10-06T13:59:29.6622630Z Test Case '-[ServerDockRegression.DockTests testPageVisibilityAndMissingServerContextDoNotMountDock]' passed (0.618 seconds).
+2026-10-06T13:59:32.1896890Z Test Case '-[ServerDockRegression.DockTests testRealKeyboardDoesNotLiftSearchDock]' passed (2.332 seconds).
+2026-10-06T13:59:32.2225450Z Test Case '-[ServerDockRegression.DockTests testRootSelectionPreservesSearchLifetimeAndHomeTapActions]' passed (0.011 seconds).
+2026-10-06T13:59:32.3177240Z Test Suite 'ServerDockRegression.xctest' passed at 2026-10-06 13:59:31.999.
+2026-10-06T13:59:32.3279890Z 	 Executed 18 tests, with 0 failures (0 unexpected) in 16.630 (16.637) seconds
+2026-10-06T13:59:32.5752170Z 	 Executed 18 tests, with 0 failures (0 unexpected) in 16.630 (16.639) seconds
