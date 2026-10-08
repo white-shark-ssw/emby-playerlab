@@ -60,6 +60,12 @@ Selecting another episode replaces the complete source-owned playback session wh
 
 Canonical series order comes from `GET /Shows/{SeriesId}/Episodes`; OnePlayer preserves Emby's returned order. `SeasonId` is season-membership authority, not a second in-season sort owner. Do not add title/file/date/item-ID/artificial-number fallback sorting. Build178 was accepted and merged through PR #254.
 
+## D011A — Recursive Library content is media-only; Folder browsing remains explicit
+
+For normal Library content, an empty caller-supplied type scope is normalized only when the request is recursive: `Movie,Series,Video`. Explicit `includeItemTypes` values remain authoritative. Dedicated Folder browsing remains the existing non-recursive path and is intentionally not forced media-only.
+
+This decision comes from Build304/305 target-device evidence for movie libraries where one physical Folder contains multiple videos. Client-side Folder flattening, global Folder suppression, a second loader, or hiding Folder behavior inside detail UI are rejected. Build305 / 0.15.38 was target-device accepted for this scoped behavior on 2026-10-09 and merged through PR #293.
+
 ## D012 — Home-carousel keeps one UIKit owner; full-width page slots use acquisition-relative render motion
 
 Retain Build198 lifecycle ownership and Build208 full-width `pageStep = width`. Horizontal acquisition remains UIKit-owned; vertical acquisition yields to the Home `UIScrollView`; predicted touch stays release-only; one `V3HomeCarouselTransitionState` remains the high-frequency owner; first↔last modulo ownership and settle/cancel semantics remain unchanged. Do not add a second SwiftUI owner, timer, watchdog, retry, interpolation, debounce or throttle.
