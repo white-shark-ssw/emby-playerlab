@@ -31,9 +31,10 @@ for name in pages:
         assert 'bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset)' in current
     elif name == 'EmbySearchExperienceV3.swift':
         boundary = 'private struct V3GlobalSearchServerGridView:'
-        assert current[:current.index(boundary)] == expected[:expected.index(boundary)], 'Search root/query/recommendations/lifetime changed'
+        if 'EmbyPosterSearchLanding(' not in current:
+            assert current[:current.index(boundary)] == expected[:expected.index(boundary)], 'Search root/query/recommendations/lifetime changed'
         assert current.count('.serverDockPage()') == expected.count('.serverDockPage()')
-        assert current.count('.serverDockContentPadding()') == expected.count('.serverDockContentPadding()') - 1
+        assert current.count('.serverDockContentPadding()') == expected.count('.serverDockContentPadding()') - (2 if 'EmbyPosterSearchLanding(' in current else 1)
         assert 'bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset)' in current
     else:
         assert current == expected, f'Unexpected non-Dock page behavior changed: {path}'

@@ -55,6 +55,18 @@
     @MainActor func personMediaItems(personId: String, limit: Int, startIndex: Int) async throws -> EmbyItemPage { try await resultPage(kind: "person", value: personId, limit: limit, start: startIndex) }
     @MainActor func detailItems(filter: String, isGenre: Bool, limit: Int, startIndex: Int) async throws -> EmbyItemPage { try await resultPage(kind: "filter", value: filter, isGenre: isGenre, limit: limit, start: startIndex) }
     @MainActor func searchPosterItemsPage(term: String, limit: Int, startIndex: Int, includeItemTypes: [String]) async throws -> EmbyItemPage { try await resultPage(kind: "search", value: term, types: includeItemTypes, limit: limit, start: startIndex) }
+    struct RecommendationRequest { let limit: Int; let types: [String]; let excluded: [String]; let continuation: CheckedContinuation<[LibraryItem], Error> }
+    @MainActor var recommendationRequests: [RecommendationRequest] = []
+    @MainActor func searchLandingRecommendations(limit: Int, includeItemTypes: [String], excludeItemIds: [String] = []) async throws -> [LibraryItem] {
+        try await withCheckedThrowingContinuation { continuation in
+            recommendationRequests.append(RecommendationRequest(limit: limit, types: includeItemTypes, excluded: excludeItemIds, continuation: continuation))
+            if automaticLibraryPages {
+                let start = excludeItemIds.count
+                let values = (start..<min(start + limit, 180)).map { ["Id": String($0), "Name": "Recommendation \($0)", "Type": "Movie"] }
+                continuation.resume(returning: try! JSONDecoder().decode([LibraryItem].self, from: JSONSerialization.data(withJSONObject: values)))
+            }
+        }
+    }
 
 }
 

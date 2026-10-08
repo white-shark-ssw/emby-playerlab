@@ -7,6 +7,8 @@ target = Path(sys.argv[2]).resolve()
 target.mkdir(parents=True, exist_ok=True)
 for path in ['Sources/Core/AppIdentity.swift', 'Sources/UI/EmbyPosterWall.swift', 'Sources/UI/EmbyImagePreparation.swift', 'Sources/UI/EmbyPagePersistentCache.swift', 'Sources/Cache/EmbyImageDiskCache.swift', 'Sources/Models/EmbyModels.swift']:
     (target / Path(path).name).write_text((repo / path).read_text())
+for path in ['Sources/UI/EmbyPosterSearchLanding.swift', 'Sources/UI/EmbySearchRecommendationPreloader.swift']:
+    (target / Path(path).name).write_text((repo / path).read_text())
 # Visibility only: tests inspect demand materialization and retained production prefetch tokens.
 wall = target / 'EmbyPosterWall.swift'
 text = wall.read_text()
@@ -58,6 +60,7 @@ for name in ['enum V3LibraryPosterDestination', 'struct V3LibraryPosterPage', 's
 # P4 production leaves/models and shared navigation adapter; access levels only are changed.
 favorite = browse[browse.index('private struct V3FavoriteCategoryGridView:'):browse.index('private struct V3FavoritePersonLink:')]
 search = (repo / 'Sources/UI/EmbySearchExperienceV3.swift').read_text()
+(target / 'SearchProduction.swift').write_text(search[:search.index('private struct V3GlobalSearchServerGridView:')])
 search = search[search.index('private struct V3GlobalSearchServerGridView:'):]
 detail_leaf = (repo / 'Sources/UI/EmbyMediaDetailView.swift').read_text()
 detail_leaf = detail_leaf[detail_leaf.index('struct EmbyDetailFilter:'):detail_leaf.index('@MainActor\nfinal class EmbyMediaDetailViewModel')]
@@ -79,6 +82,8 @@ services.write_text(text)
 (target / 'PosterTests.swift').write_text((Path(__file__).parent / 'PosterTests.swift').read_text())
 (target / 'LibraryAdapterTests.swift').write_text((Path(__file__).parent / 'LibraryAdapterTests.swift').read_text())
 (target / 'ResultAdapterTests.swift').write_text((Path(__file__).parent / 'ResultAdapterTests.swift').read_text())
+(target / 'SearchLandingTests.swift').write_text((Path(__file__).parent / 'SearchLandingTests.swift').read_text())
+(target / 'SearchLandingHost.swift').write_text((Path(__file__).parent / 'SearchLandingHost.swift').read_text())
 (target / 'Host.swift').write_text((Path(__file__).parent / 'MotionHost.swift').read_text())
 (target / 'ReturnHost.swift').write_text((Path(__file__).parent / 'ReturnHost.swift').read_text())
 (target / 'MotionUITests.swift').write_text((Path(__file__).parent / 'MotionUITests.swift').read_text())
@@ -92,7 +97,7 @@ targets:
     platform: iOS
     sources:
       - path: .
-        excludes: [project.yml, PosterTests.swift, LibraryAdapterTests.swift, ResultAdapterTests.swift, MotionUITests.swift]
+        excludes: [project.yml, PosterTests.swift, LibraryAdapterTests.swift, ResultAdapterTests.swift, SearchLandingTests.swift, MotionUITests.swift]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

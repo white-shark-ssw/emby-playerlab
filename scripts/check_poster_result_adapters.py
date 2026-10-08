@@ -31,7 +31,9 @@ leaves.append((detail, previous_detail, 'private final class EmbyDetailFilterRes
 search_path = 'Sources/UI/EmbySearchExperienceV3.swift'
 search = Path(search_path).read_text(); previous_search = old(search_path)
 start = 'private struct V3GlobalSearchServerGridView:'
-assert search[:search.index(start)] == previous_search[:previous_search.index(start)], 'Search direct/history/multi-server sources or9/+6/lifetime changed'
+if 'EmbyPosterSearchLanding(' not in search:
+    assert search[:search.index(start)] == previous_search[:previous_search.index(start)], 'Search direct/history/multi-server sources or9/+6/lifetime changed'
+# G15 root/model exact bytes, apart from the declared presentation delta, have a separate guard.
 leaves.append((search, previous_search, 'private final class V3GlobalSearchServerGridViewModel:', None))
 person = Path('Sources/UI/EmbyPersonMediaView.swift').read_text()
 leaves.append((person, old('Sources/UI/EmbyPersonMediaView.swift'), 'private final class EmbyPersonMediaViewModel:', None))
@@ -48,8 +50,8 @@ adapter = Path('Sources/UI/EmbyPosterResultsPage.swift').read_text()
 assert adapter.count('NavigationLink(') == 1 and 'NavigationView' not in adapter and 'AnyView' not in adapter
 assert 'EmbyPosterDetailDestination(item: item, client: client)' in adapter
 assert 'EmbyPerson(itemId: item.id, name: item.name, role: nil, type: item.type, primaryImageTag: item.primaryImageTag)' in adapter
-assert 'allowsRefresh: false' in adapter and 'isActive: selection == nil' in adapter
+assert 'allowsRefresh: false' in adapter and 'selection == nil' in adapter
 assert 'content: .plainMedia' in person and 'content: .plainMedia' in detail
 for path in ['Sources/UI/EmbySharedImageAndNavigation.swift', 'Sources/UI/EmbyImagePreparation.swift', 'Sources/UI/EmbyPagePersistentCache.swift', 'Sources/UI/ServerDock.swift', 'Sources/UI/EmbyServerRootViewV3.swift', 'Sources/UI/EmbyDetailPerformanceState.swift']:
     assert Path(path).read_text() == old(path), path
-print('P4 G09–G14 single-host adapters; original models/queries/lifetime/routes and main detail frozen bytes preserved; G15 unchanged/pending')
+print('P4 G09–G14 single-host adapters and frozen detail preserved; migrated G15 root requires its separate exact-source guard')

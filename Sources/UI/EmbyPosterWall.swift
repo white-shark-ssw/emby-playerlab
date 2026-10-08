@@ -239,6 +239,12 @@ struct EmbyPosterWall: UIViewControllerRepresentable {
     var content: EmbyPosterWallContent = .media
     var queryIdentity: String = ""
     var allowsRefresh: Bool = true
+    var horizontalPadding: CGFloat = 14
+    var topPadding: CGFloat = 8
+    var imagePixelWidth: Int? = nil
+    var loadAheadItemCount: Int = EmbyPosterGridMetrics.loadAheadItemCount
+    var landingHeader: EmbyPosterLandingHeaderInput? = nil
+    var emptyFooterHeight: CGFloat = 132
     let isLoading: Bool
     let hasLoaded: Bool
     let error: String?
@@ -286,12 +292,14 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
 
     override func loadView() {
         view = collection
+        collection.accessibilityIdentifier = "poster-wall"
         collection.backgroundColor = .systemBackground
         collection.showsVerticalScrollIndicator = false; collection.alwaysBounceVertical = true
         collection.contentInsetAdjustmentBehavior = .never
         collection.dataSource = self; collection.delegate = self; collection.prefetchDataSource = self
         collection.register(EmbyPosterCell.self, forCellWithReuseIdentifier: EmbyPosterCell.reuseID)
         collection.register(EmbyPosterFooter.self, forSupplementaryViewOfKind: UICollectionView.elementKindSectionFooter, withReuseIdentifier: "footer")
+        collection.register(EmbyPosterLandingHeader.self, forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader, withReuseIdentifier: "landing-header")
         flow.minimumInteritemSpacing = EmbyPosterGridMetrics.columnSpacing
         flow.minimumLineSpacing = EmbyPosterGridMetrics.rowSpacing
         flow.sectionInset = UIEdgeInsets(top: 8, left: 14, bottom: 0, right: 14)
@@ -308,9 +316,9 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         let started = CACurrentMediaTime()
         defer { work.record(.layout, milliseconds: (CACurrentMediaTime() - started) * 1000) }
         super.viewDidLayoutSubviews()
-        let newWidth = floor((view.bounds.width - 28 - 24) / 3)
+        let newWidth = floor((view.bounds.width - (input?.horizontalPadding ?? 14) * 2 - 24) / 3)
         guard newWidth > 0 else { return }
-        let newPixelWidth = min(440, max(1, Int(ceil(newWidth * view.traitCollection.displayScale))))
+        let newPixelWidth = input?.imagePixelWidth ?? min(440, max(1, Int(ceil(newWidth * view.traitCollection.displayScale))))
         if width != newWidth || pixelWidth != newPixelWidth {
             width = newWidth; pixelWidth = newPixelWidth
             flow.itemSize = CGSize(width: width, height: floor(width / EmbyPosterGridMetrics.posterAspectRatio) + (input?.content.textHeight ?? 42))
@@ -336,8 +344,15 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         loadViewIfNeeded()
         let footerChanged = input?.isLoading != value.isLoading || input?.error != value.error || input?.hasLoaded != value.hasLoaded
         let insetChanged = collection.contentInset.bottom != value.bottomPadding
+        let headerChanged = input?.landingHeader?.history != value.landingHeader?.history || input?.landingHeader?.showsRecommendations != value.landingHeader?.showsRecommendations
+        let geometryChanged = input?.horizontalPadding != value.horizontalPadding || input?.topPadding != value.topPadding || input?.imagePixelWidth != value.imagePixelWidth
         if footerChanged || insetChanged { trace("update-before", detail: "next_loading=\(value.isLoading ? 1 : 0) next_revision=\(value.revision) next_count=\(value.items.count)") }
         input = value
+        let sectionInset = UIEdgeInsets(top: value.topPadding, left: value.horizontalPadding, bottom: 0, right: value.horizontalPadding)
+        if flow.sectionInset != sectionInset { flow.sectionInset = sectionInset }
+        if geometryChanged { view.setNeedsLayout() }
+        if headerChanged { flow.invalidateLayout() }
+        for header in collection.visibleSupplementaryViews(ofKind: UICollectionView.elementKindSectionHeader) { (header as? EmbyPosterLandingHeader)?.configure(value.landingHeader) }
         if !value.allowsRefresh, collection.refreshControl != nil { collection.refreshControl = nil }
         let itemHeight = floor(width / EmbyPosterGridMetrics.posterAspectRatio) + value.content.textHeight
         if width > 0, flow.itemSize.height != itemHeight {
@@ -441,7 +456,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
         (cell as? EmbyPosterCell)?.activate()
         if let url = records[indexPath.item].url, let token = prefetch.removeValue(forKey: url) { preparation.cancel(token) }
-        if indexPath.item >= records.count - EmbyPosterGridMetrics.loadAheadItemCount {
+        if indexPath.item >= records.count - (input?.loadAheadItemCount ?? EmbyPosterGridMetrics.loadAheadItemCount) {
             if lastApproachRevision != appliedRevision { lastApproachRevision = appliedRevision; trace("approaching-end", detail: "index=\(indexPath.item)") }
             input?.onApproachingEnd()
         }
@@ -474,9 +489,16 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
     }
 
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, referenceSizeForFooterInSection section: Int) -> CGSize {
-        CGSize(width: collectionView.bounds.width, height: records.isEmpty ? 132 : (input?.error != nil || input?.isLoading == true ? 52 : 0))
+        CGSize(width: collectionView.bounds.width, height: records.isEmpty ? (input?.emptyFooterHeight ?? 132) : (input?.error != nil || input?.isLoading == true ? 52 : 0))
+    }
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, referenceSizeForHeaderInSection section: Int) -> CGSize {
+        CGSize(width: collectionView.bounds.width, height: input?.landingHeader?.height ?? 0)
     }
     func collectionView(_ collectionView: UICollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> UICollectionReusableView {
+        if kind == UICollectionView.elementKindSectionHeader {
+            let header = collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: "landing-header", for: indexPath) as! EmbyPosterLandingHeader
+            header.configure(input?.landingHeader); return header
+        }
         let footer = collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: "footer", for: indexPath) as! EmbyPosterFooter
         configureFooter(footer); return footer
     }
@@ -518,7 +540,7 @@ final class EmbyPosterWallController: UIViewController, UICollectionViewDataSour
         traceSequence += 1
         let paths = collection.indexPathsForVisibleItems.map(\.item)
         let velocity = collection.panGestureRecognizer.velocity(in: collection).y
-        let footer = records.isEmpty ? 132 : (input?.error != nil || input?.isLoading == true ? 52 : 0)
+        let footer = records.isEmpty ? (input?.emptyFooterHeight ?? 132) : (input?.error != nil || input?.isLoading == true ? 52 : 0)
         let numeric = String(format: "uptime=%.3f offset=%.2f size=%.2f viewport=%.2f top=%.2f bottom=%.2f max=%.2f remaining=%.2f pan_velocity=%.2f", ProcessInfo.processInfo.systemUptime, collection.contentOffset.y, collection.contentSize.height, collection.bounds.height, collection.adjustedContentInset.top, collection.adjustedContentInset.bottom, maximumOffset, maximumOffset - collection.contentOffset.y, velocity)
         DiagnosticsLogger.shared.log("PosterWall", "event=\(event) wall=\(traceID) seq=\(traceSequence) \(numeric) count=\(records.count) revision=\(appliedRevision ?? -1) replacement=\(appliedReplacement ?? -1) loading=\(input?.isLoading == true ? 1 : 0) footer=\(footer) visible=\(paths.min() ?? -1):\(paths.max() ?? -1) dragging=\(collection.isDragging ? 1 : 0) decelerating=\(collection.isDecelerating ? 1 : 0) tracking=\(collection.isTracking ? 1 : 0) refreshing=\(collection.refreshControl?.isRefreshing == true ? 1 : 0) pan=\(collection.panGestureRecognizer.state.rawValue) \(detail)")
     }

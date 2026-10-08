@@ -45,6 +45,44 @@ final class PosterMotionUITests: XCTestCase {
     func testProductionLibraryDeepNativePushPopRetainsPositionAndFrontier() { checkReturn(cancelPop: false) }
     func testCancelledSystemPopThenBackRetainsProductionLibrary() { checkReturn(cancelPop: true) }
 
+    func testSearchLandingNativeRecommendationsAppendAndDeepDetailReturn() {
+        let app = XCUIApplication(); app.launchArguments = ["--poster-search-ui"]; app.launch()
+        let wall = app.collectionViews["poster-wall"]
+        XCTAssertTrue(wall.waitForExistence(timeout: 10)); XCTAssertTrue(app.staticTexts["推荐观看"].exists)
+        XCTAssertEqual(app.collectionViews.matching(identifier: "poster-wall").count, 1)
+        for _ in 0..<9 { wall.swipeUp(velocity: .fast) }
+        let anchor = wall.cells.element(boundBy: 0).label
+        wall.cells.element(boundBy: 4).tap()
+        XCTAssertTrue(app.navigationBars["Fixture Detail"].waitForExistence(timeout: 5))
+        let before = fields(app.staticTexts["search-status"].label)
+        XCTAssertGreaterThan(Int(before["count"] ?? "0") ?? 0, 9)
+        XCTAssertGreaterThan(Double(before["offset"] ?? "0") ?? 0, 1000)
+        app.navigationBars["Fixture Detail"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.textFields["搜索"].waitForExistence(timeout: 5))
+        let after = fields(app.staticTexts["search-status"].label)
+        XCTAssertEqual(after["recommendations"], before["recommendations"]); XCTAssertEqual(after["wall"], before["wall"]); XCTAssertEqual(after["count"], before["count"])
+        XCTAssertEqual(Double(after["offset"] ?? "-1") ?? -1, Double(before["offset"] ?? "-2") ?? -2, accuracy: 1)
+        XCTAssertEqual(wall.cells.element(boundBy: 0).label, anchor); app.terminate()
+    }
+
+    func testSearchLandingHistoryClearToggleAndKeyboardDockContract() {
+        let app = XCUIApplication(); app.launchArguments = ["--poster-search-ui"]; app.launch()
+        XCTAssertTrue(app.collectionViews["poster-history"].waitForExistence(timeout: 10))
+        let homeY = app.buttons["首页"].frame.maxY
+        app.textFields["搜索"].tap(); XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["首页"].frame.maxY, homeY, accuracy: 1)
+        app.collectionViews["poster-history"].cells["History fixture"].tap()
+        XCTAssertTrue(app.navigationBars["Fixture Server"].waitForExistence(timeout: 5))
+        app.navigationBars["Fixture Server"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["清除搜索历史"].waitForExistence(timeout: 5)); app.buttons["清除搜索历史"].tap()
+        XCTAssertTrue(app.alerts["清除搜索历史"].waitForExistence(timeout: 5)); app.alerts.buttons["全部清除"].tap()
+        XCTAssertFalse(app.staticTexts["搜索历史"].exists); XCTAssertTrue(app.staticTexts["推荐观看"].exists)
+        app.buttons["搜索设置"].tap(); app.buttons["显示推荐观看"].tap()
+        XCTAssertFalse(app.staticTexts["推荐观看"].exists)
+        app.buttons["搜索设置"].tap(); app.buttons["显示推荐观看"].tap()
+        XCTAssertTrue(app.staticTexts["推荐观看"].waitForExistence(timeout: 5)); app.terminate()
+    }
+
     func testP4MediaPersonFilterAndSearchLeavesDeepReturnKeepOriginalOwners() {
         for kind in ["Movie", "Series", "Episode", "person", "genre", "tag", "search"] {
             let app = XCUIApplication(); app.launchArguments = ["--poster-result-ui", kind]; app.launch()
