@@ -1,0 +1,29 @@
+name: Verify actual Build303 artifact bytes
+on:
+  push:
+    branches: [ci/verify-build303-artifact-20261008]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download exact already-built artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --location --fail --silent --show-error -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/white-shark-ssw/emby-playerlab/actions/artifacts/11540607336/zip" -o Build303-artifact.zip
+      - name: Independently verify actual ZIP source IPA and logs
+        run: python3 ci/verify_build303_artifact.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Build303-independent-artifact-verification
+          path: build303-verification.json
+          if-no-files-found: error
+          retention-days: 30
