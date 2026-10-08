@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PRODUCT_SHA: 7962692bcf0413287df87762174b600ddeb209df
+  PRODUCT_SHA: 3476a3d9a8976ef483bb9d9e2317d0d2e442f8bb
   PRODUCT_BRANCH: feat/meaningless-detail-routing
   ACCEPTED_SHA: 0b5ce25bcec0a4d0240891913ad17114b02cf10e
   LIBRARY_GUARD_BASE: 0b5ce25bcec0a4d0240891913ad17114b02cf10e
@@ -38,17 +38,19 @@ jobs:
           git checkout --detach "$PRODUCT_SHA"
           test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
           changed_runtime="$(git diff --name-only "$ACCEPTED_SHA" "$PRODUCT_SHA" | grep -v '^docs/' | sort)"
-          expected_runtime="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyServerBrowseV3.swift scripts/check_library_poster_adapters.py | sort)"
+          expected_runtime="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/Networking/EmbyLibraryHubAPI.swift Sources/UI/EmbyServerBrowseV3.swift scripts/check_library_poster_adapters.py | sort)"
           test "$changed_runtime" = "$expected_runtime"
           git diff --check "$ACCEPTED_SHA" "$PRODUCT_SHA"
           python3 scripts/check_library_poster_adapters.py "$LIBRARY_GUARD_BASE"
           grep -F 'static let sourceVersion = "0.15.38"' Sources/Core/AppIdentity.swift
-          grep -F 'default: return ["Movie", "Series", "Video"]' Sources/UI/EmbyServerBrowseV3.swift
+          grep -F 'let effectiveItemTypes = includeItemTypes.isEmpty && recursive ? ["Movie", "Series", "Video"] : includeItemTypes' Sources/Networking/EmbyLibraryHubAPI.swift
+          grep -F 'libraryHubItemsPage(parentId: parentId, limit: limit, recursive: false, sortBy: "SortName", sortOrder: "Ascending")' Sources/Networking/EmbyLibraryHubAPI.swift
           grep -F 'if v3LibraryIsBrowsableFolder(item) { V3LibraryFolderBrowserView(folder: item, client: client) }' Sources/UI/EmbyServerBrowseV3.swift
           test "$(git rev-parse "$ACCEPTED_SHA:Sources/UI/EmbySharedImageAndNavigation.swift")" = "$(git hash-object Sources/UI/EmbySharedImageAndNavigation.swift)"
-          for path in Sources/Player Sources/Transport Sources/Cache Sources/Emby Sources/Networking Sources/Models; do
+          for path in Sources/Player Sources/Transport Sources/Cache Sources/Emby Sources/Models; do
             test -z "$(git diff --name-only "$ACCEPTED_SHA" "$PRODUCT_SHA" -- "$path")"
           done
+          test "$(git diff --name-only "$ACCEPTED_SHA" "$PRODUCT_SHA" -- Sources/Networking)" = "Sources/Networking/EmbyLibraryHubAPI.swift"
           grep -F 'iOS: "15.0"' project.yml
           grep -F 'deploymentTarget: "15.0"' project.yml
 
