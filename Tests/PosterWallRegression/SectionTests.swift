@@ -58,6 +58,27 @@ import SwiftUI
         XCTAssertEqual(source.requests.count, 0)
     }
 
+    func testPageSuspensionRetainsVisibleArtworkButRealDeactivationClearsIt() {
+        for style in [EmbyPosterRowStyle.poster, .landscape, .library] {
+            let source = client(), input = section("retain-\(style)", source: source, style: style, count: 1)
+            let card = EmbyPosterSectionCard(item: input.items[0], section: input, retained: [:])
+            let image = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { UIColor.red.setFill(); $0.fill(CGRect(x: 0, y: 0, width: 4, height: 4)) }
+            EmbyDecodedImageRenderPool.shared.store(image, for: card.url!)
+            let row = EmbyPosterHorizontalRow(frame: CGRect(x: 0, y: 0, width: 430, height: input.rowHeight))
+            row.activate(); row.configure(input, offset: 0); row.layoutIfNeeded(); row.collection.layoutIfNeeded()
+            let cell = row.collection.cellForItem(at: IndexPath(item: 0, section: 0))
+            let displayed = { () -> UIImage? in
+                if let poster = cell as? EmbyPosterCell { return poster.displayedImage }
+                if let wide = cell as? EmbyPosterWideCell { return wide.displayedImage }
+                return nil
+            }
+            XCTAssertTrue(displayed() === image)
+            row.suspend(); XCTAssertTrue(displayed() === image, "Temporary page suspension must keep already-present artwork")
+            row.activate(); XCTAssertTrue(displayed() === image, "Reactivation must not blank retained artwork")
+            row.deactivate(); XCTAssertNil(displayed(), "True row deactivation/reuse must still release artwork")
+        }
+    }
+
     func testRowReuseReturnsStoredOffsetAndLatestSelectionCallback() {
         let row = EmbyPosterHorizontalRow(frame: CGRect(x: 0, y: 0, width: 430, height: 219)), source = client()
         var selected = "", stored: [String: CGFloat] = [:]

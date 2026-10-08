@@ -161,10 +161,17 @@ final class EmbyPosterHorizontalRow: UICollectionViewCell, UICollectionViewDataS
         active = true
         for path in collection.indexPathsForVisibleItems { configureCell(collection.cellForItem(at: path), index: path.item) }
     }
-    func deactivate() {
+    func suspend() {
         active = false; cancelPrefetch()
         if let section { onOffset?(section.source, collection.contentOffset.x) }
-        // Offscreen rows retain lightweight metadata/position, not a second image cache.
+        for cell in collection.visibleCells {
+            if let poster = cell as? EmbyPosterCell { poster.deactivate() }
+            else if let wide = cell as? EmbyPosterWideCell { wide.deactivate() }
+        }
+    }
+    func deactivate() {
+        suspend()
+        // A row that truly leaves/reuses still releases child presentation images.
         collection.visibleCells.forEach { $0.prepareForReuse() }
     }
     private func cancelPrefetch() { prefetchBudget.cancel(owner: prefetchOwner) }
@@ -320,7 +327,7 @@ final class EmbyPosterSectionsController: UIViewController, UICollectionViewData
         if layoutWidth != view.bounds.width { layoutWidth = view.bounds.width; flow.invalidateLayout(); prepareFirstScreen() }
     }
     override func viewWillAppear(_ animated: Bool) { super.viewWillAppear(animated); visible = true; activateResources() }
-    override func viewWillDisappear(_ animated: Bool) { super.viewWillDisappear(animated); visible = false; collection.scrollsToTop = false; rows.forEach { $0.deactivate() }; displayLink?.invalidate(); displayLink = nil; reportFrames(); trace("disappear") }
+    override func viewWillDisappear(_ animated: Bool) { super.viewWillDisappear(animated); visible = false; collection.scrollsToTop = false; rows.forEach { $0.suspend() }; displayLink?.invalidate(); displayLink = nil; reportFrames(); trace("disappear") }
     override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); visible = true; activateResources() }
     var rows: [EmbyPosterHorizontalRow] { collection.visibleCells.compactMap { $0 as? EmbyPosterHorizontalRow } }
     func update(sections next: [EmbyPosterSection], query: String, topHeight: CGFloat, topPadding: CGFloat, gap: CGFloat, bottom: CGFloat, loading: Bool, empty: String?, error: String?, active: Bool, topToken: Int, refresh: ((@escaping () -> Void) -> Void)?, homeOffset: ((CGFloat) -> Void)?, homeRefresh: ((@escaping () -> Void) -> Void)?) {
@@ -369,7 +376,7 @@ final class EmbyPosterSectionsController: UIViewController, UICollectionViewData
         row.prefetchBudget = prefetchBudget
         row.onOffset = { [weak self] source, offset in self?.offsets[source] = offset }
         let section = sections[sectionIndex]; row.configure(section, offset: offsets[section.source] ?? 0)
-        if active && visible { row.activate() } else { row.deactivate() }
+        if active && visible { row.activate() } else { row.suspend() }
     }
     private func configureHeader(_ header: EmbyPosterSectionHeader, index: Int) {
         guard sections.indices.contains(index) else { return }
@@ -394,7 +401,7 @@ final class EmbyPosterSectionsController: UIViewController, UICollectionViewData
                 link.preferredFrameRateRange = CAFrameRateRange(minimum: rate, maximum: rate, preferred: rate)
                 link.add(to: .main, forMode: .common); displayLink = link; trace("appear")
             }
-        } else { rows.forEach { $0.deactivate() }; displayLink?.invalidate(); displayLink = nil; reportFrames() }
+        } else { rows.forEach { $0.suspend() }; displayLink?.invalidate(); displayLink = nil; reportFrames() }
     }
     private func prepareFirstScreen() {
         guard active && visible, view.bounds.width > 0 else { return }
