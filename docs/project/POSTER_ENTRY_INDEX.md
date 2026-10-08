@@ -66,7 +66,7 @@ G01当前覆盖已验收；G02–G08 Build300、G09–G14 Build301、G15 Build30
 | G01 Library.items | P2 首个闭环 | 已接入 / Build299实际源码回归/Release/IPA通过 / 重启前后8013运动采样0 >=25ms；1560缓存apply1.66ms；深处返回与1560/1620回顶保留，用户无明显卡顿。本轮长帧调优结束，其他交互/资源/约2000与5000规模未全测 |
 | G02–G08 Library其余入口 | P3 | 原生适配完成 / Build300 28+10+6 fresh回归、Release与IPA核验通过 / 新入口待真机验收 |
 | G09–G15 其他三列墙 | P4；G15含搜索落地宿主 | 原生适配完成 / Build301叶与Build302落地宿主实际源码回归、Release/IPA通过 / 301日志类别过滤和搜索叶正向，其他路径及302真机待验证 |
-| H01–H04 首页及其他横向行 | P5 | 原生宿主代码完成 / Build303 80项fresh回归通过，UI/Release/IPA待完成 / 真机待验证 |
+| H01–H04 首页及其他横向行 | P5 | 原生宿主代码完成 / Build303最终源码84项fresh回归通过，10项未变UI保留；Release/IPA待完成 / 真机待验证 |
 | H05 冻结详情关联行 | 关联审计/保护回归 | 不自动纳入宿主改造；无本轮验证 |
 
 更新进度时逐项注明实际覆盖范围，尤其G09的三种媒体与G10人物、G11两条路径、G12三条路径、G13输入/历史和G14不同服务器；不能只把阶段范围整体勾完。
@@ -234,3 +234,7 @@ Final corrected product **0b5ce25bcec0a4d0240891913ad17114b02cf10e**, control **
 ## Build303 final-source native unit milestone — 81 fresh passed
 
 Final source0b5ce25bcec0a4d0240891913ad17114b02cf10e/control30c558e7984c682f22e92e13a3d6104ea27b7579/run37754814214/job113236645278: exact source/scope/retained-input/iOS15 guards,18freshDock/carousel+10detail/cache+53poster/adapter/Search/P5 units completed/success (81fresh). New existing-content refresh completion unit passes. Three selected P5 native UI cases in progress; original ten unrelated UI cases retain raw first-run evidence and exact test/helper/source guards, not rerun. Full Release/identity/MinOS/package/actualIPA verification pending. Next: continue this exact run through UI and package, recover local execution connection for downloaded actual IPA verification and file handoff; no first-source IPA delivery or device/Stable/merge claim.
+
+## Build303 final-source all84 fresh passed — Release pending
+
+Run37754814214/job113236645278 on product0b5ce25bcec0a4d0240891913ad17114b02cf10e/control30c558e7984c682f22e92e13a3d6104ea27b7579 passed53poster/adapter/Search/P5+10detail/cache+18Dock/carousel+3P5nativeUI=84fresh/0failures. Selected UI cases cover physical pull refresh awaiting original completion, mixed native section/horizontal deep-return/product top command and actual production Favorites Movie preview/more +Person works. Original ten UI cases retained from1fd/run37751337210 with full raw log and unchanged original test/helper/runtime source guards, NOT freshly rerun94. Generic UI Hero visual remains a fixed fixture; full production Home/Hero/nativeCarousel/293/294 await final full Release plus target-device acceptance. Full Release/dependencies now in progress; actual final-source303 IPA, identity/MinOS independent verification and file handoff pending. Local execution connection recovery is required for final local byte verification/upload; GitHub source/run/checkpoints are durable. Continue exact same run through package, do not deliver superseded first IPA or allocate304 merely for process interruption.
