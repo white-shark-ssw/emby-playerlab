@@ -1,8 +1,10 @@
 # OnePlayer Build / Test Index
 
-## Latest accepted overall baseline — Build303 /0.15.36
+## Latest accepted overall baseline — Build306 / 0.15.39
 
-OnePlayer 0.15.36 / Build303 was explicitly accepted on 2026-10-08. DEV-poster-grid-smoothness is Completed / stable-frozen; PR #292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`, and its checkpoint was removed in `c4a22edf753b9a59df3d34ef5e46b943bb7c5341`. Accepted source `0b5ce25bcec0a4d0240891913ad17114b02cf10e`; CI run37754814214 passed with84 fresh tests and10 retained unchanged UI checks. Artifact11540607336 and the delivered IPA were independently verified; MinOS15.0. Unmeasured entry/resource/scale scenarios remain evidence limits, not pending acceptance blockers. Cross-route image-cache sharing is deferred.
+OnePlayer 0.15.39 / Build306 was target-device accepted on 2026-10-09 after the user completed both Home → detail → back and Home → Library → back validation and reported no remaining issue. Exact tested source `20dac5ce21e7d3261794dc62827b90fa07b048fb`; CI `37839047724 / 113523454935` passed with **54 tests / 0 failures**; artifact `11577437579` digest `sha256:dce68eb07b7f8dc469051e68fdae3eb33b28e6e4cd835739b9404034a92fa8cc`; IPA SHA-256 `414dac7cfb8026bd42219251b6f700d53733bb6680540d4b1b58e822368f2b15`; source ZIP SHA-256 `443c44566e0e3a33bdcbec8e4a4a9b4ba2a5437d51238f3d304fd28dc7189111`; bundle `com.embyplayerlab.app`; MinOS15.0. PR #294 merged at `dca5f145612301c071619ee2d57fd80d46bf726a`.
+
+Accepted lifecycle contract: temporary shared-poster page suspension keeps already-displayed artwork/card binding resident while cancelling image demand/prefetch and preserving offsets; real row/cell reuse remains destructive. Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / task accepted ✅ / merged ✅ / stable-frozen ✅**.
 
 ## Accepted feature milestone — Build305 / 0.15.38
 
@@ -12,18 +14,7 @@ Target-device 2026-10-09: user explicitly confirmed the prior Folder/intermediat
 
 Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / scoped task accepted ✅ / merged ✅**.
 
-Build305 is **not** promoted to accepted overall baseline because the same device session exposed a separate Home-return poster-artwork blank/reload regression. That work is Active as `DEV-home-return-poster-retention` / reserved Build306.
-
-## Candidate — Build306 / 0.15.39 Home return poster retention
-
-- Exact tested product source: `20dac5ce21e7d3261794dc62827b90fa07b048fb`.
-- Dedicated CI run/job: `37839047724 / 113523454935` — success.
-- Actual-source PosterWall regression: **54 tests / 0 failures**.
-- Artifact: `OnePlayer-0.15.39-build306-home-return-poster-retention`, ID `11577437579`, digest `sha256:dce68eb07b7f8dc469051e68fdae3eb33b28e6e4cd835739b9404034a92fa8cc`.
-- IPA SHA-256: `414dac7cfb8026bd42219251b6f700d53733bb6680540d4b1b58e822368f2b15`. Source ZIP SHA-256: `443c44566e0e3a33bdcbec8e4a4a9b4ba2a5437d51238f3d304fd28dc7189111`; archive comment equals exact product source.
-- Bundle/version/build: `com.embyplayerlab.app`, `0.15.39 / 306`; Info.plist MinOS 15.0 and embedded runtime Mach-O audit passed. Downloaded artifact ZIP/IPA/source checksums and ZIP integrity independently reverified.
-- Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device Build306 validation pending ❌ / stable-frozen ❌**.
-- Do not merge PR #294 or promote Build306 to accepted overall baseline until Home→detail→back and Home→Library→back both pass on the target device.
+Build305 remains the accepted Library feature milestone. Build306 subsequently resolved the separate Home-return poster-artwork regression and is now the accepted overall baseline.
 
 Historical dated entries below preserve their original evidence levels; the current poster-task status is Completed / stable-frozen at Build303, accepted on 2026-10-08 and merged through PR #292. They are not pending work for this completed task.
 

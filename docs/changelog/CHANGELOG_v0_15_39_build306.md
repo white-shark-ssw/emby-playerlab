@@ -19,4 +19,6 @@ Verified Build306 candidate baseline:
 - bundle `com.embyplayerlab.app`, version/build `0.15.39 / 306`, display name `OnePlayer`, Info.plist MinOS `15.0`; embedded runtime Mach-O minimum-OS audit passed;
 - downloaded artifact ZIP digest, IPA/source ZIP checksums and ZIP integrity independently reverified after CI.
 
-Evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / Build306 target-device validation pending ❌ / stable-frozen ❌.**
+Target-device acceptance on 2026-10-09: the user completed both Home → detail → back and Home → Library → back validation and reported **“验证完了，没问题了”**; the prior black/blank poster reload sweep no longer reproduces in the accepted session. PR #294 merged at `dca5f145612301c071619ee2d57fd80d46bf726a`.
+
+Evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device tested ✅ / task accepted ✅ / merged ✅ / stable-frozen ✅.**

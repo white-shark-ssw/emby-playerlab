@@ -1,14 +1,16 @@
 # OnePlayer Project State
 
-_Last updated 2026-10-09: Build305 Library media-only routing remains target-device accepted/merged. The separate Home-return poster-retention regression now has a verified **Build306 / 0.15.39 candidate** (54/0 regression, Release/IPA/MinOS verified), but Build306 is **not real-device accepted** yet; accepted overall baseline therefore remains Build303 until target-device validation._
+_Last updated 2026-10-09: **Build306 / 0.15.39 is now the accepted overall baseline.** The user completed target-device validation and reported no remaining issue for both Home → detail → back and Home → Library → back. PR #294 is merged; the Home poster temporary-suspension lifecycle is accepted/frozen._
 
-## Current accepted overall baseline — Build303
+## Current accepted overall baseline — Build306 / 0.15.39
 
-- Product: **OnePlayer0.15.36 /Build303**, accepted on2026-10-08 by explicit user task acceptance.
-- Tested/package source: **0b5ce25bcec0a4d0240891913ad17114b02cf10e**; CI **37754814214 /113236645278 success**.
-- Artifact **11540607336**; IPA SHA256 **b3ebb081dcbe1e20de02565faaa6e5f4d67891922c6f0d55248bf7cd959842de**; MinOS **15.0**.
-- Evidence: Code written /84fresh+10retained regressions /Release CI passed /IPA independently verified and delivered /user runtime log reviewed /explicit task accepted /poster Stable-frozen. PR292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`; merged tree `0e895c4eec596e4bed3906148bcdca7e18237ad6` matches the accepted Build303 source in every non-document file.
-- Scope: G01–G15/H01–H04 native poster hosts; original query/frontier/navigation/cache ownership retained;293carousel/294Dock/P0 remain protected. Unmeasured resource/full-entry scenarios are not declared tested. Cross-route image-cache sharing remains deferred.
+- Product: **OnePlayer 0.15.39 / Build306**, target-device accepted on 2026-10-09.
+- Exact tested product source: `20dac5ce21e7d3261794dc62827b90fa07b048fb`; dedicated CI run/job `37839047724 / 113523454935` passed with **54 tests / 0 failures**.
+- Artifact `11577437579`, digest `sha256:dce68eb07b7f8dc469051e68fdae3eb33b28e6e4cd835739b9404034a92fa8cc`; IPA SHA-256 `414dac7cfb8026bd42219251b6f700d53733bb6680540d4b1b58e822368f2b15`; source ZIP SHA-256 `443c44566e0e3a33bdcbec8e4a4a9b4ba2a5437d51238f3d304fd28dc7189111`; bundle/version/build `com.embyplayerlab.app`, `0.15.39 / 306`; MinOS **15.0**.
+- Target-device result: user completed validation and reported **“验证完了，没问题了”** for the required Home → detail → back and Home → Library → back paths. The previously visible black/blank poster reload sweep no longer reproduces in the accepted session.
+- Accepted behavior: temporary shared-poster page suspension may cancel image demand and preserve offsets, but keeps already-displayed artwork/card binding resident; true row/cell reuse remains destructive and releases artwork.
+- PR #294 merged at `dca5f145612301c071619ee2d57fd80d46bf726a`. No second cache/state owner, Home metadata reload, navigation replacement, Player/Transport/Cache/Emby Session or P0 playback change was introduced.
+- Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / task accepted ✅ / merged ✅ / Home poster suspension stable-frozen ✅**.
 
 ## Accepted feature milestone — Build305 / 0.15.38 Library media-only root
 
@@ -18,16 +20,7 @@ _Last updated 2026-10-09: Build305 Library media-only routing remains target-dev
 - Build304 routing remains only a bounded safety path if a browsable Folder legitimately reaches the root; no client-side Folder flattening, second loader or detail-internal workaround is part of the accepted design.
 - PR #293 merged at `91b705ca3b62064957169ea8bd2dff71ccc1e180`.
 - Evidence: **Code written ✅ / CI passed ✅ / IPA produced+verified ✅ / real-device tested ✅ / feature task accepted ✅ / merged ✅**.
-- This is a feature milestone, not a promotion of Build305 to accepted overall baseline, because the separate Home-return poster-retention regression was reported immediately afterward and remains Active under Build306.
-
-## Current candidate — Build306 / 0.15.39 Home return poster retention
-
-- Exact tested source: `20dac5ce21e7d3261794dc62827b90fa07b048fb`; PR #294 remains open / unmerged.
-- CI run/job `37839047724 / 113523454935` passed; actual-source PosterWall regression **54 / 0**; Release generic-iOS build, identity validation and embedded runtime Mach-O MinOS audit passed.
-- Artifact `11577437579`, digest `sha256:dce68eb07b7f8dc469051e68fdae3eb33b28e6e4cd835739b9404034a92fa8cc`; IPA SHA-256 `414dac7cfb8026bd42219251b6f700d53733bb6680540d4b1b58e822368f2b15`; source ZIP SHA-256 `443c44566e0e3a33bdcbec8e4a4a9b4ba2a5437d51238f3d304fd28dc7189111`; bundle/version/build `com.embyplayerlab.app`, `0.15.39 / 306`, MinOS 15.0.
-- Candidate behavior: temporary shared poster-page suspension cancels image demand but preserves currently displayed artwork/card binding; true row/cell reuse remains destructive and still releases artwork. No second cache/state owner, Home metadata reload, navigation replacement or Player/Transport/Cache/Emby change.
-- Evidence: **Code written ✅ / CI passed ✅ / IPA produced+independently verified ✅ / real-device Build306 test ❌ pending / stable-frozen ❌**.
-- Acceptance target: both Home → detail → back and Home → Library → back must return with existing poster artwork resident and no black/blank reload sweep.
+- Build305 remains the accepted Library feature milestone. The separate Home-return poster-retention regression was subsequently resolved and target-device accepted in Build306, which is now the accepted overall baseline.
 
 Historical dated entries below preserve their original evidence levels; the current poster-task status is Completed / stable-frozen at Build303, accepted on 2026-10-08 and merged through PR #292. They are not pending work for this completed task.
 
