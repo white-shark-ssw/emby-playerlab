@@ -246,7 +246,7 @@ struct EmbyPosterSections<Top: View>: UIViewControllerRepresentable {
     var error: String? = nil
     var isActive = true
     var scrollToTopToken = 0
-    var onRefresh: (() -> Void)? = nil
+    var onRefresh: ((@escaping () -> Void) -> Void)? = nil
     var onHomeOffset: ((CGFloat) -> Void)? = nil
     var onHomeRefresh: ((@escaping () -> Void) -> Void)? = nil
     let top: Top
@@ -277,7 +277,7 @@ final class EmbyPosterSectionsController: UIViewController, UICollectionViewData
     private var active = false
     private var visible = false
     private var topToken: Int?
-    private var refreshAction: (() -> Void)?
+    private var refreshAction: ((@escaping () -> Void) -> Void)?
     private var loading = false
     private var empty: String?
     private var error: String?
@@ -323,7 +323,7 @@ final class EmbyPosterSectionsController: UIViewController, UICollectionViewData
     override func viewWillDisappear(_ animated: Bool) { super.viewWillDisappear(animated); visible = false; collection.scrollsToTop = false; rows.forEach { $0.deactivate() }; displayLink?.invalidate(); displayLink = nil; reportFrames(); trace("disappear") }
     override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); visible = true; activateResources() }
     var rows: [EmbyPosterHorizontalRow] { collection.visibleCells.compactMap { $0 as? EmbyPosterHorizontalRow } }
-    func update(sections next: [EmbyPosterSection], query: String, topHeight: CGFloat, topPadding: CGFloat, gap: CGFloat, bottom: CGFloat, loading: Bool, empty: String?, error: String?, active: Bool, topToken: Int, refresh: (() -> Void)?, homeOffset: ((CGFloat) -> Void)?, homeRefresh: ((@escaping () -> Void) -> Void)?) {
+    func update(sections next: [EmbyPosterSection], query: String, topHeight: CGFloat, topPadding: CGFloat, gap: CGFloat, bottom: CGFloat, loading: Bool, empty: String?, error: String?, active: Bool, topToken: Int, refresh: ((@escaping () -> Void) -> Void)?, homeOffset: ((CGFloat) -> Void)?, homeRefresh: ((@escaping () -> Void) -> Void)?) {
         let started = CACurrentMediaTime()
         defer { work.record(.apply, milliseconds: (CACurrentMediaTime() - started) * 1000) }
         loadViewIfNeeded()
@@ -356,7 +356,6 @@ final class EmbyPosterSectionsController: UIViewController, UICollectionViewData
             ownedRefresh?.detach(); ownedRefresh = nil
             let control: UIRefreshControl? = refresh == nil ? nil : refreshControl
             if collection.refreshControl !== control { collection.refreshControl = control }
-            if !loading { refreshControl.endRefreshing() }
         }
         if let old = self.topToken, old != topToken { UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseOut) { self.collection.setContentOffset(CGPoint(x: 0, y: -self.collection.adjustedContentInset.top), animated: false) } }
         self.topToken = topToken
@@ -410,7 +409,7 @@ final class EmbyPosterSectionsController: UIViewController, UICollectionViewData
     }
     @objc private func refresh() {
         let feedback = UIImpactFeedbackGenerator(style: .light); feedback.prepare(); feedback.impactOccurred(intensity: 0.55)
-        refreshAction?()
+        refreshAction? { [weak self] in self?.refreshControl.endRefreshing() }
     }
     func numberOfSections(in collectionView: UICollectionView) -> Int { sections.count + 2 }
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { section > 0 && section <= sections.count ? 1 : 0 }

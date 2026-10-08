@@ -149,7 +149,7 @@ struct V3LibraryBrowserView: View {
     }
 
     private var suggestionsTab: some View {
-        EmbyPosterSections(sections: suggestionPosterSections, queryIdentity: "suggestions|\(library.id)", topPadding: 8, sectionGap: 28, bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isLoading: model.isLoading(tab: .suggestions) && !model.hasSuggestionContent, emptyText: model.hasLoaded(tab: .suggestions) ? "暂无建议内容" : nil, error: model.errorMessage(for: .suggestions), isActive: suggestionSelection == nil, onRefresh: { Task { await model.refresh(tab: .suggestions) } }, top: EmptyView())
+        EmbyPosterSections(sections: suggestionPosterSections, queryIdentity: "suggestions|\(library.id)", topPadding: 8, sectionGap: 28, bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isLoading: model.isLoading(tab: .suggestions) && !model.hasSuggestionContent, emptyText: model.hasLoaded(tab: .suggestions) ? "暂无建议内容" : nil, error: model.errorMessage(for: .suggestions), isActive: suggestionSelection == nil, onRefresh: { completion in Task { await model.refresh(tab: .suggestions); completion() } }, top: EmptyView())
             .background(
                 NavigationLink(isActive: Binding(get: { suggestionSelection != nil }, set: { if !$0 { suggestionSelection = nil } })) {
                     if let item = suggestionSelection { EmbyPosterDetailDestination(item: item, client: client) }
@@ -733,7 +733,7 @@ struct V3EmbyFavoritesView: View {
 
     var body: some View {
         NavigationView {
-            EmbyPosterSections(sections: favoritePosterSections, queryIdentity: "favorites", topHeight: V3ServerHeaderMetrics.controlHeight + V3ServerHeaderMetrics.bottomPadding, topPadding: 28, sectionGap: 28, bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isLoading: model.isLoading, error: model.errorMessage, isActive: selectedItem == nil && selectedPerson == nil && selectedCategory == nil, onRefresh: { Task { await model.load() } }, top: V3PageHeader(title: "收藏", onClose: onClose))
+            EmbyPosterSections(sections: favoritePosterSections, queryIdentity: "favorites", topHeight: V3ServerHeaderMetrics.controlHeight + V3ServerHeaderMetrics.bottomPadding, topPadding: 28, sectionGap: 28, bottomPadding: ServerDockMetrics.contentBottomPadding(bottomInset: dockBottomInset), isLoading: model.isLoading, error: model.errorMessage, isActive: selectedItem == nil && selectedPerson == nil && selectedCategory == nil, onRefresh: { completion in Task { await model.load(); completion() } }, top: V3PageHeader(title: "收藏", onClose: onClose))
                 .background(favoritePosterNavigation)
                 .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 .serverDockPage()

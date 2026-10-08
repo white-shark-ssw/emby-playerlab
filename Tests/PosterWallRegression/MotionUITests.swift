@@ -1,6 +1,20 @@
 import XCTest
 
 final class PosterMotionUITests: XCTestCase {
+    func testNativeSectionPullRefreshUsesTaskCompletionWithExistingContent() {
+        let app = XCUIApplication(); app.launchArguments = ["--poster-sections-ui"]; app.launch()
+        let wall = app.collectionViews["poster-sections"]
+        XCTAssertTrue(wall.waitForExistence(timeout: 10))
+        let start = wall.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+        let end = wall.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+        start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+        let finish = app.buttons["Finish refresh"]
+        XCTAssertTrue(finish.waitForExistence(timeout: 5)); finish.tap()
+        XCTAssertFalse(finish.exists)
+        XCTAssertTrue(app.staticTexts["Section 0"].exists)
+        app.terminate()
+    }
+
     func testNativeSectionRowsDeepReturnAndProductTopCommand() {
         let app = XCUIApplication(); app.launchArguments = ["--poster-sections-ui"]; app.launch()
         let wall = app.collectionViews["poster-sections"]

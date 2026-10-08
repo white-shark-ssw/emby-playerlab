@@ -22,15 +22,19 @@ private struct SectionRoot: View {
     let favorites: Bool
     @State private var selection: LibraryItem?
     @State private var topToken = 0
+    @State private var refreshFinish: (() -> Void)?
     var body: some View {
         if favorites { V3EmbyFavoritesView(client: client, onClose: {}) }
         else {
             NavigationView {
-                EmbyPosterSections(sections: sections, queryIdentity: "section-fixture", topHeight: 220, topPadding: 2, sectionGap: 24, bottomPadding: 86, isActive: selection == nil, scrollToTopToken: topToken, onRefresh: {}, onHomeOffset: { _ in }, top: Color.green.opacity(0.1).overlay(Text("Hero fixture")))
+                EmbyPosterSections(sections: sections, queryIdentity: "section-fixture", topHeight: 220, topPadding: 2, sectionGap: 24, bottomPadding: 86, isActive: selection == nil, scrollToTopToken: topToken, onRefresh: { completion in refreshFinish = completion }, onHomeOffset: { _ in }, top: Color.green.opacity(0.1).overlay(Text("Hero fixture")))
                     .background(NavigationLink(isActive: Binding(get: { selection != nil }, set: { if !$0 { selection = nil } })) {
                         if let item = selection { EmbyPosterDetailDestination(item: item, client: client) } else { EmptyView() }
                     } label: { EmptyView() }.hidden())
-                    .toolbar { Button("回顶") { topToken += 1 } }
+                    .toolbar {
+                        Button("回顶") { topToken += 1 }
+                        if let finish = refreshFinish { Button("Finish refresh") { finish(); refreshFinish = nil } }
+                    }
                     .navigationTitle("Section Fixture")
                     .serverDockPage()
             }

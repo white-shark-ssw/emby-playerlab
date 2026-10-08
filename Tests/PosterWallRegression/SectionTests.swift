@@ -121,6 +121,20 @@ import SwiftUI
         XCTAssertEqual(controller.collection.contentOffset.y, 0, accuracy: 0.1)
     }
 
+    func testExistingContentRefreshEndsOnlyAtOriginalTaskCompletion() {
+        let (window, controller) = mounted(); defer { controller.dispose(); window.isHidden = true }
+        let sections = [section("row", source: client())]
+        var finish: (() -> Void)?
+        controller.update(sections: sections, query: "query", topHeight: 0, topPadding: 8, gap: 28, bottom: 86, loading: false, empty: nil, error: nil, active: true, topToken: 0, refresh: { finish = $0 }, homeOffset: nil, homeRefresh: nil)
+        controller.collection.refreshControl?.beginRefreshing()
+        controller.collection.refreshControl?.sendActions(for: .valueChanged)
+        XCTAssertNotNil(finish)
+        controller.update(sections: sections, query: "query", topHeight: 0, topPadding: 8, gap: 28, bottom: 86, loading: false, empty: nil, error: nil, active: true, topToken: 0, refresh: { finish = $0 }, homeOffset: nil, homeRefresh: nil)
+        XCTAssertTrue(controller.collection.refreshControl?.isRefreshing == true, "Existing metadata must not prematurely end the owner's async refresh")
+        finish?()
+        XCTAssertFalse(controller.collection.refreshControl?.isRefreshing == true)
+    }
+
     func testWideCellLateImageCannotOverwriteReboundItem() async {
         var pending: [URL: CheckedContinuation<UIImage?, Never>] = [:]
         let preparation = EmbyImagePreparation(operation: { url in await withCheckedContinuation { pending[url] = $0 } })
