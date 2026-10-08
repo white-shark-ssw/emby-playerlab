@@ -1,6 +1,6 @@
 # 海报墙入口清单
 
-_2026-10-06。DEV-poster-grid-smoothness；源码审计基线：main 408ccc865262673ab708c01b13f20328aeff8066。只登记当前路由与拟迁移范围，G01库内容页已实施P1/P2试点，其他宿主待迁移；Build299 G01重启/深处回顶/长帧有正向真机反馈，未覆盖项与其他宿主仍待验证。整体合同见 [POSTER_PRESENTATION_DESIGN.md](POSTER_PRESENTATION_DESIGN.md)，执行阶段/交付与新会话指令见 [POSTER_IMPLEMENTATION_PLAN.md](POSTER_IMPLEMENTATION_PLAN.md)。_
+_2026-10-08。真实路由审计入口不变；G01接受当前调优，G02–G15及H01–H04代码/CI/实际构建包完成，Build303独立核验通过。直接IPA附件受执行环境断连阻塞；逐入口真机与P6规模/资源仍待验证，H05保护审计。整体合同与执行阶段仍由设计和计划定义。_
 
 ## 1. 清点口径
 
@@ -53,7 +53,7 @@ G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件
 
 ## 5. 每条入口的交付记录
 
-G01当前覆盖已验收；G02–G08 Build300、G09–G14 Build301、G15 Build302已接入并通过各自实际源码回归及核验IPA。逐入口真机覆盖以以下矩阵和Build index为准，不能以共享组件或CI替代全路径验收。H01–H04/P6仍待推进。
+G01当前覆盖已验收；G02–G08 Build300、G09–G14 Build301、G15 Build302已接入并通过各自实际源码回归及核验IPA。逐入口真机覆盖以以下矩阵和Build index为准，不能以共享组件或CI替代全路径验收。H01–H04代码/CI/实际包已完成；P6与直接IPA附件仍待推进。
 
 每个适配器至少检查：首次无图时固定海报框 + 已有名称；磁盘暖缓存提前准备；详情 push/pop 返回后保持数据与位置；深处回顶时已准备首屏直接呈现；分页追加不改变旧项位置；排序/筛选/来源变化不收到旧回调；无更多、空结果、图片失败和已有内容下的追加失败。G08 还检查父子文件夹往返；G10/G12 检查人物目的地；G13/G14/H04 检查跨服务器相同 item.id；G15 检查追加推荐、关闭推荐和离开 Search 的既有生命周期。
 
@@ -66,7 +66,7 @@ G01当前覆盖已验收；G02–G08 Build300、G09–G14 Build301、G15 Build30
 | G01 Library.items | P2 首个闭环 | 已接入 / Build299实际源码回归/Release/IPA通过 / 重启前后8013运动采样0 >=25ms；1560缓存apply1.66ms；深处返回与1560/1620回顶保留，用户无明显卡顿。本轮长帧调优结束，其他交互/资源/约2000与5000规模未全测 |
 | G02–G08 Library其余入口 | P3 | 原生适配完成 / Build300 28+10+6 fresh回归、Release与IPA核验通过 / 新入口待真机验收 |
 | G09–G15 其他三列墙 | P4；G15含搜索落地宿主 | 原生适配完成 / Build301叶与Build302落地宿主实际源码回归、Release/IPA通过 / 301日志类别过滤和搜索叶正向，其他路径及302真机待验证 |
-| H01–H04 首页及其他横向行 | P5 | 原生宿主代码完成 / Build303 80项fresh回归通过，UI/Release/IPA待完成 / 真机待验证 |
+| H01–H04 首页及其他横向行 | P5 | 原生宿主代码完成 / Build303最终源码84项fresh回归通过，10项未变UI保留；Release/实际IPA独立核验通过，直接附件受环境中断阻塞 / 真机待验证 |
 | H05 冻结详情关联行 | 关联审计/保护回归 | 不自动纳入宿主改造；无本轮验证 |
 
 更新进度时逐项注明实际覆盖范围，尤其G09的三种媒体与G10人物、G11两条路径、G12三条路径、G13输入/历史和G14不同服务器；不能只把阶段范围整体勾完。
@@ -226,3 +226,33 @@ Run37751337210/job113225034414 completed all test steps successfully on exact pr
 ## Build303 refresh completion correction — final-source validation pending
 
 First source1fdca1f8f2765bd1660330945e167dedecf5e418/control69121d5b5156745b91e86299f86ce1916e1ac8c0/run37751337210/job113225034414 completed92 tests and full Release/package successfully, but is NOT the delivery candidate. Source review found normal Home/Library suggestions' initial-spinner-only flags could prematurely finish refresh with existing metadata. Native section refresh now ends only from the original page async task completion (normal Home/suggestions/Favorites); immersive Home still uses the unchanged owned-refresh coordinator. Added actual native completion unit and physical pull UI regression. Source fixed locally; final macOS validation pending. Planned final84 fresh cases:53poster+10detail+18Dock/carousel+3P5UI. Earlier10 unchanged Library/P3/P4/Search native UI cases retained from the first source, guarded by unchanged original test body and runtime scope/source checks; not94 freshly rerun. Same reserved303/0.15.36, no304. No first candidate IPA handed off, no device acceptance/performance claim. Continue exact-source Release/package and independent actual IPA check.
+
+## Build303 corrected exact-source run started
+
+Final corrected product **0b5ce25bcec0a4d0240891913ad17114b02cf10e**, control **30c558e7984c682f22e92e13a3d6104ea27b7579**, run **37754814214** on ci/build303-poster-sections-20261008. First92-pass/Release source1fdca1f8f2765bd1660330945e167dedecf5e418 is superseded before delivery for refresh completion; its ten unchanged original UI tests retained with full raw log and exact original test/helper/source guards. Final planned84 fresh (53poster+10detail+18Dock/carousel+3P5UI); no final-source pass or actual IPA claim yet. Next inspect actual job, correct concrete failure, complete Release/identity/iOS15/package and independently verify/save actual final303 IPA. Main remains documentation-only; PR292 Draft/open/unmerged, accepted294, P6/device/cache limits unchanged.
+
+## Build303 final-source native unit milestone — 81 fresh passed
+
+Final source0b5ce25bcec0a4d0240891913ad17114b02cf10e/control30c558e7984c682f22e92e13a3d6104ea27b7579/run37754814214/job113236645278: exact source/scope/retained-input/iOS15 guards,18freshDock/carousel+10detail/cache+53poster/adapter/Search/P5 units completed/success (81fresh). New existing-content refresh completion unit passes. Three selected P5 native UI cases in progress; original ten unrelated UI cases retain raw first-run evidence and exact test/helper/source guards, not rerun. Full Release/identity/MinOS/package/actualIPA verification pending. Next: continue this exact run through UI and package, recover local execution connection for downloaded actual IPA verification and file handoff; no first-source IPA delivery or device/Stable/merge claim.
+
+## Build303 final-source all84 fresh passed — Release pending
+
+Run37754814214/job113236645278 on product0b5ce25bcec0a4d0240891913ad17114b02cf10e/control30c558e7984c682f22e92e13a3d6104ea27b7579 passed53poster/adapter/Search/P5+10detail/cache+18Dock/carousel+3P5nativeUI=84fresh/0failures. Selected UI cases cover physical pull refresh awaiting original completion, mixed native section/horizontal deep-return/product top command and actual production Favorites Movie preview/more +Person works. Original ten UI cases retained from1fd/run37751337210 with full raw log and unchanged original test/helper/runtime source guards, NOT freshly rerun94. Generic UI Hero visual remains a fixed fixture; full production Home/Hero/nativeCarousel/293/294 await final full Release plus target-device acceptance. Full Release/dependencies now in progress; actual final-source303 IPA, identity/MinOS independent verification and file handoff pending. Local execution connection recovery is required for final local byte verification/upload; GitHub source/run/checkpoints are durable. Continue exact same run through package, do not deliver superseded first IPA or allocate304 merely for process interruption.
+
+## Build303 final Release/package successful — artifact verification/file handoff pending
+
+Final run37754814214/job113236645278 completed/success on product0b5ce25bcec0a4d0240891913ad17114b02cf10e/control30c558e7984c682f22e92e13a3d6104ea27b7579.84fresh passed plus10retained UI guarded. Full Release succeeded09:32:39Z; identity,Info/embedded MinOS15 and package ZIP integrity succeeded. Artifact **11540607336 /OnePlayer-0.15.36-build303-poster-sections**, ZIP **23022283bytes**, digest **sha256:2f6813ee13a5f015ab1543f63a4f97d68a8f567570792c44436842b4526e2a94**. CI IPA SHA256 **b3ebb081dcbe1e20de02565faaa6e5f4d67891922c6f0d55248bf7cd959842de**. Source/IPA values here are CI-reported, not yet independently downloaded-byte verified.
+
+Actual final artifact downloaded through GitHub into conversation file **file_00000000a350820b83878e511eb353bb**, filename OnePlayer-0.15.36-build303-poster-sections.zip. Local execution service disconnected and failed recovery; resolved materialization now returns workspace_path null rather than a placed file. No final local IPA exists or Library-save success claimed; do NOT present guessed sandbox paths. Temporary transfer URLs are not persisted. Next: independently verify exact downloaded artifact/actual source/IPA bytes using a separate scoped artifact-verification CI if local runtime remains unavailable; recover local delivery/extract/save actualIPA. No rerun of unchanged84 tests/source rebuild is necessary for a transfer interruption. PR292 title/body now reflects all Library/Search/Home sections, Draft/open/unmerged,accepted294/P6/cache limits unchanged.
+
+## Build303 P5 code, CI and actual artifact verified — 2026-10-08
+
+H01–H04 implementation is complete: Home, Library suggestions, Favorites previews and multi-server Search previews use shared native vertical sections and reusable horizontal cells. Original metadata/query/provider/navigation owners, media/Person/Episode/more destinations, actual result server/term, Hero offset and immersive refresh bridges, top command, carousel293/Dock294 and 4tasks/12prefetch/24firstScreen/64+96MiB image budgets remain protected. Standard refresh ends only at the original async task completion. This is code/CI/package evidence, not target-device long-frame or presented-FPS acceptance.
+
+**Final exact package source:** 0b5ce25bcec0a4d0240891913ad17114b02cf10e. Build303 /OnePlayer0.15.36 /poster-sections /MinOS15.0. CI control30c558e7984c682f22e92e13a3d6104ea27b7579, ci/build303-poster-sections-20261008, run37754814214/job113236645278 completed/success. **84 fresh/0failure** (53poster+10detail/cache+18Dock/carousel+3P5UI). Ten unchanged Library/P3/P4/Search UI cases retain exact original test/helpers/runtime guards and full raw pass log from first source1fdca1f8f2765bd1660330945e167dedecf5e418/run37751337210; they were not rerun on final source. First source's92-pass/Release IPA is superseded and not delivered. Full Release, identity, embedded MinOS and package passed.
+
+**Actual final artifact:** ID11540607336, OnePlayer-0.15.36-build303-poster-sections, ZIP23022283bytes, SHA256 **2f6813ee13a5f015ab1543f63a4f97d68a8f567570792c44436842b4526e2a94**. IPA OnePlayer-0.15.36-build303-poster-sections-unsigned.ipa, **18659185bytes**, SHA256 **b3ebb081dcbe1e20de02565faaa6e5f4d67891922c6f0d55248bf7cd959842de**. SourceZIP SHA256 **bacf2ac724a1fd2b3971d54a51d670c4662a056a8f0f2227a4ed41f0dddd5dd2**. Independent Linux artifact-verification control6fe25e3885da34340aff3c86fe8575fd50190e79 /ci/verify-build303-artifact-20261008 /run37757968091/job113247111545 completed/success: independently downloaded actual GitHub artifact ZIP digest/integrity, source archive comment and all **523 file bytes** against exact Git objects, all protected production Sources against302, actual IPA digest/integrity/Info/arm64 Mach-O MinOS15.0.0, actual84fresh and10retained raw logs. Report artifact11540358039 /SHA256584d15e28a3e4b061d2532b82e143599b9984cdaba9c2d4f1735cec6a3dd0021. Bundlecom.embyplayerlab.app/0.15.36/303/Info MinOS15.0/CADisableMinimumFrameDurationOnPhone=true. Unsigned; signing required.
+
+**Delivery limitation:** The local execution service disconnected after implementation; repeated recovery failed. The final ZIP is a real conversation download file_00000000a350820b83878e511eb353bb, but materialization returns workspace_path null and local extraction/upload cannot execute. No final local IPA path, direct IPA attachment or persistent save success is claimed. Artifact remains available at the actual successful run https://github.com/white-shark-ssw/emby-playerlab/actions/runs/37754814214. Do not guess a sandbox link, rename a ZIP as IPA, rebuild/reallocate304 for a transfer interruption, or use the superseded first artifact. Native actualIPA delivery must resume when execution is available.
+
+**State/next:** G01 accepted tuning, P3 G02–G08/P4 G09–G15/P5 H01–H04 code/CI/actual artifact complete; Task Active, Draft PR292 open/unmerged/not whole-task Stable/frozen. Main remains documents only; accepted overall294 unchanged, Aether235 isolated. After delivering this exact303 actualIPA, prioritize target15ProMax/iOS17 Home carousel on/off, vertical/horizontal mixed scrolling, refresh/top/detail return, Library suggestions, Favorites media/Person/more, multi-server client/term and prior Search landing lifecycle. Generic section UI Hero is a fixed visual fixture; production Home compiles in Release, actual device remains unverified. P6 broader2000/5000/resource pressure/background/first-presented bitmap and uncovered entry matrix remains. H05 audit-only. Cross-Wi-Fi/cellular cache identity migration remains deferred per user priority.
