@@ -66,7 +66,7 @@ G01当前覆盖已验收；G02–G08 Build300、G09–G14 Build301、G15 Build30
 | G01 Library.items | P2 首个闭环 | 已接入 / Build299实际源码回归/Release/IPA通过 / 重启前后8013运动采样0 >=25ms；1560缓存apply1.66ms；深处返回与1560/1620回顶保留，用户无明显卡顿。本轮长帧调优结束，其他交互/资源/约2000与5000规模未全测 |
 | G02–G08 Library其余入口 | P3 | 原生适配完成 / Build300 28+10+6 fresh回归、Release与IPA核验通过 / 新入口待真机验收 |
 | G09–G15 其他三列墙 | P4；G15含搜索落地宿主 | 原生适配完成 / Build301叶与Build302落地宿主实际源码回归、Release/IPA通过 / 301日志类别过滤和搜索叶正向，其他路径及302真机待验证 |
-| H01–H04 首页及其他横向行 | P5；必要宿主可在P4接入 | 未开始 / 未验证 / 未验证 |
+| H01–H04 首页及其他横向行 | P5 | 原生宿主代码完成 / Build303 80项fresh回归通过，UI/Release/IPA待完成 / 真机待验证 |
 | H05 冻结详情关联行 | 关联审计/保护回归 | 不自动纳入宿主改造；无本轮验证 |
 
 更新进度时逐项注明实际覆盖范围，尤其G09的三种媒体与G10人物、G11两条路径、G12三条路径、G13输入/历史和G14不同服务器；不能只把阶段范围整体勾完。
@@ -214,3 +214,7 @@ Linux P5 scope guard, demand URL/detail guards, Python extraction/compilation pa
 ## Build303 exact-source CI in progress
 
 Product source **1fdca1f8f2765bd1660330945e167dedecf5e418**, CI control **69121d5b5156745b91e86299f86ce1916e1ac8c0**, branch ci/build303-poster-sections-20261008, workflow build303-poster-sections.yml, dedicated run **37751337210** /job113225034414 in progress. Source scope20paths. Planned92 fresh tests (52+10+12+18); source compilation/tests/Release/IPA success not yet claimed. Next action: inspect this job's actual completed steps/logs, correct only proven failures, then verify the actual303 source/IPA/Artifact/MinOS and hand off. Main documentation only; feature/runtime not merged.302 device/P6/cache identity limitations unchanged.
+
+## Build303 native unit milestone — 80 fresh regressions passed
+
+Dedicated run37751337210/job113225034414 on control69121d5b5156745b91e86299f86ce1916e1ac8c0 against exact product1fdca1f8f2765bd1660330945e167dedecf5e418: source/scope/whitespace/iOS15 guards passed; fresh18 production Dock/carousel +10 detail/cache +52 poster/adapter/Search/P5 units completed/success (80 total). Includes original variants/specs/source identity, same publication/geometry/request-memo/native return, row reuse/offset/latest callback, query replacement, shared12prefetch cap, first-screen/task cap, actual Home offset/owned-refresh coordinators and wide-cell stale-image binding. Twelve native UI tests in progress; full Release/package/IPA/device not yet passed. Continue this actual job through UI/Release/identity/package and verified file handoff.
