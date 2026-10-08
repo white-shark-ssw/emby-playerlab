@@ -1,0 +1,33 @@
+name: Apply Build306 Home Return Patch
+
+on:
+  push:
+    branches:
+      - fix/home-return-poster-retention-build306
+    paths:
+      - .github/workflows/temp-apply-build306-home-return.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Build306 branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/home-return-poster-retention-build306
+          fetch-depth: 0
+      - name: Apply exact source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check scripts/build306_home_return.patch
+          git apply scripts/build306_home_return.patch
+          rm scripts/build306_home_return.patch .github/workflows/temp-apply-build306-home-return.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/UI/EmbyPosterSections.swift Tests/PosterWallRegression/SectionTests.swift Sources/Core/AppIdentity.swift scripts/build306_home_return.patch .github/workflows/temp-apply-build306-home-return.yml
+          git commit -m "fix: retain Home poster artwork across navigation"
+          git push origin HEAD:fix/home-return-poster-retention-build306
