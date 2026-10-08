@@ -1,6 +1,6 @@
 # DEV-home-return-poster-retention
 
-- **Status:** Active — minimal lifecycle fix written; Build306 exact-source CI/IPA pending
+- **Status:** Active — Build306 CI/IPA verified; target-device validation pending
 - **Work ID:** `DEV-home-return-poster-retention`
 - **Routing aliases / keywords:** `首页返回海报刷新` / `返回首页海报重载` / `Home海报闪空` / `home return poster retention`
 - **Task:** 从首页进入详情页或 Library 页面再返回时，已经显示的 Home 海报图片必须原位保留，不得先被清空再重新采用；保留现有 Home 数据、滚动位置、系统导航和共享图片缓存所有权。
@@ -10,24 +10,32 @@
 - Target device: iPhone 15 Pro Max / iOS 17.0.
 - User tested OnePlayer `0.15.38 / Build305` and explicitly confirmed the prior `DEV-meaningless-detail-routing` issue is fixed.
 - In the same Build305 session, every Home → detail → back and Home → Library → back visibly makes already-loaded Home poster artwork blank/reload. Screenshot shows poster/card text remains while artwork surfaces are dark/empty during return, which points to presentation-image teardown rather than a proven Home metadata reload.
-- No new runtime log has yet been supplied for this issue; the source lifecycle is sufficiently deterministic to identify the destructive presentation path without inventing a metadata/network refresh.
+- Build306 has not yet been target-device tested. Do not describe this regression as solved on device until the user confirms both return paths.
 
 ## Baseline / dependency
 
 - Exact runtime product source under test when the issue was reported: Build305 `3476a3d9a8976ef483bb9d9e2317d0d2e442f8bb`.
-- `DEV-meaningless-detail-routing` is now target-device accepted and PR #293 merged at `91b705ca3b62064957169ea8bd2dff71ccc1e180`.
+- `DEV-meaningless-detail-routing` is target-device accepted and PR #293 merged at `91b705ca3b62064957169ea8bd2dff71ccc1e180`.
 - Durable Build305 project state was closed out on `main` at `1593a548bfcdd9cc9e44938eb7738dfbcd5c447a`.
 - Working branch: `fix/home-return-poster-retention-build306`.
-- The Build306 branch has been reconciled with that accepted `main`; current branch diff versus `main` is restricted to AppIdentity, shared poster lifecycle, one regression test file and this task documentation/changelog.
-- Accepted overall baseline remains Build303 until the Home-return regression is independently built and target-device validated.
+- Accepted overall baseline remains Build303 until the Home-return regression is independently target-device validated.
 
-## Build candidate
+## Build306 verified candidate
 
-- Reserved candidate: OnePlayer `0.15.39 / Build306`.
-- Collision check: repository/current project docs contain no existing `Build306` or `0.15.39` allocation; independent Aether remains Build235.
-- Deployment Target remains iOS 15.0.
-- Implementation commit: `96c9aa30b3a766011a8b10a207cdf370da3194e3` (`fix: retain Home poster artwork across navigation`).
-- Reconciled branch head before candidate docs: `e27e3221fc176a623a4c9d96d7ab65ba24e74efc`.
+- Product: OnePlayer `0.15.39 / Build306`.
+- Exact tested product source: `20dac5ce21e7d3261794dc62827b90fa07b048fb`.
+- Implementation commit: `96c9aa30b3a766011a8b10a207cdf370da3194e3`.
+- PR: `#294`, open / unmerged.
+- Dedicated CI control branch: `ci/build306-home-return-poster-retention-20261009`.
+- CI run/job: `37839047724 / 113523454935` — success.
+- Actual-source PosterWall regression: **54 tests / 0 failures**.
+- Release generic-iOS build: success on Xcode 16.4.
+- Artifact: `OnePlayer-0.15.39-build306-home-return-poster-retention`, ID `11577437579`, digest `sha256:dce68eb07b7f8dc469051e68fdae3eb33b28e6e4cd835739b9404034a92fa8cc`.
+- IPA: `OnePlayer-0.15.39-build306-home-return-poster-retention-unsigned.ipa`, SHA-256 `414dac7cfb8026bd42219251b6f700d53733bb6680540d4b1b58e822368f2b15`.
+- Source ZIP SHA-256: `443c44566e0e3a33bdcbec8e4a4a9b4ba2a5437d51238f3d304fd28dc7189111`; archive comment equals exact product source `20dac5ce21e7d3261794dc62827b90fa07b048fb`.
+- Bundle identity: `com.embyplayerlab.app`, `0.15.39 / 306`, display name `OnePlayer`.
+- Info.plist MinOS `15.0`; CI embedded runtime Mach-O minimum-OS audit passed.
+- Downloaded artifact ZIP digest, packaged IPA/source checksums and ZIP integrity were independently reverified after CI.
 
 ## Exact source diagnosis
 
@@ -38,7 +46,7 @@ Build305 source inspection identifies one concrete presentation-lifecycle owner:
 3. `EmbyPosterSectionsController` handled page-level inactivity / `viewWillDisappear` by calling `EmbyPosterHorizontalRow.deactivate()` for every visible row.
 4. `EmbyPosterHorizontalRow.deactivate()` cancelled prefetch and then called `prepareForReuse()` on **every visible child poster cell**.
 5. `EmbyPosterCell.prepareForReuse()` and `EmbyPosterWideCell.prepareForReuse()` clear the cell's bound record/card and set `artwork.image = nil`.
-6. Returning to Home reactivates/reconfigures those cells and images are adopted again from preparation/render/disk/network ownership. This exactly explains the visible blank/reload cycle while text/metadata ownership remains resident.
+6. Returning to Home reactivates/reconfigures those cells and images are adopted again from the existing preparation/render/disk/network owner. This explains the visible blank/reload cycle while text/metadata ownership remains resident.
 
 This is not evidence of a full Home metadata query refresh. The proven defect is that a **temporary page suspension was incorrectly using the destructive cell-reuse path**.
 
@@ -62,12 +70,11 @@ This is not evidence of a full Home metadata query refresh. The proven defect is
   - cancels row prefetch and visible cell image subscriptions using each cell's existing `deactivate()`;
   - saves horizontal offset exactly as before;
   - **does not call `prepareForReuse()` and does not clear the currently displayed UIImage / bound record/card**.
-- `EmbyPosterSectionsController.viewWillDisappear`, inactive row configuration, and inactive resource activation now call `suspend()` instead of destructive `deactivate()`.
-- True child-cell `didEndDisplaying`, row `didEndDisplaying`, row reuse and query replacement retain existing destructive reuse semantics.
+- `EmbyPosterSectionsController.viewWillDisappear`, inactive row configuration, and inactive resource state now call `suspend()` instead of destructive `deactivate()`.
+- True child-cell `didEndDisplaying`, row `didEndDisplaying`, row reuse, changed-query replacement and real cell reuse retain existing destructive semantics.
 - No second image cache, duplicate state, timer, retry, fallback, watchdog or speculative lifetime owner was added.
-- App identity advances to `0.15.39`; packaging will use Build306.
 
-## Regression added
+## Regression coverage
 
 `Tests/PosterWallRegression/SectionTests.swift` adds `testPageSuspensionRetainsVisibleArtworkButRealDeactivationClearsIt` across poster / landscape / library styles:
 
@@ -78,7 +85,7 @@ This is not evidence of a full Home metadata query refresh. The proven defect is
 - `activate()` must keep it resident;
 - true `deactivate()` must still clear it.
 
-This directly guards the new lifecycle distinction without changing data/query/navigation semantics.
+The full actual-source PosterWall regression now executes **54 tests / 0 failures** in the dedicated Build306 CI.
 
 ## Files / modules in scope
 
@@ -86,40 +93,35 @@ This directly guards the new lifecycle distinction without changing data/query/n
 - `Tests/PosterWallRegression/SectionTests.swift` — temporary suspension retention vs real reuse release regression.
 - `Sources/Core/AppIdentity.swift` — Build306 identity.
 - `docs/changelog/CHANGELOG_v0_15_39_build306.md` and this checkpoint.
-- Narrow exact-source CI control only; no product workflow/runtime abstraction.
+- Dedicated exact-source CI control only.
 
-## State ownership / contracts
+## State ownership / protected contracts
 
 - Home metadata remains owned by `V3EmbyHomeViewModel`.
 - Native system `NavigationView` / `NavigationLink` continues to own push/pop; no custom transition state.
 - Image preparation/cache remains `EmbyImagePreparation` + `EmbyDecodedImageRenderPool` + disk cache; retained visible UIImage is only the existing cell presentation object, not a new cache.
 - Row/card identity and scroll offsets stay in existing `EmbyPosterSectionsController` / `EmbyPosterHorizontalRow` owners.
 - True reuse continues to clear images exactly as before.
-
-## Parallel conflict check
-
-- `DEV-aether-multi-engine-comparison` is Active but isolated to Player/Aether/Transport and does not touch these UI files/state owners.
-- `DEV-search-page-optimization` is Completed/merged. Search uses shared poster presentation in some routes, so Build306 tests must retain existing shared-section behavior and must not change Search data semantics.
-- `DEV-meaningless-detail-routing` is completed, target-device accepted and merged; Build306 now sits cleanly on the accepted main state.
+- No Player/MPV/PiP, UnifiedTransport, playback Session Cache, Emby Session, STRM→302→115/CDN, Home carousel or Deployment Target contract changes.
 
 ## Validation state
 
 - Code written: ✅.
-- Exact diff against latest main inspected: ✅ — runtime/product changes restricted to `Sources/Core/AppIdentity.swift`, `Sources/UI/EmbyPosterSections.swift`, and the regression test file.
-- Narrow regression: added; execution pending dedicated CI.
-- CI passed: pending.
-- IPA produced: pending.
-- Real-device tested: Build305 reproduces the issue; Build306 pending.
-- Stable/frozen: no.
+- Exact-source guard / diff inspection: ✅.
+- Poster regression: **54 / 0** ✅.
+- CI passed: ✅.
+- IPA produced + independently verified: ✅.
+- Real-device tested on Build306: ❌ pending.
+- Stable/frozen: ❌ pending target-device acceptance.
 
 ## Next exact action
 
-1. Freeze an exact Build306 product SHA after this checkpoint/changelog.
-2. Open the Build306 PR against current `main`.
-3. Run dedicated exact-source PosterWall regression + Release CI; fix only evidence-backed failures.
-4. Package and independently verify Build306 IPA, bundle/version/build and MinOS 15.0.
-5. Update this checkpoint / changelog / `BUILD_TEST_INDEX.md` with the valid CI/IPA baseline.
-6. Target-device acceptance: Home → detail → back and Home → Library → back must keep currently shown poster artwork resident with no blank/reload sweep; Home position/text/data and normal image updates must remain correct.
+1. Deliver the independently verified Build306 IPA to the user.
+2. Target-device acceptance must cover both:
+   - Home → detail → back;
+   - Home → Library → back.
+3. In both cases already-present Home artwork must stay resident with no black/blank reload sweep; Home text, position, navigation and normal later image updates must remain correct.
+4. Only after target-device acceptance update durable project state and merge PR #294. Do not merge on CI/IPA evidence alone.
 
 ## Rejected / do-not-repeat
 
