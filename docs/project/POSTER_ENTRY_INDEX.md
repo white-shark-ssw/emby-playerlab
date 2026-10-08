@@ -26,7 +26,7 @@ _2026-10-06。DEV-poster-grid-smoothness；源码审计基线：main 408ccc86526
 | G12 | 详情演职人员卡片；收藏演员预览卡片；演员收藏“更多”后的卡片 | EmbyPersonMediaView | 三条入口路径；真实 PersonId 筛选、60 条分页及缺少 PersonId 提示 |
 | G13 | 输入关键词并提交；点击搜索历史，且当前仅选一个搜索服务器 | V3GlobalSearchServerGridView | term、来源服务器、18 条分页；两种发起路径共享目的页 |
 | G14 | 多服务器搜索结果中，某服务器区的“更多” | 同一 V3GlobalSearchServerGridView | 使用结果区对应 client/server，而非当前首页服务器；保留查询词 |
-| G15 | 打开搜索页的“推荐观看”，向下追加推荐 | V3EmbyGlobalSearchView.recommendationsSection | 网格本身纳入；现有初始 9 / 追加 6、随机推荐与排除已推荐 ID、6pt 横向边距、Search 生命周期 |
+| G15 | 打开搜索页的“推荐观看”，向下追加推荐 | V3EmbyGlobalSearchView.searchLanding → EmbyPosterSearchLanding / EmbyPosterWall | 网格本身纳入；现有初始 9 / 追加 6、随机推荐与排除已推荐 ID、6pt 横向边距、Search 生命周期 |
 
 G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件夹需要明确内容变体；媒体、Episode、Person、genre、folder 的点击目标归页面适配器。
 
@@ -53,7 +53,7 @@ G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件
 
 ## 5. 每条入口的交付记录
 
-实施后逐行填写“已接入 / 构建验证 / 真机验证 / 待验证”；G01已写入Build295独立试点，8项生产海报回归/18项Dock轮播回归通过、Release CI/IPA已独立核验、真机待验收；G02–G15仍待迁移。共享核心完成不等于全部入口完成。
+G01当前覆盖已验收；G02–G08 Build300、G09–G14 Build301、G15 Build302已接入并通过各自实际源码回归及核验IPA。逐入口真机覆盖以以下矩阵和Build index为准，不能以共享组件或CI替代全路径验收。H01–H04/P6仍待推进。
 
 每个适配器至少检查：首次无图时固定海报框 + 已有名称；磁盘暖缓存提前准备；详情 push/pop 返回后保持数据与位置；深处回顶时已准备首屏直接呈现；分页追加不改变旧项位置；排序/筛选/来源变化不收到旧回调；无更多、空结果、图片失败和已有内容下的追加失败。G08 还检查父子文件夹往返；G10/G12 检查人物目的地；G13/G14/H04 检查跨服务器相同 item.id；G15 检查追加推荐、关闭推荐和离开 Search 的既有生命周期。
 
@@ -65,7 +65,7 @@ G01–G15 是入口登记编号，不是 15 套组件。演员、类别、文件
 |---|---|---|
 | G01 Library.items | P2 首个闭环 | 已接入 / Build299实际源码回归/Release/IPA通过 / 重启前后8013运动采样0 >=25ms；1560缓存apply1.66ms；深处返回与1560/1620回顶保留，用户无明显卡顿。本轮长帧调优结束，其他交互/资源/约2000与5000规模未全测 |
 | G02–G08 Library其余入口 | P3 | 原生适配完成 / Build300 28+10+6 fresh回归、Release与IPA核验通过 / 新入口待真机验收 |
-| G09–G15 其他三列墙 | P4；G15含搜索落地宿主 | 未开始 / 未验证 / 未验证 |
+| G09–G15 其他三列墙 | P4；G15含搜索落地宿主 | 原生适配完成 / Build301叶与Build302落地宿主实际源码回归、Release/IPA通过 / 301日志类别过滤和搜索叶正向，其他路径及302真机待验证 |
 | H01–H04 首页及其他横向行 | P5；必要宿主可在P4接入 | 未开始 / 未验证 / 未验证 |
 | H05 冻结详情关联行 | 关联审计/保护回归 | 不自动纳入宿主改造；无本轮验证 |
 
@@ -182,3 +182,17 @@ Product source **83a239dc259651755315d52e9028d159830d9960**, CI control **ff9491
 G15 now uses the shared native vertical wall with one reusable Search history/recommendation header, horizontal reusable history chips, and native loading/empty footer. Recommendations retain6pt horizontal padding, original pixel-request specification, poster/name/year/badges, and last-item-visible9/+6/random/exclusion contract. Existing model remains metadata/query owner; only presentation revision counters added. Resident detail link and original history/direct/multi-server routes, Search menu/keyboard and root/Dock lifetime are preserved. The unbounded recommendationPosterImages dictionary and detached parallel warm downloader are removed; disk/decoded/shared preparation remain sole image owners within existing4-task/prefetch12/first-screen24/decoded64+96MiB budgets. Default G01/P3/P4 geometry/refresh/load-ahead unchanged; shared wall header/inset options are opt-in.
 
 Linux exact-source G15/business/root/preloader/protected-source guards, P4 adapters, demand/passive detail guards and actual-source extraction passed; git-based Dock/P3 guards await real CI checkout. Seven actual-source recommendation/query/header units and two native Search UI cases added (planned44 poster/adapter units+10 detail+10 native UI;18 retained Dock/carousel exact-input evidence). Search root/model/preloader/wall/header/Dock are actual production source; network/session boundary and terminal detail remain explicit fixtures. No302 macOS compilation/test/Release/IPA/device claim yet. Next: commit guarded scope, exact-source macOS CI, fix actual failures, complete Release/MinOS/package/independent IPA verification and direct file handoff. P5 H01–H04/P6 remain pending; H05 protected audit-only; task Active/unmerged/not Stable.
+
+## Build302 exact-source CI started
+
+Product source **dced392bbf2e3960539890121cf7d6e9d8f80e86**, control **b0eae8007acd160c158653cae84828bd4d2e98f2**, branch ci/build302-poster-search-landing-20261008, workflow build302-poster-search-landing.yml, dedicated **run37733627914 /job113168149767**. Product lease,23-path scope/whitespace, exact G15 business/root/preloader guards, original Dock/P3/P4/detail/demand/iOS15 guards and retained18 native input guard completed/success. Actual-source harness/simulator preparation running;44 poster+10 detail+10 native UI/Release/package/IPA/device pending. Legacy unrelated invalid workflow runs on this CI branch are not the dedicated302 run. Next: monitor this exact source/run, inspect real failure logs if needed, fix proven errors, finish Release and independently verified actual IPA. Cache migration deferred per user priority; P5/P6 remain pending.
+
+## Build302 P4 G15 verified IPA handoff — 2026-10-08
+
+**Product/test/package source:** dced392bbf2e3960539890121cf7d6e9d8f80e86. CI controlb0eae8007acd160c158653cae84828bd4d2e98f2, branch ci/build302-poster-search-landing-20261008, workflow build302-poster-search-landing.yml, dedicated **run37733627914 /job113168149767 completed/success**. Fresh44 poster/adapter/Search units +10 detail/cache units +10 native UI tests = **64/0 failures**. Original18 Dock/carousel exact-input source evidence retained/guarded, not rerun. Full Release, identity, embedded MinOS and packaging passed. Independent downloaded ZIP/source/IPA byte checks passed; no failed dedicated302 run or invented device evidence.
+
+**Artifact:** OnePlayer-0.15.35-build302-poster-search-landing, ID11531248235, ZIP23005063bytes, SHA256 **7e038c9f6f3ce18c1bca85aa1673253816128508f6ab53f6c31b7fadc5f22343**. IPA OnePlayer-0.15.35-build302-poster-search-landing-unsigned.ipa, **18700220bytes**, SHA256 **4b8b559d8c570f91e2feaf0f08cb7f33bf75aa70aa6027f7e93bcfa668492af3**; source ZIP SHA256 **6b41257a76bc72e6d1b67337dd3af12d2ce25e46b3aa1b353b20f7440cff14fe**. Git archive comment matches exact product SHA; actual changed production/tests/checkers and protected301 source bytes independently compared. Bundlecom.embyplayerlab.app/version0.15.35/Build302/Info MinOS15.0/arm64 MinOS15.0.0/CADisableMinimumFrameDurationOnPhone=true. Actual unsigned IPA saved for direct file handoff; sign-install required. No temporary transfer URL or private upload path persisted. Closing updates are documents only, packaged source remainsdced392bbf2e3960539890121cf7d6e9d8f80e86.
+
+**Scope and evidence:** P4 G09–G15 code is now complete. G15 history/recommendation title/grid/footer share one native vertical collection; reusable horizontal history chips retain actions,6pt grid insets, legacy requested pixel width and poster/name/year/play-state fields. Original9/+6/random/exclusions/duplicate/short/error/generation/query/history/server-selection/Dock lifecycle preserved. Removed unbounded recommendation UIImage dictionary and detached extra warm-download path; existing disk/decoded/preparation owners and4/12/24/64+96MiB budgets remain. Source guards protect G01/P3/P4 leaves, frozen detail/H05, original Search fields/menu/direct/history/multi-server routes/root actions, Home293/Dock294/P0. Seven new actual-source units and two native UI cases cover recommendations/append/deep native return/history clear/direct leaf/toggle and keyboard Dock. Production Search root/model/preloader/wall/header/Dock are compiled; network/session and terminal detail are explicit fixtures. Device302 result/presented FPS/first-presented bitmap timing are not measured.
+
+**Cache priority and next action:** User requested cache decoupling only if simple, prioritizing the poster task. It requires stable server identity propagation plus legacy disk-data compatibility, so is explicitly deferred;302 retains existing route/URL keys and does not claim LAN/WAN cache sharing fixed. Task remains Active/Draft PR292 unmerged/not whole-task Stable/frozen. G01 tuning accepted only within recorded299/301 scope;301 partial positive logs do not prove every P3/P4 path. Hand off302 for actual Search landing cold/warm9/+6, deep detail/history return, clear/toggle/keyboard/Dock and Search exit/re-entry tests. Development next is **P5 H01–H04 native section/horizontal hosts**: retain Home Hero scroll bridge/refresh/top/Dock and293carousel, Library suggestion providers, Favorite media/Person destinations, multi-server actual client/term; P6 broad2000/5000/resource/pressure/background/uncovered matrix remains. H05 audit-only. Recheck fresh heads/PR/collision before allocating303; **no Build303 allocated**. Aether235 stays isolated, accepted overall294 unchanged.
