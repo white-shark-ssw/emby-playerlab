@@ -1,105 +1,88 @@
 # DEV-meaningless-detail-routing
 
-- **Status**: Active
+- **Status**: Active — Build304 target-device rejected for final UX; Build305 candidate in progress
 - **Work ID**: `DEV-meaningless-detail-routing`
 - **Routing aliases / keywords**: `优化无意义详情页` / `无意义详情页` / `Folder详情页` / `文件夹详情` / `detail routing`
-- **Task**: 避免可浏览 Folder / CollectionFolder 被通用海报入口错误推入媒体详情页，改为进入现有文件夹子项浏览页。
+- **Task**: 让 Library 正常内容页只展示媒体对象；Folder / CollectionFolder 保留在现有文件夹浏览路径，不再作为普通电影内容卡制造无意义详情/中间层。
 
 ## User intent / acceptance criteria
 
-- 用户真机 Build303 日志中连续进入 3 个详情对象，第二个对象出现截图所示的空洞页面：只有标题、`Folder` 类型文字和详情页标准按钮，没有有意义的媒体内容。
-- 可浏览 `Folder` / `CollectionFolder` 不应进入 `EmbyMediaDetailView`。
-- 点击这类对象应复用现有 `V3LibraryFolderBrowserView`，继续展示其子项；嵌套文件夹仍可继续进入。
-- `Movie` / `Series` 等真实媒体详情路径保持不变，`Episode` 的 series destination 特例保持不变。
-- 不改播放器、Transport、Cache、Emby Session、详情页内部实现、Build303 已验收海报墙滚动合同。
+- Build303 原问题：Library 根海报墙中的 item `180310` 以 `Folder` 进入通用媒体详情，形成只有标题、`Folder` 和详情按钮的空壳详情。
+- Build304 把该对象改为进入已有 Folder browser；用户真机确认空壳详情消失，但点击同一张卡会进入该 Folder，并看到其中 2 个视频。用户明确指出这仍不是目标体验。
+- 对“单文件夹多视频”这类电影库结构，正常 `.items` 内容页应直接来自递归媒体查询，不应把承载媒体的 Folder 当作内容卡。
+- `.folders` tab / nested folder browser 继续保留真实 Folder 浏览语义。
+- Movie / Series / Video 正常详情、Episode 特例、Build303 海报墙滚动合同、Player/Transport/Cache/Emby/P0 全部保持不变。
 
-## Baseline
+## Baseline / runtime evidence
 
-- Accepted product baseline: OnePlayer `0.15.36 / Build303`。
-- Runtime evidence: 用户提供的 Build303 真机日志，第二次详情加载无 `PlaybackInfo` 请求且最终 `images=0`；截图明确显示对象类型为 `Folder`。
-- Base branch: `main`。
-- Base commit before checkpoint creation: `a2720e55200a813bfe82a9280edaf8e6c483cefa`。
-- Relevant source state: `EmbyPosterDetailDestination` 当前仅对 `Episode` 特判，其余统一进入 `EmbyMediaDetailView`；`EmbyServerBrowseV3.swift` 已存在 `v3LibraryIsBrowsableFolder` 与 `V3LibraryFolderBrowserView`。
+- Accepted overall baseline: OnePlayer `0.15.36 / Build303`, exact product source `0b5ce25bcec0a4d0240891913ad17114b02cf10e`.
+- Working branch: `feat/meaningless-detail-routing`.
+- PR: `#293`, open / unmerged.
+- Build304 exact tested source: `d5b36d98efcbe426d91a750735e2780c5b723576`.
+- Build304 CI run/job: `37828043577 / 113485873035`, success; artifact `11573665346`; IPA SHA-256 `6b2766d272836a6f0798b1b6a6a41081d28f32c80ef97999fc04601210b3f5e7`; MinOS 15.0.
+- Build304 target-device log `OnePlayer-App-1791487069.log` is now the highest-priority evidence for this task.
+- The fresh Library root request for library `145113` is recursive but contains no `IncludeItemTypes`, and the live response republishes the same 60 root cards. This proves the unwanted Folder is not merely stale presentation cache.
+- Selecting root Folder `180310` then performs the existing non-recursive folder-child query and publishes exactly 2 children. Those child media items open normal details and request PlaybackInfo.
+- Therefore Build304 routing-only behavior is insufficient: the remaining owner is the recursive Library content query when its caller supplies no item-type scope.
 
-## Working branch / PR / head commit
+## Build304 result
 
-- Planned branch: `feat/meaningless-detail-routing`。
-- PR: not created yet。
-- Head commit: pending branch creation。
+- Product: OnePlayer `0.15.37 / Build304`.
+- Code written ✅ / 53 tests 0 failures ✅ / CI passed ✅ / IPA produced+verified ✅ / target-device tested ✅.
+- Device result: empty Folder detail shell is gone, but the unwanted Folder card remains and opens a 2-video intermediate folder page.
+- Final UX: **rejected**. Stable/frozen: **no**.
 
-## Build candidate
+## Build305 candidate
 
-- Reserved candidate: OnePlayer `0.15.37 / Build304`。
-- Uniqueness check: `BUILD_TEST_INDEX.md`、当前 Active checkpoints 与仓库搜索未发现 Build304 / 0.15.37 占用。
-
-## Evidence
-
-- Build303 真机日志记录了 3 次详情生命周期；第二次对应 item `180310`，详情 model 进入 media 阶段后立即结束，没有发起 `PlaybackInfo`，Images/Similar 返回后仍无详情图片。
-- 用户截图显示第二个页面的类型文案为 `Folder`，且页面没有有意义的媒体详情。
-- 现有 Library V3 文件夹路径已经把 `Folder` / `CollectionFolder` 作为可浏览容器，并由 `V3LibraryFolderBrowserViewModel` 以 folder id 加载子项。
-- `Tests/PosterWallRegression/LibraryAdapterTests.swift` 已覆盖 Folder/CollectionFolder 分类及 folder owner 子项加载语义。
+- Reserved product: OnePlayer `0.15.38 / Build305`.
+- Build305 collision check: no existing Build305 allocation found; parallel Aether task remains Build235.
+- Exact implementation direction is now in `Sources/Networking/EmbyLibraryHubAPI.swift` rather than broad UI restructuring:
+  - explicit `includeItemTypes` stays authoritative and unchanged;
+  - when `libraryHubItemsPage` is `recursive == true` and the caller supplies an empty type scope, it uses `Movie,Series,Video`;
+  - `libraryFolderChildren` continues to call the same API with `recursive: false`, so dedicated folder browsing remains unrestricted and unchanged.
+- This is supported by complete call-site inspection of the Build304 source: the only recursive `libraryHubItemsPage` call that can arrive with an empty type list is the normal Library root `.items` path; genre paths pass explicit types, while folder children are non-recursive.
+- Build304 root Folder routing remains as a bounded safety path if an actual Folder legitimately reaches that root; `EmbyPosterDetailDestination` remains unchanged.
 
 ## Files / modules in scope
 
-- `Sources/UI/EmbySharedImageAndNavigation.swift`
-- `Sources/UI/EmbyServerBrowseV3.swift`（仅暴露并复用现有 folder classification/browser，不改变其状态所有权）
-- 必要的 regression guard / tests
-- Candidate 身份及本任务项目资料
+- `Sources/UI/EmbyServerBrowseV3.swift` — Build304's already-tested root Folder destination branch only; no new Build305 UI change.
+- `Sources/Networking/EmbyLibraryHubAPI.swift` — one exact recursive-empty-scope normalization for Library hub items.
+- `scripts/check_library_poster_adapters.py` — exact source guard permitting only the Build304 route plus the Build305 query normalization; folder child semantics explicitly guarded.
+- `Sources/Core/AppIdentity.swift` — `0.15.38` candidate identity.
+- candidate changelog / checkpoint / CI control workflow.
 
-## State owner / shared dependencies
+## State owner / Frozen protection
 
-- 文件夹子项状态所有者继续是现有 `V3LibraryFolderBrowserViewModel`。
-- 通用海报点击目标继续由 `EmbyPosterDetailDestination` 决定；这里只增加 Folder / CollectionFolder 路由分支。
-- 不新增第二套 folder loader、缓存、导航状态或详情状态。
-
-## Frozen / do-not-touch
-
-- MPV / Player / UnifiedTransport / Cache / Emby Session / STRM→302→115/CDN P0 合同。
-- Build303 已验收的 3 列海报墙滚动/分页行为。
-- `EmbyMediaDetailView` 内部详情渲染、详情 still viewer / immersive 行为。
-- 原生 NavigationStack push/pop 原则。
-- iOS deployment target 15.0。
-
-## Parallel conflicts checked against
-
-- `DEV-aether-multi-engine-comparison`: Active；作用域为 Player/Transport/Aether，本任务不修改这些文件或状态所有者，无源码重叠。
-- `DEV-search-page-optimization`: Completed；其 Build256 搜索基线保持受保护，本任务不修改 Search。
-- 当前没有发现另一个 Active task 占用 `EmbySharedImageAndNavigation.swift` / Library folder routing / Build304。
-
-## Completed
-
-- 读取用户日志并确认 3 次详情访问中的第二次为无媒体信息的 Folder 详情。
-- 读取真实定义、调用点、现有 folder browser 状态所有权及相关 regression tests。
-- 确定最小方向：通用 destination 对 browsable folder 直接复用现有 folder browser，不修改详情页内部。
-- 分配独立 candidate `0.15.37 / Build304`。
+- Library root selection remains system `NavigationLink` owned.
+- Folder children remain solely owned by `V3LibraryFolderBrowserViewModel` and `libraryFolderChildren(parentId:)`.
+- No second loader, retry, fallback, timer, watchdog, duplicate cache or navigation state.
+- Do not touch MPV, Player, UnifiedTransport, Session Cache, Emby Session, STRM→302→115/CDN, detail internals, native navigation ownership, or iOS 15.0 deployment target.
 
 ## Validation state
 
-- Code written: no。
-- CI passed: no。
-- IPA produced: no。
-- Real-device tested: Build303 仅复现问题；修复尚未真机验证。
-- Stable / frozen: no。
+- Build304: Code written ✅ / CI passed ✅ / IPA produced ✅ / real-device tested ✅ / final UX rejected ❌ / stable-frozen ❌.
+- Build305: Code written ✅ / CI pending / IPA pending / real-device pending / stable-frozen ❌.
 
-## Pending
+## Completed
 
-- 从最新 main 创建 `feat/meaningless-detail-routing`。
-- 实现最小路由修改并处理现有 poster adapter regression guard 的有意例外。
-- 运行/等待 CI，生成并核验 Build304 IPA candidate。
-- 用户真机验证 Folder 点击进入子项浏览，而 Movie/Series/Episode 行为无回归。
+- Re-read the Build304 target-device log and confirmed the new failure is a fresh live unrestricted recursive Library root query, not a cache-only artifact.
+- Inspected actual Build304 `libraryHubItemsPage` implementation and every source call site.
+- Confirmed a conditional media-only default can be applied only to recursive empty-scope requests while leaving `recursive: false` folder browsing untouched.
+- Implemented Build305 query normalization and version identity.
+- Tightened the regression guard to require the exact networking substitution and reject any other Networking change.
+- Added Build305 changelog.
 
-## Next exact action
+## Pending / Next exact action
 
-1. 创建 `feat/meaningless-detail-routing` branch。
-2. 在真实源码上只增加 Folder / CollectionFolder destination 分支并复用现有 `V3LibraryFolderBrowserView`。
-3. 更新 regression guard，提交 PR，推进 CI / IPA。
+1. Run Build305 exact-source regression/Release CI and fix only evidence-backed failures.
+2. Package and independently verify Build305 IPA, source identity, bundle version/build and MinOS 15.0.
+3. Hand Build305 to the user for target-device validation.
+4. Target-device acceptance: the former `180310` Folder card must disappear from the normal content page; its contained media should remain discoverable by the recursive media query; the dedicated Folder tab must still browse folders normally.
 
 ## Rejected / do-not-repeat
 
-- 不在 `EmbyMediaDetailView` 内针对 Folder 堆叠隐藏按钮/空状态补丁；根因是 destination 类型路由错误。
-- 不新增另一套文件夹 API loader 或导航状态。
-- 不为未知类型做 speculative fallback/retry/timer。
-
-## Open questions / risks
-
-- `EmbySharedImageAndNavigation.swift` 被旧 Library adapter scope guard 明确视为 frozen file；本任务必须同步调整该 guard，仅允许这次有证据支持的 destination 变化，不能放宽其它保护范围。
+- Build304 routing-only solution is insufficient for the stated UX.
+- Do not hide Folder UI inside `EmbyMediaDetailView`; the root query is the evidence-backed owner of the unwanted card.
+- Do not enumerate/flatten every Folder client-side; the existing recursive server query can return media directly when given the correct type scope.
+- Do not globally force folder browsing to media-only; non-recursive folder queries are intentionally preserved.
+- Do not add speculative fallback/retry/timer/watchdog or a second content owner.
