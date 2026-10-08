@@ -4,14 +4,14 @@ _2026-10-08 18:58。用户明确验收本任务；G01–G15/H01–H04计划实�
 
 ## 1. 接手入口与资料分工
 
-先读根 AGENTS.md、docs/project/START_HERE.md、CURRENT_WORK.md / CURRENT_WORK_DEV.md，以及 PROJECT_STATE / MODULE_STATUS / TECHNICAL_DECISIONS / BUILD_TEST_INDEX / DOCUMENTATION_POLICY；选择现有 [DEV-poster-grid-smoothness](current/dev/DEV-poster-grid-smoothness.md)，不要新建重叠任务。
+先读根 AGENTS.md、docs/project/START_HERE.md、CURRENT_WORK.md / CURRENT_WORK_DEV.md，以及 PROJECT_STATE / MODULE_STATUS / TECHNICAL_DECISIONS / BUILD_TEST_INDEX / DOCUMENTATION_POLICY。本任务 `DEV-poster-grid-smoothness` 已验收完成并合并 PR#292，原 checkpoint 已删除；本计划保留设计、实施与证据历史，不是可继续的 Active 任务。后续变更按用户明确的新需求或回归证据重新路由。
 
 然后按顺序读：
 1. [POSTER_PRESENTATION_DESIGN.md](POSTER_PRESENTATION_DESIGN.md)：状态所有权和体验合同，特别是 2A / 6A。
 2. 本计划：实施顺序、检查与交付条件。
 3. [POSTER_ENTRY_INDEX.md](POSTER_ENTRY_INDEX.md)：G01–G15 / H01–H05 真实入口、内容变体和覆盖状态。
 
-checkpoint 保存当前身份/完成项/待办；本计划不是另一个 checkpoint。实施授权以新会话用户指令为准；当前用户已授权按计划开发；应按仓库纪律连续推进到P2可测试 IPA，不在普通代码/提交/CI中间节点停等“继续”。
+以下阶段计划和带日期的进度记录保留当时的实施顺序及证据级别；最新验收/合并结论优先。旧记录中的待办、Active、Draft、待验收或未分配 Build 均不代表当前仍需执行，不自动重启已完成任务。
 
 ## 2. 基线、历史代码与身份迁移
 

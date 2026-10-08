@@ -1,8 +1,8 @@
 # 海报展示层整体设计方案
 
-_2026-10-06，DEV-poster-grid-smoothness。实施步骤见[POSTER_IMPLEMENTATION_PLAN.md](POSTER_IMPLEMENTATION_PLAN.md)。状态：设计方案及新会话开发计划已整理；用户已确认“提前准备、有限驻留、滑动阶段轻量呈现”的原则并要求整体设计，尚未授权本轮执行代码重构。以下为建议实现，不能标成已实现、已测试或稳定。_
+_2026-10-09 收尾复核：DEV-poster-grid-smoothness 已于2026-10-08由用户明确验收，OnePlayer0.15.36/Build303为接受基线，PR#292已合并；任务 checkpoint 已删除。G01–G15/H01–H04共享原生海报宿主与有界准备已交付，H05保留原合同。实施及证据见[POSTER_IMPLEMENTATION_PLAN.md](POSTER_IMPLEMENTATION_PLAN.md)、[POSTER_ENTRY_INDEX.md](POSTER_ENTRY_INDEX.md)和[BUILD_TEST_INDEX.md](BUILD_TEST_INDEX.md)。以下为2026-10-06设计原稿，拟议职责与旧基线按历史阅读；具体实现以已验收源码为准。未独立测量的规模/资源/入口场景不追认测试通过；跨线路图片缓存共享仍暂缓。_
 
-## 1. 目标与真实基线
+## 1. 设计目标与历史审计基线（2026-10-06）
 
 目标是首页、库页及后续共享海报页面在目标设备上持续平顺：普通向上/向下拖动、惯性滑动、快速反向时，不因海报进入、图片完成或分页追加出现可见停顿/中途跳动。120Hz对应约8.33ms的显示间隔；平均回调频率不是每帧按时呈现的证明。
 
@@ -223,7 +223,7 @@ Build280/283有序后台Library持久化是有证据支持的修正，实施时�
 6. **首页及横向行接入。** 再用sectioned native content承载海报行并接既有轮播、刷新、回顶和Dock合同；独立回归高频桥接与手势。
 7. **最终验证与交付。** 分配唯一Build/版本，完成CI/IPA及身份/MinOS核验后真机验收。只在授权实施后执行这些代码阶段，本轮仅规划。
 
-当前继续使用DEV-poster-grid-smoothness记录，不另建重叠任务或新的开发分支。现有Build283/PR#282身份保留为历史产品候选；未来基于最新main的分支迁移需明确记录，不能悄悄把checkpoint身份改成猜测值。实施仍需检查实际definitions/call sites/state owners，文中职责名不是可直接调用的源码API。
+设计时使用DEV-poster-grid-smoothness承载任务；后续迁移、Build295–303实施、验收和PR#292合并已经完成，当前不再有该任务的Active checkpoint。Build283/PR#282仅为历史候选，不是当前接受基线。未来变更仍需检查真实定义、调用点和状态所有者，文中拟议职责名不能直接当作源码API调用。
 
 ## 9. 验收与诊断
 

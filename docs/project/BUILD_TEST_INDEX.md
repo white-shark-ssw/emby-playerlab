@@ -1,10 +1,12 @@
 # OnePlayer Build / Test Index
 
-## Latest poster candidate — Build303 /0.15.36
+## Latest accepted overall baseline — Build303 /0.15.36
 
-Final source0b5ce25bcec0a4d0240891913ad17114b02cf10e;84fresh+10retained UI, full Release/package and independent actual artifact verification passed. Artifact11540607336; actual final IPA verified locally and saved for direct handoff; execution blocker resolved. P3/P4/P5 code complete, P6/device acceptance pending. Full exact identity and limitations are recorded below and in the task checkpoint.
+OnePlayer 0.15.36 / Build303 was explicitly accepted on 2026-10-08. DEV-poster-grid-smoothness is Completed / stable-frozen; PR #292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`, and its checkpoint was removed in `c4a22edf753b9a59df3d34ef5e46b943bb7c5341`. Accepted source `0b5ce25bcec0a4d0240891913ad17114b02cf10e`; CI run37754814214 passed with84 fresh tests and10 retained unchanged UI checks. Artifact11540607336 and the delivered IPA were independently verified; MinOS15.0. Unmeasured entry/resource/scale scenarios remain evidence limits, not pending acceptance blockers. Cross-route image-cache sharing is deferred.
 
-## Build300 reservation — P3 Library adapters /2026-10-08
+Historical dated entries below preserve their original evidence levels; the current poster-task status is Completed / stable-frozen at Build303, accepted on 2026-10-08 and merged through PR #292. They are not pending work for this completed task.
+
+## Historical Build300 reservation — P3 Library adapters /2026-10-08
 
 OnePlayer0.15.33 /Build300 /poster-library-adapters /iOS15.0 is reserved by DEV-poster-grid-smoothness on perf/poster-wall-library-build295 /Draft PR292. Source baseline is tested29944cdd845f3e822dde0215d0a47f180fbb73544a8; no new IPA/CI claim. User accepted G01 and authorized P3 G02–G08. Other Active Aether235 and current CI/branches checked for collisions; P4/P5/P6 remain pending.
 

@@ -10,6 +10,8 @@ _Last updated2026-10-08: 用户明确验收海报墙任务。当前接受产品�
 - Evidence: Code written /84fresh+10retained regressions /Release CI passed /IPA independently verified and delivered /user runtime log reviewed /explicit task accepted /poster Stable-frozen. PR292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`; merged tree `0e895c4eec596e4bed3906148bcdca7e18237ad6` matches the accepted Build303 source in every non-document file.
 - Scope: G01–G15/H01–H04 native poster hosts; original query/frontier/navigation/cache ownership retained;293carousel/294Dock/P0 remain protected. Unmeasured resource/full-entry scenarios are not declared tested. Cross-route image-cache sharing remains deferred.
 
+Historical dated entries below preserve their original evidence levels; the current poster-task status is Completed / stable-frozen at Build303, accepted on 2026-10-08 and merged through PR #292. They are not pending work for this completed task.
+
 ## Previous accepted overall baseline — Build294
 
 - Product: **OnePlayer0.15.27 / Build294** — independent server Dock acceptance milestone
@@ -38,7 +40,7 @@ Exact-source Xcode16.4 CI **37355042210 / job111915202727** passed on control **
 
 User explicitly accepted OnePlayer0.15.27/Build294 on2026-10-06: “没什么问题，验收通过”. Target device iPhone15ProMax/iOS17.0. PR#291 merged at **cbea35bbdca027cf734a17370a93da106c545863**; exact tested source **ca60a034d68d451bc0f93f5681465398131d54c5**. PR head **4a3b7fd8a33fab1ab03dad74e62b9c096eeb258a** and merged main differ from tested source only in project documents; runtime/tests are identical.
 
-**Code written /18 native regressions passed /CI passed /IPA independently verified /real-device accepted /stable-frozen Dock scope /merged to main**. Build294 is the current accepted overall baseline and inherits accepted Build293 carousel and P0 contracts. DEV-server-dock-refactor completed; only its checkpoint is removed. Other Active tasks remain unchanged. Preserve shared Dock viewport/safe-area/keyboard/content-clearance ownership, original bar appearance, root tab/Search-lifetime/Home-tap actions and native detail/navigation visibility. Reopen only on explicit new requirements or regression evidence.
+**Code written /18 native regressions passed /CI passed /IPA independently verified /real-device accepted /stable-frozen Dock scope /merged to main**. Build294 remains the accepted Dock milestone and inherits accepted Build293 carousel and P0 contracts; Build303 is now the accepted overall baseline. DEV-server-dock-refactor completed; only its checkpoint is removed. Other Active tasks remain unchanged. Preserve shared Dock viewport/safe-area/keyboard/content-clearance ownership, original bar appearance, root tab/Search-lifetime/Home-tap actions and native detail/navigation visibility. Reopen only on explicit new requirements or regression evidence.
 
 ## Frozen / protected contracts
 
@@ -102,9 +104,9 @@ Build241 manual horizontal interaction/presentation remains frozen. New 2026-08-
 
 Search is complete and stable for its functional task. Build256 exact product source `723d803c70326dee49aabc75f15ce445b7de947e` was accepted on iPhone 15 Pro Max / iOS 17.0; run/job `33271528610 / 99150738764`; artifact `9720282077`; IPA SHA-256 `01cf29fa117df904307286066c131d68be0e89b8f8f4a26b8b960c29ae6afce5`; MinOS 15.0. PR #264 merged at `647c1f66e5836fcd20a23a57600211488eeafb3d`. Final contract: no app-start recommendation fetch; Search entry starts a fresh lifetime with initial 9 Movie/Series Random Items; incremental +6 batches exclude displayed IDs; detail push/pop preserves the loaded dataset; Dock switch away destroys it; re-entry starts fresh. Shared image caches remain independent.
 
-The active poster-smoothness task now profiles the shared 3×3 presentation also used by Search. That performance work does not reopen the accepted Search data source, pagination semantics, state lifetime or Dock behavior.
+The completed Build303 poster task migrated Search presentation to the shared native poster hosts. The accepted Search data source, pagination semantics, state lifetime and Dock behavior remain protected.
 
-## Active: Poster-heavy scrolling smoothness
+## Historical: Poster-heavy scrolling smoothness — completed at Build303
 
 ### 2026-10-06 — Complete shared wall + page adapters
 
@@ -169,7 +171,7 @@ Build273 does not log per-frame interval tails or timestamp its existing `insert
 
 **Evidence:** Code/CI/IPA/real-device ✅ / sufficient fix ❌ / interior reverse ❌ / root unresolved / stable ❌.
 
-## Active: Poster-heavy scrolling smoothness
+## Historical: Poster-heavy scrolling smoothness — completed at Build303
 
 ### 2026-08-30 Build257 fallback acceptance → Build258 cadence evidence → Build259 high-refresh A/B
 
@@ -508,7 +510,7 @@ OnePlayer-App-1791388230.log confirms0.15.31/298 (2025 lines; SHA25630e065975a58
 
 Library5216 movement-only display-link samples include2 >=25ms intervals (max25.0055), zero>=33.3ms; no presented-FPS or all-hitch proof. Initial cached1140/1080-record applies11.55/11.28ms with~97% in records stage; main record/URL preparation is the concrete optimization lead. Not proven cause of those movement gaps, ordinary append already suffix-only/max3.85ms.28 native reappearance pairs retain count/revision/wall,27 exact offsets and one2pt bottom overscroll settle; deep1080 return retains86362.33. Session evidence only, not full P2.
 
-Runtime/package source07f2f7c97953aba5e7f3ffde867632215c52c211, feature369dc50bbd195cfd77990f8d2203148cc192749a /perf/poster-wall-library-build295, PR292 Draft/open/unmerged; no code/CI/new Build/IPA in review.298 partially device-log tested; immediate-scroll issue and rare Library long intervals remain. DEV-poster-grid-smoothness Active/P2 unaccepted; accepted294/carousel293/Dock294/Search256/P0/other hosts unchanged. Full evidence and exact next action: [task checkpoint](current/dev/DEV-poster-grid-smoothness.md).
+Runtime/package source07f2f7c97953aba5e7f3ffde867632215c52c211, feature369dc50bbd195cfd77990f8d2203148cc192749a /perf/poster-wall-library-build295, PR292 Draft/open/unmerged; no code/CI/new Build/IPA in review.298 partially device-log tested; immediate-scroll issue and rare Library long intervals remain. DEV-poster-grid-smoothness Active/P2 unaccepted; accepted294/carousel293/Dock294/Search256/P0/other hosts unchanged. Full evidence and exact next action: [historical task checkpoint](https://github.com/white-shark-ssw/emby-playerlab/blob/354f71741c668ef4a10642cf69fb3dc6da723796/docs/project/current/dev/DEV-poster-grid-smoothness.md).
 
 
 ## Build299 /0.15.32 — demand-only poster URLs and passive detail-scroll evidence; verified IPA (2026-10-08 Asia/Shanghai)
