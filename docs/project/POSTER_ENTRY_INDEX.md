@@ -1,6 +1,6 @@
 # 海报墙入口清单
 
-_2026-10-08 18:58。用户明确验收本任务；G01–G15/H01–H04计划实现完成，OnePlayer0.15.36/Build303为正式接受基线。PR292 integration pending. 原计划的未独立覆盖规模/资源/入口测试保留为证据边界，不虚标通过、不继续阻塞已接受任务；跨线路图片缓存共享暂缓，H05保留原合同。_
+_2026-10-08 18:58。用户明确验收本任务；G01–G15/H01–H04计划实现完成，OnePlayer0.15.36/Build303为正式接受基线。PR292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`; merged tree `0e895c4eec596e4bed3906148bcdca7e18237ad6` matches the accepted Build303 source in every non-document file. 原计划的未独立覆盖规模/资源/入口测试保留为证据边界，不虚标通过、不继续阻塞已接受任务；跨线路图片缓存共享暂缓，H05保留原合同。_
 
 ## 1. 清点口径
 
@@ -263,4 +263,7 @@ H01–H04 implementation is complete: Home, Library suggestions, Favorites previ
 
 用户明确裁决：**“那么该任务可以验收通过了”**。DEV-poster-grid-smoothness按交付的OnePlayer0.15.36/Build303正式完成，G01–G15及H01–H04共享原生海报展示、按需图片准备和导航/分页合同成为当前接受基线；H05详情横向区保留原合同。此前用户已接受G01调优、301部分结果页测试，最新303日志9834个运动间隔max18.044ms且>=25/33.3为0。此裁决是任务级验收，不把未独立测量的5000项/内存压力/后台恢复/所有入口矩阵追认成测试通过；保留这些证据限制，不继续作为本任务Active阻塞项。
 
-接受包精确源码0b5ce25bcec0a4d0240891913ad17114b02cf10e；run37754814214/job113236645278成功，84项本轮回归与10项保留导航证据，Release及独立包/源码/MinOS15.0核验通过。Artifact11540607336，IPASHA256b3ebb081dcbe1e20de02565faaa6e5f4d67891922c6f0d55248bf7cd959842de。PR292 integration pending. 合并前完整Git树核对：main从共同基线只改7份项目资料；feature的所有非docs文件均与已验收精确源码一致。仅解决同步文档差异，不改变运行时代码/测试依赖，无需另出IPA或重跑未变化输入。跨Wi-Fi/流量线路图片缓存共享按用户原决定暂缓，作为后续问题保留，不宣称已解决。不影响独立Aether235任务及播放器/传输/P0、293轮播、294Dock冻结合同。
+接受包精确源码0b5ce25bcec0a4d0240891913ad17114b02cf10e；run37754814214/job113236645278成功，84项本轮回归与10项保留导航证据，Release及独立包/源码/MinOS15.0核验通过。Artifact11540607336，IPASHA256b3ebb081dcbe1e20de02565faaa6e5f4d67891922c6f0d55248bf7cd959842de。PR292 merged at `83dbebcd739d2240b55d9c51ee514119139bfc8e`; merged tree `0e895c4eec596e4bed3906148bcdca7e18237ad6` matches the accepted Build303 source in every non-document file. 合并前完整Git树核对：main从共同基线只改7份项目资料；feature的所有非docs文件均与已验收精确源码一致。仅解决同步文档差异，不改变运行时代码/测试依赖，无需另出IPA或重跑未变化输入。跨Wi-Fi/流量线路图片缓存共享按用户原决定暂缓，作为后续问题保留，不宣称已解决。不影响独立Aether235任务及播放器/传输/P0、293轮播、294Dock冻结合同。
+
+
+Final closure: [PR #292](https://github.com/white-shark-ssw/emby-playerlab/pull/292) merged on 2026-10-08 at `83dbebcd739d2240b55d9c51ee514119139bfc8e`. The poster task checkpoint is removed by this documentation-only closure commit; independent Aether task records remain unchanged.
