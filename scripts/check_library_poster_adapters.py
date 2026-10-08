@@ -11,9 +11,15 @@ browse = Path(browse_path).read_text()
 original = old(browse_path)
 native_detail_route = '            if let item = nativePosterSelection { EmbyPosterDetailDestination(item: item, client: client) }\n            else { EmptyView() }'
 native_folder_route = '            if let item = nativePosterSelection {\n                if v3LibraryIsBrowsableFolder(item) { V3LibraryFolderBrowserView(folder: item, client: client) }\n                else { EmbyPosterDetailDestination(item: item, client: client) }\n            } else { EmptyView() }'
+old_expected_types = '        case "mixed": return ["Movie", "Series", "Video"]\n        default: return []'
+media_expected_types = '        case "mixed": return ["Movie", "Series", "Video"]\n        default: return ["Movie", "Series", "Video"]'
 assert native_folder_route in browse, 'Library root Folder route missing'
-normalized_browse = browse.replace(native_folder_route, native_detail_route, 1)
+assert media_expected_types in browse, 'Unknown Library content must remain media-only'
+normalized_browse = browse.replace(native_folder_route, native_detail_route, 1).replace(media_expected_types, old_expected_types, 1)
 assert normalized_browse[:normalized_browse.index('    private func pagedPosterTab(')] == original[:original.index('    private func pagedPosterTab(')], 'Accepted G01/root navigation changed outside Folder route'
+model_start = '@MainActor\nprivate final class V3LibraryBrowserViewModel'
+model_end = '    private func spec(for tab: V3LibraryTab)'
+assert normalized_browse[normalized_browse.index(model_start):normalized_browse.index(model_end)] == original[original.index(model_start):original.index(model_end)], 'Library owner changed outside media-only default'
 boundary = 'struct V3EmbyFavoritesView:'
 def without_favorite_more(text):
     start = text.index('private struct V3FavoriteCategoryGridView:')
@@ -42,4 +48,4 @@ for directory in ['Sources/Player', 'Sources/Transport', 'Sources/Cache', 'Sourc
     assert not subprocess.check_output(['git', 'diff', baseline, '--name-only', '--', directory], text=True).strip(), directory
 for path in ['Sources/UI/EmbySharedImageAndNavigation.swift', 'Sources/UI/EmbyImagePreparation.swift', 'Sources/UI/EmbyPagePersistentCache.swift', 'Sources/UI/EmbyDetailPerformanceState.swift', 'Sources/UI/EmbyDetailScrollDiagnostics.swift', 'Sources/UI/ServerDock.swift', 'Sources/UI/ImmersiveUIComponents.swift', 'Sources/UI/EmbyHomeCarouselNativePresentationV3.swift', 'Sources/UI/EmbyHomeCarouselStateV3.swift', 'Sources/UI/EmbyServerRootViewV3.swift']:
     assert Path(path).read_text() == old(path), path
-print('P3 Library adapters scoped; root Folder routing added while accepted G01 view, queries, details, frozen hosts and P0 source remain preserved')
+print('P3 Library adapters scoped; root Folder routing retained, unknown Library items are media-only, and accepted G01/details/frozen hosts/P0 source remain preserved')
