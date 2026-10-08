@@ -1,0 +1,205 @@
+name: Build304 Meaningless Detail Routing Regression and IPA
+
+on:
+  push:
+    branches: [ci/build304-meaningless-detail-routing-20261009]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: build304-meaningless-detail-routing
+  cancel-in-progress: true
+
+env:
+  PRODUCT_SHA: d5b36d98efcbe426d91a750735e2780c5b723576
+  PRODUCT_BRANCH: feat/meaningless-detail-routing
+  ACCEPTED_SHA: 0b5ce25bcec0a4d0240891913ad17114b02cf10e
+  LIBRARY_GUARD_BASE: 44cdd845f3e822dde0215d0a47f180fbb73544a8
+  VERSION: 0.15.37
+  BUILD_NUMBER: 304
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout control branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout and guard exact product source
+        run: |
+          set -euo pipefail
+          git fetch origin "$PRODUCT_BRANCH"
+          test "$(git rev-parse "origin/$PRODUCT_BRANCH")" = "$PRODUCT_SHA"
+          git checkout --detach "$PRODUCT_SHA"
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          changed_runtime="$(git diff --name-only "$ACCEPTED_SHA" "$PRODUCT_SHA" | grep -v '^docs/' | sort)"
+          expected_runtime="$(printf '%s\n' Sources/Core/AppIdentity.swift Sources/UI/EmbyServerBrowseV3.swift scripts/check_library_poster_adapters.py | sort)"
+          test "$changed_runtime" = "$expected_runtime"
+          git diff --check "$ACCEPTED_SHA" "$PRODUCT_SHA"
+          python3 scripts/check_library_poster_adapters.py "$LIBRARY_GUARD_BASE"
+          grep -F 'static let sourceVersion = "0.15.37"' Sources/Core/AppIdentity.swift
+          grep -F 'if v3LibraryIsBrowsableFolder(item) { V3LibraryFolderBrowserView(folder: item, client: client) }' Sources/UI/EmbyServerBrowseV3.swift
+          test "$(git rev-parse "$ACCEPTED_SHA:Sources/UI/EmbySharedImageAndNavigation.swift")" = "$(git hash-object Sources/UI/EmbySharedImageAndNavigation.swift)"
+          for path in Sources/Player Sources/Transport Sources/Cache Sources/Emby Sources/Networking Sources/Models; do
+            test -z "$(git diff --name-only "$ACCEPTED_SHA" "$PRODUCT_SHA" -- "$path")"
+          done
+          grep -F 'iOS: "15.0"' project.yml
+          grep -F 'deploymentTarget: "15.0"' project.yml
+
+      - name: Export exact source snapshot
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="OnePlayer-${VERSION}-build${BUILD_NUMBER}-meaningless-detail-routing-source.zip"
+          git archive --format=zip --output "$SOURCE_ZIP" "$PRODUCT_SHA"
+          shasum -a 256 "$SOURCE_ZIP" | tee "$SOURCE_ZIP.sha256"
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
+
+      - name: Inject package identity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, plistlib, re
+          from pathlib import Path
+          version = os.environ['VERSION']
+          build = os.environ['BUILD_NUMBER']
+          info_path = Path('Config/Info.plist')
+          with info_path.open('rb') as handle:
+              info = plistlib.load(handle)
+          info['CFBundleShortVersionString'] = version
+          info['CFBundleVersion'] = build
+          with info_path.open('wb') as handle:
+              plistlib.dump(info, handle, sort_keys=False)
+          project_path = Path('project.yml')
+          project = project_path.read_text()
+          project = re.sub(r'MARKETING_VERSION: "[^"]+"', f'MARKETING_VERSION: "{version}"', project)
+          project = re.sub(r'CURRENT_PROJECT_VERSION: "[^"]+"', f'CURRENT_PROJECT_VERSION: "{build}"', project)
+          project_path.write_text(project)
+          PY
+
+      - name: Select Xcode 16.4 and install tools
+        run: |
+          set -euo pipefail
+          sudo xcode-select -switch /Applications/Xcode_16.4.app
+          brew install xcodegen
+          sudo gem install cocoapods -v 1.16.2 --no-document
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcodegen --version
+          pod --version
+
+      - name: Prepare poster regression harness and simulator
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          python3 Tests/PosterWallRegression/prepare.py "$PWD" "$RUNNER_TEMP/PosterWallRegression"
+          xcodegen generate --spec "$RUNNER_TEMP/PosterWallRegression/project.yml"
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(x["udid"] for runtime,devices in d["devices"].items() if runtime.endswith("iOS-18-5") for x in devices if x["name"] == "iPhone 16 Pro Max"))')"
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+
+      - name: Run actual-source poster and Library adapter regression tests
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/PosterWallRegression"
+          set +e
+          xcodebuild test -project PosterWallRegression.xcodeproj -scheme PosterWallRegression -only-testing:PosterWallRegression -destination "platform=iOS Simulator,id=$DEVICE_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$GITHUB_WORKSPACE/poster-native-tests.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" = 0
+          grep -E 'Executed [0-9]+ tests?, with 0 failures' "$GITHUB_WORKSPACE/poster-native-tests.log"
+
+      - name: Prepare project and dependencies
+        run: |
+          set -euo pipefail
+          python3 scripts/generate_oneplayer_icons.py
+          xcodegen generate
+          pod install --repo-update
+          xcodebuild -resolvePackageDependencies -workspace EmbyPlayerLab.xcworkspace -scheme EmbyPlayerLab -clonedSourcePackagesDirPath .spm-cache
+
+      - name: Build unsigned app
+        run: |
+          set -uo pipefail
+          rm -rf build
+          set +e
+          xcodebuild \
+            -workspace EmbyPlayerLab.xcworkspace \
+            -scheme EmbyPlayerLab \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath .spm-cache \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            clean build 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            grep -n -E '(^|[[:space:]])error:|SwiftCompile|CompileSwift' build.log | tail -n 240 > compiler-errors.txt || true
+            cat compiler-errors.txt
+            exit "$status"
+          fi
+
+      - name: Validate identity and minimum OS
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          python3 scripts/validate_built_app.py "$APP_PATH" --bundle-id com.embyplayerlab.app --version "$VERSION" --build "$BUILD_NUMBER" --display-name OnePlayer --minimum-os 15.0 --primary-icon OnePlayerIcon --alternate-icon OnePlayerAltIcon
+          chmod +x scripts/check_min_os.sh
+          scripts/check_min_os.sh "$APP_PATH" 15.0 17.0 min-os-report.log build.log
+          /usr/bin/plutil -p "$APP_PATH/Info.plist" | tee built-info-plist.log
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          IPA_NAME="OnePlayer-${VERSION}-build${BUILD_NUMBER}-meaningless-detail-routing-unsigned.ipa"
+          /usr/bin/zip -qry "$IPA_NAME" Payload
+          /usr/bin/unzip -t "$IPA_NAME" | tee package.log
+          shasum -a 256 "$IPA_NAME" | tee "$IPA_NAME.sha256"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload Build304 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.37-build304-meaningless-detail-routing
+          path: |
+            ${{ env.IPA_NAME }}
+            ${{ env.IPA_NAME }}.sha256
+            ${{ env.SOURCE_ZIP }}
+            ${{ env.SOURCE_ZIP }}.sha256
+            poster-native-tests.log
+            built-info-plist.log
+            min-os-report.log
+            package.log
+            build.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Build304 diagnostics
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlayer-0.15.37-build304-diagnostics
+          path: |
+            compiler-errors.txt
+            build.log
+            poster-native-tests.log
+            min-os-report.log
+            built-info-plist.log
+          if-no-files-found: warn
+          retention-days: 7
